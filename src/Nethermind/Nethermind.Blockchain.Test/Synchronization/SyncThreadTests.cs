@@ -21,26 +21,26 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Serialization;
-using Nethermind.Core.Specs;
-using Nethermind.Core.Specs.Forks;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Store;
-using Nethermind.Store.BeamSyncStore;
+using Nethermind.Store.BeamSync;
 using Nethermind.Store.Repositories;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Synchronization.FastSync;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization
@@ -159,7 +159,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 transaction.Nonce = (UInt256) i;
                 transaction.GasLimit = 21000;
                 transaction.GasPrice = 20.GWei();
-                transaction.Hash = Transaction.CalculateHash(transaction);
+                transaction.Hash = transaction.CalculateHash();
                 _originPeer.Ecdsa.Sign(TestItem.PrivateKeyA, transaction, i);
                 _originPeer.TxPool.AddTransaction(transaction, i);
                 if (!resetEvent.WaitOne(1000))
@@ -240,7 +240,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
 //            var logManager = new OneLoggerLogManager(logger);
             var specProvider = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, MainNetSpecProvider.Instance.ChainId);
 
-            MemDb traceDb = new MemDb();
             MemDb blockDb = new MemDb();
             MemDb headerDb = new MemDb();
             MemDb blockInfoDb = new MemDb();
@@ -274,10 +273,10 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             var rewardCalculator = new RewardCalculator(specProvider);
             var txProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
-            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, txProcessor, stateDb, codeDb, traceDb, stateProvider, storageProvider, txPool, receiptStorage, logManager);
+            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, txProcessor, stateDb, codeDb, stateProvider, storageProvider, txPool, receiptStorage, logManager);
 
             var step = new TxSignaturesRecoveryStep(ecdsa, txPool, logManager);
-            var processor = new BlockchainProcessor(tree, blockProcessor, step, logManager, true, true);
+            var processor = new BlockchainProcessor(tree, blockProcessor, step, logManager, true);
 
             var nodeStatsManager = new NodeStatsManager(new StatsConfig(), logManager);
             var syncPeerPool = new EthSyncPeerPool(tree, nodeStatsManager, syncConfig, 25, logManager);
@@ -286,8 +285,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
             StorageProvider devStorage = new StorageProvider(stateDb, devState, logManager);
             var devEvm = new VirtualMachine(devState, devStorage, blockhashProvider, specProvider, logManager);
             var devTxProcessor = new TransactionProcessor(specProvider, devState, devStorage, devEvm, logManager);
-            var devBlockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, devTxProcessor, stateDb, codeDb, traceDb, devState, devStorage, txPool, receiptStorage, logManager);
-            var devChainProcessor = new BlockchainProcessor(tree, devBlockProcessor, step, logManager, false, false);
+            var devBlockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, devTxProcessor, stateDb, codeDb, devState, devStorage, txPool, receiptStorage, logManager);
+            var devChainProcessor = new BlockchainProcessor(tree, devBlockProcessor, step, logManager, false);
             var transactionSelector = new PendingTransactionSelector(txPool, stateProvider, logManager);
             var producer = new DevBlockProducer(transactionSelector, devChainProcessor, tree, stateProvider, new Timestamper(), logManager, txPool);
 

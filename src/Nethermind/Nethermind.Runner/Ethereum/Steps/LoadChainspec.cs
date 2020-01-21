@@ -17,12 +17,12 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Core;
+using Nethermind.Config;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Specs.GenesisFileStyle;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
+    [RunnerStepDependency(typeof(SetupKeyStore))]
     public class LoadChainspec : IStep
     {
         private readonly EthereumRunnerContext _context;
@@ -40,14 +40,13 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private void LoadChainSpec()
         {
-            if (_context.Logger.IsInfo) _context.Logger.Info($"Loading chain spec from {_context._initConfig.ChainSpecPath}");
+            IInitConfig initConfig = _context.Config<IInitConfig>();
+            if (_context.Logger.IsInfo) _context.Logger.Info($"Loading chain spec from {initConfig.ChainSpecPath}");
 
-            IChainSpecLoader loader = string.Equals(_context._initConfig.ChainSpecFormat, "ChainSpec", StringComparison.InvariantCultureIgnoreCase)
-                ? (IChainSpecLoader) new ChainSpecLoader(_context._ethereumJsonSerializer)
-                : new GenesisFileLoader(_context._ethereumJsonSerializer);
+            IChainSpecLoader loader = new ChainSpecLoader(_context.EthereumJsonSerializer);
 
-            _context._chainSpec = loader.LoadFromFile(_context._initConfig.ChainSpecPath);
-            _context._chainSpec.Bootnodes = _context._chainSpec.Bootnodes?.Where(n => !n.NodeId?.Equals(_context._nodeKey.PublicKey) ?? false).ToArray() ?? new NetworkNode[0];
+            _context.ChainSpec = loader.LoadFromFile(initConfig.ChainSpecPath);
+            _context.ChainSpec.Bootnodes = _context.ChainSpec.Bootnodes?.Where(n => !n.NodeId?.Equals(_context.NodeKey.PublicKey) ?? false).ToArray() ?? new NetworkNode[0];
         }
     }
 }

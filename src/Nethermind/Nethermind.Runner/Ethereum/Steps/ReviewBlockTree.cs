@@ -30,7 +30,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public async Task Execute()
         {
-            if (_context._initConfig.ProcessingEnabled)
+            if (_context.InitConfig.ProcessingEnabled)
             {
 #pragma warning disable 4014
                 RunBlockTreeInitTasks();
@@ -39,20 +39,20 @@ namespace Nethermind.Runner.Ethereum.Steps
             else
             {
                 if (_context.Logger.IsWarn) _context.Logger.Warn($"Shutting down the blockchain processor due to {nameof(InitConfig)}.{nameof(InitConfig.ProcessingEnabled)} set to false");
-                await _context._blockchainProcessor.StopAsync();
+                await _context.BlockchainProcessor.StopAsync();
             }
         }
         
         private async Task RunBlockTreeInitTasks()
         {
-            if (!_context._syncConfig.SynchronizationEnabled)
+            if (!_context.SyncConfig.SynchronizationEnabled)
             {
                 return;
             }
 
-            if (!_context._syncConfig.FastSync)
+            if (!_context.SyncConfig.FastSync)
             {
-                await _context.BlockTree.LoadBlocksFromDb(_context._runnerCancellation.Token, null).ContinueWith(t =>
+                await _context.BlockTree.LoadBlocksFromDb(_context.RunnerCancellation.Token, null).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
@@ -66,7 +66,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             else
             {
-                await _context.BlockTree.FixFastSyncGaps(_context._runnerCancellation.Token).ContinueWith(t =>
+                await _context.BlockTree.FixFastSyncGaps(_context.RunnerCancellation.Token).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {

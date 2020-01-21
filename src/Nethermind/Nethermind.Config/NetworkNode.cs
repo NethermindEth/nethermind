@@ -20,7 +20,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
-namespace Nethermind.Core
+namespace Nethermind.Config
 {
     public class NetworkNode
     {

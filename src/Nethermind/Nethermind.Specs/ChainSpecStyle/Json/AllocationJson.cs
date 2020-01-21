@@ -16,7 +16,7 @@
 
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Specs.GenesisFileStyle.Json
+namespace Nethermind.Specs.ChainSpecStyle.Json
 {
     internal class AllocationJson
     {

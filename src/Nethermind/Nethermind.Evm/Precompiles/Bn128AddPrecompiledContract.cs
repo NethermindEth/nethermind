@@ -17,9 +17,10 @@
 using System;
 using System.Numerics;
 using Nethermind.Core;
-using Nethermind.Core.Crypto.ZkSnarks;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto.ZkSnarks;
+using Nethermind.Specs;
 
 namespace Nethermind.Evm.Precompiles
 {

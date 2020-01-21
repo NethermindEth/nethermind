@@ -24,6 +24,8 @@ using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Specs;
 using Nethermind.Facade;
 using Nethermind.Facade.Config;
 using Nethermind.Logging;
@@ -96,7 +98,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 );
             
             ReadOnlyChainProcessingEnv chainEnv = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculator, _receiptStorage, readOnlyDbProvider, _specProvider, _logManager);
-            ITracer tracer = new Tracer(chainEnv.Processor, _receiptStorage, new ReadOnlyBlockTree(_blockTree), _dbProvider.TraceDb);
+            ITracer tracer = new Tracer(chainEnv.Processor, _receiptStorage, new ReadOnlyBlockTree(_blockTree));
             
             return new TraceModule(blockchainBridge, _logManager, tracer);
         }

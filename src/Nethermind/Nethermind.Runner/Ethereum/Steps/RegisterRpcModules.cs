@@ -34,6 +34,7 @@ using Nethermind.Runner.Ethereum.Subsystems;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
+    [RunnerStepDependency(typeof(InitializeNetwork))]
     public class RegisterRpcModules : IStep, ISubsystemStateAware
     {
         private readonly EthereumRunnerContext _context;
@@ -45,7 +46,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public Task Execute()
         { 
-            IJsonRpcConfig jsonRpcConfig = _context._configProvider.GetConfig<IJsonRpcConfig>();
+            IJsonRpcConfig jsonRpcConfig = _context.ConfigProvider.GetConfig<IJsonRpcConfig>();
             if (!jsonRpcConfig.Enabled)
             {
                 return Task.CompletedTask;
@@ -54,51 +55,51 @@ namespace Nethermind.Runner.Ethereum.Steps
             // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
             if (_context.Logger.IsDebug) _context.Logger.Debug($"Resolving CLI ({nameof(Cli.CliModuleLoader)})");
 
-            var ndmConfig = _context._configProvider.GetConfig<INdmConfig>();
-            var rpcConfig = _context._configProvider.GetConfig<IRpcConfig>();
-            if (ndmConfig.Enabled && !(_context._ndmInitializer is null) && ndmConfig.ProxyEnabled)
+            var ndmConfig = _context.ConfigProvider.GetConfig<INdmConfig>();
+            var rpcConfig = _context.ConfigProvider.GetConfig<IRpcConfig>();
+            if (ndmConfig.Enabled && !(_context.NdmInitializer is null) && ndmConfig.ProxyEnabled)
             {
-                var proxyFactory = new EthModuleProxyFactory(_context._ethJsonRpcClientProxy, _context._wallet);
-                _context._rpcModuleProvider.Register(new SingletonModulePool<IEthModule>(proxyFactory, true));
+                var proxyFactory = new EthModuleProxyFactory(_context.EthJsonRpcClientProxy, _context.Wallet);
+                _context.RpcModuleProvider.Register(new SingletonModulePool<IEthModule>(proxyFactory, true));
                 if (_context.Logger.IsInfo) _context.Logger.Info("Enabled JSON RPC Proxy for NDM.");
             }
             else
             {
-                EthModuleFactory ethModuleFactory = new EthModuleFactory(_context._dbProvider, _context._txPool, _context._wallet, _context.BlockTree,
-                    _context._ethereumEcdsa, _context._blockProcessor, _context._receiptStorage, _context.SpecProvider, rpcConfig, _context.LogManager);
-                _context._rpcModuleProvider.Register(new BoundedModulePool<IEthModule>(8, ethModuleFactory));
+                EthModuleFactory ethModuleFactory = new EthModuleFactory(_context.DbProvider, _context.TxPool, _context.Wallet, _context.BlockTree,
+                    _context.EthereumEcdsa, _context.BlockProcessor, _context.ReceiptStorage, _context.SpecProvider, rpcConfig, _context.LogManager);
+                _context.RpcModuleProvider.Register(new BoundedModulePool<IEthModule>(8, ethModuleFactory));
             }
 
-            DebugModuleFactory debugModuleFactory = new DebugModuleFactory(_context._dbProvider, _context.BlockTree, _context._blockValidator, _context._recoveryStep, _context._rewardCalculator, _context._receiptStorage, _context._configProvider, _context.SpecProvider, _context.LogManager);
-            _context._rpcModuleProvider.Register(new BoundedModulePool<IDebugModule>(8, debugModuleFactory));
+            DebugModuleFactory debugModuleFactory = new DebugModuleFactory(_context.DbProvider, _context.BlockTree, _context.BlockValidator, _context.RecoveryStep, _context.RewardCalculator, _context.ReceiptStorage, _context.ConfigProvider, _context.SpecProvider, _context.LogManager);
+            _context.RpcModuleProvider.Register(new BoundedModulePool<IDebugModule>(8, debugModuleFactory));
 
-            TraceModuleFactory traceModuleFactory = new TraceModuleFactory(_context._dbProvider, _context._txPool, _context.BlockTree, _context._blockValidator, _context._ethereumEcdsa, _context._recoveryStep, _context._rewardCalculator, _context._receiptStorage, _context.SpecProvider, rpcConfig, _context.LogManager);
-            _context._rpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(8, traceModuleFactory));
+            TraceModuleFactory traceModuleFactory = new TraceModuleFactory(_context.DbProvider, _context.TxPool, _context.BlockTree, _context.BlockValidator, _context.EthereumEcdsa, _context.RecoveryStep, _context.RewardCalculator, _context.ReceiptStorage, _context.SpecProvider, rpcConfig, _context.LogManager);
+            _context.RpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(8, traceModuleFactory));
 
-            if (_context._sealValidator is CliqueSealValidator)
+            if (_context.SealValidator is CliqueSealValidator)
             {
-                CliqueModule cliqueModule = new CliqueModule(_context.LogManager, new CliqueBridge(_context._blockProducer as ICliqueBlockProducer, _context._snapshotManager, _context.BlockTree));
-                _context._rpcModuleProvider.Register(new SingletonModulePool<ICliqueModule>(cliqueModule, true));
+                CliqueModule cliqueModule = new CliqueModule(_context.LogManager, new CliqueBridge(_context.BlockProducer as ICliqueBlockProducer, _context.SnapshotManager, _context.BlockTree));
+                _context.RpcModuleProvider.Register(new SingletonModulePool<ICliqueModule>(cliqueModule, true));
             }
 
-            if (_context._initConfig.EnableUnsecuredDevWallet)
+            if (_context.InitConfig.EnableUnsecuredDevWallet)
             {
-                PersonalBridge personalBridge = new PersonalBridge(_context._ethereumEcdsa, _context._wallet);
+                PersonalBridge personalBridge = new PersonalBridge(_context.EthereumEcdsa, _context.Wallet);
                 PersonalModule personalModule = new PersonalModule(personalBridge, _context.LogManager);
-                _context._rpcModuleProvider.Register(new SingletonModulePool<IPersonalModule>(personalModule, true));
+                _context.RpcModuleProvider.Register(new SingletonModulePool<IPersonalModule>(personalModule, true));
             }
 
-            AdminModule adminModule = new AdminModule(_context.PeerManager, _context._staticNodesManager);
-            _context._rpcModuleProvider.Register(new SingletonModulePool<IAdminModule>(adminModule, true));
+            AdminModule adminModule = new AdminModule(_context.PeerManager, _context.StaticNodesManager);
+            _context.RpcModuleProvider.Register(new SingletonModulePool<IAdminModule>(adminModule, true));
 
-            TxPoolModule txPoolModule = new TxPoolModule(_context.LogManager, _context._txPoolInfoProvider);
-            _context._rpcModuleProvider.Register(new SingletonModulePool<ITxPoolModule>(txPoolModule, true));
+            TxPoolModule txPoolModule = new TxPoolModule(_context.LogManager, _context.TxPoolInfoProvider);
+            _context.RpcModuleProvider.Register(new SingletonModulePool<ITxPoolModule>(txPoolModule, true));
 
-            NetModule netModule = new NetModule(_context.LogManager, new NetBridge(_context._enode, _context._syncServer, _context.PeerManager));
-            _context._rpcModuleProvider.Register(new SingletonModulePool<INetModule>(netModule, true));
+            NetModule netModule = new NetModule(_context.LogManager, new NetBridge(_context.Enode, _context.SyncServer, _context.PeerManager));
+            _context.RpcModuleProvider.Register(new SingletonModulePool<INetModule>(netModule, true));
 
-            ParityModule parityModule = new ParityModule(_context._ethereumEcdsa, _context._txPool, _context.BlockTree, _context._receiptStorage, _context.LogManager);
-            _context._rpcModuleProvider.Register(new SingletonModulePool<IParityModule>(parityModule, true));
+            ParityModule parityModule = new ParityModule(_context.EthereumEcdsa, _context.TxPool, _context.BlockTree, _context.ReceiptStorage, _context.LogManager);
+            _context.RpcModuleProvider.Register(new SingletonModulePool<IParityModule>(parityModule, true));
 
             SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Running));
             return Task.CompletedTask;

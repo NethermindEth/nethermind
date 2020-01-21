@@ -16,6 +16,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Network.Crypto;
 using Nethermind.Secp256k1;
 using NUnit.Framework;

@@ -44,9 +44,6 @@ namespace Nethermind.Runner
         [ConfigItem(Description = "Path to the chain definition file (Parity chainspec or Geth genesis file).", DefaultValue = "null")]
         string ChainSpecPath { get; set; }
         
-        [ConfigItem(Description = "Format of the chain definition file - genesis (Geth style - not tested recently / may fail) or chainspec (Parity style).", DefaultValue = "\"chainspec\"")]
-        string ChainSpecFormat { get; set; }
-        
         [ConfigItem(Description = "Base directoy path for all the nethermind databases.", DefaultValue = "\"db\"")]
         string BaseDbPath { get; set; }
         
@@ -61,10 +58,7 @@ namespace Nethermind.Runner
         
         [ConfigItem(Description = "In case of null, the path is set to [applicationDirectiory]\\logs", DefaultValue = "null")]
         string LogDirectory { get; set; }
-        
-        [ConfigItem(Description = "If set to 'true' then the detailed VM trace data will be stored in teh DB (huge data sets).", DefaultValue = "false")]
-        bool StoreTraces { get; set; }
-        
+
         [ConfigItem(Description = "If set to 'false' then transaction receipts will not be stored in the database.", DefaultValue = "true")]
         bool StoreReceipts { get; set; }
         

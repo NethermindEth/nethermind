@@ -20,7 +20,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Store.BeamSyncStore
+namespace Nethermind.Store.BeamSync
 {
     public class BeamSyncDb : IDb, INodeDataConsumer
     {

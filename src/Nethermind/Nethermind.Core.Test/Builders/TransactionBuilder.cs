@@ -14,9 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
-using Nethermind.Core.Specs.Forks;
+using Nethermind.Crypto;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 
@@ -135,7 +137,7 @@ namespace Nethermind.Core.Test.Builders
             base.BeforeReturn();
             if (TestObjectInternal.IsSigned)
             {
-                TestObjectInternal.Hash = Transaction.CalculateHash(TestObjectInternal);
+                TestObjectInternal.Hash = TestObjectInternal.CalculateHash();
             }
         }
     }

@@ -19,7 +19,7 @@ using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
+using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -38,7 +38,6 @@ namespace Nethermind.Blockchain.Test
         {
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
-            IDb traceDb = new MemDb();
             IStateProvider stateProvider = new StateProvider(stateDb, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new BlockProcessor(
@@ -48,7 +47,6 @@ namespace Nethermind.Blockchain.Test
                 transactionProcessor,
                 stateDb,
                 codeDb,
-                traceDb,
                 stateProvider,
                 new StorageProvider(stateDb, stateProvider, LimboLogs.Instance),
                 NullTxPool.Instance,

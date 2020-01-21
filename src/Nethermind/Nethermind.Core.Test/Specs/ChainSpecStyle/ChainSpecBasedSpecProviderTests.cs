@@ -19,9 +19,10 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using FluentAssertions;
-using Nethermind.Core.Json;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.Serialization.Json;
+using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Specs.ChainSpecStyle

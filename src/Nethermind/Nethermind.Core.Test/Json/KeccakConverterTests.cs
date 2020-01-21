@@ -16,8 +16,7 @@
 
 using System.IO;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Json;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
 using NUnit.Framework;
 

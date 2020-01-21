@@ -6,6 +6,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Dirichlet\Nethermind.Dirichlet.Numerics\Nethermind.Dirichlet.Numerics.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+    <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
     <ProjectReference Include="..\Nethermind.Store\Nethermind.Store.csproj">
       <Project>{8311E4F7-DB36-40F5-A496-7CE4FD486FEE}</Project>
       <Name>Nethermind.Store</Name>

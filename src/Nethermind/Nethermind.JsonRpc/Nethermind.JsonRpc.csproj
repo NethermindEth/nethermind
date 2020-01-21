@@ -16,6 +16,7 @@
       <Project>{5751C57B-9F2D-45DE-BCC2-42645B85E39E}</Project>
       <Name>Nethermind.Core</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
     <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj">
       <Project>{E992EFB5-85F0-49B1-9C0B-6D3846A813A5}</Project>
       <Name>Nethermind.Evm</Name>

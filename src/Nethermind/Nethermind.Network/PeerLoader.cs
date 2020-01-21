@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -86,7 +87,7 @@ namespace Nethermind.Network
 
             NetworkNode[] networkNodes = _peerStorage.GetPersistedNodes();
 
-            if (_logger.IsInfo) _logger.Info($"Initializing persisted peers: {networkNodes.Length}.");
+            if (_logger.IsDebug) _logger.Debug($"Initializing persisted peers: {networkNodes.Length}.");
 
             foreach (NetworkNode persistedPeer in networkNodes)
             {

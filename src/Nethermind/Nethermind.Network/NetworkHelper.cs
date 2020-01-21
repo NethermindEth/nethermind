@@ -17,6 +17,7 @@
 using System;
 using System.Net;
 using System.Net.Sockets;
+using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 
@@ -58,9 +59,11 @@ namespace Nethermind.Network
             {
                 const string url = "http://checkip.amazonaws.com";
                 if(_logger.IsInfo) _logger.Info($"Using {url} to get external ip");
-                string ip = new WebClient().DownloadString(url);
-                if(_logger.IsInfo) _logger.Info($"External ip: {ip}");
-                return IPAddress.Parse(ip.Trim());
+                string ip = new WebClient().DownloadString(url).Trim();
+                if(_logger.IsDebug) _logger.Debug($"External ip: {ip}");
+                ThisNodeInfo.AddInfo("External IP  :", $"{ip}");
+                
+                return IPAddress.Parse(ip);
             }
             catch (Exception e)
             {

@@ -22,6 +22,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Serialization;
+using Nethermind.Crypto;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Secp256k1;
@@ -111,7 +112,7 @@ namespace Nethermind.Wallet
         public void Sign(Transaction tx, int chainId)
         {
             if (_logger.IsDebug) _logger?.Debug($"Signing transaction: {tx.Value} to {tx.To}");
-            Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, chainId));
+            Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, chainId).Bytes);
             tx.Signature = Sign(hash, tx.SenderAddress);
             tx.Signature.V = tx.Signature.V + 8 + 2 * chainId;
         }

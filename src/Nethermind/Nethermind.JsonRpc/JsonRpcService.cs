@@ -22,13 +22,11 @@ using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
-using Nethermind.Core.Json;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
 using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 
 namespace Nethermind.JsonRpc

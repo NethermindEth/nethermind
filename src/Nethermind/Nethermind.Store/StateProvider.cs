@@ -21,9 +21,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
-using Nethermind.Specs;
 
 [assembly: InternalsVisibleTo("Nethermind.Store.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Benchmark")]
@@ -62,7 +62,6 @@ namespace Nethermind.Store
             _tree.Accept(dumper, _tree.RootHash);
             return dumper.ToString();
         }
-
 
         public TrieStats CollectStats()
         {

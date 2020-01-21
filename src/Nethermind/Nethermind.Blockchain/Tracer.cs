@@ -32,16 +32,14 @@ namespace Nethermind.Blockchain
     public class Tracer : ITracer
     {
         private readonly IBlockTree _blockTree;
-        private readonly IDb _traceDb;
         private readonly IBlockchainProcessor _processor;
         private readonly IReceiptStorage _receiptStorage;
 
-        public Tracer(IBlockchainProcessor processor, IReceiptStorage receiptStorage, IBlockTree blockTree, IDb traceDb)
+        public Tracer(IBlockchainProcessor processor, IReceiptStorage receiptStorage, IBlockTree blockTree)
         {
             _processor = processor ?? throw new ArgumentNullException(nameof(processor));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _traceDb = traceDb ?? throw new ArgumentNullException(nameof(traceDb));
         }
 
         public GethLikeTxTrace Trace(Keccak blockHash, int txIndex, GethTraceOptions options)
@@ -115,12 +113,6 @@ namespace Nethermind.Blockchain
 
         public ParityLikeTxTrace ParityTrace(Keccak txHash, ParityTraceTypes traceTypes)
         {
-            byte[] traceBytes = _traceDb.Get(txHash);
-            if (traceBytes != null)
-            {
-                return Rlp.Decode<ParityLikeTxTrace>(traceBytes);
-            }
-
             TxReceipt txReceipt = _receiptStorage.Find(txHash);
             Block block = _blockTree.FindBlock(txReceipt.BlockNumber, BlockTreeLookupOptions.RequireCanonical);
             if (block == null) throw new InvalidOperationException("Only historical blocks");
@@ -131,37 +123,6 @@ namespace Nethermind.Blockchain
         public ParityLikeTxTrace[] ParityTraceBlock(long blockNumber, ParityTraceTypes traceTypes)
         {
             Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
-            bool loadedFromDb = true;
-
-            List<ParityLikeTxTrace> result = new List<ParityLikeTxTrace>();
-            for (int i = 0; i < block.Transactions.Length; i++)
-            {
-                byte[] traceBytes = _traceDb.Get(block.Transactions[i].Hash);
-                if (traceBytes != null)
-                {
-                    result.Add(Rlp.Decode<ParityLikeTxTrace>(traceBytes));
-                }
-                else
-                {
-                    loadedFromDb = false;
-                    break;
-                }
-            }
-
-            if (loadedFromDb)
-            {
-                byte[] traceBytes = _traceDb.Get(block.Hash);
-                if (traceBytes != null)
-                {
-                    result.AddRange(Rlp.DecodeArray<ParityLikeTxTrace>(new RlpStream(traceBytes), RlpBehaviors.None));
-                }
-            }
-
-            if (loadedFromDb)
-            {
-                return result.ToArray();
-            }
-
             return ParityTraceBlock(block, traceTypes);
         }
 

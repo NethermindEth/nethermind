@@ -163,7 +163,7 @@ namespace Nethermind.Runner
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info("Monitoring is disabled");
+                if (_logger.IsInfo) _logger.Info("Grafana / Prometheus metrics are disabled in configuration");
             }
 
             INdmDataPublisher ndmDataPublisher = null;

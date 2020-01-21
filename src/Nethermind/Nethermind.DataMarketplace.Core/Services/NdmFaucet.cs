@@ -185,7 +185,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 var transactionHash = await _blockchainBridge.SendOwnTransactionAsync(transaction);
                 if (latestRequest is null)
                 {
-                    var requestId = Keccak.Compute(Rlp.Encode(Rlp.Encode(node)));
+                    var requestId = Keccak.Compute(Rlp.Encode(Rlp.Encode(node)).Bytes);
                     latestRequest = new EthRequest(requestId, node, address, value, requestedAt, transactionHash);
                     await _requestRepository.AddAsync(latestRequest);
                 }

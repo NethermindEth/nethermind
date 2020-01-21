@@ -19,7 +19,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Core;
 using Nethermind.Logging;
-using Nethermind.Store;
 
 namespace Nethermind.Blockchain.Synchronization
 {

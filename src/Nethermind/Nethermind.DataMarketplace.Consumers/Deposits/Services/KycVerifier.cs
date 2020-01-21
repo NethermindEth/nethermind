@@ -37,7 +37,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
     
         public async Task<bool> IsVerifiedAsync(Keccak dataAssetId, Address address)
         {
-            var id = Keccak.Compute(Rlp.Encode(Rlp.Encode(dataAssetId), Rlp.Encode(address)));
+            var id = Keccak.Compute(Rlp.Encode(Rlp.Encode(dataAssetId), Rlp.Encode(address)).Bytes);
             var depositApproval = await _depositApprovalRepository.GetAsync(id);
             if (depositApproval is null)
             {

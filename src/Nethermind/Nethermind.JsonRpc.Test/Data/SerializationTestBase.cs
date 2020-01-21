@@ -15,17 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using Nethermind.Blockchain;
-using Nethermind.Core.Json;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
 using NSubstitute;
 using NUnit.Framework;

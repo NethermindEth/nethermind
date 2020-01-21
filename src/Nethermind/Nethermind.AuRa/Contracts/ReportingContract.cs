@@ -16,7 +16,7 @@
 
 using Nethermind.Abi;
 using Nethermind.Core;
-using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.AuRa.Contracts
 {

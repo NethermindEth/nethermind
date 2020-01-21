@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,22 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Db.Config;
-using Nethermind.Logging;
-using Nethermind.Store;
+using System.Runtime.CompilerServices;
 
-namespace Nethermind.Db.Databases
-{
-    public class TraceRocksDb : DbOnTheRocks
-    {
-        public override string Name { get; } = "Trace";
-
-        public TraceRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
-            : base(basePath, "trace", dbConfig, logManager)
-        {
-        }
-
-        protected override void UpdateReadMetrics() => Metrics.TraceDbReads++;
-        protected override void UpdateWriteMetrics() => Metrics.TraceDbWrites++;
-    }
-}
+[assembly: InternalsVisibleTo("Nethermind.Core.Test")]

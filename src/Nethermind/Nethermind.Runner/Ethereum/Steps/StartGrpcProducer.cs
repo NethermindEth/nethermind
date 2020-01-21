@@ -38,7 +38,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public Task Execute()
         {
-            IGrpcConfig grpcConfig = _context._configProvider.GetConfig<IGrpcConfig>();
+            IGrpcConfig grpcConfig = _context.ConfigProvider.GetConfig<IGrpcConfig>();
             if (!grpcConfig.Enabled)
             {
                 return Task.CompletedTask;
@@ -48,7 +48,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             if (grpcConfig.ProducerEnabled)
             {
-                GrpcProducer grpcProducer = new GrpcProducer(_context._grpcServer);
+                GrpcProducer grpcProducer = new GrpcProducer(_context.GrpcServer);
                 _context.Producers.Add(grpcProducer);
             }
             

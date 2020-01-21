@@ -18,6 +18,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Specs;
 using Nethermind.Logging;
 using Nethermind.Mining;
 
@@ -44,7 +45,7 @@ namespace Nethermind.Blockchain.Validators
 
         public bool ValidateHash(BlockHeader header)
         {
-            bool hashAsExpected = header.Hash == BlockHeader.CalculateHash(header);
+            bool hashAsExpected = header.Hash == header.CalculateHash();
             if (!hashAsExpected)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");

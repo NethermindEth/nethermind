@@ -39,7 +39,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 return;
             }
             
-            HiveRunner hiveRunner = new HiveRunner(_context.BlockTree as BlockTree, _context._wallet, _context._jsonSerializer, _context._configProvider, _context.Logger);
+            HiveRunner hiveRunner = new HiveRunner(_context.BlockTree as BlockTree, _context.Wallet, _context.EthereumJsonSerializer, _context.ConfigProvider, _context.Logger);
             await hiveRunner.Start();
         }
     }

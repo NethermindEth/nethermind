@@ -26,6 +26,7 @@ using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Messages;

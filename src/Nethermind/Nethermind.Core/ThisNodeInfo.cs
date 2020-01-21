@@ -25,7 +25,14 @@ namespace Nethermind.Core
 
         public static void AddInfo(string infoDescription, string value)
         {
-            _nodeInfoItems.Add(infoDescription, value);
+            if (_nodeInfoItems.ContainsKey(infoDescription))
+            {
+                _nodeInfoItems[infoDescription] = value;
+            }
+            else
+            {
+                _nodeInfoItems.Add(infoDescription, value);
+            }
         }
 
         public static void LogAll(ILogger logger)
@@ -34,7 +41,7 @@ namespace Nethermind.Core
             {
                 foreach ((string key, string value) in _nodeInfoItems)
                 {
-                    logger.Info("{key} {value}"); // TODO: align nicely
+                    logger.Info($"{key} {value}"); // TODO: align nicely
                 }
             }
         }

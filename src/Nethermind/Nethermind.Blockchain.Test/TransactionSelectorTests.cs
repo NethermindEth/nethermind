@@ -21,7 +21,7 @@ using Castle.Components.DictionaryAdapter;
 using FluentAssertions;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
-using Nethermind.Core.Specs.Forks;
+using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;

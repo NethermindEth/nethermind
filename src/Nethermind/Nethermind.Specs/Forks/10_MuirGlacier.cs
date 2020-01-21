@@ -16,6 +16,7 @@
 
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Specs.Forks

@@ -17,7 +17,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
+using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Store;
 using NUnit.Framework;
@@ -47,7 +47,7 @@ namespace Nethermind.Evm.Test
         [Test(Description = "Refunds should not be given when the call fails due to lack of gas for code deposit payment")]
         public void Regression_mainnet_6108276()
         {
-            Address deployed = Address.OfContract(TestItem.AddressC, 0);
+            Address deployed = ContractAddress.From(TestItem.AddressC, 0);
             StorageAddress storageAddress = new StorageAddress(deployed, 1);
 
             byte[] deployedCode = new byte[100]; // cost is * 200
@@ -88,7 +88,7 @@ namespace Nethermind.Evm.Test
         public void Regression_mainnet_226522()
         {
             _blockNumber = 1;
-            Address deployed = Address.OfContract(TestItem.AddressC, 0);
+            Address deployed = ContractAddress.From(TestItem.AddressC, 0);
             StorageAddress storageAddress = new StorageAddress(deployed, 1);
 
             byte[] deployedCode = new byte[106]; // cost is * 200

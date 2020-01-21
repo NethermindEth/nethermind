@@ -25,16 +25,14 @@ using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Json;
-using Nethermind.Core.Specs;
-using Nethermind.Core.Specs.ChainSpecStyle;
-using Nethermind.Core.Specs.Forks;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Crypto;
+using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Mining;
 using Nethermind.Mining.Difficulty;
+using Nethermind.Serialization.Json;
 using Nethermind.Store;
 using Nethermind.Store.Repositories;
 using NUnit.Framework;
@@ -72,7 +70,6 @@ namespace Nethermind.Blockchain.Test
 
             EthereumEcdsa ecdsa = new EthereumEcdsa(specProvider, logManager);
             MemDb receiptsDb = new MemDb();
-            MemDb traceDb = new MemDb();
             TxPool txPool = new TxPool(NullTxStorage.Instance, Timestamper.Default, ecdsa, specProvider, new TxPoolConfig(), stateProvider, logManager);
             IReceiptStorage receiptStorage = new PersistentReceiptStorage(receiptsDb, specProvider, logManager);
             var blockInfoDb = new MemDb();
@@ -93,8 +90,8 @@ namespace Nethermind.Blockchain.Test
             TransactionProcessor processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
             RewardCalculator rewardCalculator = new RewardCalculator(specProvider);
             BlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator,
-                processor, stateDb, codeDb, traceDb, stateProvider, storageProvider, txPool, receiptStorage, logManager);
-            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(ecdsa, NullTxPool.Instance, LimboLogs.Instance), logManager, false, false);
+                processor, stateDb, codeDb, stateProvider, storageProvider, txPool, receiptStorage, logManager);
+            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(ecdsa, NullTxPool.Instance, LimboLogs.Instance), logManager, false);
 
             /* load ChainSpec and init */
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
@@ -113,7 +110,7 @@ namespace Nethermind.Blockchain.Test
 
             stateProvider.Commit(specProvider.GenesisSpec);
             chainSpec.Genesis.Header.StateRoot = stateProvider.StateRoot; // TODO: shall it be HeaderSpec and not BlockHeader?
-            chainSpec.Genesis.Header.Hash = BlockHeader.CalculateHash(chainSpec.Genesis.Header);
+            chainSpec.Genesis.Header.Hash = chainSpec.Genesis.Header.CalculateHash();
             if (chainSpec.Genesis.Hash != new Keccak("0xafbc3c327d2d18ff2b843e89226ef288fcee379542f854f982e4cfb85916d126")) throw new Exception("Unexpected genesis hash");
 
             /* start processing */
@@ -147,7 +144,7 @@ namespace Nethermind.Blockchain.Test
                 blockchainProcessor.SuggestBlock(block, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts | ProcessingOptions.ReadOnlyChain);
                 blockProcessedEvent.Wait(miningDelay);
 
-                Tracer tracer = new Tracer(blockchainProcessor, receiptStorage, blockTree, new MemDb());
+                Tracer tracer = new Tracer(blockchainProcessor, receiptStorage, blockTree);
 
                 int currentCount = receiptsDb.Keys.Count;
                 logger.Info($"Current count of receipts {currentCount}");

@@ -17,7 +17,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Nethermind.Core.Collections
+namespace Nethermind.Blockchain.TxPools.Collections
 {
     public class DistinctValueSortedPool<TKey, TValue> : SortedPool<TKey, TValue>
     {

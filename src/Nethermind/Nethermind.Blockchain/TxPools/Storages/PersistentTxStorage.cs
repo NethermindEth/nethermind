@@ -19,6 +19,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Serialization;
 using Nethermind.Core.Specs;
+using Nethermind.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 

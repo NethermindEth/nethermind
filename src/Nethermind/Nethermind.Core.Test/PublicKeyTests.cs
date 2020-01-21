@@ -17,6 +17,7 @@
 using System;
 using Microsoft.VisualStudio.TestPlatform.ObjectModel;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using NUnit.Framework;
 using NUnit.Framework.Interfaces;
 

@@ -16,7 +16,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Evm;
 
 namespace Nethermind.AuRa.Validators

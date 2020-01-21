@@ -18,8 +18,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using Grpc.Core;
-using Nethermind.Core;
-using Nethermind.Core.Json;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 

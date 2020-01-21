@@ -17,8 +17,8 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Specs;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Store
 {
@@ -77,6 +77,7 @@ namespace Nethermind.Store
         string DumpState();
         
         TrieStats CollectStats();
+        
         void DecrementNonce(Address address);
     }
 }

@@ -275,7 +275,7 @@ namespace Nethermind.Store
             }
 
             Metrics.TreeNodeHashCalculations++;
-            Keccak = Keccak.Compute(FullRlp);
+            Keccak = Keccak.Compute(FullRlp.Bytes);
         }
 
         internal Rlp RlpEncode()

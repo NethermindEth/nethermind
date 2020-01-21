@@ -16,11 +16,6 @@
 
 using System;
 using Nethermind.Logging;
-using System.IO;
-using System.Threading;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Json;
-using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Synchronization
 {

@@ -15,9 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Linq;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
 using Nethermind.Stats;
+using Nethermind.Blockchain.Synchronization;
 using NSubstitute;
 using NUnit.Framework;
 

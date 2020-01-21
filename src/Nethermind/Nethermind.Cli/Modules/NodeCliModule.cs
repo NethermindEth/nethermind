@@ -20,6 +20,7 @@ using System.Reflection;
 using Jint.Native;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Network;
 
 namespace Nethermind.Cli.Modules

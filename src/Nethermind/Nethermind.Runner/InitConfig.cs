@@ -32,7 +32,6 @@ namespace Nethermind.Runner
         public string GenesisHash { get; set; }
         public string StaticNodesPath { get; set; } = "Data/static-nodes.json";
         public string LogDirectory { get; set; } = null;
-        public bool StoreTraces { get; set; } = false;
         public bool StoreReceipts { get; set; } = true;
         public bool UseMemDb { get; set; } = false;
     }

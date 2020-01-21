@@ -47,7 +47,6 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             IDb receiptsDb = dbProvider.ReceiptsDb ?? throw new ArgumentNullException(nameof(dbProvider.ReceiptsDb));
             IDb codeDb = dbProvider.CodeDb ?? throw new ArgumentNullException(nameof(dbProvider.CodeDb));
             IDb pendingTxsDb = dbProvider.PendingTxsDb ?? throw new ArgumentNullException(nameof(dbProvider.PendingTxsDb));
-            IDb traceDb = dbProvider.TraceDb ?? throw new ArgumentNullException(nameof(dbProvider.TraceDb));
 
             _dbMappings = new Dictionary<string, IDb>(StringComparer.InvariantCultureIgnoreCase)
             {
@@ -59,7 +58,6 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 {DbNames.Code, codeDb},
                 {DbNames.Receipts, receiptsDb},
                 {DbNames.PendingTxs, pendingTxsDb},
-                {DbNames.Trace, traceDb}
             };
         }
 

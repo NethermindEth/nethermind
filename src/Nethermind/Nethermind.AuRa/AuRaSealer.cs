@@ -58,7 +58,7 @@ namespace Nethermind.AuRa
             Block sealedBlock = Seal(block);
             if (sealedBlock != null)
             {
-                sealedBlock.Hash = BlockHeader.CalculateHash(sealedBlock.Header);
+                sealedBlock.Hash = sealedBlock.Header.CalculateHash();
             }
 
             return Task.FromResult(sealedBlock);
@@ -73,7 +73,7 @@ namespace Nethermind.AuRa
                 return null;
             }
 
-            var headerHash = BlockHeader.CalculateHash(block.Header, RlpBehaviors.ForSealing);
+            var headerHash = block.Header.CalculateHash(RlpBehaviors.ForSealing);
             var signature = _wallet.Sign(headerHash, _nodeAddress);
             block.Header.AuRaSignature = signature.BytesWithRecovery;
             

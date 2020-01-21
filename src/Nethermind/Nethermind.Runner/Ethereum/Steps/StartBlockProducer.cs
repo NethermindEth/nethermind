@@ -43,7 +43,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public Task Execute()
         {
-            IInitConfig jsonRpcConfig = _context._configProvider.GetConfig<IInitConfig>();
+            IInitConfig jsonRpcConfig = _context.ConfigProvider.GetConfig<IInitConfig>();
             if (!jsonRpcConfig.IsMining)
             {
                 return Task.CompletedTask;
@@ -53,54 +53,54 @@ namespace Nethermind.Runner.Ethereum.Steps
                 Func<IDb, IStateProvider, IBlockTree, ITransactionProcessor, ILogManager, IEnumerable<IAdditionalBlockProcessor>> createAdditionalBlockProcessors = null,
                 bool allowStateModification = false)
             {
-                IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_context._dbProvider, allowStateModification);
+                IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_context.DbProvider, allowStateModification);
                 ReadOnlyBlockTree readOnlyBlockTree = new ReadOnlyBlockTree(_context.BlockTree);
-                ReadOnlyChain producerChain = new ReadOnlyChain(readOnlyBlockTree, _context._blockValidator, _context._rewardCalculator,
-                    _context.SpecProvider, minerDbProvider, _context._recoveryStep, _context.LogManager, _context._txPool, _context._receiptStorage,
+                ReadOnlyChain producerChain = new ReadOnlyChain(readOnlyBlockTree, _context.BlockValidator, _context.RewardCalculator,
+                    _context.SpecProvider, minerDbProvider, _context.RecoveryStep, _context.LogManager, _context.TxPool, _context.ReceiptStorage,
                     createAdditionalBlockProcessors);
                 return producerChain;
             }
 
-            switch (_context._chainSpec.SealEngineType)
+            switch (_context.ChainSpec.SealEngineType)
             {
                 case SealEngineType.Clique:
                 {
                     ReadOnlyChain producerChain = GetProducerChain();
-                    PendingTransactionSelector pendingTransactionSelector = new PendingTransactionSelector(_context._txPool, producerChain.ReadOnlyStateProvider, _context.LogManager);
+                    PendingTransactionSelector pendingTransactionSelector = new PendingTransactionSelector(_context.TxPool, producerChain.ReadOnlyStateProvider, _context.LogManager);
                     if (_context.Logger.IsWarn) _context.Logger.Warn("Starting Clique block producer & sealer");
                     CliqueConfig cliqueConfig = new CliqueConfig();
-                    cliqueConfig.BlockPeriod = _context._chainSpec.Clique.Period;
-                    cliqueConfig.Epoch = _context._chainSpec.Clique.Epoch;
-                    _context._blockProducer = new CliqueBlockProducer(pendingTransactionSelector, producerChain.Processor,
-                        _context.BlockTree, _context._timestamper, _context._cryptoRandom, producerChain.ReadOnlyStateProvider, _context._snapshotManager, (CliqueSealer) _context._sealer, _context._nodeKey.Address, cliqueConfig, _context.LogManager);
+                    cliqueConfig.BlockPeriod = _context.ChainSpec.Clique.Period;
+                    cliqueConfig.Epoch = _context.ChainSpec.Clique.Epoch;
+                    _context.BlockProducer = new CliqueBlockProducer(pendingTransactionSelector, producerChain.Processor,
+                        _context.BlockTree, _context.Timestamper, _context.CryptoRandom, producerChain.ReadOnlyStateProvider, _context.SnapshotManager, (CliqueSealer) _context.Sealer, _context.NodeKey.Address, cliqueConfig, _context.LogManager);
                     break;
                 }
 
                 case SealEngineType.NethDev:
                 {
                     ReadOnlyChain producerChain = GetProducerChain();
-                    PendingTransactionSelector pendingTransactionSelector = new PendingTransactionSelector(_context._txPool, producerChain.ReadOnlyStateProvider, _context.LogManager);
+                    PendingTransactionSelector pendingTransactionSelector = new PendingTransactionSelector(_context.TxPool, producerChain.ReadOnlyStateProvider, _context.LogManager);
                     if (_context.Logger.IsWarn) _context.Logger.Warn("Starting Dev block producer & sealer");
-                    _context._blockProducer = new DevBlockProducer(pendingTransactionSelector, producerChain.Processor, _context.BlockTree, producerChain.ReadOnlyStateProvider, _context._timestamper, _context.LogManager, _context._txPool);
+                    _context.BlockProducer = new DevBlockProducer(pendingTransactionSelector, producerChain.Processor, _context.BlockTree, producerChain.ReadOnlyStateProvider, _context.Timestamper, _context.LogManager, _context.TxPool);
                     break;
                 }
 
                 case SealEngineType.AuRa:
                 {
                     IAuRaValidatorProcessor validator = null;
-                    ReadOnlyChain producerChain = GetProducerChain((db, s, b, t, l) => new[] {validator = new AuRaAdditionalBlockProcessorFactory(db, s, new AbiEncoder(), t, b, _context._receiptStorage, l).CreateValidatorProcessor(_context._chainSpec.AuRa.Validators)});
-                    PendingTransactionSelector pendingTransactionSelector = new PendingTransactionSelector(_context._txPool, producerChain.ReadOnlyStateProvider, _context.LogManager);
+                    ReadOnlyChain producerChain = GetProducerChain((db, s, b, t, l) => new[] {validator = new AuRaAdditionalBlockProcessorFactory(db, s, new AbiEncoder(), t, b, _context.ReceiptStorage, l).CreateValidatorProcessor(_context.ChainSpec.AuRa.Validators)});
+                    PendingTransactionSelector pendingTransactionSelector = new PendingTransactionSelector(_context.TxPool, producerChain.ReadOnlyStateProvider, _context.LogManager);
                     if (_context.Logger.IsWarn) _context.Logger.Warn("Starting AuRa block producer & sealer");
-                    _context._blockProducer = new AuRaBlockProducer(pendingTransactionSelector, producerChain.Processor, _context._sealer, _context.BlockTree, producerChain.ReadOnlyStateProvider, _context._timestamper, _context.LogManager, new AuRaStepCalculator(_context._chainSpec.AuRa.StepDuration, _context._timestamper), _context._configProvider.GetConfig<IAuraConfig>(), _context._nodeKey.Address);
-                    validator.SetFinalizationManager(_context._finalizationManager, true);
+                    _context.BlockProducer = new AuRaBlockProducer(pendingTransactionSelector, producerChain.Processor, _context.Sealer, _context.BlockTree, producerChain.ReadOnlyStateProvider, _context.Timestamper, _context.LogManager, new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper), _context.ConfigProvider.GetConfig<IAuraConfig>(), _context.NodeKey.Address);
+                    validator.SetFinalizationManager(_context.FinalizationManager, true);
                     break;
                 }
 
                 default:
-                    throw new NotSupportedException($"Mining in {_context._chainSpec.SealEngineType} mode is not supported");
+                    throw new NotSupportedException($"Mining in {_context.ChainSpec.SealEngineType} mode is not supported");
             }
 
-            _context._blockProducer.Start();
+            _context.BlockProducer.Start();
             
             SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Running));
             

@@ -17,6 +17,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -44,7 +45,7 @@ namespace Nethermind.Mining
         public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
         {
             block.Header.MixHash = Keccak.Zero;
-            block.Header.Hash = BlockHeader.CalculateHash(block.Header);
+            block.Header.Hash = block.Header.CalculateHash();
 
             return _miningDelay == TimeSpan.Zero
                 ? Task.FromResult(block)

@@ -43,7 +43,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public async Task Execute()
         {
-            IEthStatsConfig ethStatsConfig = _context._configProvider.GetConfig<IEthStatsConfig>();
+            IEthStatsConfig ethStatsConfig = _context.ConfigProvider.GetConfig<IEthStatsConfig>();
             if (!ethStatsConfig.Enabled)
             {
                 return;
@@ -51,7 +51,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Initializing));
 
-            string instanceId = $"{ethStatsConfig.Name}-{Keccak.Compute(_context._enode.Info)}";
+            string instanceId = $"{ethStatsConfig.Name}-{Keccak.Compute(_context.Enode.Info)}";
             if (_context.Logger.IsInfo) _context.Logger.Info($"Initializing ETH Stats for the instance: {instanceId}, server: {ethStatsConfig.Server}");
             MessageSender sender = new MessageSender(instanceId, _context.LogManager);
             const int reconnectionInterval = 5000;
@@ -61,7 +61,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             string node = ClientVersion.Description;
             int port = _context.NetworkConfig.P2PPort;
             string network = _context.SpecProvider.ChainId.ToString();
-            string protocol = _context._syncConfig.FastSync ? "eth/63" : "eth/62";
+            string protocol = _context.SyncConfig.FastSync ? "eth/63" : "eth/62";
             
             EthStatsClient ethStatsClient = new EthStatsClient(
                 ethStatsConfig.Server,

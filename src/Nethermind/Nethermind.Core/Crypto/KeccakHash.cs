@@ -21,7 +21,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core.Extensions;
 
 // ReSharper disable InconsistentNaming
-namespace Nethermind.Crypto
+namespace Nethermind.Core.Crypto
 {
     public class KeccakHash
     {

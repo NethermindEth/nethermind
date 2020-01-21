@@ -25,11 +25,6 @@ namespace Nethermind.Db.Config
         ulong BlockCacheSize { get; set; }
         bool CacheIndexAndFilterBlocks { get; set; }
 
-        ulong TraceDbWriteBufferSize { get; set; }
-        uint TraceDbWriteBufferNumber { get; set; }
-        ulong TraceDbBlockCacheSize { get; set; }
-        bool TraceDbCacheIndexAndFilterBlocks { get; set; }
-
         ulong ReceiptsDbWriteBufferSize { get; set; }
         uint ReceiptsDbWriteBufferNumber { get; set; }
         ulong ReceiptsDbBlockCacheSize { get; set; }

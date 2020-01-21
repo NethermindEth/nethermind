@@ -28,7 +28,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
-using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {

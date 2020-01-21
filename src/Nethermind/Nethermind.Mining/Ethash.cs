@@ -23,6 +23,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Serialization;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 
 [assembly: InternalsVisibleTo("Nethermind.Mining.Test")]
@@ -253,7 +254,7 @@ namespace Nethermind.Mining
         private static Keccak GetTruncatedHash(BlockHeader header)
         {
             Rlp encoded = _headerDecoder.Encode(header, RlpBehaviors.ForSealing);
-            Keccak headerHashed = Keccak.Compute(encoded); // sic! Keccak here not Keccak512
+            Keccak headerHashed = Keccak.Compute(encoded.Bytes); // sic! Keccak here not Keccak512
             return headerHashed;
         }
 

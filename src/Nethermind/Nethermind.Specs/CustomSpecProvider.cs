@@ -17,6 +17,8 @@
 using System;
 using System.Linq;
 using System.Numerics;
+using Nethermind.Core.Specs;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs
 {

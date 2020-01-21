@@ -38,17 +38,17 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private void Update()
         {
-            var discoveryConfig = _context._configProvider.GetConfig<IDiscoveryConfig>();
+            var discoveryConfig = _context.ConfigProvider.GetConfig<IDiscoveryConfig>();
             if (discoveryConfig.Bootnodes != string.Empty)
             {
-                if (_context._chainSpec.Bootnodes.Length != 0)
+                if (_context.ChainSpec.Bootnodes.Length != 0)
                 {
-                    discoveryConfig.Bootnodes += "," + string.Join(",", _context._chainSpec.Bootnodes.Select(bn => bn.ToString()));
+                    discoveryConfig.Bootnodes += "," + string.Join(",", _context.ChainSpec.Bootnodes.Select(bn => bn.ToString()));
                 }
             }
             else
             {
-                discoveryConfig.Bootnodes = string.Join(",", _context._chainSpec.Bootnodes.Select(bn => bn.ToString()));
+                discoveryConfig.Bootnodes = string.Join(",", _context.ChainSpec.Bootnodes.Select(bn => bn.ToString()));
             }
         }
     }

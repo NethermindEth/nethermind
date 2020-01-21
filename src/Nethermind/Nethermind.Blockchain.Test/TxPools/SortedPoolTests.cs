@@ -15,13 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Core.Collections;
+using Nethermind.Blockchain.TxPools.Collections;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 
-namespace Nethermind.Core.Test
+namespace Nethermind.Blockchain.Test.TxPools
 {
     [TestFixture]
     public class SortedPoolTests
@@ -48,7 +49,7 @@ namespace Nethermind.Core.Test
             for (int i = 0; i < _transactions.Length; i++)
             {
                 var tx = _transactions[^(i + 1)];
-                tx.Hash = Transaction.CalculateHash(tx);
+                tx.Hash = tx.CalculateHash();
                 _sortedPool.TryInsert(tx.Hash, tx);
                 Assert.AreEqual(i > 15 ? null : tx, _sortedPool.TryGetValue(tx.Hash, out Transaction txOther) ? txOther : null);
                 Assert.AreEqual(Math.Min(16, i + 1), _sortedPool.Count);
@@ -71,7 +72,7 @@ namespace Nethermind.Core.Test
             for (int i = 0; i < _transactions.Length; i++)
             {
                 var tx = _transactions[i];
-                tx.Hash = Transaction.CalculateHash(tx);
+                tx.Hash = tx.CalculateHash();
                 _sortedPool.TryInsert(tx.Hash, tx);
                 Assert.AreEqual(Math.Min(16, i + 1), _sortedPool.Count);
             }

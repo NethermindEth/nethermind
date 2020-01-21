@@ -35,28 +35,28 @@ namespace Nethermind.Runner.Ethereum.Steps
         public Task Execute()
         {
             var encrypter = new AesEncrypter(
-                _context._configProvider.GetConfig<IKeyStoreConfig>(),
+                _context.ConfigProvider.GetConfig<IKeyStoreConfig>(),
                 _context.LogManager);
 
-            _context._keyStore = new FileKeyStore(
-                _context._configProvider.GetConfig<IKeyStoreConfig>(),
-                _context._ethereumJsonSerializer,
+            _context.KeyStore = new FileKeyStore(
+                _context.ConfigProvider.GetConfig<IKeyStoreConfig>(),
+                _context.EthereumJsonSerializer,
                 encrypter,
-                _context._cryptoRandom,
+                _context.CryptoRandom,
                 _context.LogManager);
 
-            _context._wallet = _context._initConfig switch
+            _context.Wallet = _context.InitConfig switch
             {
                 var config when config.EnableUnsecuredDevWallet && config.KeepDevWalletInMemory
-                => new DevWallet(_context._configProvider.GetConfig<IWalletConfig>(), _context.LogManager),
+                => new DevWallet(_context.ConfigProvider.GetConfig<IWalletConfig>(), _context.LogManager),
                 var config when config.EnableUnsecuredDevWallet && !config.KeepDevWalletInMemory
-                => new DevKeyStoreWallet(_context._keyStore, _context.LogManager),
+                => new DevKeyStoreWallet(_context.KeyStore, _context.LogManager),
                 _ => NullWallet.Instance
             };
 
-            INodeKeyManager nodeKeyManager = new NodeKeyManager(_context._cryptoRandom, _context._keyStore, _context._configProvider.GetConfig<IKeyStoreConfig>(), _context.LogManager);
-            _context._nodeKey = nodeKeyManager.LoadNodeKey();
-            _context._enode = new Enode(_context._nodeKey.PublicKey, IPAddress.Parse(_context.NetworkConfig.ExternalIp), _context.NetworkConfig.P2PPort);
+            INodeKeyManager nodeKeyManager = new NodeKeyManager(_context.CryptoRandom, _context.KeyStore, _context.ConfigProvider.GetConfig<IKeyStoreConfig>(), _context.LogManager);
+            _context.NodeKey = nodeKeyManager.LoadNodeKey();
+            _context.Enode = new Enode(_context.NodeKey.PublicKey, IPAddress.Parse(_context.NetworkConfig.ExternalIp), _context.NetworkConfig.P2PPort);
             
             return Task.CompletedTask;
         }

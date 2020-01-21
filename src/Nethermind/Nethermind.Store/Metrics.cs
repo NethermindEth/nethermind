@@ -39,8 +39,6 @@ namespace Nethermind.Store
         public static long PendingTxsDbWrites { get; set; }
         public static long EthRequestsDbReads { get; set; }
         public static long EthRequestsDbWrites { get; set; }
-        public static long TraceDbReads { get; set; }
-        public static long TraceDbWrites { get; set; }
         public static long OtherDbReads { get; set; }
         public static long OtherDbWrites { get; set; }
         public static long TreeNodeHashCalculations { get; set; }

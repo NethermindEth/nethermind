@@ -14,23 +14,18 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Collections;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.TxPools;
-using Nethermind.Core.Collections;
+using Nethermind.Blockchain.TxPools.Collections;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
-using Nethermind.Core.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Logging;
 using NUnit.Framework;
 
-namespace Nethermind.Core.Test
+namespace Nethermind.Blockchain.Test.TxPools
 {
     public class DistinctValueSortedPoolTests
     {

@@ -18,7 +18,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
+using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
@@ -57,7 +57,7 @@ namespace Nethermind.Evm.Test
 
             Execute(code);
             
-            Address expectedAddress = Address.OfContract(TestItem.AddressC, salt.PadLeft(32).AsSpan(), initCode.AsSpan());
+            Address expectedAddress = ContractAddress.From(TestItem.AddressC, salt.PadLeft(32).AsSpan(), initCode.AsSpan());
             AssertEip1014(expectedAddress, deployedCode);
         }
         

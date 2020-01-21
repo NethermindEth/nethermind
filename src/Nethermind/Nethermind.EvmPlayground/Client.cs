@@ -16,9 +16,8 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.Core;
-using Nethermind.Core.Json;
 using Nethermind.Evm.Tracing;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.EvmPlayground
 {

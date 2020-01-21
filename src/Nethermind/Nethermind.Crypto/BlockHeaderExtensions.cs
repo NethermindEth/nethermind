@@ -14,11 +14,26 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Specs.GenesisFileStyle
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Serialization;
+
+namespace Nethermind.Blockchain
 {
-    internal class GenesisFileConfigCliqueJson
+    public static class BlockHeaderExtensions
     {
-        public ulong Period { get; set; }
-        public ulong Epoch { get; set; }
+        private static HeaderDecoder _headerDecoder = new HeaderDecoder();
+
+        public static Keccak CalculateHash(this BlockHeader header, RlpBehaviors behaviors = RlpBehaviors.None)
+        {
+            Rlp buffer = _headerDecoder.Encode(header, behaviors);
+            return Keccak.Compute(buffer.Bytes);
+        }
+
+        public static Keccak CalculateHash(this Block block, RlpBehaviors behaviors = RlpBehaviors.None)
+        {
+            Rlp buffer = _headerDecoder.Encode(block.Header, behaviors);
+            return Keccak.Compute(buffer.Bytes);
+        }
     }
 }

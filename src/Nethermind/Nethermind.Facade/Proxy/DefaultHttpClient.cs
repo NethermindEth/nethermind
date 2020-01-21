@@ -19,8 +19,6 @@ using System.Diagnostics;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
-using Nethermind.Core;
-using Nethermind.Core.Json;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 

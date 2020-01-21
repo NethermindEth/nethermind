@@ -18,8 +18,8 @@ using System;
 using System.Diagnostics;
 using System.Text;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Serialization;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core
@@ -69,16 +69,6 @@ namespace Nethermind.Core
         
         public bool HasBody => OmmersHash != Keccak.OfAnEmptySequenceRlp || TxRoot != Keccak.EmptyTreeHash;
         public SealEngineType SealEngineType { get; set; } = SealEngineType.Ethash;
-
-        private static HeaderDecoder _headerDecoder = new HeaderDecoder();
-
-        public static Keccak CalculateHash(BlockHeader header, RlpBehaviors behaviors = RlpBehaviors.None)
-        {
-            Rlp buffer = _headerDecoder.Encode(header, behaviors);
-            return Keccak.Compute(buffer.Bytes);
-        }
-
-        public static Keccak CalculateHash(Block block) => CalculateHash(block.Header);
 
         public string ToString(string indent)
         {

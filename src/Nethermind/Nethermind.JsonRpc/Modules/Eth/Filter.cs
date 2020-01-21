@@ -15,9 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
-using Nethermind.Core;
-using Nethermind.Core.Json;
 using Nethermind.JsonRpc.Data;
+using Nethermind.Serialization.Json;
 using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Modules.Eth
@@ -33,12 +32,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public Filter()
         {
-            _jsonSerializer = new UnforgivingJsonSerializer();
-        }
-
-        public Filter(IJsonSerializer jsonSerializer)
-        {
-            _jsonSerializer = jsonSerializer;
+            _jsonSerializer = new EthereumJsonSerializer();
         }
 
         public void FromJson(string jsonValue)

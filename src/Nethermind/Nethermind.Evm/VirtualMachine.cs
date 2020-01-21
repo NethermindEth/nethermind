@@ -27,6 +27,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
@@ -2359,8 +2360,8 @@ namespace Nethermind.Evm
                         }
                         
                         Address contractAddress = instruction == Instruction.CREATE
-                            ? Address.OfContract(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
-                            : Address.OfContract(env.ExecutingAccount, salt, initCode);
+                            ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
+                            : ContractAddress.From(env.ExecutingAccount, salt, initCode);
                             
                         _state.IncrementNonce(env.ExecutingAccount);
 

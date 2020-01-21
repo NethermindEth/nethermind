@@ -16,6 +16,7 @@
 
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Specs;
 using Nethermind.Evm.Tracing;
 using NUnit.Framework;
 

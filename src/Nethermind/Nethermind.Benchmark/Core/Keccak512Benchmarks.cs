@@ -18,6 +18,7 @@ using System;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.HashLib;
 
 namespace Nethermind.Benchmarks.Core
@@ -56,7 +57,7 @@ namespace Nethermind.Benchmarks.Core
         [Benchmark]
         public byte[] Current()
         {
-            return Nethermind.Core.Crypto.Keccak512.Compute(_a).Bytes;
+            return Keccak512.Compute(_a).Bytes;
         }
         
         [Benchmark]

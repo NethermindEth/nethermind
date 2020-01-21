@@ -43,56 +43,85 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             foreach (Type type in types)
             {
-                if(_logger.IsInfo) _logger.Info($"Discovered Ethereum step: {type.Name}");
+                if (_logger.IsDebug) _logger.Debug($"Discovered Ethereum step: {type.Name}");
                 _discoveredSteps.Add(type, false);
+                _hasFinishedExecution[type] = false;
             }
-            
+
             ReviewDependencies();
         }
 
         private Dictionary<Type, bool> _hasFinishedExecution = new Dictionary<Type, bool>();
-        
+
         private Dictionary<Type, bool> _discoveredSteps = new Dictionary<Type, bool>();
 
         private List<Task> _allTasks = new List<Task>();
 
         private void ReviewDependencies()
         {
-            foreach ((Type type, bool allDependenciesInitialized) in _discoveredSteps)
+            List<Type> typesReady = new List<Type>();
+            bool changedAnything;
+            do
             {
-                if (!allDependenciesInitialized)
+                typesReady.Clear();
+                changedAnything = false;
+
+                foreach ((Type type, bool allDependenciesInitialized) in _discoveredSteps)
                 {
-                    RunnerStepDependencyAttribute dependencyAttribute = type.GetCustomAttribute<RunnerStepDependencyAttribute>();
-                    bool allDependenciesFinished = true;
-                    if (dependencyAttribute != null)
+                    if (!allDependenciesInitialized)
                     {
-                        foreach (Type dependency in dependencyAttribute.Dependencies)
+                        RunnerStepDependencyAttribute dependencyAttribute = type.GetCustomAttribute<RunnerStepDependencyAttribute>();
+                        bool allDependenciesFinished = true;
+                        if (dependencyAttribute != null)
                         {
-                            if (!_hasFinishedExecution.GetValueOrDefault(dependency))
+                            foreach (Type dependency in dependencyAttribute.Dependencies)
                             {
-                                allDependenciesFinished = false;
-                                break;
+                                if (!_hasFinishedExecution.GetValueOrDefault(dependency))
+                                {
+                                    allDependenciesFinished = false;
+                                    break;
+                                }
                             }
                         }
-                    }
-                    
-                    if (allDependenciesFinished)
-                    {
-                        _discoveredSteps[type] = true;    
+
+                        if (allDependenciesFinished)
+                        {
+                            typesReady.Add(type);
+                            changedAnything = true;
+                        }
                     }
                 }
+
+                foreach (Type type in typesReady)
+                {
+                    _discoveredSteps[type] = true;
+                }
+            } while (changedAnything);
+        }
+
+        public async Task InitializeAll()
+        {
+            while (_hasFinishedExecution.Any(kvp => !kvp.Value))
+            {
+                await RunOneRoundOfInitialization();
+                ReviewDependencies();
             }
         }
-        
-        public async Task InitializeAll()
+
+        private async Task RunOneRoundOfInitialization()
         {
             foreach ((Type discoveredStep, bool dependenciesInitialized) in _discoveredSteps)
             {
-                if (!dependenciesInitialized)
+                if(_hasFinishedExecution[discoveredStep])
                 {
                     continue;
                 }
                 
+                if (!dependenciesInitialized)
+                {
+                    continue;
+                }
+
                 IStep step;
                 try
                 {
@@ -100,29 +129,29 @@ namespace Nethermind.Runner.Ethereum.Steps
                 }
                 catch (Exception e)
                 {
-                    if(_logger.IsError) _logger.Error($"Unable to create instance of Ethereum runner step of type {discoveredStep}", e);
-                    continue;
-                }
-                
-                if (step == null)
-                {
-                    if(_logger.IsError) _logger.Error($"Unable to create instance of Ethereum runner step of type {discoveredStep}");
+                    if (_logger.IsError) _logger.Error($"Unable to create instance of Ethereum runner step of type {discoveredStep}", e);
                     continue;
                 }
 
-                if(_logger.IsInfo) _logger.Info($"Executing step: {step.GetType().Name}");
-                
+                if (step == null)
+                {
+                    if (_logger.IsError) _logger.Error($"Unable to create instance of Ethereum runner step of type {discoveredStep}");
+                    continue;
+                }
+
+                if (_logger.IsDebug) _logger.Debug($"Executing step: {step.GetType().Name}");
+
                 ISubsystemStateAware subsystemStateAware = step as ISubsystemStateAware;
                 if (subsystemStateAware != null)
                 {
                     subsystemStateAware.SubsystemStateChanged += SubsystemStateAwareOnSubsystemStateChanged;
                 }
-                
+
                 Stopwatch stopwatch = Stopwatch.StartNew();
                 await step.Execute();
                 _hasFinishedExecution[discoveredStep] = true;
                 stopwatch.Stop();
-                if(_logger.IsInfo) _logger.Info($"Step {step.GetType().Name} executed in {stopwatch.ElapsedMilliseconds}ms");
+                if (_logger.IsDebug) _logger.Debug($"Step {step.GetType().Name} executed in {stopwatch.ElapsedMilliseconds}ms");
             }
         }
 
@@ -131,11 +160,11 @@ namespace Nethermind.Runner.Ethereum.Steps
             ISubsystemStateAware subsystemStateAware = sender as ISubsystemStateAware;
             if (subsystemStateAware is null)
             {
-                if(_logger.IsError) _logger.Error($"Received a subsystem state event from an unexpected type of {sender.GetType()}");
+                if (_logger.IsError) _logger.Error($"Received a subsystem state event from an unexpected type of {sender.GetType()}");
                 return;
             }
-            
-            if(_logger.IsInfo) _logger.Info($"{subsystemStateAware.MonitoredSubsystem} state changed to {e.State}");
+
+            if (_logger.IsDebug) _logger.Debug($"{subsystemStateAware.MonitoredSubsystem} state changed to {e.State}");
         }
     }
 }

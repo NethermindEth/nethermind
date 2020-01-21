@@ -34,7 +34,6 @@ namespace Nethermind.Store.Rpc
             HeadersDb = new ReadOnlyDb(new RpcDb(DbNames.Headers, serializer, client, logManager, recordDbProvider?.HeadersDb), true);
             BlockInfosDb = new ReadOnlyDb(new RpcDb(DbNames.BlockInfos, serializer, client, logManager, recordDbProvider?.BlockInfosDb), true);
             PendingTxsDb = new ReadOnlyDb(new RpcDb(DbNames.PendingTxs, serializer, client, logManager, recordDbProvider?.ReceiptsDb), true);
-            TraceDb = new ReadOnlyDb(new RpcDb(DbNames.Trace, serializer, client, logManager, recordDbProvider?.ReceiptsDb), true);
             ConfigsDb = new ReadOnlyDb(new RpcDb(DbNames.Configs, serializer, client, logManager, recordDbProvider?.ConfigsDb), true);
             EthRequestsDb = new ReadOnlyDb(new RpcDb(DbNames.EthRequests, serializer, client, logManager, recordDbProvider?.EthRequestsDb), true); 
         }
@@ -46,7 +45,6 @@ namespace Nethermind.Store.Rpc
         public IDb HeadersDb { get; }
         public IDb BlockInfosDb { get; }
         public IDb PendingTxsDb { get; }
-        public IDb TraceDb { get; }
         public IDb ConfigsDb { get; }
         public IDb EthRequestsDb { get; }
 

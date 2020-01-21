@@ -18,13 +18,13 @@ using Nethermind.Db.Config;
 using Nethermind.Db.Databases;
 using Nethermind.Logging;
 using Nethermind.Store;
-using Nethermind.Store.BeamSyncStore;
+using Nethermind.Store.BeamSync;
 
 namespace Nethermind.Db
 {
     public class BeamSyncDbProvider : IDbProvider
     {
-        public BeamSyncDbProvider(string basePath, IDbConfig dbConfig, ILogManager logManager, bool useTraceDb, bool useReceiptsDb)
+        public BeamSyncDbProvider(string basePath, IDbConfig dbConfig, ILogManager logManager, bool useReceiptsDb)
         {
             BlocksDb = new BlocksRocksDb(basePath, dbConfig, logManager);
             HeadersDb = new HeadersRocksDb(basePath, dbConfig, logManager);
@@ -43,20 +43,10 @@ namespace Nethermind.Db
             {
                 ReceiptsDb = new ReadOnlyDb(new MemDb(), false);
             }
-
-            if (useTraceDb)
-            {
-                TraceDb = new TraceRocksDb(basePath, dbConfig, logManager);
-            }
-            else
-            {
-                TraceDb = new ReadOnlyDb(new MemDb(), false);
-            }
         }
         
         public ISnapshotableDb StateDb { get; }
         public ISnapshotableDb CodeDb { get; }
-        public IDb TraceDb { get; }
         public IDb ReceiptsDb { get; }
         public IDb BlocksDb { get; }
         public IDb HeadersDb { get; }
@@ -74,7 +64,6 @@ namespace Nethermind.Db
             HeadersDb?.Dispose();
             BlockInfosDb?.Dispose();
             PendingTxsDb?.Dispose();
-            TraceDb?.Dispose();
             ConfigsDb?.Dispose();
             EthRequestsDb?.Dispose();
         }

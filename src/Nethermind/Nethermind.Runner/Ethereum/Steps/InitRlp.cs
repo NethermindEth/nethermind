@@ -24,6 +24,7 @@ using Nethermind.Network;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
+    [RunnerStepDependency(typeof(LoadChainspec))]
     public class InitRlp : IStep
     {
         private readonly EthereumRunnerContext _context;
@@ -38,7 +39,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(ParityTraceDecoder)));
             Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(NetworkNodeDecoder)));
-            if (_context._chainSpec.SealEngineType == SealEngineType.AuRa)
+            if (_context.ChainSpec.SealEngineType == SealEngineType.AuRa)
             {
                 Rlp.Decoders[typeof(BlockInfo)] = new BlockInfoDecoder(true);
             }

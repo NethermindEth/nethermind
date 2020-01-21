@@ -20,7 +20,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Crypto
+namespace Nethermind.Core.Crypto
 {
     public class Signature : IEquatable<Signature>
     {

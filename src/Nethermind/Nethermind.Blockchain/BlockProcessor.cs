@@ -26,13 +26,11 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Serialization;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Specs.Forks;
+using Nethermind.Specs.Forks;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.Specs;
-using Nethermind.Specs.Forks;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain
@@ -41,7 +39,6 @@ namespace Nethermind.Blockchain
     {
         private readonly IBlockValidator _blockValidator;
         private readonly ISnapshotableDb _codeDb;
-        private readonly IDb _traceDb;
         private readonly ILogger _logger;
         private readonly IRewardCalculator _rewardCalculator;
         private readonly ISpecProvider _specProvider;
@@ -59,7 +56,6 @@ namespace Nethermind.Blockchain
             ITransactionProcessor transactionProcessor,
             ISnapshotableDb stateDb,
             ISnapshotableDb codeDb,
-            IDb traceDb,
             IStateProvider stateProvider,
             IStorageProvider storageProvider,
             ITxPool txPool,
@@ -78,7 +74,6 @@ namespace Nethermind.Blockchain
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _traceDb = traceDb ?? throw new ArgumentNullException(nameof(traceDb));
             _receiptsTracer = new BlockReceiptsTracer(_specProvider, _stateProvider);
 
             if (additionalBlockProcessors != null)
@@ -214,7 +209,7 @@ namespace Nethermind.Blockchain
                 
                 _stateProvider.Commit(_specProvider.GetSpec(block.Number));
                 block.Header.StateRoot = _stateProvider.StateRoot;
-                block.Header.Hash = BlockHeader.CalculateHash(block.Header);
+                block.Header.Hash = block.Header.CalculateHash();
                 
                 _additionalBlockProcessor?.PostProcess(block, receipts, options);
 
@@ -228,11 +223,6 @@ namespace Nethermind.Blockchain
                 if ((options & ProcessingOptions.StoreReceipts) != 0)
                 {
                     StoreTxReceipts(block, receipts);
-                }
-                
-                if ((options & ProcessingOptions.StoreTraces) != 0)
-                {
-                    StoreTraces(blockTracer as ParityLikeBlockTracer);
                 }
             }
 
@@ -254,44 +244,6 @@ namespace Nethermind.Blockchain
             }
         }
         
-        [Todo(Improve.MissingFunctionality, "Review cases where same transaction is executed as part of two different blocks")]
-        [Todo(Improve.MissingFunctionality, "How to best store reward traces?")]
-        private void StoreTraces(ParityLikeBlockTracer blockTracer)
-        {
-            if (blockTracer == null)
-            {
-                throw new ArgumentNullException(nameof(blockTracer));
-            }
-
-            IReadOnlyCollection<ParityLikeTxTrace> traces = blockTracer.BuildResult();
-            
-            try
-            {
-                _traceDb.StartBatch();
-                List<ParityLikeTxTrace> rewardTraces = new List<ParityLikeTxTrace>();
-                foreach (ParityLikeTxTrace parityLikeTxTrace in traces)
-                {
-                    if (parityLikeTxTrace.TransactionHash != null)
-                    {
-                        _traceDb.Set(parityLikeTxTrace.TransactionHash, Rlp.Encode(parityLikeTxTrace).Bytes);
-                    }
-                    else
-                    {
-                        rewardTraces.Add(parityLikeTxTrace);
-                    }
-                }
-
-                if (rewardTraces.Any())
-                {
-                    _traceDb.Set(rewardTraces[0].BlockHash, Rlp.Encode(rewardTraces.ToArray()).Bytes);
-                }
-            }
-            finally
-            {
-                _traceDb.CommitBatch();
-            }
-        }
-
         private Block PrepareBlockForProcessing(Block suggestedBlock)
         {
             if (_logger.IsTrace) _logger.Trace($"{suggestedBlock.Header.ToString(BlockHeader.Format.Full)}");

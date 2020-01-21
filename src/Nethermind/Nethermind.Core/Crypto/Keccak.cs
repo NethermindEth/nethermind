@@ -17,9 +17,9 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using Nethermind.Core;
+using Nethermind.Core.Extensions;
 
-namespace Nethermind.Crypto
+namespace Nethermind.Core.Crypto
 {
     public unsafe struct ValueKeccak
     {
@@ -62,7 +62,7 @@ namespace Nethermind.Crypto
     [DebuggerStepThrough]
     public class Keccak : IEquatable<Keccak>
     {
-        internal const int Size = 32;
+        public const int Size = 32;
 
         public int MemorySize => MemorySizes.ArrayOverhead + Size;
 
@@ -123,12 +123,6 @@ namespace Nethermind.Crypto
             }
 
             return Bytes.ToHexString(withZeroX);
-        }
-
-        [DebuggerStepThrough]
-        public static Keccak Compute(Rlp rlp)
-        {
-            return InternalCompute(rlp.Bytes);
         }
 
         [DebuggerStepThrough]

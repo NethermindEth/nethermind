@@ -22,6 +22,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -62,7 +63,6 @@ namespace Nethermind.Runner.Ethereum
             var host = string.IsNullOrWhiteSpace(hostVariable)
                 ? $"http://{_jsonRpcConfig.Host}:{_jsonRpcConfig.Port}"
                 : hostVariable;
-            if (_logger.IsInfo) _logger.Info($"Running server, url: {host}");
             var webHost = WebHost.CreateDefaultBuilder()
                 .ConfigureServices(s =>
                 {
@@ -82,8 +82,10 @@ namespace Nethermind.Runner.Ethereum
 
             _webHost = webHost;
             _webHost.Start();
-            if (_logger.IsInfo) _logger.Info($"JSON RPC     : {host}");
-            if (_logger.IsInfo) _logger.Info($"RPC modules  : {string.Join(", ", _moduleProvider.Enabled.OrderBy(x => x))}");
+            if (_logger.IsDebug) _logger.Debug($"JSON RPC     : {host}");
+            ThisNodeInfo.AddInfo("JSON RPC     :", $"{host}");
+            if (_logger.IsDebug) _logger.Debug($"RPC modules  : {string.Join(", ", _moduleProvider.Enabled.OrderBy(x => x))}");
+            ThisNodeInfo.AddInfo("RPC modules  :", $"{string.Join(", ", _moduleProvider.Enabled.OrderBy(x => x))}");
             return Task.CompletedTask;
         }
 

@@ -18,6 +18,7 @@ using System;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 
 namespace Nethermind.Blockchain

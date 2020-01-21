@@ -19,6 +19,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Initializers;
@@ -45,77 +46,79 @@ namespace Nethermind.Runner.Ethereum
             IJsonSerializer ethereumJsonSerializer, IMonitoringService monitoringService)
         {
             _context.LogManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _context._grpcServer = grpcServer;
-            _context._ndmConsumerChannelManager = ndmConsumerChannelManager;
-            _context._ndmDataPublisher = ndmDataPublisher;
-            _context._ndmInitializer = ndmInitializer;
-            _context._webSocketsManager = webSocketsManager;
-            _context._ethereumJsonSerializer = ethereumJsonSerializer;
-            _context._monitoringService = monitoringService;
+            _context.GrpcServer = grpcServer;
+            _context.NdmConsumerChannelManager = ndmConsumerChannelManager;
+            _context.NdmDataPublisher = ndmDataPublisher;
+            _context.NdmInitializer = ndmInitializer;
+            _context.WebSocketsManager = webSocketsManager;
+            _context.EthereumJsonSerializer = ethereumJsonSerializer;
+            _context.MonitoringService = monitoringService;
             _context.Logger = _context.LogManager.GetClassLogger();
 
-            _context._configProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
-            _context._rpcModuleProvider = rpcModuleProvider ?? throw new ArgumentNullException(nameof(rpcModuleProvider));
-            _context._initConfig = configurationProvider.GetConfig<IInitConfig>();
-            _context._txPoolConfig = configurationProvider.GetConfig<ITxPoolConfig>();
+            _context.ConfigProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
+            _context.RpcModuleProvider = rpcModuleProvider ?? throw new ArgumentNullException(nameof(rpcModuleProvider));
+            _context.InitConfig = configurationProvider.GetConfig<IInitConfig>();
 
-            _context.NetworkConfig = _context._configProvider.GetConfig<INetworkConfig>();
-            _context._ipResolver = new IpResolver(_context.NetworkConfig, _context.LogManager);
-            _context.NetworkConfig.ExternalIp = _context._ipResolver.ExternalIp.ToString();
-            _context.NetworkConfig.LocalIp = _context._ipResolver.LocalIp.ToString();
+            _context.NetworkConfig = _context.ConfigProvider.GetConfig<INetworkConfig>();
+            _context.IpResolver = new IpResolver(_context.NetworkConfig, _context.LogManager);
+            _context.NetworkConfig.ExternalIp = _context.IpResolver.ExternalIp.ToString();
+            _context.NetworkConfig.LocalIp = _context.IpResolver.LocalIp.ToString();
         }
 
         public async Task Start()
         {
             if (_context.Logger.IsDebug) _context.Logger.Debug("Initializing Ethereum");
-            _context._runnerCancellation = new CancellationTokenSource();
+            _context.RunnerCancellation = new CancellationTokenSource();
+            _context.DisposeStack.Push(_context.RunnerCancellation);
 
             EthereumStepsManager stepsManager = new EthereumStepsManager(_context);
             stepsManager.DiscoverAll();
             await stepsManager.InitializeAll();
             
-            if (_context.Logger.IsDebug) _context.Logger.Debug("Ethereum initialization completed");
+            if (_context.Logger.IsDebug) _context.Logger.Debug("============== Nethermind initialization completed ==============");
+            
+            ThisNodeInfo.LogAll(_context.Logger);
         }
 
         public async Task StopAsync()
         {
             if (_context.Logger.IsInfo) _context.Logger.Info("Shutting down...");
-            _context._runnerCancellation.Cancel();
+            _context.RunnerCancellation.Cancel();
 
             if (_context.Logger.IsInfo) _context.Logger.Info("Stopping sesison monitor...");
-            _context._sessionMonitor?.Stop();
+            _context.SessionMonitor?.Stop();
 
             if (_context.Logger.IsInfo) _context.Logger.Info("Stopping discovery app...");
-            var discoveryStopTask = _context._discoveryApp?.StopAsync() ?? Task.CompletedTask;
+            Task discoveryStopTask = _context.DiscoveryApp?.StopAsync() ?? Task.CompletedTask;
 
             if (_context.Logger.IsInfo) _context.Logger.Info("Stopping block producer...");
-            var blockProducerTask = _context._blockProducer?.StopAsync() ?? Task.CompletedTask;
+            Task blockProducerTask = _context.BlockProducer?.StopAsync() ?? Task.CompletedTask;
 
             if (_context.Logger.IsInfo) _context.Logger.Info("Stopping sync peer pool...");
-            var peerPoolTask = _context._syncPeerPool?.StopAsync() ?? Task.CompletedTask;
+            Task peerPoolTask = _context.SyncPeerPool?.StopAsync() ?? Task.CompletedTask;
 
             if (_context.Logger.IsInfo) _context.Logger.Info("Stopping peer manager...");
-            var peerManagerTask = _context.PeerManager?.StopAsync() ?? Task.CompletedTask;
+            Task peerManagerTask = _context.PeerManager?.StopAsync() ?? Task.CompletedTask;
 
             if (_context.Logger.IsInfo) _context.Logger.Info("Stopping synchronizer...");
-            var synchronizerTask = (_context._synchronizer?.StopAsync() ?? Task.CompletedTask)
-                .ContinueWith(t => _context._synchronizer?.Dispose());
+            Task synchronizerTask = (_context.Synchronizer?.StopAsync() ?? Task.CompletedTask)
+                .ContinueWith(t => _context.Synchronizer?.Dispose());
 
             if (_context.Logger.IsInfo) _context.Logger.Info("Stopping blockchain processor...");
-            var blockchainProcessorTask = (_context._blockchainProcessor?.StopAsync() ?? Task.CompletedTask);
+            Task blockchainProcessorTask = (_context.BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
 
             if (_context.Logger.IsInfo) _context.Logger.Info("Stopping rlpx peer...");
-            var rlpxPeerTask = _context._rlpxPeer?.Shutdown() ?? Task.CompletedTask;
+            Task rlpxPeerTask = _context.RlpxPeer?.Shutdown() ?? Task.CompletedTask;
 
             await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, synchronizerTask, peerPoolTask, blockchainProcessorTask, blockProducerTask);
 
             if (_context.Logger.IsInfo) _context.Logger.Info("Closing DBs...");
-            _context._dbProvider.Dispose();
+            _context.DbProvider.Dispose();
             if (_context.Logger.IsInfo) _context.Logger.Info("All DBs closed.");
 
-            while (_context._disposeStack.Count != 0)
+            while (_context.DisposeStack.Count != 0)
             {
-                var disposable = _context._disposeStack.Pop();
+                IDisposable disposable = _context.DisposeStack.Pop();
                 if (_context.Logger.IsDebug) _context.Logger.Debug($"Disposing {disposable.GetType().Name}");
             }
 

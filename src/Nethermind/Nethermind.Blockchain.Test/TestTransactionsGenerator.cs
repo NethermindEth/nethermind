@@ -21,6 +21,7 @@ using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 
@@ -88,7 +89,7 @@ namespace Nethermind.Blockchain.Test
                 throw new InvalidDataException($"{nameof(TestTransactionsGenerator)} producing invalid transactions");
             }
 
-            tx.Hash = Transaction.CalculateHash(tx);
+            tx.Hash = tx.CalculateHash();
 
             _txPool.AddTransaction(tx, 1);
             _logger.Debug($"Generated a test transaction for testing ({_count - 1}).");
