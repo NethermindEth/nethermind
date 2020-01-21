@@ -16,7 +16,7 @@
 
 using System.IO;
 using Nethermind.Core;
-using Nethermind.Core.Encoding;
+using Nethermind.Core.Serialization;
 
 namespace Nethermind.AuRa.Validators
 {
