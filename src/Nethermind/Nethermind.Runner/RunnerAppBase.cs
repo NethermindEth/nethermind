@@ -206,8 +206,7 @@ namespace Nethermind.Runner
             {
                 if (ndmEnabled)
                 {
-                    webSocketsManager.AddModule(new NdmWebSocketsModule(ndmConsumerChannelManager, ndmDataPublisher,
-                        jsonSerializer));
+                    webSocketsManager.AddModule(new NdmWebSocketsModule(ndmConsumerChannelManager, ndmDataPublisher, jsonSerializer));
                 }
             }
 
@@ -233,8 +232,7 @@ namespace Nethermind.Runner
                 Bootstrap.Instance.JsonRpcService = jsonRpcService;
                 Bootstrap.Instance.LogManager = logManager;
                 Bootstrap.Instance.JsonSerializer = jsonSerializer;
-                _jsonRpcRunner = new JsonRpcRunner(configProvider, rpcModuleProvider, logManager, jsonRpcProcessor,
-                    webSocketsManager);
+                _jsonRpcRunner = new JsonRpcRunner(configProvider, rpcModuleProvider, logManager, jsonRpcProcessor, webSocketsManager);
                 await _jsonRpcRunner.Start().ContinueWith(x =>
                 {
                     if (x.IsFaulted && _logger.IsError) _logger.Error("Error during jsonRpc runner start", x.Exception);

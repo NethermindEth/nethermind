@@ -51,7 +51,7 @@ namespace Nethermind.Runner
                 p => p.AllowAnyMethod().AllowAnyHeader().WithOrigins(corsOrigins)));
         }
 
-        [Todo(Improve.Performance, "Can we write immediatelly to the stream instead of calling ToString on the entire JSON content?")]
+        [Todo(Improve.Performance, "Can we write immediately to the stream instead of calling ToString on the entire JSON content?")]
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor,
             IJsonRpcService jsonRpcService)
         {
@@ -67,43 +67,43 @@ namespace Nethermind.Runner
             }
 
             app.UseCors("Cors");
-            
-            var initConfig = app.ApplicationServices.GetService<IConfigProvider>().GetConfig<IInitConfig>();
+
+            var configProvider = app.ApplicationServices.GetService<IConfigProvider>();
+            var initConfig = configProvider.GetConfig<IInitConfig>();
+            var jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
             if (initConfig.WebSocketsEnabled)
             {
                 app.UseWebSockets();
-                app.UseWhen(ctx =>
-                    ctx.WebSockets.IsWebSocketRequest && ctx.Request.Path.HasValue &&
-                    ctx.Request.Path.Value.StartsWith("/ws"), builder => builder.UseWebSocketsModules());
+                app.UseWhen(ctx => ctx.WebSockets.IsWebSocketRequest 
+                                   && ctx.Connection.LocalPort == jsonRpcConfig.WebSocketPort
+                                   && ctx.Request.Path.HasValue 
+                                   && ctx.Request.Path.Value.StartsWith("/ws"), 
+                    builder => builder.UseWebSocketsModules());
             }
-
+            
             app.Use(async (ctx, next) =>
             {
                 if (ctx.Request.Method == "GET")
                 {
                     await ctx.Response.WriteAsync("Nethermind JSON RPC");
-                    return;
                 }
-
-                if (ctx.Request.Method != "POST")
+                else if (ctx.Connection.LocalPort == jsonRpcConfig.Port && ctx.Request.Method == "POST")
                 {
-                    return;
-                }
+                    using var reader = new StreamReader(ctx.Request.Body, Encoding.UTF8);
+                    var request = await reader.ReadToEndAsync();
+                    var result = await jsonRpcProcessor.ProcessAsync(request);
 
-                using var reader = new StreamReader(ctx.Request.Body, Encoding.UTF8);
-                var request = await reader.ReadToEndAsync();
-                var result = await jsonRpcProcessor.ProcessAsync(request);
+                    if (result.IsCollection)
+                    {
+                        _jsonSerializer.Serialize(ctx.Response.Body, result.Responses);
+                    }
+                    else
+                    {
+                        _jsonSerializer.Serialize(ctx.Response.Body, result.Response);
+                    }
 
-                if (result.IsCollection)
-                {
-                    _jsonSerializer.Serialize(ctx.Response.Body, result.Responses);
+                    await ctx.Response.CompleteAsync();
                 }
-                else
-                {
-                    _jsonSerializer.Serialize(ctx.Response.Body, result.Response);
-                }
-
-                await ctx.Response.CompleteAsync();
             });
         }
     }
