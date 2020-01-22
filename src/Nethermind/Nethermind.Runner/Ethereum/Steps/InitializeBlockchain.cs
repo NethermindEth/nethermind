@@ -128,8 +128,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 virtualMachine,
                 _context.LogManager);
 
-            IList<IAdditionalBlockProcessor> additionalBlockProcessors = new List<IAdditionalBlockProcessor>();
-            InitSealEngine(additionalBlockProcessors);
+            _context.AdditionalBlockProcessors = InitSealEngine();
 
             /* validation */
             _context.HeaderValidator = new HeaderValidator(
@@ -166,7 +165,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.TxPool,
                 _context.ReceiptStorage,
                 _context.LogManager,
-                additionalBlockProcessors);
+                _context.AdditionalBlockProcessors);
 
             BlockchainProcessor processor = new BlockchainProcessor(
                 _context.BlockTree,
@@ -176,8 +175,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.Config<IInitConfig>().StoreReceipts); 
             _context.BlockchainProcessor = processor;
             _context.BlockProcessingQueue = processor;
-
-            _context.FinalizationManager = InitFinalizationManager(additionalBlockProcessors);
 
             // create shared objects between discovery and peer manager
             IStatsConfig statsConfig = _context.Config<IStatsConfig>();
@@ -200,8 +197,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             return Task.CompletedTask;
         }
         
-        private void InitSealEngine(IList<IAdditionalBlockProcessor> blockPreProcessors)
+        private IAdditionalBlockProcessor[] InitSealEngine()
         {
+            IList<IAdditionalBlockProcessor> blockProcessors = new List<IAdditionalBlockProcessor>();
             switch (_context.ChainSpec.SealEngineType)
             {
                 case SealEngineType.None:
@@ -256,28 +254,13 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.SealValidator = new AuRaSealValidator(_context.ChainSpec.AuRa, auRaStepCalculator, _context.ValidatorStore, _context.EthereumEcdsa, _context.LogManager);
                     _context.RewardCalculator = new AuRaRewardCalculator(_context.ChainSpec.AuRa, abiEncoder, _context.TransactionProcessor);
                     _context.Sealer = new AuRaSealer(_context.BlockTree, validatorProcessor, _context.ValidatorStore, auRaStepCalculator, _context.NodeKey.Address, new BasicWallet(_context.NodeKey), new ValidSealerStrategy(), _context.LogManager);
-                    blockPreProcessors.Add(validatorProcessor);
+                    blockProcessors.Add(validatorProcessor);
                     break;
                 default:
                     throw new NotSupportedException($"Seal engine type {_context.ChainSpec.SealEngineType} is not supported in Nethermind");
             }
-        }
-        
-        private IBlockFinalizationManager InitFinalizationManager(IList<IAdditionalBlockProcessor> blockPreProcessors)
-        {
-            switch (_context.ChainSpec.SealEngineType)
-            {
-                case SealEngineType.AuRa:
-                    AuRaBlockFinalizationManager finalizationManager = new AuRaBlockFinalizationManager(_context.BlockTree, _context.ChainLevelInfoRepository, _context.BlockProcessor, _context.ValidatorStore, new ValidSealerStrategy(), _context.LogManager);
-                    foreach (IAuRaValidator auRaValidator in blockPreProcessors.OfType<IAuRaValidator>())
-                    {
-                        auRaValidator.SetFinalizationManager(finalizationManager);
-                    }
 
-                    return finalizationManager;
-                default:
-                    return null;
-            }
-        }
+            return blockProcessors.ToArray();
+        }       
     }
 }

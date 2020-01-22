@@ -126,5 +126,6 @@ namespace Nethermind.Runner.Ethereum
         public IEthJsonRpcClientProxy EthJsonRpcClientProxy;
         public IHttpClient HttpClient;
         public IMonitoringService MonitoringService;
+        public IAdditionalBlockProcessor[] AdditionalBlockProcessors;
     }
 }

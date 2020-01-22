@@ -31,7 +31,7 @@ using Nethermind.Store;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency(typeof(InitializeNetwork))]
+    [RunnerStepDependency(typeof(InitializeNetwork), typeof(InitializeFinalization))]
     public class StartBlockProducer : IStep, ISubsystemStateAware
     {
         private readonly EthereumRunnerContext _context;
