@@ -69,7 +69,7 @@ namespace Nethermind.Runner.Ethereum
             {
                 const string nethermindUrlVariable = "NETHERMIND_URL";
                 string host = _jsonRpcConfig.Host;
-                string scheme = "http";;
+                string scheme = "http";
                 var defaultUrl = $"{scheme}://{host}:{_jsonRpcConfig.Port}";
                 var urlVariable = Environment.GetEnvironmentVariable(nethermindUrlVariable);
                 string url = defaultUrl;
