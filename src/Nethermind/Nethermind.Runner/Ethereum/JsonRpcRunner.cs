@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore;
@@ -43,11 +44,17 @@ namespace Nethermind.Runner.Ethereum
         private readonly IWebSocketsManager _webSocketsManager;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private IWebHost _webHost;
+        private IInitConfig _initConfig;
 
-        public JsonRpcRunner(IConfigProvider configurationProvider, IRpcModuleProvider moduleProvider,
-            ILogManager logManager, IJsonRpcProcessor jsonRpcProcessor, IWebSocketsManager webSocketsManager)
+        public JsonRpcRunner(
+            IConfigProvider configurationProvider,
+            IRpcModuleProvider moduleProvider,
+            ILogManager logManager,
+            IJsonRpcProcessor jsonRpcProcessor,
+            IWebSocketsManager webSocketsManager)
         {
             _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
+            _initConfig = configurationProvider.GetConfig<IInitConfig>();
             _configurationProvider = configurationProvider;
             _moduleProvider = moduleProvider ?? throw new ArgumentNullException(nameof(moduleProvider));
             _logManager = logManager;
@@ -58,11 +65,39 @@ namespace Nethermind.Runner.Ethereum
 
         public Task Start()
         {
+            IEnumerable<string> GetUrls()
+            {
+                const string nethermindUrlVariable = "NETHERMIND_URL";
+                string host = _jsonRpcConfig.Host;
+                string scheme = "http";
+                var defaultUrl = $"{scheme}://{host}:{_jsonRpcConfig.Port}";
+                var urlVariable = Environment.GetEnvironmentVariable(nethermindUrlVariable);
+                string url = defaultUrl;
+
+                if (!string.IsNullOrWhiteSpace(urlVariable))
+                {
+                    if (Uri.TryCreate(urlVariable, UriKind.Absolute, out var uri))
+                    {
+                        url = urlVariable;
+                        host = uri.Host;
+                        scheme = uri.Scheme;
+                    }
+                    else
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Environment variable '{nethermindUrlVariable}' value '{urlVariable}' is not valid JSON RPC URL, using default url : '{defaultUrl}'");
+                    }
+                }
+                
+                yield return url;
+
+                if (_initConfig.WebSocketsEnabled && _jsonRpcConfig.WebSocketPort != _jsonRpcConfig.Port)
+                {
+                    yield return  $"{scheme}://{host}:{_jsonRpcConfig.WebSocketPort}";
+                }
+            }
+
             if (_logger.IsDebug) _logger.Debug("Initializing JSON RPC");
-            var hostVariable = Environment.GetEnvironmentVariable("NETHERMIND_URL");
-            var host = string.IsNullOrWhiteSpace(hostVariable)
-                ? $"http://{_jsonRpcConfig.Host}:{_jsonRpcConfig.Port}"
-                : hostVariable;
+            var urls = GetUrls().ToArray();
             var webHost = WebHost.CreateDefaultBuilder()
                 .ConfigureServices(s =>
                 {
@@ -71,7 +106,7 @@ namespace Nethermind.Runner.Ethereum
                     s.AddSingleton(_webSocketsManager);
                 })
                 .UseStartup<Startup>()
-                .UseUrls(host)
+                .UseUrls(urls)
                 .ConfigureLogging(logging =>
                 {
                     logging.SetMinimumLevel(LogLevel.Information);
@@ -82,8 +117,9 @@ namespace Nethermind.Runner.Ethereum
 
             _webHost = webHost;
             _webHost.Start();
-            if (_logger.IsDebug) _logger.Debug($"JSON RPC     : {host}");
-            ThisNodeInfo.AddInfo("JSON RPC     :", $"{host}");
+            string urlsString = string.Join(" ; ", urls);
+            if (_logger.IsDebug) _logger.Debug($"JSON RPC     : {urlsString}");
+            ThisNodeInfo.AddInfo("JSON RPC     :", $"{urlsString}");
             if (_logger.IsDebug) _logger.Debug($"RPC modules  : {string.Join(", ", _moduleProvider.Enabled.OrderBy(x => x))}");
             ThisNodeInfo.AddInfo("RPC modules  :", $"{string.Join(", ", _moduleProvider.Enabled.OrderBy(x => x))}");
             return Task.CompletedTask;
