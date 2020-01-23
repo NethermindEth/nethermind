@@ -28,13 +28,15 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly IEthSyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
+        private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
 
-        public SyncModeSelector(ISyncProgressResolver syncProgressResolver, IEthSyncPeerPool syncPeerPool, ISyncConfig syncConfig, ILogManager logManager)
+        public SyncModeSelector(ISyncProgressResolver syncProgressResolver, IEthSyncPeerPool syncPeerPool, ISyncConfig syncConfig, IBlockTree blockTree, ILogManager logManager)
         {
             _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             Current = SyncMode.NotStarted;
@@ -58,7 +60,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 return;
             }
-
+            
             if (!_syncConfig.FastSync)
             {
                 if (Current == SyncMode.NotStarted)
@@ -92,6 +94,19 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 return;
             }
+
+            var blockNumber = _blockTree.Head?.Number ?? -1;
+            bool wasFullSync = blockNumber > 0;
+            if (wasFullSync && maxBlockNumberAmongPeers - blockNumber <= _syncConfig.FastSyncCatchUpHeightDelta)
+            {
+                if (Current == SyncMode.NotStarted)
+                {
+                    ChangeSyncMode(SyncMode.Full);
+                }
+
+                return;
+            }
+            
             // if (maxBlockNumberAmongPeers <= FullSyncThreshold)
             // {
             //     return;

@@ -19,6 +19,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Newtonsoft.Json;
 
@@ -99,8 +100,14 @@ namespace Nethermind.Config
 
                 throw new IOException($"Cannot parse enum value: {itemValue}, type: {valueType.Name}");
             }
+
+            var nullableType = Nullable.GetUnderlyingType(valueType);
             
-            return Convert.ChangeType(itemValue, valueType);
+            return nullableType == null
+                ? Convert.ChangeType(itemValue, valueType)
+                : !string.IsNullOrEmpty(itemValue) && !itemValue.Equals("null", StringComparison.InvariantCultureIgnoreCase) 
+                    ? Convert.ChangeType(itemValue, nullableType) 
+                    : null;
         }
     }
 }
