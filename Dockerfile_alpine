@@ -8,7 +8,7 @@ RUN PORTABLE=1 make shared_lib
 RUN strip librocksdb.so
 
 ##################################################
-FROM mcr.microsoft.com/dotnet/core/sdk:3.0.101-alpine3.10 AS build
+FROM mcr.microsoft.com/dotnet/core/sdk:3.1-alpine AS build
 
 COPY . source/
 RUN echo 'http://dl-cdn.alpinelinux.org/alpine/v3.8/main' >> /etc/apk/repositories
@@ -18,17 +18,17 @@ RUN dotnet publish /source/src/Nethermind/Nethermind.Runner --configuration Rele
 RUN cd source/ && git describe --tags --long > /artifacts/git-hash
 
 ##################################################
-FROM mcr.microsoft.com/dotnet/core/aspnet:3.0.1-alpine3.10
+FROM mcr.microsoft.com/dotnet/core/aspnet:3.1-alpine
 
-COPY scripts/entrypoint.sh /entrypoint.sh
+COPY scripts/entrypoint2.sh /entrypoint2.sh
 
-RUN apk upgrade && apk add gosu snappy-dev --repository http://dl-cdn.alpinelinux.org/alpine/edge/testing/ && rm -rf /var/cache/apk/* && \
+RUN echo "@testing http://dl-cdn.alpinelinux.org/alpine/edge/testing/" >> /etc/apk/repositories && \
+    apk upgrade && apk add coreutils gosu@testing snappy-dev@testing && rm -rf /var/cache/apk/* && \
     addgroup -g 1337 nethermind && adduser nethermind -u 1337 -D -G nethermind && \
-    chmod +x /entrypoint.sh && \
+    chmod +x /entrypoint2.sh && \
     mkdir /data
 
 COPY --from=build --chown=nethermind:nethermind /artifacts /nethermind
-COPY --from=build --chown=nethermind:nethermind /artifacts/git-hash /nethermind
 COPY --from=rocksdb --chown=nethermind:nethermind /source/librocksdb.so /nethermind/librocksdb.so
 
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/entrypoint2.sh"]
