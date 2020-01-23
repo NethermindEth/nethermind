@@ -21,7 +21,7 @@ using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Facade;
-using Nethermind.Facade.Config;
+using Nethermind.JsonRpc;
 using Nethermind.Store;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Modules
@@ -48,6 +48,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             var readOnlyDbProvider = new ReadOnlyDbProvider(services.RocksProvider, false);
             var readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree,
                 services.SpecProvider, logManager);
+            var jsonRpcConfig = services.ConfigProvider.GetConfig<IJsonRpcConfig>();
             var blockchainBridge = new BlockchainBridge(
                 readOnlyTxProcessingEnv.StateReader,
                 readOnlyTxProcessingEnv.StateProvider,
@@ -60,7 +61,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 wallet,
                 readOnlyTxProcessingEnv.TransactionProcessor,
                 services.Ecdsa,
-                services.ConfigProvider.GetConfig<IRpcConfig>());
+                jsonRpcConfig.FindLogBlockDepthLimit);
             var dataAssetRlpDecoder = new DataAssetDecoder();
             var encoder = new AbiEncoder();
 

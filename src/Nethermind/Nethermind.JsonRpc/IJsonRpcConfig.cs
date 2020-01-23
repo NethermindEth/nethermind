@@ -40,5 +40,8 @@ namespace Nethermind.JsonRpc
         
         [ConfigItem(Description = "Defines which RPC modules should be enabled.", DefaultValue = "all")]
         string[] EnabledModules { get; set; }
+        
+        [ConfigItem(Description = "Defines block depth when finding logs.", DefaultValue = "1000")]
+        int FindLogBlockDepthLimit { get; set; }
     }
 }
