@@ -20,6 +20,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Specs.ChainSpecStyle;
+using System.Text.RegularExpressions;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -45,24 +46,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             IInitConfig initConfig = _context.Config<IInitConfig>();
 
-            if (!string.IsNullOrEmpty(initConfig.ChainSpecDirectory))
-            {
-                chainspecDir = initConfig.ChainSpecDirectory;
-
-                if (initConfig.ChainSpecDirectory.Contains("chainspec/")) 
-                {
-                    chainspecDir = initConfig.ChainSpecDirectory.Replace("chainspec/", "");
-                } 
-                else if (initConfig.ChainSpecDirectory.Contains("chainspec"))
-                {
-                    chainspecDir = initConfig.ChainSpecDirectory.Replace("chainspec", "");
-                }
-                chainspecDir = Path.Combine(chainspecDir, initConfig.ChainSpecPath);
-            } 
-            else 
-            {
-                chainspecDir = initConfig.ChainSpecPath;
-            }
+            string chainspecDir = !string.IsNullOrEmpty(initConfig.ChainSpecDirectory) ? Path.Combine(initConfig.ChainSpecDirectory, Path.GetFileName(initConfig.ChainSpecPath)) : initConfig.ChainSpecPath;
 
             if (_context.Logger.IsInfo) _context.Logger.Info($"Loading chain spec from {chainspecDir}");
 
