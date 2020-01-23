@@ -36,5 +36,6 @@ namespace Nethermind.JsonRpc
         }
 
         public string[] EnabledModules { get; set; } = Enum.GetValues(typeof(ModuleType)).OfType<ModuleType>().Select(mt => mt.ToString()).ToArray();
+        public int FindLogBlockDepthLimit { get; set; } = 1000;
     }
 }
