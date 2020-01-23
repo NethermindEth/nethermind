@@ -74,27 +74,16 @@ namespace Nethermind.Blockchain.Synchronization
             return bestFullState;
         }
         
-        public long FindBestHeader()
-        {
-            return _blockTree.BestSuggestedHeader?.Number ?? 0;
-        }
+        public long FindBestHeader() => _blockTree.BestSuggestedHeader?.Number ?? 0;
 
-        public long FindBestFullBlock()
-        {
-            /* avoiding any potential concurrency issue */
-            return Math.Min(FindBestHeader(), _blockTree.BestSuggestedBody?.Number ?? 0);
-        }
+        public long FindBestFullBlock() => Math.Min(FindBestHeader(), _blockTree.BestSuggestedBody?.Number ?? 0); // avoiding any potential concurrency issue
 
-        public bool IsFastBlocksFinished()
-        {
-            if (!_syncConfig.FastBlocks)
-            {
-                return true;
-            }
-            
-            return (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1
-                   && (!_syncConfig.DownloadReceiptsInFastSync || (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) <= 1)
-                   && (!_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1);
-        }
+        public bool IsFastBlocksFinished() =>
+            !_syncConfig.FastBlocks 
+            || (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1
+            && (!_syncConfig.DownloadReceiptsInFastSync || (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) <= 1)
+            && (!_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1);
+
+        public long FindBestProcessedBlock() => _blockTree.Head?.Number ?? -1;
     }
 }

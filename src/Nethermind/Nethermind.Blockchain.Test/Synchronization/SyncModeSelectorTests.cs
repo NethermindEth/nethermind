@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             IBlockTree blockTree = Substitute.For<IBlockTree>();
 
-            SyncModeSelector selector = new SyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, blockTree, LimboLogs.Instance);
+            SyncModeSelector selector = new SyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
             Assert.AreEqual(SyncMode.NotStarted, selector.Current);
 
             (long BestRemote, long BestLocalHeader, long BestLocalFullBlock, long BestLocalState, SyncMode ExpectedState, string Description)[] states =
@@ -203,11 +203,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
             syncProgressResolver.FindBestFullBlock().Returns(bestBlock);
             syncProgressResolver.FindBestFullState().Returns(bestLocalState);
             syncProgressResolver.IsFastBlocksFinished().Returns(true);
-            
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            blockTree.Head.Returns(Build.A.BlockHeader.WithNumber(bestLocalState).TestObject);
+            syncProgressResolver.FindBestProcessedBlock().Returns(bestLocalState);
 
-            SyncModeSelector selector = new SyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, blockTree, LimboLogs.Instance);
+            SyncModeSelector selector = new SyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
             return selector;
         }
 
@@ -225,10 +223,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
             syncProgressResolver.FindBestFullBlock().Returns(bestBlock);
             syncProgressResolver.FindBestFullState().Returns(bestLocalState);
             syncProgressResolver.IsFastBlocksFinished().Returns(true);
-            
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            syncProgressResolver.FindBestProcessedBlock().Returns(bestLocalState);
 
-            SyncModeSelector selector = new SyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, blockTree, LimboLogs.Instance);
+            SyncModeSelector selector = new SyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
             return selector;
         }
     }

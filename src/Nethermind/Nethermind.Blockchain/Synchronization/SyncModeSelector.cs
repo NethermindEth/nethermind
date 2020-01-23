@@ -22,22 +22,26 @@ namespace Nethermind.Blockchain.Synchronization
     public class SyncModeSelector : ISyncModeSelector
     {
         public const int FullSyncThreshold = 32;
+        public const string FullSyncThresholdString = "32";
         
         private readonly SyncProgressSnapshot _syncProgressSnapshot = new SyncProgressSnapshot(SyncProgressSnapshot.SyncProgressType.AllValuesChanged);
 
         private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly IEthSyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
-        private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
 
-        public SyncModeSelector(ISyncProgressResolver syncProgressResolver, IEthSyncPeerPool syncPeerPool, ISyncConfig syncConfig, IBlockTree blockTree, ILogManager logManager)
+        public SyncModeSelector(ISyncProgressResolver syncProgressResolver, IEthSyncPeerPool syncPeerPool, ISyncConfig syncConfig, ILogManager logManager)
         {
             _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+
+            if (syncConfig.FastSyncCatchUpHeightDelta <= FullSyncThreshold)
+            {
+                if (_logger.IsWarn) _logger.Warn($"'FastSyncCatchUpHeightDelta' parameter is less or equal to {FullSyncThreshold}, which is a threshold of blocks always downloaded in full sync. 'FastSyncCatchUpHeightDelta' will have no effect.");
+            }
 
             Current = SyncMode.NotStarted;
         }
@@ -98,9 +102,9 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
-            long headBlockNumber = _blockTree.Head?.Number ?? -1;
-            bool wasFullSync = headBlockNumber > 0;
-            if (wasFullSync && maxBlockNumberAmongPeers - headBlockNumber < _syncConfig.FastSyncCatchUpHeightDelta)
+            long bestProcessedBlock = _syncProgressResolver.FindBestProcessedBlock();
+            bool wasFullSync = bestProcessedBlock > 0;
+            if (wasFullSync && maxBlockNumberAmongPeers - bestProcessedBlock < _syncConfig.FastSyncCatchUpHeightDelta)
             {
                 if (Current == SyncMode.NotStarted)
                 {

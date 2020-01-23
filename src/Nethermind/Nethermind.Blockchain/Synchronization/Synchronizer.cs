@@ -84,7 +84,7 @@ namespace Nethermind.Blockchain.Synchronization
             _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_blockTree, receiptStorage, _nodeDataDownloader, syncConfig, logManager);
-            _syncMode = new SyncModeSelector(syncProgressResolver, _syncPeerPool, _syncConfig, _blockTree, logManager);
+            _syncMode = new SyncModeSelector(syncProgressResolver, _syncPeerPool, _syncConfig, logManager);
             _syncReport = new SyncReport(_syncPeerPool, _nodeStatsManager, syncConfig, syncProgressResolver, _syncMode, logManager);
             _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, _syncReport, receiptStorage, specProvider, logManager);
             if (syncConfig.FastBlocks)
