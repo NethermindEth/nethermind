@@ -10,7 +10,9 @@
         "validators": {
           "multi": {
             "0": {
-              "list": ["0xcace5b3c29211740e595850e80478416ee77ca21"]
+              "list": [
+                "0xcace5b3c29211740e595850e80478416ee77ca21"
+              ]
             },
             "1300": {
               "safeContract": "0x22e1229a2c5b95a60983b5577f745a603284f535"
@@ -82,11 +84,19 @@
         "name": "alt_bn128_add",
         "pricing": {
           "0": {
-            "price": { "alt_bn128_const_operations": { "price": 500 }}
+            "price": {
+              "alt_bn128_const_operations": {
+                "price": 500
+              }
+            }
           },
           "7298030": {
             "info": "EIP 1108 transition",
-            "price": { "alt_bn128_const_operations": { "price": 150 }}
+            "price": {
+              "alt_bn128_const_operations": {
+                "price": 150
+              }
+            }
           }
         }
       }
@@ -96,11 +106,19 @@
         "name": "alt_bn128_mul",
         "pricing": {
           "0": {
-            "price": { "alt_bn128_const_operations": { "price": 40000 }}
+            "price": {
+              "alt_bn128_const_operations": {
+                "price": 40000
+              }
+            }
           },
           "7298030": {
             "info": "EIP 1108 transition",
-            "price": { "alt_bn128_const_operations": { "price": 6000 }}
+            "price": {
+              "alt_bn128_const_operations": {
+                "price": 6000
+              }
+            }
           }
         }
       }
@@ -110,11 +128,21 @@
         "name": "alt_bn128_pairing",
         "pricing": {
           "0": {
-            "price": { "alt_bn128_pairing": { "base": 100000, "pair": 80000 }}
+            "price": {
+              "alt_bn128_pairing": {
+                "base": 100000,
+                "pair": 80000
+              }
+            }
           },
           "7298030": {
             "info": "EIP 1108 transition",
-            "price": { "alt_bn128_pairing": { "base": 45000, "pair": 34000 }}
+            "price": {
+              "alt_bn128_pairing": {
+                "base": 45000,
+                "pair": 34000
+              }
+            }
           }
         }
       }
