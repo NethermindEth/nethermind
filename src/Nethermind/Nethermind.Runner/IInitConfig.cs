@@ -43,9 +43,6 @@ namespace Nethermind.Runner
 
         [ConfigItem(Description = "Path to the chain definition file (Parity chainspec or Geth genesis file).", DefaultValue = "null")]
         string ChainSpecPath { get; set; }
-
-        [ConfigItem(Description = "Directory containing chain definition files.", DefaultValue = "null")]
-        string ChainSpecDirectory { get; set; }
         
         [ConfigItem(Description = "Base directoy path for all the nethermind databases.", DefaultValue = "\"db\"")]
         string BaseDbPath { get; set; }

@@ -1,10 +1,12 @@
-name: Update Documentation
+name: Update Bootnodes
 
-on: push
+on:
+  schedule:
+    cron: '0 0 * * *'
 
 jobs:
-  neth-docs:
-    name: Update Documentation
+  neth-bootnodes:
+    name: Update POA Bootnodes
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
