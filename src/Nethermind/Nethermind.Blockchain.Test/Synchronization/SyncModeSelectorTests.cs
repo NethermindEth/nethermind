@@ -18,6 +18,7 @@ using Nethermind.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Test.Builders;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -160,6 +161,28 @@ namespace Nethermind.Blockchain.Test.Synchronization
             selector.Update();
             Assert.AreEqual(expected, selector.Current);
         }
+        
+        [TestCase(0, 1032, 1000000, SyncMode.Headers)]
+        [TestCase(0, 1032, 100, SyncMode.Headers)]
+        [TestCase(0,  1032, null, SyncMode.Headers)]
+        [TestCase(10, 1032, 100, SyncMode.Headers)]
+        [TestCase(10, 1032, 1000000, SyncMode.Full)]
+        public void Selects_correctly_in_fast_sync_based_on_CatchUpHeightDelta(long currentHead, long bestRemote, long? fastSyncCatchUpHeightDelta, SyncMode expected)
+        {
+            bool changedInvoked = false;
+
+            SyncModeSelector selector = BuildSelector(new SyncConfig() {FastSync = true, FastSyncCatchUpHeightDelta = fastSyncCatchUpHeightDelta}, bestRemote, 0, 0, currentHead);
+            selector.Changed += (s, e) => changedInvoked = true;
+
+            SyncMode beforeUpdate = selector.Current;
+
+            selector.Update();
+            Assert.AreEqual(expected, selector.Current, "as expected");
+            if (expected != beforeUpdate)
+            {
+                Assert.True(changedInvoked, "changed");
+            }
+        }
 
         private static SyncModeSelector BuildSelector(SyncConfig syncConfig, long bestRemote = 0L, long bestHeader = 0L, long bestBlock = 0L, long bestLocalState = 0L)
         {
@@ -182,6 +205,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             syncProgressResolver.IsFastBlocksFinished().Returns(true);
             
             IBlockTree blockTree = Substitute.For<IBlockTree>();
+            blockTree.Head.Returns(Build.A.BlockHeader.WithNumber(bestLocalState).TestObject);
 
             SyncModeSelector selector = new SyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, blockTree, LimboLogs.Instance);
             return selector;
