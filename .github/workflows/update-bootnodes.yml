@@ -16,24 +16,20 @@ jobs:
       run: |
         cd poa-chain-spec/
         git checkout core
-        pwd
         cd ..
-        cd src/Nethermind/Chains
-        cat poacore.json | jq ".nodes = $(cat poa-chain-spec/spec.json | jq ".nodes")" > poacore.json 
+        cat src/Nethermind/Chains/poacore.json | jq ".nodes = $(cat poa-chain-spec/spec.json | jq ".nodes")" > src/Nethermind/Chains/poacore.json 
     - name: Updating Sokol chainspec
       run: |
         cd poa-chain-spec/
         git checkout sokol
         cd ..
-        cd src/Nethermind/Chains
-        cat sokol.json | jq ".nodes = $(cat poa-chain-spec/spec.json | jq ".nodes")" > sokol.json 
+        cat src/Nethermind/Chains/sokol.json | jq ".nodes = $(cat poa-chain-spec/spec.json | jq ".nodes")" > src/Nethermind/Chains/sokol.json 
     - name: Updating xDai chainspec
       run: |
         cd poa-chain-spec/
-        git checkout sokol
+        git checkout dai
         cd ..
-        cd src/Nethermind/Chains
-        cat xdai.json | jq ".nodes = $(cat poa-chain-spec/spec.json | jq ".nodes")" > xdai.json
+        cat src/Nethermind/Chains/xdai.json | jq ".nodes = $(cat poa-chain-spec/spec.json | jq ".nodes")" > src/Nethermind/Chains/xdai.json
     - name: Create Pull Request     
       uses: peter-evans/create-pull-request@v1
       with:
