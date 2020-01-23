@@ -18,7 +18,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using Jint.Native;
+using Jint.Parser.Ast;
 using Nethermind.Cli.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
@@ -286,19 +288,11 @@ namespace Nethermind.Cli
         private static void LoadModules()
         {
             ModuleLoader = new CliModuleLoader(_engine, _nodeManager);
-            ModuleLoader.LoadModule(typeof(AdminCliModule));
-            ModuleLoader.LoadModule(typeof(CliqueCliModule));
-            ModuleLoader.LoadModule(typeof(DebugCliModule));
-            ModuleLoader.LoadModule(typeof(EthCliModule));
-            ModuleLoader.LoadModule(typeof(TxPoolCliModule));
-            ModuleLoader.LoadModule(typeof(NetCliModule));
-            ModuleLoader.LoadModule(typeof(NodeCliModule));
-            ModuleLoader.LoadModule(typeof(NdmCliModule));
-            ModuleLoader.LoadModule(typeof(TraceCliModule));
-            ModuleLoader.LoadModule(typeof(ParityCliModule));
-            ModuleLoader.LoadModule(typeof(PersonalCliModule));
-            ModuleLoader.LoadModule(typeof(SystemCliModule));
-            ModuleLoader.LoadModule(typeof(Web3CliModule));
+            var modules = typeof(Program).Assembly.GetTypes().Where(t => t.GetCustomAttribute<CliModuleAttribute>() != null);
+            foreach (Type module in modules)
+            {
+                ModuleLoader.LoadModule(module);    
+            }
         }
     }
 }

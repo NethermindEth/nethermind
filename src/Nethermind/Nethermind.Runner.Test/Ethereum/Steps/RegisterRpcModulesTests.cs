@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,37 +15,21 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Core;
-using Nethermind.Core.Attributes;
+using Nethermind.Runner.Ethereum;
+using Nethermind.Runner.Ethereum.Steps;
 
-namespace Nethermind.JsonRpc.Modules
+namespace Nethermind.Runner.Test.Ethereum.Steps
 {
-    [Todo(Improve.Refactor, "Can we use string instead to avoid coupling and introduce conventions?")]
-    public enum ModuleType
+    public class RegisterRpcModulesTests
     {
-        Admin,
-        Clique,
-        Db,
-        Debug,
-        Eth,
-        NdmProvider,
-        NdmConsumer,
-        Net,
-        Parity,
-        Personal,
-        Proof,
-        Trace,
-        TxPool,
-        Web3,
-    }
-
-    public class RpcModuleAttribute : Attribute
-    {
-        public ModuleType ModuleType { get; }
-
-        public RpcModuleAttribute(ModuleType moduleType)
+        public void Proof_module_is_registered_if_configured()
         {
-            ModuleType = moduleType;
+            EthereumRunnerContext context = new EthereumRunnerContext();
+            RegisterRpcModules registerRpcModules = new RegisterRpcModules(context);
+            registerRpcModules.Execute();
+            
+            // verify proof module registration (based on registrations)
+            throw new NotImplementedException();
         }
     }
 }
