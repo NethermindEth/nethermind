@@ -13,14 +13,14 @@ jobs:
     - uses: actions/checkout@v2
     - name: Unshallow fetching
       run: git fetch --unshallow
-    - uses: uraimo/run-on-arch-action@v1.0.5
+    - uses: uraimo/run-on-arch-action@v1.0.7
       with:
         architecture: aarch64
         distribution: ubuntu18.04
         run: |
           uname -a
           apt-get update && apt-get install docker.io -y
-          mv Dockerfile_arm64 Dockerfile
+          mv Dockerfile_alpine_arm64 Dockerfile
     - name: Publish to Docker
       uses: elgohr/Publish-Docker-Github-Action@master
       env:

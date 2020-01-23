@@ -31,16 +31,16 @@ RUN git describe --tags --long > /artifacts/git-hash
 ##################################################
 FROM mcr.microsoft.com/dotnet/core/aspnet:3.1-alpine3.10-arm64v8 AS image
 
-COPY scripts/entrypoint2.sh /entrypoint2.sh
+COPY scripts/entrypoint.sh /entrypoint.sh
 
 RUN echo "@testing http://dl-cdn.alpinelinux.org/alpine/edge/testing/" >> /etc/apk/repositories && \
     apk upgrade && apk add coreutils gosu@testing snappy-dev@testing && rm -rf /var/cache/apk/* && \
     addgroup -g 1337 nethermind && adduser nethermind -u 1337 -D -G nethermind && \
-    chmod +x /entrypoint2.sh && \
+    chmod +x /entrypoint.sh && \
     mkdir /data
 
 COPY --from=build --chown=nethermind:nethermind /artifacts /nethermind
 COPY --from=secp256k1 --chown=nethermind:nethermind /source/.libs/libsecp256k1.so /nethermind/runtimes/linux-x64/native/libsecp256k1.so
 COPY --from=rocksdb --chown=nethermind:nethermind /source/librocksdb.so /nethermind/runtimes/linux-arm64/native/librocksdb.so
 
-ENTRYPOINT ["/entrypoint2.sh"]
+ENTRYPOINT ["/entrypoint.sh"]
