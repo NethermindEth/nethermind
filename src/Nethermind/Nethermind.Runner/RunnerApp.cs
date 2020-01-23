@@ -70,6 +70,7 @@ namespace Nethermind.Runner
             CommandOption configFile = app.Option("-c|--config <configFile>", "config file path", CommandOptionType.SingleValue);
             CommandOption dbBasePath = app.Option("-d|--baseDbPath <baseDbPath>", "base db path", CommandOptionType.SingleValue);
             CommandOption logLevelOverride = app.Option("-l|--log <logLevel>", "log level", CommandOptionType.SingleValue);
+            CommandOption configsDirectory = app.Option("-cd|--configsDirectory <configsDirectory>", "configs directory", CommandOptionType.SingleValue);
             
             foreach (Type configType in configs)
             {
@@ -134,6 +135,7 @@ namespace Nethermind.Runner
                 configProvider.AddSource(argsSource);
                 configProvider.AddSource(new EnvConfigSource());
 
+                string configDir = configsDirectory.HasValue() ? configsDirectory.Value() : DefaultConfigsDirectory;
                 string configFilePath = configFile.HasValue() ? configFile.Value() : _defaultConfigFile;
                 string configPathVariable = Environment.GetEnvironmentVariable("NETHERMIND_CONFIG");
                 if (!string.IsNullOrWhiteSpace(configPathVariable))
@@ -141,11 +143,16 @@ namespace Nethermind.Runner
                     configFilePath = configPathVariable;
                 }
 
-                configFilePath = configFilePath.GetApplicationResourcePath();
+                if (configDir == DefaultConfigsDirectory)
+                {
+                    configFilePath = configFilePath.GetApplicationResourcePath();
+                } else {
+                    configFilePath = Path.Combine(configDir, string.Concat(configFilePath));
+                }
 
                 if (!Path.HasExtension(configFilePath) && !configFilePath.Contains(Path.DirectorySeparatorChar))
                 {
-                    string redirectedConfigPath = Path.Combine(DefaultConfigsDirectory, string.Concat(configFilePath, ".cfg"));
+                    string redirectedConfigPath = Path.Combine(configDir, string.Concat(configFilePath, ".cfg"));
                     configFilePath = redirectedConfigPath;
                     if (!File.Exists(configFilePath))
                     {
@@ -163,7 +170,7 @@ namespace Nethermind.Runner
                 {
                     string configName = Path.GetFileName(configFilePath);
                     string configDirectory = Path.GetDirectoryName(configFilePath);
-                    string redirectedConfigPath = Path.Combine(configDirectory, DefaultConfigsDirectory, configName);
+                    string redirectedConfigPath = Path.Combine(configDirectory, configDir, configName);
                     configFilePath = redirectedConfigPath;
                     if (!File.Exists(configFilePath))
                     {
