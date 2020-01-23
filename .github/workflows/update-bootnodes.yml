@@ -32,6 +32,8 @@ jobs:
         git checkout dai
         cd ..
         cat src/Nethermind/Chains/xdai.json | jq ".nodes = $(cat poa-chain-spec/spec.json | jq ".nodes")" > src/Nethermind/Chains/xdai.json
+    - name: Removing poa-chain-spec repo
+      run: rm -rf poa-chain-spec/
     - name: Create Pull Request     
       uses: peter-evans/create-pull-request@v1
       with:
