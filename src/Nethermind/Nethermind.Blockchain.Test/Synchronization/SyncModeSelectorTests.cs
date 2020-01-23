@@ -67,18 +67,18 @@ namespace Nethermind.Blockchain.Test.Synchronization
             (long BestRemote, long BestLocalHeader, long BestLocalFullBlock, long BestLocalState, SyncMode ExpectedState, string Description)[] states =
             {
                 (0, 0, 0, 0, SyncMode.NotStarted, "start"),
-                (1032, 0, 0, 0, SyncMode.Headers, "learn about remote"),
-                (1032, 512, 0, 0, SyncMode.Headers, "start downloading headers"),
+                (1032, 0, 0, 0, SyncMode.FastSync, "learn about remote"),
+                (1032, 512, 0, 0, SyncMode.FastSync, "start downloading headers"),
                 (1032, 1000, 0, 0, SyncMode.StateNodes, "finish downloading headers"),
-                (1048, 1000, 0, 1000, SyncMode.Headers, "download node states up to best header"),
+                (1048, 1000, 0, 1000, SyncMode.FastSync, "download node states up to best header"),
                 (1048, 1016, 0, 1000, SyncMode.StateNodes, "catch up headers"),
                 (1048, 1032, 0, 1016, SyncMode.StateNodes, "headers went too far, catch up with the nodes"),
                 (1048, 1032, 0, 1032, SyncMode.Full, "ready to full sync"),
                 (1068, 1048, 1048, 1036, SyncMode.Full, "full sync - blocks ahead of processing"),
                 (1093, 1060, 1060, 1056, SyncMode.WaitForProcessor, "found better peer, need to catch up"),
-                (1093, 1060, 1060, 1060, SyncMode.Headers, "first take headers"),
+                (1093, 1060, 1060, 1060, SyncMode.FastSync, "first take headers"),
                 (1093, 1092, 1060, 1060, SyncMode.StateNodes, "then nodes again"),
-                (2096, 1092, 1060, 1092, SyncMode.Headers, "found even better peer - get all headers"),
+                (2096, 1092, 1060, 1092, SyncMode.FastSync, "found even better peer - get all headers"),
             };
 
             for (int i = 0; i < states.Length; i++)
@@ -97,7 +97,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             }
         }
 
-        [TestCase(true, 1032, 999, 0, 0, SyncMode.Headers)]
+        [TestCase(true, 1032, 999, 0, 0, SyncMode.FastSync)]
         [TestCase(false, 1032, 1000, 0, 0, SyncMode.Full)]
         [TestCase(true, 1032, 1000, 0, 0, SyncMode.StateNodes)]
         [TestCase(true, 1032, 1000, 0, 1000, SyncMode.Full)]
@@ -162,10 +162,10 @@ namespace Nethermind.Blockchain.Test.Synchronization
             Assert.AreEqual(expected, selector.Current);
         }
         
-        [TestCase(0, 1032, 1000000, SyncMode.Headers)]
-        [TestCase(0, 1032, 100, SyncMode.Headers)]
-        [TestCase(0,  1032, null, SyncMode.Headers)]
-        [TestCase(10, 1032, 100, SyncMode.Headers)]
+        [TestCase(0, 1032, 1000000, SyncMode.FastSync)]
+        [TestCase(0, 1032, 100, SyncMode.FastSync)]
+        [TestCase(0,  1032, null, SyncMode.FastSync)]
+        [TestCase(10, 1032, 100, SyncMode.FastSync)]
         [TestCase(10, 1032, 1000000, SyncMode.Full)]
         public void Selects_correctly_in_fast_sync_based_on_CatchUpHeightDelta(long currentHead, long bestRemote, long? fastSyncCatchUpHeightDelta, SyncMode expected)
         {

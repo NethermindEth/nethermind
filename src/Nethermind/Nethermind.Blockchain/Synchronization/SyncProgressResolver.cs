@@ -84,7 +84,7 @@ namespace Nethermind.Blockchain.Synchronization
             /* avoiding any potential concurrency issue */
             return Math.Min(FindBestHeader(), _blockTree.BestSuggestedBody?.Number ?? 0);
         }
-        
+
         public bool IsFastBlocksFinished()
         {
             if (!_syncConfig.FastBlocks)

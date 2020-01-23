@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             SyncReport syncReport = new SyncReport(Substitute.For<IEthSyncPeerPool>(), Substitute.For<INodeStatsManager>(), new SyncConfig(), Substitute.For<ISyncProgressResolver>(), Substitute.For<ISyncModeSelector>(),  LimboLogs.Instance, 10);
             Thread.Sleep(20);
-            syncReport.CurrentSyncMode = SyncMode.Headers;
+            syncReport.CurrentSyncMode = SyncMode.FastSync;
             Thread.Sleep(20);
             syncReport.CurrentSyncMode = SyncMode.Full;
             Thread.Sleep(20);

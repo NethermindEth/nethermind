@@ -392,7 +392,7 @@ namespace Nethermind.Blockchain
                         }
 
                         _dbBatchProcessed = new TaskCompletionSource<object>();
-                        using (cancellationToken.Register(() => _dbBatchProcessed.SetCanceled()))
+                        await using (cancellationToken.Register(() => _dbBatchProcessed.SetCanceled()))
                         {
                             _currentDbLoadBatchEnd = block.Number - batchSize;
                             await _dbBatchProcessed.Task;

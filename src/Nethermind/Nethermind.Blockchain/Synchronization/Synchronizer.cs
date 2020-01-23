@@ -210,7 +210,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private static bool RequiresBlocksSyncAllocation(SyncMode syncMode)
         {
-            return syncMode == SyncMode.Beam || syncMode == SyncMode.Full || syncMode == SyncMode.Headers;
+            return syncMode == SyncMode.Beam || syncMode == SyncMode.Full || syncMode == SyncMode.FastSync;
         }
 
         private async Task RunSyncLoop()
@@ -239,7 +239,7 @@ namespace Nethermind.Blockchain.Synchronization
                     {
                         await AllocateBlocksSync();
 
-                        if (_syncMode.Current == SyncMode.Headers)
+                        if (_syncMode.Current == SyncMode.FastSync)
                         {
                             _blocksSyncAllocation.MinBlocksAhead = SyncModeSelector.FullSyncThreshold;
                         }
@@ -279,7 +279,7 @@ namespace Nethermind.Blockchain.Synchronization
                         case SyncMode.FastBlocks:
                             syncProgressTask = _fastBlockDownloader.Sync(linkedCancellation.Token);
                             break;
-                        case SyncMode.Headers:
+                        case SyncMode.FastSync:
                             syncProgressTask = _syncConfig.DownloadBodiesInFastSync
                                 ? _blockDownloader.DownloadBlocks(bestPeer, SyncModeSelector.FullSyncThreshold, linkedCancellation.Token, _syncConfig.DownloadReceiptsInFastSync ? BlockDownloaderOptions.DownloadWithReceipts : BlockDownloaderOptions.Download)
                                 : _blockDownloader.DownloadHeaders(bestPeer, SyncModeSelector.FullSyncThreshold, linkedCancellation.Token);

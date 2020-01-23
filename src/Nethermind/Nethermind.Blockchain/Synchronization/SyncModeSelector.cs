@@ -23,7 +23,7 @@ namespace Nethermind.Blockchain.Synchronization
     {
         public const int FullSyncThreshold = 32;
         
-        private readonly StayingOnSyncMode _stayingOnSyncMode = new StayingOnSyncMode(StayingOnSyncMode.SyncDelayMode.AllSynced);
+        private readonly SyncProgressSnapshot _syncProgressSnapshot = new SyncProgressSnapshot(SyncProgressSnapshot.SyncProgressType.AllValuesChanged);
 
         private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly IEthSyncPeerPool _syncPeerPool;
@@ -61,6 +61,9 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
             
+            // if we are not in fast sync then it means we are in full sync and we just want to have two modes:
+            //   * NOT_STARTED
+            //   * FULL
             if (!_syncConfig.FastSync)
             {
                 if (Current == SyncMode.NotStarted)
@@ -95,9 +98,9 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
-            var blockNumber = _blockTree.Head?.Number ?? -1;
-            bool wasFullSync = blockNumber > 0;
-            if (wasFullSync && maxBlockNumberAmongPeers - blockNumber <= _syncConfig.FastSyncCatchUpHeightDelta)
+            long headBlockNumber = _blockTree.Head?.Number ?? -1;
+            bool wasFullSync = headBlockNumber > 0;
+            if (wasFullSync && maxBlockNumberAmongPeers - headBlockNumber < _syncConfig.FastSyncCatchUpHeightDelta)
             {
                 if (Current == SyncMode.NotStarted)
                 {
@@ -134,23 +137,23 @@ namespace Nethermind.Blockchain.Synchronization
             }
             else
             {
-                newSyncMode = bestFullBlock > bestFullState ? SyncMode.WaitForProcessor : SyncMode.Headers;
+                newSyncMode = bestFullBlock > bestFullState ? SyncMode.WaitForProcessor : SyncMode.FastSync;
             }
 
-            _stayingOnSyncMode.SetChainInfo(bestHeader, bestFullBlock, bestFullState);
+            _syncProgressSnapshot.TakeSnapshot(bestHeader, bestFullBlock, bestFullState);
             
             if (newSyncMode != Current)
             {
                 if (_logger.IsInfo) _logger.Info($"Switching sync mode from {Current} to {newSyncMode} {BuildStateString(bestHeader, bestFullBlock, bestFullState, maxBlockNumberAmongPeers)}");
-                _stayingOnSyncMode.Notify();
+                _syncProgressSnapshot.Notify();
                 ChangeSyncMode(newSyncMode);
             }
             else 
             {
-                if (_stayingOnSyncMode.ShouldLog())
+                if (_syncProgressSnapshot.ShouldLog())
                 {
                     if (_logger.IsInfo) _logger.Info($"Staying on sync mode {Current} {BuildStateString(bestHeader, bestFullBlock, bestFullState, maxBlockNumberAmongPeers)}");
-                    _stayingOnSyncMode.Notify();
+                    _syncProgressSnapshot.Notify();
                 }
             }
         }
@@ -162,25 +165,28 @@ namespace Nethermind.Blockchain.Synchronization
             Changed?.Invoke(this, new SyncModeChangedEventArgs(previous, Current));
         }
 
-        private string BuildStateString(long bestHeader, long bestFullBlock, long bestFullState, long bestAmongPeers) =>
+        private static string BuildStateString(long bestHeader, long bestFullBlock, long bestFullState, long bestAmongPeers) =>
             $"|best header:{bestHeader}|best full block:{bestFullBlock}|best state:{bestFullState}|best peer block:{bestAmongPeers}";
 
         public event EventHandler<SyncModeChangedEventArgs> Changed;
 
-        private class StayingOnSyncMode
+        /// <summary>
+        /// This class is a helper class for logging purposes only
+        /// </summary>
+        private class SyncProgressSnapshot
         {
-            private readonly SyncDelayMode _mode;
-            private TimeSpan NoSyncDelay { get; } = TimeSpan.FromSeconds(3);
-            private TimeSpan MaxSyncDelay { get; } = TimeSpan.FromSeconds(20);
+            private static TimeSpan NoSyncDelay { get; } = TimeSpan.FromSeconds(3);
+            private static TimeSpan MaxSyncDelay { get; } = TimeSpan.FromSeconds(20);
+            private readonly SyncProgressType _progressType;
             private DateTime LastNotification { get; set; } = DateTime.UtcNow;
-            private DateTime LastChainInfo { get; set; } = DateTime.UtcNow;
+            private DateTime LastSnapshotTime { get; set; } = DateTime.UtcNow;
             private long BestFullBlock { get; set; }
             private long BestHeader { get; set; }
             private long BestFullState { get; set; }
 
-            public StayingOnSyncMode(SyncDelayMode mode)
+            public SyncProgressSnapshot(SyncProgressType progressType)
             {
-                _mode = mode;
+                _progressType = progressType;
             }
 
             public void Notify()
@@ -188,38 +194,38 @@ namespace Nethermind.Blockchain.Synchronization
                 LastNotification = DateTime.UtcNow;
             }
 
-            public void SetChainInfo(in long bestHeader, in long bestFullBlock, in long bestFullState)
+            public void TakeSnapshot(in long bestHeader, in long bestFullBlock, in long bestFullState)
             {
-                var synced = _mode switch
+                bool hasProgressed = _progressType switch
                 {
-                    SyncDelayMode.AnythingSynced => (BestHeader != bestHeader || BestFullBlock != bestFullBlock || BestFullState != bestFullState),
-                    SyncDelayMode.AllSynced => (BestHeader != bestHeader && BestFullBlock != bestFullBlock && BestFullState != bestFullState),
+                    SyncProgressType.SomeValuesChanged => (BestHeader != bestHeader || BestFullBlock != bestFullBlock || BestFullState != bestFullState),
+                    SyncProgressType.AllValuesChanged => (BestHeader != bestHeader && BestFullBlock != bestFullBlock && BestFullState != bestFullState),
                     _ => false
                 };
                 
-                if (synced)
+                if (hasProgressed)
                 {
                     BestHeader = bestHeader;
                     BestFullBlock = bestFullBlock;
                     BestFullState = bestFullState;
-                    LastChainInfo = DateTime.UtcNow;
+                    LastSnapshotTime = DateTime.UtcNow;
                 }
             }
 
             public bool ShouldLog()
             {
-                bool CheckDelay(DateTime lastDate, TimeSpan delay)
+                static bool CheckDelay(DateTime lastDate, TimeSpan delay)
                 {
                     return DateTime.UtcNow - lastDate >= delay;
                 }
 
-                return CheckDelay(LastChainInfo, MaxSyncDelay) && CheckDelay(LastNotification, NoSyncDelay);
+                return CheckDelay(LastSnapshotTime, MaxSyncDelay) && CheckDelay(LastNotification, NoSyncDelay);
             }
             
-            public enum SyncDelayMode
+            public enum SyncProgressType
             {
-                AnythingSynced,
-                AllSynced
+                SomeValuesChanged,
+                AllValuesChanged
             }
         }
     }
