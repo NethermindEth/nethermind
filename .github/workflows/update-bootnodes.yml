@@ -32,7 +32,8 @@ jobs:
         git checkout sokol
         cd ..
         cd src/Nethermind/Chains
-        cat xdai.json | jq ".nodes = $(cat ~/poa-chain-spec/spec.json | jq ".nodes")" > xdai.json 
+        cat xdai.json | jq ".nodes = $(cat ~/poa-chain-spec/spec.json | jq ".nodes")" > xdai.json
+    - name: Create Pull Request     
       uses: peter-evans/create-pull-request@v1
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
