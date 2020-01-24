@@ -31,32 +31,13 @@ namespace Nethermind.Blockchain.Proofs
                 return;
             }
             
-            PatriciaTree txTree = new PatriciaTree();
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Rlp transactionRlp = _txDecoder.Encode(block.Transactions[i]);
-                txTree.Set(Rlp.Encode(i).Bytes, transactionRlp.Bytes);
+                Set(Rlp.Encode(i).Bytes, transactionRlp.Bytes);
             }
             
-            txTree.UpdateRootHash();
+            UpdateRootHash();
         }
-        
-        // public static Keccak CalculateTxRoot(Block block)
-        // {
-        //     if (block.Transactions.Length == 0)
-        //     {
-        //         return PatriciaTree.EmptyTreeHash;
-        //     }
-        //     
-        //     PatriciaTree txTree = new PatriciaTree();
-        //     for (int i = 0; i < block.Transactions.Length; i++)
-        //     {
-        //         Rlp transactionRlp = _txDecoder.Encode(block.Transactions[i]);
-        //         txTree.Set(Rlp.Encode(i).Bytes, transactionRlp.Bytes);
-        //     }
-        //
-        //     txTree.UpdateRootHash();
-        //     return txTree.RootHash;
-        // }
     }
 }

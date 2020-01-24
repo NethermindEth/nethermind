@@ -20,7 +20,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Proofs
 {
-    public class OmmersHash
+    public static class OmmersHash
     {
         public static Keccak Calculate(Block block)
         {
