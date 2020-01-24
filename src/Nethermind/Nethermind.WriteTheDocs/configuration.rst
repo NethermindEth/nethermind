@@ -109,14 +109,6 @@ DbConfig
 
  RecycleLogFileNum
 
- TraceDbBlockCacheSize
-
- TraceDbCacheIndexAndFilterBlocks
-
- TraceDbWriteBufferNumber
-
- TraceDbWriteBufferSize
-
  WriteAheadLogSync
 
  WriteBufferNumber
@@ -209,10 +201,6 @@ InitConfig
    Base directoy path for all the nethermind databases.
    default value: "db"
 
- ChainSpecFormat
-   Format of the chain definition file - genesis (Geth style - not tested recently / may fail) or chainspec (Parity style).
-   default value: "chainspec"
-
  ChainSpecPath
    Path to the chain definition file (Parity chainspec or Geth genesis file).
    default value: null
@@ -261,10 +249,6 @@ InitConfig
    If set to 'false' then transaction receipts will not be stored in the database.
    default value: true
 
- StoreTraces
-   If set to 'true' then the detailed VM trace data will be stored in teh DB (huge data sets).
-   default value: false
-
  UseMemDb
    Diagnostics mode which uses an in-memory DB
    default value: false
@@ -284,6 +268,10 @@ JsonRpcConfig
    Defines which RPC modules should be enabled.
    default value: all
 
+ FindLogBlockDepthLimit
+   Defines block depth when finding logs.
+   default value: 1000
+
  Host
    Host for JSON RPC calls. Ensure the firewall is configured when enabling JSON RPC. If it does not work with 117.0.0.1 try something like 10.0.0.4 or 192.168.0.1
    default value: "127.0.0.1"
@@ -299,6 +287,10 @@ JsonRpcConfig
  RpcRecorderEnabled
    Defines whether the JSON RPC diagnostic recording is enabled on node startup. Do not enable unless you are a DEV diagnosing issues with JSON RPC.
    default value: false
+
+ WebSocketsPort
+   Port number for JSON RPC web sockets calls. By default same port is used as regular JSON RPC. Ensure the firewall is configured when enabling JSON RPC.
+   default value: 8545
 
 KeyStoreConfig
 ^^^^^^^^^^^^^^
@@ -440,6 +432,10 @@ SyncConfig
    If set to 'true' then the Fast Sync (eth/63) synchronization algorithm will be used.
    default value: false
 
+ FastSyncCatchUpHeightDelta
+   Relevant only if 'FastSync' is 'true'. If set to a value, then it will set a minimum height threshold limit up to which FullSync, if already on, will stay on when chain will be behind network. If this limit will be exceeded, it will switch back to FastSync. Please note that last 32 blocks will always be processed in FullSync, so setting it to less or equal to 32 will have no effect.
+   default value: null
+
  PivotHash
    Hash of the pivot block for the Fast Blocks sync.
    default value: null
@@ -533,10 +529,6 @@ Sample configuration (mainnet)
               "ReceiptsDbWriteBufferNumber" : [MISSING_DOCS],
               "ReceiptsDbWriteBufferSize" : [MISSING_DOCS],
               "RecycleLogFileNum" : [MISSING_DOCS],
-              "TraceDbBlockCacheSize" : [MISSING_DOCS],
-              "TraceDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
-              "TraceDbWriteBufferNumber" : [MISSING_DOCS],
-              "TraceDbWriteBufferSize" : [MISSING_DOCS],
               "WriteAheadLogSync" : [MISSING_DOCS],
               "WriteBufferNumber" : [MISSING_DOCS],
               "WriteBufferSize" : [MISSING_DOCS]
@@ -587,17 +579,18 @@ Sample configuration (mainnet)
               "ProcessingEnabled" : true,
               "StaticNodesPath" : "Data/static-nodes.json",
               "StoreReceipts" : true,
-              "StoreTraces" : false,
               "UseMemDb" : false,
               "WebSocketsEnabled" : false
         },
         "JsonRpc": {
               "Enabled" : false,
               "EnabledModules" : all,
+              "FindLogBlockDepthLimit" : 1000,
               "Host" : "127.0.0.1",
               "Port" : 8545,
               "RpcRecorderBaseFilePath" : "logs/rpc.log_1.txt",
-              "RpcRecorderEnabled" : false
+              "RpcRecorderEnabled" : false,
+              "WebSocketsPort" : 8545
         },
         "KeyStore": {
               "Cipher" : [MISSING_DOCS],
@@ -644,6 +637,7 @@ Sample configuration (mainnet)
               "DownloadReceiptsInFastSync" : true,
               "FastBlocks" : false,
               "FastSync" : false,
+              "FastSyncCatchUpHeightDelta" : null,
               "PivotHash" : null,
               "PivotNumber" : null,
               "PivotTotalDifficulty" : null,

@@ -76,6 +76,8 @@ eth
 
  - eth.chainId - 
 
+ - eth.estimateGas(json) - 
+
  - eth.getBalance(address, blockParameter) - 
 
  - eth.getBlockByHash(hash, returnFullTransactionObjects) - 
@@ -94,6 +96,8 @@ eth
 
  - eth.getTransactionByBlockNumberAndIndex(blockParameter, index) - 
 
+ - eth.getTransactionByHash(txHash) - 
+
  - eth.getTransactionCount(address, blockParameter) - 
 
  - eth.getTransactionReceipt(txHash) - 
@@ -104,9 +108,9 @@ eth
 
  - eth.sendEth(from, to, amountInEth) - 
 
- - eth.sendWei(from, to, amountInWei) - 
-
  - eth.sendRawTransaction(txRlp) - 
+
+ - eth.sendWei(from, to, amountInWei) - 
 
 net
 ^^^
