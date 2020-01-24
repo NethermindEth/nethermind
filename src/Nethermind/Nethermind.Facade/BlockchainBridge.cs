@@ -77,7 +77,7 @@ namespace Nethermind.Facade
             _wallet = wallet ?? throw new ArgumentException(nameof(wallet));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentException(nameof(transactionProcessor));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-            _logFinder = new LogFinder(_blockTree, _receiptStorage, (config ?? throw new ArgumentNullException(nameof(config))).FindLogBlockDepthLimit);
+            _logFinder = new LogFinder(_blockTree, _receiptStorage, findLogBlockDepthLimit);
         }
 
         public IReadOnlyCollection<Address> GetWalletAccounts()
