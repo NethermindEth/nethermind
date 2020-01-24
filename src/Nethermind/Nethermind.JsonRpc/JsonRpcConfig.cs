@@ -29,7 +29,7 @@ namespace Nethermind.JsonRpc
         public bool RpcRecorderEnabled { get; set; }
         public int Port { get; set; }
 
-        public int WebSocketPort
+        public int WebSocketsPort
         {
             get => _webSocketPort ?? Port;
             set => _webSocketPort = value;

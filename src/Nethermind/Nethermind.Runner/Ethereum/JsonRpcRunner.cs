@@ -90,9 +90,9 @@ namespace Nethermind.Runner.Ethereum
                 
                 yield return url;
 
-                if (_initConfig.WebSocketsEnabled && _jsonRpcConfig.WebSocketPort != _jsonRpcConfig.Port)
+                if (_initConfig.WebSocketsEnabled && _jsonRpcConfig.WebSocketsPort != _jsonRpcConfig.Port)
                 {
-                    yield return  $"{scheme}://{host}:{_jsonRpcConfig.WebSocketPort}";
+                    yield return  $"{scheme}://{host}:{_jsonRpcConfig.WebSocketsPort}";
                 }
             }
 

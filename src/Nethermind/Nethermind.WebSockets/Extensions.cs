@@ -45,8 +45,13 @@ namespace Nethermind.WebSockets
                 IWebSocketsModule module = null;
                 try
                 {
-                    var path = context.Request.Path.Value;
-                    var moduleName = path.Split("/").LastOrDefault();
+                    string moduleName = String.Empty;
+                    if (context.Request.Path.HasValue)
+                    {
+                        var path = context.Request.Path.Value;
+                        moduleName = path.Split("/").LastOrDefault();                        
+                    }
+
                     module = webSocketsManager.GetModule(moduleName);
                     if (module is null)
                     {
