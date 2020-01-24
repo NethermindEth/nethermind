@@ -22,6 +22,7 @@ using Nethermind.AuRa;
 using Nethermind.AuRa.Config;
 using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Clique;
 using Nethermind.Core;
 using Nethermind.Evm;

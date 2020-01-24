@@ -22,10 +22,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.JsonRpc.Eip1186;
 using Nethermind.JsonRpc.Test.Data;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
+using Nethermind.Store.Proofs;
 using Newtonsoft.Json;
 using NUnit.Framework;
 

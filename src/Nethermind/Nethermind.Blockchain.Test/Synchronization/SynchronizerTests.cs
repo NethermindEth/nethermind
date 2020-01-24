@@ -37,6 +37,7 @@ using Nethermind.Store.BeamSync;
 using Nethermind.Store.Repositories;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.FastSync;
+using Nethermind.Blockchain.Test.Validators;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization

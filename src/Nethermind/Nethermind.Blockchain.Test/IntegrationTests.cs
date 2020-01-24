@@ -18,8 +18,10 @@ using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
@@ -144,7 +146,7 @@ namespace Nethermind.Blockchain.Test
                 blockchainProcessor.SuggestBlock(block, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts | ProcessingOptions.ReadOnlyChain);
                 blockProcessedEvent.Wait(miningDelay);
 
-                Tracer tracer = new Tracer(blockchainProcessor, receiptStorage, blockTree);
+                GethStyleTracer gethStyleTracer = new GethStyleTracer(blockchainProcessor, receiptStorage, blockTree);
 
                 int currentCount = receiptsDb.Keys.Count;
                 logger.Info($"Current count of receipts {currentCount}");

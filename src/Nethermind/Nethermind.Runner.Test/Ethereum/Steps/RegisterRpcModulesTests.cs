@@ -68,27 +68,5 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             
             rpcModuleProvider.DidNotReceiveWithAnyArgs().Register<IProofModule>(null);
         }
-        
-        [Test]
-        public void Proof_module_is_not_registered_when_module_is_not_added_in_config()
-        {
-            JsonRpcConfig jsonRpcConfig = new JsonRpcConfig();
-            jsonRpcConfig.Enabled = true;
-            jsonRpcConfig.EnabledModules = new string[0];
-            
-            IConfigProvider configProvider = Substitute.For<IConfigProvider>();
-            configProvider.GetConfig<IJsonRpcConfig>().Returns(jsonRpcConfig);
-
-            IRpcModuleProvider rpcModuleProvider = Substitute.For<IRpcModuleProvider>();
-
-            EthereumRunnerContext context = Build.ContextWithMocks();
-            context.ConfigProvider = configProvider;
-            context.RpcModuleProvider = rpcModuleProvider;
-
-            RegisterRpcModules registerRpcModules = new RegisterRpcModules(context);
-            registerRpcModules.Execute();
-            
-            rpcModuleProvider.DidNotReceiveWithAnyArgs().Register<IProofModule>(null);
-        }
     }
 }

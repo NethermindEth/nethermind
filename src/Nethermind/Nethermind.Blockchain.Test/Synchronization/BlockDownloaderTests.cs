@@ -38,6 +38,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Store;
 using Nethermind.Store.Repositories;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Test.Validators;
 using NSubstitute;
 using NSubstitute.Core;
 using NSubstitute.ExceptionExtensions;

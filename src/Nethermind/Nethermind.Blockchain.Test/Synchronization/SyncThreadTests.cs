@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.TxPools;
@@ -40,6 +41,8 @@ using Nethermind.Store.BeamSync;
 using Nethermind.Store.Repositories;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.FastSync;
+using Nethermind.Blockchain.Test.Validators;
+using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 

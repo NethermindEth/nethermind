@@ -22,6 +22,7 @@ using System.Reflection.Metadata.Ecma335;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Timers;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.TxPools.Collections;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;

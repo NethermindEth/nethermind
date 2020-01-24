@@ -35,11 +35,11 @@ namespace Nethermind.JsonRpc.Modules.Parity
         private readonly IBlockFinder _blockFinder;
         private readonly IReceiptStorage _receiptStorage;
         
-        public ParityModule(IEcdsa ecdsa, ITxPool txPool, IBlockTree blockTree, IReceiptStorage  receiptStorage, ILogManager logManager)
+        public ParityModule(IEcdsa ecdsa, ITxPool txPool, IBlockFinder blockFinder, IReceiptStorage  receiptStorage, ILogManager logManager)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _blockFinder = new BlockFinder(blockTree ?? throw new ArgumentNullException(nameof(blockTree)));
+            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         }
 

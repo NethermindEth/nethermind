@@ -17,9 +17,11 @@
 using System;
 using System.Linq;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
@@ -29,12 +31,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
     public class TraceModule : ITraceModule
     {
         private readonly IBlockchainBridge _blockchainBridge;
-        private readonly ITracer _tracer;
+        private readonly IParityStyleTracer _tracer;
 
-        public TraceModule(IBlockchainBridge blockchainBridge, ILogManager logManager, ITracer tracer)
+        public TraceModule(IBlockchainBridge blockchainBridge, IParityStyleTracer parityStyleTracer)
         {
             _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
-            _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
+            _tracer = parityStyleTracer ?? throw new ArgumentNullException(nameof(parityStyleTracer));
         }
 
         private ParityTraceTypes GetParityTypes(string[] types)

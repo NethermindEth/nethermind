@@ -17,8 +17,13 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Specs;
-using Nethermind.JsonRpc.Eip1186;
+using Nethermind.Facade;
+using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Store;
 using Newtonsoft.Json;
@@ -27,7 +32,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
 {
     public class ProofModuleFactory : ModuleFactoryBase<IProofModule>
     {
-        private readonly IBlockProcessor _blockProcessor;
+        private readonly IBlockDataRecoveryStep _recoveryStep;
+        private readonly IReceiptStorage _receiptStorage;
         private readonly ISpecProvider _specProvider;
         private readonly IDbProvider _dbProvider;
         private readonly ILogManager _logManager;
@@ -36,11 +42,13 @@ namespace Nethermind.JsonRpc.Modules.Proof
         public ProofModuleFactory(
             IDbProvider dbProvider,
             IBlockTree blockTree,
-            IBlockProcessor blockProcessor,
+            IBlockDataRecoveryStep recoveryStep,
+            IReceiptStorage receiptStorage,
             ISpecProvider specProvider,
             ILogManager logManager)
         {
-            _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
+            _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
+            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -52,23 +60,19 @@ namespace Nethermind.JsonRpc.Modules.Proof
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(_blockTree);
             IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree, _specProvider, _logManager);
+            ReadOnlyChainProcessingEnv readOnlyChainProcessingEnv = new ReadOnlyChainProcessingEnv(readOnlyTxProcessingEnv, AlwaysValidBlockValidator.Instance, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), readOnlyDbProvider, _specProvider, _logManager);
             
-            // simplify blockchain bridge for this
-            // var blockchainBridge = new BlockchainBridge(
-            //     readOnlyTxProcessingEnv.StateReader,
-            //     readOnlyTxProcessingEnv.StateProvider,
-            //     readOnlyTxProcessingEnv.StorageProvider,
-            //     readOnlyTxProcessingEnv.BlockTree,
-            //     readOnlyTxProcessingEnv.TransactionProcessor);
+            Tracer tracer = new Tracer(readOnlyTxProcessingEnv.BlockTree,
+                readOnlyTxProcessingEnv.StateProvider, readOnlyChainProcessingEnv.BlockProcessor);
             
-            return new ProofModule(_logManager);
+            return new ProofModule(tracer, _blockTree, _receiptStorage, _specProvider, _logManager);
         }
 
-        private static List<JsonConverter> Converters = new List<JsonConverter>
+        private static List<JsonConverter> _converters = new List<JsonConverter>
         {
             new ProofConverter()
         };
 
-        public override IReadOnlyCollection<JsonConverter> GetConverters() => Converters;
+        public override IReadOnlyCollection<JsonConverter> GetConverters() => _converters;
     }
 }

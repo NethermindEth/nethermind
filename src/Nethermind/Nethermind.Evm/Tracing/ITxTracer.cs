@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 
@@ -33,28 +34,104 @@ namespace Nethermind.Evm.Tracing
         bool IsTracingStack { get; }
         bool IsTracingState { get; }
 
-        void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs);
-        void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error);
+        void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
+        {
+            throw new NotImplementedException();
+        }
 
-        void StartOperation(int depth, long gas, Instruction opcode, int pc);
-        void ReportOperationError(EvmExceptionType error);
-        void ReportOperationRemainingGas(long gas);
-        void SetOperationStack(List<string> stackTrace);
-        void ReportStackPush(Span<byte> stackItem);
-        void SetOperationMemory(List<string> memoryTrace);
-        void SetOperationMemorySize(ulong newSize);
-        void ReportMemoryChange(long offset, Span<byte> data);
-        void ReportStorageChange(Span<byte> key, Span<byte> value);
-        void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue);
-        
-        void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress);
-        void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false);
-        void ReportActionEnd(long gas, byte[] output);
-        
-        void ReportActionError(EvmExceptionType evmExceptionType);
-        void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode);
-        void ReportByteCode(byte[] byteCode);
-        void ReportRefundForVmTrace(long refund, long gasAvailable);
-        void ReportRefund(long refund);
+        void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
+        {
+            throw new NotImplementedException();
+        }
+
+        void StartOperation(int depth, long gas, Instruction opcode, int pc)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ReportOperationError(EvmExceptionType error)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ReportOperationRemainingGas(long gas)
+        {
+            throw new NotImplementedException();
+        }
+
+        void SetOperationStack(List<string> stackTrace)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ReportStackPush(Span<byte> stackItem)
+        {
+            throw new NotImplementedException();
+        }
+
+        void SetOperationMemory(List<string> memoryTrace)
+        {
+            throw new NotImplementedException();
+        }
+
+        void SetOperationMemorySize(ulong newSize)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ReportMemoryChange(long offset, Span<byte> data)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ReportStorageChange(Span<byte> key, Span<byte> value)
+        {
+            throw new NotImplementedException();
+        }
+
+        void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ReportActionEnd(long gas, byte[] output)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ReportActionError(EvmExceptionType evmExceptionType)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ReportByteCode(byte[] byteCode)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ReportRefundForVmTrace(long refund, long gasAvailable)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ReportRefund(long refund)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

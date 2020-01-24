@@ -19,6 +19,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
 

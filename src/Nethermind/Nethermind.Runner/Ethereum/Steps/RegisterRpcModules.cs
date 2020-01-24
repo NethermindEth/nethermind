@@ -71,7 +71,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.RpcModuleProvider.Register(new BoundedModulePool<IEthModule>(8, ethModuleFactory));
             }
 
-            ProofModuleFactory proofModuleFactory = new ProofModuleFactory(_context.DbProvider, _context.BlockTree, _context.BlockProcessor, _context.SpecProvider,  _context.LogManager);
+            ProofModuleFactory proofModuleFactory = new ProofModuleFactory(_context.DbProvider, _context.BlockTree, _context.RecoveryStep, _context.ReceiptStorage, _context.SpecProvider,  _context.LogManager);
             _context.RpcModuleProvider.Register(new BoundedModulePool<IProofModule>(2, proofModuleFactory));
             
             DebugModuleFactory debugModuleFactory = new DebugModuleFactory(_context.DbProvider, _context.BlockTree, _context.BlockValidator, _context.RecoveryStep, _context.RewardCalculator, _context.ReceiptStorage, _context.ConfigProvider, _context.SpecProvider, _context.LogManager);

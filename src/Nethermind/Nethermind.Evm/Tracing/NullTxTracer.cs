@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 
@@ -47,9 +48,9 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingStack => false;
         public bool IsTracingState => false;
 
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs) => throw new InvalidOperationException(ErrorMessage);
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null) => throw new InvalidOperationException(ErrorMessage);
 
-        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error) => throw new InvalidOperationException(ErrorMessage);
+        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null) => throw new InvalidOperationException(ErrorMessage);
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc) => throw new InvalidOperationException(ErrorMessage);
 

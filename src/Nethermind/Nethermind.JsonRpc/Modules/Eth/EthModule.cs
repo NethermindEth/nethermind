@@ -27,9 +27,10 @@ using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Eip1186;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Store;
+using Nethermind.Store.Proofs;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {

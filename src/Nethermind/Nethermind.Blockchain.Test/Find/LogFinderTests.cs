@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain.Test.Find
             _receiptStorage = new InMemoryReceiptStorage();
             _blockTree = Build.A.BlockTree().WithTransactions(_receiptStorage, specProvider, LogsForBlockBuilder).OfChainLength(5).TestObject;
             
-            _logFinder = new LogFinder(new BlockFinder(_blockTree),  _receiptStorage);
+            _logFinder = new LogFinder(_blockTree,  _receiptStorage);
 
         }
 
@@ -90,7 +90,7 @@ namespace Nethermind.Blockchain.Test.Find
         public void filter_all_logs_when_receipts_ar_missing()
         {
             _receiptStorage = NullReceiptStorage.Instance;
-            _logFinder = new LogFinder(new BlockFinder(_blockTree),  _receiptStorage);
+            _logFinder = new LogFinder(_blockTree,  _receiptStorage);
             
             var logFilter = AllBlockFilter().Build();
             var logs = _logFinder.FindLogs(logFilter);
@@ -180,7 +180,7 @@ namespace Nethermind.Blockchain.Test.Find
         [Test]
         public void filter_by_blocks_with_limit()
         {
-            _logFinder = new LogFinder(new BlockFinder(_blockTree),  _receiptStorage, 2);
+            _logFinder = new LogFinder(_blockTree,  _receiptStorage, 2);
             var filter = FilterBuilder.New().FromLatestBlock().ToLatestBlock().Build();
             var logs = _logFinder.FindLogs(filter);
 

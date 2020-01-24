@@ -21,6 +21,7 @@ using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.AuRa.Rewards;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Specs.ChainSpecStyle;

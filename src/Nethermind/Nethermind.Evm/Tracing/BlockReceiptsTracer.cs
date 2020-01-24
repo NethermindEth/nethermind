@@ -28,8 +28,6 @@ namespace Nethermind.Evm.Tracing
     public class BlockReceiptsTracer : IBlockTracer,  ITxTracer
     {
         private Block _block;
-        private readonly ISpecProvider _specProvider;
-        private readonly IStateProvider _stateProvider;
         public bool IsTracingReceipt => true;
         public bool IsTracingActions => _currentTxTracer.IsTracingActions;
         public bool IsTracingOpLevelStorage => _currentTxTracer.IsTracingOpLevelStorage;
@@ -41,32 +39,32 @@ namespace Nethermind.Evm.Tracing
 
         private IBlockTracer _otherTracer;
 
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
         {
-            TxReceipts[_currentIndex] = BuildReceipt(recipient, gasSpent, StatusCode.Success, logs);
+            TxReceipts[_currentIndex] = BuildReceipt(recipient, gasSpent, StatusCode.Success, logs, stateRoot);
             if (_currentTxTracer.IsTracingReceipt)
             {
                 _currentTxTracer.MarkAsSuccess(recipient, gasSpent, output, logs);
             }
         }
 
-        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error)
+        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
         {
-            TxReceipts[_currentIndex] = BuildFailedReceipt(recipient, gasSpent, error);
+            TxReceipts[_currentIndex] = BuildFailedReceipt(recipient, gasSpent, error, stateRoot);
             if (_currentTxTracer.IsTracingReceipt)
             {
                 _currentTxTracer.MarkAsFailed(recipient, gasSpent, output, error);
             }
         }
 
-        private TxReceipt BuildFailedReceipt(Address recipient, long gasSpent, string error)
+        private TxReceipt BuildFailedReceipt(Address recipient, long gasSpent, string error, Keccak stateRoot = null)
         {
-            TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Failure, LogEntry.EmptyLogs);
+            TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Failure, LogEntry.EmptyLogs, stateRoot);
             receipt.Error = error;
             return receipt;
         }
 
-        private TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries)
+        private TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Keccak stateRoot = null)
         {
             Transaction transaction = _block.Transactions[_currentIndex];
             TxReceipt txReceipt = new TxReceipt();
@@ -81,10 +79,6 @@ namespace Nethermind.Evm.Tracing
             
             txReceipt.Bloom = logEntries.Length == 0 ? Bloom.Empty : new Bloom(logEntries, _block.Bloom);
             txReceipt.GasUsedTotal = _block.GasUsed;
-            if (!_specProvider.GetSpec(_block.Number).IsEip658Enabled)
-            {
-                txReceipt.PostTransactionState = _stateProvider.StateRoot;
-            }
 
             txReceipt.StatusCode = statusCode;
             txReceipt.Recipient = transaction.IsContractCreation ? null : recipient;
@@ -244,12 +238,6 @@ namespace Nethermind.Evm.Tracing
         {
             _otherTracer.EndTxTrace();
             _currentIndex++;
-        }
-
-        public BlockReceiptsTracer(ISpecProvider specProvider, IStateProvider stateProvider)
-        {
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
         }
 
         public void SetOtherTracer(IBlockTracer blockTracer)

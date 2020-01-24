@@ -24,6 +24,7 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Store;
 using NSubstitute;
@@ -168,7 +169,7 @@ namespace Nethermind.Evm.Test
             }
             
             IBlockTracer otherTracer = types != ParityTraceTypes.None ? new ParityLikeBlockTracer(tx.Hash, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff) : (IBlockTracer)NullBlockTracer.Instance; 
-            BlockReceiptsTracer tracer = new BlockReceiptsTracer(_specProvider, _stateProvider);
+            BlockReceiptsTracer tracer = new BlockReceiptsTracer();
             tracer.SetOtherTracer(otherTracer);
             return tracer;
         }

@@ -26,8 +26,9 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade.Proxy;
 using Nethermind.Facade.Proxy.Models;
 using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Eip1186;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Store;
+using Nethermind.Store.Proofs;
 using Nethermind.Wallet;
 
 namespace Nethermind.JsonRpc.Modules.Eth

@@ -73,7 +73,7 @@ namespace Nethermind.Blockchain
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _receiptsTracer = new BlockReceiptsTracer(_specProvider, _stateProvider);
+            _receiptsTracer = new BlockReceiptsTracer();
 
             if (additionalBlockProcessors != null)
             {
