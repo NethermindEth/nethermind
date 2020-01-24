@@ -21,24 +21,27 @@ namespace Nethermind.Evm.Tracing.Proofs
 {
     public class ProofBlockTracer : BlockTracerBase<ProofTxTrace, ProofTxTracer>
     {
+        private Block _block;
+        
+        private ProofTxTracer _currentTracer;
+        
         public ProofBlockTracer(Keccak txHash) : base(txHash)
         {
-            
         }
         
         protected override ProofTxTracer OnStart(Keccak txHash)
         {
-            throw new System.NotImplementedException();
+            return _currentTracer = new ProofTxTracer();
         }
 
         protected override ProofTxTrace OnEnd(ProofTxTracer txTracer)
         {
-            throw new System.NotImplementedException();
+            return txTracer.Build();
         }
 
         public override void StartNewBlockTrace(Block block)
         {
-            throw new System.NotImplementedException();
+            _block = block;
         }
     }
 }

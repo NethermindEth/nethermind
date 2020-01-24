@@ -25,24 +25,29 @@ namespace Nethermind.Evm.Tracing.Proofs
 {
     public class ProofTxTracer : ITxTracer
     {
+        public ProofTxTrace Build()
+        {
+            return new ProofTxTrace();
+        }
+
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
-            throw new NotImplementedException();
+            Console.WriteLine($"Balance change on {address}");
         }
 
         public void ReportCodeChange(Address address, byte[] before, byte[] after)
         {
-            throw new NotImplementedException();
+            Console.WriteLine($"Code change on {address}");
         }
 
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
         {
-            throw new NotImplementedException();
+            Console.WriteLine($"Nonce change on {address}");
         }
 
         public void ReportStorageChange(StorageAddress storageAddress, byte[] before, byte[] after)
         {
-            throw new NotImplementedException();
+            Console.WriteLine($"Storage change on {storageAddress.Address} {storageAddress.Index}");
         }
 
         public bool IsTracingReceipt => false;
@@ -52,7 +57,8 @@ namespace Nethermind.Evm.Tracing.Proofs
         public bool IsTracingInstructions => false;
         public bool IsTracingCode => false;
         public bool IsTracingStack => false;
-        public bool IsTracingState => false;
+        public bool IsTracingState => true;
+
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
         {
             throw new NotImplementedException();

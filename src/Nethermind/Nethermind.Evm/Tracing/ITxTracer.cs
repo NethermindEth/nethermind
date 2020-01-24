@@ -25,13 +25,34 @@ namespace Nethermind.Evm.Tracing
 {
     public interface ITxTracer : IStateTracer, IStorageTracer
     {
+        /// <summary>
+        /// Defines whether MarkAsSuccess or MarkAsFailed will be called
+        /// </summary>
         bool IsTracingReceipt { get; }
+        /// <summary>
+        /// High level calls with information on the target account
+        /// </summary>
         bool IsTracingActions { get; }
+        /// <summary>
+        /// SSTORE and SLOAD level storage operations
+        /// </summary>
         bool IsTracingOpLevelStorage { get; }
+        /// <summary>
+        /// EVM memory access operations
+        /// </summary>
         bool IsTracingMemory { get; }
         bool IsTracingInstructions { get; }
+        /// <summary>
+        /// Code deployment
+        /// </summary>
         bool IsTracingCode { get; }
+        /// <summary>
+        /// EVM stack tracing after each operation
+        /// </summary>
         bool IsTracingStack { get; }
+        /// <summary>
+        /// State changes at commit stage
+        /// </summary>
         bool IsTracingState { get; }
 
         void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)

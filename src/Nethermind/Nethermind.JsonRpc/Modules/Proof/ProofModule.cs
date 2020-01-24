@@ -76,7 +76,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             BlockReceiptsTracer receiptsTracer = new BlockReceiptsTracer();
             receiptsTracer.SetOtherTracer(proofBlockTracer);
-            _tracer.Trace(block.Hash, receiptsTracer);
+            _tracer.Trace(block, receiptsTracer);
             
             CallResultWithProof callResultWithProof = new CallResultWithProof();
 
