@@ -35,8 +35,8 @@ namespace Nethermind.JsonRpc
         [ConfigItem(Description = "Port number for JSON RPC calls. Ensure the firewall is configured when enabling JSON RPC.", DefaultValue = "8545")]
         int Port { get; set; }
         
-        [ConfigItem(Description = "Port number for JSON RPC web socket calls. By default same port is used as regular JSON RPC. Ensure the firewall is configured when enabling JSON RPC.", DefaultValue = "8545")]
-        int WebSocketPort { get; set; }
+        [ConfigItem(Description = "Port number for JSON RPC web sockets calls. By default same port is used as regular JSON RPC. Ensure the firewall is configured when enabling JSON RPC.", DefaultValue = "8545")]
+        int WebSocketsPort { get; set; }
         
         [ConfigItem(Description = "Defines which RPC modules should be enabled.", DefaultValue = "all")]
         string[] EnabledModules { get; set; }

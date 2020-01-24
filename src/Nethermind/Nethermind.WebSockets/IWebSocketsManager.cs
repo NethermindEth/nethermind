@@ -20,7 +20,7 @@ namespace Nethermind.WebSockets
 {
     public interface IWebSocketsManager
     {
-        void AddModule(IWebSocketsModule module);
+        void AddModule(IWebSocketsModule module, bool isDefault = false);
         IWebSocketsModule GetModule(string name);
         IWebSocketsClient CreateClient(IWebSocketsModule module, WebSocket webSocket, string client);
     }

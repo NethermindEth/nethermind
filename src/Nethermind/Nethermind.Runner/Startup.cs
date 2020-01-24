@@ -75,10 +75,8 @@ namespace Nethermind.Runner
             {
                 app.UseWebSockets();
                 app.UseWhen(ctx => ctx.WebSockets.IsWebSocketRequest 
-                                   && ctx.Connection.LocalPort == jsonRpcConfig.WebSocketPort
-                                   && ctx.Request.Path.HasValue 
-                                   && ctx.Request.Path.Value.StartsWith("/ws"), 
-                    builder => builder.UseWebSocketsModules());
+                                   && ctx.Connection.LocalPort == jsonRpcConfig.WebSocketsPort,
+                builder => builder.UseWebSocketsModules());
             }
             
             app.Use(async (ctx, next) =>

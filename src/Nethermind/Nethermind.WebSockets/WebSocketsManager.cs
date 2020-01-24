@@ -16,6 +16,7 @@
 
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
+using System.Threading;
 
 namespace Nethermind.WebSockets
 {
@@ -24,14 +25,20 @@ namespace Nethermind.WebSockets
         private readonly ConcurrentDictionary<string, IWebSocketsModule> _modules =
             new ConcurrentDictionary<string, IWebSocketsModule>();
 
-        public void AddModule(IWebSocketsModule module)
+        private IWebSocketsModule defaultModule = null;
+
+        public void AddModule(IWebSocketsModule module, bool isDefault = false)
         {
             _modules.TryAdd(module.Name, module);
-
+            
+            if (isDefault)
+            {
+                defaultModule = module;
+            }
         }
 
         public IWebSocketsModule GetModule(string name)
-            => _modules.TryGetValue(name, out var module) ? module : null;
+            => _modules.TryGetValue(name, out var module) ? module : defaultModule;
 
         public IWebSocketsClient CreateClient(IWebSocketsModule module, WebSocket webSocket, string client)
         {
