@@ -22,15 +22,15 @@ using Nethermind.Store;
 
 namespace Nethermind.Blockchain.Proofs
 {
-    public static class ReceiptTrie
+    public class ReceiptTrie : PatriciaTree
     {
         private static ReceiptDecoder _receiptDecoder = new ReceiptDecoder();
 
-        public static Keccak CalculateRoot(long blockNumber, ISpecProvider specProvider, TxReceipt[] txReceipts)
+        public ReceiptTrie(long blockNumber, ISpecProvider specProvider, TxReceipt[] txReceipts)
         {
             if (txReceipts.Length == 0)
             {
-                return PatriciaTree.EmptyTreeHash;
+                return;
             }
             
             PatriciaTree receiptTree = new PatriciaTree();
@@ -41,7 +41,24 @@ namespace Nethermind.Blockchain.Proofs
             }
 
             receiptTree.UpdateRootHash();
-            return receiptTree.RootHash;
         }
+        
+        // public static Keccak CalculateRoot(long blockNumber, ISpecProvider specProvider, TxReceipt[] txReceipts)
+        // {
+        //     if (txReceipts.Length == 0)
+        //     {
+        //         return PatriciaTree.EmptyTreeHash;
+        //     }
+        //     
+        //     PatriciaTree receiptTree = new PatriciaTree();
+        //     for (int i = 0; i < txReceipts.Length; i++)
+        //     {
+        //         byte[] receiptRlp = _receiptDecoder.EncodeNew(txReceipts[i], specProvider.GetSpec(blockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
+        //         receiptTree.Set(Rlp.Encode(i).Bytes, receiptRlp);
+        //     }
+        //
+        //     receiptTree.UpdateRootHash();
+        //     return receiptTree.RootHash;
+        // }
     }
 }

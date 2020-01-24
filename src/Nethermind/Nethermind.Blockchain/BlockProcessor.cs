@@ -171,7 +171,7 @@ namespace Nethermind.Blockchain
 
         private void SetReceiptsRoot(Block block, TxReceipt[] txReceipts)
         {
-            block.Header.ReceiptsRoot = ReceiptTrie.CalculateRoot(block.Number, _specProvider, txReceipts);
+            block.Header.ReceiptsRoot = new ReceiptTrie(block.Number, _specProvider, txReceipts).RootHash;
         }
 
         private void Restore(int stateSnapshot, int codeSnapshot, Keccak snapshotStateRoot)

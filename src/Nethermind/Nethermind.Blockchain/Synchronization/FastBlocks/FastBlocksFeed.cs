@@ -549,7 +549,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                 if (!wasInvalid)
                 {
-                    Keccak receiptsRoot = ReceiptTrie.CalculateRoot(block.Number, _specProvider, blockReceipts);
+                    Keccak receiptsRoot = new ReceiptTrie(block.Number, _specProvider, blockReceipts).RootHash;
                     if (receiptsRoot != block.ReceiptsRoot)
                     {
                         if (_logger.IsWarn) _logger.Warn($"{batch} - invalid receipt root");
@@ -649,7 +649,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 }
 
                 Block block = new Block(bodiesSyncBatch.Headers[i], blockBody.Transactions, blockBody.Ommers);
-                if (TxTrie.CalculateTxRoot(block) != block.TransactionsRoot ||
+                if (new TxTrie(block).RootHash != block.TransactionsRoot ||
                     OmmersHash.Calculate(block) != block.OmmersHash)
                 {
                     if (_logger.IsWarn) _logger.Warn($"{batch} - reporting INVALID - tx or ommers");

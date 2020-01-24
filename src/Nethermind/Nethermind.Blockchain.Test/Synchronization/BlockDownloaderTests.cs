@@ -338,7 +338,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
                     _headers[blockHashes[i]].ReceiptsRoot = flags.HasFlag(Response.IncorrectReceiptRoot)
                         ? Keccak.EmptyTreeHash
-                        : ReceiptTrie.CalculateRoot(_headers[blockHashes[i]].Number, MainNetSpecProvider.Instance, receipts[i]);
+                        : new ReceiptTrie(_headers[blockHashes[i]].Number, MainNetSpecProvider.Instance, receipts[i]).RootHash;
                 }
 
                 ReceiptsMessage message = new ReceiptsMessage(receipts);

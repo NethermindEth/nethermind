@@ -15,21 +15,20 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain.Proofs
 {
-    public static class TxTrie
+    public class TxTrie : PatriciaTree
     {
         private static TransactionDecoder _txDecoder = new TransactionDecoder();
-        
-        public static Keccak CalculateTxRoot(Block block)
+
+        public TxTrie(Block block)
         {
             if (block.Transactions.Length == 0)
             {
-                return PatriciaTree.EmptyTreeHash;
+                return;
             }
             
             PatriciaTree txTree = new PatriciaTree();
@@ -38,9 +37,26 @@ namespace Nethermind.Blockchain.Proofs
                 Rlp transactionRlp = _txDecoder.Encode(block.Transactions[i]);
                 txTree.Set(Rlp.Encode(i).Bytes, transactionRlp.Bytes);
             }
-
+            
             txTree.UpdateRootHash();
-            return txTree.RootHash;
         }
+        
+        // public static Keccak CalculateTxRoot(Block block)
+        // {
+        //     if (block.Transactions.Length == 0)
+        //     {
+        //         return PatriciaTree.EmptyTreeHash;
+        //     }
+        //     
+        //     PatriciaTree txTree = new PatriciaTree();
+        //     for (int i = 0; i < block.Transactions.Length; i++)
+        //     {
+        //         Rlp transactionRlp = _txDecoder.Encode(block.Transactions[i]);
+        //         txTree.Set(Rlp.Encode(i).Bytes, transactionRlp.Bytes);
+        //     }
+        //
+        //     txTree.UpdateRootHash();
+        //     return txTree.RootHash;
+        // }
     }
 }

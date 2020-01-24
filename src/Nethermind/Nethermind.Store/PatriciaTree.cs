@@ -49,7 +49,7 @@ namespace Nethermind.Store
         private readonly IDb _db;
         private readonly bool _parallelBranches;
 
-        private Keccak _rootHash;
+        private Keccak _rootHash = Keccak.EmptyTreeHash;
 
         internal TrieNode RootRef;
 

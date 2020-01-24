@@ -158,7 +158,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void ValidateReceipts(Block block, TxReceipt[] blockReceipts)
         {
-            Keccak receiptsRoot = ReceiptTrie.CalculateRoot(block.Number, _specProvider, blockReceipts);
+            Keccak receiptsRoot = new ReceiptTrie(block.Number, _specProvider, blockReceipts).RootHash;
             if (receiptsRoot != block.ReceiptsRoot)
             {
                 throw new EthSynchronizationException($"Wrong receipts root for downloaded block {block.ToString(Block.Format.Short)}.");

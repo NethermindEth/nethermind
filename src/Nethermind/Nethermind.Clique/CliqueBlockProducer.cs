@@ -382,7 +382,7 @@ namespace Nethermind.Clique
 
             var selectedTxs = _pendingTransactionSelector.SelectTransactions(header.GasLimit);
             Block block = new Block(header, selectedTxs, new BlockHeader[0]);
-            header.TxRoot = TxTrie.CalculateTxRoot(block);
+            header.TxRoot = new TxTrie(block).RootHash;
             block.Author = _address;
             return block;
         }

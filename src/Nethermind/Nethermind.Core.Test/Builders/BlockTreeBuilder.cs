@@ -155,8 +155,8 @@ namespace Nethermind.Core.Test.Builders
                     current.Bloom.Add(receipt.Logs);
                 }
 
-                current.Header.TxRoot = TxTrie.CalculateTxRoot(current);
-                current.Header.ReceiptsRoot = ReceiptTrie.CalculateRoot(current.Number, _specProvider, receipts.ToArray());
+                current.Header.TxRoot = new TxTrie(current).RootHash;
+                current.Header.ReceiptsRoot = new ReceiptTrie(current.Number, _specProvider, receipts.ToArray()).RootHash;
                 current.Hash = current.CalculateHash();
             }
             else
