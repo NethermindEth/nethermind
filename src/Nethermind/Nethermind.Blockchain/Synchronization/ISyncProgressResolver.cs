@@ -28,5 +28,7 @@ namespace Nethermind.Blockchain.Synchronization
         long FindBestFullBlock();
         
         bool IsFastBlocksFinished();
+        
+        long FindBestProcessedBlock();
     }
 }
