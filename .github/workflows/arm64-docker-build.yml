@@ -1,10 +1,9 @@
 name: Publish ARM64 Image to Docker Registry
 
-# on:
-#   push:
-#     tags:
-#     - '*'
-on: push
+on:
+  push:
+    tags:
+    - '*'
 
 jobs:
   arm64_building:
