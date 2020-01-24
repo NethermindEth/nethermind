@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc
 {
     public class JsonRpcConfig : IJsonRpcConfig
     {
-        private int? _webSocketPort;
+        private int? _webSocketsPort;
         public bool Enabled { get; set; }
         public string Host { get; set; }
         public string RpcRecorderBaseFilePath { get; set; } = "logs/rpc.{counter}.txt"; 
@@ -31,8 +31,8 @@ namespace Nethermind.JsonRpc
 
         public int WebSocketsPort
         {
-            get => _webSocketPort ?? Port;
-            set => _webSocketPort = value;
+            get => _webSocketsPort ?? Port;
+            set => _webSocketsPort = value;
         }
 
         public string[] EnabledModules { get; set; } = Enum.GetValues(typeof(ModuleType)).OfType<ModuleType>().Select(mt => mt.ToString()).ToArray();
