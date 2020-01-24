@@ -1,10 +1,11 @@
 name: Publish ARM64 Image to Docker Registry
 
-on:
-  push:
-    tags:
-    - '*'
-    
+# on:
+#   push:
+#     tags:
+#     - '*'
+on: push
+
 jobs:
   arm64_building:
     runs-on: ubuntu-18.04
@@ -20,7 +21,7 @@ jobs:
         run: |
           uname -a
           apt-get update && apt-get install docker.io -y
-          mv Dockerfile_apline_arm64 Dockerfile
+          mv Dockerfile_alpine_arm64 Dockerfile
     - name: Publish to Docker
       uses: elgohr/Publish-Docker-Github-Action@master
       env:
