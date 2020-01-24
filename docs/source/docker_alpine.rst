@@ -56,7 +56,7 @@ You can give your container a name, run it in the background and enable automati
 
 ::
 
-    docker run -d --name nethermind --restart always --network host --volume /var/lib/nethermind/mainnet:/data nethermind/nethermind:alpine
+    docker run -d --name nethermind --restart always --network host --volume /var/lib/nethermind/mainnet:/data --stop-timeout 30 nethermind/nethermind:alpine
 	
 It is recommended to give Nethermind more time to exit gracefully with ``--stop-timeout 30`` in the case of a system shutdown or reboot.
 	
@@ -76,7 +76,7 @@ If you want to update your image, just delete the container and create a new one
     docker stop nethermind --time 30
     docker container rm nethermind
     docker pull nethermind/nethermind:alpine
-    docker run -d --name nethermind --restart always --network host --volume /var/lib/nethermind/mainnet:/data nethermind/nethermind:alpine
+    docker run -d --name nethermind --restart always --network host --volume /var/lib/nethermind/mainnet:/data --stop-timeout 30 nethermind/nethermind:alpine
 
 Advanced docker usage
 ---------------------
