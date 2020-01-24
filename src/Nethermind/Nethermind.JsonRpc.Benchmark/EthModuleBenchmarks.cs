@@ -31,7 +31,6 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
-using Nethermind.Facade.Config;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
@@ -103,8 +102,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 NullFilterManager.Instance, 
                 new DevWallet(new WalletConfig(), LimboLogs.Instance), 
                 transactionProcessor, 
-                new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance),
-                new RpcConfig());
+                new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance));
             
             _ethModule = new EthModule(LimboLogs.Instance, bridge);
         }

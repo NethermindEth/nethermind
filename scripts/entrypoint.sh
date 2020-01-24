@@ -2,7 +2,7 @@
 set -e
 
 chown nethermind:nethermind /data
-cp -npr /nethermind/chainspec /nethermind/configs /nethermind/Data/static-nodes.json /data
+cp -npr /nethermind/configs /nethermind/Data/static-nodes.json /data
 
 exec gosu nethermind:nethermind /nethermind/Nethermind.Runner \
      --Init.BaseDbPath=/data/database \

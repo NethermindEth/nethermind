@@ -13,7 +13,8 @@ RUN strip .libs/libsecp256k1.so
 FROM alpine:3.10 AS rocksdb
 WORKDIR /source
 
-RUN apk upgrade && apk add git build-base linux-headers bash perl
+RUN echo "@testing http://dl-cdn.alpinelinux.org/alpine/edge/testing/" >> /etc/apk/repositories
+RUN apk upgrade && apk add git build-base linux-headers bash perl snappy-dev@testing
 RUN git clone --branch v6.1.2 https://github.com/facebook/rocksdb .
 RUN PORTABLE=1 make shared_lib
 RUN strip librocksdb.so

@@ -29,7 +29,6 @@ using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
-using Nethermind.Facade.Config;
 using Nethermind.Store;
 using Nethermind.Wallet;
 using Block = Nethermind.Core.Block;
@@ -66,7 +65,7 @@ namespace Nethermind.Facade
             IWallet wallet,
             ITransactionProcessor transactionProcessor,
             IEthereumEcdsa ecdsa,
-            IRpcConfig config)
+            int findLogBlockDepthLimit = 1000)
         {
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
@@ -80,7 +79,7 @@ namespace Nethermind.Facade
             _transactionProcessor = transactionProcessor ?? throw new ArgumentException(nameof(transactionProcessor));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _blockFinder = new BlockFinder(_blockTree);
-            _logFinder = new LogFinder(_blockFinder, _receiptStorage, (config ?? throw new ArgumentNullException(nameof(config))).FindLogBlockDepthLimit);
+            _logFinder = new LogFinder(_blockFinder, _receiptStorage, findLogBlockDepthLimit);
         }
 
         public IReadOnlyCollection<Address> GetWalletAccounts()

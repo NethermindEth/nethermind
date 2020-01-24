@@ -19,7 +19,6 @@ using System.Threading.Tasks;
 using Nethermind.Clique;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.Facade;
-using Nethermind.Facade.Config;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
@@ -57,7 +56,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             IInitConfig initConfig = _context.Config<IInitConfig>();
             INdmConfig ndmConfig = _context.Config<INdmConfig>();
-            IRpcConfig rpcConfig = _context.Config<IRpcConfig>();
+            IJsonRpcConfig rpcConfig = _context.Config<IJsonRpcConfig>();
             if (ndmConfig.Enabled && !(_context.NdmInitializer is null) && ndmConfig.ProxyEnabled)
             {
                 EthModuleProxyFactory proxyFactory = new EthModuleProxyFactory(_context.EthJsonRpcClientProxy, _context.Wallet);
