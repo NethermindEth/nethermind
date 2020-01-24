@@ -575,7 +575,6 @@ Sample configuration (mainnet)
         },
         "Init": {
               "BaseDbPath" : "db",
-              "ChainSpecFormat" : "chainspec",
               "ChainSpecPath" : null,
               "DiscoveryEnabled" : true,
               "EnableUnsecuredDevWallet" : false,
