@@ -14,9 +14,26 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Store;
+
 namespace Nethermind.Evm.Tracing.Proofs
 {
     public class ProofTxTrace
     {
+        public ProofTxTrace(List<Address> accounts, List<StorageAddress> storageAddresses, List<Keccak> blockHashes, byte[] output)
+        {
+            Accounts = accounts;
+            Storages = storageAddresses;
+            BlockHashes = blockHashes;
+            Output = output;
+        }
+        
+        public List<Address> Accounts { get; }
+        public List<StorageAddress> Storages { get; }
+        public List<Keccak> BlockHashes { get; }
+        public byte[] Output { get; }
     }
 }

@@ -17,6 +17,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
+using Nethermind.Store;
 
 namespace Nethermind.Blockchain.Tracing
 {
@@ -38,5 +39,7 @@ namespace Nethermind.Blockchain.Tracing
         /// <param name="block">Block to trace.</param>
         /// <param name="tracer">Trace to act on block processing events.</param>
         void Trace(Block block, IBlockTracer tracer);
+        
+        void Accept(ITreeVisitor visitor, Keccak stateRoot);
     }
 }

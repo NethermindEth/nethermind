@@ -16,10 +16,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Data.SqlTypes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
+using Newtonsoft.Json.Serialization;
 
 namespace Nethermind.Evm.Tracing
 {
@@ -54,6 +56,11 @@ namespace Nethermind.Evm.Tracing
         /// State changes at commit stage
         /// </summary>
         bool IsTracingState { get; }
+
+        /// <summary>
+        /// Traces blockhash calls
+        /// </summary>
+        bool IsTracingBlockHash => true;
 
         void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
         {
@@ -140,6 +147,11 @@ namespace Nethermind.Evm.Tracing
             throw new NotImplementedException();
         }
 
+        void ReportBlockHash(Keccak blockHash)
+        {
+            throw new NotImplementedException();
+        }
+        
         void ReportByteCode(byte[] byteCode)
         {
             throw new NotImplementedException();

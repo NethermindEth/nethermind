@@ -28,9 +28,9 @@ namespace Nethermind.Evm.Test
 
         private bool _setAuthor;
         
-        protected override Block BuildBlock(long blockNumber)
+        protected override Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner)
         {
-            Block block = base.BuildBlock(blockNumber);
+            Block block = base.BuildBlock(blockNumber, senderRecipientAndMiner);
             if(_setAuthor) block.Header.Author = TestItem.AddressC;
             block.Header.Beneficiary = TestItem.AddressB;
             return block;

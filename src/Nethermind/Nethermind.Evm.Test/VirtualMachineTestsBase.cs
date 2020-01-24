@@ -37,8 +37,12 @@ namespace Nethermind.Evm.Test
 {
     public class VirtualMachineTestsBase
     {
+        protected const string SampleHexData1 = "a01234";
+        protected const string SampleHexData2 = "b15678";
+        protected const string HexZero = "00";
+        
         private IEthereumEcdsa _ethereumEcdsa;
-        private ITransactionProcessor _processor;
+        protected ITransactionProcessor _processor;
         private ISnapshotableDb _stateDb;
         protected bool UseBeamSync { get; set; }
 
@@ -50,6 +54,10 @@ namespace Nethermind.Evm.Test
         protected static Address Sender { get; } = TestItem.AddressA;
         protected static Address Recipient { get; } = TestItem.AddressB;
         protected static Address Miner { get; } = TestItem.AddressD;
+        
+        protected static PrivateKey SenderKey { get; } = TestItem.PrivateKeyA;
+        protected static PrivateKey RecipientKey { get; } = TestItem.PrivateKeyB;
+        protected static PrivateKey MinerKey { get; } = TestItem.PrivateKeyD;
 
         protected virtual long BlockNumber => MainNetSpecProvider.ByzantiumBlockNumber;
         protected virtual ISpecProvider SpecProvider => MainNetSpecProvider.Instance;
@@ -67,7 +75,7 @@ namespace Nethermind.Evm.Test
             TestState = new StateProvider(_stateDb, codeDb, logger);
             Storage = new StorageProvider(_stateDb, TestState, logger);
             _ethereumEcdsa = new EthereumEcdsa(SpecProvider, logger);
-            IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
+            IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;
             Machine = new VirtualMachine(TestState, Storage, blockhashProvider, SpecProvider, logger);
             _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, logger);
         }
@@ -78,38 +86,6 @@ namespace Nethermind.Evm.Test
             (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
             _processor.Execute(transaction, block.Header, tracer);
             return tracer.BuildResult();
-        }
-
-        protected (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteInitAndTraceParityCall(params byte[] code)
-        {
-            (var block, var transaction) = PrepareInitTx(BlockNumber, 100000, code);
-            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            _processor.Execute(transaction, block.Header, tracer);
-            return (tracer.BuildResult(), block, transaction);
-        }
-
-        protected (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(params byte[] code)
-        {
-            (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
-            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.VmTrace);
-            _processor.Execute(transaction, block.Header, tracer);
-            return (tracer.BuildResult(), block, transaction);
-        }
-
-        protected (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(ParityTraceTypes traceTypes, params byte[] code)
-        {
-            (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
-            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, traceTypes);
-            _processor.Execute(transaction, block.Header, tracer);
-            return (tracer.BuildResult(), block, transaction);
-        }
-
-        protected (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(byte[] input, UInt256 value, params byte[] code)
-        {
-            (var block, var transaction) = PrepareTx(BlockNumber, 100000, code, input, value);
-            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            _processor.Execute(transaction, block.Header, tracer);
-            return (tracer.BuildResult(), block, transaction);
         }
 
         protected GethLikeTxTrace ExecuteAndTrace(long blockNumber, long gasLimit, params byte[] code)
@@ -136,32 +112,34 @@ namespace Nethermind.Evm.Test
             return tracer;
         }
 
-        private (Block block, Transaction transaction) PrepareTx(long blockNumber, long gasLimit, byte[] code)
+        protected (Block block, Transaction transaction) PrepareTx(long blockNumber, long gasLimit, byte[] code, SenderRecipientAndMiner senderRecipientAndMiner = null)
         {
-            TestState.CreateAccount(Sender, 100.Ether());
-            TestState.CreateAccount(Recipient, 100.Ether());
+            senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
+            TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
+            TestState.CreateAccount(senderRecipientAndMiner.Recipient, 100.Ether());
             Keccak codeHash = TestState.UpdateCode(code);
-            TestState.UpdateCodeHash(TestItem.AddressB, codeHash, SpecProvider.GenesisSpec);
+            TestState.UpdateCodeHash(senderRecipientAndMiner.Recipient, codeHash, SpecProvider.GenesisSpec);
 
             TestState.Commit(SpecProvider.GenesisSpec);
 
             Transaction transaction = Build.A.Transaction
                 .WithGasLimit(gasLimit)
                 .WithGasPrice(1)
-                .To(TestItem.AddressB)
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, blockNumber)
+                .To(senderRecipientAndMiner.Recipient)
+                .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey, blockNumber)
                 .TestObject;
 
-            Block block = BuildBlock(blockNumber);
+            Block block = BuildBlock(blockNumber, senderRecipientAndMiner);
             return (block, transaction);
         }
 
-        private (Block block, Transaction transaction) PrepareTx(long blockNumber, long gasLimit, byte[] code, byte[] input, UInt256 value)
+        protected (Block block, Transaction transaction) PrepareTx(long blockNumber, long gasLimit, byte[] code, byte[] input, UInt256 value, SenderRecipientAndMiner senderRecipientAndMiner = null)
         {
-            TestState.CreateAccount(Sender, 100.Ether());
-            TestState.CreateAccount(Recipient, 100.Ether());
+            senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
+            TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
+            TestState.CreateAccount(senderRecipientAndMiner.Recipient, 100.Ether());
             Keccak codeHash = TestState.UpdateCode(code);
-            TestState.UpdateCodeHash(TestItem.AddressB, codeHash, SpecProvider.GenesisSpec);
+            TestState.UpdateCodeHash(senderRecipientAndMiner.Recipient, codeHash, SpecProvider.GenesisSpec);
 
             TestState.Commit(SpecProvider.GenesisSpec);
 
@@ -170,17 +148,18 @@ namespace Nethermind.Evm.Test
                 .WithGasPrice(1)
                 .WithData(input)
                 .WithValue(value)
-                .To(TestItem.AddressB)
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, blockNumber)
+                .To(senderRecipientAndMiner.Recipient)
+                .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey, blockNumber)
                 .TestObject;
 
-            Block block = BuildBlock(blockNumber);
+            Block block = BuildBlock(blockNumber, senderRecipientAndMiner);
             return (block, transaction);
         }
 
-        private (Block block, Transaction transaction) PrepareInitTx(long blockNumber, long gasLimit, byte[] code)
+        protected (Block block, Transaction transaction) PrepareInitTx(long blockNumber, long gasLimit, byte[] code, SenderRecipientAndMiner senderRecipientAndMiner = null)
         {
-            TestState.CreateAccount(Sender, 100.Ether());
+            senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
+            TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
             TestState.Commit(SpecProvider.GenesisSpec);
 
             Transaction transaction = Build.A.Transaction
@@ -189,16 +168,17 @@ namespace Nethermind.Evm.Test
                 .WithGasLimit(gasLimit)
                 .WithGasPrice(1)
                 .WithInit(code)
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, blockNumber)
+                .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey, blockNumber)
                 .TestObject;
 
-            Block block = BuildBlock(blockNumber);
+            Block block = BuildBlock(blockNumber, senderRecipientAndMiner);
             return (block, transaction);
         }
 
-        protected virtual Block BuildBlock(long blockNumber)
+        protected virtual Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner)
         {
-            return Build.A.Block.WithNumber(blockNumber).WithGasLimit(8000000).WithBeneficiary(Miner).TestObject;
+            senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
+            return Build.A.Block.WithNumber(blockNumber).WithGasLimit(8000000).WithBeneficiary(senderRecipientAndMiner.Miner).TestObject;
         }
 
         protected void AssertGas(CallOutputTracer receipt, long gas)
@@ -441,6 +421,30 @@ namespace Nethermind.Evm.Test
 
                 return this;
             }
+        }
+        
+        protected class SenderRecipientAndMiner
+        {
+            public static SenderRecipientAndMiner Default = new SenderRecipientAndMiner();
+            
+            public SenderRecipientAndMiner()
+            {
+                SenderKey = VirtualMachineTestsBase.SenderKey;
+                RecipientKey = VirtualMachineTestsBase.RecipientKey;
+                MinerKey = VirtualMachineTestsBase.MinerKey;
+            }
+
+            public PrivateKey SenderKey { get; set; }
+
+            public PrivateKey RecipientKey { get; set; }
+
+            public PrivateKey MinerKey { get; set; }
+
+            public Address Sender => SenderKey.Address;
+
+            public Address Recipient => RecipientKey.Address;
+
+            public Address Miner => MinerKey.Address;
         }
     }
 }

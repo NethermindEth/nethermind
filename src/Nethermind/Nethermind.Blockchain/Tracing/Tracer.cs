@@ -70,5 +70,13 @@ namespace Nethermind.Blockchain.Tracing
             blockTracer.StartNewBlockTrace(block);
             _blockProcessor.Process(_stateProvider.StateRoot, new[] {block}, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain, blockTracer);
         }
+
+        public void Accept(ITreeVisitor visitor, Keccak stateRoot)
+        {
+            if (visitor == null) throw new ArgumentNullException(nameof(visitor));
+            if (stateRoot == null) throw new ArgumentNullException(nameof(stateRoot));
+            
+            _stateProvider.Accept(visitor, stateRoot);
+        }
     }
 }

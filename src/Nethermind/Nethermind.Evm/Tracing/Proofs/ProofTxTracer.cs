@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -25,32 +26,54 @@ namespace Nethermind.Evm.Tracing.Proofs
 {
     public class ProofTxTracer : ITxTracer
     {
+        private HashSet<Address> _accounts = new HashSet<Address>();
+        
+        private HashSet<StorageAddress> _storages = new HashSet<StorageAddress>();
+        
+        private HashSet<Keccak> _blockHashes = new HashSet<Keccak>();
+
+        private byte[] _result;
+        
+        public bool IsTracingBlockHash => true;
+        
         public ProofTxTrace Build()
         {
-            return new ProofTxTrace();
+            return new ProofTxTrace(_accounts.ToList(), _storages.ToList(), _blockHashes.ToList(), _result);
         }
 
+        public void ReportBlockHash(Keccak blockHash)
+        {
+            _blockHashes.Add(blockHash);
+        }
+
+        
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
-            Console.WriteLine($"Balance change on {address}");
+            _accounts.Add(address);
         }
 
         public void ReportCodeChange(Address address, byte[] before, byte[] after)
         {
-            Console.WriteLine($"Code change on {address}");
+            _accounts.Add(address);
         }
 
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
         {
-            Console.WriteLine($"Nonce change on {address}");
+            _accounts.Add(address);
         }
 
         public void ReportStorageChange(StorageAddress storageAddress, byte[] before, byte[] after)
         {
-            Console.WriteLine($"Storage change on {storageAddress.Address} {storageAddress.Index}");
+            _accounts.Add(storageAddress.Address);
+            _storages.Add(storageAddress);
+        }
+        
+        public void ReportAccountRead(Address address)
+        {
+            _accounts.Add(address);
         }
 
-        public bool IsTracingReceipt => false;
+        public bool IsTracingReceipt => true;
         public bool IsTracingActions => false;
         public bool IsTracingOpLevelStorage => false;
         public bool IsTracingMemory => false;
@@ -61,12 +84,12 @@ namespace Nethermind.Evm.Tracing.Proofs
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
         {
-            throw new NotImplementedException();
+            _result = output;
         }
 
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
         {
-            throw new NotImplementedException();
+            _result = output;
         }
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)

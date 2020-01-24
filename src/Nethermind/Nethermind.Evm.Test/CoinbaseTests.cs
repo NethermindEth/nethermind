@@ -28,11 +28,12 @@ namespace Nethermind.Evm.Test
 
         private bool _setAuthor;
         
-        protected override Block BuildBlock(long blockNumber)
+        protected override Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner)
         {
-            Block block = base.BuildBlock(blockNumber);
+            senderRecipientAndMiner ??= new SenderRecipientAndMiner();
+            Block block = base.BuildBlock(blockNumber, senderRecipientAndMiner);
             if(_setAuthor) block.Header.Author = TestItem.AddressC;
-            block.Header.Beneficiary = TestItem.AddressB;
+            block.Header.Beneficiary = senderRecipientAndMiner.Recipient;
             return block;
         }
 

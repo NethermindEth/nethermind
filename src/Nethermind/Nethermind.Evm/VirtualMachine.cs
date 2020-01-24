@@ -1410,8 +1410,17 @@ namespace Nethermind.Evm
 
                         stack.PopUInt256(out UInt256 a);
                         long number = a > long.MaxValue ? long.MaxValue : (long) a;
-                        stack.PushBytes(_blockhashProvider.GetBlockhash(env.CurrentBlock, number)?.Bytes ?? BytesZero32);
+                        Keccak blockHash = _blockhashProvider.GetBlockhash(env.CurrentBlock, number);
+                        stack.PushBytes(blockHash?.Bytes ?? BytesZero32);
 
+                        if (isTrace)
+                        {
+                            if (_txTracer.IsTracingBlockHash && blockHash != null)
+                            {
+                                _txTracer.ReportBlockHash(blockHash);
+                            }
+                        }
+                        
                         break;
                     }
                     case Instruction.COINBASE:

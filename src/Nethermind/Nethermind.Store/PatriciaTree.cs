@@ -740,6 +740,9 @@ namespace Nethermind.Store
 
         public void Accept(ITreeVisitor visitor, Keccak rootHash)
         {
+            if (visitor == null) throw new ArgumentNullException(nameof(visitor));
+            if (rootHash == null) throw new ArgumentNullException(nameof(rootHash));
+            
             TrieVisitContext trieVisitContext = new TrieVisitContext();
             
             // hacky but other solutions are not much better, something nicer would require a bit of thinking
