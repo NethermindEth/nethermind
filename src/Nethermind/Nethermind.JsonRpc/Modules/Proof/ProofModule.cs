@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
@@ -34,26 +35,24 @@ namespace Nethermind.JsonRpc.Modules.Proof
         private readonly ITracer _tracer;
         private readonly IBlockFinder _blockFinder;
         private readonly IReceiptFinder _receiptFinder;
-        private readonly ISpecProvider _specProvider;
         private readonly HeaderDecoder _decoder = new HeaderDecoder();
 
-        public ProofModule(
-            ITracer tracer,
+        public ProofModule(ITracer tracer,
             IBlockFinder blockFinder,
             IReceiptFinder receiptFinder,
-            ISpecProvider specProvider,
             ILogManager logManager)
         {
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter)
         {
-            throw new System.NotImplementedException();
+            Transaction transaction = tx.ToTransaction();
+            Block block = _blockFinder.GetBlock(blockParameter.ToFilterBlock());
+            throw new NotImplementedException();
         }
 
         private byte[][] BuildTxProof(Transaction[] txs, int index)

@@ -330,7 +330,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Block block;
             try
             {
-                block = _blockchainBridge.GetBlock(blockParameter, true, true);
+                block = _blockchainBridge.GetBlock(blockParameter, true);
             }
             catch (JsonRpcException ex)
             {

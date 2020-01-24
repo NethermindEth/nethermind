@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -55,5 +57,29 @@ namespace Nethermind.Blockchain.Find
         public Block FindPendingBlock() => FindBlock(PendingHash, BlockTreeLookupOptions.None);
 
         public BlockHeader FindPendingHeader() => FindHeader(PendingHash, BlockTreeLookupOptions.None);
+        
+        public Block GetBlock(FilterBlock blockFilter)
+        {
+            return blockFilter.Type switch
+            {
+                FilterBlockType.Pending => FindPendingBlock(),
+                FilterBlockType.Latest => FindLatestBlock(),
+                FilterBlockType.Earliest => FindEarliestBlock(),
+                FilterBlockType.BlockNumber => FindBlock(blockFilter.BlockNumber),
+                _ => throw new ArgumentException($"{nameof(FilterBlockType)} not supported: {blockFilter.Type}")
+            };
+        }
+        
+        public BlockHeader GetHeader(FilterBlock blockFilter)
+        {
+            return blockFilter.Type switch
+            {
+                FilterBlockType.Pending => FindPendingHeader(),
+                FilterBlockType.Latest => FindLatestHeader(),
+                FilterBlockType.Earliest => FindEarliestHeader(),
+                FilterBlockType.BlockNumber => FindHeader(blockFilter.BlockNumber),
+                _ => throw new ArgumentException($"{nameof(FilterBlockType)} not supported: {blockFilter.Type}")
+            };
+        }
     }
 }

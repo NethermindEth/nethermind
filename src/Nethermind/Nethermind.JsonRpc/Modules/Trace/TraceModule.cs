@@ -70,7 +70,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Block block;
             try
             {
-                block = _blockchainBridge.GetBlock(blockParameter, true, true);
+                block = _blockchainBridge.GetBlock(blockParameter, true);
                 if (block is null)
                 {
                     return ResultWrapper<ParityLikeTxTrace[]>.Success(null);
@@ -95,7 +95,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Block block;
             try
             {
-                block = _blockchainBridge.GetBlock(blockParameter, true, true);
+                block = _blockchainBridge.GetBlock(blockParameter, true);
                 if (block is null)
                 {
                     return ResultWrapper<ParityLikeTxTrace[]>.Success(null);

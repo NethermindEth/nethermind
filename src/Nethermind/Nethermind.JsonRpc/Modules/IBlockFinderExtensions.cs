@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Facade;
@@ -22,9 +23,9 @@ using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules
 {
-    public static class IBlockchainBridgeExtensions
+    public static class IBlockFinderExtensions
     {
-        public static Block GetBlock(this IBlockchainBridge blockchainBridge, BlockParameter blockParameter, bool allowNulls = false, bool recoverTxSenders = false)
+        public static Block GetBlock(this IBlockFinder blockFinder, BlockParameter blockParameter, bool allowNulls = false)
         {
             Block block;
             switch (blockParameter.Type)
@@ -36,7 +37,7 @@ namespace Nethermind.JsonRpc.Modules
                         throw new JsonRpcException(ErrorCodes.InvalidParams, $"Block number is required for {BlockParameterType.BlockNumber}");
                     }
 
-                    block = blockchainBridge.GetBlock(blockParameter.ToFilterBlock());
+                    block = blockFinder.GetBlock(blockParameter.ToFilterBlock());
                     break;
                 }
 
@@ -44,7 +45,7 @@ namespace Nethermind.JsonRpc.Modules
                 case BlockParameterType.Latest:
                 case BlockParameterType.Earliest:
                 {
-                    block = blockchainBridge.GetBlock(blockParameter.ToFilterBlock());
+                    block = blockFinder.GetBlock(blockParameter.ToFilterBlock());
                     break;
                 }
 
@@ -56,16 +57,11 @@ namespace Nethermind.JsonRpc.Modules
             {
                 throw new JsonRpcException(ErrorCodes.NotFound, $"Cannot find block {blockParameter}");
             }
-
-//            if (block != null && recoverTxSenders)
-//            {
-//                blockchainBridge.RecoverTxSenders(block);
-//            }
-
+            
             return block;
         }
         
-        public static BlockHeader GetHeader(this IBlockchainBridge blockchainBridge, BlockParameter blockParameter, bool allowNulls = false)
+        public static BlockHeader GetHeader(this IBlockFinder blockFinder, BlockParameter blockParameter, bool allowNulls = false)
         {
             BlockHeader header;
             switch (blockParameter.Type)
@@ -77,7 +73,7 @@ namespace Nethermind.JsonRpc.Modules
                         throw new JsonRpcException(ErrorCodes.InvalidParams, $"Block number is required for {BlockParameterType.BlockNumber}");
                     }
 
-                    header = blockchainBridge.GetHeader(blockParameter.ToFilterBlock());
+                    header = blockFinder.GetHeader(blockParameter.ToFilterBlock());
                     break;
                 }
 
@@ -85,7 +81,7 @@ namespace Nethermind.JsonRpc.Modules
                 case BlockParameterType.Latest:
                 case BlockParameterType.Earliest:
                 {
-                    header = blockchainBridge.GetHeader(blockParameter.ToFilterBlock());
+                    header = blockFinder.GetHeader(blockParameter.ToFilterBlock());
                     break;
                 }
 
