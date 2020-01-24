@@ -27,7 +27,7 @@ using Nethermind.Runner.Ethereum.Subsystems;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency(typeof(LoadChainspec))]
+    [RunnerStepDependency(typeof(LoadChainspec), typeof(InitializeBlockchain), typeof(InitializeNetwork))]
     public class StartEthStatsClient : IStep, ISubsystemStateAware
     {
         private readonly EthereumRunnerContext _context;
