@@ -47,6 +47,8 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             _context.ChainSpec = loader.LoadFromFile(initConfig.ChainSpecPath);
             _context.ChainSpec.Bootnodes = _context.ChainSpec.Bootnodes?.Where(n => !n.NodeId?.Equals(_context.NodeKey.PublicKey) ?? false).ToArray() ?? new NetworkNode[0];
+            
+            _context.SpecProvider = new ChainSpecBasedSpecProvider(_context.ChainSpec);
         }
     }
 }

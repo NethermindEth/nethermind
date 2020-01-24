@@ -62,8 +62,6 @@ namespace Nethermind.Runner.Ethereum.Steps
          [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
         private Task InitBlockchain()
         {
-            _context.SpecProvider = new ChainSpecBasedSpecProvider(_context.ChainSpec);
-
             Account.AccountStartNonce = _context.ChainSpec.Parameters.AccountStartNonce;
 
             _context.StateProvider = new StateProvider(
