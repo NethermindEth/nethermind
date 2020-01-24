@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Blockchain.Filters
 {
@@ -27,7 +28,7 @@ namespace Nethermind.Blockchain.Filters
         BlockFilter CreateBlockFilter(long startBlockNumber, bool setId = true);
         PendingTransactionFilter CreatePendingTransactionFilter(bool setId = true);
 
-        LogFilter CreateLogFilter(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
+        LogFilter CreateLogFilter(BlockParameter fromBlock, BlockParameter toBlock, object address = null,
             IEnumerable<object> topics = null, bool setId = true);
 
         void SaveFilter(FilterBase filter);

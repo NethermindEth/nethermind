@@ -14,20 +14,19 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Core;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Blockchain.Test.Builders
 {
     public class FilterBuilder
     {
         private static int _id;
-        private FilterBlock _fromBlock = new FilterBlock(FilterBlockType.Latest);
-        private FilterBlock _toBlock = new FilterBlock(FilterBlockType.Latest);
+        private BlockParameter _fromBlock = new BlockParameter(BlockParameterType.Latest);
+        private BlockParameter _toBlock = new BlockParameter(BlockParameterType.Latest);
         private AddressFilter _address = new AddressFilter((Address)null);
         private TopicsFilter _topicsFilter = new TopicsFilter(new TopicExpression[0]);
 
@@ -56,70 +55,69 @@ namespace Nethermind.Blockchain.Test.Builders
 
         public FilterBuilder FromBlock(long number)
         {
-            _fromBlock = new FilterBlock(number);
-
+            _fromBlock = new BlockParameter(number);
             return this;
         }
         
-        public FilterBuilder FromBlock(FilterBlockType blockType)
+        public FilterBuilder FromBlock(BlockParameterType blockType)
         {
-            _fromBlock = new FilterBlock(blockType);
+            _fromBlock = new BlockParameter(blockType);
 
             return this;
         }
 
         public FilterBuilder FromEarliestBlock()
         {
-            _fromBlock = new FilterBlock(FilterBlockType.Earliest);
+            _fromBlock = new BlockParameter(BlockParameterType.Earliest);
 
             return this;
         }
 
         public FilterBuilder FromLatestBlock()
         {
-            _fromBlock = new FilterBlock(FilterBlockType.Latest);
+            _fromBlock = new BlockParameter(BlockParameterType.Latest);
 
             return this;
         }
         
         public FilterBuilder FromFutureBlock()
         {
-            _fromBlock = new FilterBlock(1000000);
+            _fromBlock = new BlockParameter(1000000);
 
             return this;
         }
 
         public FilterBuilder FromPendingBlock()
         {
-            _fromBlock = new FilterBlock(FilterBlockType.Pending);
+            _fromBlock = new BlockParameter(BlockParameterType.Pending);
 
             return this;
         }
 
         public FilterBuilder ToBlock(long number)
         {
-            _toBlock = new FilterBlock(number);
+            _toBlock = new BlockParameter(number);
 
             return this;
         }
 
         public FilterBuilder ToEarliestBlock()
         {
-            _toBlock = new FilterBlock(FilterBlockType.Earliest);
+            _toBlock = new BlockParameter(BlockParameterType.Earliest);
 
             return this;
         }
 
         public FilterBuilder ToLatestBlock()
         {
-            _toBlock = new FilterBlock(FilterBlockType.Latest);
+            _toBlock = new BlockParameter(BlockParameterType.Latest);
 
             return this;
         }
 
         public FilterBuilder ToPendingBlock()
         {
-            _toBlock = new FilterBlock(FilterBlockType.Pending);
+            _toBlock = new BlockParameter(BlockParameterType.Pending);
 
             return this;
         }

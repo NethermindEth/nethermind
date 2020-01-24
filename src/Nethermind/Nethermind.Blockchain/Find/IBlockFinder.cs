@@ -18,18 +18,26 @@ using System;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Blockchain.Find
 {
     public interface IBlockFinder
     {
         Keccak HeadHash { get; }
+        
         Keccak GenesisHash { get; }
+        
         Keccak PendingHash { get; }
+        
         Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options);
+        
         Block FindBlock(long blockNumber, BlockTreeLookupOptions options);
+        
         BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options);
+        
         BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options);
+        
         public Block FindBlock(Keccak blockHash) => FindBlock(blockHash, BlockTreeLookupOptions.None);
         
         public Block FindBlock(long blockNumber) => FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
@@ -41,6 +49,8 @@ namespace Nethermind.Blockchain.Find
         public Block FindEarliestBlock() => FindGenesisBlock();
         
         public Block FindLatestBlock() => FindHeadBlock();
+        
+        public Block FindPendingBlock() => FindBlock(PendingHash, BlockTreeLookupOptions.None);
         
         public BlockHeader FindHeader(Keccak blockHash) => FindHeader(blockHash, BlockTreeLookupOptions.None);
         
@@ -54,31 +64,29 @@ namespace Nethermind.Blockchain.Find
         
         public BlockHeader FindLatestHeader() => FindHeadHeader();
 
-        public Block FindPendingBlock() => FindBlock(PendingHash, BlockTreeLookupOptions.None);
-
         public BlockHeader FindPendingHeader() => FindHeader(PendingHash, BlockTreeLookupOptions.None);
         
-        public Block GetBlock(FilterBlock blockFilter)
+        public Block FindBlock(BlockParameter blockParameter)
         {
-            return blockFilter.Type switch
+            return blockParameter.Type switch
             {
-                FilterBlockType.Pending => FindPendingBlock(),
-                FilterBlockType.Latest => FindLatestBlock(),
-                FilterBlockType.Earliest => FindEarliestBlock(),
-                FilterBlockType.BlockNumber => FindBlock(blockFilter.BlockNumber),
-                _ => throw new ArgumentException($"{nameof(FilterBlockType)} not supported: {blockFilter.Type}")
+                BlockParameterType.Pending => FindPendingBlock(),
+                BlockParameterType.Latest => FindLatestBlock(),
+                BlockParameterType.Earliest => FindEarliestBlock(),
+                BlockParameterType.BlockNumber => FindBlock(blockParameter.BlockNumber.Value),
+                _ => throw new ArgumentException($"{nameof(BlockParameterType)} not supported: {blockParameter.Type}")
             };
         }
         
-        public BlockHeader GetHeader(FilterBlock blockFilter)
+        public BlockHeader FindHeader(BlockParameter blockFilter)
         {
             return blockFilter.Type switch
             {
-                FilterBlockType.Pending => FindPendingHeader(),
-                FilterBlockType.Latest => FindLatestHeader(),
-                FilterBlockType.Earliest => FindEarliestHeader(),
-                FilterBlockType.BlockNumber => FindHeader(blockFilter.BlockNumber),
-                _ => throw new ArgumentException($"{nameof(FilterBlockType)} not supported: {blockFilter.Type}")
+                BlockParameterType.Pending => FindPendingHeader(),
+                BlockParameterType.Latest => FindLatestHeader(),
+                BlockParameterType.Earliest => FindEarliestHeader(),
+                BlockParameterType.BlockNumber => FindHeader(blockFilter.BlockNumber.Value),
+                _ => throw new ArgumentException($"{nameof(BlockParameterType)} not supported: {blockFilter.Type}")
             };
         }
     }

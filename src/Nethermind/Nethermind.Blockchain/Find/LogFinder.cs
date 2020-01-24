@@ -21,6 +21,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Find
@@ -41,13 +42,13 @@ namespace Nethermind.Blockchain.Find
         public FilterLog[] FindLogs(LogFilter filter)
         {
             int count = 0;
-            var block = _blockFinder.GetHeader(filter.ToBlock);
+            var block = _blockFinder.FindHeader((BlockParameter) filter.ToBlock);
             if (block is null)
             {
                 return Array.Empty<FilterLog>();
             }
             
-            var fromBlock = _blockFinder.GetHeader(filter.FromBlock);
+            var fromBlock = _blockFinder.FindHeader((BlockParameter) filter.FromBlock);
             List<FilterLog> results = new List<FilterLog>();
 
             while (count < _maxBlockDepth && block.Number >= (fromBlock?.Number ?? long.MaxValue))

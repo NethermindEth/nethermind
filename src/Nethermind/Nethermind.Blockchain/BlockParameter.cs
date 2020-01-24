@@ -70,12 +70,6 @@ namespace Nethermind.JsonRpc.Data
         {
             return $"{Type}, {BlockNumber}";
         }
-
-        public FilterBlock ToFilterBlock()
-            => BlockNumber != null
-                ? new FilterBlock(BlockNumber ?? 0)
-                : new FilterBlock(Type.ToFilterBlockType());
-
         public bool Equals(BlockParameter other)
         {
             if (ReferenceEquals(null, other)) return false;

@@ -57,7 +57,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
         {
             Transaction transaction = tx.ToTransaction();
 
-            BlockHeader headBlockHeader = _blockFinder.FindHeadBlock().Header;
+            BlockHeader headBlockHeader = _blockFinder.FindBlock(blockParameter).Header;
             BlockHeader traceHeader = new BlockHeader(
                 headBlockHeader.Hash,
                 Keccak.OfAnEmptySequenceRlp,

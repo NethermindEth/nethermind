@@ -29,6 +29,7 @@ using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.JsonRpc.Data;
 using Nethermind.Store;
 using Nethermind.Wallet;
 using Block = Nethermind.Core.Block;
@@ -261,7 +262,7 @@ namespace Nethermind.Facade
         public FilterType GetFilterType(int filterId) => _filterStore.GetFilterType(filterId);
         public FilterLog[] GetFilterLogs(int filterId) => _filterManager.GetLogs(filterId);
 
-        public FilterLog[] GetLogs(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
+        public FilterLog[] GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address = null,
             IEnumerable<object> topics = null)
         {
             LogFilter filter = _filterStore.CreateLogFilter(fromBlock, toBlock, address, topics, false);
@@ -273,7 +274,7 @@ namespace Nethermind.Facade
             _stateReader.RunTreeVisitor(stateRoot, treeVisitor);	
         }
 
-        public int NewFilter(FilterBlock fromBlock, FilterBlock toBlock,
+        public int NewFilter(BlockParameter fromBlock, BlockParameter toBlock,
             object address = null, IEnumerable<object> topics = null)
         {
             LogFilter filter = _filterStore.CreateLogFilter(fromBlock, toBlock, address, topics);

@@ -20,6 +20,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.JsonRpc.Data;
 using Nethermind.Store;
 using Block = Nethermind.Core.Block;
 
@@ -55,7 +56,7 @@ namespace Nethermind.Facade
         Account GetAccount(Address address, Keccak stateRoot);
         int NewBlockFilter();
         int NewPendingTransactionFilter();
-        int NewFilter(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
+        int NewFilter(BlockParameter fromBlock, BlockParameter toBlock, object address = null,
             IEnumerable<object> topics = null);
         void UninstallFilter(int filterId);
         bool FilterExists(int filterId);
@@ -64,7 +65,7 @@ namespace Nethermind.Facade
         Keccak[] GetPendingTransactionFilterChanges(int filterId);
         FilterType GetFilterType(int filterId);
         FilterLog[] GetFilterLogs(int filterId);
-        FilterLog[] GetLogs(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
+        FilterLog[] GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address = null,
             IEnumerable<object> topics = null);
         void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot);
     }

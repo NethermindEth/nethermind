@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.Modules
                         throw new JsonRpcException(ErrorCodes.InvalidParams, $"Block number is required for {BlockParameterType.BlockNumber}");
                     }
 
-                    block = blockFinder.GetBlock(blockParameter.ToFilterBlock());
+                    block = blockFinder.FindBlock(blockParameter);
                     break;
                 }
 
@@ -45,7 +45,7 @@ namespace Nethermind.JsonRpc.Modules
                 case BlockParameterType.Latest:
                 case BlockParameterType.Earliest:
                 {
-                    block = blockFinder.GetBlock(blockParameter.ToFilterBlock());
+                    block = blockFinder.FindBlock(blockParameter);
                     break;
                 }
 
@@ -73,7 +73,7 @@ namespace Nethermind.JsonRpc.Modules
                         throw new JsonRpcException(ErrorCodes.InvalidParams, $"Block number is required for {BlockParameterType.BlockNumber}");
                     }
 
-                    header = blockFinder.GetHeader(blockParameter.ToFilterBlock());
+                    header = blockFinder.FindHeader(blockParameter);
                     break;
                 }
 
@@ -81,7 +81,7 @@ namespace Nethermind.JsonRpc.Modules
                 case BlockParameterType.Latest:
                 case BlockParameterType.Earliest:
                 {
-                    header = blockFinder.GetHeader(blockParameter.ToFilterBlock());
+                    header = blockFinder.FindHeader(blockParameter);
                     break;
                 }
 

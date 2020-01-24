@@ -22,6 +22,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Filters
@@ -42,7 +43,10 @@ namespace Nethermind.Blockchain.Filters
         private readonly ILogger _logger;
         private long _logIndex;
 
-        public FilterManager(IFilterStore filterStore, IBlockProcessor blockProcessor, ITxPool txPool,
+        public FilterManager(
+            IFilterStore filterStore,
+            IBlockProcessor blockProcessor,
+            ITxPool txPool,
             ILogManager logManager)
         {
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
@@ -267,13 +271,13 @@ namespace Nethermind.Blockchain.Filters
 
         private FilterLog CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry, long index, int transactionLogIndex)
         {
-            if (logFilter.FromBlock.Type == FilterBlockType.BlockNumber &&
+            if (logFilter.FromBlock.Type == BlockParameterType.BlockNumber &&
                 logFilter.FromBlock.BlockNumber > txReceipt.BlockNumber)
             {
                 return null;
             }
 
-            if (logFilter.ToBlock.Type == FilterBlockType.BlockNumber && logFilter.ToBlock.BlockNumber < txReceipt.BlockNumber)
+            if (logFilter.ToBlock.Type == BlockParameterType.BlockNumber && logFilter.ToBlock.BlockNumber < txReceipt.BlockNumber)
             {
                 return null;
             }
@@ -283,15 +287,15 @@ namespace Nethermind.Blockchain.Filters
                 return null;
             }
 
-            if (logFilter.FromBlock.Type == FilterBlockType.Earliest
-                || logFilter.FromBlock.Type == FilterBlockType.Pending
-                || logFilter.ToBlock.Type == FilterBlockType.Earliest
-                || logFilter.ToBlock.Type == FilterBlockType.Pending)
+            if (logFilter.FromBlock.Type == BlockParameterType.Earliest
+                || logFilter.FromBlock.Type == BlockParameterType.Pending
+                || logFilter.ToBlock.Type == BlockParameterType.Earliest
+                || logFilter.ToBlock.Type == BlockParameterType.Pending)
             {
                 return new FilterLog(index, transactionLogIndex, txReceipt, logEntry);
             }
 
-            if (logFilter.FromBlock.Type == FilterBlockType.Latest || logFilter.ToBlock.Type == FilterBlockType.Latest)
+            if (logFilter.FromBlock.Type == BlockParameterType.Latest || logFilter.ToBlock.Type == BlockParameterType.Latest)
             {
                 //TODO: check if is last mined block
                 return new FilterLog(index, transactionLogIndex, txReceipt, logEntry);

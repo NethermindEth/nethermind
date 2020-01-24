@@ -39,6 +39,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Facade;
+using Nethermind.JsonRpc.Data;
 using Nethermind.Store;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -340,7 +341,7 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
-            public int NewFilter(FilterBlock fromBlock, FilterBlock toBlock, object address = null, IEnumerable<object> topics = null)
+            public int NewFilter(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null)
             {
                 throw new NotImplementedException();
             }
@@ -380,7 +381,7 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
-            public FilterLog[] GetLogs(FilterBlock fromBlock, FilterBlock toBlock, object address = null, IEnumerable<object> topics = null)
+            public FilterLog[] GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null)
             {
                 throw new NotImplementedException();
             }

@@ -27,6 +27,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.JsonRpc.Data;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -105,8 +106,8 @@ namespace Nethermind.Blockchain.Test.Find
             var logFilter = AllBlockFilter().Build();
             var logs = _logFinder.FindLogs(logFilter);
             logs.Should().BeEmpty();
-            blockFinder.Received().GetHeader(logFilter.ToBlock);
-            blockFinder.DidNotReceive().GetHeader(logFilter.FromBlock);
+            blockFinder.Received().FindHeader((BlockParameter) logFilter.ToBlock);
+            blockFinder.DidNotReceive().FindHeader((BlockParameter) logFilter.FromBlock);
         }
         
         public static IEnumerable FilterByAddressTestsData

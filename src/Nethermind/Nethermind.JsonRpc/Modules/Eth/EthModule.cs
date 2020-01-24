@@ -278,7 +278,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter blockParameter = null)
         {
-            BlockHeader block = _blockchainBridge.GetHeader(blockParameter ?? BlockParameter.Latest);
+            BlockHeader block = _blockchainBridge.FindHeader(blockParameter ?? BlockParameter.Latest);
 
             var tx = transactionCall.ToTransaction();
             tx.GasPrice = 0;
@@ -391,7 +391,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Block block;
             try
             {
-                block = _blockchainBridge.GetBlock(blockParameter);
+                block = _blockchainBridge.FindBlock(blockParameter);
             }
             catch (JsonRpcException ex)
             {
@@ -460,7 +460,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Block block;
             try
             {
-                block = _blockchainBridge.GetBlock(blockParameter);
+                block = _blockchainBridge.FindBlock(blockParameter);
             }
             catch (JsonRpcException ex)
             {
@@ -486,8 +486,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<UInt256?> eth_newFilter(Filter filter)
         {
-            FilterBlock fromBlock = filter.FromBlock.ToFilterBlock();
-            FilterBlock toBlock = filter.ToBlock.ToFilterBlock();
+            BlockParameter fromBlock = filter.FromBlock;
+            BlockParameter toBlock = filter.ToBlock;
             int filterId = _blockchainBridge.NewFilter(fromBlock, toBlock, filter.Address, filter.Topics);
             return ResultWrapper<UInt256?>.Success((UInt256)filterId);
         }
@@ -556,8 +556,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
         {
-            FilterBlock fromBlock = filter.FromBlock.ToFilterBlock();
-            FilterBlock toBlock = filter.ToBlock.ToFilterBlock();
+            BlockParameter fromBlock = filter.FromBlock;
+            BlockParameter toBlock = filter.ToBlock;
 
             return ResultWrapper<IEnumerable<FilterLog>>.Success(_blockchainBridge.GetLogs(fromBlock, toBlock,
                 filter.Address,
@@ -585,7 +585,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             BlockHeader header;	
             try	
             {	
-                header = _blockchainBridge.GetHeader(blockParameter);	
+                header = _blockchainBridge.FindHeader(blockParameter);	
             }	
             catch (JsonRpcException ex)	
             {	
@@ -604,7 +604,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Block block;
             try
             {
-                block = _blockchainBridge.GetBlock(blockParameter);
+                block = _blockchainBridge.FindBlock(blockParameter);
             }
             catch (JsonRpcException ex)
             {
@@ -619,7 +619,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Block block;
             try
             {
-                block = _blockchainBridge.GetBlock(blockParameter ?? BlockParameter.Latest);
+                block = _blockchainBridge.FindBlock(blockParameter ?? BlockParameter.Latest);
             }
             catch (JsonRpcException ex)
             {
@@ -652,7 +652,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             BlockHeader header;
             try
             {
-                header = _blockchainBridge.GetHeader(blockParameter);
+                header = _blockchainBridge.FindHeader(blockParameter);
             }
             catch (JsonRpcException ex)
             {
@@ -672,7 +672,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             BlockHeader header;
             try
             {
-                header = _blockchainBridge.GetHeader(blockParameter);
+                header = _blockchainBridge.FindHeader(blockParameter);
             }
             catch (JsonRpcException ex)
             {
@@ -698,7 +698,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             BlockHeader header;
             try
             {
-                header = _blockchainBridge.GetHeader(blockParameter);
+                header = _blockchainBridge.FindHeader(blockParameter);
             }
             catch (JsonRpcException ex)
             {
@@ -718,7 +718,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             BlockHeader header;
             try
             {
-                header = _blockchainBridge.GetHeader(blockParameter);
+                header = _blockchainBridge.FindHeader(blockParameter);
             }
             catch (JsonRpcException ex)
             {

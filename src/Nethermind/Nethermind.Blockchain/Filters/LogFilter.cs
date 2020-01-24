@@ -16,6 +16,7 @@
 
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Core;
+using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Blockchain.Filters
 {
@@ -23,10 +24,10 @@ namespace Nethermind.Blockchain.Filters
     {
         public AddressFilter AddressFilter { get; }
         public TopicsFilter TopicsFilter { get; }
-        public FilterBlock FromBlock { get; }
-        public FilterBlock ToBlock { get; }
+        public BlockParameter FromBlock { get; }
+        public BlockParameter ToBlock { get; }
         
-        public LogFilter(int id, FilterBlock fromBlock, FilterBlock toBlock,
+        public LogFilter(int id, BlockParameter fromBlock, BlockParameter toBlock,
             AddressFilter addressFilter, TopicsFilter topicsFilter) : base(id)
         {
             FromBlock = fromBlock;

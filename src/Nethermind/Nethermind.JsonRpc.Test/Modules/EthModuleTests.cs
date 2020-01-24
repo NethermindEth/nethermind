@@ -257,7 +257,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_get_logs(string parameter)
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            bridge.GetLogs(Arg.Any<FilterBlock>(), Arg.Any<FilterBlock>(), Arg.Any<object>(), Arg.Any<IEnumerable<object>>()).Returns(new[] {new FilterLog(1, 0, 1, TestItem.KeccakA, 1, TestItem.KeccakB, TestItem.AddressA, new byte[] {1, 2, 3}, new[] {TestItem.KeccakC, TestItem.KeccakD})});
+            bridge.GetLogs(Arg.Any<BlockParameter>(), Arg.Any<BlockParameter>(), Arg.Any<object>(), Arg.Any<IEnumerable<object>>()).Returns(new[] {new FilterLog(1, 0, 1, TestItem.KeccakA, 1, TestItem.KeccakB, TestItem.AddressA, new byte[] {1, 2, 3}, new[] {TestItem.KeccakC, TestItem.KeccakD})});
             bridge.FilterExists(1).Returns(true);
 
             IEthModule module = new EthModule(NullLogManager.Instance, bridge);

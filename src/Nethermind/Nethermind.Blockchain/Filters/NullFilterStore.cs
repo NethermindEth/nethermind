@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Blockchain.Filters
 {
@@ -48,7 +49,7 @@ namespace Nethermind.Blockchain.Filters
             throw new InvalidOperationException($"{nameof(NullFilterStore)} does not support filter creation");
         }
 
-        public LogFilter CreateLogFilter(FilterBlock fromBlock, FilterBlock toBlock, object address = null, IEnumerable<object> topics = null, bool setId = true)
+        public LogFilter CreateLogFilter(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null, bool setId = true)
         {
             throw new InvalidOperationException($"{nameof(NullFilterStore)} does not support filter creation");
         }
