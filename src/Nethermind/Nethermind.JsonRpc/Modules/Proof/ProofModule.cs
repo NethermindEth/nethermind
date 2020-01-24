@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Proofs;
 using Nethermind.Blockchain.Receipts;
@@ -23,6 +24,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.Proofs;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -54,8 +56,31 @@ namespace Nethermind.JsonRpc.Modules.Proof
         public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter)
         {
             Transaction transaction = tx.ToTransaction();
-            Block block = _blockFinder.GetBlock(blockParameter.ToFilterBlock());
-            throw new NotImplementedException();
+
+            BlockHeader headBlockHeader = _blockFinder.FindHeadBlock().Header;
+            BlockHeader traceHeader = new BlockHeader(
+                headBlockHeader.Hash,
+                Keccak.OfAnEmptySequenceRlp,
+                Address.Zero,
+                headBlockHeader.Difficulty,
+                headBlockHeader.Number + 1,
+                headBlockHeader.GasLimit,
+                headBlockHeader.Timestamp + 1,
+                headBlockHeader.ExtraData);
+
+            Block block = new Block(traceHeader, new[] {transaction}, Enumerable.Empty<BlockHeader>());
+            block.Author = Address.Zero;
+            block.TotalDifficulty = headBlockHeader.TotalDifficulty + traceHeader.Difficulty;
+
+            ProofBlockTracer proofBlockTracer = new ProofBlockTracer(null);
+
+            BlockReceiptsTracer receiptsTracer = new BlockReceiptsTracer();
+            receiptsTracer.SetOtherTracer(proofBlockTracer);
+            _tracer.Trace(block.Hash, receiptsTracer);
+            
+            CallResultWithProof callResultWithProof = new CallResultWithProof();
+
+            return ResultWrapper<CallResultWithProof>.Success(callResultWithProof);
         }
 
         private byte[][] BuildTxProof(Transaction[] txs, int index)

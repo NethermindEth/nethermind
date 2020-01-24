@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Store;
 using Nethermind.Store.Proofs;
 
 namespace Nethermind.JsonRpc.Modules.Proof

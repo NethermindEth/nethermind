@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 
@@ -30,5 +31,12 @@ namespace Nethermind.Blockchain.Tracing
         /// <param name="blockHash">The hash of the block to trace. It has to be a canonical hash.</param>
         /// <param name="tracer">The trace can collect any information from inside EVM or block processing contexts.</param>
         void Trace(Keccak blockHash, IBlockTracer tracer);
+        
+        /// <summary>
+        /// Allows to trace an arbitrarily constructed block.
+        /// </summary>
+        /// <param name="block">Block to trace.</param>
+        /// <param name="tracer">Trace to act on block processing events.</param>
+        void Trace(Block block, IBlockTracer tracer);
     }
 }

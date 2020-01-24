@@ -54,5 +54,21 @@ namespace Nethermind.Blockchain.Tracing
             blockTracer.StartNewBlockTrace(block);
             _blockProcessor.Process(_stateProvider.StateRoot, new[] {block}, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain, blockTracer);
         }
+        
+        public void Trace(Block block, IBlockTracer blockTracer)
+        {
+            /* We need parent block to be able to set the state root to the time from just before the block was executed.
+               This way we can recreate the exact block execution and trace any transactions and / or rewards */
+            
+            BlockHeader parentHeader = _blockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.RequireCanonical);
+
+            _stateProvider.StateRoot = parentHeader.StateRoot;
+
+            /* We force process since we wan to process a block that has already been processed in the past and normally it would be ignored.
+               We also want to make it read only so the state is not modified persistently in any way. */
+            
+            blockTracer.StartNewBlockTrace(block);
+            _blockProcessor.Process(_stateProvider.StateRoot, new[] {block}, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain, blockTracer);
+        }
     }
 }

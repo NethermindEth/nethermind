@@ -45,14 +45,14 @@ namespace Nethermind.Evm.Tracing.Proofs
             throw new NotImplementedException();
         }
 
-        public bool IsTracingReceipt { get; }
-        public bool IsTracingActions { get; }
-        public bool IsTracingOpLevelStorage { get; }
-        public bool IsTracingMemory { get; }
-        public bool IsTracingInstructions { get; }
-        public bool IsTracingCode { get; }
-        public bool IsTracingStack { get; }
-        public bool IsTracingState { get; }
+        public bool IsTracingReceipt => false;
+        public bool IsTracingActions => false;
+        public bool IsTracingOpLevelStorage => false;
+        public bool IsTracingMemory => false;
+        public bool IsTracingInstructions => false;
+        public bool IsTracingCode => false;
+        public bool IsTracingStack => false;
+        public bool IsTracingState => false;
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
         {
             throw new NotImplementedException();
