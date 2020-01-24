@@ -24,6 +24,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Proofs;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
@@ -381,7 +382,7 @@ namespace Nethermind.Clique
 
             var selectedTxs = _pendingTransactionSelector.SelectTransactions(header.GasLimit);
             Block block = new Block(header, selectedTxs, new BlockHeader[0]);
-            header.TxRoot = block.CalculateTxRoot();
+            header.TxRoot = TxTrie.CalculateTxRoot(block);
             block.Author = _address;
             return block;
         }

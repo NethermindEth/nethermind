@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -18,22 +18,15 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
 using Nethermind.Store;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Proofs
 {
-    public static class BlockExtensions
+    public static class ReceiptTrie
     {
         private static ReceiptDecoder _receiptDecoder = new ReceiptDecoder();
-        private static TransactionDecoder _txDecoder = new TransactionDecoder();
-        
-        public static Keccak CalculateReceiptRoot(this Block block, ISpecProvider specProvider, TxReceipt[] txReceipts)
-        {
-            return CalculateReceiptRoot(block.Number, specProvider, txReceipts);
-        }
-        
-        public static Keccak CalculateReceiptRoot(long blockNumber, ISpecProvider specProvider, TxReceipt[] txReceipts)
+
+        public static Keccak CalculateRoot(long blockNumber, ISpecProvider specProvider, TxReceipt[] txReceipts)
         {
             if (txReceipts.Length == 0)
             {
@@ -49,31 +42,6 @@ namespace Nethermind.Blockchain
 
             receiptTree.UpdateRootHash();
             return receiptTree.RootHash;
-        }
-        
-        public static Keccak CalculateTxRoot(this Block block)
-        {
-            if (block.Transactions.Length == 0)
-            {
-                return PatriciaTree.EmptyTreeHash;
-            }
-            
-            PatriciaTree txTree = new PatriciaTree();
-            for (int i = 0; i < block.Transactions.Length; i++)
-            {
-                Rlp transactionRlp = _txDecoder.Encode(block.Transactions[i]);
-                txTree.Set(Rlp.Encode(i).Bytes, transactionRlp.Bytes);
-            }
-
-            txTree.UpdateRootHash();
-            return txTree.RootHash;
-        }
-        
-        public static Keccak CalculateOmmersHash(this Block block)
-        {
-            return block.Ommers.Length == 0
-                ? Keccak.OfAnEmptySequenceRlp
-                : Keccak.Compute(Rlp.Encode(block.Ommers).Bytes);
         }
     }
 }

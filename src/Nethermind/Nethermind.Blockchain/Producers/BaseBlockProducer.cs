@@ -18,6 +18,7 @@ using System;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Proofs;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -151,7 +152,7 @@ namespace Nethermind.Blockchain.Producers
             if (Logger.IsDebug) Logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
 
             Block block = new Block(header, _pendingTransactionSelector.SelectTransactions(header.GasLimit), new BlockHeader[0]);
-            header.TxRoot = block.CalculateTxRoot();
+            header.TxRoot = TxTrie.CalculateTxRoot(block);
             return block;
         }
 

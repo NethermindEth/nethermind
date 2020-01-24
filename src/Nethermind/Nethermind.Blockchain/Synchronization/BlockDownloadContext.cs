@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain.Proofs;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -157,7 +158,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void ValidateReceipts(Block block, TxReceipt[] blockReceipts)
         {
-            Keccak receiptsRoot = block.CalculateReceiptRoot(_specProvider, blockReceipts);
+            Keccak receiptsRoot = ReceiptTrie.CalculateRoot(block.Number, _specProvider, blockReceipts);
             if (receiptsRoot != block.ReceiptsRoot)
             {
                 throw new EthSynchronizationException($"Wrong receipts root for downloaded block {block.ToString(Block.Format.Short)}.");

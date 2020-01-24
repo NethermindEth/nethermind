@@ -21,6 +21,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Nethermind.Blockchain.Proofs;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization.SyncLimits;
 using Nethermind.Blockchain.Validators;
@@ -548,7 +549,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                 if (!wasInvalid)
                 {
-                    Keccak receiptsRoot = block.CalculateReceiptRoot(_specProvider, blockReceipts);
+                    Keccak receiptsRoot = ReceiptTrie.CalculateRoot(block.Number, _specProvider, blockReceipts);
                     if (receiptsRoot != block.ReceiptsRoot)
                     {
                         if (_logger.IsWarn) _logger.Warn($"{batch} - invalid receipt root");
@@ -648,8 +649,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 }
 
                 Block block = new Block(bodiesSyncBatch.Headers[i], blockBody.Transactions, blockBody.Ommers);
-                if (block.CalculateTxRoot() != block.TransactionsRoot ||
-                    block.CalculateOmmersHash() != block.OmmersHash)
+                if (TxTrie.CalculateTxRoot(block) != block.TransactionsRoot ||
+                    OmmersHash.Calculate(block) != block.OmmersHash)
                 {
                     if (_logger.IsWarn) _logger.Warn($"{batch} - reporting INVALID - tx or ommers");
                     _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.OriginalDataSource, $"invalid tx or ommers root");

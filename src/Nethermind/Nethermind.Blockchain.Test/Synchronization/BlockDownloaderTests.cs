@@ -21,6 +21,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain.Proofs;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
@@ -337,7 +338,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
                     _headers[blockHashes[i]].ReceiptsRoot = flags.HasFlag(Response.IncorrectReceiptRoot)
                         ? Keccak.EmptyTreeHash
-                        : BlockExtensions.CalculateReceiptRoot(_headers[blockHashes[i]].Number, MainNetSpecProvider.Instance, receipts[i]);
+                        : ReceiptTrie.CalculateRoot(_headers[blockHashes[i]].Number, MainNetSpecProvider.Instance, receipts[i]);
                 }
 
                 ReceiptsMessage message = new ReceiptsMessage(receipts);

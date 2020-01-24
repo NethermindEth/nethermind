@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain.Proofs;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.TxPools;
@@ -36,17 +37,17 @@ namespace Nethermind.Blockchain
 {
     public class BlockProcessor : IBlockProcessor
     {
-        private readonly IBlockValidator _blockValidator;
-        private readonly ISnapshotableDb _codeDb;
         private readonly ILogger _logger;
-        private readonly IRewardCalculator _rewardCalculator;
-        private readonly ISpecProvider _specProvider;
-        private readonly ISnapshotableDb _stateDb;
-        private readonly IStateProvider _stateProvider;
-        private readonly IStorageProvider _storageProvider;
-        private readonly ITransactionProcessor _transactionProcessor;
         private readonly ITxPool _txPool;
+        private readonly ISnapshotableDb _codeDb;
+        private readonly ISnapshotableDb _stateDb;
+        private readonly ISpecProvider _specProvider;
+        private readonly IStateProvider _stateProvider;
         private readonly IReceiptStorage _receiptStorage;
+        private readonly IBlockValidator _blockValidator;
+        private readonly IStorageProvider _storageProvider;
+        private readonly IRewardCalculator _rewardCalculator;
+        private readonly ITransactionProcessor _transactionProcessor;
         private readonly IAdditionalBlockProcessor _additionalBlockProcessor;
 
         public BlockProcessor(ISpecProvider specProvider,
@@ -170,7 +171,7 @@ namespace Nethermind.Blockchain
 
         private void SetReceiptsRoot(Block block, TxReceipt[] txReceipts)
         {
-            block.Header.ReceiptsRoot = block.CalculateReceiptRoot(_specProvider, txReceipts);
+            block.Header.ReceiptsRoot = ReceiptTrie.CalculateRoot(block.Number, _specProvider, txReceipts);
         }
 
         private void Restore(int stateSnapshot, int codeSnapshot, Keccak snapshotStateRoot)

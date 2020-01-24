@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Proofs;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
@@ -154,8 +155,8 @@ namespace Nethermind.Core.Test.Builders
                     current.Bloom.Add(receipt.Logs);
                 }
 
-                current.Header.TxRoot = current.CalculateTxRoot();
-                current.Header.ReceiptsRoot = current.CalculateReceiptRoot(_specProvider, receipts.ToArray());
+                current.Header.TxRoot = TxTrie.CalculateTxRoot(current);
+                current.Header.ReceiptsRoot = ReceiptTrie.CalculateRoot(current.Number, _specProvider, receipts.ToArray());
                 current.Hash = current.CalculateHash();
             }
             else

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Blockchain.Proofs;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -81,7 +82,7 @@ namespace Nethermind.Blockchain.Validators
                 return false;
             }
 
-            if (block.Header.OmmersHash != block.CalculateOmmersHash())
+            if (block.Header.OmmersHash != OmmersHash.Calculate(block))
             {
                 _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid uncles hash");
                 return false;
@@ -100,7 +101,7 @@ namespace Nethermind.Blockchain.Validators
                 return false;
             }
 
-            Keccak txRoot = block.CalculateTxRoot();
+            Keccak txRoot = TxTrie.CalculateTxRoot(block);
             if (txRoot != block.Header.TxRoot)
             {
                 if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) tx root {txRoot} != stated tx root {block.Header.TxRoot}");
