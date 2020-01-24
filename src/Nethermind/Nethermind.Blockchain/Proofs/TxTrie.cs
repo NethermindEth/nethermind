@@ -14,30 +14,47 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
+using Nethermind.Store.Proofs;
 
 namespace Nethermind.Blockchain.Proofs
 {
     public class TxTrie : PatriciaTree
     {
+        private readonly bool _allowProofs;
         private static TransactionDecoder _txDecoder = new TransactionDecoder();
 
-        public TxTrie(Block block)
+        public TxTrie(Transaction[] txs, bool allowProofs = false)
+            : base(allowProofs ? (IDb) new MemDb() : NullDb.Instance)
         {
-            if (block.Transactions.Length == 0)
+            _allowProofs = allowProofs;
+            if (txs.Length == 0)
             {
                 return;
             }
-            
-            for (int i = 0; i < block.Transactions.Length; i++)
+
+            for (int i = 0; i < txs.Length; i++)
             {
-                Rlp transactionRlp = _txDecoder.Encode(block.Transactions[i]);
+                Rlp transactionRlp = _txDecoder.Encode(txs[i]);
                 Set(Rlp.Encode(i).Bytes, transactionRlp.Bytes);
             }
-            
+
             UpdateRootHash();
+        }
+
+        public byte[][] BuildProof(int index)
+        {
+            if (!_allowProofs)
+            {
+                throw new InvalidOperationException("Cannot build proofs without underlying DB (for now?)");
+            }
+            
+            ProofCollector proofCollector = new ProofCollector(Rlp.Encode(index).Bytes);
+            Accept(proofCollector, RootHash);
+            return proofCollector.BuildResult();
         }
     }
 }

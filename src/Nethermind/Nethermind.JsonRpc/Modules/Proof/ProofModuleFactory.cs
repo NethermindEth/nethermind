@@ -65,7 +65,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             Tracer tracer = new Tracer(readOnlyTxProcessingEnv.BlockTree,
                 readOnlyTxProcessingEnv.StateProvider, readOnlyChainProcessingEnv.BlockProcessor);
             
-            return new ProofModule(tracer, _blockTree, _receiptStorage, _logManager);
+            return new ProofModule(tracer, _blockTree, _receiptStorage, _specProvider, _logManager);
         }
 
         private static List<JsonConverter> _converters = new List<JsonConverter>

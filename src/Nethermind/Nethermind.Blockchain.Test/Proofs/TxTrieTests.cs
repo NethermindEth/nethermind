@@ -27,8 +27,25 @@ namespace Nethermind.Blockchain.Test.Proofs
         public void Can_calculate_root()
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
-            TxTrie txTrie = new TxTrie(block);
+            TxTrie txTrie = new TxTrie(block.Transactions);
             Assert.AreEqual("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5", txTrie.RootHash.ToString());
+        }
+        
+        [Test]
+        public void Can_collect_proof()
+        {
+            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
+            TxTrie txTrie = new TxTrie(block.Transactions, true);
+            byte[][] proof = txTrie.BuildProof(0);
+        }
+        
+        [Test]
+        public void Can_collect_proof_with_branch()
+        {
+            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject, Build.A.Transaction.TestObject).TestObject;
+            TxTrie txTrie = new TxTrie(block.Transactions, true);
+            byte[][] proof = txTrie.BuildProof(0);
+            Assert.AreEqual(2, proof.Length);
         }
     }
 }

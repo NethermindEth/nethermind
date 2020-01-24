@@ -592,10 +592,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<AccountProof>.Fail(ex.Message, ex.ErrorCode, null);	
             }	
 
-            ProofCollector proofCollector = new ProofCollector(accountAddress, storageKeys);	
-            _blockchainBridge.RunTreeVisitor(proofCollector, header.StateRoot);	
+            AccountProofCollector accountProofCollector = new AccountProofCollector(accountAddress, storageKeys);	
+            _blockchainBridge.RunTreeVisitor(accountProofCollector, header.StateRoot);	
 
-            return ResultWrapper<AccountProof>.Success(proofCollector.BuildResult());	
+            return ResultWrapper<AccountProof>.Success(accountProofCollector.BuildResult());	
         }	
 
 

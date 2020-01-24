@@ -14,24 +14,16 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Crypto;
-
 namespace Nethermind.Store
 {
-    public interface ITreeVisitor
+    public class TrieVisitContext
     {
-        bool ShouldVisit(Keccak nextNode);
+        public int Level { get; set; }
+
+        public bool IsStorage { get; set; }
+
+        public int? BranchChildIndex { get; set; }
         
-        void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext);
-        
-        void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext);
-        
-        void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext);
-        
-        void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext);
-        
-        void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null);
-        
-        void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext);
+        public bool ExpectAccounts { get; set; }
     }
 }

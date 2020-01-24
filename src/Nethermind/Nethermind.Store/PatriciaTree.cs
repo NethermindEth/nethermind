@@ -57,6 +57,11 @@ namespace Nethermind.Store
             : this(NullDb.Instance, EmptyTreeHash, false)
         {
         }
+        
+        public PatriciaTree(IDb db)
+            : this(db, EmptyTreeHash, false)
+        {
+        }
 
         public PatriciaTree(IDb db, Keccak rootHash, bool parallelBranches)
         {
@@ -735,11 +740,17 @@ namespace Nethermind.Store
 
         public void Accept(ITreeVisitor visitor, Keccak rootHash)
         {
-            VisitContext visitContext = new VisitContext();
+            TrieVisitContext trieVisitContext = new TrieVisitContext();
+            
+            // hacky but other solutions are not much better, something nicer would require a bit of thinking
+            // we introduced a notion of an account on the visit context level which should have no knowledge of account really
+            // but we know that we have multiple optimizations and assumptions on trees
+            trieVisitContext.ExpectAccounts = this is StateTree;
+            
             TrieNode rootRef = null;
             if (!rootHash.Equals(Keccak.EmptyTreeHash))
             {
-                rootRef = new TrieNode(NodeType.Unknown, rootHash);
+                rootRef = RootHash == rootHash ? RootRef : new TrieNode(NodeType.Unknown, rootHash);
                 try
                 {
                     // not allowing caching just for test scenarios when we use multiple trees
@@ -747,13 +758,13 @@ namespace Nethermind.Store
                 }
                 catch (StateException)
                 {
-                    visitor.VisitMissingNode(rootHash, visitContext);
+                    visitor.VisitMissingNode(rootHash, trieVisitContext);
                     return;
                 }
             }
             
-            visitor.VisitTree(rootHash, visitContext);
-            rootRef?.Accept(visitor, this, visitContext);
+            visitor.VisitTree(rootHash, trieVisitContext);
+            rootRef?.Accept(visitor, this, trieVisitContext);
         }
     }
 }

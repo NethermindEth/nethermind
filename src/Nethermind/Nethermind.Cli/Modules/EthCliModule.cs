@@ -106,7 +106,7 @@ namespace Nethermind.Cli.Modules
         [CliFunction("eth", "getCode")]
         public string GetCode(string address, string blockParameter = null)
         {
-            return NodeManager.Post<string>("eth_getCode", address, blockParameter ?? "latest").Result;
+            return NodeManager.Post<string>("eth_getCode", CliParseAddress(address), blockParameter ?? "latest").Result;
         }
 
         [CliFunction("eth", "getBlockTransactionCountByNumber")]
@@ -118,7 +118,7 @@ namespace Nethermind.Cli.Modules
         [CliFunction("eth", "getBlockTransactionCountByHash")]
         public JsValue GetBlockTransactionCountByHash(string hash)
         {
-            return NodeManager.PostJint("eth_getBlockTransactionCountByHash", hash).Result;
+            return NodeManager.PostJint("eth_getBlockTransactionCountByHash", CliParseHash(hash)).Result;
         }
 
         [CliFunction("eth", "getUncleCountByBlockNumber")]
@@ -136,13 +136,13 @@ namespace Nethermind.Cli.Modules
         [CliFunction("eth", "getTransactionByHash")]
         public JsValue GetTransactionByHash(string txHash)
         {
-            return NodeManager.PostJint("eth_getTransactionByHash", txHash).Result;
+            return NodeManager.PostJint("eth_getTransactionByHash", CliParseHash(txHash)).Result;
         }
 
         [CliFunction("eth", "getTransactionReceipt")]
         public JsValue GetTransactionReceipt(string txHash)
         {
-            return NodeManager.PostJint("eth_getTransactionReceipt", txHash).Result;
+            return NodeManager.PostJint("eth_getTransactionReceipt", CliParseHash(txHash)).Result;
         }
 
         [CliFunction("eth", "getBalance")]

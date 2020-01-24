@@ -16,10 +16,12 @@
 
 using System;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Proofs;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
@@ -33,16 +35,19 @@ namespace Nethermind.JsonRpc.Modules.Proof
         private readonly ITracer _tracer;
         private readonly IBlockFinder _blockFinder;
         private readonly IReceiptFinder _receiptFinder;
+        private readonly ISpecProvider _specProvider;
         private readonly HeaderDecoder _decoder = new HeaderDecoder();
 
         public ProofModule(ITracer tracer,
             IBlockFinder blockFinder,
             IReceiptFinder receiptFinder,
+            ISpecProvider specProvider,
             ILogManager logManager)
         {
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -55,12 +60,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         private byte[][] BuildTxProof(Transaction[] txs, int index)
         {
-            throw new NotImplementedException();
+            return new TxTrie(txs, true).BuildProof(index);
         }
         
-        private byte[][] BuildReceiptProof(TxReceipt[] receipts, int index)
+        private byte[][] BuildReceiptProof(long blockNumber, TxReceipt[] receipts, int index)
         {
-            throw new NotImplementedException();
+            return new ReceiptTrie(blockNumber, _specProvider, receipts, true).BuildProof(index);
         }
 
         public ResultWrapper<TransactionWithProof> proof_getTransactionByHash(Keccak txHash, bool includeHeader = true)
@@ -88,6 +93,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             Block block = _blockFinder.FindBlock(receipt.BlockHash);
             
             BlockReceiptsTracer receiptsTracer = new BlockReceiptsTracer();
+            receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
             _tracer.Trace(receipt.BlockHash, receiptsTracer);
             
             TxReceipt[] receipts = receiptsTracer.TxReceipts;
@@ -100,7 +106,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 receiptWithProof.BlockHeader = _decoder.Encode(block.Header).Bytes;
             }
 
-            receiptWithProof.ReceiptProof = BuildReceiptProof(receipts, receipt.Index);
+            receiptWithProof.ReceiptProof = BuildReceiptProof(block.Number, receipts, receipt.Index);
             receiptWithProof.TxProof = BuildTxProof(txs, receipt.Index);
             return ResultWrapper<ReceiptWithProof>.Success(receiptWithProof);
         }

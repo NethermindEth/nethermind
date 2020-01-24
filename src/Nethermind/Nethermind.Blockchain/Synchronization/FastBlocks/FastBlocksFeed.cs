@@ -649,7 +649,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 }
 
                 Block block = new Block(bodiesSyncBatch.Headers[i], blockBody.Transactions, blockBody.Ommers);
-                if (new TxTrie(block).RootHash != block.TransactionsRoot ||
+                if (new TxTrie(block.Transactions).RootHash != block.TransactionsRoot ||
                     OmmersHash.Calculate(block) != block.OmmersHash)
                 {
                     if (_logger.IsWarn) _logger.Warn($"{batch} - reporting INVALID - tx or ommers");

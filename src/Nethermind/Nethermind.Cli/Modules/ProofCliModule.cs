@@ -29,15 +29,15 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("proof", "getTransactionReceipt")]
-        public JsValue GetTransactionReceipt(Keccak transactionHash, bool includeHeader)
+        public JsValue GetTransactionReceipt(string transactionHash, bool includeHeader)
         {
-            return NodeManager.PostJint("proof_getTransactionReceipt", transactionHash, includeHeader).Result;
+            return NodeManager.PostJint("proof_getTransactionReceipt", CliParseHash(transactionHash), includeHeader).Result;
         }
 
         [CliFunction("proof", "getTransactionByHash")]
-        public JsValue GetTransactionByHash(Keccak transactionHash, bool includeHeader)
+        public JsValue GetTransactionByHash(string transactionHash, bool includeHeader)
         {
-            return NodeManager.PostJint("proof_getTransactionByHash", transactionHash, includeHeader).Result;
+            return NodeManager.PostJint("proof_getTransactionByHash", CliParseHash(transactionHash), includeHeader).Result;
         }
 
         public ProofCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
