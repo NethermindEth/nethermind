@@ -172,6 +172,56 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             string response = RpcTest.TestSerializedRequest(_proofModule, "proof_call", $"{serializer.Serialize(tx)}", $"{block.Number}");
             Assert.True(response.Contains("\"result\""));
         }
+        
+        [Test]
+        public void Can_call_by_hash()
+        {
+            StateProvider stateProvider = new StateProvider(_dbProvider.StateDb, _dbProvider.CodeDb, LimboLogs.Instance);
+            AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
+            AddAccount(stateProvider, TestItem.AddressB, 1.Ether());
+
+            Keccak root = stateProvider.StateRoot;
+            Block block = Build.A.Block.WithParent(_blockTree.Head).WithStateRoot(root).TestObject;
+            BlockTreeBuilder.AddBlock(_blockTree, block);
+
+            // would need to setup state root somehow...
+
+            TransactionForRpc tx = new TransactionForRpc
+            {
+                From = TestItem.AddressA,
+                To = TestItem.AddressB
+            };
+            _proofModule.proof_call(tx, new BlockParameter(block.Hash));
+            
+            EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+            string response = RpcTest.TestSerializedRequest(_proofModule, "proof_call", $"{serializer.Serialize(tx)}", $"{block.Hash}");
+            Assert.True(response.Contains("\"result\""));
+        }
+        
+        [Test]
+        public void Can_call_by_hash_canonical()
+        {
+            BlockHeader lastHead = _blockTree.Head;
+            Block block = Build.A.Block.WithParent(lastHead).TestObject;
+            Block newBlockOnMain = Build.A.Block.WithParent(lastHead).WithDifficulty(block.Difficulty + 1).TestObject;
+            BlockTreeBuilder.AddBlock(_blockTree, block);
+            BlockTreeBuilder.AddBlock(_blockTree, newBlockOnMain);
+
+            // would need to setup state root somehow...
+
+            TransactionForRpc tx = new TransactionForRpc
+            {
+                From = TestItem.AddressA,
+                To = TestItem.AddressB
+            };
+            
+            EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+            string response = RpcTest.TestSerializedRequest(_proofModule, "proof_call", $"{serializer.Serialize(tx)}", $"{{\"blockHash\" : \"{block.Hash}\", \"requireCanonical\" : true}}");
+            Assert.True(response.Contains("-32000"));
+            
+            response = RpcTest.TestSerializedRequest(_proofModule, "proof_call", $"{serializer.Serialize(tx)}", $"{{\"blockHash\" : \"{TestItem.KeccakG}\", \"requireCanonical\" : true}}");
+            Assert.True(response.Contains("-32001"));
+        }
 
         [Test]
         public void Can_call_with_block_hashes()

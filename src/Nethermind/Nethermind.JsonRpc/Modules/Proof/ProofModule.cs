@@ -66,7 +66,28 @@ namespace Nethermind.JsonRpc.Modules.Proof
         {
             Transaction transaction = tx.ToTransaction();
 
-            BlockHeader parentHeader = _blockFinder.FindBlock(blockParameter).Header;
+            BlockHeader parentHeader;
+            if (blockParameter.RequireCanonical)
+            {
+                parentHeader = _blockFinder.FindHeader(blockParameter.BlockHash, BlockTreeLookupOptions.RequireCanonical);
+                if (parentHeader == null)
+                {
+                    parentHeader = _blockFinder.FindHeader(blockParameter);
+                    if (parentHeader != null)
+                    {
+                        return ResultWrapper<CallResultWithProof>.Fail($"{blockParameter.BlockHash} block is not canonical", ErrorCodes.InvalidInput);
+                    }
+                }
+            }
+            else
+            {
+                parentHeader = _blockFinder.FindHeader(blockParameter);
+            }
+
+            if (parentHeader == null)
+            {
+                return ResultWrapper<CallResultWithProof>.Fail($"{blockParameter.BlockHash} could not be found", ErrorCodes.ResourceNotFound);
+            }
 
             BlockHeader traceHeader = new BlockHeader(
                 parentHeader.Hash,
@@ -143,7 +164,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             {
                 return ResultWrapper<TransactionWithProof>.Fail($"{txHash} receipt (transaction) could not be found", ErrorCodes.ResourceNotFound);
             }
-            
+
             Block block = _blockFinder.FindBlock(receipt.BlockHash);
             if (block == null)
             {

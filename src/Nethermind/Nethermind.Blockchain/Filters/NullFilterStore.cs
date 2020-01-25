@@ -17,7 +17,6 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Blockchain.Filters
 {

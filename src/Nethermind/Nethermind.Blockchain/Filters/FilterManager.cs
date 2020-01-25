@@ -22,7 +22,6 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Filters

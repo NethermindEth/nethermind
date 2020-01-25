@@ -18,7 +18,6 @@ using System.Linq;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Core;
-using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Blockchain.Test.Builders
 {

@@ -49,10 +49,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             if (string.IsNullOrWhiteSpace(value))
             {
-                return new BlockParameter
-                {
-                    Type = BlockParameterType.Latest
-                };
+                return new BlockParameter(BlockParameterType.Latest);
             }
 
             return BlockParameter.FromJson(value);

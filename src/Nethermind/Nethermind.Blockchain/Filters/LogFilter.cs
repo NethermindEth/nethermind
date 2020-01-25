@@ -16,7 +16,6 @@
 
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Core;
-using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Blockchain.Filters
 {

@@ -16,7 +16,7 @@
 
 using System;
 using Nethermind.Core.Attributes;
-using Nethermind.JsonRpc.Data;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain
@@ -32,6 +32,10 @@ namespace Nethermind.Blockchain
 
         public BlockParameterType Type { get; set; }
         public long? BlockNumber { get; }
+        
+        public Keccak BlockHash { get; }
+
+        public bool RequireCanonical { get; }
 
         public BlockParameter()
         {
@@ -40,13 +44,25 @@ namespace Nethermind.Blockchain
         public BlockParameter(BlockParameterType type)
         {
             Type = type;
-            BlockNumber = null;
         }
 
         public BlockParameter(long number)
         {
             Type = BlockParameterType.BlockNumber;
             BlockNumber = number;
+        }
+        
+        public BlockParameter(Keccak blockHash)
+        {
+            Type = BlockParameterType.BlockHash;
+            BlockHash = blockHash;
+        }
+        
+        public BlockParameter(Keccak blockHash, bool requireCanonical)
+        {
+            Type = BlockParameterType.BlockHash;
+            BlockHash = blockHash;
+            RequireCanonical = requireCanonical;
         }
 
         [Todo(Improve.Refactor,"Move it to converters")]
@@ -64,6 +80,8 @@ namespace Nethermind.Blockchain
                     return Latest;
                 case null:
                     return Latest;
+                case { } hash when hash.Length == 66 && hash.StartsWith("0x"):
+                    return Latest;
                 default:
                     return new BlockParameter(LongConverter.FromString(jsonValue.Trim('"')));
             }
@@ -71,13 +89,13 @@ namespace Nethermind.Blockchain
 
         public override string ToString()
         {
-            return $"{Type}, {BlockNumber}";
+            return $"{Type}, {BlockNumber?.ToString() ?? BlockHash?.ToString()}";
         }
         public bool Equals(BlockParameter other)
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;
-            return Type == other.Type && BlockNumber == other.BlockNumber;
+            return Type == other.Type && BlockNumber == other.BlockNumber && BlockHash == other.BlockHash && other.RequireCanonical == RequireCanonical;
         }
 
         public override bool Equals(object obj)

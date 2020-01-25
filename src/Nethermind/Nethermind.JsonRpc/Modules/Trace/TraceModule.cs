@@ -70,15 +70,15 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Block block;
             try
             {
-                block = _blockchainBridge.GetBlock(blockParameter, true);
+                block = _blockchainBridge.FindBlock(blockParameter);
                 if (block is null)
                 {
                     return ResultWrapper<ParityLikeTxTrace[]>.Success(null);
                 }
             }
-            catch (JsonRpcException ex)
+            catch (Exception ex)
             {
-                return ResultWrapper<ParityLikeTxTrace[]>.Fail(ex.Message, ex.ErrorCode, null);
+                return ResultWrapper<ParityLikeTxTrace[]>.Fail(ex.Message, ErrorCodes.InternalError, null);
             }
 
             ParityLikeTxTrace[] result = _tracer.ParityTraceBlock(block.Hash, GetParityTypes(traceTypes));
@@ -95,15 +95,15 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Block block;
             try
             {
-                block = _blockchainBridge.GetBlock(blockParameter, true);
+                block = _blockchainBridge.FindBlock(blockParameter);
                 if (block is null)
                 {
                     return ResultWrapper<ParityLikeTxTrace[]>.Success(null);
                 }
             }
-            catch (JsonRpcException ex)
+            catch (Exception ex)
             {
-                return ResultWrapper<ParityLikeTxTrace[]>.Fail(ex.Message, ex.ErrorCode, null);
+                return ResultWrapper<ParityLikeTxTrace[]>.Fail(ex.Message, ErrorCodes.InternalError, null);
             }
 
             return ResultWrapper<ParityLikeTxTrace[]>.Success(_tracer.ParityTraceBlock(block.Hash,

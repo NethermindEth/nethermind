@@ -22,7 +22,6 @@ using System.Linq;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Blockchain.Filters
 {

@@ -14,15 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Blockchain.Filters;
-
-namespace Nethermind.JsonRpc.Data
+namespace Nethermind.Blockchain
 {
     public enum BlockParameterType
     {
         Earliest,
         Latest,
         Pending,
-        BlockNumber
+        BlockNumber,
+        BlockHash
     }
 }

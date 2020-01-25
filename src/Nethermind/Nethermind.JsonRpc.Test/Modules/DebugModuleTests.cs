@@ -127,7 +127,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             DebugModule module = new DebugModule(NullLogManager.Instance, debugBridge);
             JsonRpcErrorResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getBlockRlp", "1") as JsonRpcErrorResponse;
 
-            Assert.AreEqual(-32601, response.Error.Code);
+            Assert.AreEqual(-32001, response.Error.Code);
         }
 
         [Test]
@@ -141,7 +141,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             DebugModule module = new DebugModule(NullLogManager.Instance, debugBridge);
             JsonRpcErrorResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getBlockRlpByHash", $"{Keccak.Zero.Bytes.ToHexString()}") as JsonRpcErrorResponse;
 
-            Assert.AreEqual(-32601, response.Error.Code);
+            Assert.AreEqual(-32001, response.Error.Code);
         }
 
         [Test]

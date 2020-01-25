@@ -27,7 +27,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.JsonRpc.Data;
 using NSubstitute;
 using NUnit.Framework;
 

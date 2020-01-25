@@ -18,7 +18,6 @@ using System;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Blockchain.Find
 {
@@ -68,25 +67,37 @@ namespace Nethermind.Blockchain.Find
         
         public Block FindBlock(BlockParameter blockParameter)
         {
+            if (blockParameter == null)
+            {
+                return FindLatestBlock();
+            }
+            
             return blockParameter.Type switch
             {
                 BlockParameterType.Pending => FindPendingBlock(),
                 BlockParameterType.Latest => FindLatestBlock(),
                 BlockParameterType.Earliest => FindEarliestBlock(),
                 BlockParameterType.BlockNumber => FindBlock(blockParameter.BlockNumber.Value),
+                BlockParameterType.BlockHash => FindBlock(blockParameter.BlockHash),
                 _ => throw new ArgumentException($"{nameof(BlockParameterType)} not supported: {blockParameter.Type}")
             };
         }
         
-        public BlockHeader FindHeader(BlockParameter blockFilter)
+        public BlockHeader FindHeader(BlockParameter blockParameter)
         {
-            return blockFilter.Type switch
+            if (blockParameter == null)
+            {
+                return FindLatestHeader();
+            }
+            
+            return blockParameter.Type switch
             {
                 BlockParameterType.Pending => FindPendingHeader(),
                 BlockParameterType.Latest => FindLatestHeader(),
                 BlockParameterType.Earliest => FindEarliestHeader(),
-                BlockParameterType.BlockNumber => FindHeader(blockFilter.BlockNumber.Value),
-                _ => throw new ArgumentException($"{nameof(BlockParameterType)} not supported: {blockFilter.Type}")
+                BlockParameterType.BlockNumber => FindHeader(blockParameter.BlockNumber.Value),
+                BlockParameterType.BlockHash => FindHeader(blockParameter.BlockHash),
+                _ => throw new ArgumentException($"{nameof(BlockParameterType)} not supported: {blockParameter.Type}")
             };
         }
     }

@@ -22,7 +22,6 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
-using Nethermind.JsonRpc.Data;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Filters

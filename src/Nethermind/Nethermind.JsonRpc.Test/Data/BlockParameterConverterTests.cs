@@ -16,6 +16,8 @@
 
 using System.IO;
 using Nethermind.Blockchain;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Data;
 using Newtonsoft.Json;
 using NUnit.Framework;
@@ -73,6 +75,7 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase("\"earliest\"", BlockParameterType.Earliest)]
         [TestCase("\"pending\"", BlockParameterType.Pending)]
         [TestCase("null", BlockParameterType.BlockNumber)]
+        [TestCase("null", BlockParameterType.BlockHash)]
         public void Can_write_type(string output, BlockParameterType input)
         {
             BlockParameter blockParameter = new BlockParameter(input);
@@ -113,6 +116,8 @@ namespace Nethermind.JsonRpc.Test.Data
             TestSerialization(BlockParameter.Earliest, (a, b) => a.Equals(b), "earliest");
             TestSerialization(new BlockParameter(0L), (a, b) => a.Equals(b), "zero");
             TestSerialization(new BlockParameter(long.MaxValue), (a, b) => a.Equals(b), "max");
+            TestSerialization(new BlockParameter(TestItem.KeccakA), (a, b) => a.Equals(b), "hash");
+            TestSerialization(new BlockParameter(TestItem.KeccakA, true), (a, b) => a.Equals(b), "hash with canonical");
         }
     }
 }
