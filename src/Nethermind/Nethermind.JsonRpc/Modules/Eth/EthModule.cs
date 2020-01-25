@@ -167,7 +167,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Block block = _blockchainBridge.FindBlock(blockHash);
             if (block == null)
             {
-                return ResultWrapper<UInt256?>.Fail($"Cannot find block for hash: {blockHash}", ErrorCodes.NotFound, null);
+                return ResultWrapper<UInt256?>.Fail($"Cannot find block for hash: {blockHash}", ErrorCodes.ResourceNotFound, null);
             }
 
             return ResultWrapper<UInt256?>.Success((UInt256)block.Transactions.Length);
@@ -195,7 +195,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             var block = _blockchainBridge.FindBlock(blockHash);
             if (block == null)
             {
-                return ResultWrapper<UInt256?>.Fail($"Cannot find block for hash: {blockHash}", ErrorCodes.NotFound, null);
+                return ResultWrapper<UInt256?>.Fail($"Cannot find block for hash: {blockHash}", ErrorCodes.ResourceNotFound, null);
             }
 
             if (_logger.IsTrace) _logger.Trace($"eth_getUncleCountByBlockHash request {blockHash}, result: {block.Transactions.Length}");
@@ -365,7 +365,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             var block = _blockchainBridge.FindBlock(blockHash);
             if (block == null)
             {
-                return ResultWrapper<TransactionForRpc>.Fail($"Cannot find block for hash: {blockHash}", ErrorCodes.NotFound);
+                return ResultWrapper<TransactionForRpc>.Fail($"Cannot find block for hash: {blockHash}", ErrorCodes.ResourceNotFound);
             }
 
             if (positionIndex < 0 || positionIndex > block.Transactions.Length - 1)
@@ -432,7 +432,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             var block = _blockchainBridge.FindBlock(blockHash);
             if (block == null)
             {
-                return ResultWrapper<BlockForRpc>.Fail($"Cannot find block for hash: {blockHash}", ErrorCodes.NotFound);
+                return ResultWrapper<BlockForRpc>.Fail($"Cannot find block for hash: {blockHash}", ErrorCodes.ResourceNotFound);
             }
 
             if (positionIndex < 0 || positionIndex > block.Ommers.Length - 1)
@@ -444,7 +444,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             var ommer = _blockchainBridge.FindBlock(ommerHeader.Hash);
             if (ommer == null)
             {
-                return ResultWrapper<BlockForRpc>.Fail($"Cannot find ommer for hash: {ommerHeader.Hash}", ErrorCodes.NotFound);
+                return ResultWrapper<BlockForRpc>.Fail($"Cannot find ommer for hash: {ommerHeader.Hash}", ErrorCodes.ResourceNotFound);
             }
 
             if (_logger.IsTrace) _logger.Trace($"eth_getUncleByBlockHashAndIndex request {blockHashData}, index: {positionIndex}, result: {block}");
@@ -477,7 +477,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             var ommer = _blockchainBridge.FindBlock(ommerHeader.Hash);
             if (ommer == null)
             {
-                return ResultWrapper<BlockForRpc>.Fail($"Cannot find ommer for hash: {ommerHeader.Hash}", ErrorCodes.NotFound);
+                return ResultWrapper<BlockForRpc>.Fail($"Cannot find ommer for hash: {ommerHeader.Hash}", ErrorCodes.ResourceNotFound);
             }
 
             _blockchainBridge.RecoverTxSenders(ommer);
@@ -682,7 +682,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             if (header == null)
             {
-                return ResultWrapper<UInt256?>.Fail("Block not found", ErrorCodes.NotFound, null);
+                return ResultWrapper<UInt256?>.Fail("Block not found", ErrorCodes.ResourceNotFound, null);
             }
 
             Account account = _blockchainBridge.GetAccount(address, header.StateRoot);

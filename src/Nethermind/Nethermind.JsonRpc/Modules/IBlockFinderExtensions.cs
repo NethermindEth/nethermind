@@ -56,7 +56,7 @@ namespace Nethermind.JsonRpc.Modules
 
             if (block == null && !allowNulls)
             {
-                throw new JsonRpcException(ErrorCodes.NotFound, $"Cannot find block {blockParameter}");
+                throw new JsonRpcException(ErrorCodes.ResourceNotFound, $"Cannot find block {blockParameter}");
             }
             
             return block;
@@ -92,7 +92,7 @@ namespace Nethermind.JsonRpc.Modules
 
             if (header == null && !allowNulls)
             {
-                throw new JsonRpcException(ErrorCodes.NotFound, $"Cannot find block {blockParameter}");
+                throw new JsonRpcException(ErrorCodes.ResourceNotFound, $"Cannot find block {blockParameter}");
             }
             
             return header;

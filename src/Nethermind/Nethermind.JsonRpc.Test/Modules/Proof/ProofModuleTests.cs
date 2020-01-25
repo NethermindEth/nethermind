@@ -27,9 +27,11 @@ using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Store;
+using Newtonsoft.Json;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Proof
@@ -63,7 +65,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         [TestCase(false)]
         public void Can_get_transaction(bool withHeader)
         {
-            TransactionWithProof txWithProof = _proofModule.proof_getTransactionByHash(_blockTree.FindBlock(1).Transactions[0].Hash, withHeader).Data;
+            Keccak txHash = _blockTree.FindBlock(1).Transactions[0].Hash;
+            TransactionWithProof txWithProof = _proofModule.proof_getTransactionByHash(txHash, withHeader).Data;
             Assert.NotNull(txWithProof.Transaction);
             Assert.AreEqual(2, txWithProof.TxProof.Length);
             if (withHeader)
@@ -74,13 +77,62 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             {
                 Assert.Null(txWithProof.BlockHeader);
             }
+            
+            string response = RpcTest.TestSerializedRequest(_proofModule, "proof_getTransactionByHash", $"{txHash}", $"{withHeader}");
+            Assert.True(response.Contains("\"result\""));
+        }
+        
+        [TestCase(true)]
+        [TestCase(false)]
+        public void When_getting_non_existing_tx_correct_error_code_is_returned(bool withHeader)
+        {
+            Keccak txHash = TestItem.KeccakH;
+            string response = RpcTest.TestSerializedRequest(_proofModule, "proof_getTransactionByHash", $"{txHash}", $"{withHeader}");
+            Assert.True(response.Contains($"{ErrorCodes.ResourceNotFound}"));
+        }
+        
+        [TestCase(true)]
+        [TestCase(false)]
+        public void When_getting_non_existing_receipt_correct_error_code_is_returned(bool withHeader)
+        {
+            Keccak txHash = TestItem.KeccakH;
+            string response = RpcTest.TestSerializedRequest(_proofModule, "proof_getTransactionReceipt", $"{txHash}", $"{withHeader}");
+            Assert.True(response.Contains($"{ErrorCodes.ResourceNotFound}"));
+        }
+
+        [Test]
+        public void On_incorrect_params_returns_correct_error_code()
+        {
+            Keccak txHash = TestItem.KeccakH;
+            string response;
+
+            // missing with header
+            response = RpcTest.TestSerializedRequest(_proofModule, "proof_getTransactionReceipt", $"{txHash}");
+            Assert.True(response.Contains($"{ErrorCodes.InvalidParams}"), "missing");
+            
+            // too many
+            response = RpcTest.TestSerializedRequest(_proofModule, "proof_getTransactionReceipt", $"{txHash}", "true", "false");
+            Assert.True(response.Contains($"{ErrorCodes.InvalidParams}"), "too many");
+            
+            // missing with header
+            response = RpcTest.TestSerializedRequest(_proofModule, "proof_getTransactionByHash", $"{txHash}");
+            Assert.True(response.Contains($"{ErrorCodes.InvalidParams}"), "missing");
+            
+            // too many
+            response = RpcTest.TestSerializedRequest(_proofModule, "proof_getTransactionByHash", $"{txHash}", "true", "false");
+            Assert.True(response.Contains($"{ErrorCodes.InvalidParams}"), "too many");
+            
+            // all wrong
+            response = RpcTest.TestSerializedRequest(_proofModule, "proof_call", $"{txHash}");
+            Assert.True(response.Contains($"{ErrorCodes.InvalidParams}"), "missing");
         }
 
         [TestCase(true)]
         [TestCase(false)]
         public void Can_get_receipt(bool withHeader)
         {
-            ReceiptWithProof receiptWithProof = _proofModule.proof_getTransactionReceipt(_blockTree.FindBlock(1).Transactions[0].Hash, withHeader).Data;
+            Keccak txHash = _blockTree.FindBlock(1).Transactions[0].Hash;
+            ReceiptWithProof receiptWithProof = _proofModule.proof_getTransactionReceipt(txHash, withHeader).Data;
             Assert.NotNull(receiptWithProof.Receipt);
             Assert.AreEqual(2, receiptWithProof.ReceiptProof.Length);
             if (withHeader)
@@ -91,6 +143,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             {
                 Assert.Null(receiptWithProof.BlockHeader);
             }
+            
+            string response = RpcTest.TestSerializedRequest(_proofModule, "proof_getTransactionReceipt", $"{txHash}", $"{withHeader}");
+            Assert.True(response.Contains("\"result\""));
         }
 
         [Test]
@@ -106,11 +161,16 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             // would need to setup state root somehow...
 
-            _proofModule.proof_call(new TransactionForRpc
+            TransactionForRpc tx = new TransactionForRpc
             {
                 From = TestItem.AddressA,
                 To = TestItem.AddressB
-            }, new BlockParameter(block.Number));
+            };
+            _proofModule.proof_call(tx, new BlockParameter(block.Number));
+            
+            EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+            string response = RpcTest.TestSerializedRequest(_proofModule, "proof_call", $"{serializer.Serialize(tx)}", $"{block.Number}");
+            Assert.True(response.Contains("\"result\""));
         }
 
         [Test]
@@ -118,6 +178,18 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         {
             byte[] code = Prepare.EvmCode
                 .PushData("0x01")
+                .Op(Instruction.BLOCKHASH)
+                .Done;
+            TestCallWithCode(code);
+        }
+        
+        [Test]
+        public void Can_call_with_many_block_hashes()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData("0x01")
+                .Op(Instruction.BLOCKHASH)
+                .PushData("0x02")
                 .Op(Instruction.BLOCKHASH)
                 .Done;
             TestCallWithCode(code);
@@ -132,6 +204,18 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Done;
             TestCallWithCode(code);
         }
+        
+        [Test]
+        public void Can_call_with_many_storage_loads()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData("0x01")
+                .Op(Instruction.SLOAD)
+                .PushData("0x02")
+                .Op(Instruction.SLOAD)
+                .Done;
+            TestCallWithCode(code);
+        }
 
         [Test]
         public void Can_call_with_storage_write()
@@ -139,6 +223,44 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             byte[] code = Prepare.EvmCode
                 .PushData("0x01")
                 .PushData("0x01")
+                .Op(Instruction.SSTORE)
+                .Done;
+            TestCallWithCode(code);
+        }
+        
+        [Test]
+        public void Can_call_with_many_storage_writes()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData("0x01")
+                .PushData("0x01")
+                .Op(Instruction.SSTORE)
+                .PushData("0x02")
+                .PushData("0x02")
+                .Op(Instruction.SSTORE)
+                .Done;
+            TestCallWithCode(code);
+        }
+        
+        [Test]
+        public void Can_call_with_mix_of_everything()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData(TestItem.AddressC)
+                .Op(Instruction.BALANCE)
+                .PushData("0x01")
+                .Op(Instruction.BLOCKHASH)
+                .PushData("0x02")
+                .Op(Instruction.BLOCKHASH)
+                .PushData("0x01")
+                .Op(Instruction.SLOAD)
+                .PushData("0x02")
+                .Op(Instruction.SLOAD)
+                .PushData("0x01")
+                .PushData("0x01")
+                .Op(Instruction.SSTORE)
+                .PushData("0x03")
+                .PushData("0x03")
                 .Op(Instruction.SSTORE)
                 .Done;
             TestCallWithCode(code);
@@ -157,11 +279,17 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             // would need to setup state root somehow...
 
-            _proofModule.proof_call(new TransactionForRpc
+            TransactionForRpc tx = new TransactionForRpc
             {
                 From = TestItem.AddressA,
                 To = TestItem.AddressB
-            }, new BlockParameter(block.Number));
+            };
+            
+            _proofModule.proof_call(tx, new BlockParameter(block.Number));
+            
+            EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+            string response = RpcTest.TestSerializedRequest(_proofModule, "proof_call", $"{serializer.Serialize(tx)}", $"{block.Number}");
+            Assert.True(response.Contains("\"result\""));
         }
 
         private void AddAccount(StateProvider stateProvider, Address account, UInt256 initialBalance)

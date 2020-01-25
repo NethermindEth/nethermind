@@ -67,7 +67,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             Transaction transaction = tx.ToTransaction();
 
             BlockHeader parentHeader = _blockFinder.FindBlock(blockParameter).Header;
-            
+
             BlockHeader traceHeader = new BlockHeader(
                 parentHeader.Hash,
                 Keccak.OfAnEmptySequenceRlp,
@@ -90,7 +90,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             CallResultWithProof callResultWithProof = new CallResultWithProof();
             ProofTxTracer proofTxTracer = proofBlockTracer.BuildResult().Single();
-            
+
             CollectHeaders(proofTxTracer, callResultWithProof);
             callResultWithProof.Result = proofTxTracer.Output;
             CollectAccountProofs(proofTxTracer, parentHeader, callResultWithProof);
@@ -106,7 +106,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 AccountProofCollector collector = new AccountProofCollector(address, proofTxTracer.Storages
                     .Where(s => s.Address == address)
                     .Select(s => s.Index).ToArray());
-                
+
                 _tracer.Accept(collector, parentHeader.StateRoot);
                 accountProofs.Add(collector.BuildResult());
             }
@@ -139,7 +139,16 @@ namespace Nethermind.JsonRpc.Modules.Proof
         public ResultWrapper<TransactionWithProof> proof_getTransactionByHash(Keccak txHash, bool includeHeader)
         {
             TxReceipt receipt = _receiptFinder.Find(txHash);
+            if (receipt == null)
+            {
+                return ResultWrapper<TransactionWithProof>.Fail($"{txHash} receipt (transaction) could not be found", ErrorCodes.ResourceNotFound);
+            }
+            
             Block block = _blockFinder.FindBlock(receipt.BlockHash);
+            if (block == null)
+            {
+                return ResultWrapper<TransactionWithProof>.Fail($"{receipt.BlockHash} block could not be found", ErrorCodes.ResourceNotFound);
+            }
 
             Transaction[] txs = block.Transactions;
             Transaction transaction = txs[receipt.Index];
@@ -154,11 +163,20 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             return ResultWrapper<TransactionWithProof>.Success(txWithProof);
         }
-        
+
         public ResultWrapper<ReceiptWithProof> proof_getTransactionReceipt(Keccak txHash, bool includeHeader)
         {
             TxReceipt receipt = _receiptFinder.Find(txHash);
+            if (receipt == null)
+            {
+                return ResultWrapper<ReceiptWithProof>.Fail($"{txHash} receipt could not be found", ErrorCodes.ResourceNotFound);
+            }
+
             Block block = _blockFinder.FindBlock(receipt.BlockHash);
+            if (block == null)
+            {
+                return ResultWrapper<ReceiptWithProof>.Fail($"{receipt.BlockHash} block could not be found", ErrorCodes.ResourceNotFound);
+            }
 
             BlockReceiptsTracer receiptsTracer = new BlockReceiptsTracer();
             receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
@@ -175,7 +193,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             {
                 receiptWithProof.BlockHeader = _headerDecoder.Encode(block.Header).Bytes;
             }
-            
+
             return ResultWrapper<ReceiptWithProof>.Success(receiptWithProof);
         }
     }
