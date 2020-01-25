@@ -58,6 +58,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.TestObject;
             IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
             blockchainBridge.FindLatestBlock().Returns(block);
+            blockchainBridge.FindBlock(BlockParameter.Latest).Returns(block);
 
             IParityStyleTracer tracer = Substitute.For<IParityStyleTracer>();
             tracer.ParityTraceBlock(block.Hash, Arg.Any<ParityTraceTypes>()).Returns(new[] {result1, result2});
@@ -91,6 +92,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.TestObject;
             IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
             blockchainBridge.FindEarliestBlock().Returns(block);
+            blockchainBridge.FindBlock(BlockParameter.Earliest).Returns(block);
 
             IParityStyleTracer tracer = Substitute.For<IParityStyleTracer>();
             tracer.ParityTraceBlock(block.Hash, Arg.Any<ParityTraceTypes>()).Returns(new[] {result1, result2});

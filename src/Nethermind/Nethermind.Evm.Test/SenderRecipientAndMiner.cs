@@ -28,7 +28,7 @@ namespace Nethermind.Evm.Test
         {
             SenderKey = TestItem.PrivateKeyA;
             RecipientKey = TestItem.PrivateKeyB;
-            MinerKey = TestItem.PrivateKeyC;
+            MinerKey = TestItem.PrivateKeyD;
         }
 
         public PrivateKey SenderKey { get; set; }

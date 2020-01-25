@@ -136,7 +136,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             return new ReceiptTrie(blockNumber, _specProvider, receipts, true).BuildProof(index);
         }
 
-        public ResultWrapper<TransactionWithProof> proof_getTransactionByHash(Keccak txHash, bool includeHeader = true)
+        public ResultWrapper<TransactionWithProof> proof_getTransactionByHash(Keccak txHash, bool includeHeader)
         {
             TxReceipt receipt = _receiptFinder.Find(txHash);
             Block block = _blockFinder.FindBlock(receipt.BlockHash);
@@ -155,7 +155,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             return ResultWrapper<TransactionWithProof>.Success(txWithProof);
         }
         
-        public ResultWrapper<ReceiptWithProof> proof_getTransactionReceipt(Keccak txHash, bool includeHeader = true)
+        public ResultWrapper<ReceiptWithProof> proof_getTransactionReceipt(Keccak txHash, bool includeHeader)
         {
             TxReceipt receipt = _receiptFinder.Find(txHash);
             Block block = _blockFinder.FindBlock(receipt.BlockHash);

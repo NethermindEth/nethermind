@@ -59,16 +59,38 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             _proofModule = moduleFactory.Create();
         }
 
-        [Test]
-        public void Can_get_transaction()
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Can_get_transaction(bool withHeader)
         {
-            _proofModule.proof_getTransactionByHash(_blockTree.FindBlock(1).Transactions[0].Hash);
+            TransactionWithProof txWithProof = _proofModule.proof_getTransactionByHash(_blockTree.FindBlock(1).Transactions[0].Hash, withHeader).Data;
+            Assert.NotNull(txWithProof.Transaction);
+            Assert.AreEqual(2, txWithProof.TxProof.Length);
+            if (withHeader)
+            {
+                Assert.NotNull(txWithProof.BlockHeader);
+            }
+            else
+            {
+                Assert.Null(txWithProof.BlockHeader);
+            }
         }
 
-        [Test]
-        public void Can_get_receipt()
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Can_get_receipt(bool withHeader)
         {
-            _proofModule.proof_getTransactionReceipt(_blockTree.FindBlock(1).Transactions[0].Hash);
+            ReceiptWithProof receiptWithProof = _proofModule.proof_getTransactionReceipt(_blockTree.FindBlock(1).Transactions[0].Hash, withHeader).Data;
+            Assert.NotNull(receiptWithProof.Receipt);
+            Assert.AreEqual(2, receiptWithProof.ReceiptProof.Length);
+            if (withHeader)
+            {
+                Assert.NotNull(receiptWithProof.BlockHeader);
+            }
+            else
+            {
+                Assert.Null(receiptWithProof.BlockHeader);
+            }
         }
 
         [Test]
@@ -100,7 +122,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Done;
             TestCallWithCode(code);
         }
-        
+
         [Test]
         public void Can_call_with_storage_load()
         {
@@ -110,7 +132,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Done;
             TestCallWithCode(code);
         }
-        
+
         [Test]
         public void Can_call_with_storage_write()
         {

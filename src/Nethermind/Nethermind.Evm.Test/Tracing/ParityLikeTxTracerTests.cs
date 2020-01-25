@@ -721,7 +721,7 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(3, trace.StateChanges.Count, "state changes count");
             Assert.True(trace.StateChanges.ContainsKey(Recipient), "recipient");
             Assert.True(trace.StateChanges.ContainsKey(Sender), "sender");
-            Assert.True(trace.StateChanges.ContainsKey(Miner), "sender");
+            Assert.True(trace.StateChanges.ContainsKey(Miner), "miner");
             Assert.AreEqual(100.Ether(), trace.StateChanges[Sender].Balance.Before, "sender before");
             Assert.AreEqual(100.Ether() - 21001, trace.StateChanges[Sender].Balance.After, "sender after");
             Assert.AreEqual(100.Ether(), trace.StateChanges[Recipient].Balance.Before, "recipient before");

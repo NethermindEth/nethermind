@@ -30,9 +30,9 @@ namespace Nethermind.JsonRpc.Modules.Proof
         ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter);
         
         [JsonRpcMethod(IsImplemented = true, Description = "This function returns the same result as `eth_getTransactionReceipt` and also a tx proof, receipt proof and serialized block headers.", IsReadOnly = false)]
-        ResultWrapper<TransactionWithProof> proof_getTransactionByHash(Keccak txHash, bool includeHeader = true);
+        ResultWrapper<TransactionWithProof> proof_getTransactionByHash(Keccak txHash, bool includeHeader);
         
         [JsonRpcMethod(IsImplemented = true, Description = "This function should return the same result as `eth_call` and also proofs of all USED accunts and their storages and serialized block headers", IsReadOnly = false)]
-        ResultWrapper<ReceiptWithProof> proof_getTransactionReceipt(Keccak txHash, bool includeHeader = true);
+        ResultWrapper<ReceiptWithProof> proof_getTransactionReceipt(Keccak txHash, bool includeHeader);
     }
 }
