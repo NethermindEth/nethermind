@@ -149,9 +149,9 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.ReportNonceChange(address, before, after);
         }
 
-        public void ReportStorageChange(StorageAddress storageAddress, byte[] before, byte[] after)
+        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
         {
-            _currentTxTracer.ReportStorageChange(storageAddress, before, after);
+            _currentTxTracer.ReportStorageChange(storageCell, before, after);
         }
 
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)

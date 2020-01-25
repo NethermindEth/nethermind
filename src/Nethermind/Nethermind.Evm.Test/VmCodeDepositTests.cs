@@ -48,7 +48,7 @@ namespace Nethermind.Evm.Test
         public void Regression_mainnet_6108276()
         {
             Address deployed = ContractAddress.From(TestItem.AddressC, 0);
-            StorageAddress storageAddress = new StorageAddress(deployed, 1);
+            StorageCell storageCell = new StorageCell(deployed, 1);
 
             byte[] deployedCode = new byte[100]; // cost is * 200
 
@@ -76,11 +76,11 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             var receipt = Execute(code);
-            byte[] result = Storage.Get(storageAddress);
+            byte[] result = Storage.Get(storageCell);
             Assert.AreEqual(new byte[] {0}, result, "storage reverted");
             Assert.AreEqual(98777, receipt.GasSpent, "no refund");
             
-            byte[] returnData = Storage.Get(new StorageAddress(TestItem.AddressC, 0));
+            byte[] returnData = Storage.Get(new StorageCell(TestItem.AddressC, 0));
             Assert.AreEqual(new byte[1], returnData, "address returned");
         }
         
@@ -89,7 +89,7 @@ namespace Nethermind.Evm.Test
         {
             _blockNumber = 1;
             Address deployed = ContractAddress.From(TestItem.AddressC, 0);
-            StorageAddress storageAddress = new StorageAddress(deployed, 1);
+            StorageCell storageCell = new StorageCell(deployed, 1);
 
             byte[] deployedCode = new byte[106]; // cost is * 200
 
@@ -117,11 +117,11 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             var receipt = Execute(code);
-            byte[] result = Storage.Get(storageAddress);
+            byte[] result = Storage.Get(storageCell);
             Assert.AreEqual(new byte[] {0}, result, "storage reverted");
             Assert.AreEqual(83136, receipt.GasSpent, "with refund");
             
-            byte[] returnData = Storage.Get(new StorageAddress(TestItem.AddressC, 0));
+            byte[] returnData = Storage.Get(new StorageCell(TestItem.AddressC, 0));
             Assert.AreEqual(deployed.Bytes, returnData, "address returned");
         }
     }

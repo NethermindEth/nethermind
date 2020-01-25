@@ -1592,7 +1592,7 @@ namespace Nethermind.Evm
                         }
 
                         stack.PopUInt256(out UInt256 storageIndex);
-                        byte[] value = _storage.Get(new StorageAddress(env.ExecutingAccount, storageIndex));
+                        byte[] value = _storage.Get(new StorageCell(env.ExecutingAccount, storageIndex));
                         stack.PushBytes(value);
                         break;
                     }
@@ -1624,8 +1624,8 @@ namespace Nethermind.Evm
                         byte[] newValue = stack.PopBytes().WithoutLeadingZeros().ToArray();
                         bool newIsZero = newValue.IsZero();
 
-                        StorageAddress storageAddress = new StorageAddress(env.ExecutingAccount, storageIndex);
-                        byte[] currentValue = _storage.Get(storageAddress);
+                        StorageCell storageCell = new StorageCell(env.ExecutingAccount, storageIndex);
+                        byte[] currentValue = _storage.Get(storageCell);
                         bool currentIsZero = currentValue.IsZero();
 
                         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, newValue);
@@ -1662,7 +1662,7 @@ namespace Nethermind.Evm
                             }
                             else // eip1283enabled, C != N
                             {
-                                byte[] originalValue = _storage.GetOriginal(storageAddress);
+                                byte[] originalValue = _storage.GetOriginal(storageCell);
                                 bool originalIsZero = originalValue.IsZero();
 
                                 bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
@@ -1738,20 +1738,20 @@ namespace Nethermind.Evm
                         if (!newSameAsCurrent)
                         {
                             byte[] valueToStore = newIsZero ? BytesZero : newValue;
-                            _storage.Set(storageAddress, valueToStore);
+                            _storage.Set(storageCell, valueToStore);
                         }
 
                         if (_txTracer.IsTracingInstructions)
                         {
                             byte[] valueToStore = newIsZero ? BytesZero : newValue;
                             Span<byte> span = new byte[32]; // do not stackalloc here
-                            storageAddress.Index.ToBigEndian(span);
+                            storageCell.Index.ToBigEndian(span);
                             _txTracer.ReportStorageChange(span, valueToStore);
                         }
 
                         if (_txTracer.IsTracingOpLevelStorage)
                         {
-                            _txTracer.SetOperationStorage(storageAddress.Address, storageIndex, newValue, currentValue);
+                            _txTracer.SetOperationStorage(storageCell.Address, storageIndex, newValue, currentValue);
                         }
 
                         break;

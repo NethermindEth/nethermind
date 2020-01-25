@@ -188,29 +188,29 @@ namespace Nethermind.Evm.Test
 
         protected void AssertStorage(UInt256 address, Address value)
         {
-            Assert.AreEqual(value.Bytes.PadLeft(32), Storage.Get(new StorageAddress(Recipient, address)).PadLeft(32), "storage");
+            Assert.AreEqual(value.Bytes.PadLeft(32), Storage.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
         }
 
         protected void AssertStorage(UInt256 address, Keccak value)
         {
-            Assert.AreEqual(value.Bytes, Storage.Get(new StorageAddress(Recipient, address)).PadLeft(32), "storage");
+            Assert.AreEqual(value.Bytes, Storage.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
         }
 
         protected void AssertStorage(UInt256 address, byte[] value)
         {
-            Assert.AreEqual(value.PadLeft(32), Storage.Get(new StorageAddress(Recipient, address)).PadLeft(32), "storage");
+            Assert.AreEqual(value.PadLeft(32), Storage.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
         }
 
         protected void AssertStorage(UInt256 address, BigInteger expectedValue)
         {
-            byte[] actualValue = Storage.Get(new StorageAddress(Recipient, address));
+            byte[] actualValue = Storage.Get(new StorageCell(Recipient, address));
             Assert.AreEqual(expectedValue.ToBigEndianByteArray(), actualValue, "storage");
         }
 
-        protected void AssertStorage(StorageAddress storageAddress, BigInteger expectedValue)
+        protected void AssertStorage(StorageCell storageCell, BigInteger expectedValue)
         {
-            byte[] actualValue = Storage.Get(storageAddress);
-            Assert.AreEqual(expectedValue.ToBigEndianByteArray(), actualValue, $"storage {storageAddress}");
+            byte[] actualValue = Storage.Get(storageCell);
+            Assert.AreEqual(expectedValue.ToBigEndianByteArray(), actualValue, $"storage {storageCell}");
         }
 
         protected void AssertCodeHash(Address address, Keccak codeHash)

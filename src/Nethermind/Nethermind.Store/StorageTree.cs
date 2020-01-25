@@ -34,12 +34,12 @@ namespace Nethermind.Store
 
         static StorageTree()
         {
+            Span<byte> buffer = stackalloc byte[32];
             for (int i = 0; i < CacheSizeInt; i++)
             {
                 UInt256 index = (UInt256)i;
-                Span<byte> span = stackalloc byte[32];
-                index.ToBigEndian(span);
-                Cache[index] = Keccak.Compute(span).Bytes;
+                index.ToBigEndian(buffer);
+                Cache[index] = Keccak.Compute(buffer).Bytes;
             }
         }
 
@@ -51,7 +51,7 @@ namespace Nethermind.Store
         {
         }
         
-        private Span<byte> GetKey(UInt256 index)
+        public static Span<byte> GetKey(UInt256 index)
         {
             if (index < CacheSize)
             {

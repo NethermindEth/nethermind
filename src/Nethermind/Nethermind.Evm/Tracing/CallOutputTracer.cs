@@ -129,7 +129,7 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        public void ReportStorageChange(StorageAddress storageAddress, byte[] before, byte[] after)
+        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
         {
             throw new NotSupportedException();
         }

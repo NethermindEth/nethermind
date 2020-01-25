@@ -26,7 +26,7 @@ namespace Nethermind.Evm.Tracing.Proofs
     {
         public HashSet<Address> Accounts { get; } = new HashSet<Address>();
 
-        public HashSet<StorageAddress> Storages { get; } = new HashSet<StorageAddress>();
+        public HashSet<StorageCell> Storages { get; } = new HashSet<StorageCell>();
 
         public HashSet<Keccak> BlockHashes { get; } = new HashSet<Keccak>();
 
@@ -56,10 +56,18 @@ namespace Nethermind.Evm.Tracing.Proofs
             Accounts.Add(address);
         }
 
-        public void ReportStorageChange(StorageAddress storageAddress, byte[] before, byte[] after)
+        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
         {
-            Accounts.Add(storageAddress.Address);
-            Storages.Add(storageAddress);
+            // implicit knowledge here that if we read storage then for sure we have at least asked for the account's balance
+            // and so we do not need to add account to Accounts
+            Storages.Add(storageCell);
+        }
+        
+        public void ReportStorageRead(StorageCell storageCell)
+        {
+            // implicit knowledge here that if we read storage then for sure we have at least asked for the account's balance
+            // and so we do not need to add account to Accounts
+            Storages.Add(storageCell);
         }
         
         public void ReportAccountRead(Address address)

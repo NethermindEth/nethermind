@@ -372,22 +372,22 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _trace.StateChanges[address].Nonce = new ParityStateChange<UInt256?>(before, after);
         }
 
-        public void ReportStorageChange(StorageAddress storageAddress, byte[] before, byte[] after)
+        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
         {
             Dictionary<UInt256, ParityStateChange<byte[]>> storage = null;
-            if (!_trace.StateChanges.ContainsKey(storageAddress.Address))
+            if (!_trace.StateChanges.ContainsKey(storageCell.Address))
             {
-                _trace.StateChanges[storageAddress.Address] = new ParityAccountStateChange();
+                _trace.StateChanges[storageCell.Address] = new ParityAccountStateChange();
             }
 
-            storage = _trace.StateChanges[storageAddress.Address].Storage ?? (_trace.StateChanges[storageAddress.Address].Storage = new Dictionary<UInt256, ParityStateChange<byte[]>>());
+            storage = _trace.StateChanges[storageCell.Address].Storage ?? (_trace.StateChanges[storageCell.Address].Storage = new Dictionary<UInt256, ParityStateChange<byte[]>>());
 
-            if (storage.ContainsKey(storageAddress.Index))
+            if (storage.ContainsKey(storageCell.Index))
             {
-                before = storage[storageAddress.Index].Before ?? before;
+                before = storage[storageCell.Index].Before ?? before;
             }
 
-            storage[storageAddress.Index] = new ParityStateChange<byte[]>(before, after);
+            storage[storageCell.Index] = new ParityStateChange<byte[]>(before, after);
         }
 
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)

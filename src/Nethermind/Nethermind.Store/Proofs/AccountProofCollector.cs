@@ -20,6 +20,7 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Store.Proofs
@@ -57,7 +58,17 @@ namespace Nethermind.Store.Proofs
         {
             return Keccak.Compute(index);
         }
+        
+        private static Keccak ToKey(UInt256 index)
+        {
+            return Keccak.Compute(StorageTree.GetKey(index));
+        }
 
+        public AccountProofCollector(Address address, params UInt256[] storageKeys)
+            : this(address, storageKeys.Select(ToKey).ToArray())
+        {
+        }
+        
         public AccountProofCollector(Address address, params byte[][] storageKeys)
             : this(address, storageKeys.Select(ToKey).ToArray())
         {

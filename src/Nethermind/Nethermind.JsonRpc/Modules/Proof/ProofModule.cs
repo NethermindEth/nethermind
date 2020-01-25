@@ -102,7 +102,10 @@ namespace Nethermind.JsonRpc.Modules.Proof
             List<AccountProof> accountProofs = new List<AccountProof>();
             foreach (Address address in proofTxTracer.Accounts)
             {
-                AccountProofCollector collector = new AccountProofCollector(address);
+                AccountProofCollector collector = new AccountProofCollector(address, proofTxTracer.Storages
+                    .Where(s => s.Address == address)
+                    .Select(s => s.Index).ToArray());
+                
                 _tracer.Accept(collector, parentHeader.StateRoot);
                 accountProofs.Add(collector.BuildResult());
             }

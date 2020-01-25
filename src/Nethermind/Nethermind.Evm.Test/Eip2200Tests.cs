@@ -50,7 +50,7 @@ namespace Nethermind.Evm.Test
         public void Test(string codeHex, long gasUsed, long refund, byte originalValue)
         {
             TestState.CreateAccount(Recipient, 0);
-            Storage.Set(new StorageAddress(Recipient, 0), new [] {originalValue});
+            Storage.Set(new StorageCell(Recipient, 0), new [] {originalValue});
             Storage.Commit();
             TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
             
@@ -79,7 +79,7 @@ namespace Nethermind.Evm.Test
         public void Test_when_gas_at_stipend(string codeHex, long gasUsed, long refund, byte originalValue, bool outOfGasExpected)
         {
             TestState.CreateAccount(Recipient, 0);
-            Storage.Set(new StorageAddress(Recipient, 0), new [] {originalValue});
+            Storage.Set(new StorageCell(Recipient, 0), new [] {originalValue});
             Storage.Commit();
             TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
             
@@ -92,7 +92,7 @@ namespace Nethermind.Evm.Test
         public void Test_when_gas_just_above_stipend(string codeHex, long gasUsed, long refund, byte originalValue)
         {
             TestState.CreateAccount(Recipient, 0);
-            Storage.Set(new StorageAddress(Recipient, 0), new [] {originalValue});
+            Storage.Set(new StorageCell(Recipient, 0), new [] {originalValue});
             Storage.Commit();
             TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
             
@@ -105,7 +105,7 @@ namespace Nethermind.Evm.Test
         public void Test_when_gas_just_below_stipend(string codeHex, long gasUsed, long refund, byte originalValue)
         {
             TestState.CreateAccount(Recipient, 0);
-            Storage.Set(new StorageAddress(Recipient, 0), new [] {originalValue});
+            Storage.Set(new StorageCell(Recipient, 0), new [] {originalValue});
             Storage.Commit();
             TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
             
