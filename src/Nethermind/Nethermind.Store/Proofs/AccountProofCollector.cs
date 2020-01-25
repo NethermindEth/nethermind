@@ -64,12 +64,17 @@ namespace Nethermind.Store.Proofs
             return Keccak.Compute(StorageTree.GetKey(index));
         }
 
-        public AccountProofCollector(Address address, params UInt256[] storageKeys)
+        public AccountProofCollector(Address address)
+            : this(address, Array.Empty<Keccak>())
+        {
+        }
+        
+        public AccountProofCollector(Address address, UInt256[] storageKeys)
             : this(address, storageKeys.Select(ToKey).ToArray())
         {
         }
         
-        public AccountProofCollector(Address address, params byte[][] storageKeys)
+        public AccountProofCollector(Address address, byte[][] storageKeys)
             : this(address, storageKeys.Select(ToKey).ToArray())
         {
         }
