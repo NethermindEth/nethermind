@@ -37,8 +37,8 @@ namespace Nethermind.Core.Test.Crypto
         public void Signature_test_ropsten(uint blockNumber)
         {
             EthereumEcdsa ecdsa = new EthereumEcdsa(RopstenSpecProvider.Instance, LimboLogs.Instance);
-            PrivateKey key = Build.A.PrivateKey.TestObject;
-            Transaction tx = Build.A.Transaction.TestObject;
+            PrivateKey key = Builders.Build.A.PrivateKey.TestObject;
+            Transaction tx = Builders.Build.A.Transaction.TestObject;
             ecdsa.Sign(key, tx, blockNumber);
             Address address = ecdsa.RecoverAddress(tx, blockNumber);
             Assert.AreEqual(key.Address, address);
@@ -63,8 +63,8 @@ namespace Nethermind.Core.Test.Crypto
         public void Signature_test_olympic(uint blockNumber)
         {
             EthereumEcdsa ecdsa = new EthereumEcdsa(OlympicSpecProvider.Instance, LimboLogs.Instance);
-            PrivateKey key = Build.A.PrivateKey.TestObject;
-            Transaction tx = Build.A.Transaction.TestObject;
+            PrivateKey key = Builders.Build.A.PrivateKey.TestObject;
+            Transaction tx = Builders.Build.A.Transaction.TestObject;
             ecdsa.Sign(key, tx, blockNumber);
             Address address = ecdsa.RecoverAddress(tx, blockNumber);
             Assert.AreEqual(key.Address, address);
@@ -74,8 +74,8 @@ namespace Nethermind.Core.Test.Crypto
         public void Sign_goerli()
         {
             EthereumEcdsa ecdsa = new EthereumEcdsa(GoerliSpecProvider.Instance, LimboLogs.Instance);
-            PrivateKey key = Build.A.PrivateKey.TestObject;
-            Transaction tx = Build.A.Transaction.TestObject;
+            PrivateKey key = Builders.Build.A.PrivateKey.TestObject;
+            Transaction tx = Builders.Build.A.Transaction.TestObject;
             ecdsa.Sign(key, tx, 1);
             Address address = ecdsa.RecoverAddress(tx, 1);
             Assert.AreEqual(key.Address, address);

@@ -36,6 +36,8 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingCode => _currentTxTracer.IsTracingCode;
         public bool IsTracingStack => _currentTxTracer.IsTracingStack;
         public bool IsTracingState => _currentTxTracer.IsTracingState;
+        
+        public bool IsTracingBlockHash => _currentTxTracer.IsTracingBlockHash;
 
         private IBlockTracer _otherTracer;
 
@@ -148,10 +150,20 @@ namespace Nethermind.Evm.Tracing
         {
             _currentTxTracer.ReportNonceChange(address, before, after);
         }
+        
+        public void ReportAccountRead(Address address)
+        {
+            _currentTxTracer.ReportAccountRead(address);
+        }
 
         public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
         {
             _currentTxTracer.ReportStorageChange(storageCell, before, after);
+        }
+        
+        public void ReportStorageRead(StorageCell storageCell)
+        {
+            _currentTxTracer.ReportStorageRead(storageCell);
         }
 
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
@@ -197,6 +209,11 @@ namespace Nethermind.Evm.Tracing
         public void ReportStackPush(Span<byte> stackItem)
         {
             _currentTxTracer.ReportStackPush(stackItem);
+        }
+        
+        public void ReportBlockHash(Keccak blockHash)
+        {
+            _currentTxTracer.ReportBlockHash(blockHash);
         }
 
         public void SetOperationMemory(List<string> memoryTrace)

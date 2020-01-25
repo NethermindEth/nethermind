@@ -31,7 +31,7 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Can_decode()
         {
-            BlockHeader header = Build.A.BlockHeader
+            BlockHeader header = Builders.Build.A.BlockHeader
                 .WithMixHash(Keccak.Compute("mix_hash"))
                 .WithNonce(1000)
                 .TestObject;
@@ -49,7 +49,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             var auRaSignature = new byte[64];
             new Random().NextBytes(auRaSignature);
-            BlockHeader header = Build.A.BlockHeader
+            BlockHeader header = Builders.Build.A.BlockHeader
                 .WithAura(100000000, auRaSignature)
                 .TestObject;
             

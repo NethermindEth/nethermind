@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using Nethermind.Blockchain;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json.Linq;

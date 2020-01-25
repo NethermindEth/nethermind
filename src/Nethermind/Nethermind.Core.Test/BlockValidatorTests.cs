@@ -35,10 +35,10 @@ namespace Nethermind.Core.Test
             ISpecProvider specProvider = new CustomSpecProvider((0, releaseSpec));
 
             BlockValidator blockValidator = new BlockValidator(txValidator, AlwaysValidHeaderValidator.Instance, AlwaysValidOmmersValidator.Instance, specProvider, LimboLogs.Instance);
-            bool noiseRemoved = blockValidator.ValidateSuggestedBlock(Build.A.Block.TestObject);
+            bool noiseRemoved = blockValidator.ValidateSuggestedBlock(Builders.Build.A.Block.TestObject);
             Assert.True(noiseRemoved);
             
-            bool result = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithOmmers(Build.A.BlockHeader.TestObject).TestObject);
+            bool result = blockValidator.ValidateSuggestedBlock(Builders.Build.A.Block.WithOmmers(Builders.Build.A.BlockHeader.TestObject).TestObject);
             Assert.False(result);
         }
     }

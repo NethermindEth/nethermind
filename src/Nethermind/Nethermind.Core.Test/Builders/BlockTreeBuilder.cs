@@ -57,7 +57,7 @@ namespace Nethermind.Core.Test.Builders
             _genesisBlock = genesisBlock;
             var blockInfoDb = new MemDb();
             ChainLevelInfoRepository = new ChainLevelInfoRepository(blockInfoDb);
-            TestObjectInternal = new BlockTree(blocksDb, headersDb, blockInfoDb, ChainLevelInfoRepository,  RopstenSpecProvider.Instance, Substitute.For<ITxPool>(), NullLogManager.Instance);
+            TestObjectInternal = new BlockTree(blocksDb, headersDb, blockInfoDb, ChainLevelInfoRepository, RopstenSpecProvider.Instance, Substitute.For<ITxPool>(), NullLogManager.Instance);
         }
 
         public ChainLevelInfoRepository ChainLevelInfoRepository { get; private set; }
@@ -89,7 +89,7 @@ namespace Nethermind.Core.Test.Builders
             bool skipGenesis = TestObjectInternal.Genesis != null;
             for (int i = 0; i < chainLength; i++)
             {
-                Address beneficiary = blockBeneficiaries.Length == 0 ? Address.Zero : blockBeneficiaries[i%blockBeneficiaries.Length];
+                Address beneficiary = blockBeneficiaries.Length == 0 ? Address.Zero : blockBeneficiaries[i % blockBeneficiaries.Length];
                 headBlock = current;
                 if (_onlyHeaders)
                 {
@@ -112,7 +112,7 @@ namespace Nethermind.Core.Test.Builders
                     }
 
                     Block parent = current;
-                    
+
                     current = CreateBlock(splitVariant, splitFrom, i, parent, beneficiary);
                 }
             }
@@ -122,7 +122,7 @@ namespace Nethermind.Core.Test.Builders
 
         private Block CreateBlock(int splitVariant, int splitFrom, int blockIndex, Block parent, Address beneficiary)
         {
-            Block current;
+            Block currentBlock;
             if (_receiptStorage != null && blockIndex % 3 == 0)
             {
                 Transaction[] transactions = new[]
@@ -131,7 +131,7 @@ namespace Nethermind.Core.Test.Builders
                     Build.A.Transaction.WithValue(2).WithData(Rlp.Encode(blockIndex + 1).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, blockIndex + 1).TestObject
                 };
 
-                current = Build.A.Block
+                currentBlock = Build.A.Block
                     .WithNumber(blockIndex + 1)
                     .WithParent(parent)
                     .WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong) splitVariant))
@@ -141,36 +141,43 @@ namespace Nethermind.Core.Test.Builders
                     .TestObject;
 
                 List<TxReceipt> receipts = new List<TxReceipt>();
-                foreach (var transaction in current.Transactions)
+                foreach (var transaction in currentBlock.Transactions)
                 {
-                    var logEntries = _logCreationFunction?.Invoke(current, transaction)?.ToArray() ?? Array.Empty<LogEntry>();
+                    var logEntries = _logCreationFunction?.Invoke(currentBlock, transaction)?.ToArray() ?? Array.Empty<LogEntry>();
                     TxReceipt receipt = new TxReceipt
                     {
                         Logs = logEntries,
                         TxHash = transaction.Hash,
                         Bloom = new Bloom(logEntries)
                     };
-                    _receiptStorage.Add(receipt, false);
+
                     receipts.Add(receipt);
-                    current.Bloom.Add(receipt.Logs);
+                    currentBlock.Bloom.Add(receipt.Logs);
                 }
 
-                current.Header.TxRoot = new TxTrie(current.Transactions).RootHash;
-                current.Header.ReceiptsRoot = new ReceiptTrie(current.Number, _specProvider, receipts.ToArray()).RootHash;
-                current.Hash = current.CalculateHash();
+                currentBlock.Header.TxRoot = new TxTrie(currentBlock.Transactions).RootHash;
+                currentBlock.Header.ReceiptsRoot = new ReceiptTrie(currentBlock.Number, _specProvider, receipts.ToArray()).RootHash;
+                currentBlock.Hash = currentBlock.CalculateHash();
+
+                foreach (TxReceipt receipt in receipts)
+                {
+                    receipt.BlockHash = currentBlock.Hash;
+                    receipt.BlockNumber = currentBlock.Number;
+                    _receiptStorage.Add(receipt, false);
+                }
             }
             else
             {
-                current = Build.A.Block.WithNumber(blockIndex + 1)
+                currentBlock = Build.A.Block.WithNumber(blockIndex + 1)
                     .WithParent(parent)
                     .WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong) splitVariant))
                     .WithBeneficiary(beneficiary)
                     .TestObject;
             }
 
-            current.Header.AuRaStep = blockIndex;
-            
-            return current;
+            currentBlock.Header.AuRaStep = blockIndex;
+
+            return currentBlock;
         }
 
         public BlockTreeBuilder WithOnlySomeBlocksProcessed(int chainLength, int processedChainLength)
@@ -188,6 +195,12 @@ namespace Nethermind.Core.Test.Builders
             }
 
             return this;
+        }
+
+        public static void AddBlock(IBlockTree blockTree, Block block)
+        {
+            blockTree.SuggestBlock(block);
+            blockTree.UpdateMainChain(new[] {block});
         }
 
         public static void ExtendTree(IBlockTree blockTree, int newChainLength)

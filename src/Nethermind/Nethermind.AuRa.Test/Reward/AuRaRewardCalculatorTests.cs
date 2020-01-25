@@ -56,7 +56,7 @@ namespace Nethermind.AuRa.Test.Reward
             _abiEncoder = Substitute.For<IAbiEncoder>();
             _transactionProcessor = Substitute.For<ITransactionProcessor>();
             
-            _block = new Block(Prepare.A.BlockHeader().TestObject, new BlockBody());
+            _block = new Block( Build.A.BlockHeader.TestObject, new BlockBody());
             
             _abiEncoder
                 .Encode(AbiEncodingStyle.IncludeSignature, Arg.Is<AbiSignature>(s => s.Name == "reward"), Arg.Any<object[]>())
@@ -114,8 +114,8 @@ namespace Nethermind.AuRa.Test.Reward
             _block.Number = blockNumber;
             _block.Body.Ommers = new[]
             {
-                Prepare.A.BlockHeader().WithBeneficiary(Address.FromNumber(777)).WithNumber(blockNumber - 1).TestObject,
-                Prepare.A.BlockHeader().WithBeneficiary(Address.FromNumber(888)).WithNumber(blockNumber - 2).TestObject
+                 Build.A.BlockHeader.WithBeneficiary(Address.FromNumber(777)).WithNumber(blockNumber - 1).TestObject,
+                 Build.A.BlockHeader.WithBeneficiary(Address.FromNumber(888)).WithNumber(blockNumber - 2).TestObject
             };
             
             var expected = new BlockReward[]
@@ -137,8 +137,8 @@ namespace Nethermind.AuRa.Test.Reward
             _block.Number = 10;
             _block.Body.Ommers = new[]
             {
-                Prepare.A.BlockHeader().WithBeneficiary(Address.FromNumber(777)).WithNumber(9).TestObject,
-                Prepare.A.BlockHeader().WithBeneficiary(Address.FromNumber(888)).WithNumber(8).TestObject
+                 Build.A.BlockHeader.WithBeneficiary(Address.FromNumber(777)).WithNumber(9).TestObject,
+                 Build.A.BlockHeader.WithBeneficiary(Address.FromNumber(888)).WithNumber(8).TestObject
             };
             
             var expected = new BlockReward[]

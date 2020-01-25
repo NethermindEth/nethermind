@@ -27,7 +27,7 @@ namespace Nethermind.Core.Test
         {
             get
             {
-                var transaction = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).TestObject;
+                var transaction = Builders.Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).TestObject;
                 
                 yield return new TestCaseData(null, null) {ExpectedResult = true};
                 
@@ -41,12 +41,12 @@ namespace Nethermind.Core.Test
                     ExpectedResult = false
                 };
                 
-                yield return new TestCaseData(transaction, Build.A.Transaction.WithSenderAddress(TestItem.AddressB).WithNonce(2).TestObject)
+                yield return new TestCaseData(transaction, Builders.Build.A.Transaction.WithSenderAddress(TestItem.AddressB).WithNonce(2).TestObject)
                 {
                     ExpectedResult = false
                 };
                 
-                yield return new TestCaseData(transaction, Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(4).TestObject)
+                yield return new TestCaseData(transaction, Builders.Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(4).TestObject)
                 {
                     ExpectedResult = false
                 };
@@ -56,7 +56,7 @@ namespace Nethermind.Core.Test
                     ExpectedResult = true
                 };
                 
-                yield return new TestCaseData(transaction,  Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).TestObject)
+                yield return new TestCaseData(transaction,  Builders.Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).TestObject)
                 {
                     ExpectedResult = true
                 };

@@ -31,6 +31,7 @@ using Nethermind.Logging;
 using NSubstitute;
 using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
+using Build = Nethermind.Core.Test.Builders.Build;
 
 namespace Nethermind.AuRa.Test.Validators
 {
@@ -65,7 +66,7 @@ namespace Nethermind.AuRa.Test.Validators
                     return innerValidator;
                 });
 
-            _block = new Block(Prepare.A.BlockHeader().WithNumber(1).TestObject, new BlockBody());
+            _block = new Block( Build.A.BlockHeader.WithNumber(1).TestObject, new BlockBody());
         }
         
 [Test]

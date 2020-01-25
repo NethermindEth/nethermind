@@ -46,12 +46,12 @@ namespace Nethermind.Core.Test
 
         public OmmersValidatorTests()
         {
-            _blockTree = Build.A.BlockTree().OfChainLength(1).TestObject;
+            _blockTree = Builders.Build.A.BlockTree().OfChainLength(1).TestObject;
             _grandgrandparent = _blockTree.FindBlock(0, BlockTreeLookupOptions.None);
-            _grandparent = Build.A.Block.WithParent(_grandgrandparent).TestObject;
-            _duplicateOmmer = Build.A.Block.WithParent(_grandgrandparent).TestObject;
-            _parent = Build.A.Block.WithParent(_grandparent).WithOmmers(_duplicateOmmer).TestObject;
-            _block = Build.A.Block.WithParent(_parent).TestObject;
+            _grandparent = Builders.Build.A.Block.WithParent(_grandgrandparent).TestObject;
+            _duplicateOmmer = Builders.Build.A.Block.WithParent(_grandgrandparent).TestObject;
+            _parent = Builders.Build.A.Block.WithParent(_grandparent).WithOmmers(_duplicateOmmer).TestObject;
+            _block = Builders.Build.A.Block.WithParent(_parent).TestObject;
 
             _blockTree.SuggestHeader(_grandparent.Header);
             _blockTree.SuggestHeader(_parent.Header);
@@ -111,7 +111,7 @@ namespace Nethermind.Core.Test
             BlockHeader[] ommers = new BlockHeader[count];
             for (int i = 0; i < count; i++)
             {
-                ommers[i] = Build.A.BlockHeader.WithParent(_grandparent.Header).TestObject;
+                ommers[i] = Builders.Build.A.BlockHeader.WithParent(_grandparent.Header).TestObject;
             }
 
             return ommers;
@@ -149,8 +149,8 @@ namespace Nethermind.Core.Test
         [Test] // because we decided to store the head block at 0x00..., eh
         public void Ommers_near_genesis_with_00_address_used()
         {
-            Block falseOmmer = Build.A.Block.WithParent(Build.A.Block.WithDifficulty(123).TestObject).TestObject;
-            Block toValidate = Build.A.Block.WithParent(_parent).WithOmmers(falseOmmer).TestObject;
+            Block falseOmmer = Builders.Build.A.Block.WithParent(Builders.Build.A.Block.WithDifficulty(123).TestObject).TestObject;
+            Block toValidate = Builders.Build.A.Block.WithParent(_parent).WithOmmers(falseOmmer).TestObject;
             OmmersValidator ommersValidator = new OmmersValidator(_blockTree, _headerValidator, LimboLogs.Instance);
             Assert.False(ommersValidator.Validate(toValidate.Header, toValidate.Ommers));
         }

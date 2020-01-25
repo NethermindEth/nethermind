@@ -17,6 +17,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;

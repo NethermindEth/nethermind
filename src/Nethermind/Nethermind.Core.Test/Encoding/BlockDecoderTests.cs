@@ -36,13 +36,13 @@ namespace Nethermind.Core.Test.Encoding
             var transactions = new Transaction[100];
             for (int i = 0; i < 100; i++)
             {
-                transactions[i] = Build.A.Transaction.WithData(new byte[] {(byte) i}).WithNonce((UInt256) i).WithValue((UInt256) i).Signed(new EthereumEcdsa(MainNetSpecProvider.Instance, NullLogManager.Instance), TestItem.PrivateKeyA, 1L).TestObject;
+                transactions[i] = Builders.Build.A.Transaction.WithData(new byte[] {(byte) i}).WithNonce((UInt256) i).WithValue((UInt256) i).Signed(new EthereumEcdsa(MainNetSpecProvider.Instance, NullLogManager.Instance), TestItem.PrivateKeyA, 1L).TestObject;
             }
 
             _scenarios = new[]
             {
-                Build.A.Block.WithNumber(1).TestObject,
-                Build.A.Block.WithNumber(1).WithTransactions(transactions).WithOmmers(Build.A.BlockHeader.TestObject).WithMixHash(Keccak.EmptyTreeHash).TestObject
+                Builders.Build.A.Block.WithNumber(1).TestObject,
+                Builders.Build.A.Block.WithNumber(1).WithTransactions(transactions).WithOmmers(Builders.Build.A.BlockHeader.TestObject).WithMixHash(Keccak.EmptyTreeHash).TestObject
             };
         }
 

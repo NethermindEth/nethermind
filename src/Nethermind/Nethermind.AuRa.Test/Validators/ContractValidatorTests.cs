@@ -41,6 +41,7 @@ using Newtonsoft.Json;
 using NSubstitute;
 using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
+using Build = Nethermind.Core.Test.Builders.Build;
 
 namespace Nethermind.AuRa.Test.Validators
 {
@@ -80,7 +81,7 @@ namespace Nethermind.AuRa.Test.Validators
                 ValidatorType = AuRaParameters.ValidatorType.Contract
             };
             
-            _block = new Block(Prepare.A.BlockHeader().WithNumber(1).WithAura(1, Bytes.Empty).TestObject, new BlockBody());
+            _block = new Block( Build.A.BlockHeader.WithNumber(1).WithAura(1, Bytes.Empty).TestObject, new BlockBody());
             
             _transactionProcessor = Substitute.For<ITransactionProcessor>();
             

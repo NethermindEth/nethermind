@@ -15,11 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Blockchain.Filters;
+using Nethermind.Core.Attributes;
+using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
 
-namespace Nethermind.JsonRpc.Data
+namespace Nethermind.Blockchain
 {
+    [Todo(Improve.Refactor, "Can make it struct?")]
     public class BlockParameter : IEquatable<BlockParameter>
     {
         public static BlockParameter Earliest = new BlockParameter(BlockParameterType.Earliest);
@@ -47,6 +49,7 @@ namespace Nethermind.JsonRpc.Data
             BlockNumber = number;
         }
 
+        [Todo(Improve.Refactor,"Move it to converters")]
         public static BlockParameter FromJson(string jsonValue)
         {
             switch (jsonValue)
