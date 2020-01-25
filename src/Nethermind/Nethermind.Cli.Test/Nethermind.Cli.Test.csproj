@@ -4,8 +4,6 @@
         <TargetFramework>netcoreapp3.0</TargetFramework>
 
         <IsPackable>false</IsPackable>
-
-        <Nullable>enable</Nullable>
     </PropertyGroup>
 
     <ItemGroup>
@@ -15,7 +13,11 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Core2\Nethermind.Core2.csproj" />
+      <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
+      <ProjectReference Include="..\Nethermind.Cli\Nethermind.Cli.csproj" />
+      <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
+      <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+      <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     </ItemGroup>
 
 </Project>
