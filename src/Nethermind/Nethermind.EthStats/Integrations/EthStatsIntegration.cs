@@ -85,28 +85,26 @@ namespace Nethermind.EthStats.Integrations
             if (_logger.IsInfo) _logger.Info("Initial connection, sending 'hello' message...");
             await SendHelloAsync();
             _connected = true;
-            
+
             Run(_timer);
         }
 
         private void Run(Timer timer)
         {
-            using (_websocketClient)
+            _websocketClient.ReconnectionHappened.Subscribe(async reason =>
             {
-                _websocketClient.ReconnectionHappened.Subscribe(async reason =>
-                {
-                    if (_logger.IsInfo) _logger.Info("ETH Stats reconnected, sending 'hello' message...");
-                    await SendHelloAsync();
-                    _connected = true;
-                });
-                _websocketClient.DisconnectionHappened.Subscribe(reason =>
-                {
-                    _connected = false;
-                    if (_logger.IsWarn) _logger.Warn($"ETH Stats disconnected, reason: {reason}");
-                });
+                if (_logger.IsInfo) _logger.Info("ETH Stats reconnected, sending 'hello' message...");
+                await SendHelloAsync();
+                _connected = true;
+            });
 
-                timer.Start();
-            }
+            _websocketClient.DisconnectionHappened.Subscribe(reason =>
+            {
+                _connected = false;
+                if (_logger.IsWarn) _logger.Warn($"ETH Stats disconnected, reason: {reason}");
+            });
+
+            timer.Start();
         }
 
         private void TimerOnElapsed(object sender, ElapsedEventArgs e)
@@ -141,6 +139,7 @@ namespace Nethermind.EthStats.Integrations
 
         public void Dispose()
         {
+            _websocketClient?.Dispose();
             _connected = false;
             _timer.Stop();
             _timer.Dispose();
