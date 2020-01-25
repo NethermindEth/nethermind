@@ -14,16 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Evm.Tracing.Proofs;
+using Nethermind.Store;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing
@@ -38,11 +32,11 @@ namespace Nethermind.Evm.Test.Tracing
                 .PushData(SampleHexData1)
                 .Done;
 
-            (ProofTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceProofCall(SenderRecipientAndMiner.Default, code);
+            (ProofTxTracer trace, Block block, Transaction tx) = ExecuteAndTraceProofCall(SenderRecipientAndMiner.Default, code);
             Assert.AreEqual(3, trace.Accounts.Count, "count");
-            Assert.Contains(Sender, trace.Accounts);
-            Assert.Contains(Recipient, trace.Accounts);
-            Assert.Contains(Miner, trace.Accounts);
+            Assert.True(trace.Accounts.Contains(Sender));
+            Assert.True(trace.Accounts.Contains(Recipient));
+            Assert.True(trace.Accounts.Contains(Miner));
         }
         
         [Test]
@@ -55,9 +49,9 @@ namespace Nethermind.Evm.Test.Tracing
             SenderRecipientAndMiner addresses = new SenderRecipientAndMiner();
             addresses.RecipientKey = SenderKey;
             addresses.MinerKey = SenderKey;
-            (ProofTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceProofCall(addresses, code);
+            (ProofTxTracer trace, Block block, Transaction tx) = ExecuteAndTraceProofCall(addresses, code);
             Assert.AreEqual(1, trace.Accounts.Count, "count");
-            Assert.Contains(Sender, trace.Accounts);
+            Assert.True(trace.Accounts.Contains(Sender));
         }
         
         [Test]
@@ -69,9 +63,9 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.BALANCE)
                 .Done;
             
-            (ProofTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceProofCall(SenderRecipientAndMiner.Default, code);
+            (ProofTxTracer trace, Block block, Transaction tx) = ExecuteAndTraceProofCall(SenderRecipientAndMiner.Default, code);
             Assert.AreEqual(4, trace.Accounts.Count, "count");
-            Assert.Contains(TestItem.AddressC, trace.Accounts);
+            Assert.True(trace.Accounts.Contains(TestItem.AddressC));
         }
         
         [Test]
@@ -86,9 +80,9 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.BALANCE)
                 .Done;
             
-            (ProofTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceProofCall(SenderRecipientAndMiner.Default, code);
+            (ProofTxTracer trace, Block block, Transaction tx) = ExecuteAndTraceProofCall(SenderRecipientAndMiner.Default, code);
             Assert.AreEqual(4, trace.Accounts.Count, "count");
-            Assert.Contains(TestItem.AddressC, trace.Accounts);
+            Assert.True(trace.Accounts.Contains(TestItem.AddressC));
         }
         
         [Test]
@@ -100,7 +94,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.BALANCE)
                 .Done;
             
-            (ProofTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceProofCall(SenderRecipientAndMiner.Default, code);
+            (ProofTxTracer trace, Block block, Transaction tx) = ExecuteAndTraceProofCall(SenderRecipientAndMiner.Default, code);
             Assert.AreEqual(3, trace.Accounts.Count, "count");
         }
         
@@ -112,8 +106,22 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.BLOCKHASH)
                 .Done;
             
-            (ProofTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceProofCall(SenderRecipientAndMiner.Default, code);
+            (ProofTxTracer trace, Block block, Transaction tx) = ExecuteAndTraceProofCall(SenderRecipientAndMiner.Default, code);
             Assert.AreEqual(1, trace.BlockHashes.Count, "count");
+        }
+        
+        [Test]
+        public void Can_trace_multiple_blockhash()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData("0x01")
+                .Op(Instruction.BLOCKHASH)
+                .PushData("0x02")
+                .Op(Instruction.BLOCKHASH)
+                .Done;
+            
+            (ProofTxTracer trace, Block block, Transaction tx) = ExecuteAndTraceProofCall(SenderRecipientAndMiner.Default, code);
+            Assert.AreEqual(2, trace.BlockHashes.Count, "count");
         }
         
         [Test]
@@ -125,8 +133,71 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.RETURN)
                 .Done;
             
-            (ProofTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceProofCall(SenderRecipientAndMiner.Default, code);
+            (ProofTxTracer trace, Block block, Transaction tx) = ExecuteAndTraceProofCall(SenderRecipientAndMiner.Default, code);
             Assert.AreEqual(3, trace.Output.Length);
+        }
+
+        [Test]
+        public void Can_trace_storage_read()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData("0x01")
+                .Op(Instruction.SLOAD)
+                .Done;
+            
+            (ProofTxTracer trace, Block block, Transaction tx) = ExecuteAndTraceProofCall(SenderRecipientAndMiner.Default, code);
+            
+            Assert.AreEqual(1, trace.Storages.Count);
+            Assert.True(trace.Storages.Contains(new StorageAddress(SenderRecipientAndMiner.Default.Recipient, 1)));
+        }
+        
+        [Test]
+        public void Can_trace_storage_write()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData("0x01")
+                .PushData("0x02")
+                .Op(Instruction.SSTORE)
+                .Done;
+            
+            (ProofTxTracer trace, Block block, Transaction tx) = ExecuteAndTraceProofCall(SenderRecipientAndMiner.Default, code);
+            Assert.AreEqual(1, trace.Storages.Count);
+            Assert.True(trace.Storages.Contains(new StorageAddress(SenderRecipientAndMiner.Default.Recipient, 2)));
+        }
+        
+        [Test]
+        public void Can_trace_multiple_storage_writes()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData("0x01")
+                .PushData("0x02")
+                .Op(Instruction.SSTORE)
+                .PushData("0x03")
+                .PushData("0x04")
+                .Op(Instruction.SSTORE)
+                .Done;
+            
+            (ProofTxTracer trace, Block block, Transaction tx) = ExecuteAndTraceProofCall(SenderRecipientAndMiner.Default, code);
+            Assert.AreEqual(2, trace.Storages.Count);
+            Assert.True(trace.Storages.Contains(new StorageAddress(SenderRecipientAndMiner.Default.Recipient, 2)));
+            Assert.True(trace.Storages.Contains(new StorageAddress(SenderRecipientAndMiner.Default.Recipient, 4)));
+        }
+        
+        [Test]
+        public void Multiple_write_to_same_storage_can_be_traced_without_issues()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData("0x01")
+                .PushData("0x02")
+                .Op(Instruction.SSTORE)
+                .PushData("0x01")
+                .PushData("0x02")
+                .Op(Instruction.SSTORE)
+                .Done;
+            
+            (ProofTxTracer trace, Block block, Transaction tx) = ExecuteAndTraceProofCall(SenderRecipientAndMiner.Default, code);
+            Assert.AreEqual(1, trace.Storages.Count);
+            Assert.True(trace.Storages.Contains(new StorageAddress(SenderRecipientAndMiner.Default.Recipient, 2)));
         }
         
         [Test]
@@ -141,17 +212,17 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.RETURN)
                 .Done;
             
-            (ProofTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceProofCall(SenderRecipientAndMiner.Default, code);
-            Assert.AreEqual(3, trace.Accounts.Count);
-            Assert.AreEqual(0, trace.Output.Length);
+            (ProofTxTracer tracer, Block block, Transaction tx) = ExecuteAndTraceProofCall(SenderRecipientAndMiner.Default, code);
+            Assert.AreEqual(3, tracer.Accounts.Count);
+            Assert.AreEqual(0, tracer.Output.Length);
         }
 
-        protected (ProofTxTrace trace, Block block, Transaction tx) ExecuteAndTraceProofCall(SenderRecipientAndMiner addresses, params byte[] code)
+        protected (ProofTxTracer trace, Block block, Transaction tx) ExecuteAndTraceProofCall(SenderRecipientAndMiner addresses, params byte[] code)
         {
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, addresses);
             ProofTxTracer tracer = new ProofTxTracer();
             _processor.Execute(transaction, block.Header, tracer);
-            return (tracer.Build(), block, transaction);
+            return (tracer, block, transaction);
         }
     }
 }

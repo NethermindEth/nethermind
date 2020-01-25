@@ -19,16 +19,19 @@ using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {
+    /// <summary>
+    /// Allows to retrieve transaction, call and state data alongside the merkle proofs / witnesses.
+    /// </summary>
     [RpcModule(ModuleType.Proof)]
     public interface IProofModule : IModule
     {
         [JsonRpcMethod(IsImplemented = false, Description = "This function returns the same result as `eth_getTransactionByHash` and also a tx proof and a serialized block header.", IsReadOnly = false)]
         ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter);
         
-        [JsonRpcMethod(IsImplemented = false, Description = "This function returns the same result as `eth_getTransactionReceipt` and also a tx proof, receipt proof and serialized block headers.", IsReadOnly = false)]
+        [JsonRpcMethod(IsImplemented = true, Description = "This function returns the same result as `eth_getTransactionReceipt` and also a tx proof, receipt proof and serialized block headers.", IsReadOnly = false)]
         ResultWrapper<TransactionWithProof> proof_getTransactionByHash(Keccak txHash, bool includeHeader = true);
         
-        [JsonRpcMethod(IsImplemented = false, Description = "This function should return the same result as `eth_call` and also proofs of all USED accunts and their storages and serialized block headers", IsReadOnly = false)]
+        [JsonRpcMethod(IsImplemented = true, Description = "This function should return the same result as `eth_call` and also proofs of all USED accunts and their storages and serialized block headers", IsReadOnly = false)]
         ResultWrapper<ReceiptWithProof> proof_getTransactionReceipt(Keccak txHash, bool includeHeader = true);
     }
 }

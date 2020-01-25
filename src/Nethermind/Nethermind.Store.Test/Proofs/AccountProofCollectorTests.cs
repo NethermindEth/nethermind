@@ -26,7 +26,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test.Proofs
 {
-    public class ProofCollectorTests
+    public class AccountProofCollectorTests
     {
         [Test]
         public void Balance_is_correct()

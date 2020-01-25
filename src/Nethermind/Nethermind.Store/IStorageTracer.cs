@@ -19,5 +19,8 @@ namespace Nethermind.Store
     public interface IStorageTracer
     {
         void ReportStorageChange(StorageAddress storageAddress, byte[] before, byte[] after);
+        void ReportStorageRead(StorageAddress storageAddress)
+        {
+        }
     }
 }

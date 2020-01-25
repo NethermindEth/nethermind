@@ -62,8 +62,10 @@ namespace Nethermind.JsonRpc.Modules.Proof
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree, _specProvider, _logManager);
             ReadOnlyChainProcessingEnv readOnlyChainProcessingEnv = new ReadOnlyChainProcessingEnv(readOnlyTxProcessingEnv, AlwaysValidBlockValidator.Instance, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), readOnlyDbProvider, _specProvider, _logManager);
             
-            Tracer tracer = new Tracer(readOnlyTxProcessingEnv.BlockTree,
-                readOnlyTxProcessingEnv.StateProvider, readOnlyChainProcessingEnv.BlockProcessor);
+            Tracer tracer = new Tracer(
+                readOnlyTxProcessingEnv.BlockTree,
+                readOnlyTxProcessingEnv.StateProvider,
+                readOnlyChainProcessingEnv.BlockProcessor);
             
             return new ProofModule(tracer, _blockTree, _receiptStorage, _specProvider, _logManager);
         }

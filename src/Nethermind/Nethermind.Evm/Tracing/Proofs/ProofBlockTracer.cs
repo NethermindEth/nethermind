@@ -19,29 +19,29 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm.Tracing.Proofs
 {
-    public class ProofBlockTracer : BlockTracerBase<ProofTxTrace, ProofTxTracer>
+    public class ProofBlockTracer : BlockTracerBase<ProofTxTracer, ProofTxTracer>
     {
-        private Block _block;
-        
-        private ProofTxTracer _currentTracer;
-        
         public ProofBlockTracer(Keccak txHash) : base(txHash)
         {
         }
         
         protected override ProofTxTracer OnStart(Keccak txHash)
         {
-            return _currentTracer = new ProofTxTracer();
+            return new ProofTxTracer();
         }
 
-        protected override ProofTxTrace OnEnd(ProofTxTracer txTracer)
+        /// <summary>
+        /// Here I decided to return tracer after experimenting with ProofTxTrace class. It encapsulates less but avoid additional type introduction which does not bring much value.
+        /// </summary>
+        /// <param name="txTracer">Tracer of the transaction that just has been processed.</param>
+        /// <returns>Just returns the <paramref name="txTracer"/></returns>
+        protected override ProofTxTracer OnEnd(ProofTxTracer txTracer)
         {
-            return txTracer.Build();
+            return txTracer;
         }
 
         public override void StartNewBlockTrace(Block block)
         {
-            _block = block;
         }
     }
 }

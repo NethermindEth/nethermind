@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Proofs;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
@@ -33,6 +34,9 @@ using Nethermind.Store.Proofs;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {
+    /// <summary>
+    /// <inheritdoc cref="IProofModule"/>
+    /// </summary>
     public class ProofModule : IProofModule
     {
         private readonly ILogger _logger;
@@ -42,7 +46,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
         private readonly ISpecProvider _specProvider;
         private readonly HeaderDecoder _headerDecoder = new HeaderDecoder();
 
-        public ProofModule(ITracer tracer,
+        public ProofModule(
+            ITracer tracer,
             IBlockFinder blockFinder,
             IReceiptFinder receiptFinder,
             ISpecProvider specProvider,
@@ -55,11 +60,13 @@ namespace Nethermind.JsonRpc.Modules.Proof
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
+        [Todo(Improve.Review, "Double check the way the trace header is onstructed based on the block parameter. SHall we assign exactly the same hash / difficulty and other properties?")]
         public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter)
         {
             Transaction transaction = tx.ToTransaction();
 
             BlockHeader parentHeader = _blockFinder.FindBlock(blockParameter).Header;
+            
             BlockHeader traceHeader = new BlockHeader(
                 parentHeader.Hash,
                 Keccak.OfAnEmptySequenceRlp,
@@ -81,20 +88,19 @@ namespace Nethermind.JsonRpc.Modules.Proof
             _tracer.Trace(block, receiptsTracer);
 
             CallResultWithProof callResultWithProof = new CallResultWithProof();
+            ProofTxTracer proofTxTracer = proofBlockTracer.BuildResult().Single();
+            
+            CollectHeaders(proofTxTracer, callResultWithProof);
+            callResultWithProof.Result = proofTxTracer.Output;
+            CollectAccountProofs(proofTxTracer, parentHeader, callResultWithProof);
 
-            List<BlockHeader> relevantHeaders = new List<BlockHeader>();
-            ProofTxTrace proofTxTrace = proofBlockTracer.BuildResult().Single();
-            foreach (Keccak blockHash in proofTxTrace.BlockHashes)
-            {
-                relevantHeaders.Add(_blockFinder.FindHeader(blockHash));
-            }
+            return ResultWrapper<CallResultWithProof>.Success(callResultWithProof);
+        }
 
-            callResultWithProof.Result = proofTxTrace.Output;
-            callResultWithProof.BlockHeaders = relevantHeaders
-                .Select(h => _headerDecoder.Encode(h).Bytes).ToArray();
-
+        private void CollectAccountProofs(ProofTxTracer proofTxTracer, BlockHeader parentHeader, CallResultWithProof callResultWithProof)
+        {
             List<AccountProof> accountProofs = new List<AccountProof>();
-            foreach (Address address in proofTxTrace.Accounts)
+            foreach (Address address in proofTxTracer.Accounts)
             {
                 AccountProofCollector collector = new AccountProofCollector(address);
                 _tracer.Accept(collector, parentHeader.StateRoot);
@@ -102,8 +108,18 @@ namespace Nethermind.JsonRpc.Modules.Proof
             }
 
             callResultWithProof.Accounts = accountProofs.ToArray();
-            
-            return ResultWrapper<CallResultWithProof>.Success(callResultWithProof);
+        }
+
+        private void CollectHeaders(ProofTxTracer proofTxTracer, CallResultWithProof callResultWithProof)
+        {
+            List<BlockHeader> relevantHeaders = new List<BlockHeader>();
+            foreach (Keccak blockHash in proofTxTracer.BlockHashes)
+            {
+                relevantHeaders.Add(_blockFinder.FindHeader(blockHash));
+            }
+
+            callResultWithProof.BlockHeaders = relevantHeaders
+                .Select(h => _headerDecoder.Encode(h).Bytes).ToArray();
         }
 
         private byte[][] BuildTxProof(Transaction[] txs, int index)
@@ -126,15 +142,15 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             TransactionWithProof txWithProof = new TransactionWithProof();
             txWithProof.Transaction = new TransactionForRpc(block.Hash, block.Number, receipt.Index, transaction);
+            txWithProof.TxProof = BuildTxProof(txs, receipt.Index);
             if (includeHeader)
             {
                 txWithProof.BlockHeader = _headerDecoder.Encode(block.Header).Bytes;
             }
 
-            txWithProof.TxProof = BuildTxProof(txs, receipt.Index);
             return ResultWrapper<TransactionWithProof>.Success(txWithProof);
         }
-
+        
         public ResultWrapper<ReceiptWithProof> proof_getTransactionReceipt(Keccak txHash, bool includeHeader = true)
         {
             TxReceipt receipt = _receiptFinder.Find(txHash);
@@ -149,13 +165,13 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             ReceiptWithProof receiptWithProof = new ReceiptWithProof();
             receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt);
+            receiptWithProof.ReceiptProof = BuildReceiptProof(block.Number, receipts, receipt.Index);
+            receiptWithProof.TxProof = BuildTxProof(txs, receipt.Index);
             if (includeHeader)
             {
                 receiptWithProof.BlockHeader = _headerDecoder.Encode(block.Header).Bytes;
             }
-
-            receiptWithProof.ReceiptProof = BuildReceiptProof(block.Number, receipts, receipt.Index);
-            receiptWithProof.TxProof = BuildTxProof(txs, receipt.Index);
+            
             return ResultWrapper<ReceiptWithProof>.Success(receiptWithProof);
         }
     }

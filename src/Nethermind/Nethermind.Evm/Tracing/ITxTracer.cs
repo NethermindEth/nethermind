@@ -30,141 +30,78 @@ namespace Nethermind.Evm.Tracing
         /// <summary>
         /// Defines whether MarkAsSuccess or MarkAsFailed will be called
         /// </summary>
-        bool IsTracingReceipt { get; }
+        bool IsTracingReceipt => false;
         /// <summary>
         /// High level calls with information on the target account
         /// </summary>
-        bool IsTracingActions { get; }
+        bool IsTracingActions => false;
         /// <summary>
         /// SSTORE and SLOAD level storage operations
         /// </summary>
-        bool IsTracingOpLevelStorage { get; }
+        bool IsTracingOpLevelStorage => false;
         /// <summary>
         /// EVM memory access operations
         /// </summary>
-        bool IsTracingMemory { get; }
-        bool IsTracingInstructions { get; }
+        bool IsTracingMemory => false;
+        bool IsTracingInstructions => false;
         /// <summary>
         /// Code deployment
         /// </summary>
-        bool IsTracingCode { get; }
+        bool IsTracingCode => false;
         /// <summary>
         /// EVM stack tracing after each operation
         /// </summary>
-        bool IsTracingStack { get; }
+        bool IsTracingStack => false;
         /// <summary>
         /// State changes at commit stage
         /// </summary>
-        bool IsTracingState { get; }
+        bool IsTracingState => false;
 
         /// <summary>
         /// Traces blockhash calls
         /// </summary>
-        bool IsTracingBlockHash => true;
+        bool IsTracingBlockHash => false;
 
-        void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
-        {
-            throw new NotImplementedException();
-        }
+        void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null) => throw new NotSupportedException();
 
-        void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
-        {
-            throw new NotImplementedException();
-        }
+        void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null) => throw new NotSupportedException();
 
-        void StartOperation(int depth, long gas, Instruction opcode, int pc)
-        {
-            throw new NotImplementedException();
-        }
+        void StartOperation(int depth, long gas, Instruction opcode, int pc) => throw new NotSupportedException();
 
-        void ReportOperationError(EvmExceptionType error)
-        {
-            throw new NotImplementedException();
-        }
+        void ReportOperationError(EvmExceptionType error) => throw new NotSupportedException();
 
-        void ReportOperationRemainingGas(long gas)
-        {
-            throw new NotImplementedException();
-        }
+        void ReportOperationRemainingGas(long gas) => throw new NotSupportedException();
 
-        void SetOperationStack(List<string> stackTrace)
-        {
-            throw new NotImplementedException();
-        }
+        void SetOperationStack(List<string> stackTrace) => throw new NotSupportedException();
 
-        void ReportStackPush(Span<byte> stackItem)
-        {
-            throw new NotImplementedException();
-        }
+        void ReportStackPush(Span<byte> stackItem) => throw new NotSupportedException();
 
-        void SetOperationMemory(List<string> memoryTrace)
-        {
-            throw new NotImplementedException();
-        }
+        void SetOperationMemory(List<string> memoryTrace) => throw new NotSupportedException();
 
-        void SetOperationMemorySize(ulong newSize)
-        {
-            throw new NotImplementedException();
-        }
+        void SetOperationMemorySize(ulong newSize) => throw new NotSupportedException();
 
-        void ReportMemoryChange(long offset, Span<byte> data)
-        {
-            throw new NotImplementedException();
-        }
+        void ReportMemoryChange(long offset, Span<byte> data) => throw new NotSupportedException();
 
-        void ReportStorageChange(Span<byte> key, Span<byte> value)
-        {
-            throw new NotImplementedException();
-        }
+        void ReportStorageChange(Span<byte> key, Span<byte> value) => throw new NotSupportedException();
 
-        void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue)
-        {
-            throw new NotImplementedException();
-        }
+        void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue) => throw new NotSupportedException();
 
-        void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
-        {
-            throw new NotImplementedException();
-        }
+        void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) => throw new NotSupportedException();
 
-        void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
-        {
-            throw new NotImplementedException();
-        }
+        void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false) => throw new NotSupportedException();
 
-        void ReportActionEnd(long gas, byte[] output)
-        {
-            throw new NotImplementedException();
-        }
+        void ReportActionEnd(long gas, byte[] output) => throw new NotSupportedException();
 
-        void ReportActionError(EvmExceptionType evmExceptionType)
-        {
-            throw new NotImplementedException();
-        }
+        void ReportActionError(EvmExceptionType evmExceptionType) => throw new NotSupportedException();
 
-        void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
-        {
-            throw new NotImplementedException();
-        }
+        void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode) => throw new NotSupportedException();
 
-        void ReportBlockHash(Keccak blockHash)
-        {
-            throw new NotImplementedException();
-        }
-        
-        void ReportByteCode(byte[] byteCode)
-        {
-            throw new NotImplementedException();
-        }
+        void ReportBlockHash(Keccak blockHash) => throw new NotSupportedException();
 
-        void ReportRefundForVmTrace(long refund, long gasAvailable)
-        {
-            throw new NotImplementedException();
-        }
+        void ReportByteCode(byte[] byteCode) => throw new NotSupportedException();
 
-        void ReportRefund(long refund)
-        {
-            throw new NotImplementedException();
-        }
+        void ReportRefundForVmTrace(long refund, long gasAvailable) => throw new NotSupportedException();
+
+        void ReportRefund(long refund) => throw new NotSupportedException();
     }
 }
