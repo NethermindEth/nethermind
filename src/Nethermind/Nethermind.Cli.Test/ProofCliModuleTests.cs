@@ -14,16 +14,28 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Dynamic;
+using Jint.Native;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Cli.Modules;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Dirichlet.Numerics;
+using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Client;
+using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.Store;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Cli.Test
@@ -33,6 +45,10 @@ namespace Nethermind.Cli.Test
         private IProofModule _proofModule;
         private IBlockTree _blockTree;
         private IDbProvider _dbProvider;
+        private ICliConsole _cliConsole = Substitute.For<ICliConsole>();
+        private EthereumJsonSerializer _serializer;
+        private IJsonRpcClient _jsonRpcClient;
+        private CliEngine _engine;
 
         [SetUp]
         public void Setup()
@@ -50,17 +66,99 @@ namespace Nethermind.Cli.Test
                 LimboLogs.Instance);
 
             _proofModule = moduleFactory.Create();
+            
+            _serializer = new EthereumJsonSerializer();
+            _jsonRpcClient = Substitute.For<IJsonRpcClient>();
+            _engine = new CliEngine(_cliConsole);
+            NodeManager nodeManager = new NodeManager(_engine, _serializer, _cliConsole, LimboLogs.Instance);
+            nodeManager.SwitchClient(_jsonRpcClient);
+            ICliConsole cliConsole = Substitute.For<ICliConsole>();
+            CliModuleLoader moduleLoader = new CliModuleLoader(_engine, nodeManager, cliConsole);
+            moduleLoader.LoadModule(typeof(ProofCliModule));
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Get_transaction_by_hash(bool includeHeader)
+        {
+           Keccak txHash = _blockTree.FindBlock(1).Transactions[0].Hash;
+            var result = _proofModule.proof_getTransactionByHash(txHash, includeHeader);
+
+            JsonRpcResponse response = new JsonRpcResponse
+            {
+                Id = "id1",
+                JsonRpc = "2",
+                Result = result
+            };
+            
+            _jsonRpcClient.Post<object>("proof_getTransactionByHash", txHash, includeHeader)
+                .Returns(_serializer.Serialize(response));
+
+            JsValue value = _engine.Execute($"proof.getTransactionByHash(\"{txHash}\", {(includeHeader ? "true" : "false")})");
+            Console.WriteLine(_serializer.Serialize(value.ToObject(), true));
+            Assert.AreNotEqual(JsValue.Null, value);
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Get_transaction_receipt(bool includeHeader)
+        {
+            Keccak txHash = _blockTree.FindBlock(1).Transactions[0].Hash;
+            var result = _proofModule.proof_getTransactionByHash(txHash, includeHeader);
+
+            JsonRpcResponse response = new JsonRpcResponse
+            {
+                Id = "id1",
+                JsonRpc = "2",
+                Result = result,
+            };
+            _jsonRpcClient.Post<object>("proof_getTransactionReceipt", txHash, includeHeader)
+                .Returns(_serializer.Serialize(response));
+
+            JsValue value = _engine.Execute($"proof.getTransactionReceipt(\"{txHash}\", {(includeHeader ? "true" : "false")})");
+            Console.WriteLine(_serializer.Serialize(value.ToObject(), true));
+            Assert.AreNotEqual(JsValue.Null, value);
         }
 
         [Test]
-        public void Test1()
+        public void Call()
         {
-            EthereumJsonSerializer serializer = new EthereumJsonSerializer();
-            CliEngine engine = new CliEngine();
-            NodeManager nodeManager = new NodeManager(engine, serializer, LimboLogs.Instance);
-            ProofCliModule proofCliModule = new ProofCliModule(engine, nodeManager);
+            StateProvider stateProvider = new StateProvider(_dbProvider.StateDb, _dbProvider.CodeDb, LimboLogs.Instance);
+            AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
+            AddAccount(stateProvider, TestItem.AddressB, 1.Ether());
 
-            proofCliModule.GetTransactionByHash($"{TestItem.KeccakA}", true);
+            Keccak root = stateProvider.StateRoot;
+            Block block = Build.A.Block.WithParent(_blockTree.Head).WithStateRoot(root).TestObject;
+            BlockTreeBuilder.AddBlock(_blockTree, block);
+
+            TransactionForRpc tx = new TransactionForRpc
+            {
+                From = TestItem.AddressA,
+                To = TestItem.AddressB
+            };
+
+            var result = _proofModule.proof_call(tx, new BlockParameter(block.Hash));
+            JsonRpcResponse response = new JsonRpcResponse
+            {
+                Id = "id1",
+                JsonRpc = "2",
+                Result = result,
+            };
+            
+            _jsonRpcClient.Post<object>("proof_call", Arg.Any<ExpandoObject>(), block.Hash.ToString())
+                .Returns(_serializer.Serialize(response));
+
+            JsValue value = _engine.Execute($"proof.call({_serializer.Serialize(tx)}, \"{block.Hash}\")");
+            Console.WriteLine(_serializer.Serialize(value.ToObject(), true));
+            Assert.AreNotEqual(JsValue.Null, value);
+        }
+
+        private void AddAccount(StateProvider stateProvider, Address account, UInt256 initialBalance)
+        {
+            stateProvider.CreateAccount(account, initialBalance);
+            stateProvider.Commit(MuirGlacier.Instance, null);
+            stateProvider.CommitTree();
+            _dbProvider.StateDb.Commit();
         }
     }
 }

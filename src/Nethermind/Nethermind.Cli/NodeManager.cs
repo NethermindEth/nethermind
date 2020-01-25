@@ -32,16 +32,18 @@ namespace Nethermind.Cli
         private ICliEngine _cliEngine;
         private ILogManager _logManager;
         private IJsonSerializer _serializer;
+        private readonly ICliConsole _cliConsole;
         private JsonParser _jsonParser;
 
         private Dictionary<Uri, IJsonRpcClient> _clients = new Dictionary<Uri, IJsonRpcClient>();
 
         private IJsonRpcClient _currentClient;
 
-        public NodeManager(ICliEngine cliEngine, IJsonSerializer serializer, ILogManager logManager)
+        public NodeManager(ICliEngine cliEngine, IJsonSerializer serializer, ICliConsole cliConsole, ILogManager logManager)
         {
             _cliEngine = cliEngine ?? throw new ArgumentNullException(nameof(cliEngine));
             _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
+            _cliConsole = cliConsole ?? throw new ArgumentNullException(nameof(cliConsole));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
 
             _jsonParser = new JsonParser(_cliEngine.JintEngine);
@@ -49,6 +51,11 @@ namespace Nethermind.Cli
 
         public string CurrentUri { get; private set; }
 
+        public void SwitchClient(IJsonRpcClient client)
+        {
+            _currentClient = client;
+        }
+        
         public void SwitchUri(Uri uri)
         {
             CurrentUri = uri.ToString();
@@ -80,11 +87,11 @@ namespace Nethermind.Cli
             }
             catch (HttpRequestException e)
             {
-                CliConsole.WriteErrorLine(e.Message);
+                _cliConsole.WriteErrorLine(e.Message);
             }
             catch (Exception e)
             {
-                CliConsole.WriteException(e);
+                _cliConsole.WriteException(e);
             }
 
             return JsValue.Null;
@@ -109,11 +116,11 @@ namespace Nethermind.Cli
             }
             catch (HttpRequestException e)
             {
-                CliConsole.WriteErrorLine(e.Message);
+                _cliConsole.WriteErrorLine(e.Message);
             }
             catch (Exception e)
             {
-                CliConsole.WriteException(e);
+                _cliConsole.WriteException(e);
             }
 
             return default;
