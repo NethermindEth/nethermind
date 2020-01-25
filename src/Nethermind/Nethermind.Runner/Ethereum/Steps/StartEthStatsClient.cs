@@ -89,7 +89,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.LogManager);
             
             await ethStatsIntegration.InitAsync();
-            
+            _context.DisposeStack.Push(ethStatsIntegration);
             // TODO: handle failure
             
             SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Running));

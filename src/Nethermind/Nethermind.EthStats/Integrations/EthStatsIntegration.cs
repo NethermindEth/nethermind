@@ -27,6 +27,7 @@ using Nethermind.EthStats.Messages.Models;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Websocket.Client;
+using Timer = System.Timers.Timer;
 
 namespace Nethermind.EthStats.Integrations
 {
@@ -50,6 +51,7 @@ namespace Nethermind.EthStats.Integrations
         private IWebsocketClient _websocketClient;
         private bool _connected;
         private long _lastBlockProcessedTimestamp;
+        private Timer _timer;
         private const int ThrottlingThreshold = 25;
         private const int SendStatsInterval = 1000;
 
@@ -76,15 +78,21 @@ namespace Nethermind.EthStats.Integrations
 
         public async Task InitAsync()
         {
-            var timer = new System.Timers.Timer {Interval = SendStatsInterval};
-            timer.Elapsed += TimerOnElapsed;
+            _timer = new Timer {Interval = SendStatsInterval};
+            _timer.Elapsed += TimerOnElapsed;
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
-            var exitEvent = new ManualResetEvent(false);
-            using (_websocketClient = await _ethStatsClient.InitAsync())
+            _websocketClient = await _ethStatsClient.InitAsync();
+            if (_logger.IsInfo) _logger.Info("Initial connection, sending 'hello' message...");
+            await SendHelloAsync();
+            _connected = true;
+            
+            Run(_timer);
+        }
+
+        private void Run(Timer timer)
+        {
+            using (_websocketClient)
             {
-                if (_logger.IsInfo) _logger.Info("Initial connection, sending 'hello' message...");
-                await SendHelloAsync();
-                _connected = true;
                 _websocketClient.ReconnectionHappened.Subscribe(async reason =>
                 {
                     if (_logger.IsInfo) _logger.Info("ETH Stats reconnected, sending 'hello' message...");
@@ -98,14 +106,7 @@ namespace Nethermind.EthStats.Integrations
                 });
 
                 timer.Start();
-                exitEvent.WaitOne();
             }
-
-            _connected = false;
-            timer.Stop();
-            timer.Dispose();
-            _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
-            timer.Elapsed -= TimerOnElapsed;
         }
 
         private void TimerOnElapsed(object sender, ElapsedEventArgs e)
@@ -126,7 +127,7 @@ namespace Nethermind.EthStats.Integrations
                 return;
             }
 
-            var timestamp = new DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds();
+            long timestamp = new DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds();
             if (timestamp - _lastBlockProcessedTimestamp < ThrottlingThreshold)
             {
                 return;
@@ -136,6 +137,15 @@ namespace Nethermind.EthStats.Integrations
             _lastBlockProcessedTimestamp = timestamp;
             SendBlockAsync(e.Block);
             SendPendingAsync(e.Block.Transactions?.Length ?? 0);
+        }
+
+        public void Dispose()
+        {
+            _connected = false;
+            _timer.Stop();
+            _timer.Dispose();
+            _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
+            _timer.Elapsed -= TimerOnElapsed;
         }
 
         private Task SendHelloAsync()

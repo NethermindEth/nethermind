@@ -49,10 +49,10 @@ namespace Nethermind.EthStats.Clients
             {
                 try
                 {
-                    using var httpClient = new HttpClient();
-                    var host = _webSocketsUrl.Split("://").Last();
-                    var response = await httpClient.GetAsync($"http://{host}");
-                    var requestedUrl = response.RequestMessage.RequestUri;
+                    using HttpClient httpClient = new HttpClient();
+                    string host = _webSocketsUrl.Split("://").Last();
+                    HttpResponseMessage response = await httpClient.GetAsync($"http://{host}");
+                    Uri requestedUrl = response.RequestMessage.RequestUri;
                     if (requestedUrl.Scheme.Equals("https"))
                     {
                         _webSocketsUrl = $"wss://{host}";
@@ -65,7 +65,7 @@ namespace Nethermind.EthStats.Clients
                 }
             }
 
-            var url = new Uri(_webSocketsUrl);
+            Uri url = new Uri(_webSocketsUrl);
             _client = new WebsocketClient(url)
             {
                 ErrorReconnectTimeoutMs = _reconnectionInterval,
@@ -92,10 +92,10 @@ namespace Nethermind.EthStats.Clients
 
         private async Task HandlePingAsync(string message)
         {
-            var serverTime = long.Parse(message.Split("::").LastOrDefault()?.Replace("\"", string.Empty));
-            var clientTime = new DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds();
-            var latency = clientTime >= serverTime ? clientTime - serverTime : serverTime - clientTime;
-            var pong = $"\"primus::pong::{serverTime}\"";
+            long serverTime = long.Parse(message.Split("::").LastOrDefault()?.Replace("\"", string.Empty));
+            long clientTime = new DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds();
+            long latency = clientTime >= serverTime ? clientTime - serverTime : serverTime - clientTime;
+            string pong = $"\"primus::pong::{serverTime}\"";
             if (_logger.IsDebug) _logger.Debug($"Sending 'pong' message to ETH stats...");
             await _client.Send(pong);
             await _messageSender.SendAsync(_client, new LatencyMessage(latency));
