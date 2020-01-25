@@ -172,10 +172,10 @@ namespace Ethereum.VM.Test
             {
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    _storageProvider.Set(new StorageAddress(accountState.Key, storageItem.Key), storageItem.Value);
+                    _storageProvider.Set(new StorageCell(accountState.Key, storageItem.Key), storageItem.Value);
                     if (accountState.Key.Equals(test.Execution.Address))
                     {
-                        _storageProvider.Set(new StorageAddress(accountState.Key, storageItem.Key), storageItem.Value);
+                        _storageProvider.Set(new StorageCell(accountState.Key, storageItem.Key), storageItem.Value);
                     }
                 }
 
@@ -222,7 +222,7 @@ namespace Ethereum.VM.Test
 
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    byte[] value = _storageProvider.Get(new StorageAddress(accountState.Key, storageItem.Key));
+                    byte[] value = _storageProvider.Get(new StorageCell(accountState.Key, storageItem.Key));
                     Assert.True(Bytes.AreEqual(storageItem.Value, value),
                         $"Storage[{accountState.Key}_{storageItem.Key}] Exp: {storageItem.Value.ToHexString(true)} != Actual: {value.ToHexString(true)}");
                 }
