@@ -45,20 +45,21 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         private IProofModule _proofModule;
         private IBlockTree _blockTree;
         private IDbProvider _dbProvider;
+        private TestSpecProvider _specProvider;
 
         [SetUp]
         public void Setup()
         {
             InMemoryReceiptStorage receiptStorage = new InMemoryReceiptStorage();
-            ISpecProvider specProvider = MainNetSpecProvider.Instance;
-            _blockTree = Build.A.BlockTree().WithTransactions(receiptStorage, specProvider).OfChainLength(10).TestObject;
+            _specProvider = new TestSpecProvider(Homestead.Instance);
+            _blockTree = Build.A.BlockTree().WithTransactions(receiptStorage, _specProvider).OfChainLength(10).TestObject;
             _dbProvider = new MemDbProvider();
             ProofModuleFactory moduleFactory = new ProofModuleFactory(
                 _dbProvider,
                 _blockTree,
                 new CompositeDataRecoveryStep(),
                 receiptStorage,
-                specProvider,
+                _specProvider,
                 LimboLogs.Instance);
 
             _proofModule = moduleFactory.Create();
@@ -233,7 +234,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .PushData("0x01")
                 .Op(Instruction.BLOCKHASH)
                 .Done;
-            TestCallWithCode(code);
+            var result = TestCallWithCode(code);
         }
 
         [Test]
@@ -279,6 +280,55 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.SSTORE)
                 .Done;
             TestCallWithCode(code);
+        }
+        
+        [Test]
+        public void Can_call_with_extcodecopy()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData("0x20")
+                .PushData("0x00")
+                .PushData("0x00")
+                .PushData(TestItem.AddressC)
+                .Op(Instruction.EXTCODECOPY)
+                .Done;
+            var result = TestCallWithCode(code);
+            Assert.AreEqual(4, result.Accounts.Length);
+        }
+        
+        [Test]
+        public void Can_call_with_extcodesize()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData(TestItem.AddressC)
+                .Op(Instruction.EXTCODESIZE)
+                .Done;
+            var result = TestCallWithCode(code);
+            Assert.AreEqual(4, result.Accounts.Length);
+        }
+        
+        [Test]
+        public void Can_call_with_extcodehash()
+        {
+            _specProvider.SpecToReturn = MuirGlacier.Instance;
+            byte[] code = Prepare.EvmCode
+                .PushData(TestItem.AddressC)
+                .Op(Instruction.EXTCODEHASH)
+                .Done;
+            var result = TestCallWithCode(code);
+            Assert.AreEqual(4, result.Accounts.Length);
+        }
+        
+        [Test]
+        public void Can_call_with_self_destruct()
+        {
+            _specProvider.SpecToReturn = MuirGlacier.Instance;
+            byte[] code = Prepare.EvmCode
+                .PushData(TestItem.AddressC)
+                .Op(Instruction.SELFDESTRUCT)
+                .Done;
+            var result = TestCallWithCode(code);
+            Assert.AreEqual(4, result.Accounts.Length);
         }
 
         [Test]
@@ -343,7 +393,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             TestCallWithStorageAndCode(code);
         }
 
-        private void TestCallWithCode(byte[] code)
+        private CallResultWithProof TestCallWithCode(byte[] code)
         {
             StateProvider stateProvider = new StateProvider(_dbProvider.StateDb, _dbProvider.CodeDb, LimboLogs.Instance);
             AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
@@ -379,6 +429,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             EthereumJsonSerializer serializer = new EthereumJsonSerializer();
             string response = RpcTest.TestSerializedRequest(_proofModule, "proof_call", $"{serializer.Serialize(tx)}", $"{block.Number}");
             Assert.True(response.Contains("\"result\""));
+
+            return callResultWithProof;
         }
 
         private void TestCallWithStorageAndCode(byte[] code)
