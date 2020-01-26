@@ -304,7 +304,7 @@ namespace Nethermind.Evm
 
             if (txTracer.IsTracingReceipt)
             {
-                Keccak stateRoot = _specProvider.GetSpec(block.Number).IsEip658Enabled ? _stateProvider.StateRoot : null;
+                Keccak stateRoot = _specProvider.GetSpec(block.Number).IsEip658Enabled ? null : _stateProvider.StateRoot;
                 if (statusCode == StatusCode.Failure)
                 {
                     txTracer.MarkAsFailed(recipient, spentGas, (substate?.ShouldRevert ?? false) ? substate.Output : Bytes.Empty, substate?.Error, stateRoot);

@@ -69,6 +69,23 @@ namespace Nethermind.Evm.Test
 
             Assert.AreEqual(StatusCode.Success, tracer.TxReceipts[0].StatusCode);
         }
+        
+        [TestCase(true, true)]
+        [TestCase(true, false)]
+        [TestCase(false, true)]
+        [TestCase(false, false)]
+        public void Sets_state_root_on_receipts_before_eip658(bool withStateDiff, bool withTrace)
+        {
+            GiveEtherToA();
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).TestObject;
+
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+
+            BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
+            Execute(tracer, tx, block);
+
+            Assert.NotNull(tracer.TxReceipts[0].PostTransactionState);
+        }
 
         [TestCase(true, true)]
         [TestCase(true, false)]
