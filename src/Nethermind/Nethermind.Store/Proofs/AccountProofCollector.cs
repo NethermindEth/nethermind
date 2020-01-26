@@ -61,7 +61,7 @@ namespace Nethermind.Store.Proofs
         
         private static Keccak ToKey(UInt256 index)
         {
-            return Keccak.Compute(StorageTree.GetKey(index));
+            return new Keccak(StorageTree.GetKey(index).ToArray());
         }
 
         public AccountProofCollector(Address address)

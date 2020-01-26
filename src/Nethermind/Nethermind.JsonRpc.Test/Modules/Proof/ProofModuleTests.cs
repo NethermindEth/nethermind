@@ -14,7 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.IO;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -389,7 +391,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             StorageProvider storageProvider = new StorageProvider(_dbProvider.StateDb, stateProvider, LimboLogs.Instance);
             for (int i = 0; i < 10000; i++)
             {
-                storageProvider.Set(new StorageCell(TestItem.AddressB, new UInt256(i)), Keccak.Compute(i.ToBigEndianByteArray()).Bytes);
+                storageProvider.Set(new StorageCell(TestItem.AddressB, new UInt256(i)), i.ToBigEndianByteArray());
             }
             
             storageProvider.Commit();
@@ -399,7 +401,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             stateProvider.CommitTree();
             
             _dbProvider.StateDb.Commit();
-            
+
             Keccak root = stateProvider.StateRoot;
 
             Block block = Build.A.Block.WithParent(_blockTree.Head).WithStateRoot(root).TestObject;
@@ -417,13 +419,39 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             CallResultWithProof callResultWithProof = _proofModule.proof_call(tx, new BlockParameter(blockOnTop.Number)).Data;
             Assert.Greater(callResultWithProof.Accounts.Length, 0);
-
+            
+            // just the keys for debugging
+            Span<byte> span = stackalloc byte[32];
+            new UInt256(0).ToBigEndian(span);
+            Keccak k0 = Keccak.Compute(span);
+            
+            // just the keys for debugging
+            new UInt256(1).ToBigEndian(span);
+            Keccak k1 = Keccak.Compute(span);
+            
+            // just the keys for debugging
+            new UInt256(2).ToBigEndian(span);
+            Keccak k2 = Keccak.Compute(span);
+            
             foreach (AccountProof accountProof in callResultWithProof.Accounts)
             {
-                VerifyProof(accountProof.Proof, block.StateRoot);
+                // this is here for diagnostics - so you can read what happens in the test
+                // generally the account here should be consistent with the values inside the proof
+                // the exception will be thrown if the account did not exist before the call
+                Account account;
+                try
+                {
+                    account = new AccountDecoder().Decode(new RlpStream(VerifyProof(accountProof.Proof, block.StateRoot)));
+                }
+                catch (Exception e)
+                {
+                    // ignored
+                }
+
                 foreach (StorageProof storageProof in accountProof.StorageProofs)
                 {
-                    VerifyProof(storageProof.Proof, accountProof.StorageRoot);
+                    // we read the values here just to allow easier debugging so you can confirm that the value is same as the one in the proof and in the trie
+                    byte[] value = VerifyProof(storageProof.Proof, accountProof.StorageRoot);
                 }
             }
 
@@ -451,8 +479,15 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             _dbProvider.StateDb.Commit();
         }
 
-        private void VerifyProof(byte[][] proof, Keccak txRoot)
+        private byte[] VerifyProof(byte[][] proof, Keccak txRoot)
         {
+            if (proof.Length == 0)
+            {
+                return null;
+            }
+            
+            TrieNode trieNode = new TrieNode(NodeType.Unknown, new Rlp(proof.Last()));
+            trieNode.ResolveNode(null);
             for (int i = proof.Length; i > 0; i--)
             {
                 Keccak proofHash = Keccak.Compute(proof[i - 1]);
@@ -471,6 +506,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                     }
                 }
             }
+
+            return trieNode.Value;
         }
     }
 }
