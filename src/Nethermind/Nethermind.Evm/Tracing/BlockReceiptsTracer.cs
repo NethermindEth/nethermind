@@ -92,6 +92,7 @@ namespace Nethermind.Evm.Tracing
             txReceipt.Sender = transaction.SenderAddress;
             txReceipt.ContractAddress = transaction.IsContractCreation ? recipient : null;
             txReceipt.TxHash = transaction.Hash;
+            txReceipt.PostTransactionState = stateRoot;
 
             return txReceipt;
         }
