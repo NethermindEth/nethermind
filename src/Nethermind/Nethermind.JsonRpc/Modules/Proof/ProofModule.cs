@@ -66,14 +66,14 @@ namespace Nethermind.JsonRpc.Modules.Proof
         {
             Transaction transaction = tx.ToTransaction();
 
-            BlockHeader parentHeader;
+            BlockHeader header;
             if (blockParameter.RequireCanonical)
             {
-                parentHeader = _blockFinder.FindHeader(blockParameter.BlockHash, BlockTreeLookupOptions.RequireCanonical);
-                if (parentHeader == null)
+                header = _blockFinder.FindHeader(blockParameter.BlockHash, BlockTreeLookupOptions.RequireCanonical);
+                if (header == null)
                 {
-                    parentHeader = _blockFinder.FindHeader(blockParameter);
-                    if (parentHeader != null)
+                    header = _blockFinder.FindHeader(blockParameter);
+                    if (header != null)
                     {
                         return ResultWrapper<CallResultWithProof>.Fail($"{blockParameter.BlockHash} block is not canonical", ErrorCodes.InvalidInput);
                     }
@@ -81,27 +81,17 @@ namespace Nethermind.JsonRpc.Modules.Proof
             }
             else
             {
-                parentHeader = _blockFinder.FindHeader(blockParameter);
+                header = _blockFinder.FindHeader(blockParameter);
             }
 
-            if (parentHeader == null)
+            if (header == null)
             {
                 return ResultWrapper<CallResultWithProof>.Fail($"{blockParameter.BlockHash} could not be found", ErrorCodes.ResourceNotFound);
             }
 
-            BlockHeader traceHeader = new BlockHeader(
-                parentHeader.Hash,
-                Keccak.OfAnEmptySequenceRlp,
-                Address.Zero,
-                parentHeader.Difficulty,
-                parentHeader.Number + 1,
-                parentHeader.GasLimit,
-                parentHeader.Timestamp + 1,
-                parentHeader.ExtraData);
-
-            Block block = new Block(traceHeader, new[] {transaction}, Enumerable.Empty<BlockHeader>());
+            Block block = new Block(header, new[] {transaction}, Enumerable.Empty<BlockHeader>());
             block.Author = Address.Zero;
-            block.TotalDifficulty = parentHeader.TotalDifficulty + traceHeader.Difficulty;
+            block.TotalDifficulty = 0; // not used in EVM
 
             ProofBlockTracer proofBlockTracer = new ProofBlockTracer(null);
 
@@ -114,7 +104,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             CollectHeaders(proofTxTracer, callResultWithProof);
             callResultWithProof.Result = proofTxTracer.Output;
-            CollectAccountProofs(proofTxTracer, parentHeader, callResultWithProof);
+            CollectAccountProofs(proofTxTracer, header, callResultWithProof);
 
             return ResultWrapper<CallResultWithProof>.Success(callResultWithProof);
         }

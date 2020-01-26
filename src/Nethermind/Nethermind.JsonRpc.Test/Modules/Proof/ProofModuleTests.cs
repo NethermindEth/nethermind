@@ -335,8 +335,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 To = TestItem.AddressB
             };
             
-            _proofModule.proof_call(tx, new BlockParameter(block.Number));
-            
+            CallResultWithProof callResultWithProof = _proofModule.proof_call(tx, new BlockParameter(block.Number)).Data;
+
             EthereumJsonSerializer serializer = new EthereumJsonSerializer();
             string response = RpcTest.TestSerializedRequest(_proofModule, "proof_call", $"{serializer.Serialize(tx)}", $"{block.Number}");
             Assert.True(response.Contains("\"result\""));
