@@ -326,6 +326,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Keccak root = stateProvider.StateRoot;
             Block block = Build.A.Block.WithParent(_blockTree.Head).WithStateRoot(root).TestObject;
             BlockTreeBuilder.AddBlock(_blockTree, block);
+            Block blockOnTop = Build.A.Block.WithParent(block).WithStateRoot(root).TestObject;
+            BlockTreeBuilder.AddBlock(_blockTree, blockOnTop);
 
             // would need to setup state root somehow...
 
@@ -335,7 +337,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 To = TestItem.AddressB
             };
             
-            CallResultWithProof callResultWithProof = _proofModule.proof_call(tx, new BlockParameter(block.Number)).Data;
+            CallResultWithProof callResultWithProof = _proofModule.proof_call(tx, new BlockParameter(blockOnTop.Number)).Data;
+            Assert.Greater(callResultWithProof.Accounts.Length, 0);
 
             EthereumJsonSerializer serializer = new EthereumJsonSerializer();
             string response = RpcTest.TestSerializedRequest(_proofModule, "proof_call", $"{serializer.Serialize(tx)}", $"{block.Number}");
