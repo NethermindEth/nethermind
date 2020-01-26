@@ -31,14 +31,16 @@ namespace Nethermind.Blockchain.Tracing
         /// </summary>
         /// <param name="blockHash">The hash of the block to trace. It has to be a canonical hash.</param>
         /// <param name="tracer">The trace can collect any information from inside EVM or block processing contexts.</param>
-        void Trace(Keccak blockHash, IBlockTracer tracer);
+        /// <returns>Post trace state root</returns>
+        Keccak Trace(Keccak blockHash, IBlockTracer tracer);
         
         /// <summary>
         /// Allows to trace an arbitrarily constructed block.
         /// </summary>
         /// <param name="block">Block to trace.</param>
         /// <param name="tracer">Trace to act on block processing events.</param>
-        void Trace(Block block, IBlockTracer tracer);
+        /// <returns>Post trace state root</returns>
+        Keccak Trace(Block block, IBlockTracer tracer);
         
         void Accept(ITreeVisitor visitor, Keccak stateRoot);
     }

@@ -94,22 +94,24 @@ namespace Nethermind.JsonRpc.Modules.Proof
             block.TotalDifficulty = 0; // not used in EVM
 
             ProofBlockTracer proofBlockTracer = new ProofBlockTracer(null);
-
-            BlockReceiptsTracer receiptsTracer = new BlockReceiptsTracer();
-            receiptsTracer.SetOtherTracer(proofBlockTracer);
-            _tracer.Trace(block, receiptsTracer);
+            _tracer.Trace(block, proofBlockTracer);
 
             CallResultWithProof callResultWithProof = new CallResultWithProof();
             ProofTxTracer proofTxTracer = proofBlockTracer.BuildResult().Single();
 
+            
+            
             CollectHeaders(proofTxTracer, callResultWithProof);
             callResultWithProof.Result = proofTxTracer.Output;
-            CollectAccountProofs(proofTxTracer, header, callResultWithProof);
+            
+            // we collect proofs from before execution (after learning which addresses will be touched)
+            // if we wanted to collect post execution proofs then we would need to use BeforeRestore on the tracer
+            callResultWithProof.Accounts = CollectAccountProofs(header.StateRoot, proofTxTracer);
 
             return ResultWrapper<CallResultWithProof>.Success(callResultWithProof);
         }
-
-        private void CollectAccountProofs(ProofTxTracer proofTxTracer, BlockHeader parentHeader, CallResultWithProof callResultWithProof)
+        
+        private AccountProof[] CollectAccountProofs(Keccak stateRoot, ProofTxTracer proofTxTracer)
         {
             List<AccountProof> accountProofs = new List<AccountProof>();
             foreach (Address address in proofTxTracer.Accounts)
@@ -118,11 +120,11 @@ namespace Nethermind.JsonRpc.Modules.Proof
                     .Where(s => s.Address == address)
                     .Select(s => s.Index).ToArray());
 
-                _tracer.Accept(collector, parentHeader.StateRoot);
+                _tracer.Accept(collector, stateRoot);
                 accountProofs.Add(collector.BuildResult());
             }
 
-            callResultWithProof.Accounts = accountProofs.ToArray();
+            return accountProofs.ToArray();
         }
 
         private void CollectHeaders(ProofTxTracer proofTxTracer, CallResultWithProof callResultWithProof)

@@ -86,7 +86,7 @@ namespace Nethermind.Blockchain.Tracing
         private ParityLikeTxTrace ParityTrace(Block block, Keccak txHash, ParityTraceTypes traceTypes)
         {
             ParityLikeBlockTracer listener = new ParityLikeBlockTracer(txHash, traceTypes);
-            _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain, listener);
+            _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain, listener);
             return listener.BuildResult().SingleOrDefault();
         }
 
@@ -101,7 +101,7 @@ namespace Nethermind.Blockchain.Tracing
             }
 
             ParityLikeBlockTracer listener = new ParityLikeBlockTracer(traceTypes);
-            _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, listener);
+            _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, listener);
             return listener.BuildResult().ToArray();
         }
     }

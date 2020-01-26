@@ -128,6 +128,7 @@ namespace Nethermind.Blockchain
 
                 if ((options & ProcessingOptions.ReadOnlyChain) != 0)
                 {
+                    _receiptsTracer.BeforeRestore(_stateProvider);
                     Restore(stateSnapshot, codeSnapshot, snapshotStateRoot);
                 }
                 else

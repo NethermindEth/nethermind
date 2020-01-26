@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain.Tracing
             if (block == null) throw new InvalidOperationException("Only historical blocks");
             block.Body = new BlockBody(new[] {tx}, new BlockHeader[] { });
             GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(tx.Hash, options);
-            _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain, blockTracer);
+            _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain, blockTracer);
             return blockTracer.BuildResult().SingleOrDefault();
         }
 
@@ -111,7 +111,7 @@ namespace Nethermind.Blockchain.Tracing
         private GethLikeTxTrace Trace(Block block, Keccak txHash, GethTraceOptions options)
         {
             GethLikeBlockTracer listener = new GethLikeBlockTracer(txHash, options);
-            _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain, listener);
+            _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain, listener);
             return listener.BuildResult().SingleOrDefault();
         }
 
@@ -126,7 +126,7 @@ namespace Nethermind.Blockchain.Tracing
             }
 
             GethLikeBlockTracer listener = txHash == null ? new GethLikeBlockTracer(options) : new GethLikeBlockTracer(txHash, options);
-            _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, listener);
+            _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, listener);
             return listener.BuildResult().ToArray();
         }
 

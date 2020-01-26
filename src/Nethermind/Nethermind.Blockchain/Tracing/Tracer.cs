@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain.Tracing
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
         }
 
-        public void Trace(Keccak blockHash, IBlockTracer blockTracer)
+        public Keccak Trace(Keccak blockHash, IBlockTracer blockTracer)
         {
             /* We need parent block to be able to set the state root to the time from just before the block was executed.
                This way we can recreate the exact block execution and trace any transactions and / or rewards */
@@ -53,9 +53,11 @@ namespace Nethermind.Blockchain.Tracing
             
             blockTracer.StartNewBlockTrace(block);
             _blockProcessor.Process(_stateProvider.StateRoot, new[] {block}, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain, blockTracer);
+            
+            return _stateProvider.StateRoot;
         }
         
-        public void Trace(Block block, IBlockTracer blockTracer)
+        public Keccak Trace(Block block, IBlockTracer blockTracer)
         {
             /* We need parent block to be able to set the state root to the time from just before the block was executed.
                This way we can recreate the exact block execution and trace any transactions and / or rewards */
@@ -69,6 +71,8 @@ namespace Nethermind.Blockchain.Tracing
             
             blockTracer.StartNewBlockTrace(block);
             _blockProcessor.Process(_stateProvider.StateRoot, new[] {block}, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain, blockTracer);
+
+            return _stateProvider.StateRoot;
         }
 
         public void Accept(ITreeVisitor visitor, Keccak stateRoot)

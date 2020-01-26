@@ -16,18 +16,21 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Store;
 
 namespace Nethermind.Evm.Tracing.Proofs
 {
-    public class ProofBlockTracer : BlockTracerBase<ProofTxTracer, ProofTxTracer>
+    public class ProofBlockTracer : BlockTracerBase<ProofTxTracer, ProofTxTracer>, IBlockTracer
     {
+        private ProofTxTracer _txTracer;
+
         public ProofBlockTracer(Keccak txHash) : base(txHash)
         {
         }
         
         protected override ProofTxTracer OnStart(Keccak txHash)
         {
-            return new ProofTxTracer();
+            return _txTracer = new ProofTxTracer();
         }
 
         /// <summary>
@@ -38,6 +41,10 @@ namespace Nethermind.Evm.Tracing.Proofs
         protected override ProofTxTracer OnEnd(ProofTxTracer txTracer)
         {
             return txTracer;
+        }
+        
+        void IBlockTracer.BeforeRestore(IStateProvider state)
+        {
         }
 
         public override void StartNewBlockTrace(Block block)

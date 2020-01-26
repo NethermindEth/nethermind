@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.IO;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -23,15 +24,15 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Store;
-using Newtonsoft.Json;
+using Nethermind.Store.Proofs;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Proof
@@ -340,6 +341,15 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             CallResultWithProof callResultWithProof = _proofModule.proof_call(tx, new BlockParameter(blockOnTop.Number)).Data;
             Assert.Greater(callResultWithProof.Accounts.Length, 0);
 
+            foreach (AccountProof accountProof in callResultWithProof.Accounts)
+            {
+                VerifyProof(accountProof.Proof, block.StateRoot);
+                foreach (StorageProof storageProof in accountProof.StorageProofs)
+                {
+                    VerifyProof(storageProof.Proof, accountProof.StorageRoot);
+                }
+            }
+
             EthereumJsonSerializer serializer = new EthereumJsonSerializer();
             string response = RpcTest.TestSerializedRequest(_proofModule, "proof_call", $"{serializer.Serialize(tx)}", $"{block.Number}");
             Assert.True(response.Contains("\"result\""));
@@ -362,6 +372,28 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             stateProvider.CommitTree();
             _dbProvider.CodeDb.Commit();
             _dbProvider.StateDb.Commit();
+        }
+        
+        private void VerifyProof(byte[][] proof, Keccak txRoot)
+        {
+            for (int i = proof.Length; i > 0; i--)
+            {
+                Keccak proofHash = Keccak.Compute(proof[i - 1]);
+                if (i > 1)
+                {
+                    if (!new Rlp(proof[i - 2]).ToString(false).Contains(proofHash.ToString(false)))
+                    {
+                        throw new InvalidDataException();
+                    }
+                }
+                else
+                {
+                    if (proofHash != txRoot)
+                    {
+                        throw new InvalidDataException();
+                    }
+                }
+            }
         }
     }
 }
