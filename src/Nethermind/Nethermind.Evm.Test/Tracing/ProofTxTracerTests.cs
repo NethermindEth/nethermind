@@ -254,17 +254,21 @@ namespace Nethermind.Evm.Test.Tracing
         public void Can_trace_on_failure()
         {
             byte[] code = Prepare.EvmCode
-                .PushData("0x03")
-                .PushData("0x00")
-                .PushData("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF")
-                .PushData("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF")
-                .Op(Instruction.MSTORE)
-                .Op(Instruction.RETURN)
+                .PushData("0x01")
+                .PushData("0x02")
+                .Op(Instruction.SSTORE)
+                .PushData("0x01")
+                .Op(Instruction.BLOCKHASH)
+                .PushData(TestItem.AddressC)
+                .Op(Instruction.BALANCE)
+                .Op(Instruction.ADD) // stack underflow
                 .Done;
             
             (ProofTxTracer tracer, _, _) = ExecuteAndTraceProofCall(SenderRecipientAndMiner.Default, code);
-            Assert.AreEqual(3, tracer.Accounts.Count);
+            Assert.AreEqual(4, tracer.Accounts.Count);
             Assert.AreEqual(0, tracer.Output.Length);
+            Assert.AreEqual(1, tracer.BlockHashes.Count);
+            Assert.AreEqual(1, tracer.Storages.Count);
         }
 
         protected (ProofTxTracer trace, Block block, Transaction transaction) ExecuteAndTraceProofCall(SenderRecipientAndMiner addresses, params byte[] code)
