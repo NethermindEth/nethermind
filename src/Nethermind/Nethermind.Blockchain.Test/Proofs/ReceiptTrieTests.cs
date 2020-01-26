@@ -14,9 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.IO;
 using Nethermind.Blockchain.Proofs;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using NUnit.Framework;
 
@@ -48,6 +51,31 @@ namespace Nethermind.Blockchain.Test.Proofs
             ReceiptTrie trie = new ReceiptTrie(1, MainNetSpecProvider.Instance, new[] {receipt1, receipt2}, true);
             byte[][] proof = trie.BuildProof(0);
             Assert.AreEqual(2, proof.Length);
+            
+            trie.UpdateRootHash();
+            VerifyProof(proof, trie.RootHash);
+        }
+        
+        private void VerifyProof(byte[][] proof, Keccak receiptRoot)
+        {
+            for (int i = proof.Length; i > 0; i--)
+            {
+                Keccak proofHash = Keccak.Compute(proof[i - 1]);
+                if (i > 1)
+                {
+                    if (!new Rlp(proof[i - 2]).ToString(false).Contains(proofHash.ToString(false)))
+                    {
+                        throw new InvalidDataException();
+                    }
+                }
+                else
+                {
+                    if (proofHash != receiptRoot)
+                    {
+                        throw new InvalidDataException();
+                    }
+                }
+            }
         }
     }
 }

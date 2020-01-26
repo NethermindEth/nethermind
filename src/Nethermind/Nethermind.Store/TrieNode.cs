@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using System.Text;
@@ -280,7 +281,15 @@ namespace Nethermind.Store
 
         internal Rlp RlpEncode()
         {
-            return _nodeDecoder.Encode(this);
+            Rlp rlp = _nodeDecoder.Encode(this);
+            // just included here to improve the class reading
+            // after some analysis I believe that any non-test Ethereum cases of a trie ever have nodes with RLP shorter than 32 bytes
+            // if (rlp.Bytes.Length < 32)
+            // {
+            //     throw new InvalidDataException("Unexpected less than 32");
+            // }
+
+            return rlp;
         }
 
         private void InitData()

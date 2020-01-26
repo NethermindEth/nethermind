@@ -14,9 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.IO;
 using Nethermind.Blockchain.Proofs;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Proofs
@@ -32,20 +35,322 @@ namespace Nethermind.Blockchain.Test.Proofs
         }
         
         [Test]
-        public void Can_collect_proof()
+        public void Can_collect_proof_trie_case_1()
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
             TxTrie txTrie = new TxTrie(block.Transactions, true);
             byte[][] proof = txTrie.BuildProof(0);
+            
+            txTrie.UpdateRootHash();
+            VerifyProof(proof, txTrie.RootHash);
         }
         
         [Test]
-        public void Can_collect_proof_with_branch()
+        public void Can_collect_proof_with_trie_case_2()
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject, Build.A.Transaction.TestObject).TestObject;
             TxTrie txTrie = new TxTrie(block.Transactions, true);
             byte[][] proof = txTrie.BuildProof(0);
             Assert.AreEqual(2, proof.Length);
+            
+            txTrie.UpdateRootHash();
+            VerifyProof(proof, txTrie.RootHash);
+        }
+        
+        [Test]
+        public void Can_collect_proof_with_trie_case_3_modified()
+        {
+            Block block = Build.A.Block.WithTransactions(
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject).TestObject;
+            TxTrie txTrie = new TxTrie(block.Transactions, true);
+            
+            byte[][] proof = txTrie.BuildProof(0);
+            Assert.AreEqual(3, proof.Length);
+            
+            txTrie.UpdateRootHash();
+            VerifyProof(proof, txTrie.RootHash);
+        }
+
+        private void VerifyProof(byte[][] proof, Keccak txRoot)
+        {
+            for (int i = proof.Length; i > 0; i--)
+            {
+                Keccak proofHash = Keccak.Compute(proof[i - 1]);
+                if (i > 1)
+                {
+                    if (!new Rlp(proof[i - 2]).ToString(false).Contains(proofHash.ToString(false)))
+                    {
+                        throw new InvalidDataException();
+                    }
+                }
+                else
+                {
+                    if (proofHash != txRoot)
+                    {
+                        throw new InvalidDataException();
+                    }
+                }
+            }
         }
     }
 }
