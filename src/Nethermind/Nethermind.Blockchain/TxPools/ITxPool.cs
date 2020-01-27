@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.TxPools
         void RemovePeer(PublicKey nodeId);
         AddTxResult AddTransaction(Transaction tx, long blockNumber, bool isOwn = false);
         void RemoveTransaction(Keccak hash, long blockNumber);
-        bool TryGetSender(Keccak hash, out Address sender);
+        bool TryGetPendingTransaction(Keccak hash, out Transaction transaction);
         UInt256 ReserveOwnTransactionNonce(Address address);
         event EventHandler<TxEventArgs> NewPending;
         event EventHandler<TxEventArgs> RemovedPending;

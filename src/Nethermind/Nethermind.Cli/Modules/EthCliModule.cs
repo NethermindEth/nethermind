@@ -138,6 +138,12 @@ namespace Nethermind.Cli.Modules
         {
             return NodeManager.PostJint("eth_getTransactionByHash", CliParseHash(txHash)).Result;
         }
+        
+        [CliProperty("eth", "pendingTransactions")]
+        public JsValue PendingTransactions()
+        {
+            return NodeManager.PostJint("eth_pendingTransactions").Result;
+        }
 
         [CliFunction("eth", "getTransactionReceipt")]
         public JsValue GetTransactionReceipt(string txHash)

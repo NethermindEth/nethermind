@@ -32,6 +32,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Store;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.TxPools
@@ -268,6 +269,37 @@ namespace Nethermind.Blockchain.Test.TxPools
                 new AcceptAllTxFilter(), new RejectAllTxFilter());
             transactions.Filtered.Count().Should().Be(0);
             transactions.Pending.Count().Should().NotBe(transactions.Filtered.Count());
+        }
+        
+        [Test]
+        public void should_retrieve_stored_transaction_correctly()
+        {
+            var transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+            _txPool = CreatePool(_inMemoryTxStorage);
+            _inMemoryTxStorage.Add(transaction, 100);
+            _txPool.TryGetPendingTransaction(transaction.Hash, out var retrievedTransaction).Should().BeTrue();
+            retrievedTransaction.Should().BeEquivalentTo(transaction);
+        }
+        
+        [Test]
+        public void should_retrieve_added_transaction_correctly()
+        {
+            var transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+            _specProvider = Substitute.For<ISpecProvider>();
+            _specProvider.ChainId.Returns(transaction.Signature.ChainId.Value);
+            _txPool = CreatePool(_inMemoryTxStorage);
+            _txPool.AddTransaction(transaction, 1000).Should().Be(AddTxResult.Added);
+            _txPool.TryGetPendingTransaction(transaction.Hash, out var retrievedTransaction).Should().BeTrue();
+            retrievedTransaction.Should().BeEquivalentTo(transaction);
+        }
+        
+        [Test]
+        public void should_not_retrieve_not_added_transaction()
+        {
+            var transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+            _txPool = CreatePool(_inMemoryTxStorage);
+            _txPool.TryGetPendingTransaction(transaction.Hash, out var retrievedTransaction).Should().BeFalse();
+            retrievedTransaction.Should().BeNull();
         }
 
         [Test]

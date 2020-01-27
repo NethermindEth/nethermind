@@ -48,11 +48,16 @@ namespace Nethermind.Blockchain.Receipts
             var receiptData = _database.Get(hash);
             if (receiptData != null)
             {
-                var receipt = Rlp.Decode<TxReceipt>(new Rlp(receiptData), RlpBehaviors.Storage);
-                receipt.TxHash = hash;
-                return receipt;
+                try
+                {
+                    var receipt = Rlp.Decode<TxReceipt>(new Rlp(receiptData), RlpBehaviors.Storage);
+                    receipt.TxHash = hash;
+                    return receipt;
+                }
+                // During synchronization TxReceipt was inserted with RlpBehaviors.None but this transaction wasn't processed
+                // Will be fixed with future block receipts refactoring
+                catch (RlpException) { }
             }
-
             return null;
         }
 

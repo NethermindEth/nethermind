@@ -56,6 +56,9 @@ namespace Nethermind.Facade.Proxy
 
         public Task<RpcResult<TransactionModel>> eth_getTransactionByHash(Keccak transactionHash)
             => _proxy.SendAsync<TransactionModel>(nameof(eth_getTransactionByHash), transactionHash);
+        
+        public Task<RpcResult<TransactionModel[]>> eth_pendingTransactions()
+            => _proxy.SendAsync<TransactionModel[]>(nameof(eth_pendingTransactions));
 
         public Task<RpcResult<Keccak>> eth_sendRawTransaction(byte[] transaction)
             => _proxy.SendAsync<Keccak>(nameof(eth_sendRawTransaction), transaction);

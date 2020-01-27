@@ -202,7 +202,7 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
-            public void RecoverTxSender(Transaction tx, long blockNumber)
+            public void RecoverTxSender(Transaction tx, long? blockNumber)
             {
                 throw new NotImplementedException();
             }
@@ -236,6 +236,11 @@ namespace Nethermind.DataMarketplace.Test
                 {
                     Hash = transactionHash
                 });
+            }
+
+            public Transaction[] GetPendingTransactions()
+            {
+                throw new NotImplementedException();
             }
 
             public Keccak GetBlockHash(Keccak transactionHash)
