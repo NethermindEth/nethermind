@@ -352,7 +352,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<TransactionForRpc>.Success(null);
             }
 
-            _blockchainBridge.RecoverTxSender(transaction, receipt?.BlockNumber);
+            RecoverTxSenderIfNeeded(transaction, receipt?.BlockNumber);
             var transactionModel = new TransactionForRpc(receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, transaction);
             if (_logger.IsTrace) _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
             return ResultWrapper<TransactionForRpc>.Success(transactionModel);
@@ -365,7 +365,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             for (int i = 0; i < transactions.Length; i++)
             {
                 var transaction = transactions[i];
-                _blockchainBridge.RecoverTxSender(transaction, null);                
+                RecoverTxSenderIfNeeded(transaction, null);                
                 transactionsModels[i] = new TransactionForRpc(transaction);
             }
             if (_logger.IsTrace) _logger.Trace($"eth_pendingTransactions request, result: {transactionsModels.Length}");
@@ -386,7 +386,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             var transaction = block.Transactions[(int) positionIndex];
-            _blockchainBridge.RecoverTxSender(transaction, block.Number);
+            RecoverTxSenderIfNeeded(transaction, block.Number);
 
             var transactionModel = new TransactionForRpc(block.Hash, block.Number, (int) positionIndex, transaction);
 
@@ -417,7 +417,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             var transaction = block.Transactions[(int) positionIndex];
-            _blockchainBridge.RecoverTxSender(transaction, block.Number);
+            RecoverTxSenderIfNeeded(transaction, block.Number);
 
             var transactionModel = new TransactionForRpc(block.Hash, block.Number, (int) positionIndex, transaction);
 
@@ -773,6 +773,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             var code = _blockchainBridge.GetCode(account.CodeHash);
             return ResultWrapper<byte[]>.Success(code);
+        }
+        
+        private void RecoverTxSenderIfNeeded(Transaction transaction, long? blockNumber)
+        {
+            if (transaction.SenderAddress == null)
+            {
+                _blockchainBridge.RecoverTxSender(transaction, blockNumber);
+            }
         }
     }
 }

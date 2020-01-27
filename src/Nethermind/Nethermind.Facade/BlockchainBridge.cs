@@ -316,7 +316,11 @@ namespace Nethermind.Facade
         {
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                RecoverTxSender(block.Transactions[i], block.Number);
+                var transaction = block.Transactions[i];
+                if (transaction.SenderAddress == null)
+                {
+                    RecoverTxSender(transaction, block.Number);
+                }
             }
         }
 
