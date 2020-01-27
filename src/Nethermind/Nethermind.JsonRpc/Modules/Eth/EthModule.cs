@@ -39,13 +39,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         private Encoding _messageEncoding = Encoding.UTF8;
 
+        private readonly IJsonRpcConfig _rpcConfig;
         private readonly IBlockchainBridge _blockchainBridge;
 
         private readonly ILogger _logger;
 
-        public EthModule(ILogManager logManager, IBlockchainBridge blockchainBridge)
+        public EthModule(IJsonRpcConfig rpcConfig, ILogManager logManager, IBlockchainBridge blockchainBridge)
         {
             _logger = logManager.GetClassLogger();
+            _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
             _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
         }
 
@@ -170,7 +172,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<UInt256?>.Fail($"Cannot find block for hash: {blockHash}", ErrorCodes.ResourceNotFound, null);
             }
 
-            return ResultWrapper<UInt256?>.Success((UInt256)block.Transactions.Length);
+            return ResultWrapper<UInt256?>.Success((UInt256) block.Transactions.Length);
         }
 
         public ResultWrapper<UInt256?> eth_getBlockTransactionCountByNumber(BlockParameter blockParameter)
@@ -199,7 +201,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             if (_logger.IsTrace) _logger.Trace($"eth_getUncleCountByBlockHash request {blockHash}, result: {block.Transactions.Length}");
-            return ResultWrapper<UInt256?>.Success((UInt256)block.Ommers.Length);
+            return ResultWrapper<UInt256?>.Success((UInt256) block.Ommers.Length);
         }
 
         public ResultWrapper<UInt256?> eth_getUncleCountByBlockNumber(BlockParameter blockParameter)
@@ -285,13 +287,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<string>.Fail($"{blockParameter} block not found", ErrorCodes.ResourceNotFound, null);
             }
 
-            Transaction tx = transactionCall.ToTransactionWithDefaults();
-            tx.GasPrice = 0;
-            if (tx.GasLimit < 21000)
+            if (transactionCall.Gas == null || transactionCall.Gas == 0)
             {
-                tx.GasLimit = 10000000;
+                transactionCall.Gas = Math.Min(_rpcConfig.GasCap ?? long.MaxValue, block.GasLimit);
             }
-            
+
+            transactionCall.From ??= Address.SystemUser;
+
+            Transaction tx = transactionCall.ToTransaction();
+
             BlockchainBridge.CallOutput result = _blockchainBridge.Call(block, tx);
 
             if (result.Error != null)
@@ -305,13 +309,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall)
         {
             Block headBlock = _blockchainBridge.FindHeadBlock();
-            if (transactionCall.Gas == null)
+            if (transactionCall.Gas == null || transactionCall.Gas == 0)
             {
-                transactionCall.Gas = headBlock.GasLimit;
+                transactionCall.Gas = Math.Min(_rpcConfig.GasCap ?? long.MaxValue, headBlock.GasLimit);
             }
+            
+            transactionCall.From ??= Address.SystemUser;
 
-            long result = _blockchainBridge.EstimateGas(headBlock, transactionCall.ToTransactionWithDefaults());
-            return ResultWrapper<UInt256?>.Success((UInt256)result);
+            long result = _blockchainBridge.EstimateGas(headBlock, transactionCall.ToTransaction());
+            return ResultWrapper<UInt256?>.Success((UInt256) result);
         }
 
         public ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects)
@@ -510,19 +516,19 @@ namespace Nethermind.JsonRpc.Modules.Eth
             BlockParameter fromBlock = filter.FromBlock;
             BlockParameter toBlock = filter.ToBlock;
             int filterId = _blockchainBridge.NewFilter(fromBlock, toBlock, filter.Address, filter.Topics);
-            return ResultWrapper<UInt256?>.Success((UInt256)filterId);
+            return ResultWrapper<UInt256?>.Success((UInt256) filterId);
         }
-        
+
         public ResultWrapper<UInt256?> eth_newBlockFilter()
         {
             int filterId = _blockchainBridge.NewBlockFilter();
-            return ResultWrapper<UInt256?>.Success((UInt256)filterId);
+            return ResultWrapper<UInt256?>.Success((UInt256) filterId);
         }
 
         public ResultWrapper<UInt256?> eth_newPendingTransactionFilter()
         {
             int filterId = _blockchainBridge.NewPendingTransactionFilter();
-            return ResultWrapper<UInt256?>.Success((UInt256)filterId);
+            return ResultWrapper<UInt256?>.Success((UInt256) filterId);
         }
 
         public ResultWrapper<bool?> eth_uninstallFilter(UInt256 filterId)
@@ -599,29 +605,29 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             return ResultWrapper<bool?>.Fail("eth_submitHashrate not supported", ErrorCodes.MethodNotFound, null);
         }
-        
+
         // https://github.com/ethereum/EIPs/issues/1186	
-        public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, byte[][] storageKeys, BlockParameter blockParameter)	
-        {	
-            BlockHeader header;	
-            try	
-            {	
+        public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, byte[][] storageKeys, BlockParameter blockParameter)
+        {
+            BlockHeader header;
+            try
+            {
                 header = _blockchainBridge.FindHeader(blockParameter);
                 if (header == null)
                 {
                     return ResultWrapper<AccountProof>.Fail($"{blockParameter} block not found", ErrorCodes.ResourceNotFound, null);
                 }
-            }	
-            catch (Exception ex)	
-            {	
-                return ResultWrapper<AccountProof>.Fail(ex.Message, ErrorCodes.InternalError, null);	
-            }	
+            }
+            catch (Exception ex)
+            {
+                return ResultWrapper<AccountProof>.Fail(ex.Message, ErrorCodes.InternalError, null);
+            }
 
-            AccountProofCollector accountProofCollector = new AccountProofCollector(accountAddress, storageKeys);	
-            _blockchainBridge.RunTreeVisitor(accountProofCollector, header.StateRoot);	
+            AccountProofCollector accountProofCollector = new AccountProofCollector(accountAddress, storageKeys);
+            _blockchainBridge.RunTreeVisitor(accountProofCollector, header.StateRoot);
 
-            return ResultWrapper<AccountProof>.Success(accountProofCollector.BuildResult());	
-        }	
+            return ResultWrapper<AccountProof>.Success(accountProofCollector.BuildResult());
+        }
 
 
         private ResultWrapper<UInt256?> GetOmmersCount(BlockParameter blockParameter)
@@ -640,7 +646,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<UInt256?>.Fail(ex.Message, ErrorCodes.InternalError, null);
             }
 
-            return ResultWrapper<UInt256?>.Success((UInt256)block.Ommers.Length);
+            return ResultWrapper<UInt256?>.Success((UInt256) block.Ommers.Length);
         }
 
         private ResultWrapper<UInt256?> GetTransactionCount(BlockParameter blockParameter = null)
@@ -659,7 +665,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<UInt256?>.Fail(ex.Message, ErrorCodes.InternalError, null);
             }
 
-            return ResultWrapper<UInt256?>.Success((UInt256)block.Transactions.Length);
+            return ResultWrapper<UInt256?>.Success((UInt256) block.Transactions.Length);
         }
 
         public ResultWrapper<long> eth_chainId()
@@ -721,7 +727,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 return ResultWrapper<UInt256?>.Fail(ex.Message, ErrorCodes.InternalError, null);
             }
-            
+
             Account account = _blockchainBridge.GetAccount(address, header.StateRoot);
             return ResultWrapper<UInt256?>.Success(account?.Nonce ?? 0);
         }

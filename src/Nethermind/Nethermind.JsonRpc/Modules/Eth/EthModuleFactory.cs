@@ -43,7 +43,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IWallet _wallet;
         private readonly IFilterStore _filterStore;
         private readonly IFilterManager _filterManager;
-        private readonly IJsonRpcConfig _config;
+        private readonly IJsonRpcConfig _rpcConfig;
 
         public EthModuleFactory(IDbProvider dbProvider,
             ITxPool txPool,
@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _ethereumEcdsa = ethereumEcdsa ?? throw new ArgumentNullException(nameof(ethereumEcdsa));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _config = config ?? throw new ArgumentNullException(nameof(config));
+            _rpcConfig = config ?? throw new ArgumentNullException(nameof(config));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             
             _filterStore = new FilterStore();
@@ -88,9 +88,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _wallet,
                 readOnlyTxProcessingEnv.TransactionProcessor,
                 _ethereumEcdsa,
-                _config.FindLogBlockDepthLimit);
+                _rpcConfig.FindLogBlockDepthLimit);
             
-            return new EthModule(_logManager, blockchainBridge);
+            return new EthModule(_rpcConfig, _logManager, blockchainBridge);
         }
         
         

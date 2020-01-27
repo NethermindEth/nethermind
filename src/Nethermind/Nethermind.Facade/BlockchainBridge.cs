@@ -171,7 +171,7 @@ namespace Nethermind.Facade
         {
             if (transaction.SenderAddress == null)
             {
-                transaction.SenderAddress = Address.Zero;
+                transaction.SenderAddress = Address.SystemUser;
             }
 
             BlockHeader header = new BlockHeader(blockHeader.Hash, Keccak.OfAnEmptySequenceRlp, blockHeader.Beneficiary,
