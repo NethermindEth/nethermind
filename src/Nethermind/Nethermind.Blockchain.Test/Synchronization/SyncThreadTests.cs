@@ -253,6 +253,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             stateProvider.CreateAccount(TestItem.AddressA, 10000.Ether());
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree();
+            stateProvider.RecalculateStateRoot();
             stateDb.Commit();
 
             var storageProvider = new StorageProvider(stateDb, stateProvider, logManager);

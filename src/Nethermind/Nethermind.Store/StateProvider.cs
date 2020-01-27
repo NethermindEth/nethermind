@@ -726,6 +726,11 @@ namespace Nethermind.Store
 
         public void CommitTree()
         {
+            if (_needsStateRootUpdate)
+            {
+                RecalculateStateRoot();
+            }
+
             _tree.Commit();
         }
     }
