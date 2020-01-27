@@ -181,6 +181,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
+        public ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()
+        {
+            throw new NotSupportedException();
+        }
+
         public ResultWrapper<TransactionForRpc> eth_getTransactionByBlockHashAndIndex(Keccak blockHash,
             UInt256 positionIndex)
         {

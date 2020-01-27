@@ -18,11 +18,14 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
+using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Data
 {
     public class TransactionForRpc
     {
+        public TransactionForRpc(Transaction transaction) : this(null, null, null, transaction) { }
+        
         public TransactionForRpc(Keccak blockHash, long? blockNumber, int? txIndex, Transaction transaction)
         {
             Hash = transaction.Hash;
@@ -48,10 +51,18 @@ namespace Nethermind.JsonRpc.Data
 
         public Keccak Hash { get; set; }
         public UInt256? Nonce { get; set; }
+        
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Keccak BlockHash { get; set; }
+        
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public long? BlockNumber { get; set; }
+        
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public int? TransactionIndex { get; set; }
         public Address From { get; set; }
+        
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Address To { get; set; }
         public UInt256? Value { get; set; }
         public UInt256? GasPrice { get; set; }

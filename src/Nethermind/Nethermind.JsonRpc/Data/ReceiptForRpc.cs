@@ -17,6 +17,7 @@
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Data
 {
@@ -51,7 +52,11 @@ namespace Nethermind.JsonRpc.Data
         public long CumulativeGasUsed { get; set; }
         public long GasUsed { get; set; }
         public Address From { get; set; }
+        
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Address To { get; set; }
+        
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Address ContractAddress { get; set; }
         public LogEntryForRpc[] Logs { get; set; }
         public Bloom LogsBloom { get; set; }

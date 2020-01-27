@@ -106,11 +106,22 @@ namespace Nethermind.Facade
         public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
         {
             TxReceipt txReceipt = _receiptStorage.Find(transactionHash);
-            if (txReceipt?.BlockHash == null) return (null, null);
-
-            Block block = _blockTree.FindBlock(txReceipt.BlockHash, BlockTreeLookupOptions.RequireCanonical);
-            return (txReceipt, block?.Transactions[txReceipt.Index]);
+            if (txReceipt?.BlockHash != null)
+            {
+                Block block = _blockTree.FindBlock(txReceipt.BlockHash, BlockTreeLookupOptions.RequireCanonical);
+                return (txReceipt, block?.Transactions[txReceipt.Index]);
+            }
+            else if (_txPool.TryGetPendingTransaction(transactionHash, out var transaction))
+            {
+                return (null, transaction);
+            }
+            else
+            {
+                return (null, null);                
+            }
         }
+
+        public Transaction[] GetPendingTransactions() => _txPool.GetPendingTransactions();
 
         public Keccak GetBlockHash(Keccak transactionHash) => _receiptStorage.Find(transactionHash).BlockHash;
 
@@ -303,13 +314,17 @@ namespace Nethermind.Facade
         {
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                RecoverTxSender(block.Transactions[i], block.Number);
+                var transaction = block.Transactions[i];
+                if (transaction.SenderAddress == null)
+                {
+                    RecoverTxSender(transaction, block.Number);
+                }
             }
         }
 
-        public void RecoverTxSender(Transaction tx, long blockNumber)
+        public void RecoverTxSender(Transaction tx, long? blockNumber)
         {
-            tx.SenderAddress = _ecdsa.RecoverAddress(tx, blockNumber);
+            tx.SenderAddress = _ecdsa.RecoverAddress(tx, blockNumber ?? _blockTree.BestKnownNumber);
         }
         
         public Keccak[] GetPendingTransactionFilterChanges(int filterId) =>

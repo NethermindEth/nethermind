@@ -45,7 +45,8 @@ namespace Nethermind.Blockchain
             
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                _txPool.TryGetSender(block.Transactions[i].Hash, out Address sender);
+                _txPool.TryGetPendingTransaction(block.Transactions[i].Hash, out var transaction);
+                Address sender = transaction?.SenderAddress;
                 block.Transactions[i].SenderAddress = sender ?? _ecdsa.RecoverAddress(block.Transactions[i], block.Number);
                 if(_logger.IsTrace) _logger.Trace($"Recovered {block.Transactions[i].SenderAddress} sender for {block.Transactions[i].Hash} (tx pool cached value: {sender})");
             }
