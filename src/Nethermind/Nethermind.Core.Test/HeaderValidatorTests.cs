@@ -53,8 +53,8 @@ namespace Nethermind.Core.Test
             BlockTree blockStore = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), FrontierSpecProvider.Instance, Substitute.For<ITxPool>(), NullLogManager.Instance);
             
             _validator = new HeaderValidator(blockStore, _ethash, new SingleReleaseSpecProvider(Byzantium.Instance, 3), new OneLoggerLogManager(_testLogger));
-            _parentBlock = Builders.Build.A.Block.WithDifficulty(1).TestObject;
-            _block = Builders.Build.A.Block.WithParent(_parentBlock)
+            _parentBlock = Build.A.Block.WithDifficulty(1).TestObject;
+            _block = Build.A.Block.WithParent(_parentBlock)
                 .WithDifficulty(131072)
                 .WithMixHash(new Keccak("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
                 .WithNonce(0).TestObject;

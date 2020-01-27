@@ -84,6 +84,8 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public bool IsTracingStack => false;
         public bool IsTracingState { get; }
         
+        public bool IsTracingBlockHash => false;
+        
         private static string GetCallType(ExecutionType executionType)
         {
             switch (executionType)
@@ -101,7 +103,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 case ExecutionType.CallCode:
                     return "callcode";
                 default:
-                    throw new NotImplementedException($"Parity trace call type is undefined for {Enum.GetName(typeof(ExecutionType), executionType)}");
+                    throw new NotSupportedException($"Parity trace call type is undefined for {Enum.GetName(typeof(ExecutionType), executionType)}");
             }
         }
         
@@ -444,6 +446,11 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _currentAction.Result.Code = deployedCode;
             _currentAction.Result.GasUsed = _currentAction.Gas - gas;
             PopAction();
+        }
+
+        public void ReportBlockHash(Keccak blockHash)
+        {
+            throw new NotSupportedException();
         }
 
         public void ReportByteCode(byte[] byteCode)

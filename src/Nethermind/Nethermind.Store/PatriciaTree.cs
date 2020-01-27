@@ -70,11 +70,14 @@ namespace Nethermind.Store
             RootHash = rootHash;
         }
 
+        /// <summary>
+        /// Only used in EthereumTests
+        /// </summary>
         internal TrieNode Root
         {
             get
             {
-                RootRef?.ResolveNode(this); // TODO: needed?
+                RootRef?.ResolveNode(this);
                 return RootRef;
             }
         }
@@ -337,7 +340,7 @@ namespace Nethermind.Store
                 return TraverseExtension(node, traverseContext);
             }
 
-            throw new NotImplementedException($"Unknown node type {node.NodeType}");
+            throw new NotSupportedException($"Unknown node type {node.NodeType}");
         }
 
         // TODO: this can be removed now but is lower priority temporarily while the patricia rewrite testing is in progress

@@ -173,7 +173,6 @@ namespace Nethermind.Blockchain
         private void SetReceiptsRoot(Block block, TxReceipt[] txReceipts)
         {
             ReceiptTrie receiptTrie = new ReceiptTrie(block.Number, _specProvider, txReceipts);
-            receiptTrie.UpdateRootHash();
             block.Header.ReceiptsRoot = receiptTrie.RootHash;
         }
 

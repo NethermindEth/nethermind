@@ -34,6 +34,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingCode => false;
         public bool IsTracingStack => false;
         public bool IsTracingState => false;
+        public bool IsTracingBlockHash => false;
 
         public byte[] ReturnValue { get; set; }
         
@@ -150,6 +151,11 @@ namespace Nethermind.Evm.Tracing
         }
 
         public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportBlockHash(Keccak blockHash)
         {
             throw new NotSupportedException();
         }

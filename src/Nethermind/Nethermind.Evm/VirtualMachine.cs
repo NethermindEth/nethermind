@@ -619,7 +619,6 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        // TODO: can calculate in place...
                         stack.PopUInt256(out UInt256 b);
                         stack.PopUInt256(out UInt256 a);
                         UInt256.Add(out UInt256 c, ref a, ref b, false);
@@ -649,7 +648,6 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        // TODO: can calculate in place...
                         stack.PopUInt256(out UInt256 a);
                         stack.PopUInt256(out UInt256 b);
                         UInt256 result = a - b;
@@ -665,7 +663,6 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        // TODO: can calculate in place...
                         stack.PopUInt(out BigInteger a);
                         stack.PopUInt(out BigInteger b);
                         if (b.IsZero)
@@ -2326,7 +2323,7 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            throw new NotImplementedException($"Execution type is undefined for {Enum.GetName(typeof(Instruction), instruction)}");
+                            throw new NotSupportedException($"Execution type is undefined for {Enum.GetName(typeof(Instruction), instruction)}");
                         }
 
                         EvmState callState = new EvmState(

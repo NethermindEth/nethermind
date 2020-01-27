@@ -60,8 +60,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
-
-        [Todo(Improve.Review, "Double check the way the trace header is onstructed based on the block parameter. SHall we assign exactly the same hash / difficulty and other properties?")]
+        
         public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter)
         {
             Transaction transaction = tx.ToTransaction();
@@ -101,7 +100,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             
             
-            CollectHeaders(proofTxTracer, callResultWithProof);
+            callResultWithProof.BlockHeaders = CollectHeaderBytes(proofTxTracer);
             callResultWithProof.Result = proofTxTracer.Output;
             
             // we collect proofs from before execution (after learning which addresses will be touched)
@@ -109,44 +108,6 @@ namespace Nethermind.JsonRpc.Modules.Proof
             callResultWithProof.Accounts = CollectAccountProofs(header.StateRoot, proofTxTracer);
 
             return ResultWrapper<CallResultWithProof>.Success(callResultWithProof);
-        }
-        
-        private AccountProof[] CollectAccountProofs(Keccak stateRoot, ProofTxTracer proofTxTracer)
-        {
-            List<AccountProof> accountProofs = new List<AccountProof>();
-            foreach (Address address in proofTxTracer.Accounts)
-            {
-                AccountProofCollector collector = new AccountProofCollector(address, proofTxTracer.Storages
-                    .Where(s => s.Address == address)
-                    .Select(s => s.Index).ToArray());
-
-                _tracer.Accept(collector, stateRoot);
-                accountProofs.Add(collector.BuildResult());
-            }
-
-            return accountProofs.ToArray();
-        }
-
-        private void CollectHeaders(ProofTxTracer proofTxTracer, CallResultWithProof callResultWithProof)
-        {
-            List<BlockHeader> relevantHeaders = new List<BlockHeader>();
-            foreach (Keccak blockHash in proofTxTracer.BlockHashes)
-            {
-                relevantHeaders.Add(_blockFinder.FindHeader(blockHash));
-            }
-
-            callResultWithProof.BlockHeaders = relevantHeaders
-                .Select(h => _headerDecoder.Encode(h).Bytes).ToArray();
-        }
-
-        private byte[][] BuildTxProof(Transaction[] txs, int index)
-        {
-            return new TxTrie(txs, true).BuildProof(index);
-        }
-
-        private byte[][] BuildReceiptProof(long blockNumber, TxReceipt[] receipts, int index)
-        {
-            return new ReceiptTrie(blockNumber, _specProvider, receipts, true).BuildProof(index);
         }
 
         public ResultWrapper<TransactionWithProof> proof_getTransactionByHash(Keccak txHash, bool includeHeader)
@@ -168,7 +129,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             TransactionWithProof txWithProof = new TransactionWithProof();
             txWithProof.Transaction = new TransactionForRpc(block.Hash, block.Number, receipt.Index, transaction);
-            txWithProof.TxProof = BuildTxProof(txs, receipt.Index);
+            txWithProof.TxProof = BuildTxProofs(txs, receipt.Index);
             if (includeHeader)
             {
                 txWithProof.BlockHeader = _headerDecoder.Encode(block.Header).Bytes;
@@ -200,14 +161,52 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             ReceiptWithProof receiptWithProof = new ReceiptWithProof();
             receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt);
-            receiptWithProof.ReceiptProof = BuildReceiptProof(block.Number, receipts, receipt.Index);
-            receiptWithProof.TxProof = BuildTxProof(txs, receipt.Index);
+            receiptWithProof.ReceiptProof = BuildReceiptProofs(block.Number, receipts, receipt.Index);
+            receiptWithProof.TxProof = BuildTxProofs(txs, receipt.Index);
             if (includeHeader)
             {
                 receiptWithProof.BlockHeader = _headerDecoder.Encode(block.Header).Bytes;
             }
 
             return ResultWrapper<ReceiptWithProof>.Success(receiptWithProof);
+        }
+        
+        private AccountProof[] CollectAccountProofs(Keccak stateRoot, ProofTxTracer proofTxTracer)
+        {
+            List<AccountProof> accountProofs = new List<AccountProof>();
+            foreach (Address address in proofTxTracer.Accounts)
+            {
+                AccountProofCollector collector = new AccountProofCollector(address, proofTxTracer.Storages
+                    .Where(s => s.Address == address)
+                    .Select(s => s.Index).ToArray());
+
+                _tracer.Accept(collector, stateRoot);
+                accountProofs.Add(collector.BuildResult());
+            }
+
+            return accountProofs.ToArray();
+        }
+
+        private byte[][] CollectHeaderBytes(ProofTxTracer proofTxTracer)
+        {
+            List<BlockHeader> relevantHeaders = new List<BlockHeader>();
+            foreach (Keccak blockHash in proofTxTracer.BlockHashes)
+            {
+                relevantHeaders.Add(_blockFinder.FindHeader(blockHash));
+            }
+
+            return relevantHeaders
+                .Select(h => _headerDecoder.Encode(h).Bytes).ToArray();
+        }
+
+        private byte[][] BuildTxProofs(Transaction[] txs, int index)
+        {
+            return new TxTrie(txs, true).BuildProof(index);
+        }
+
+        private byte[][] BuildReceiptProofs(long blockNumber, TxReceipt[] receipts, int index)
+        {
+            return new ReceiptTrie(blockNumber, _specProvider, receipts, true).BuildProof(index);
         }
     }
 }

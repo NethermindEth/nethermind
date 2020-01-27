@@ -30,7 +30,7 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Can_do_roundtrip_storage()
         {
-            TxReceipt txReceipt = Builders.Build.A.Receipt.TestObject;
+            TxReceipt txReceipt = Build.A.Receipt.TestObject;
             txReceipt.BlockNumber = 1;
             txReceipt.BlockHash = TestItem.KeccakA;
             txReceipt.Bloom = new Bloom();
@@ -63,7 +63,7 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Can_do_roundtrip_storage_eip()
         {
-            TxReceipt txReceipt = Builders.Build.A.Receipt.TestObject;
+            TxReceipt txReceipt = Build.A.Receipt.TestObject;
             txReceipt.BlockNumber = 1;
             txReceipt.BlockHash = TestItem.KeccakA;
             txReceipt.Bloom = new Bloom();
@@ -96,7 +96,7 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Can_do_roundtrip_root()
         {
-            TxReceipt txReceipt = Builders.Build.A.Receipt.TestObject;
+            TxReceipt txReceipt = Build.A.Receipt.TestObject;
             txReceipt.BlockNumber = 1;
             txReceipt.BlockHash = TestItem.KeccakA;
             txReceipt.Bloom = new Bloom();
@@ -129,7 +129,7 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Can_do_roundtrip_storage_rlp_stream()
         {
-            TxReceipt txReceipt = Builders.Build.A.Receipt.TestObject;
+            TxReceipt txReceipt = Build.A.Receipt.TestObject;
             txReceipt.BlockNumber = 1;
             txReceipt.BlockHash = TestItem.KeccakA;
             txReceipt.Bloom = new Bloom();
@@ -163,7 +163,7 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Can_do_roundtrip_none_rlp_stream()
         {
-            TxReceipt txReceipt = Builders.Build.A.Receipt.TestObject;
+            TxReceipt txReceipt = Build.A.Receipt.TestObject;
             txReceipt.Bloom = new Bloom();
             txReceipt.Bloom.Set(Keccak.EmptyTreeHash.Bytes);
             txReceipt.GasUsedTotal = 1000;

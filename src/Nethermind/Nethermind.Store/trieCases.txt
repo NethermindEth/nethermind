@@ -1,6 +1,6 @@
 For any cases where you need to test various trie layouts these are potential cases that you should test:
 
-Note 1) Nodes that are less than 32 bytes are not referenced by has but included in the referring node.
+Note 1) Nodes that are less than 32 bytes are not referenced by hash but included in the referring node.
 (so if branch would have a child with index 2 which is a leaf and the leaf RLP would be shorter than 32 bytes then the branch would not include an RLP hash as a reference but just include the RLP directly).
 We will call nodes that are included as hashes of their RLP as included 'by ref' and the ones that are included directly as 'by value'
 

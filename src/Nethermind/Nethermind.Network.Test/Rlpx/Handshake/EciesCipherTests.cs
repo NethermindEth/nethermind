@@ -128,7 +128,6 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             byte[] data = _messageSerializationService.Serialize(authMessage);
             Array.Resize(ref data, deciphered.Length);
 
-            //TODO: check 169
             Assert.AreEqual(deciphered.Slice(0, 169), data.Slice(0, 169), "serialization");
         }
 

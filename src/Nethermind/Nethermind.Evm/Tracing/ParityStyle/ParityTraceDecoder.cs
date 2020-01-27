@@ -134,12 +134,12 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public void Encode(MemoryStream stream, ParityLikeTxTrace item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            throw new NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public int GetLength(ParityLikeTxTrace item, RlpBehaviors rlpBehaviors)
         {
-            throw new NotImplementedException();
+            throw new NotSupportedException();
         }
 
         private static ParityTraceAction DecodeAction(RlpStream rlpStream)

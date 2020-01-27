@@ -111,7 +111,7 @@ namespace Nethermind.Blockchain.Test
             }
 
             stateProvider.Commit(specProvider.GenesisSpec);
-            chainSpec.Genesis.Header.StateRoot = stateProvider.StateRoot; // TODO: shall it be HeaderSpec and not BlockHeader?
+            chainSpec.Genesis.Header.StateRoot = stateProvider.StateRoot;
             chainSpec.Genesis.Header.Hash = chainSpec.Genesis.Header.CalculateHash();
             if (chainSpec.Genesis.Hash != new Keccak("0xafbc3c327d2d18ff2b843e89226ef288fcee379542f854f982e4cfb85916d126")) throw new Exception("Unexpected genesis hash");
 

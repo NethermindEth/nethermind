@@ -30,78 +30,78 @@ namespace Nethermind.Evm.Tracing
         /// <summary>
         /// Defines whether MarkAsSuccess or MarkAsFailed will be called
         /// </summary>
-        bool IsTracingReceipt => false;
+        bool IsTracingReceipt { get; }
         /// <summary>
         /// High level calls with information on the target account
         /// </summary>
-        bool IsTracingActions => false;
+        bool IsTracingActions { get; }
         /// <summary>
         /// SSTORE and SLOAD level storage operations
         /// </summary>
-        bool IsTracingOpLevelStorage => false;
+        bool IsTracingOpLevelStorage { get; }
         /// <summary>
         /// EVM memory access operations
         /// </summary>
-        bool IsTracingMemory => false;
-        bool IsTracingInstructions => false;
+        bool IsTracingMemory { get; }
+        bool IsTracingInstructions { get; }
         /// <summary>
         /// Code deployment
         /// </summary>
-        bool IsTracingCode => false;
+        bool IsTracingCode { get; }
         /// <summary>
         /// EVM stack tracing after each operation
         /// </summary>
-        bool IsTracingStack => false;
+        bool IsTracingStack { get; }
         /// <summary>
         /// State changes at commit stage
         /// </summary>
-        bool IsTracingState => false;
+        bool IsTracingState { get; }
 
         /// <summary>
         /// Traces blockhash calls
         /// </summary>
-        bool IsTracingBlockHash => false;
+        bool IsTracingBlockHash { get; }
 
-        void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null) => throw new NotSupportedException();
+        void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null);
 
-        void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null) => throw new NotSupportedException();
+        void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null);
 
-        void StartOperation(int depth, long gas, Instruction opcode, int pc) => throw new NotSupportedException();
+        void StartOperation(int depth, long gas, Instruction opcode, int pc);
 
-        void ReportOperationError(EvmExceptionType error) => throw new NotSupportedException();
+        void ReportOperationError(EvmExceptionType error);
 
-        void ReportOperationRemainingGas(long gas) => throw new NotSupportedException();
+        void ReportOperationRemainingGas(long gas);
 
-        void SetOperationStack(List<string> stackTrace) => throw new NotSupportedException();
+        void SetOperationStack(List<string> stackTrace);
 
-        void ReportStackPush(Span<byte> stackItem) => throw new NotSupportedException();
+        void ReportStackPush(Span<byte> stackItem);
 
-        void SetOperationMemory(List<string> memoryTrace) => throw new NotSupportedException();
+        void SetOperationMemory(List<string> memoryTrace);
 
-        void SetOperationMemorySize(ulong newSize) => throw new NotSupportedException();
+        void SetOperationMemorySize(ulong newSize);
 
-        void ReportMemoryChange(long offset, Span<byte> data) => throw new NotSupportedException();
+        void ReportMemoryChange(long offset, Span<byte> data);
 
-        void ReportStorageChange(Span<byte> key, Span<byte> value) => throw new NotSupportedException();
+        void ReportStorageChange(Span<byte> key, Span<byte> value);
 
-        void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue) => throw new NotSupportedException();
+        void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue);
 
-        void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) => throw new NotSupportedException();
+        void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress);
 
-        void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false) => throw new NotSupportedException();
+        void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false);
 
-        void ReportActionEnd(long gas, byte[] output) => throw new NotSupportedException();
+        void ReportActionEnd(long gas, byte[] output);
 
-        void ReportActionError(EvmExceptionType evmExceptionType) => throw new NotSupportedException();
+        void ReportActionError(EvmExceptionType evmExceptionType);
 
-        void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode) => throw new NotSupportedException();
+        void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode);
 
-        void ReportBlockHash(Keccak blockHash) => throw new NotSupportedException();
+        void ReportBlockHash(Keccak blockHash);
 
-        void ReportByteCode(byte[] byteCode) => throw new NotSupportedException();
+        void ReportByteCode(byte[] byteCode);
 
-        void ReportRefundForVmTrace(long refund, long gasAvailable) => throw new NotSupportedException();
+        void ReportRefundForVmTrace(long refund, long gasAvailable);
 
-        void ReportRefund(long refund) => throw new NotSupportedException();
+        void ReportRefund(long refund);
     }
 }

@@ -20,6 +20,7 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
@@ -200,6 +201,16 @@ namespace Nethermind.Blockchain.Test
             Block found = blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.RequireCanonical);
             Assert.AreEqual(block.Hash, found.Header.CalculateHash());
         }
+        
+        [Test]
+        public void Add_on_branch_move_find_via_block_finder_interface()
+        {
+            BlockTree blockTree = BuildBlockTree();
+            Block block = Build.A.Block.TestObject;
+            AddToMain(blockTree, block);
+            Block found = ((IBlockFinder)blockTree).FindBlock(new BlockParameter(block.Hash, true));
+            Assert.AreEqual(block.Hash, found.Header.CalculateHash());
+        }
 
         [Test]
         public void Add_on_branch_and_not_find_on_main()
@@ -208,6 +219,16 @@ namespace Nethermind.Blockchain.Test
             Block block = Build.A.Block.TestObject;
             blockTree.SuggestBlock(block);
             Block found = blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.RequireCanonical);
+            Assert.IsNull(found);
+        }
+        
+        [Test]
+        public void Add_on_branch_and_not_find_on_main_via_block_finder_interface()
+        {
+            BlockTree blockTree = BuildBlockTree();
+            Block block = Build.A.Block.TestObject;
+            blockTree.SuggestBlock(block);
+            Block found = ((IBlockFinder)blockTree).FindBlock(new BlockParameter(block.Hash, true));
             Assert.IsNull(found);
         }
 

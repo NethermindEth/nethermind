@@ -37,7 +37,7 @@ namespace Nethermind.Network.Rlpx
         {
             if (SnappyCodec.GetUncompressedLength(message.Data) > SnappyParameters.MaxSnappyLength)
             {
-                throw new Exception("Max message size exceeeded"); // TODO: disconnect here
+                throw new Exception("Max message size exceeeded");
             }
 
             if (message.Data.Length > SnappyParameters.MaxSnappyLength / 4)

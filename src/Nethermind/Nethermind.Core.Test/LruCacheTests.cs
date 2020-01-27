@@ -33,8 +33,8 @@ namespace Nethermind.Core.Test
         {
             for (int i = 0; i < Capacity; i++)
             {
-                _accounts[i] = Builders.Build.An.Account.TestObject;
-                _addresses[i] = Builders.Build.An.Address.FromNumber(i).TestObject;
+                _accounts[i] = Build.An.Account.TestObject;
+                _addresses[i] = Build.An.Address.FromNumber(i).TestObject;
             }
         }
 

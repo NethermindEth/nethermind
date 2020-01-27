@@ -21,17 +21,11 @@ using FluentAssertions;
 using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.Evm;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Logging;
 using NSubstitute;
-using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
-using Build = Nethermind.Core.Test.Builders.Build;
 
 namespace Nethermind.AuRa.Test.Validators
 {

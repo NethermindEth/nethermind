@@ -17,6 +17,7 @@
 using System;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Find
@@ -78,7 +79,7 @@ namespace Nethermind.Blockchain.Find
                 BlockParameterType.Latest => FindLatestBlock(),
                 BlockParameterType.Earliest => FindEarliestBlock(),
                 BlockParameterType.BlockNumber => FindBlock(blockParameter.BlockNumber.Value),
-                BlockParameterType.BlockHash => FindBlock(blockParameter.BlockHash),
+                BlockParameterType.BlockHash => FindBlock(blockParameter.BlockHash, blockParameter.RequireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None),
                 _ => throw new ArgumentException($"{nameof(BlockParameterType)} not supported: {blockParameter.Type}")
             };
         }
@@ -96,7 +97,7 @@ namespace Nethermind.Blockchain.Find
                 BlockParameterType.Latest => FindLatestHeader(),
                 BlockParameterType.Earliest => FindEarliestHeader(),
                 BlockParameterType.BlockNumber => FindHeader(blockParameter.BlockNumber.Value),
-                BlockParameterType.BlockHash => FindHeader(blockParameter.BlockHash),
+                BlockParameterType.BlockHash => FindHeader(blockParameter.BlockHash, blockParameter.RequireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None),
                 _ => throw new ArgumentException($"{nameof(BlockParameterType)} not supported: {blockParameter.Type}")
             };
         }

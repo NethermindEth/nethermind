@@ -47,6 +47,8 @@ namespace Nethermind.Evm.Tracing.GethStyle
         public bool IsTracingStack { get; }
         bool ITxTracer.IsTracingState => false;
         
+        public bool IsTracingBlockHash => false;
+        
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
         {
             _trace.ReturnValue = output;
@@ -190,6 +192,11 @@ namespace Nethermind.Evm.Tracing.GethStyle
         }
 
         public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportBlockHash(Keccak blockHash)
         {
             throw new NotSupportedException();
         }
