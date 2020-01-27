@@ -89,7 +89,7 @@ namespace Nethermind.AuRa.Test.Reward
         [TestCase(9, 200)]
         public void calculates_rewards_correctly_before_contract_transition(long blockNumber, long expectedReward)
         {
-            _block.Number = blockNumber;
+            _block.Header.Number = blockNumber;
             var calculator = new AuRaRewardCalculator(_auraParameters, _abiEncoder, _transactionProcessor);
             var result =  calculator.CalculateRewards(_block);
             result.Should().BeEquivalentTo(new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.Block));
@@ -99,7 +99,7 @@ namespace Nethermind.AuRa.Test.Reward
         [TestCase(15, 150)]
         public void calculates_rewards_correctly_after_contract_transition(long blockNumber, long expectedReward)
         {
-            _block.Number = blockNumber;
+            _block.Header.Number = blockNumber;
             var expected = new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.Block);
             SetupBlockRewards(expected);
             var calculator = new AuRaRewardCalculator(_auraParameters, _abiEncoder, _transactionProcessor);
@@ -111,7 +111,7 @@ namespace Nethermind.AuRa.Test.Reward
         [TestCase(15, 150)]
         public void calculates_rewards_correctly_for_ommers(long blockNumber, long expectedReward)
         {
-            _block.Number = blockNumber;
+            _block.Header.Number = blockNumber;
             _block.Body.Ommers = new[]
             {
                  Build.A.BlockHeader.WithBeneficiary(Address.FromNumber(777)).WithNumber(blockNumber - 1).TestObject,
@@ -134,7 +134,7 @@ namespace Nethermind.AuRa.Test.Reward
         [Test]
         public void calculates_rewards_correctly_for_external_addresses()
         {
-            _block.Number = 10;
+            _block.Header.Number = 10;
             _block.Body.Ommers = new[]
             {
                  Build.A.BlockHeader.WithBeneficiary(Address.FromNumber(777)).WithNumber(9).TestObject,

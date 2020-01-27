@@ -43,8 +43,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         [Test]
         public async Task verify_async_should_return_result_with_confirmed_property_equal_to_false_if_latest_block_is_null()
         {
-            var transaction = GetTransaction();
-            var result = await _transactionVerifier.VerifyAsync(transaction);
+            NdmTransaction transaction = GetTransaction();
+            TransactionVerifierResult result = await _transactionVerifier.VerifyAsync(transaction);
             result.BlockFound.Should().BeFalse();
             result.Confirmed.Should().BeFalse();
             await _blockchainBridge.Received().GetLatestBlockAsync();
@@ -53,10 +53,10 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         [Test]
         public async Task verify_async_should_return_result_with_confirmed_property_equal_to_false_if_block_was_not_found_and_required_number_of_confirmations_was_not_achieved()
         {
-            var block = GetBlock();
-            var transaction = GetTransaction();
+            Block block = GetBlock();
+            NdmTransaction transaction = GetTransaction();
             _blockchainBridge.GetLatestBlockAsync().Returns(block);
-            var result = await _transactionVerifier.VerifyAsync(transaction);
+            TransactionVerifierResult result = await _transactionVerifier.VerifyAsync(transaction);
             result.BlockFound.Should().BeTrue();
             result.Confirmed.Should().BeFalse();
             await _blockchainBridge.Received().GetLatestBlockAsync();
@@ -66,11 +66,11 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         [Test]
         public async Task verify_async_should_return_result_with_confirmed_property_equal_to_false_if_block_hash_is_same_as_tx_hash_and_required_number_of_confirmations_was_not_achieved()
         {
-            var block = GetBlock();
-            var transaction = GetTransaction();
-            block.Hash = transaction.BlockHash;
+            Block block = GetBlock();
+            NdmTransaction transaction = GetTransaction();
+            block.Header.Hash = transaction.BlockHash;
             _blockchainBridge.GetLatestBlockAsync().Returns(block);
-            var result = await _transactionVerifier.VerifyAsync(transaction);
+            TransactionVerifierResult result = await _transactionVerifier.VerifyAsync(transaction);
             result.BlockFound.Should().BeTrue();
             result.Confirmed.Should().BeFalse();
             await _blockchainBridge.Received().GetLatestBlockAsync();
@@ -80,12 +80,12 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         [Test]
         public async Task verify_async_should_return_result_with_confirmed_property_equal_to_true_if_required_number_of_confirmations_is_achieved()
         {
-            var transaction = GetTransaction();
-            var block = GetBlock();
-            var parentBlock = GetBlock();
+            NdmTransaction transaction = GetTransaction();
+            Block block = GetBlock();
+            Block parentBlock = GetBlock();
             _blockchainBridge.GetLatestBlockAsync().Returns(block);
             _blockchainBridge.FindBlockAsync(block.ParentHash).Returns(parentBlock);
-            var result = await _transactionVerifier.VerifyAsync(transaction);
+            TransactionVerifierResult result = await _transactionVerifier.VerifyAsync(transaction);
             result.BlockFound.Should().BeTrue();
             result.Confirmed.Should().BeTrue();
             result.Confirmations.Should().Be(2);

@@ -60,7 +60,12 @@ namespace Nethermind.Core
         
         private void Set(byte[] sequence, Bloom masterBloom)
         {
-            var indexes = GetExtract(sequence);
+            if (ReferenceEquals(this, Empty))
+            {
+                throw new InvalidOperationException("An attempt was made to update Bloom.Empty constant");
+            }
+            
+            BloomExtract indexes = GetExtract(sequence);
             _bits.Set(indexes.Index1, true);
             _bits.Set(indexes.Index2, true);
             _bits.Set(indexes.Index3, true);
@@ -74,7 +79,7 @@ namespace Nethermind.Core
         
         public bool Matches(byte[] sequence)
         {
-            var indexes = GetExtract(sequence);
+            BloomExtract indexes = GetExtract(sequence);
             return Matches(ref indexes);
         }
         

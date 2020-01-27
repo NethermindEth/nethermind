@@ -157,7 +157,7 @@ namespace Nethermind.Core.Test.Builders
 
                 currentBlock.Header.TxRoot = new TxTrie(currentBlock.Transactions).RootHash;
                 currentBlock.Header.ReceiptsRoot = new ReceiptTrie(currentBlock.Number, _specProvider, receipts.ToArray()).RootHash;
-                currentBlock.Hash = currentBlock.CalculateHash();
+                currentBlock.Header.Hash = currentBlock.CalculateHash();
 
                 foreach (TxReceipt receipt in receipts)
                 {

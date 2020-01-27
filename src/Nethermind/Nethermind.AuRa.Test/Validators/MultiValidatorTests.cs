@@ -167,7 +167,7 @@ namespace Nethermind.AuRa.Test.Validators
         public long initializes_validator_when_producing_block(long blockNumber)
         {
             IAuRaValidatorProcessor validator = new MultiValidator(_validator, _factory, _blockTree, _validatorStore, _logManager);
-            _block.Number = blockNumber;
+            _block.Header.Number = blockNumber;
             validator.PreProcess(_block, ProcessingOptions.ProducingBlock);
             _innerValidators.Count.Should().Be(1);
             return _innerValidators.Keys.First();
@@ -186,7 +186,7 @@ namespace Nethermind.AuRa.Test.Validators
             validator.SetFinalizationManager(_finalizationManager);
             var validatorBlockLevel = (blockNumber - 1)/10*10;
             _finalizationManager.GetFinalizedLevel(validatorBlockLevel).Returns(finalizedLastValidatorBlockLevel ? blockNumber - 2 : (long?) null);
-            _block.Number = blockNumber;
+            _block.Header.Number = blockNumber;
             validator.PreProcess(_block);
             return _innerValidators.Keys.Last();
         }
@@ -195,7 +195,7 @@ namespace Nethermind.AuRa.Test.Validators
         {
             for (int i = 1; i < count; i++)
             {
-                _block.Number = i;
+                _block.Header.Number = i;
                 validator.PreProcess(_block);
                 validator.PostProcess(_block, Array.Empty<TxReceipt>());
 

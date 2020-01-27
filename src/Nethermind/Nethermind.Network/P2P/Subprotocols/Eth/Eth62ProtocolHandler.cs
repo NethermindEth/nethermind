@@ -497,7 +497,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private void Handle(NewBlockMessage newBlockMessage)
         {
-            newBlockMessage.Block.TotalDifficulty = newBlockMessage.TotalDifficulty;
+            newBlockMessage.Block.Header.TotalDifficulty = newBlockMessage.TotalDifficulty;
 
             try
             {

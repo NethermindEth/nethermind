@@ -94,7 +94,6 @@ namespace Nethermind.JsonRpc.Modules.Proof
             }
 
             Block block = new Block(header, new[] {transaction}, Enumerable.Empty<BlockHeader>());
-            block.TotalDifficulty = 0; // not used in EVM
 
             ProofBlockTracer proofBlockTracer = new ProofBlockTracer(null);
             _tracer.Trace(block, proofBlockTracer);

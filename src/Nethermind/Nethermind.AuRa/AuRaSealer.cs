@@ -64,7 +64,7 @@ namespace Nethermind.AuRa
             Block sealedBlock = Seal(block);
             if (sealedBlock != null)
             {
-                sealedBlock.Hash = sealedBlock.Header.CalculateHash();
+                sealedBlock.Header.Hash = sealedBlock.Header.CalculateHash();
             }
 
             return Task.FromResult(sealedBlock);

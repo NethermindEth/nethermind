@@ -67,115 +67,43 @@ namespace Nethermind.Core
         public BlockHeader Header { get; set; }
         public BlockBody Body { get; set; }
 
-        public Keccak Hash
-        {
-            get => Header.Hash;
-            set => Header.Hash = value;
-        }
+        public Keccak Hash => Header.Hash;
 
-        public Keccak ParentHash
-        {
-            get => Header.ParentHash;
-            set => Header.ParentHash = value;
-        }
+        public Keccak ParentHash => Header.ParentHash;
 
-        public ulong Nonce
-        {
-            get => Header.Nonce;
-            set => Header.Nonce = value;
-        }
+        public ulong Nonce => Header.Nonce;
 
-        public Keccak MixHash
-        {
-            get => Header.MixHash;
-            set => Header.MixHash = value;
-        }
+        public Keccak MixHash => Header.MixHash;
 
-        public byte[] ExtraData
-        {
-            get => Header.ExtraData;
-            set => Header.ExtraData = value;
-        }
+        public byte[] ExtraData => Header.ExtraData;
 
-        public Bloom Bloom
-        {
-            get => Header.Bloom;
-            set => Header.Bloom = value;
-        }
+        public Bloom Bloom => Header.Bloom;
 
-        public Keccak OmmersHash
-        {
-            get => Header.OmmersHash;
-            set => Header.OmmersHash = value;
-        }
+        public Keccak OmmersHash => Header.OmmersHash;
 
-        public Address Beneficiary
-        {
-            get => Header.Beneficiary;
-            set => Header.Beneficiary = value;
-        }
+        public Address Beneficiary => Header.Beneficiary;
 
-        public Address Author
-        {
-            get => Header.Author;
-            set => Header.Author = value;
-        }
+        public Address Author => Header.Author;
 
-        public Keccak StateRoot
-        {
-            get => Header.StateRoot;
-            set => Header.StateRoot = value;
-        }
+        public Keccak StateRoot => Header.StateRoot;
 
-        public Keccak TransactionsRoot
-        {
-            get => Header.TxRoot;
-            set => Header.TxRoot = value;
-        }
+        public Keccak TxRoot => Header.TxRoot;
 
-        public Keccak ReceiptsRoot
-        {
-            get => Header.ReceiptsRoot;
-            set => Header.ReceiptsRoot = value;
-        }
+        public Keccak ReceiptsRoot => Header.ReceiptsRoot;
 
-        public long GasLimit
-        {
-            get => Header.GasLimit;
-            set => Header.GasLimit = value;
-        }
+        public long GasLimit => Header.GasLimit;
 
-        public long GasUsed
-        {
-            get => Header.GasUsed;
-            set => Header.GasUsed = value;
-        }
+        public long GasUsed => Header.GasUsed;
 
-        public UInt256 Timestamp
-        {
-            get => Header.Timestamp;
-            set => Header.Timestamp = value;
-        }
+        public UInt256 Timestamp => Header.Timestamp;
 
         public DateTime TimestampDate => Header.TimestampDate;
 
-        public long Number
-        {
-            get => Header.Number;
-            set => Header.Number = value;
-        }
+        public long Number => Header.Number;
 
-        public UInt256 Difficulty
-        {
-            get => Header.Difficulty;
-            set => Header.Difficulty = value;
-        }
+        public UInt256 Difficulty => Header.Difficulty;
 
-        public UInt256? TotalDifficulty
-        {
-            get => Header?.TotalDifficulty;
-            set => Header.TotalDifficulty = value;
-        }
+        public UInt256? TotalDifficulty => Header?.TotalDifficulty;
 
         public string ToString(string indent)
         {

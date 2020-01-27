@@ -135,7 +135,7 @@ namespace Nethermind.Blockchain.Tracing
             Block block = Rlp.Decode<Block>(blockRlp);
             if (block.TotalDifficulty == null)
             {
-                block.TotalDifficulty = 1;
+                block.Header.TotalDifficulty = 1;
             }
 
             return block;

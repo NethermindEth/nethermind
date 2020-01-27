@@ -71,8 +71,8 @@ namespace Nethermind.Blockchain.Tracing
 
             Transaction tx = _transactionDecoder.Decode(new RlpStream(txRlp));
             Block block = new Block(traceHeader, new[] {tx}, Enumerable.Empty<BlockHeader>());
-            block.Author = Address.Zero;
-            block.TotalDifficulty = headBlockHeader.TotalDifficulty + traceHeader.Difficulty;
+            traceHeader.Author = Address.Zero;
+            traceHeader.TotalDifficulty = headBlockHeader.TotalDifficulty + traceHeader.Difficulty;
 
             return ParityTraceBlock(block, traceTypes)[0];
         }

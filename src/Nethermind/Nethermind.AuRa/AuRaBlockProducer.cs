@@ -74,7 +74,7 @@ namespace Nethermind.AuRa
         {
             var block = base.PrepareBlock(parent);
             block.Header.AuRaStep = _auRaStepCalculator.CurrentStep;
-            block.Beneficiary = _nodeAddress;
+            block.Header.Beneficiary = _nodeAddress;
             return block;
         }
 

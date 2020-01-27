@@ -89,7 +89,7 @@ namespace Nethermind.Evm.Tracing
             {
                 if (_block.Bloom == Bloom.Empty)
                 {
-                    _block.Bloom = new Bloom();
+                    _block.Header.Bloom = new Bloom();
                 }
             }
             

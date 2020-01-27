@@ -34,7 +34,7 @@ namespace Nethermind.Clique
         public void RecoverData(Block block)
         {
             if (block.Header.Author != null) return;
-            block.Author = _snapshotManager.GetBlockSealer(block.Header);
+            block.Header.Author = _snapshotManager.GetBlockSealer(block.Header);
         }
     }
 }
