@@ -96,16 +96,19 @@ namespace Ethereum.Test.Base
             header.StateRoot = test.PostHash;
             header.Hash = Keccak.Compute("1");
             
+            stateProvider.Commit(specProvider.GenesisSpec);
+            stateProvider.CommitTree();
+            
             transactionProcessor.Execute(test.Transaction, header, txTracer);
+            
+            stateProvider.Commit(specProvider.GenesisSpec);
+            stateProvider.CommitTree();
 
             // '@winsvega added a 0-wei reward to the miner , so we had to add that into the state test execution phase. He needed it for retesteth.'
             if (!stateProvider.AccountExists(test.CurrentCoinbase))
             {
                 stateProvider.CreateAccount(test.CurrentCoinbase, 0);
             }
-            
-            stateProvider.Commit(specProvider.GenesisSpec);
-            stateProvider.CommitTree();
 
             List<string> differences = RunAssertions(test, stateProvider);
             EthereumTestResult testResult = new EthereumTestResult();
