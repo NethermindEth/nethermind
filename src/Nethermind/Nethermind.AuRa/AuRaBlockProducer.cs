@@ -24,6 +24,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.AuRa.Config;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -73,7 +74,7 @@ namespace Nethermind.AuRa
         {
             var block = base.PrepareBlock(parent);
             block.Header.AuRaStep = _auRaStepCalculator.CurrentStep;
-            block.Beneficiary = _nodeAddress;
+            block.Header.Beneficiary = _nodeAddress;
             return block;
         }
 

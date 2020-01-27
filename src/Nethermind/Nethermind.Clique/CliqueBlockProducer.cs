@@ -24,6 +24,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Proofs;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
@@ -233,7 +234,7 @@ namespace Nethermind.Clique
                     }
 
                     if (_logger.IsInfo) _logger.Info($"Processing prepared block {block.Number}");
-                    Block processedBlock = _processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain | ProcessingOptions.WithRollback, NullBlockTracer.Instance);
+                    Block processedBlock = _processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance);
                     if (processedBlock == null)
                     {
                         if (_logger.IsInfo) _logger.Info($"Prepared block has lost the race");
@@ -381,8 +382,8 @@ namespace Nethermind.Clique
 
             var selectedTxs = _pendingTransactionSelector.SelectTransactions(header.GasLimit);
             Block block = new Block(header, selectedTxs, new BlockHeader[0]);
-            header.TxRoot = block.CalculateTxRoot();
-            block.Author = _address;
+            header.TxRoot = new TxTrie(block.Transactions).RootHash;
+            block.Header.Author = _address;
             return block;
         }
 

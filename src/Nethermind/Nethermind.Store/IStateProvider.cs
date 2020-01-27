@@ -19,11 +19,14 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Store.Proofs;
 
 namespace Nethermind.Store
 {
     public interface IStateProvider
     {
+        void RecalculateStateRoot();
+        
         Keccak StateRoot { get; set; }
 
         void DeleteAccount(Address address);
@@ -77,6 +80,8 @@ namespace Nethermind.Store
         string DumpState();
         
         TrieStats CollectStats();
+        
+        void Accept(ITreeVisitor visitor, Keccak stateRoot);
         
         void DecrementNonce(Address address);
     }

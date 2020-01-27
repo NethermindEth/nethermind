@@ -159,7 +159,7 @@ namespace Nethermind.EthStats.Integrations
                 (long) block.Timestamp, block.Author?.ToString(), block.GasUsed, block.GasLimit,
                 block.Difficulty.ToString(), block.TotalDifficulty?.ToString(),
                 block.Transactions?.Select(t => new Transaction(t.Hash?.ToString())) ?? Enumerable.Empty<Transaction>(),
-                block.TransactionsRoot.ToString(), block.StateRoot.ToString(),
+                block.TxRoot.ToString(), block.StateRoot.ToString(),
                 block.Ommers?.Select(o => new Uncle()) ?? Enumerable.Empty<Uncle>())));
 
         private Task SendPendingAsync(int pending)

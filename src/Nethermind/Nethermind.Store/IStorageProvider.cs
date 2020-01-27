@@ -20,11 +20,11 @@ namespace Nethermind.Store
 {
     public interface IStorageProvider
     {
-        byte[] GetOriginal(StorageAddress storageAddress);
+        byte[] GetOriginal(StorageCell storageCell);
         
-        byte[] Get(StorageAddress storageAddress);
+        byte[] Get(StorageCell storageCell);
 
-        void Set(StorageAddress storageAddress, byte[] newValue);
+        void Set(StorageCell storageCell, byte[] newValue);
 
         void Reset();
         

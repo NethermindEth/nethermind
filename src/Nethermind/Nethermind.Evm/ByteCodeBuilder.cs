@@ -1,0 +1,230 @@
+//  Copyright (c) 2018 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+
+using System;
+using System.Collections.Generic;
+using System.Numerics;
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
+
+namespace Nethermind.Evm
+{
+    public class Prepare
+    {
+        private readonly List<byte> _byteCode = new List<byte>();
+        public static Prepare EvmCode => new Prepare();
+        public byte[] Done => _byteCode.ToArray();
+
+        public Prepare Op(Instruction instruction)
+        {
+            _byteCode.Add((byte) instruction);
+            return this;
+        }
+
+        public Prepare Create(byte[] code, BigInteger value)
+        {
+            StoreDataInMemory(0, code);
+            PushData(code.Length);
+            PushData(0);
+            PushData(value);
+            Op(Instruction.CREATE);
+            return this;
+        }
+
+        public Prepare Create2(byte[] code, byte[] salt, BigInteger value)
+        {
+            StoreDataInMemory(0, code);
+            PushData(salt);
+            PushData(code.Length);
+            PushData(0);
+            PushData(value);
+            Op(Instruction.CREATE2);
+            return this;
+        }
+
+        public Prepare ForInitOf(byte[] codeToBeDeployed)
+        {
+            StoreDataInMemory(0, codeToBeDeployed.PadRight(32));
+            PushData(codeToBeDeployed.Length);
+            PushData(0);
+            Op(Instruction.RETURN);
+
+            return this;
+        }
+
+        public Prepare Call(Address address, long gasLimit)
+        {
+            PushData(0);
+            PushData(0);
+            PushData(0);
+            PushData(0);
+            PushData(0);
+            PushData(address);
+            PushData(gasLimit);
+            Op(Instruction.CALL);
+            return this;
+        }
+
+        public Prepare CallWithInput(Address address, long gasLimit, string input)
+        {
+            return CallWithInput(address, gasLimit, Bytes.FromHexString(input));
+        }
+
+        public Prepare CallWithInput(Address address, long gasLimit, byte[] input)
+        {
+            StoreDataInMemory(0, input);
+            PushData(0);
+            PushData(0);
+            PushData(input.Length);
+            PushData(0);
+            PushData(0);
+            PushData(address);
+            PushData(gasLimit);
+            Op(Instruction.CALL);
+            return this;
+        }
+
+        public Prepare CallWithValue(Address address, long gasLimit, UInt256 value)
+        {
+            PushData(0);
+            PushData(0);
+            PushData(0);
+            PushData(0);
+            PushData(value);
+            PushData(address);
+            PushData(gasLimit);
+            Op(Instruction.CALL);
+            return this;
+        }
+
+        public Prepare DelegateCall(Address address, long gasLimit)
+        {
+            PushData(0);
+            PushData(0);
+            PushData(0);
+            PushData(0);
+            PushData(address);
+            PushData(gasLimit);
+            Op(Instruction.DELEGATECALL);
+            return this;
+        }
+
+        public Prepare CallCode(Address address, long gasLimit)
+        {
+            PushData(0);
+            PushData(0);
+            PushData(0);
+            PushData(0);
+            PushData(0);
+            PushData(address);
+            PushData(gasLimit);
+            Op(Instruction.CALLCODE);
+            return this;
+        }
+
+        public Prepare StaticCall(Address address, long gasLimit)
+        {
+            PushData(0);
+            PushData(0);
+            PushData(0);
+            PushData(0);
+            PushData(address);
+            PushData(gasLimit);
+            Op(Instruction.STATICCALL);
+            return this;
+        }
+
+        public Prepare PushData(Address address)
+        {
+            PushData(address.Bytes);
+            return this;
+        }
+
+        public Prepare PushData(BigInteger data)
+        {
+            PushData(data.ToBigEndianByteArray());
+            return this;
+        }
+
+        public Prepare PushData(string data)
+        {
+            PushData(Bytes.FromHexString(data));
+            return this;
+        }
+
+        public Prepare PushData(byte[] data)
+        {
+            _byteCode.Add((byte) (Instruction.PUSH1 + (byte) data.Length - 1));
+            _byteCode.AddRange(data);
+            return this;
+        }
+
+        public Prepare PushData(byte data)
+        {
+            PushData(new[] {data});
+            return this;
+        }
+
+        public Prepare Data(string data)
+        {
+            _byteCode.AddRange(Bytes.FromHexString(data));
+            return this;
+        }
+
+        public Prepare Data(byte[] data)
+        {
+            _byteCode.AddRange(data);
+            return this;
+        }
+
+        public Prepare Data(byte data)
+        {
+            _byteCode.Add(data);
+            return this;
+        }
+
+        public Prepare PersistData(string key, string value)
+        {
+            PushData(value);
+            PushData(key);
+            Op(Instruction.SSTORE);
+            return this;
+        }
+
+        public Prepare StoreDataInMemory(int position, string hexString)
+        {
+            return StoreDataInMemory(position, Bytes.FromHexString(hexString));
+        }
+
+        private Prepare StoreDataInMemory(int position, byte[] data)
+        {
+            if (position % 32 != 0)
+            {
+                throw new NotSupportedException();
+            }
+
+            for (int i = 0; i < data.Length; i += 32)
+            {
+                PushData(data.Slice(i, data.Length - i).PadRight(32));
+                PushData(position + i);
+                Op(Instruction.MSTORE);
+            }
+
+            return this;
+        }
+    }
+}

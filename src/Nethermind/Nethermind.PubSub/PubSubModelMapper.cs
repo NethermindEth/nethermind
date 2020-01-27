@@ -34,7 +34,7 @@ namespace Nethermind.PubSub
                     ParentHash = block.ParentHash.Bytes,
                     Beneficiary = block.Beneficiary.Bytes,
                     StateRoot = block.StateRoot.Bytes,
-                    TransactionsRoot = block.TransactionsRoot.Bytes,
+                    TransactionsRoot = block.TxRoot.Bytes,
                     GasLimit = block.GasLimit,
                     GasUsed = block.GasUsed,
                     Timestamp = block.Timestamp.ToString(),

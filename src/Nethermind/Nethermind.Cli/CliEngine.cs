@@ -32,10 +32,12 @@ namespace Nethermind.Cli
 {
     public class CliEngine : ICliEngine
     {
+        private readonly ICliConsole _cliConsole;
         public Engine JintEngine { get; }
 
-        public CliEngine()
+        public CliEngine(ICliConsole cliConsole)
         {
+            _cliConsole = cliConsole;
             JintEngine = new Engine();
             JintEngine.SetValue("gasPrice", (double) 20.GWei());
             JintEngine.SetValue("load", new Action<string>(LoadFile));
@@ -92,15 +94,15 @@ namespace Nethermind.Cli
             }
             catch (ParserException e)
             {
-                CliConsole.WriteErrorLine(e.Message);
+                _cliConsole.WriteErrorLine(e.Message);
             }
             catch (CliArgumentParserException e)
             {
-                CliConsole.WriteErrorLine(e.Message);
+                _cliConsole.WriteErrorLine(e.Message);
             }
             catch (Exception e)
             {
-                CliConsole.WriteException(e);
+                _cliConsole.WriteException(e);
             }
 
             return JsValue.Null;

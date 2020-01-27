@@ -56,6 +56,14 @@ namespace Nethermind.Store
             _tree = new StateTree(stateDb);
         }
 
+        public void Accept(ITreeVisitor visitor, Keccak stateRoot)
+        {
+            if (visitor == null) throw new ArgumentNullException(nameof(visitor));
+            if (stateRoot == null) throw new ArgumentNullException(nameof(stateRoot));
+            
+            _tree.Accept(visitor, stateRoot);
+        }
+        
         public string DumpState()
         {
             TreeDumper dumper = new TreeDumper();
@@ -70,11 +78,23 @@ namespace Nethermind.Store
             return collector.Stats;
         }
 
+        private bool _needsStateRootUpdate;
+
+        public void RecalculateStateRoot()
+        {
+            _tree.UpdateRootHash();
+            _needsStateRootUpdate = false;
+        }
+        
         public Keccak StateRoot
         {
             get
             {
-                _tree.UpdateRootHash();
+                if (_needsStateRootUpdate)
+                {
+                    throw new InvalidOperationException();
+                }
+                
                 return _tree.RootHash;
             }
             set => _tree.RootHash = value;
@@ -128,6 +148,7 @@ namespace Nethermind.Store
 
         public void UpdateCodeHash(Address address, Keccak codeHash, IReleaseSpec releaseSpec)
         {
+            _needsStateRootUpdate = true;
             Account account = GetThroughCache(address);
             if (account.CodeHash != codeHash)
             {
@@ -145,6 +166,7 @@ namespace Nethermind.Store
 
         private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting)
         {
+            _needsStateRootUpdate = true;
             Account GetThroughCacheCheckExists()
             {
                 Account result = GetThroughCache(address);
@@ -156,7 +178,7 @@ namespace Nethermind.Store
 
                 return result;
             }
-            
+
             var isZero = balanceChange.IsZero;
             if (isZero)
             {
@@ -186,11 +208,13 @@ namespace Nethermind.Store
 
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
         {
+            _needsStateRootUpdate = true;
             SetNewBalance(address, balanceChange, releaseSpec, true);
         }
 
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
         {
+            _needsStateRootUpdate = true;
             SetNewBalance(address, balanceChange, releaseSpec, false);
         }
 
@@ -202,6 +226,7 @@ namespace Nethermind.Store
         /// <param name="storageRoot"></param>
         public void UpdateStorageRoot(Address address, Keccak storageRoot)
         {
+            _needsStateRootUpdate = true;
             Account account = GetThroughCache(address);
             if (account.StorageRoot != storageRoot)
             {
@@ -213,6 +238,7 @@ namespace Nethermind.Store
 
         public void IncrementNonce(Address address)
         {
+            _needsStateRootUpdate = true;
             Account account = GetThroughCache(address);
             Account changedAccount = account.WithChangedNonce(account.Nonce + 1);
             if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
@@ -221,6 +247,7 @@ namespace Nethermind.Store
 
         public void DecrementNonce(Address address)
         {
+            _needsStateRootUpdate = true;
             Account account = GetThroughCache(address);
             Account changedAccount = account.WithChangedNonce(account.Nonce - 1);
             if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
@@ -229,6 +256,7 @@ namespace Nethermind.Store
 
         public Keccak UpdateCode(byte[] code)
         {
+            _needsStateRootUpdate = true;
             if (code.Length == 0)
             {
                 return Keccak.OfAnEmptyString;
@@ -264,6 +292,7 @@ namespace Nethermind.Store
 
         public void DeleteAccount(Address address)
         {
+            _needsStateRootUpdate = true;
             PushDelete(address);
         }
 
@@ -392,7 +421,7 @@ namespace Nethermind.Store
                 {
                     continue;
                 }
-                
+
                 if (_committedThisRound.Contains(change.Address))
                 {
                     if (isTracing && change.ChangeType == ChangeType.JustCache)
@@ -400,6 +429,13 @@ namespace Nethermind.Store
                         trace[change.Address] = new ChangeTrace(change.Account, trace[change.Address].After);
                     }
 
+                    continue;
+                }
+
+                // because it was not committed yet it means that the just cache is the only state (so it was read only)
+                if (isTracing && change.ChangeType == ChangeType.JustCache)
+                {
+                    _nullReadsForTracing.Add(change.Address);
                     continue;
                 }
 
@@ -484,9 +520,18 @@ namespace Nethermind.Store
                         throw new ArgumentOutOfRangeException();
                 }
             }
-            
+
+            if (isTracing)
+            {
+                foreach (Address nullRead in _nullReadsForTracing)
+                {
+                    stateTracer.ReportAccountRead(nullRead);
+                }
+            }
+
             Resettable<Change>.Reset(ref _changes, ref _capacity, ref _currentPosition, StartCapacity);
             _committedThisRound.Reset();
+            _nullReadsForTracing.Clear();
             _intraBlockCache.Reset();
 
             if (isTracing)
@@ -499,6 +544,8 @@ namespace Nethermind.Store
         {
             foreach ((Address address, ChangeTrace change) in trace)
             {
+                bool someChangeReported = false;
+
                 Account before = change.Before;
                 Account after = change.After;
 
@@ -528,16 +575,25 @@ namespace Nethermind.Store
                     {
                         stateTracer.ReportCodeChange(address, beforeCode, afterCode);
                     }
+
+                    someChangeReported = true;
                 }
 
                 if (afterBalance != beforeBalance)
                 {
                     stateTracer.ReportBalanceChange(address, beforeBalance, afterBalance);
+                    someChangeReported = true;
                 }
 
                 if (afterNonce != beforeNonce)
                 {
                     stateTracer.ReportNonceChange(address, beforeNonce, afterNonce);
+                    someChangeReported = true;
+                }
+
+                if (!someChangeReported)
+                {
+                    stateTracer.ReportAccountRead(address);
                 }
             }
         }
@@ -551,9 +607,12 @@ namespace Nethermind.Store
 
         private void SetState(Address address, Account account)
         {
+            _needsStateRootUpdate = true;
             Metrics.StateTreeWrites++;
             _tree.Set(address, account);
         }
+
+        private HashSet<Address> _nullReadsForTracing = new HashSet<Address>();
 
         private Account GetAndAddToCache(Address address)
         {
@@ -561,6 +620,11 @@ namespace Nethermind.Store
             if (account != null)
             {
                 PushJustCache(address, account);
+            }
+            else
+            {
+                // just for tracing - potential perf hit, maybe a better solution?
+                _nullReadsForTracing.Add(address);
             }
 
             return account;
@@ -655,12 +719,18 @@ namespace Nethermind.Store
             if (_logger.IsTrace) _logger.Trace("Clearing state provider caches");
             _intraBlockCache.Reset();
             _committedThisRound.Reset();
+            _nullReadsForTracing.Clear();
             _currentPosition = -1;
             Array.Clear(_changes, 0, _changes.Length);
         }
 
         public void CommitTree()
         {
+            if (_needsStateRootUpdate)
+            {
+                RecalculateStateRoot();
+            }
+
             _tree.Commit();
         }
     }

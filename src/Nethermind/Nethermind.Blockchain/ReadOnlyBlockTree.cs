@@ -82,6 +82,10 @@ namespace Nethermind.Blockchain
             throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestHeader)} calls");
         }
 
+        public Keccak HeadHash => _wrapped.HeadHash;
+        public Keccak GenesisHash => _wrapped.GenesisHash;
+        public Keccak PendingHash => _wrapped.PendingHash;
+
         public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options)
         {
             return _wrapped.FindBlock(blockHash, options);

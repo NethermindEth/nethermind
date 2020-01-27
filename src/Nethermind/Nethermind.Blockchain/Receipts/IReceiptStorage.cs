@@ -20,9 +20,8 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public interface IReceiptStorage
+    public interface IReceiptStorage : IReceiptFinder
     {
-        TxReceipt Find(Keccak hash);
         void Add(TxReceipt txReceipt, bool isProcessed);
         void Insert(long blockNumber, TxReceipt txReceipt);
         void Insert(List<(long blockNumber, TxReceipt txReceipt)> receipts);

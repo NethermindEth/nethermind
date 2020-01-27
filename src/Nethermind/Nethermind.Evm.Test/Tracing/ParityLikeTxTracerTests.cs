@@ -24,17 +24,14 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.ParityStyle;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing
 {
     [TestFixture]
     public class ParityLikeCallTxTracerTests : VirtualMachineTestsBase
-    { 
-        private const string SampleHexData1 = "a01234";
-        private const string SampleHexData2 = "b15678";
-        private const string HexZero = "00";
-
+    {
         [Test]
         public void On_failure_result_is_null()
         {
@@ -343,7 +340,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             Assert.AreEqual("callcode", trace.Action.Subtraces[0].CallType, "[0] type");
         }
-        
+
         [Test]
         public void Can_trace_a_failing_static_call()
         {
@@ -372,13 +369,13 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(59700, trace.VmTrace.Operations.Last().Cost);
             Assert.AreEqual(71579, trace.VmTrace.Operations.Last().Used);
         }
-        
+
         [Test]
         public void Can_trace_memory_in_vm_trace()
         {
             string dataHex = "0x0102";
             string offsetHex = "0x01";
-            
+
             byte[] code = Prepare.EvmCode
                 .PushData(dataHex)
                 .PushData(offsetHex)
@@ -391,7 +388,7 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(dataHex, memory.Data.WithoutLeadingZeros().ToArray().ToHexString(true));
             Assert.AreEqual(1, memory.Offset);
         }
-        
+
         [Test]
         public void Action_is_cleared_when_vm_trace_only()
         {
@@ -402,13 +399,13 @@ namespace Nethermind.Evm.Test.Tracing
             (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(ParityTraceTypes.VmTrace, code);
             Assert.Null(trace.Action);
         }
-        
+
         [Test]
         public void Can_trace_push_in_vm_trace()
         {
             string push1Hex = "0x01";
             string push2Hex = "0x0102";
-            
+
             byte[] code = Prepare.EvmCode
                 .PushData(push1Hex)
                 .PushData(push2Hex)
@@ -420,7 +417,7 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(push1Hex, push1[0].WithoutLeadingZeros().ToArray().ToHexString(true));
             Assert.AreEqual(push2Hex, push2[0].WithoutLeadingZeros().ToArray().ToHexString(true));
         }
-        
+
         [Test]
         public void Can_trace_dup_push_in_vm_trace()
         {
@@ -438,7 +435,7 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(push1Hex, dup[0].WithoutLeadingZeros().ToArray().ToHexString(true));
             Assert.AreEqual(push2Hex, dup[1].WithoutLeadingZeros().ToArray().ToHexString(true));
         }
-        
+
         [Test]
         public void Can_trace_swap_push_in_vm_trace()
         {
@@ -456,7 +453,7 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(push2Hex, swap[0].WithoutLeadingZeros().ToArray().ToHexString(true));
             Assert.AreEqual(push1Hex, swap[1].WithoutLeadingZeros().ToArray().ToHexString(true));
         }
-        
+
         [Test]
         public void Can_trace_sstore_in_vm_trace()
         {
@@ -474,7 +471,7 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(push2Hex, sstore.Key.WithoutLeadingZeros().ToArray().ToHexString(true));
             Assert.AreEqual(push1Hex, sstore.Value.WithoutLeadingZeros().ToArray().ToHexString(true));
         }
-        
+
         [Test]
         public void Can_trace_double_sstore()
         {
@@ -494,7 +491,7 @@ namespace Nethermind.Evm.Test.Tracing
             (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
             Assert.AreEqual(1, trace.StateChanges[TestItem.AddressB].Storage.Count);
         }
-        
+
         [Test]
         public void Can_trace_self_destruct()
         {
@@ -506,7 +503,7 @@ namespace Nethermind.Evm.Test.Tracing
             (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
             Assert.AreEqual("suicide", trace.Action.Subtraces[0].Type);
         }
-        
+
         [Test]
         public void Can_trace_failed_action()
         {
@@ -724,13 +721,13 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(3, trace.StateChanges.Count, "state changes count");
             Assert.True(trace.StateChanges.ContainsKey(Recipient), "recipient");
             Assert.True(trace.StateChanges.ContainsKey(Sender), "sender");
-            Assert.True(trace.StateChanges.ContainsKey(Miner), "sender");
+            Assert.True(trace.StateChanges.ContainsKey(Miner), "miner");
             Assert.AreEqual(100.Ether(), trace.StateChanges[Sender].Balance.Before, "sender before");
             Assert.AreEqual(100.Ether() - 21001, trace.StateChanges[Sender].Balance.After, "sender after");
             Assert.AreEqual(100.Ether(), trace.StateChanges[Recipient].Balance.Before, "recipient before");
             Assert.AreEqual(100.Ether() + 1, trace.StateChanges[Recipient].Balance.After, "recipient after");
             Assert.AreEqual(null, trace.StateChanges[Miner].Balance.Before, "miner before");
-            Assert.AreEqual((UInt256)21000, trace.StateChanges[Miner].Balance.After, "miner after");
+            Assert.AreEqual((UInt256) 21000, trace.StateChanges[Miner].Balance.After, "miner after");
         }
 
         [Test]
@@ -749,7 +746,7 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(UInt256.Zero, trace.StateChanges[Sender].Nonce.Before, "sender before");
             Assert.AreEqual(UInt256.One, trace.StateChanges[Sender].Nonce.After, "sender after");
         }
-        
+
         [Test]
         public void Cannot_mark_as_failed_when_actions_stacked()
         {
@@ -757,23 +754,55 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.ReportAction(1000L, 10, Address.Zero, Address.Zero, Bytes.Empty, ExecutionType.Call, false);
             Assert.Throws<InvalidOperationException>(() => tracer.MarkAsFailed(TestItem.AddressA, 21000, Bytes.Empty, "Error"));
         }
-        
+
         [Test]
         public void Cannot_mark_as_success_when_actions_stacked()
         {
             ParityLikeTxTracer tracer = new ParityLikeTxTracer(Build.A.Block.TestObject, Build.A.Transaction.TestObject, ParityTraceTypes.All);
             tracer.ReportAction(1000L, 10, Address.Zero, Address.Zero, Bytes.Empty, ExecutionType.Call, false);
-            Assert.Throws<InvalidOperationException>(() => tracer.MarkAsSuccess(TestItem.AddressA, 21000, Bytes.Empty, new LogEntry[] {}));
+            Assert.Throws<InvalidOperationException>(() => tracer.MarkAsSuccess(TestItem.AddressA, 21000, Bytes.Empty, new LogEntry[] { }));
         }
-        
+
         [Test]
         public void Is_tracing_rewards_only_when_rewards_trace_type_selected()
         {
             ParityLikeBlockTracer tracer = new ParityLikeBlockTracer(ParityTraceTypes.All ^ ParityTraceTypes.Rewards);
             Assert.False(tracer.IsTracingRewards);
-            
+
             ParityLikeBlockTracer tracer2 = new ParityLikeBlockTracer(ParityTraceTypes.Rewards);
             Assert.True(tracer2.IsTracingRewards);
+        }
+
+        private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteInitAndTraceParityCall(params byte[] code)
+        {
+            (var block, var transaction) = PrepareInitTx(BlockNumber, 100000, code);
+            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+            _processor.Execute(transaction, block.Header, tracer);
+            return (tracer.BuildResult(), block, transaction);
+        }
+
+        private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(params byte[] code)
+        {
+            (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
+            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.VmTrace);
+            _processor.Execute(transaction, block.Header, tracer);
+            return (tracer.BuildResult(), block, transaction);
+        }
+
+        private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(ParityTraceTypes traceTypes, params byte[] code)
+        {
+            (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
+            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, traceTypes);
+            _processor.Execute(transaction, block.Header, tracer);
+            return (tracer.BuildResult(), block, transaction);
+        }
+
+        private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(byte[] input, UInt256 value, params byte[] code)
+        {
+            (var block, var transaction) = PrepareTx(BlockNumber, 100000, code, input, value);
+            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+            _processor.Execute(transaction, block.Header, tracer);
+            return (tracer.BuildResult(), block, transaction);
         }
     }
 }

@@ -64,7 +64,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Timestamp = block.Timestamp;
             TotalDifficulty = block.TotalDifficulty ?? 0;
             Transactions = includeFullTransactionData ? block.Transactions.Select((t, idx) => new TransactionForRpc(block.Hash, block.Number, idx, t)).ToArray() : (object[])block.Transactions.Select(t => t.Hash).ToArray();
-            TransactionsRoot = block.TransactionsRoot;
+            TransactionsRoot = block.TxRoot;
             Uncles = block.Ommers.Select(o => o.Hash);
         }
         

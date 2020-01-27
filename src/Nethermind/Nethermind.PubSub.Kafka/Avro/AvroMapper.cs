@@ -52,7 +52,7 @@ namespace Nethermind.PubSub.Kafka.Avro
                 logsBloom = block.Header.Bloom.ToString(),
                 receiptsRoot = block.Header.ReceiptsRoot.ToString(),
                 stateRoot = block.Header.StateRoot.ToString(),
-                transactionRoot = block.TransactionsRoot.ToString(),
+                transactionRoot = block.TxRoot.ToString(),
                 totalDifficulty = block.TotalDifficulty?.ToString() ?? string.Empty,
                 uncles = block.Ommers?.Select(o => o.Hash.ToString()).ToList() ?? new List<string>(),
                 sha3uncles = block.Header.OmmersHash.ToString()

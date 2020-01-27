@@ -50,7 +50,7 @@ namespace Nethermind.Evm.Test
         public void Test(string codeHex, long gasUsed, long refund, byte originalValue)
         {
             TestState.CreateAccount(Recipient, 0);
-            Storage.Set(new StorageAddress(Recipient, 0), new [] {originalValue});
+            Storage.Set(new StorageCell(Recipient, 0), new [] {originalValue});
             Storage.Commit();
             TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
             

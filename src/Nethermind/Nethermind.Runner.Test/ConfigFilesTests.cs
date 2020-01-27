@@ -18,6 +18,7 @@ using System.IO;
 using System.Net;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.DataMarketplace.Core.Configs;

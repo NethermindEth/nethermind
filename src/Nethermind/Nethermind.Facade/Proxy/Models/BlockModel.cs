@@ -43,17 +43,19 @@ namespace Nethermind.Facade.Proxy.Models
         public Keccak TransactionsRoot { get; set; }
 
         public Block ToBlock()
-            => new Block(new BlockHeader(ParentHash, Sha3Uncles, Miner, Difficulty, (long) Number,
-                (long) GasLimit, Timestamp, ExtraData))
-            {
-                StateRoot = StateRoot,
-                GasUsed = (long) GasUsed,
-                Hash = Hash,
-                MixHash = MixHash,
-                Nonce = (ulong) Nonce,
-                ReceiptsRoot = ReceiptsRoot,
-                TotalDifficulty = TotalDifficulty,
-                TransactionsRoot = TransactionsRoot,
-            };
+        {
+            Block block = new Block(new BlockHeader(ParentHash, Sha3Uncles, Miner, Difficulty, (long) Number,
+                (long) GasLimit, Timestamp, ExtraData));
+
+            block.Header.StateRoot = StateRoot;
+            block.Header.GasUsed = (long) GasUsed;
+            block.Header.Hash = Hash;
+            block.Header.MixHash = MixHash;
+            block.Header.Nonce = (ulong) Nonce;
+            block.Header.ReceiptsRoot = ReceiptsRoot;
+            block.Header.TotalDifficulty = TotalDifficulty;
+            block.Header.TxRoot = TransactionsRoot;
+            return block;
+        }
     }
 }

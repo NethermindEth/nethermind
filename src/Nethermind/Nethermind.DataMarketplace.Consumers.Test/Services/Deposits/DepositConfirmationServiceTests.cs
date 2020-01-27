@@ -230,7 +230,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             var block = GetBlock();
             var deposit = GetDepositDetails();
             var transaction = GetTransaction();
-            block.Hash = transaction.BlockHash;
+            block.Header.Hash = transaction.BlockHash;
             _blockchainBridge.GetTransactionAsync(deposit.Transaction.Hash).Returns(transaction);
             _blockchainBridge.GetLatestBlockNumberAsync().Returns(latestBlockNumber);
             _blockchainBridge.FindBlockAsync(latestBlockNumber).Returns(block);
@@ -245,7 +245,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         private static Block GetBlock()
         {
             var block = Build.A.Block.TestObject;
-            block.Number = 2;
+            block.Header.Number = 2;
 
             return block;
         }

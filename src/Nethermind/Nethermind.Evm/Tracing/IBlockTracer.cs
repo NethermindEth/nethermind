@@ -17,6 +17,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Store;
 
 namespace Nethermind.Evm.Tracing
 {
@@ -26,6 +27,11 @@ namespace Nethermind.Evm.Tracing
         void ReportReward(Address author, string rewardType, UInt256 rewardValue);
         void StartNewBlockTrace(Block block);
         ITxTracer StartNewTxTrace(Keccak txHash);
+
+        void BeforeRestore(IStateProvider state)
+        {
+        }
+
         void EndTxTrace();
     }
 }

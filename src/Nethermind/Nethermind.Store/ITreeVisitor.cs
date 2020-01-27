@@ -18,29 +18,20 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Store
 {
-    public class VisitContext
-    {
-        public int Level { get; set; }
-
-        public bool IsStorage { get; set; }
-
-        public int? BranchChildIndex { get; set; }
-    }
-    
     public interface ITreeVisitor
     {
         bool ShouldVisit(Keccak nextNode);
         
-        void VisitTree(Keccak rootHash, VisitContext visitContext);
+        void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext);
         
-        void VisitMissingNode(Keccak nodeHash, VisitContext visitContext);
+        void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext);
         
-        void VisitBranch(TrieNode node, VisitContext visitContext);
+        void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext);
         
-        void VisitExtension(TrieNode node, VisitContext visitContext);
+        void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext);
         
-        void VisitLeaf(TrieNode node, VisitContext visitContext, byte[] value = null);
+        void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null);
         
-        void VisitCode(Keccak codeHash, VisitContext visitContext);
+        void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext);
     }
 }

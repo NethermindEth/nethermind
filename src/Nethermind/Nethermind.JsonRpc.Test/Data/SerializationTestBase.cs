@@ -18,6 +18,7 @@ using System;
 using System.IO;
 using System.Text;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -63,7 +64,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
         private static JsonSerializer BuildSerializer<T>()
         {
-            TraceModule module = new TraceModule(Substitute.For<IBlockchainBridge>(), NullLogManager.Instance, Substitute.For<ITracer>());
+            TraceModule module = new TraceModule(Substitute.For<IBlockchainBridge>(), Substitute.For<IParityStyleTracer>());
 
             JsonSerializer serializer = new JsonSerializer();
             foreach (JsonConverter converter in EthModuleFactory.Converters)

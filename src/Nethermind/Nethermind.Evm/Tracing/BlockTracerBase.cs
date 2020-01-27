@@ -25,11 +25,10 @@ namespace Nethermind.Evm.Tracing
     {
         private readonly Keccak _txHash;
 
-        private bool _isTracingEntireBlock;
+        private bool IsTracingEntireBlock => _txHash == null;
 
         protected BlockTracerBase()
         {
-            _isTracingEntireBlock = true;
             TxTraces = new List<TTrace>();
         }
 
@@ -39,7 +38,7 @@ namespace Nethermind.Evm.Tracing
             TxTraces = new List<TTrace>();
         }
 
-        protected TTracer CurrentTxTracer { get; set; }
+        private TTracer CurrentTxTracer { get; set; }
 
         protected abstract TTracer OnStart(Keccak txHash);
         protected abstract TTrace OnEnd(TTracer txTracer);
@@ -54,29 +53,22 @@ namespace Nethermind.Evm.Tracing
 
         ITxTracer IBlockTracer.StartNewTxTrace(Keccak txHash)
         {
-            if (_isTracingEntireBlock || _txHash == txHash)
+            if (IsTracingEntireBlock || txHash == _txHash)
             {
                 CurrentTxTracer = OnStart(txHash);
                 return CurrentTxTracer;
             }
-            
-            // if(!_isTracingEntireBlock && _txHash != txHash)
-            // {
-            //     throw new InvalidOperationException($"Unexpected tx trace started - awaiting {_txHash}, received {txHash}");
-            // }
 
             return NullTxTracer.Instance;
         }
 
         void IBlockTracer.EndTxTrace()
         {
-            if (CurrentTxTracer == null)
+            if (CurrentTxTracer != null)
             {
-                return;
+                TxTraces.Add(OnEnd(CurrentTxTracer));
+                CurrentTxTracer = null;
             }
-                
-            TxTraces.Add(OnEnd(CurrentTxTracer));
-            CurrentTxTracer = null;
         }
 
         protected List<TTrace> TxTraces { get; }

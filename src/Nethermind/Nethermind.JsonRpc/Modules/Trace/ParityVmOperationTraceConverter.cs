@@ -17,6 +17,7 @@
 using System;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.ParityStyle;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Trace
@@ -97,7 +98,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public override ParityVmOperationTrace ReadJson(JsonReader reader, Type objectType, ParityVmOperationTrace existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
-            throw new NotImplementedException();
+            throw new NotSupportedException();
         }
     }
 }

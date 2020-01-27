@@ -178,7 +178,7 @@ namespace Nethermind.State.Test.Runner
             throw new NotSupportedException();
         }
 
-        public void ReportStorageChange(StorageAddress storageAddress, byte[] before, byte[] after)
+        public void ReportStorageChange(StorageCell storageAddress, byte[] before, byte[] after)
         {
             throw new NotSupportedException();
         }

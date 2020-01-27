@@ -80,28 +80,28 @@ namespace Nethermind.Store.Test
         public void Same_address_same_index_different_values_restore(int snapshot)
         {
             StorageProvider provider = BuildStorageProvider();
-            provider.Set(new StorageAddress(_address1, 1), _values[1]);
-            provider.Set(new StorageAddress(_address1, 1), _values[2]);
-            provider.Set(new StorageAddress(_address1, 1), _values[3]);
+            provider.Set(new StorageCell(_address1, 1), _values[1]);
+            provider.Set(new StorageCell(_address1, 1), _values[2]);
+            provider.Set(new StorageCell(_address1, 1), _values[3]);
             provider.Restore(snapshot);
 
-            Assert.AreEqual(_values[snapshot + 1], provider.Get(new StorageAddress(_address1, 1)));
+            Assert.AreEqual(_values[snapshot + 1], provider.Get(new StorageCell(_address1, 1)));
         }
 
         [Test]
         public void Keep_in_cache()
         {
             StorageProvider provider = BuildStorageProvider();
-            provider.Set(new StorageAddress(_address1, 1), _values[1]);
+            provider.Set(new StorageCell(_address1, 1), _values[1]);
             provider.Commit();
-            provider.Get(new StorageAddress(_address1, 1));
-            provider.Set(new StorageAddress(_address1, 1), _values[2]);
+            provider.Get(new StorageCell(_address1, 1));
+            provider.Set(new StorageCell(_address1, 1), _values[2]);
             provider.Restore(-1);
-            provider.Set(new StorageAddress(_address1, 1), _values[2]);
+            provider.Set(new StorageCell(_address1, 1), _values[2]);
             provider.Restore(-1);
-            provider.Set(new StorageAddress(_address1, 1), _values[2]);
+            provider.Set(new StorageCell(_address1, 1), _values[2]);
             provider.Restore(-1);
-            Assert.AreEqual(_values[1], provider.Get(new StorageAddress(_address1, 1)));
+            Assert.AreEqual(_values[1], provider.Get(new StorageCell(_address1, 1)));
         }
 
         [TestCase(-1)]
@@ -111,83 +111,83 @@ namespace Nethermind.Store.Test
         public void Same_address_different_index(int snapshot)
         {
             StorageProvider provider = BuildStorageProvider();
-            provider.Set(new StorageAddress(_address1, 1), _values[1]);
-            provider.Set(new StorageAddress(_address1, 2), _values[2]);
-            provider.Set(new StorageAddress(_address1, 3), _values[3]);
+            provider.Set(new StorageCell(_address1, 1), _values[1]);
+            provider.Set(new StorageCell(_address1, 2), _values[2]);
+            provider.Set(new StorageCell(_address1, 3), _values[3]);
             provider.Restore(snapshot);
 
-            Assert.AreEqual(_values[Math.Min(snapshot + 1, 1)], provider.Get(new StorageAddress(_address1, 1)));
+            Assert.AreEqual(_values[Math.Min(snapshot + 1, 1)], provider.Get(new StorageCell(_address1, 1)));
         }
 
         [Test]
         public void Commit_restore()
         {
             StorageProvider provider = BuildStorageProvider();
-            provider.Set(new StorageAddress(_address1, 1), _values[1]);
-            provider.Set(new StorageAddress(_address1, 2), _values[2]);
-            provider.Set(new StorageAddress(_address1, 3), _values[3]);
+            provider.Set(new StorageCell(_address1, 1), _values[1]);
+            provider.Set(new StorageCell(_address1, 2), _values[2]);
+            provider.Set(new StorageCell(_address1, 3), _values[3]);
             provider.Commit();
-            provider.Set(new StorageAddress(_address2, 1), _values[4]);
-            provider.Set(new StorageAddress(_address2, 2), _values[5]);
-            provider.Set(new StorageAddress(_address2, 3), _values[6]);
+            provider.Set(new StorageCell(_address2, 1), _values[4]);
+            provider.Set(new StorageCell(_address2, 2), _values[5]);
+            provider.Set(new StorageCell(_address2, 3), _values[6]);
             provider.Commit();
-            provider.Set(new StorageAddress(_address1, 1), _values[7]);
-            provider.Set(new StorageAddress(_address1, 2), _values[8]);
-            provider.Set(new StorageAddress(_address1, 3), _values[9]);
+            provider.Set(new StorageCell(_address1, 1), _values[7]);
+            provider.Set(new StorageCell(_address1, 2), _values[8]);
+            provider.Set(new StorageCell(_address1, 3), _values[9]);
             provider.Commit();
-            provider.Set(new StorageAddress(_address2, 1), _values[10]);
-            provider.Set(new StorageAddress(_address2, 2), _values[11]);
-            provider.Set(new StorageAddress(_address2, 3), _values[12]);
+            provider.Set(new StorageCell(_address2, 1), _values[10]);
+            provider.Set(new StorageCell(_address2, 2), _values[11]);
+            provider.Set(new StorageCell(_address2, 3), _values[12]);
             provider.Commit();
             provider.Restore(-1);
 
-            Assert.AreEqual(_values[7], provider.Get(new StorageAddress(_address1, 1)));
-            Assert.AreEqual(_values[8], provider.Get(new StorageAddress(_address1, 2)));
-            Assert.AreEqual(_values[9], provider.Get(new StorageAddress(_address1, 3)));
-            Assert.AreEqual(_values[10], provider.Get(new StorageAddress(_address2, 1)));
-            Assert.AreEqual(_values[11], provider.Get(new StorageAddress(_address2, 2)));
-            Assert.AreEqual(_values[12], provider.Get(new StorageAddress(_address2, 3)));
+            Assert.AreEqual(_values[7], provider.Get(new StorageCell(_address1, 1)));
+            Assert.AreEqual(_values[8], provider.Get(new StorageCell(_address1, 2)));
+            Assert.AreEqual(_values[9], provider.Get(new StorageCell(_address1, 3)));
+            Assert.AreEqual(_values[10], provider.Get(new StorageCell(_address2, 1)));
+            Assert.AreEqual(_values[11], provider.Get(new StorageCell(_address2, 2)));
+            Assert.AreEqual(_values[12], provider.Get(new StorageCell(_address2, 3)));
         }
 
         [Test]
         public void Commit_no_changes()
         {
             StorageProvider provider = BuildStorageProvider();
-            provider.Set(new StorageAddress(_address1, 1), _values[1]);
-            provider.Set(new StorageAddress(_address1, 2), _values[2]);
-            provider.Set(new StorageAddress(_address1, 3), _values[3]);
+            provider.Set(new StorageCell(_address1, 1), _values[1]);
+            provider.Set(new StorageCell(_address1, 2), _values[2]);
+            provider.Set(new StorageCell(_address1, 3), _values[3]);
             provider.Restore(-1);
             provider.Commit();
 
-            Assert.IsTrue(provider.Get(new StorageAddress(_address1, 1)).IsZero());
+            Assert.IsTrue(provider.Get(new StorageCell(_address1, 1)).IsZero());
         }
 
         [Test]
         public void Commit_no_changes_2()
         {
             StorageProvider provider = BuildStorageProvider();
-            provider.Get(new StorageAddress(_address1, 1));
-            provider.Get(new StorageAddress(_address1, 1));
-            provider.Get(new StorageAddress(_address1, 1));
-            provider.Set(new StorageAddress(_address1, 1), _values[1]);
-            provider.Set(new StorageAddress(_address1, 1), _values[2]);
-            provider.Set(new StorageAddress(_address1, 1), _values[3]);
+            provider.Get(new StorageCell(_address1, 1));
+            provider.Get(new StorageCell(_address1, 1));
+            provider.Get(new StorageCell(_address1, 1));
+            provider.Set(new StorageCell(_address1, 1), _values[1]);
+            provider.Set(new StorageCell(_address1, 1), _values[2]);
+            provider.Set(new StorageCell(_address1, 1), _values[3]);
             provider.Restore(2);
             provider.Restore(1);
             provider.Restore(0);
-            provider.Get(new StorageAddress(_address1, 1));
-            provider.Get(new StorageAddress(_address1, 1));
-            provider.Get(new StorageAddress(_address1, 1));
-            provider.Set(new StorageAddress(_address1, 1), _values[1]);
-            provider.Set(new StorageAddress(_address1, 1), _values[2]);
-            provider.Set(new StorageAddress(_address1, 1), _values[3]);
+            provider.Get(new StorageCell(_address1, 1));
+            provider.Get(new StorageCell(_address1, 1));
+            provider.Get(new StorageCell(_address1, 1));
+            provider.Set(new StorageCell(_address1, 1), _values[1]);
+            provider.Set(new StorageCell(_address1, 1), _values[2]);
+            provider.Set(new StorageCell(_address1, 1), _values[3]);
             provider.Restore(-1);
-            provider.Get(new StorageAddress(_address1, 1));
-            provider.Get(new StorageAddress(_address1, 1));
-            provider.Get(new StorageAddress(_address1, 1));
+            provider.Get(new StorageCell(_address1, 1));
+            provider.Get(new StorageCell(_address1, 1));
+            provider.Get(new StorageCell(_address1, 1));
             provider.Commit();
 
-            Assert.True(provider.Get(new StorageAddress(_address1, 1)).IsZero());
+            Assert.True(provider.Get(new StorageCell(_address1, 1)).IsZero());
         }
         
         [Test]
@@ -195,7 +195,7 @@ namespace Nethermind.Store.Test
         {
             // block 1
             StorageProvider storageProvider = BuildStorageProvider();
-            storageProvider.Set(new StorageAddress(_address1, 1), _values[1]);
+            storageProvider.Set(new StorageCell(_address1, 1), _values[1]);
             storageProvider.Commit();
             _stateProvider.Commit(Frontier.Instance);
             storageProvider.CommitTrees();
@@ -203,7 +203,7 @@ namespace Nethermind.Store.Test
             
             // block 2
             Keccak stateRoot = _stateProvider.StateRoot;
-            storageProvider.Set(new StorageAddress(_address1, 1), _values[2]);
+            storageProvider.Set(new StorageCell(_address1, 1), _values[2]);
             storageProvider.Commit();
             _stateProvider.Commit(Frontier.Instance);
             
@@ -212,7 +212,7 @@ namespace Nethermind.Store.Test
             storageProvider.Reset();
             _stateProvider.StateRoot = stateRoot;
             
-            byte[] valueAfter = storageProvider.Get(new StorageAddress(_address1, 1));
+            byte[] valueAfter = storageProvider.Get(new StorageCell(_address1, 1));
             
             Assert.AreEqual(_values[1], valueAfter);
         }
@@ -224,13 +224,13 @@ namespace Nethermind.Store.Test
             StorageProvider storageProvider = BuildStorageProvider();
             for (int i = 0; i < Resettable.StartCapacity; i++)
             {
-                storageProvider.Set(new StorageAddress(_address1, 1), _values[i % 2]);
+                storageProvider.Set(new StorageCell(_address1, 1), _values[i % 2]);
             }
             
             storageProvider.Commit();
             _stateProvider.Commit(Frontier.Instance);
             
-            byte[] valueAfter = storageProvider.Get(new StorageAddress(_address1, 1));
+            byte[] valueAfter = storageProvider.Get(new StorageCell(_address1, 1));
             Assert.AreEqual(_values[(Resettable.StartCapacity + 1) % 2], valueAfter);
         }
     }

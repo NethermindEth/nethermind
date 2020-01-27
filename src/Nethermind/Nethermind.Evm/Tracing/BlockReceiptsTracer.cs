@@ -28,8 +28,6 @@ namespace Nethermind.Evm.Tracing
     public class BlockReceiptsTracer : IBlockTracer,  ITxTracer
     {
         private Block _block;
-        private readonly ISpecProvider _specProvider;
-        private readonly IStateProvider _stateProvider;
         public bool IsTracingReceipt => true;
         public bool IsTracingActions => _currentTxTracer.IsTracingActions;
         public bool IsTracingOpLevelStorage => _currentTxTracer.IsTracingOpLevelStorage;
@@ -38,35 +36,51 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingCode => _currentTxTracer.IsTracingCode;
         public bool IsTracingStack => _currentTxTracer.IsTracingStack;
         public bool IsTracingState => _currentTxTracer.IsTracingState;
+        
+        public bool IsTracingBlockHash => _currentTxTracer.IsTracingBlockHash;
 
         private IBlockTracer _otherTracer;
 
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
         {
-            TxReceipts[_currentIndex] = BuildReceipt(recipient, gasSpent, StatusCode.Success, logs);
+            TxReceipts[_currentIndex] = BuildReceipt(recipient, gasSpent, StatusCode.Success, logs, stateRoot);
+            
+            // hacky way to support nested receipt tracers
+            if (_otherTracer is ITxTracer otherTxTracer)
+            {
+                otherTxTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
+            }
+            
             if (_currentTxTracer.IsTracingReceipt)
             {
                 _currentTxTracer.MarkAsSuccess(recipient, gasSpent, output, logs);
             }
         }
 
-        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error)
+        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
         {
-            TxReceipts[_currentIndex] = BuildFailedReceipt(recipient, gasSpent, error);
+            TxReceipts[_currentIndex] = BuildFailedReceipt(recipient, gasSpent, error, stateRoot);
+            
+            // hacky way to support nested receipt tracers
+            if (_otherTracer is ITxTracer otherTxTracer)
+            {
+                otherTxTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
+            }
+            
             if (_currentTxTracer.IsTracingReceipt)
             {
                 _currentTxTracer.MarkAsFailed(recipient, gasSpent, output, error);
             }
         }
 
-        private TxReceipt BuildFailedReceipt(Address recipient, long gasSpent, string error)
+        private TxReceipt BuildFailedReceipt(Address recipient, long gasSpent, string error, Keccak stateRoot = null)
         {
-            TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Failure, LogEntry.EmptyLogs);
+            TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Failure, LogEntry.EmptyLogs, stateRoot);
             receipt.Error = error;
             return receipt;
         }
 
-        private TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries)
+        private TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Keccak stateRoot = null)
         {
             Transaction transaction = _block.Transactions[_currentIndex];
             TxReceipt txReceipt = new TxReceipt();
@@ -75,20 +89,14 @@ namespace Nethermind.Evm.Tracing
             {
                 if (_block.Bloom == Bloom.Empty)
                 {
-                    _block.Bloom = new Bloom();
+                    _block.Header.Bloom = new Bloom();
                 }
             }
             
             txReceipt.Bloom = logEntries.Length == 0 ? Bloom.Empty : new Bloom(logEntries, _block.Bloom);
             txReceipt.GasUsedTotal = _block.GasUsed;
-            if (!_specProvider.GetSpec(_block.Number).IsEip658Enabled)
-            {
-                txReceipt.PostTransactionState = _stateProvider.StateRoot;
-            }
-
             txReceipt.StatusCode = statusCode;
             txReceipt.Recipient = transaction.IsContractCreation ? null : recipient;
-
             txReceipt.BlockHash = _block.Hash;
             txReceipt.BlockNumber = _block.Number;
             txReceipt.Index = _currentIndex;
@@ -96,6 +104,7 @@ namespace Nethermind.Evm.Tracing
             txReceipt.Sender = transaction.SenderAddress;
             txReceipt.ContractAddress = transaction.IsContractCreation ? recipient : null;
             txReceipt.TxHash = transaction.Hash;
+            txReceipt.PostTransactionState = stateRoot;
 
             return txReceipt;
         }
@@ -154,10 +163,20 @@ namespace Nethermind.Evm.Tracing
         {
             _currentTxTracer.ReportNonceChange(address, before, after);
         }
-
-        public void ReportStorageChange(StorageAddress storageAddress, byte[] before, byte[] after)
+        
+        public void ReportAccountRead(Address address)
         {
-            _currentTxTracer.ReportStorageChange(storageAddress, before, after);
+            _currentTxTracer.ReportAccountRead(address);
+        }
+
+        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
+        {
+            _currentTxTracer.ReportStorageChange(storageCell, before, after);
+        }
+        
+        public void ReportStorageRead(StorageCell storageCell)
+        {
+            _currentTxTracer.ReportStorageRead(storageCell);
         }
 
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
@@ -204,6 +223,11 @@ namespace Nethermind.Evm.Tracing
         {
             _currentTxTracer.ReportStackPush(stackItem);
         }
+        
+        public void ReportBlockHash(Keccak blockHash)
+        {
+            _currentTxTracer.ReportBlockHash(blockHash);
+        }
 
         public void SetOperationMemory(List<string> memoryTrace)
         {
@@ -219,6 +243,11 @@ namespace Nethermind.Evm.Tracing
         public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
         {
             _otherTracer.ReportReward(author, rewardType, rewardValue);
+        }
+
+        public void BeforeRestore(IStateProvider state)
+        {
+            _otherTracer.BeforeRestore(state);
         }
 
         public void StartNewBlockTrace(Block block)
@@ -244,12 +273,6 @@ namespace Nethermind.Evm.Tracing
         {
             _otherTracer.EndTxTrace();
             _currentIndex++;
-        }
-
-        public BlockReceiptsTracer(ISpecProvider specProvider, IStateProvider stateProvider)
-        {
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
         }
 
         public void SetOtherTracer(IBlockTracer blockTracer)

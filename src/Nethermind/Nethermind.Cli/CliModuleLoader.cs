@@ -33,15 +33,17 @@ namespace Nethermind.Cli
     public class CliModuleLoader
     {
         private readonly IJsonRpcClient _client;
+        private readonly ICliConsole _cliConsole;
         private readonly ICliEngine _engine;
 
         public List<string> ModuleNames { get; set; } = new List<string>();
         public Dictionary<string, List<string>> MethodsByModules { get; set; } = new Dictionary<string, List<string>>();
         
-        public CliModuleLoader(ICliEngine engine, IJsonRpcClient client)
+        public CliModuleLoader(ICliEngine engine, IJsonRpcClient client, ICliConsole cliConsole)
         {
             _engine = engine ?? throw new ArgumentNullException(nameof(engine));
             _client = client ?? throw new ArgumentNullException(nameof(client));
+            _cliConsole = cliConsole ?? throw new ArgumentNullException(nameof(cliConsole));
         }
 
         /// <summary>
@@ -73,7 +75,7 @@ namespace Nethermind.Cli
         public void LoadModule(CliModuleBase module)
         {
             var cliModuleAttribute = module.GetType().GetCustomAttribute<CliModuleAttribute>();
-            CliConsole.WriteLine($"module ({cliModuleAttribute.ModuleName})");
+            _cliConsole.WriteLine($"module ({cliModuleAttribute.ModuleName})");
             ModuleNames.Add(cliModuleAttribute.ModuleName);
             MethodsByModules[cliModuleAttribute.ModuleName] = new List<string>();
             
@@ -107,23 +109,23 @@ namespace Nethermind.Cli
 
                 if (isProperty)
                 {
-                    CliConsole.WriteKeyword($"  {objectName}");
-                    CliConsole.WriteLine($".{itemName}");
+                    _cliConsole.WriteKeyword($"  {objectName}");
+                    _cliConsole.WriteLine($".{itemName}");
                     
                     MethodsByModules[objectName].Add(itemName);
                     AddProperty(instance, itemName, nativeDelegate);
                 }
                 else
                 {
-                    CliConsole.WriteKeyword($"  {objectName}");
-                    CliConsole.WriteLine($".{itemName}({string.Join(", ", methodInfo.GetParameters().Select(p => p.Name))})");
+                    _cliConsole.WriteKeyword($"  {objectName}");
+                    _cliConsole.WriteLine($".{itemName}({string.Join(", ", methodInfo.GetParameters().Select(p => p.Name))})");
 
                     MethodsByModules[objectName].Add(itemName + "(");
                     AddMethod(instance, itemName, nativeDelegate);
                 }
             }
             
-            CliConsole.WriteLine();
+            _cliConsole.WriteLine();
         }
         
         public void LoadModule(Type type)

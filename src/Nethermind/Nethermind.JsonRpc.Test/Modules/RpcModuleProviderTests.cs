@@ -16,6 +16,7 @@
 
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Net;
+using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
@@ -34,6 +35,17 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public void Module_provider_will_recognize_disabled_modules()
+        {
+            JsonRpcConfig jsonRpcConfig = new JsonRpcConfig();
+            jsonRpcConfig.EnabledModules = new string[0];
+            _moduleProvider = new RpcModuleProvider(jsonRpcConfig, LimboLogs.Instance);
+            _moduleProvider.Register(new SingletonModulePool<IProofModule>(Substitute.For<IProofModule>(), false));
+            ModuleResolution resolution = _moduleProvider.Check("proof_call");
+            Assert.AreEqual(ModuleResolution.Disabled, resolution);
+        }
+        
+        [Test]
         public void Method_resolution_is_not_case_sensitive()
         {
             SingletonModulePool<INetModule> pool = new SingletonModulePool<INetModule>(new NetModule(LimboLogs.Instance, Substitute.For<INetBridge>()), true);
@@ -46,7 +58,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Returns_politely_when_no_method_found()
         {
-            SingletonModulePool<INetModule> pool = new SingletonModulePool<INetModule>(new NetModule(LimboLogs.Instance, Substitute.For<INetBridge>()), true);
+            SingletonModulePool<INetModule> pool = new SingletonModulePool<INetModule>(Substitute.For<INetModule>(), true);
             _moduleProvider.Register(pool);
 
             ModuleResolution resolution = _moduleProvider.Check("unknown_method");

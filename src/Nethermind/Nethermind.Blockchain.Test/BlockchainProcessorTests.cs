@@ -158,7 +158,7 @@ namespace Nethermind.Blockchain.Test
                             continue;
                         }
 
-                        block.Author = Address.Zero;
+                        block.Header.Author = Address.Zero;
                         _allowed.Remove(block.Hash);
                         return;
                     }

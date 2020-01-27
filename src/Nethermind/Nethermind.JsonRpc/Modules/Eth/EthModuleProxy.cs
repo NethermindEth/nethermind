@@ -19,6 +19,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -26,8 +27,9 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade.Proxy;
 using Nethermind.Facade.Proxy.Models;
 using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Eip1186;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Store;
+using Nethermind.Store.Proofs;
 using Nethermind.Wallet;
 
 namespace Nethermind.JsonRpc.Modules.Eth
@@ -135,7 +137,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public async Task<ResultWrapper<Keccak>> eth_sendTransaction(TransactionForRpc transactionForRpc)
         {
-            var transaction = transactionForRpc.ToTransaction();
+            var transaction = transactionForRpc.ToTransactionWithDefaults();
             if (transaction.Signature is null)
             {
                 var chainIdResult = await _proxy.eth_chainId();

@@ -29,7 +29,7 @@ namespace Nethermind.JsonRpc.Test
     {
         public static JsonRpcResponse TestRequest<T>(T module, string method, params string[] parameters) where T : class, IModule
         {
-            IJsonRpcService service = BuildRpcService<T>(module);
+            IJsonRpcService service = BuildRpcService(module);
             JsonRpcRequest request = GetJsonRequest(method, parameters);
             return service.SendRequestAsync(request).Result;
         }

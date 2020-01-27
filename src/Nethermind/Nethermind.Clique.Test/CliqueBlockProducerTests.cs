@@ -92,12 +92,13 @@ namespace Nethermind.Clique.Test
                 
                 ISnapshotableDb stateDb = new StateDb();
                 ISnapshotableDb codeDb = new StateDb();
-                
+
                 ISpecProvider specProvider = RinkebySpecProvider.Instance;
 
                 StateProvider stateProvider = new StateProvider(stateDb, codeDb, nodeLogManager);
                 stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
                 stateProvider.Commit(GoerliSpecProvider.Instance.GenesisSpec);
+                stateProvider.CommitTree();
 
                 TxPool txPool = new TxPool(new InMemoryTxStorage(), _timestamper, _ethereumEcdsa, GoerliSpecProvider.Instance, new TxPoolConfig(), stateProvider, _logManager);
                 _pools[privateKey] = txPool;
@@ -115,9 +116,9 @@ namespace Nethermind.Clique.Test
 
 
 
-                _genesis.StateRoot = _genesis3Validators.StateRoot = stateProvider.StateRoot;
-                _genesis.Hash = _genesis.Header.CalculateHash();
-                _genesis3Validators.Hash = _genesis3Validators.Header.CalculateHash();
+                _genesis.Header.StateRoot = _genesis3Validators.Header.StateRoot = stateProvider.StateRoot;
+                _genesis.Header.Hash = _genesis.Header.CalculateHash();
+                _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
 
                 StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, nodeLogManager);
                 TransactionProcessor transactionProcessor = new TransactionProcessor(GoerliSpecProvider.Instance, stateProvider, storageProvider, new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, nodeLogManager), nodeLogManager);
@@ -176,9 +177,9 @@ namespace Nethermind.Clique.Test
                 byte[] extraData = Bytes.FromHexString(extraDataHex);
                 BlockHeader header = new BlockHeader(parentHash, ommersHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
                 Block genesis = new Block(header);
-                genesis.Hash = genesis.Header.CalculateHash();
-                genesis.StateRoot = Keccak.EmptyTreeHash;
-                genesis.TransactionsRoot = Keccak.EmptyTreeHash;
+                genesis.Header.Hash = genesis.Header.CalculateHash();
+                genesis.Header.StateRoot = Keccak.EmptyTreeHash;
+                genesis.Header.TxRoot = Keccak.EmptyTreeHash;
                 genesis.Header.ReceiptsRoot = Keccak.EmptyTreeHash;
 
                 return genesis;

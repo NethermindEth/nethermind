@@ -18,10 +18,12 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
 
@@ -30,11 +32,11 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
     public class DebugBridge : IDebugBridge
     {
         private readonly IConfigProvider _configProvider;
-        private readonly ITracer _tracer;
+        private readonly IGethStyleTracer _tracer;
         private readonly IBlockTree _blockTree;
         private Dictionary<string, IDb> _dbMappings;
 
-        public DebugBridge(IConfigProvider configProvider, IReadOnlyDbProvider dbProvider, ITracer tracer, IBlockProcessingQueue receiptsBlockQueue, IBlockTree blockTree)
+        public DebugBridge(IConfigProvider configProvider, IReadOnlyDbProvider dbProvider, IGethStyleTracer tracer, IBlockProcessingQueue receiptsBlockQueue, IBlockTree blockTree)
         {
             receiptsBlockQueue.ProcessingQueueEmpty += (sender, args) => _receiptProcessedEvent.Set();
             _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));

@@ -230,7 +230,7 @@ namespace Nethermind.HonestValidator
 
 //        public async Task ProcessProposerDutiesAsync(ulong time)
 //        {
-//            throw new System.NotImplementedException();
+//            throw new System.NotSupportedException();
 //        }
         
         /// <summary>

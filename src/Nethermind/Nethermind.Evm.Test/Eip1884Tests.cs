@@ -61,9 +61,9 @@ namespace Nethermind.Evm.Test
             AssertGas(result, 21000 + 2 * GasCostOf.CallEip150 + 24 + 21 + GasCostOf.VeryLow + 3 * GasCostOf.SelfBalance + 3 * GasCostOf.SSet);
             var balanceB = TestState.GetBalance(TestItem.AddressB);
             var balanceC = TestState.GetBalance(TestItem.AddressC);
-            AssertStorage(new StorageAddress(TestItem.AddressB, UInt256.Zero), balanceB);
-            AssertStorage(new StorageAddress(TestItem.AddressB, UInt256.One), balanceB);
-            AssertStorage(new StorageAddress(TestItem.AddressC, UInt256.Zero), balanceC);
+            AssertStorage(new StorageCell(TestItem.AddressB, UInt256.Zero), balanceB);
+            AssertStorage(new StorageCell(TestItem.AddressB, UInt256.One), balanceB);
+            AssertStorage(new StorageCell(TestItem.AddressC, UInt256.Zero), balanceC);
         }
 
         [Test]

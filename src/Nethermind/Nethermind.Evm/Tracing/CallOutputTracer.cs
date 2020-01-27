@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
@@ -33,6 +34,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingCode => false;
         public bool IsTracingStack => false;
         public bool IsTracingState => false;
+        public bool IsTracingBlockHash => false;
 
         public byte[] ReturnValue { get; set; }
         
@@ -42,14 +44,14 @@ namespace Nethermind.Evm.Tracing
         
         public byte StatusCode { get; set; }
         
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
         {
             GasSpent = gasSpent;
             ReturnValue = output;
             StatusCode = Evm.StatusCode.Success;
         }
 
-        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error)
+        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
         {
             
             GasSpent = gasSpent;
@@ -128,7 +130,7 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        public void ReportStorageChange(StorageAddress storageAddress, byte[] before, byte[] after)
+        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
         {
             throw new NotSupportedException();
         }
@@ -149,6 +151,11 @@ namespace Nethermind.Evm.Tracing
         }
 
         public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportBlockHash(Keccak blockHash)
         {
             throw new NotSupportedException();
         }

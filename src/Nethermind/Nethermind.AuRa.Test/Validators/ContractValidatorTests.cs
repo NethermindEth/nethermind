@@ -17,7 +17,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Security.Cryptography;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.AuRa.Contracts;
@@ -29,7 +28,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
@@ -39,7 +37,6 @@ using Nethermind.Specs;
 using Nethermind.Store;
 using Newtonsoft.Json;
 using NSubstitute;
-using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Validators
@@ -80,7 +77,7 @@ namespace Nethermind.AuRa.Test.Validators
                 ValidatorType = AuRaParameters.ValidatorType.Contract
             };
             
-            _block = new Block(Prepare.A.BlockHeader().WithNumber(1).WithAura(1, Bytes.Empty).TestObject, new BlockBody());
+            _block = new Block( Build.A.BlockHeader.WithNumber(1).WithAura(1, Bytes.Empty).TestObject, new BlockBody());
             
             _transactionProcessor = Substitute.For<ITransactionProcessor>();
             
@@ -162,7 +159,7 @@ namespace Nethermind.AuRa.Test.Validators
         {
             var initialValidator = Address.FromNumber(2000);
             SetupInitialValidators(initialValidator);
-            _block.Beneficiary = initialValidator;
+            _block.Header.Beneficiary = initialValidator;
             var validator = new ContractValidator(_validator, _stateProvider, _abiEncoder, _transactionProcessor, _blockTree, _receiptsStorage, _validatorStore, _validSealerStrategy, _logManager, 1);
             
             validator.PreProcess(_block);
@@ -201,8 +198,8 @@ namespace Nethermind.AuRa.Test.Validators
             IAuRaValidatorProcessor validator = new ContractValidator(_validator, _stateProvider, _abiEncoder, _transactionProcessor, _blockTree, _receiptsStorage, _validatorStore, _validSealerStrategy, _logManager, startBlockNumber);
             validator.SetFinalizationManager(_blockFinalizationManager);
 
-            _block.Number = 1;
-            _block.Beneficiary = initialValidator;
+            _block.Header.Number = 1;
+            _block.Header.Beneficiary = initialValidator;
             validator.PreProcess(_block);
 
             // getValidators should have been called
@@ -521,12 +518,12 @@ namespace Nethermind.AuRa.Test.Validators
                     blockNumber = test.Current.BlockNumber + i;
                 }
                 
-                _block.Number = blockNumber;
-                _block.Beneficiary = currentValidators[blockNumber % currentValidators.Length];
+                _block.Header.Number = blockNumber;
+                _block.Header.Beneficiary = currentValidators[blockNumber % currentValidators.Length];
                 _block.Header.AuRaStep = blockNumber;
-                _block.Hash = Keccak.Compute(blockNumber.ToString());
+                _block.Header.Hash = Keccak.Compute(blockNumber.ToString());
                 var txReceipts = test.GetReceipts(_block, _contractAddress, _abiEncoder, SetupAbiAddresses);
-                _block.Bloom = new Bloom(txReceipts.SelectMany(r => r.Logs).ToArray());
+                _block.Header.Bloom = new Bloom(txReceipts.SelectMany(r => r.Logs).ToArray());
                 
                 Action preProcess = () => validator.PreProcess(_block);
                 preProcess.Should().NotThrow<InvalidOperationException>(test.TestName);

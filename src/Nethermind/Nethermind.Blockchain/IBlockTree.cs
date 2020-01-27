@@ -19,13 +19,14 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain
 {
-    public interface IBlockTree
+    public interface IBlockTree : IBlockFinder
     {
         /// <summary>
         /// Chain ID that identifies the chain among the public and private chains (different IDs for mainnet, ETH classic, etc.)
@@ -82,11 +83,12 @@ namespace Nethermind.Blockchain
         AddBlockResult Insert(Block block);
         
         void Insert(IEnumerable<Block> blocks);
-        
+
         /// <summary>
         /// Suggests block for inclusion in the block tree.
         /// </summary>
         /// <param name="block">Block to be included</param>
+        /// <param name="shouldProcess">Whether a block should be processed or just added to the store</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
         AddBlockResult SuggestBlock(Block block, bool shouldProcess = true);
 
@@ -133,15 +135,7 @@ namespace Nethermind.Blockchain
         Task FixFastSyncGaps(CancellationToken cancellationToken);
         
         ChainLevelInfo FindLevel(long number);
-        
-        Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options);
-        
-        BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options);
-        
-        Block FindBlock(long blockNumber, BlockTreeLookupOptions options);
 
-        BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options);
-        
         Keccak FindHash(long blockNumber);
 
         BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse);

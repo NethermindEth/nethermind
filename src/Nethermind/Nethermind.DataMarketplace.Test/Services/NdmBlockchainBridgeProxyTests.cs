@@ -292,7 +292,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             block.Nonce.Should().Be((ulong)model.Nonce);
             block.ReceiptsRoot.Should().Be(model.ReceiptsRoot);
             block.TotalDifficulty.Should().Be(model.TotalDifficulty);
-            block.TransactionsRoot.Should().Be(model.TransactionsRoot);
+            block.TxRoot.Should().Be(model.TransactionsRoot);
         }
 
         private BlockModel GetBlockModel()

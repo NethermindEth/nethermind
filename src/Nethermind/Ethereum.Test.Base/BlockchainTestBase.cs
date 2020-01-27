@@ -103,6 +103,9 @@ namespace Ethereum.Test.Base
             {
                 stateProvider.CreateAccount(test.CurrentCoinbase, 0);
             }
+            
+            stateProvider.Commit(specProvider.GenesisSpec);
+            stateProvider.CommitTree();
 
             List<string> differences = RunAssertions(test, stateProvider);
             EthereumTestResult testResult = new EthereumTestResult();
@@ -122,7 +125,7 @@ namespace Ethereum.Test.Base
             {
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    storageProvider.Set(new StorageAddress(accountState.Key, storageItem.Key), storageItem.Value.WithoutLeadingZeros().ToArray());
+                    storageProvider.Set(new StorageCell(accountState.Key, storageItem.Key), storageItem.Value.WithoutLeadingZeros().ToArray());
                 }
 
                 stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);

@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.TxPools;
@@ -40,6 +41,8 @@ using Nethermind.Store.BeamSync;
 using Nethermind.Store.Repositories;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.FastSync;
+using Nethermind.Blockchain.Test.Validators;
+using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -250,6 +253,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             stateProvider.CreateAccount(TestItem.AddressA, 10000.Ether());
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree();
+            stateProvider.RecalculateStateRoot();
             stateDb.Commit();
 
             var storageProvider = new StorageProvider(stateDb, stateProvider, logManager);

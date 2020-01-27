@@ -86,8 +86,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.DbProvider.StateDb.Commit();
             _context.DbProvider.CodeDb.Commit();
 
-            genesis.StateRoot = _context.StateProvider.StateRoot;
-            genesis.Hash = genesis.Header.CalculateHash();
+            genesis.Header.StateRoot = _context.StateProvider.StateRoot;
+            genesis.Header.Hash = genesis.Header.CalculateHash();
 
             ManualResetEventSlim genesisProcessedEvent = new ManualResetEventSlim(false);
 

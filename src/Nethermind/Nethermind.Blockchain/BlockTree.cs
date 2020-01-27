@@ -24,6 +24,7 @@ using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
@@ -1231,6 +1232,10 @@ namespace Nethermind.Blockchain
         {
             return _chainLevelInfoRepository.LoadLevel(number);
         }
+
+        public Keccak HeadHash => Head?.Hash;
+        public Keccak GenesisHash => Genesis?.Hash;
+        public Keccak PendingHash => BestSuggestedHeader?.Hash;
 
         public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options)
         {

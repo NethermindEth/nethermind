@@ -135,7 +135,7 @@ namespace Nethermind.Core.Test.Builders
         
         public BlockBuilder WithBloom(Bloom bloom)
         {
-            TestObjectInternal.Bloom = bloom;
+            TestObjectInternal.Header.Bloom = bloom;
             return this;
         }
         

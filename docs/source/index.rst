@@ -24,6 +24,7 @@ ToC
    configuration
    cli
    jsonrpc
+   web3
    platforms
    firewall_configuration
    hardware_requirements

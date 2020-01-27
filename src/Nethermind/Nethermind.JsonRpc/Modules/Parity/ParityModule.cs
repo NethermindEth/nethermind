@@ -15,11 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc.Data;
@@ -35,11 +37,11 @@ namespace Nethermind.JsonRpc.Modules.Parity
         private readonly IBlockFinder _blockFinder;
         private readonly IReceiptStorage _receiptStorage;
         
-        public ParityModule(IEcdsa ecdsa, ITxPool txPool, IBlockTree blockTree, IReceiptStorage  receiptStorage, ILogManager logManager)
+        public ParityModule(IEcdsa ecdsa, ITxPool txPool, IBlockFinder blockFinder, IReceiptStorage  receiptStorage, ILogManager logManager)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _blockFinder = new BlockFinder(blockTree ?? throw new ArgumentNullException(nameof(blockTree)));
+            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         }
 
@@ -50,10 +52,9 @@ namespace Nethermind.JsonRpc.Modules.Parity
         
         public ResultWrapper<ReceiptForRpc[]> parity_getBlockReceipts(BlockParameter blockParameter)
         {
-            var filterBlock = blockParameter.ToFilterBlock();
-            var block = _blockFinder.GetBlock(filterBlock);
-            var receipts = _receiptStorage.FindForBlock(block);
-            var result = receipts.Zip(block.Transactions, (r, t) => new ReceiptForRpc(t.Hash, r));
+            Block block = _blockFinder.FindBlock(blockParameter);
+            TxReceipt[] receipts = _receiptStorage.FindForBlock(block);
+            IEnumerable<ReceiptForRpc> result = receipts.Zip(block.Transactions, (r, t) => new ReceiptForRpc(t.Hash, r));
             return ResultWrapper<ReceiptForRpc[]>.Success(result.ToArray());
         }
     }

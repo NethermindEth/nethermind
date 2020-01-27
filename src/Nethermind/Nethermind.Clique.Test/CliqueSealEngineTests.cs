@@ -113,7 +113,7 @@ namespace Nethermind.Clique.Test
             byte[] extraData = Bytes.FromHexString(GetGenesisExtraData());
             BlockHeader header = new BlockHeader(parentHash, ommersHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
             Block genesis = new Block(header, new BlockHeader[0]);            
-            genesis.Hash = genesis.CalculateHash();
+            genesis.Header.Hash = genesis.CalculateHash();
             
             // this would need to be loaded from rinkeby chainspec to include allocations
 //            Assert.AreEqual(new Keccak("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177"), genesis.Hash);
@@ -154,7 +154,7 @@ namespace Nethermind.Clique.Test
             BlockHeader header = new BlockHeader(parentHash, ommersHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
             header.MixHash = Keccak.Zero;
             Block block = new Block(header, new BlockHeader[0]);
-            block.Hash = block.CalculateHash();
+            block.Header.Hash = block.CalculateHash();
             return block;
         }
 
