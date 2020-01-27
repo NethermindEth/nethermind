@@ -139,6 +139,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             ReceiptWithProof receiptWithProof = _proofModule.proof_getTransactionReceipt(txHash, withHeader).Data;
             Assert.NotNull(receiptWithProof.Receipt);
             Assert.AreEqual(2, receiptWithProof.ReceiptProof.Length);
+            Assert.GreaterOrEqual(receiptWithProof.ReceiptProof.Last().Length, 256 /* bloom length */);
             if (withHeader)
             {
                 Assert.NotNull(receiptWithProof.BlockHeader);

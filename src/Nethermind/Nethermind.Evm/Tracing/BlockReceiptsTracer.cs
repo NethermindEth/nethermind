@@ -44,6 +44,13 @@ namespace Nethermind.Evm.Tracing
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
         {
             TxReceipts[_currentIndex] = BuildReceipt(recipient, gasSpent, StatusCode.Success, logs, stateRoot);
+            
+            // hacky way to support nested receipt tracers
+            if (_otherTracer is ITxTracer otherTxTracer)
+            {
+                otherTxTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
+            }
+            
             if (_currentTxTracer.IsTracingReceipt)
             {
                 _currentTxTracer.MarkAsSuccess(recipient, gasSpent, output, logs);
@@ -53,6 +60,13 @@ namespace Nethermind.Evm.Tracing
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
         {
             TxReceipts[_currentIndex] = BuildFailedReceipt(recipient, gasSpent, error, stateRoot);
+            
+            // hacky way to support nested receipt tracers
+            if (_otherTracer is ITxTracer otherTxTracer)
+            {
+                otherTxTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
+            }
+            
             if (_currentTxTracer.IsTracingReceipt)
             {
                 _currentTxTracer.MarkAsFailed(recipient, gasSpent, output, error);
