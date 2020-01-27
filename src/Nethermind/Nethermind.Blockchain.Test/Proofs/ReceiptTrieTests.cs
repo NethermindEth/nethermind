@@ -15,12 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
+using System.Linq;
 using Nethermind.Blockchain.Proofs;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using Nethermind.Store;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Proofs
@@ -58,6 +60,11 @@ namespace Nethermind.Blockchain.Test.Proofs
         
         private void VerifyProof(byte[][] proof, Keccak receiptRoot)
         {
+            TrieNode node = new TrieNode(NodeType.Unknown, new Rlp(proof.Last()));
+            node.ResolveNode(null);
+            TxReceipt receipt = new ReceiptDecoder().Decode(node.Value.AsRlpStream());
+            Assert.NotNull(receipt.Bloom);
+            
             for (int i = proof.Length; i > 0; i--)
             {
                 Keccak proofHash = Keccak.Compute(proof[i - 1]);
