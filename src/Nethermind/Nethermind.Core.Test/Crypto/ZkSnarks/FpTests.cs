@@ -24,13 +24,13 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
     public class FpTests
     {
         [Test]
-        public void InverseOf2_intiializes()
+        public void InverseOf2_initializes()
         {
             Fp _ = Fp.InverseOf2;
         }
 
         [Test]
-        public void NonResidue_intiializes()
+        public void NonResidue_initializes()
         {
             Fp _ = Fp.NonResidue;
         }
@@ -45,34 +45,6 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
         public void One_initializes()
         {
             Fp _ = Fp.One;
-        }
-
-        [Test]
-        public void One_is_reused()
-        {
-            // ReSharper disable once EqualExpressionComparison
-            Assert.True(ReferenceEquals(Fp.One, Fp.One));
-        }
-
-        [Test]
-        public void Zero_is_reused()
-        {
-            // ReSharper disable once EqualExpressionComparison
-            Assert.True(ReferenceEquals(Fp.Zero, Fp.Zero));
-        }
-
-        [Test]
-        public void InverseOf2_is_reused()
-        {
-            // ReSharper disable once EqualExpressionComparison
-            Assert.True(ReferenceEquals(Fp.InverseOf2, Fp.InverseOf2));
-        }
-
-        [Test]
-        public void NonResidue_is_reused()
-        {
-            // ReSharper disable once EqualExpressionComparison
-            Assert.True(ReferenceEquals(Fp.NonResidue, Fp.NonResidue));
         }
 
         [Test]
@@ -98,38 +70,6 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
             Fp e = new BigInteger(1);
 
             Assert.True(a == b && a == c && a == d && a == e);
-        }
-
-        [Test]
-        public void Implicit_operators_reuse_zero()
-        {
-            Fp a = 0;
-            Fp b = 0U;
-            Fp c = 0L;
-            Fp d = 0UL;
-            Fp e = new BigInteger(0);
-
-            Assert.True(ReferenceEquals(a, Fp.Zero), a.GetType().Name);
-            Assert.True(ReferenceEquals(b, Fp.Zero), a.GetType().Name);
-            Assert.True(ReferenceEquals(c, Fp.Zero), a.GetType().Name);
-            Assert.True(ReferenceEquals(d, Fp.Zero), a.GetType().Name);
-            Assert.True(ReferenceEquals(e, Fp.Zero), a.GetType().Name);
-        }
-
-        [Test]
-        public void Implicit_operators_reuse_one()
-        {
-            Fp a = 1;
-            Fp b = 1U;
-            Fp c = 1L;
-            Fp d = 1UL;
-            Fp e = new BigInteger(1);
-
-            Assert.True(ReferenceEquals(a, Fp.One), a.GetType().Name);
-            Assert.True(ReferenceEquals(b, Fp.One), a.GetType().Name);
-            Assert.True(ReferenceEquals(c, Fp.One), a.GetType().Name);
-            Assert.True(ReferenceEquals(d, Fp.One), a.GetType().Name);
-            Assert.True(ReferenceEquals(e, Fp.One), a.GetType().Name);
         }
 
         [Test]
