@@ -22,6 +22,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
+using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -72,12 +73,20 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public byte[] ExtraData { get; set; }
         public long GasLimit { get; set; }
         public long GasUsed { get; set; }
+        
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Keccak Hash { get; set; }
+        
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Bloom LogsBloom { get; set; }
         public Address Miner { get; set; }
         public Keccak MixHash { get; set; }
+        
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public byte[] Nonce { get; set; }
-        public long Number { get; set; }
+        
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+        public long? Number { get; set; }
         public Keccak ParentHash { get; set; }
         public Keccak ReceiptsRoot { get; set; }
         public Keccak Sha3Uncles { get; set; }

@@ -42,7 +42,7 @@ namespace Nethermind.Runner
         
         private IJsonSerializer _jsonSerializer = CreateJsonSerializer();
 
-        private static EthereumJsonSerializer CreateJsonSerializer() => new EthereumJsonSerializer(NullValueHandling.Include);
+        private static EthereumJsonSerializer CreateJsonSerializer() => new EthereumJsonSerializer();
 
         public void ConfigureServices(IServiceCollection services)
         {
