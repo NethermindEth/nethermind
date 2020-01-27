@@ -64,6 +64,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
         public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter)
         {
             Transaction transaction = tx.ToTransaction();
+            transaction.SenderAddress = Address.SystemUser;
+            transaction.GasPrice = 0;
 
             BlockHeader header;
             if (blockParameter.RequireCanonical)

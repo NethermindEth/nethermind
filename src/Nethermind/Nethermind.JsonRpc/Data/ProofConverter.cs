@@ -86,7 +86,7 @@ namespace Nethermind.JsonRpc.Data
                 writer.WriteProperty("key", value.StorageProofs[i].Key, serializer);
                 writer.WritePropertyName("proof");
                 writer.WriteStartArray();
-                for (int ip = 0; ip < value.StorageProofs[ip].Proof.Length; ip++)
+                for (int ip = 0; ip < value.StorageProofs[i].Proof.Length; ip++)
                 {
                     writer.WriteValue(value.StorageProofs[i].Proof[ip].ToHexString(true));    
                 }

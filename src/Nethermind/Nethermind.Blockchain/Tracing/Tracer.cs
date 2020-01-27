@@ -40,12 +40,8 @@ namespace Nethermind.Blockchain.Tracing
 
         public Keccak Trace(Keccak blockHash, IBlockTracer blockTracer)
         {
-            /* We need parent block to be able to set the state root to the time from just before the block was executed.
-               This way we can recreate the exact block execution and trace any transactions and / or rewards */
-            
             Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.RequireCanonical);
-            BlockHeader parentHeader = _blockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.RequireCanonical);
-
+            
             /* We force process since we wan to process a block that has already been processed in the past and normally it would be ignored.
                We also want to make it read only so the state is not modified persistently in any way. */
             
@@ -57,11 +53,6 @@ namespace Nethermind.Blockchain.Tracing
         
         public Keccak Trace(Block block, IBlockTracer blockTracer)
         {
-            /* We need parent block to be able to set the state root to the time from just before the block was executed.
-               This way we can recreate the exact block execution and trace any transactions and / or rewards */
-            
-            BlockHeader parentHeader = _blockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.RequireCanonical);
-
             /* We force process since we wan to process a block that has already been processed in the past and normally it would be ignored.
                We also want to make it read only so the state is not modified persistently in any way. */
             
