@@ -25,6 +25,8 @@ namespace Nethermind.Store
 {
     public interface IStateProvider
     {
+        void RecalculateStateRoot();
+        
         Keccak StateRoot { get; set; }
 
         void DeleteAccount(Address address);

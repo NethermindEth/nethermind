@@ -46,10 +46,9 @@ namespace Nethermind.Cli
 
         private static void CurrentDomainOnProcessExit(object sender, EventArgs e)
         {
-            File.WriteAllLines(HistoryFilePath, ReadLine.GetHistory().TakeLast(60));
+            File.WriteAllLines(HistoryFilePath, ReadLine.GetHistory().Distinct().TakeLast(60));
         }
 
-        
         static void Main(string[] args)
         {
             _cliConsole = new CliConsole();
@@ -138,7 +137,7 @@ namespace Nethermind.Cli
             {
                 if (File.Exists(HistoryFilePath))
                 {
-                    foreach (string line in File.ReadLines(HistoryFilePath).TakeLast(60))
+                    foreach (string line in File.ReadLines(HistoryFilePath).Distinct().TakeLast(60))
                     {
                         if (line != _removedString)
                         {
@@ -178,7 +177,11 @@ namespace Nethermind.Cli
                         
                         if (!SecuredCommands.Any(sc => statement.Contains(sc)))
                         {
-                            ReadLine.AddHistory(statement);
+                            if (ReadLine.GetHistory().Last() != statement)
+                            {
+                                ReadLine.AddHistory(statement);
+                            }
+                            
                             
                             using (var fileStream = File.AppendText(HistoryFilePath))
                             {

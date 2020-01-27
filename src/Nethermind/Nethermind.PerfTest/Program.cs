@@ -358,6 +358,7 @@ namespace Nethermind.PerfTest
             stateProvider.Commit(specProvider.GenesisSpec);
             
             _logger.Info($"Finalizing genesis...");
+            stateProvider.RecalculateStateRoot();
             chainSpec.Genesis.Header.StateRoot = stateProvider.StateRoot;
             chainSpec.Genesis.Header.Hash = chainSpec.Genesis.Header.CalculateHash();
 
