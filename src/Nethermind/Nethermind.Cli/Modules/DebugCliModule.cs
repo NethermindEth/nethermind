@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Jint.Native;
+using Jint.Runtime;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Modules.DebugModule;
@@ -85,9 +86,9 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("debug", "config")]
-        public JsValue GetConfigValue(string category, string name)
+        public string GetConfigValue(string category, string name)
         {
-            return NodeManager.PostJint("debug_getConfigValue", category, name).Result;
+            return NodeManager.Post<string>("debug_getConfigValue", category, name).Result;
         }
 
         [CliFunction("debug", "getBlockRlpByHash")]

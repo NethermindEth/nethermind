@@ -172,6 +172,10 @@ namespace Nethermind.JsonRpc
                         break;
                 }
             }
+            catch (TargetParameterCountException e)
+            {
+                return GetErrorResponse(ErrorCodes.InvalidParams, e.Message, request.Id, methodName);
+            }
             finally
             {
                 _rpcModuleProvider.Return(methodName, module);

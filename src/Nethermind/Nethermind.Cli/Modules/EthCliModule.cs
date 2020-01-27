@@ -164,9 +164,9 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("eth", "getLogs")]
-        public JsValue GetLogs(object json)
+        public JsValue GetLogs(object filter)
         {
-            return NodeManager.PostJint("eth_getLogs", json).Result;
+            return NodeManager.PostJint("eth_getLogs", filter).Result;
         }
 
         public EthCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
