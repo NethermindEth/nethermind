@@ -121,6 +121,7 @@ namespace Nethermind.Evm.Test
             TestState.UpdateCodeHash(senderRecipientAndMiner.Recipient, codeHash, SpecProvider.GenesisSpec);
 
             TestState.Commit(SpecProvider.GenesisSpec);
+            TestState.CommitTree();
 
             Transaction transaction = Build.A.Transaction
                 .WithGasLimit(gasLimit)

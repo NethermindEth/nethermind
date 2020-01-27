@@ -66,6 +66,8 @@ namespace Nethermind.Evm
         {
             block.GasUsed += tx.GasLimit;
             Address recipient = tx.To ?? ContractAddress.From(tx.SenderAddress, _stateProvider.GetNonce(tx.SenderAddress));
+            
+            _stateProvider.RecalculateStateRoot();
             Keccak stateRoot = _specProvider.GetSpec(block.Number).IsEip658Enabled ? null : _stateProvider.StateRoot;
             if (txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, tx.GasLimit, Bytes.Empty, "invalid", stateRoot);
         }
@@ -304,7 +306,14 @@ namespace Nethermind.Evm
 
             if (txTracer.IsTracingReceipt)
             {
-                Keccak stateRoot = _specProvider.GetSpec(block.Number).IsEip658Enabled ? null : _stateProvider.StateRoot;
+                Keccak stateRoot = null;
+                bool eip658Enabled = _specProvider.GetSpec(block.Number).IsEip658Enabled;
+                if (!eip658Enabled)
+                {
+                    _stateProvider.RecalculateStateRoot();
+                    stateRoot = _stateProvider.StateRoot;    
+                }
+                
                 if (statusCode == StatusCode.Failure)
                 {
                     txTracer.MarkAsFailed(recipient, spentGas, (substate?.ShouldRevert ?? false) ? substate.Output : Bytes.Empty, substate?.Error, stateRoot);
