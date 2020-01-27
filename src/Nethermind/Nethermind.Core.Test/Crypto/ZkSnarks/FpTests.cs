@@ -202,7 +202,6 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
         {
             Assert.False((Fp)0 == null, "null to the right");
             Assert.False(null == (Fp)0, "null to the left");
-            Assert.True((Fp)null == null, "null both sides");
         }
 
         [Test]
