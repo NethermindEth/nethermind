@@ -352,10 +352,24 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<TransactionForRpc>.Success(null);
             }
 
-            _blockchainBridge.RecoverTxSender(transaction, receipt.BlockNumber);
-            var transactionModel = new TransactionForRpc(receipt.BlockHash, receipt.BlockNumber, receipt.Index, transaction);
+            _blockchainBridge.RecoverTxSender(transaction, receipt?.BlockNumber);
+            var transactionModel = new TransactionForRpc(receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, transaction);
             if (_logger.IsTrace) _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
             return ResultWrapper<TransactionForRpc>.Success(transactionModel);
+        }
+
+        public ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()
+        {
+            var transactions = _blockchainBridge.GetPendingTransactions();
+            var transactionsModels = new TransactionForRpc[transactions.Length];
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                var transaction = transactions[i];
+                _blockchainBridge.RecoverTxSender(transaction, null);                
+                transactionsModels[i] = new TransactionForRpc(transaction);
+            }
+            if (_logger.IsTrace) _logger.Trace($"eth_pendingTransactions request, result: {transactionsModels.Length}");
+            return ResultWrapper<TransactionForRpc[]>.Success(transactionsModels);
         }
 
         public ResultWrapper<TransactionForRpc> eth_getTransactionByBlockHashAndIndex(Keccak blockHash, UInt256 positionIndex)

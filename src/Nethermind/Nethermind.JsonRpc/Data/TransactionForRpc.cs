@@ -23,6 +23,8 @@ namespace Nethermind.JsonRpc.Data
 {
     public class TransactionForRpc
     {
+        public TransactionForRpc(Transaction transaction) : this(null, null, null, transaction) { }
+        
         public TransactionForRpc(Keccak blockHash, long? blockNumber, int? txIndex, Transaction transaction)
         {
             Hash = transaction.Hash;

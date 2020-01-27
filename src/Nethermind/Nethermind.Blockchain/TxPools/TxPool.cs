@@ -359,12 +359,15 @@ namespace Nethermind.Blockchain.TxPools
             if (_logger.IsTrace) _logger.Trace($"Deleted a transaction: {hash}");
         }
 
-        public bool TryGetSender(Keccak hash, out Address sender)
+        public bool TryGetPendingTransaction(Keccak hash, out Transaction transaction)
         {
-            bool found = _transactions.TryGetValue(hash, out Transaction transaction);
-            sender = found ? transaction.SenderAddress : null;
-            return found;
-        }
+            if (!_transactions.TryGetValue(hash, out transaction))
+            {
+                transaction = _txStorage.Get(hash);
+            }
+
+            return transaction != null;
+        } 
 
         // TODO: Ensure that nonce is always valid in case of sending own transactions from different nodes.
         public UInt256 ReserveOwnTransactionNonce(Address address)

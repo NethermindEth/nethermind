@@ -40,7 +40,9 @@ namespace Nethermind.Runner
             ContractResolver = new CamelCasePropertyNamesContractResolver()
         };
         
-        private IJsonSerializer _jsonSerializer = new EthereumJsonSerializer();
+        private IJsonSerializer _jsonSerializer = CreateJsonSerializer();
+
+        private static EthereumJsonSerializer CreateJsonSerializer() => new EthereumJsonSerializer(NullValueHandling.Include);
 
         public void ConfigureServices(IServiceCollection services)
         {
@@ -51,11 +53,10 @@ namespace Nethermind.Runner
                 p => p.AllowAnyMethod().AllowAnyHeader().WithOrigins(corsOrigins)));
         }
 
-        [Todo(Improve.Performance, "Can we write immediately to the stream instead of calling ToString on the entire JSON content?")]
-        public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor,
-            IJsonRpcService jsonRpcService)
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService)
         {
-            _jsonSerializer = new EthereumJsonSerializer();
+            _jsonSerializer = CreateJsonSerializer();
+            
             foreach (JsonConverter converter in jsonRpcService.Converters)
             {
                 _jsonSerializer.RegisterConverter(converter);

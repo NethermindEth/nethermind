@@ -25,14 +25,16 @@ namespace Nethermind.Serialization.Json
 {
     public class EthereumJsonSerializer : IJsonSerializer
     {
+        private readonly NullValueHandling _defaultNullValueHandling;
         private JsonSerializer _internalSerializer;
         private JsonSerializer _internalReadableSerializer;
         
         private JsonSerializerSettings _settings;
         private JsonSerializerSettings _readableSettings;
 
-        public EthereumJsonSerializer()
+        public EthereumJsonSerializer(NullValueHandling defaultNullValueHandling = NullValueHandling.Ignore)
         {
+            _defaultNullValueHandling = defaultNullValueHandling;
             RebuildSerializers();
         }
 
@@ -122,7 +124,7 @@ namespace Nethermind.Serialization.Json
             _readableSettings = new JsonSerializerSettings
             {
                 ContractResolver = new CamelCasePropertyNamesContractResolver(),
-                NullValueHandling = NullValueHandling.Ignore,
+                NullValueHandling = _defaultNullValueHandling,
                 Formatting = Formatting.Indented,
                 Converters = ReadableConverters
             };
@@ -130,7 +132,7 @@ namespace Nethermind.Serialization.Json
             _settings = new JsonSerializerSettings
             {
                 ContractResolver = new CamelCasePropertyNamesContractResolver(),
-                NullValueHandling = NullValueHandling.Ignore,
+                NullValueHandling = _defaultNullValueHandling,
                 Formatting = Formatting.None,
                 Converters = BasicConverters
             };

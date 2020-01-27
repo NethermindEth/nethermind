@@ -113,6 +113,13 @@ namespace Nethermind.Facade.Test.Proxy
             await _proxy.eth_getTransactionByHash(hash);
             await _client.Received().SendAsync<TransactionModel>(nameof(_proxy.eth_getTransactionByHash), hash);
         }
+        
+        [Test]
+        public async Task eth_pendingTransactions_should_invoke_client_method()
+        {
+            await _proxy.eth_pendingTransactions();
+            await _client.Received().SendAsync<TransactionModel[]>(nameof(_proxy.eth_pendingTransactions));
+        }
 
         [Test]
         public async Task eth_getBlockByHash_should_invoke_client_method()

@@ -45,25 +45,19 @@ namespace Nethermind.Blockchain.TxPools
         {
         }
 
-        public AddTxResult AddTransaction(Transaction tx, long blockNumber, bool isOwn = false)
-        {
-            return AddTxResult.Added;
-        }
+        public AddTxResult AddTransaction(Transaction tx, long blockNumber, bool isOwn = false) => AddTxResult.Added;
 
         public void RemoveTransaction(Keccak hash, long blockNumber)
         {
         }
 
-        public bool TryGetSender(Keccak hash, out Address sender)
+        public bool TryGetPendingTransaction(Keccak hash, out Transaction transaction)
         {
-            sender = null;
+            transaction = null;
             return false;
         }
 
-        public UInt256 ReserveOwnTransactionNonce(Address address)
-        {
-            return UInt256.Zero;
-        }
+        public UInt256 ReserveOwnTransactionNonce(Address address) => UInt256.Zero;
 
         public event EventHandler<TxEventArgs> NewPending
         {

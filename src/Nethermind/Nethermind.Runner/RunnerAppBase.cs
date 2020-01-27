@@ -47,6 +47,7 @@ using Nethermind.Monitoring.Config;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
+using Newtonsoft.Json;
 using NLog;
 using NLog.Config;
 using ILogger = Nethermind.Logging.ILogger;
@@ -140,6 +141,7 @@ namespace Nethermind.Runner
                 ? new RpcModuleProvider(configProvider.GetConfig<IJsonRpcConfig>(), logManager)
                 : (IRpcModuleProvider) NullModuleProvider.Instance;
             EthereumJsonSerializer jsonSerializer = new EthereumJsonSerializer();
+            EthereumJsonSerializer jsonSerializerWithNulls = new EthereumJsonSerializer(NullValueHandling.Include);
             WebSocketsManager webSocketsManager = new WebSocketsManager();
             
             if (metricOptions.Enabled)
@@ -226,7 +228,7 @@ namespace Nethermind.Runner
                 JsonRpcProcessor jsonRpcProcessor = new JsonRpcProcessor(jsonRpcService, jsonSerializer, jsonRpcConfig, logManager);
                 if (initConfig.WebSocketsEnabled)
                 {
-                    webSocketsManager.AddModule(new JsonRpcWebSocketsModule(jsonRpcProcessor, jsonSerializer), true);
+                    webSocketsManager.AddModule(new JsonRpcWebSocketsModule(jsonRpcProcessor, jsonSerializerWithNulls), true);
                 }
                 
                 Bootstrap.Instance.JsonRpcService = jsonRpcService;
