@@ -26,12 +26,12 @@ namespace Nethermind.Blockchain.Tracing
     {
         private readonly IStateProvider _stateProvider;
         private readonly IBlockTree _blockTree;
-        private readonly IBlockProcessor _blockProcessor;
+        private readonly IBlockchainProcessor _blockProcessor;
 
         public Tracer(
             IBlockTree blockTree,
             IStateProvider stateProvider,
-            IBlockProcessor blockProcessor)
+            IBlockchainProcessor blockProcessor)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
@@ -46,13 +46,11 @@ namespace Nethermind.Blockchain.Tracing
             Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.RequireCanonical);
             BlockHeader parentHeader = _blockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.RequireCanonical);
 
-            _stateProvider.StateRoot = parentHeader.StateRoot;
-
             /* We force process since we wan to process a block that has already been processed in the past and normally it would be ignored.
                We also want to make it read only so the state is not modified persistently in any way. */
             
             blockTracer.StartNewBlockTrace(block);
-            _blockProcessor.Process(_stateProvider.StateRoot, new[] {block}, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain, blockTracer);
+            _blockProcessor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain, blockTracer);
             
             return _stateProvider.StateRoot;
         }
@@ -64,13 +62,11 @@ namespace Nethermind.Blockchain.Tracing
             
             BlockHeader parentHeader = _blockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.RequireCanonical);
 
-            _stateProvider.StateRoot = parentHeader.StateRoot;
-
             /* We force process since we wan to process a block that has already been processed in the past and normally it would be ignored.
                We also want to make it read only so the state is not modified persistently in any way. */
             
             blockTracer.StartNewBlockTrace(block);
-            _blockProcessor.Process(_stateProvider.StateRoot, new[] {block}, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain, blockTracer);
+            _blockProcessor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain, blockTracer);
 
             return _stateProvider.StateRoot;
         }
