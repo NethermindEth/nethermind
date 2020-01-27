@@ -60,20 +60,16 @@ namespace Nethermind.JsonRpc.Modules.Proof
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
-        
+
         public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter)
         {
-            Transaction transaction = tx.ToTransaction();
-            transaction.SenderAddress = Address.SystemUser;
-            transaction.GasPrice = 0;
-
             BlockHeader header;
             if (blockParameter.RequireCanonical)
             {
                 header = _blockFinder.FindHeader(blockParameter.BlockHash, BlockTreeLookupOptions.RequireCanonical);
                 if (header == null)
                 {
-                    header = _blockFinder.FindHeader(blockParameter);
+                    header = _blockFinder.FindHeader(blockParameter.BlockHash);
                     if (header != null)
                     {
                         return ResultWrapper<CallResultWithProof>.Fail($"{blockParameter.BlockHash} block is not canonical", ErrorCodes.InvalidInput);
@@ -89,6 +85,13 @@ namespace Nethermind.JsonRpc.Modules.Proof
             {
                 return ResultWrapper<CallResultWithProof>.Fail($"{blockParameter.BlockHash} could not be found", ErrorCodes.ResourceNotFound);
             }
+            
+            Transaction transaction = tx.ToTransaction();
+            transaction.SenderAddress ??= Address.SystemUser;
+            if (transaction.GasLimit == 0)
+            {
+                transaction.GasLimit = header.GasLimit;
+            }
 
             Block block = new Block(header, new[] {transaction}, Enumerable.Empty<BlockHeader>());
             block.Author = Address.Zero;
@@ -100,11 +103,9 @@ namespace Nethermind.JsonRpc.Modules.Proof
             CallResultWithProof callResultWithProof = new CallResultWithProof();
             ProofTxTracer proofTxTracer = proofBlockTracer.BuildResult().Single();
 
-            
-            
-            callResultWithProof.BlockHeaders = CollectHeaderBytes(proofTxTracer);
+            callResultWithProof.BlockHeaders = CollectHeaderBytes(proofTxTracer, header);
             callResultWithProof.Result = proofTxTracer.Output;
-            
+
             // we collect proofs from before execution (after learning which addresses will be touched)
             // if we wanted to collect post execution proofs then we would need to use BeforeRestore on the tracer
             callResultWithProof.Accounts = CollectAccountProofs(header.StateRoot, proofTxTracer);
@@ -172,7 +173,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             return ResultWrapper<ReceiptWithProof>.Success(receiptWithProof);
         }
-        
+
         private AccountProof[] CollectAccountProofs(Keccak stateRoot, ProofTxTracer proofTxTracer)
         {
             List<AccountProof> accountProofs = new List<AccountProof>();
@@ -189,9 +190,9 @@ namespace Nethermind.JsonRpc.Modules.Proof
             return accountProofs.ToArray();
         }
 
-        private byte[][] CollectHeaderBytes(ProofTxTracer proofTxTracer)
+        private byte[][] CollectHeaderBytes(ProofTxTracer proofTxTracer, BlockHeader tracedBlockHeader)
         {
-            List<BlockHeader> relevantHeaders = new List<BlockHeader>();
+            List<BlockHeader> relevantHeaders = new List<BlockHeader> {tracedBlockHeader};
             foreach (Keccak blockHash in proofTxTracer.BlockHashes)
             {
                 relevantHeaders.Add(_blockFinder.FindHeader(blockHash));

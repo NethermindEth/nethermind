@@ -137,7 +137,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public async Task<ResultWrapper<Keccak>> eth_sendTransaction(TransactionForRpc transactionForRpc)
         {
-            var transaction = transactionForRpc.ToTransaction();
+            var transaction = transactionForRpc.ToTransactionWithDefaults();
             if (transaction.Signature is null)
             {
                 var chainIdResult = await _proxy.eth_chainId();

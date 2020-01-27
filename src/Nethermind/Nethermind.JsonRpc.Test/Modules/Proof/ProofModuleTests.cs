@@ -22,7 +22,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
@@ -236,6 +235,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.BLOCKHASH)
                 .Done;
             var result = TestCallWithCode(code);
+            Assert.AreEqual(2,  result.BlockHeaders.Length);
         }
 
         [Test]
@@ -247,7 +247,21 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .PushData("0x02")
                 .Op(Instruction.BLOCKHASH)
                 .Done;
-            TestCallWithCode(code);
+            var result = TestCallWithCode(code);
+            Assert.AreEqual(3, result.BlockHeaders.Length);
+        }
+        
+        [Test]
+        public void Can_call_with_same_block_hash_many_time()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData("0x01")
+                .Op(Instruction.BLOCKHASH)
+                .PushData("0x01")
+                .Op(Instruction.BLOCKHASH)
+                .Done;
+            var result = TestCallWithCode(code);
+            Assert.AreEqual(2, result.BlockHeaders.Length);
         }
 
         [Test]
@@ -466,7 +480,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             TransactionForRpc tx = new TransactionForRpc
             {
-                From = TestItem.AddressA,
+                // we are testing system transaction here
                 To = TestItem.AddressB
             };
 

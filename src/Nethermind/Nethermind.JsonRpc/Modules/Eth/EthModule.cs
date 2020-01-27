@@ -259,7 +259,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public Task<ResultWrapper<Keccak>> eth_sendTransaction(TransactionForRpc transactionForRpc)
         {
-            Transaction tx = transactionForRpc.ToTransaction();
+            Transaction tx = transactionForRpc.ToTransactionWithDefaults();
             if (tx.Signature == null)
             {
                 tx.Nonce = _blockchainBridge.GetNonce(tx.SenderAddress);
@@ -285,7 +285,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<string>.Fail($"{blockParameter} block not found", ErrorCodes.ResourceNotFound, null);
             }
 
-            Transaction tx = transactionCall.ToTransaction();
+            Transaction tx = transactionCall.ToTransactionWithDefaults();
             tx.GasPrice = 0;
             if (tx.GasLimit < 21000)
             {
@@ -310,7 +310,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 transactionCall.Gas = headBlock.GasLimit;
             }
 
-            long result = _blockchainBridge.EstimateGas(headBlock, transactionCall.ToTransaction());
+            long result = _blockchainBridge.EstimateGas(headBlock, transactionCall.ToTransactionWithDefaults());
             return ResultWrapper<UInt256?>.Success((UInt256)result);
         }
 
