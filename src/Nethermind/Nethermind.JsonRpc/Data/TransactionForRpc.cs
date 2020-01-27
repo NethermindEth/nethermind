@@ -64,11 +64,32 @@ namespace Nethermind.JsonRpc.Data
 
         public byte[] R { get; set; }
 
-        public Transaction ToTransaction()
+        public Transaction ToTransactionWithDefaults()
         {
             Transaction tx = new Transaction();
             tx.GasLimit = (long)(Gas ?? 90000);
             tx.GasPrice = (GasPrice ?? 20.GWei());
+            tx.Nonce = (ulong)(Nonce ?? 0); // here pick the last nonce?
+            tx.To = To;
+            tx.SenderAddress = From;
+            tx.Value = Value ?? 0;
+            if (tx.To == null)
+            {
+                tx.Init = Data ?? Input;
+            }
+            else
+            {
+                tx.Data = Data ?? Input;
+            }
+
+            return tx;
+        }
+        
+        public Transaction ToTransaction()
+        {
+            Transaction tx = new Transaction();
+            tx.GasLimit = Gas ?? 0;
+            tx.GasPrice = GasPrice ?? 0;
             tx.Nonce = (ulong)(Nonce ?? 0); // here pick the last nonce?
             tx.To = To;
             tx.SenderAddress = From;

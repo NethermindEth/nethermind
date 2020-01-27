@@ -20,6 +20,7 @@ using System.Linq;
 using System.Numerics;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Rewards;
 using Nethermind.Core;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Dirichlet.Numerics;

@@ -459,7 +459,7 @@ namespace Nethermind.Blockchain.Synchronization
                     if (_logger.IsTrace) _logger.Trace($"Block/header {block.Number} skipped - already known");
                     return false;
                 default:
-                    throw new NotImplementedException($"Unknown {nameof(AddBlockResult)} {addResult}");
+                    throw new NotSupportedException($"Unknown {nameof(AddBlockResult)} {addResult}");
             }
         }
     }

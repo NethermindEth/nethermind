@@ -22,18 +22,18 @@ using Nethermind.Dirichlet.Numerics;
 namespace Nethermind.Store
 {
     [DebuggerDisplay("{Address}->{Index}")]
-    public struct StorageAddress : IEquatable<StorageAddress>
+    public struct StorageCell : IEquatable<StorageCell>
     {
         public Address Address { get; }
         public UInt256 Index { get; }
 
-        public StorageAddress(Address address, UInt256 index)
+        public StorageCell(Address address, UInt256 index)
         {
             Address = address;
             Index = index;
         }
 
-        public bool Equals(StorageAddress other)
+        public bool Equals(StorageCell other)
         {
             return Equals(Address, other.Address) && Index.Equals(other.Index);
         }
@@ -44,7 +44,7 @@ namespace Nethermind.Store
             {
                 return false;
             }
-            return obj is StorageAddress address && Equals(address);
+            return obj is StorageCell address && Equals(address);
         }
 
         public override int GetHashCode()

@@ -39,7 +39,7 @@ namespace Nethermind.Cli.Modules
             NodeManager = nodeManager;
         }
 
-        public Address CliParseAddress(string addressHex)
+        protected Address CliParseAddress(string addressHex)
         {
             try
             {
@@ -51,8 +51,8 @@ namespace Nethermind.Cli.Modules
                 throw new CliArgumentParserException($"Invalid address format \"{addressHex}\". Expected format: \"0x000102030405060708090a0b0c0d0e0f10111213\"");
             }
         }
-        
-        public Keccak CliParseHash(string hashHex)
+
+        protected Keccak CliParseHash(string hashHex)
         {
             try
             {

@@ -20,6 +20,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Crypto;
@@ -97,9 +98,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 );
             
             ReadOnlyChainProcessingEnv chainEnv = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculator, _receiptStorage, readOnlyDbProvider, _specProvider, _logManager);
-            ITracer tracer = new Tracer(chainEnv.Processor, _receiptStorage, new ReadOnlyBlockTree(_blockTree));
+            IParityStyleTracer tracer = new ParityStyleTracer(chainEnv.ChainProcessor, _receiptStorage, new ReadOnlyBlockTree(_blockTree));
             
-            return new TraceModule(blockchainBridge, _logManager, tracer);
+            return new TraceModule(blockchainBridge, tracer);
         }
         
         public static JsonConverter[] Converters = 

@@ -21,6 +21,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.GethStyle;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing
@@ -326,11 +327,7 @@ namespace Nethermind.Evm.Test.Tracing
                 Assert.AreEqual(pcs[i], trace.Entries[i].Pc);
             }
         }
-
-        private const string SampleHexData1 = "a01234";
-        private const string SampleHexData2 = "b15678";
-        private const string HexZero = "00";
-
+        
         [Test]
         public void Can_trace_stack()
         {

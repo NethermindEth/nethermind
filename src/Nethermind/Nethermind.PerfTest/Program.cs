@@ -43,6 +43,7 @@ using Nethermind.Db.Config;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
 using Nethermind.Mining;
@@ -131,6 +132,10 @@ namespace Nethermind.PerfTest
             {
                 return _blockTree.SuggestHeader(header);
             }
+
+            public Keccak HeadHash => _blockTree.HeadHash;
+            public Keccak GenesisHash => _blockTree.GenesisHash;
+            public Keccak PendingHash => _blockTree.PendingHash;
 
             public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions option)
             {

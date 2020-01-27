@@ -290,7 +290,7 @@ namespace Nethermind.Store.Test
         public void Extension_can_accept_visitors()
         {
             ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
-            VisitContext context = new VisitContext();
+            TrieVisitContext context = new TrieVisitContext();
             PatriciaTree tree = new PatriciaTree();
             TrieNode ignore = new TrieNode(NodeType.Unknown);
             TrieNode node = new TrieNode(NodeType.Extension);
@@ -305,7 +305,7 @@ namespace Nethermind.Store.Test
         public void Unknown_node_with_missing_data_can_accept_visitor()
         {
             ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
-            VisitContext context = new VisitContext();
+            TrieVisitContext context = new TrieVisitContext();
             PatriciaTree tree = new PatriciaTree();
             TrieNode node = new TrieNode(NodeType.Unknown);
 
@@ -318,7 +318,7 @@ namespace Nethermind.Store.Test
         public void Leaf_with_simple_account_can_accept_visitors()
         {
             ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
-            VisitContext context = new VisitContext();
+            TrieVisitContext context = new TrieVisitContext();
             PatriciaTree tree = new PatriciaTree();
             Account account = new Account(100);
             AccountDecoder decoder = new AccountDecoder();
@@ -334,7 +334,7 @@ namespace Nethermind.Store.Test
         public void Leaf_with_contract_without_storage_and_empty_code_can_accept_visitors()
         {
             ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
-            VisitContext context = new VisitContext();
+            TrieVisitContext context = new TrieVisitContext();
             PatriciaTree tree = new PatriciaTree();
             Account account = new Account(1, 100, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
             AccountDecoder decoder = new AccountDecoder();
@@ -352,7 +352,7 @@ namespace Nethermind.Store.Test
             ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
             visitor.ShouldVisit(Arg.Any<Keccak>()).Returns(true);
 
-            VisitContext context = new VisitContext();
+            TrieVisitContext context = new TrieVisitContext();
             PatriciaTree tree = new PatriciaTree();
             Account account = new Account(1, 100, Keccak.EmptyTreeHash, Keccak.Zero);
             AccountDecoder decoder = new AccountDecoder();
@@ -370,7 +370,7 @@ namespace Nethermind.Store.Test
             ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
             visitor.ShouldVisit(Arg.Any<Keccak>()).Returns(true);
 
-            VisitContext context = new VisitContext();
+            TrieVisitContext context = new TrieVisitContext();
             PatriciaTree tree = new PatriciaTree();
             Account account = new Account(1, 100, Keccak.Zero, Keccak.OfAnEmptyString);
             AccountDecoder decoder = new AccountDecoder();
@@ -388,7 +388,7 @@ namespace Nethermind.Store.Test
             ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
             visitor.ShouldVisit(Arg.Any<Keccak>()).Returns(true);
 
-            VisitContext context = new VisitContext();
+            TrieVisitContext context = new TrieVisitContext();
             PatriciaTree tree = new PatriciaTree();
             TrieNode node = new TrieNode(NodeType.Extension);
             node.SetChild(0, _accountLeaf);
@@ -405,7 +405,7 @@ namespace Nethermind.Store.Test
             ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
             visitor.ShouldVisit(Arg.Any<Keccak>()).Returns(true);
 
-            VisitContext context = new VisitContext();
+            TrieVisitContext context = new TrieVisitContext();
             PatriciaTree tree = new PatriciaTree();
             TrieNode node = new TrieNode(NodeType.Branch);
             for (int i = 0; i < 16; i++)
@@ -423,7 +423,7 @@ namespace Nethermind.Store.Test
         public void Branch_can_accept_visitors()
         {
             ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
-            VisitContext context = new VisitContext();
+            TrieVisitContext context = new TrieVisitContext();
             PatriciaTree tree = new PatriciaTree();
             TrieNode node = new TrieNode(NodeType.Branch);
             for (int i = 0; i < 16; i++)

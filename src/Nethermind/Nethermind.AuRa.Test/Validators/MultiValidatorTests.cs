@@ -21,15 +21,10 @@ using FluentAssertions;
 using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.Evm;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Logging;
 using NSubstitute;
-using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Validators
@@ -65,7 +60,7 @@ namespace Nethermind.AuRa.Test.Validators
                     return innerValidator;
                 });
 
-            _block = new Block(Prepare.A.BlockHeader().WithNumber(1).TestObject, new BlockBody());
+            _block = new Block( Build.A.BlockHeader.WithNumber(1).TestObject, new BlockBody());
         }
         
 [Test]

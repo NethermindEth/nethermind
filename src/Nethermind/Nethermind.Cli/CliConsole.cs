@@ -25,7 +25,7 @@ using Console = Colorful.Console;
 
 namespace Nethermind.Cli
 {
-    public static class CliConsole
+    public class CliConsole : ICliConsole
     {
         private static ColorScheme _colorScheme;
         private static Terminal _terminal;
@@ -37,7 +37,7 @@ namespace Nethermind.Cli
             ["cygwin"] = Terminal.Cygwin
         };
 
-        public static Terminal Init(ColorScheme colorScheme)
+        public Terminal Init(ColorScheme colorScheme)
         {
             _colorScheme = colorScheme;
             Console.BackgroundColor = colorScheme.BackgroundColor;
@@ -74,7 +74,7 @@ namespace Nethermind.Cli
             return _terminal;
         }
 
-        private static Terminal GetTerminal()
+        private Terminal GetTerminal()
         {
             if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
@@ -94,57 +94,57 @@ namespace Nethermind.Cli
             return Terminal.Unknown;
         }
 
-        private static Color GetColor(Color defaultColor)
+        private Color GetColor(Color defaultColor)
         {
             return _terminal == Terminal.LinuxBash ? _colorScheme.Text : defaultColor;
         }
         
-        public static void WriteException(Exception e)
+        public void WriteException(Exception e)
         {
             Console.WriteLine(e.ToString(), GetColor(_colorScheme.ErrorColor));
         }
         
-        public static void WriteErrorLine(string errorMessage)
+        public void WriteErrorLine(string errorMessage)
         {
             Console.WriteLine(errorMessage, GetColor(_colorScheme.ErrorColor));
         }
         
-        public static void WriteLine(object objectToWrite)
+        public void WriteLine(object objectToWrite)
         {
             Console.WriteLine(objectToWrite.ToString(), _colorScheme.Text);
         }
         
-        public static void WriteCommentLine(object objectToWrite)
+        public void WriteCommentLine(object objectToWrite)
         {
             Console.WriteLine(objectToWrite.ToString(), _colorScheme.Comment);
         }
         
-        public static void WriteLessImportant(object objectToWrite)
+        public void WriteLessImportant(object objectToWrite)
         {
             Console.Write(objectToWrite.ToString(), GetColor(_colorScheme.LessImportant));
         }
         
-        public static void WriteKeyword(string keyword)
+        public void WriteKeyword(string keyword)
         {
             Console.Write(keyword, GetColor(_colorScheme.Keyword));
         }
         
-        public static void WriteInteresting(string interesting)
+        public void WriteInteresting(string interesting)
         {
             Console.Write(interesting, GetColor(_colorScheme.Interesting));
         }
 
-        public static void WriteLine()
+        public void WriteLine()
         {
             Console.WriteLine();
         }
 
-        public static void WriteGood(string goodText)
+        public void WriteGood(string goodText)
         {
             Console.WriteLine(goodText, GetColor(_colorScheme.Good));
         }
 
-        public static void WriteString(object result)
+        public void WriteString(object result)
         {
             Console.WriteLine(result, GetColor(_colorScheme.String));
         }

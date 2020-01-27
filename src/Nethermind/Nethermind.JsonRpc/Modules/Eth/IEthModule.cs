@@ -16,12 +16,14 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Eip1186;
+using Nethermind.Store;
+using Nethermind.Store.Proofs;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {

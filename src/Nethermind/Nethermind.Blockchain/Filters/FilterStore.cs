@@ -69,7 +69,7 @@ namespace Nethermind.Blockchain.Filters
             return pendingTransactionFilter;
         }
 
-        public LogFilter CreateLogFilter(FilterBlock fromBlock, FilterBlock toBlock,
+        public LogFilter CreateLogFilter(BlockParameter fromBlock, BlockParameter toBlock,
             object address = null, IEnumerable<object> topics = null, bool setId = true)
         {
             var filterId = setId ? GetFilterId() : 0;

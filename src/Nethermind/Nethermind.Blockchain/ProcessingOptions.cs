@@ -26,9 +26,8 @@ namespace Nethermind.Blockchain
         ForceProcessing = 2,
         StoreReceipts = 4,
         NoValidation = 8,
-        WithRollback = 16,
-        All = 31,
-        ProducingBlock = NoValidation | ReadOnlyChain | WithRollback,
+        All = 15,
+        ProducingBlock = NoValidation | ReadOnlyChain,
     }
 
     public static class ProcessingOptionsExtensions

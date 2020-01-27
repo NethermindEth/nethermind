@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain.Proofs;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.TxPools;
@@ -36,17 +37,17 @@ namespace Nethermind.Blockchain
 {
     public class BlockProcessor : IBlockProcessor
     {
-        private readonly IBlockValidator _blockValidator;
-        private readonly ISnapshotableDb _codeDb;
         private readonly ILogger _logger;
-        private readonly IRewardCalculator _rewardCalculator;
-        private readonly ISpecProvider _specProvider;
-        private readonly ISnapshotableDb _stateDb;
-        private readonly IStateProvider _stateProvider;
-        private readonly IStorageProvider _storageProvider;
-        private readonly ITransactionProcessor _transactionProcessor;
         private readonly ITxPool _txPool;
+        private readonly ISnapshotableDb _codeDb;
+        private readonly ISnapshotableDb _stateDb;
+        private readonly ISpecProvider _specProvider;
+        private readonly IStateProvider _stateProvider;
         private readonly IReceiptStorage _receiptStorage;
+        private readonly IBlockValidator _blockValidator;
+        private readonly IStorageProvider _storageProvider;
+        private readonly IRewardCalculator _rewardCalculator;
+        private readonly ITransactionProcessor _transactionProcessor;
         private readonly IAdditionalBlockProcessor _additionalBlockProcessor;
 
         public BlockProcessor(ISpecProvider specProvider,
@@ -73,7 +74,7 @@ namespace Nethermind.Blockchain
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _receiptsTracer = new BlockReceiptsTracer(_specProvider, _stateProvider);
+            _receiptsTracer = new BlockReceiptsTracer();
 
             if (additionalBlockProcessors != null)
             {
@@ -127,6 +128,7 @@ namespace Nethermind.Blockchain
 
                 if ((options & ProcessingOptions.ReadOnlyChain) != 0)
                 {
+                    _receiptsTracer.BeforeRestore(_stateProvider);
                     Restore(stateSnapshot, codeSnapshot, snapshotStateRoot);
                 }
                 else
@@ -170,7 +172,8 @@ namespace Nethermind.Blockchain
 
         private void SetReceiptsRoot(Block block, TxReceipt[] txReceipts)
         {
-            block.Header.ReceiptsRoot = block.CalculateReceiptRoot(_specProvider, txReceipts);
+            ReceiptTrie receiptTrie = new ReceiptTrie(block.Number, _specProvider, txReceipts);
+            block.Header.ReceiptsRoot = receiptTrie.RootHash;
         }
 
         private void Restore(int stateSnapshot, int codeSnapshot, Keccak snapshotStateRoot)

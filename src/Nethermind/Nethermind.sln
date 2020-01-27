@@ -257,6 +257,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Crypto", "Nether
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.Rlp", "Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj", "{01D726FD-6980-4F7B-A77B-60BCDBDFECDB}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Cli.Test", "Nethermind.Cli.Test\Nethermind.Cli.Test.csproj", "{E2B9C82E-9711-4241-A9D7-54312D0AF5CB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -683,6 +685,10 @@ Global
 		{01D726FD-6980-4F7B-A77B-60BCDBDFECDB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{01D726FD-6980-4F7B-A77B-60BCDBDFECDB}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{01D726FD-6980-4F7B-A77B-60BCDBDFECDB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E2B9C82E-9711-4241-A9D7-54312D0AF5CB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E2B9C82E-9711-4241-A9D7-54312D0AF5CB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E2B9C82E-9711-4241-A9D7-54312D0AF5CB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E2B9C82E-9711-4241-A9D7-54312D0AF5CB}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -764,6 +770,7 @@ Global
 		{166E4290-3AFD-49F1-8138-5E000069D1BB} = {C18B9986-E399-45EF-B10A-E5E94220A1A9}
 		{71B91515-C635-46FF-98DE-AB5FBE11BA97} = {C18B9986-E399-45EF-B10A-E5E94220A1A9}
 		{FC8F352F-2F4C-41BF-93E4-C8905B3FFF47} = {C18B9986-E399-45EF-B10A-E5E94220A1A9}
+		{E2B9C82E-9711-4241-A9D7-54312D0AF5CB} = {1564814A-27F8-40A3-943E-8E950D5EE17D}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}

@@ -36,7 +36,7 @@ namespace Nethermind.Store
             return true;
         }        
         
-        public void VisitTree(Keccak rootHash, VisitContext visitContext)
+        public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext)
         {
             if (rootHash == Keccak.EmptyTreeHash)
             {
@@ -44,52 +44,52 @@ namespace Nethermind.Store
             }
             else
             {
-                _builder.AppendLine(visitContext.IsStorage ? "STORAGE TREE" : "STATE TREE");
+                _builder.AppendLine(trieVisitContext.IsStorage ? "STORAGE TREE" : "STATE TREE");
             }
         }
         
-        private string GetPrefix(VisitContext context) => string.Concat($"{GetIndent(context.Level)}", context.IsStorage ? "STORAGE " : "", $"{GetChildIndex(context)}");
+        private string GetPrefix(TrieVisitContext context) => string.Concat($"{GetIndent(context.Level)}", context.IsStorage ? "STORAGE " : "", $"{GetChildIndex(context)}");
         
         private string GetIndent(int level) => new string('+', level * 2);
-        private string GetChildIndex(VisitContext context) => context.BranchChildIndex == null ? string.Empty : $"{context.BranchChildIndex:00} ";
+        private string GetChildIndex(TrieVisitContext context) => context.BranchChildIndex == null ? string.Empty : $"{context.BranchChildIndex:00} ";
         
-        public void VisitMissingNode(Keccak nodeHash, VisitContext visitContext)
+        public void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext)
         {
-            _builder.AppendLine($"{GetIndent(visitContext.Level) }{GetChildIndex(visitContext)}MISSING {nodeHash}");
+            _builder.AppendLine($"{GetIndent(trieVisitContext.Level) }{GetChildIndex(trieVisitContext)}MISSING {nodeHash}");
         }
 
-        public void VisitBranch(TrieNode node, VisitContext visitContext)
+        public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
         {
-            _builder.AppendLine($"{GetPrefix(visitContext)}BRANCH {(node.Keccak?.Bytes ?? node.FullRlp?.Bytes)?.ToHexString()}");
+            _builder.AppendLine($"{GetPrefix(trieVisitContext)}BRANCH {(node.Keccak?.Bytes ?? node.FullRlp?.Bytes)?.ToHexString()}");
         }
 
-        public void VisitExtension(TrieNode node, VisitContext visitContext)
+        public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
         {
-            _builder.AppendLine($"{GetPrefix(visitContext)}EXTENSION {(node.Keccak?.Bytes ?? node.FullRlp?.Bytes)?.ToHexString()}");
+            _builder.AppendLine($"{GetPrefix(trieVisitContext)}EXTENSION {(node.Keccak?.Bytes ?? node.FullRlp?.Bytes)?.ToHexString()}");
         }
 
         private AccountDecoder decoder = new AccountDecoder();
         
-        public void VisitLeaf(TrieNode node, VisitContext visitContext, byte[] value = null)
+        public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null)
         {
-            string leafDescription = visitContext.IsStorage ? "LEAF " : "ACCOUNT ";
-            _builder.AppendLine($"{GetPrefix(visitContext)}{leafDescription}{(node.Keccak?.Bytes ?? node.FullRlp?.Bytes)?.ToHexString()}");
-            if (!visitContext.IsStorage)
+            string leafDescription = trieVisitContext.IsStorage ? "LEAF " : "ACCOUNT ";
+            _builder.AppendLine($"{GetPrefix(trieVisitContext)}{leafDescription}{(node.Keccak?.Bytes ?? node.FullRlp?.Bytes)?.ToHexString()}");
+            if (!trieVisitContext.IsStorage)
             {
                 Account account = decoder.Decode(new RlpStream(value));
-                _builder.AppendLine($"{GetPrefix(visitContext)}  NONCE: {account.Nonce}");
-                _builder.AppendLine($"{GetPrefix(visitContext)}  BALANCE: {account.Balance}");
-                _builder.AppendLine($"{GetPrefix(visitContext)}  IS_CONTRACT: {account.IsContract}");
+                _builder.AppendLine($"{GetPrefix(trieVisitContext)}  NONCE: {account.Nonce}");
+                _builder.AppendLine($"{GetPrefix(trieVisitContext)}  BALANCE: {account.Balance}");
+                _builder.AppendLine($"{GetPrefix(trieVisitContext)}  IS_CONTRACT: {account.IsContract}");
             }
             else
             {
-                _builder.AppendLine($"{GetPrefix(visitContext)}  VALUE: {new RlpStream(value).DecodeByteArray().ToHexString(true, true)}");
+                _builder.AppendLine($"{GetPrefix(trieVisitContext)}  VALUE: {new RlpStream(value).DecodeByteArray().ToHexString(true, true)}");
             }
         }
 
-        public void VisitCode(Keccak codeHash, VisitContext visitContext)
+        public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext)
         {
-            _builder.AppendLine($"{GetPrefix(visitContext)}CODE {codeHash}");
+            _builder.AppendLine($"{GetPrefix(trieVisitContext)}CODE {codeHash}");
         }
 
         public override string ToString()

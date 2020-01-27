@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using System.Text;
@@ -280,7 +281,15 @@ namespace Nethermind.Store
 
         internal Rlp RlpEncode()
         {
-            return _nodeDecoder.Encode(this);
+            Rlp rlp = _nodeDecoder.Encode(this);
+            // just included here to improve the class reading
+            // after some analysis I believe that any non-test Ethereum cases of a trie ever have nodes with RLP shorter than 32 bytes
+            // if (rlp.Bytes.Length < 32)
+            // {
+            //     throw new InvalidDataException("Unexpected less than 32");
+            // }
+
+            return rlp;
         }
 
         private void InitData()
@@ -421,7 +430,7 @@ namespace Nethermind.Store
             _data[index] = node ?? _nullNode;
         }
 
-        internal void Accept(ITreeVisitor visitor, PatriciaTree tree, VisitContext visitContext)
+        internal void Accept(ITreeVisitor visitor, PatriciaTree tree, TrieVisitContext trieVisitContext)
         {
             try
             {
@@ -429,7 +438,7 @@ namespace Nethermind.Store
             }
             catch (StateException)
             {
-                visitor.VisitMissingNode(Keccak, visitContext);
+                visitor.VisitMissingNode(Keccak, trieVisitContext);
                 return;
             }
 
@@ -437,33 +446,33 @@ namespace Nethermind.Store
             {
                 case NodeType.Branch:
                 {
-                    visitor.VisitBranch(this, visitContext);
-                    visitContext.Level++;
+                    visitor.VisitBranch(this, trieVisitContext);
+                    trieVisitContext.Level++;
                     for (int i = 0; i < 16; i++)
                     {
                         TrieNode child = GetChild(i);
                         if (child != null && visitor.ShouldVisit(child.Keccak))
                         {
-                            visitContext.BranchChildIndex = i;
-                            child.Accept(visitor, tree, visitContext);
+                            trieVisitContext.BranchChildIndex = i;
+                            child.Accept(visitor, tree, trieVisitContext);
                         }
                     }
 
-                    visitContext.Level--;
-                    visitContext.BranchChildIndex = null;
+                    trieVisitContext.Level--;
+                    trieVisitContext.BranchChildIndex = null;
                     break;
                 }
 
                 case NodeType.Extension:
                 {
-                    visitor.VisitExtension(this, visitContext);
+                    visitor.VisitExtension(this, trieVisitContext);
                     TrieNode child = GetChild(0);
                     if (child != null && visitor.ShouldVisit(child.Keccak))
                     {
-                        visitContext.Level++;
-                        visitContext.BranchChildIndex = null;
-                        child.Accept(visitor, tree, visitContext);
-                        visitContext.Level--;
+                        trieVisitContext.Level++;
+                        trieVisitContext.BranchChildIndex = null;
+                        child.Accept(visitor, tree, trieVisitContext);
+                        trieVisitContext.Level--;
                     }
 
                     break;
@@ -471,27 +480,27 @@ namespace Nethermind.Store
 
                 case NodeType.Leaf:
                 {
-                    visitor.VisitLeaf(this, visitContext, Value);
-                    if (!visitContext.IsStorage)
+                    visitor.VisitLeaf(this, trieVisitContext, Value);
+                    if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
                     {
                         Account account = _accountDecoder.Decode(Value.AsRlpStream());
                         if (account.HasCode && visitor.ShouldVisit(account.CodeHash))
                         {
-                            visitContext.Level++;
-                            visitContext.BranchChildIndex = null;
-                            visitor.VisitCode(account.CodeHash, visitContext);
-                            visitContext.Level--;
+                            trieVisitContext.Level++;
+                            trieVisitContext.BranchChildIndex = null;
+                            visitor.VisitCode(account.CodeHash, trieVisitContext);
+                            trieVisitContext.Level--;
                         }
 
                         if (account.HasStorage && visitor.ShouldVisit(account.StorageRoot))
                         {
-                            visitContext.IsStorage = true;
+                            trieVisitContext.IsStorage = true;
                             TrieNode storageRoot = new TrieNode(NodeType.Unknown, account.StorageRoot);
-                            visitContext.Level++;
-                            visitContext.BranchChildIndex = null;
-                            storageRoot.Accept(visitor, tree, visitContext);
-                            visitContext.Level--;
-                            visitContext.IsStorage = false;
+                            trieVisitContext.Level++;
+                            trieVisitContext.BranchChildIndex = null;
+                            storageRoot.Accept(visitor, tree, trieVisitContext);
+                            trieVisitContext.Level--;
+                            trieVisitContext.IsStorage = false;
                         }
                     }
 

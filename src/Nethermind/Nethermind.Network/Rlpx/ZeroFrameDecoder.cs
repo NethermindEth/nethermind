@@ -91,7 +91,7 @@ namespace Nethermind.Network.Rlpx
                         break;
                     }
                     default:
-                        throw new NotImplementedException($"{nameof(ZeroFrameDecoder)} does not support {_state} state.");
+                        throw new NotSupportedException($"{nameof(ZeroFrameDecoder)} does not support {_state} state.");
                 }
             }
         }

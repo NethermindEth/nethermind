@@ -49,12 +49,17 @@ namespace Nethermind.Store
         private readonly IDb _db;
         private readonly bool _parallelBranches;
 
-        private Keccak _rootHash;
+        private Keccak _rootHash = Keccak.EmptyTreeHash;
 
         internal TrieNode RootRef;
 
         public PatriciaTree()
             : this(NullDb.Instance, EmptyTreeHash, false)
+        {
+        }
+        
+        public PatriciaTree(IDb db)
+            : this(db, EmptyTreeHash, false)
         {
         }
 
@@ -65,11 +70,14 @@ namespace Nethermind.Store
             RootHash = rootHash;
         }
 
+        /// <summary>
+        /// Only used in EthereumTests
+        /// </summary>
         internal TrieNode Root
         {
             get
             {
-                RootRef?.ResolveNode(this); // TODO: needed?
+                RootRef?.ResolveNode(this);
                 return RootRef;
             }
         }
@@ -332,7 +340,7 @@ namespace Nethermind.Store
                 return TraverseExtension(node, traverseContext);
             }
 
-            throw new NotImplementedException($"Unknown node type {node.NodeType}");
+            throw new NotSupportedException($"Unknown node type {node.NodeType}");
         }
 
         // TODO: this can be removed now but is lower priority temporarily while the patricia rewrite testing is in progress
@@ -735,11 +743,20 @@ namespace Nethermind.Store
 
         public void Accept(ITreeVisitor visitor, Keccak rootHash)
         {
-            VisitContext visitContext = new VisitContext();
+            if (visitor == null) throw new ArgumentNullException(nameof(visitor));
+            if (rootHash == null) throw new ArgumentNullException(nameof(rootHash));
+            
+            TrieVisitContext trieVisitContext = new TrieVisitContext();
+            
+            // hacky but other solutions are not much better, something nicer would require a bit of thinking
+            // we introduced a notion of an account on the visit context level which should have no knowledge of account really
+            // but we know that we have multiple optimizations and assumptions on trees
+            trieVisitContext.ExpectAccounts = this is StateTree;
+            
             TrieNode rootRef = null;
             if (!rootHash.Equals(Keccak.EmptyTreeHash))
             {
-                rootRef = new TrieNode(NodeType.Unknown, rootHash);
+                rootRef = RootHash == rootHash ? RootRef : new TrieNode(NodeType.Unknown, rootHash);
                 try
                 {
                     // not allowing caching just for test scenarios when we use multiple trees
@@ -747,13 +764,13 @@ namespace Nethermind.Store
                 }
                 catch (StateException)
                 {
-                    visitor.VisitMissingNode(rootHash, visitContext);
+                    visitor.VisitMissingNode(rootHash, trieVisitContext);
                     return;
                 }
             }
             
-            visitor.VisitTree(rootHash, visitContext);
-            rootRef?.Accept(visitor, this, visitContext);
+            visitor.VisitTree(rootHash, trieVisitContext);
+            rootRef?.Accept(visitor, this, trieVisitContext);
         }
     }
 }

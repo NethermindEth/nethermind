@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 
@@ -46,10 +47,11 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingCode => false;
         public bool IsTracingStack => false;
         public bool IsTracingState => false;
+        public bool IsTracingBlockHash => false;
 
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs) => throw new InvalidOperationException(ErrorMessage);
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null) => throw new InvalidOperationException(ErrorMessage);
 
-        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error) => throw new InvalidOperationException(ErrorMessage);
+        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null) => throw new InvalidOperationException(ErrorMessage);
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc) => throw new InvalidOperationException(ErrorMessage);
 
@@ -78,7 +80,7 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after) => throw new InvalidOperationException(ErrorMessage);
 
-        public void ReportStorageChange(StorageAddress storageAddress, byte[] before, byte[] after) => throw new InvalidOperationException(ErrorMessage);
+        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after) => throw new InvalidOperationException(ErrorMessage);
 
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false) => throw new InvalidOperationException(ErrorMessage);
 
@@ -86,6 +88,8 @@ namespace Nethermind.Evm.Tracing
         public void ReportActionError(EvmExceptionType exceptionType) => throw new InvalidOperationException(ErrorMessage);
 
         public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode) => throw new InvalidOperationException(ErrorMessage);
+        public void ReportBlockHash(Keccak blockHash) => throw new InvalidOperationException(ErrorMessage);
+
         public void ReportByteCode(byte[] byteCode) => throw new InvalidOperationException(ErrorMessage);
         public void ReportRefundForVmTrace(long refund, long gasAvailable)=> throw new InvalidOperationException(ErrorMessage);
         public void ReportRefund(long refund) => throw new InvalidOperationException(ErrorMessage);

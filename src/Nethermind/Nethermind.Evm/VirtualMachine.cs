@@ -619,7 +619,6 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        // TODO: can calculate in place...
                         stack.PopUInt256(out UInt256 b);
                         stack.PopUInt256(out UInt256 a);
                         UInt256.Add(out UInt256 c, ref a, ref b, false);
@@ -649,7 +648,6 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        // TODO: can calculate in place...
                         stack.PopUInt256(out UInt256 a);
                         stack.PopUInt256(out UInt256 b);
                         UInt256 result = a - b;
@@ -665,7 +663,6 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        // TODO: can calculate in place...
                         stack.PopUInt(out BigInteger a);
                         stack.PopUInt(out BigInteger b);
                         if (b.IsZero)
@@ -1410,8 +1407,17 @@ namespace Nethermind.Evm
 
                         stack.PopUInt256(out UInt256 a);
                         long number = a > long.MaxValue ? long.MaxValue : (long) a;
-                        stack.PushBytes(_blockhashProvider.GetBlockhash(env.CurrentBlock, number)?.Bytes ?? BytesZero32);
+                        Keccak blockHash = _blockhashProvider.GetBlockhash(env.CurrentBlock, number);
+                        stack.PushBytes(blockHash?.Bytes ?? BytesZero32);
 
+                        if (isTrace)
+                        {
+                            if (_txTracer.IsTracingBlockHash && blockHash != null)
+                            {
+                                _txTracer.ReportBlockHash(blockHash);
+                            }
+                        }
+                        
                         break;
                     }
                     case Instruction.COINBASE:
@@ -1583,7 +1589,7 @@ namespace Nethermind.Evm
                         }
 
                         stack.PopUInt256(out UInt256 storageIndex);
-                        byte[] value = _storage.Get(new StorageAddress(env.ExecutingAccount, storageIndex));
+                        byte[] value = _storage.Get(new StorageCell(env.ExecutingAccount, storageIndex));
                         stack.PushBytes(value);
                         break;
                     }
@@ -1615,8 +1621,8 @@ namespace Nethermind.Evm
                         byte[] newValue = stack.PopBytes().WithoutLeadingZeros().ToArray();
                         bool newIsZero = newValue.IsZero();
 
-                        StorageAddress storageAddress = new StorageAddress(env.ExecutingAccount, storageIndex);
-                        byte[] currentValue = _storage.Get(storageAddress);
+                        StorageCell storageCell = new StorageCell(env.ExecutingAccount, storageIndex);
+                        byte[] currentValue = _storage.Get(storageCell);
                         bool currentIsZero = currentValue.IsZero();
 
                         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, newValue);
@@ -1653,7 +1659,7 @@ namespace Nethermind.Evm
                             }
                             else // eip1283enabled, C != N
                             {
-                                byte[] originalValue = _storage.GetOriginal(storageAddress);
+                                byte[] originalValue = _storage.GetOriginal(storageCell);
                                 bool originalIsZero = originalValue.IsZero();
 
                                 bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
@@ -1729,20 +1735,20 @@ namespace Nethermind.Evm
                         if (!newSameAsCurrent)
                         {
                             byte[] valueToStore = newIsZero ? BytesZero : newValue;
-                            _storage.Set(storageAddress, valueToStore);
+                            _storage.Set(storageCell, valueToStore);
                         }
 
                         if (_txTracer.IsTracingInstructions)
                         {
                             byte[] valueToStore = newIsZero ? BytesZero : newValue;
                             Span<byte> span = new byte[32]; // do not stackalloc here
-                            storageAddress.Index.ToBigEndian(span);
+                            storageCell.Index.ToBigEndian(span);
                             _txTracer.ReportStorageChange(span, valueToStore);
                         }
 
                         if (_txTracer.IsTracingOpLevelStorage)
                         {
-                            _txTracer.SetOperationStorage(storageAddress.Address, storageIndex, newValue, currentValue);
+                            _txTracer.SetOperationStorage(storageCell.Address, storageIndex, newValue, currentValue);
                         }
 
                         break;
@@ -2317,7 +2323,7 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            throw new NotImplementedException($"Execution type is undefined for {Enum.GetName(typeof(Instruction), instruction)}");
+                            throw new NotSupportedException($"Execution type is undefined for {Enum.GetName(typeof(Instruction), instruction)}");
                         }
 
                         EvmState callState = new EvmState(

@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -316,21 +317,25 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
         private StateDb _localStateDb;
         private StateTree _remoteStateTree;
         private StateTree _localStateTree;
-
-        static NodeDataDownloaderTests()
+        
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public void InitOnce()
         {
-            StorageTree remoteStorageTree = SetStorage(new MemDb());
-            Keccak storageRoot = remoteStorageTree.RootHash;
+            if (Empty == null)
+            {
+                StorageTree remoteStorageTree = SetStorage(new MemDb());
+                Keccak storageRoot = remoteStorageTree.RootHash;
 
-            Empty = Build.An.Account.WithBalance(0).TestObject;
-            Account0 = Build.An.Account.WithBalance(1).WithCode(Code0).WithStorageRoot(storageRoot).TestObject;
-            Account1 = Build.An.Account.WithBalance(2).WithCode(Code1).WithStorageRoot(storageRoot).TestObject;
-            Account2 = Build.An.Account.WithBalance(3).WithCode(Code2).WithStorageRoot(storageRoot).TestObject;
-            Account3 = Build.An.Account.WithBalance(4).WithCode(Code3).WithStorageRoot(storageRoot).TestObject;
+                Empty = Build.An.Account.WithBalance(0).TestObject;
+                Account0 = Build.An.Account.WithBalance(1).WithCode(Code0).WithStorageRoot(storageRoot).TestObject;
+                Account1 = Build.An.Account.WithBalance(2).WithCode(Code1).WithStorageRoot(storageRoot).TestObject;
+                Account2 = Build.An.Account.WithBalance(3).WithCode(Code2).WithStorageRoot(storageRoot).TestObject;
+                Account3 = Build.An.Account.WithBalance(4).WithCode(Code3).WithStorageRoot(storageRoot).TestObject;
 
-            AccountJustState0 = Build.An.Account.WithBalance(1).TestObject;
-            AccountJustState1 = Build.An.Account.WithBalance(2).TestObject;
-            AccountJustState2 = Build.An.Account.WithBalance(3).TestObject;
+                AccountJustState0 = Build.An.Account.WithBalance(1).TestObject;
+                AccountJustState1 = Build.An.Account.WithBalance(2).TestObject;
+                AccountJustState2 = Build.An.Account.WithBalance(3).TestObject;
+            }
         }
 
         private static StorageTree SetStorage(IDb db)
@@ -365,6 +370,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
         [SetUp]
         public void Setup()
         {
+            InitOnce();
 //            _logger = new ConsoleAsyncLogger(LogLevel.Debug);
 //            _logManager = new OneLoggerLogManager(_logger);
             _logManager = LimboLogs.Instance;

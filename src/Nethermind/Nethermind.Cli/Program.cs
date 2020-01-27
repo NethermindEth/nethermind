@@ -18,7 +18,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using Jint.Native;
+using Jint.Parser.Ast;
 using Nethermind.Cli.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
@@ -34,6 +36,7 @@ namespace Nethermind.Cli
         private static ILogManager _logManager;
         private static ICliEngine _engine;
         private static Terminal _terminal;
+        private static CliConsole _cliConsole;
 
         // ReSharper disable once InconsistentNaming
         private static CliModuleLoader ModuleLoader;
@@ -49,7 +52,8 @@ namespace Nethermind.Cli
         
         static void Main(string[] args)
         {
-            _terminal = CliConsole.Init(ColorScheme);
+            _cliConsole = new CliConsole();
+            _terminal = _cliConsole.Init(ColorScheme);
 
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
 
@@ -62,14 +66,14 @@ namespace Nethermind.Cli
 
         private static void Test()
         {
-            CliConsole.WriteLine($"Connecting to {_nodeManager.CurrentUri}");
+            _cliConsole.WriteLine($"Connecting to {_nodeManager.CurrentUri}");
             JsValue result = _engine.Execute("web3.clientVersion");
             if (result != JsValue.Null)
             {
-                CliConsole.WriteGood("Connected");
+                _cliConsole.WriteGood("Connected");
             }
 //            Console.WriteLine(_serializer.Serialize(result.ToObject(), true));
-            CliConsole.WriteLine();
+            _cliConsole.WriteLine();
         }
 
         class AutoCompletionHandler : IAutoCompleteHandler
@@ -145,7 +149,7 @@ namespace Nethermind.Cli
             }
             catch (Exception e)
             {
-                CliConsole.WriteErrorLine($"Could not load cmd history from {HistoryFilePath} {e.Message}");
+                _cliConsole.WriteErrorLine($"Could not load cmd history from {HistoryFilePath} {e.Message}");
             }
 
             ReadLine.AutoCompletionHandler = new AutoCompletionHandler();
@@ -163,7 +167,7 @@ namespace Nethermind.Cli
                     using (Stream inStream = System.Console.OpenStandardInput(bufferSize))
                     {
                         Console.SetIn(new StreamReader(inStream, Console.InputEncoding, false, bufferSize));
-                        CliConsole.WriteLessImportant("nethermind> ");
+                        _cliConsole.WriteLessImportant("nethermind> ");
                         statement = _terminal == Terminal.Cygwin ? Console.ReadLine() : ReadLine.Read();
                         CleanStatement(statement);
                         
@@ -195,19 +199,19 @@ namespace Nethermind.Cli
                     JsValue result = _engine.Execute(statement);
                     if (result.IsObject() && result.AsObject().Class == "Function")
                     {
-                        CliConsole.WriteGood(result.ToString());
-                        CliConsole.WriteLine();
+                        _cliConsole.WriteGood(result.ToString());
+                        _cliConsole.WriteLine();
                     }
                     else if (!result.IsNull())
                     {
                         string text = Serializer.Serialize(result.ToObject(), true);
 //                        File.AppendAllText("C:\\temp\\cli.txt", text);
-                        CliConsole.WriteGood(text);
+                        _cliConsole.WriteGood(text);
                     }
                     else
                     {
-                        CliConsole.WriteLessImportant("null");
-                        CliConsole.WriteLine();
+                        _cliConsole.WriteLessImportant("null");
+                        _cliConsole.WriteLine();
                     }
 
 //                    bool isNull = result.IsNull();
@@ -218,7 +222,7 @@ namespace Nethermind.Cli
                 }
                 catch (Exception e)
                 {
-                    CliConsole.WriteException(e);
+                    _cliConsole.WriteException(e);
                 }
             }
         }
@@ -232,7 +236,7 @@ namespace Nethermind.Cli
 
             public void Warn(string text)
             {
-                CliConsole.WriteLessImportant(text);
+                _cliConsole.WriteLessImportant(text);
             }
 
             public void Debug(string text)
@@ -247,10 +251,10 @@ namespace Nethermind.Cli
 
             public void Error(string text, Exception ex = null)
             {
-                CliConsole.WriteErrorLine(text);
+                _cliConsole.WriteErrorLine(text);
                 if (ex != null)
                 {
-                    CliConsole.WriteException(ex);
+                    _cliConsole.WriteException(ex);
                 }
             }
 
@@ -270,35 +274,27 @@ namespace Nethermind.Cli
             Serializer.RegisterConverter(new ParityVmOperationTraceConverter());
             Serializer.RegisterConverter(new ParityVmTraceConverter());
 
-            _engine = new CliEngine();
+            _engine = new CliEngine(_cliConsole);
             _engine.JintEngine.SetValue("serialize", new Action<JsValue>(v =>
             {
                 string text = Serializer.Serialize(v.ToObject(), true);
 //                File.AppendAllText("C:\\temp\\cli.txt", text);
-                CliConsole.WriteGood(text);
+                _cliConsole.WriteGood(text);
             }));
             
             _logManager = new OneLoggerLogManager(new CliLogger());
-            _nodeManager = new NodeManager(_engine, Serializer, _logManager);
+            _nodeManager = new NodeManager(_engine, Serializer, _cliConsole, _logManager);
             _nodeManager.SwitchUri(new Uri("http://localhost:8545"));
         }
 
         private static void LoadModules()
         {
-            ModuleLoader = new CliModuleLoader(_engine, _nodeManager);
-            ModuleLoader.LoadModule(typeof(AdminCliModule));
-            ModuleLoader.LoadModule(typeof(CliqueCliModule));
-            ModuleLoader.LoadModule(typeof(DebugCliModule));
-            ModuleLoader.LoadModule(typeof(EthCliModule));
-            ModuleLoader.LoadModule(typeof(TxPoolCliModule));
-            ModuleLoader.LoadModule(typeof(NetCliModule));
-            ModuleLoader.LoadModule(typeof(NodeCliModule));
-            ModuleLoader.LoadModule(typeof(NdmCliModule));
-            ModuleLoader.LoadModule(typeof(TraceCliModule));
-            ModuleLoader.LoadModule(typeof(ParityCliModule));
-            ModuleLoader.LoadModule(typeof(PersonalCliModule));
-            ModuleLoader.LoadModule(typeof(SystemCliModule));
-            ModuleLoader.LoadModule(typeof(Web3CliModule));
+            ModuleLoader = new CliModuleLoader(_engine, _nodeManager, _cliConsole);
+            var modules = typeof(Program).Assembly.GetTypes().Where(t => t.GetCustomAttribute<CliModuleAttribute>() != null);
+            foreach (Type module in modules)
+            {
+                ModuleLoader.LoadModule(module);    
+            }
         }
     }
 }

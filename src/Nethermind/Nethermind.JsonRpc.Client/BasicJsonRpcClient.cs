@@ -70,11 +70,11 @@ namespace Nethermind.JsonRpc.Client
                 
                 return jsonResponse.Result;
             }
-            catch (NotImplementedException)
+            catch (NotSupportedException)
             {
                 throw;
             }
-            catch (NotSupportedException)
+            catch (NotImplementedException)
             {
                 throw;
             }

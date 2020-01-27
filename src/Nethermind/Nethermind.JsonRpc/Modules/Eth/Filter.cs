@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using Nethermind.Blockchain;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json.Linq;
@@ -48,10 +49,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             if (string.IsNullOrWhiteSpace(value))
             {
-                return new BlockParameter
-                {
-                    Type = BlockParameterType.Latest
-                };
+                return new BlockParameter(BlockParameterType.Latest);
             }
 
             return BlockParameter.FromJson(value);

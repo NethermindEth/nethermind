@@ -24,13 +24,13 @@ namespace Nethermind.Cli.Modules
         [CliFunction("trace", "replayTransaction", Description = "Replays a transaction, returning the traces.")]
         public JsValue ReplayTransaction(string txHash, string[] traceTypes)
         {
-            return NodeManager.PostJint("trace_replayTransaction", txHash, traceTypes).Result;
+            return NodeManager.PostJint("trace_replayTransaction", CliParseHash(txHash), traceTypes).Result;
         }
         
         [CliFunction("trace", "transaction", Description = "Returns all traces of given transaction")]
         public JsValue TraceTransaction(string txHash)
         {
-            return NodeManager.PostJint("trace_transaction", txHash).Result;
+            return NodeManager.PostJint("trace_transaction", CliParseHash(txHash)).Result;
         }
         
         [CliFunction("trace", "replayBlockTransactions", Description = "Replays all transactions in a block returning the requested traces for each transaction.")]

@@ -35,7 +35,7 @@ namespace Nethermind.HonestValidator.Tests.Helpers
 
         public DateTimeOffset Now()
         {
-            throw new NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public DateTimeOffset UtcNow()

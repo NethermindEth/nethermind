@@ -17,6 +17,7 @@
 using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
 using Nethermind.Db.Config;
 using Nethermind.Store;

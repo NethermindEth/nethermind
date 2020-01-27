@@ -25,14 +25,14 @@ namespace Nethermind.Store
 {
     public class StorageProvider : IStorageProvider
     {
-        private ResettableDictionary<StorageAddress, Stack<int>> _intraBlockCache = new ResettableDictionary<StorageAddress, Stack<int>>();
+        private ResettableDictionary<StorageCell, Stack<int>> _intraBlockCache = new ResettableDictionary<StorageCell, Stack<int>>();
 
         /// <summary>
         /// EIP-1283
         /// </summary>
-        private ResettableDictionary<StorageAddress, byte[]> _originalValues = new ResettableDictionary<StorageAddress, byte[]>();
+        private ResettableDictionary<StorageCell, byte[]> _originalValues = new ResettableDictionary<StorageCell, byte[]>();
 
-        private ResettableHashSet<StorageAddress> _committedThisRound = new ResettableHashSet<StorageAddress>();
+        private ResettableHashSet<StorageCell> _committedThisRound = new ResettableHashSet<StorageCell>();
 
         private readonly ILogger _logger;
 
@@ -53,24 +53,24 @@ namespace Nethermind.Store
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
         }
 
-        public byte[] GetOriginal(StorageAddress storageAddress)
+        public byte[] GetOriginal(StorageCell storageCell)
         {
-            if (!_originalValues.ContainsKey(storageAddress))
+            if (!_originalValues.ContainsKey(storageCell))
             {
                 throw new InvalidOperationException("Get original should only be called after get within the same caching round");
             }
 
-            return _originalValues[storageAddress];
+            return _originalValues[storageCell];
         }
 
-        public byte[] Get(StorageAddress storageAddress)
+        public byte[] Get(StorageCell storageCell)
         {
-            return GetCurrentValue(storageAddress);
+            return GetCurrentValue(storageCell);
         }
 
-        public void Set(StorageAddress storageAddress, byte[] newValue)
+        public void Set(StorageCell storageCell, byte[] newValue)
         {
-            PushUpdate(storageAddress, newValue);
+            PushUpdate(storageCell, newValue);
         }
 
         private Keccak RecalculateRootHash(Address address)
@@ -105,11 +105,11 @@ namespace Nethermind.Store
             for (int i = 0; i < _currentPosition - snapshot; i++)
             {
                 Change change = _changes[_currentPosition - i];
-                if (_intraBlockCache[change.StorageAddress].Count == 1)
+                if (_intraBlockCache[change.StorageCell].Count == 1)
                 {
-                    if (_changes[_intraBlockCache[change.StorageAddress].Peek()].ChangeType == ChangeType.JustCache)
+                    if (_changes[_intraBlockCache[change.StorageCell].Peek()].ChangeType == ChangeType.JustCache)
                     {
-                        int actualPosition = _intraBlockCache[change.StorageAddress].Pop();
+                        int actualPosition = _intraBlockCache[change.StorageCell].Pop();
                         if (actualPosition != _currentPosition - i)
                         {
                             throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {_currentPosition} - {i}");
@@ -121,7 +121,7 @@ namespace Nethermind.Store
                     }
                 }
 
-                int forAssertion = _intraBlockCache[change.StorageAddress].Pop();
+                int forAssertion = _intraBlockCache[change.StorageCell].Pop();
                 if (forAssertion != _currentPosition - i)
                 {
                     throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
@@ -132,12 +132,12 @@ namespace Nethermind.Store
 //                    _storages[change.StorageAddress.Address] = _destructedStorages[change.StorageAddress.Address].Storage;
 //                    _destructedStorages.Remove(change.StorageAddress.Address);
 //                }
-                
+
                 _changes[_currentPosition - i] = null;
 
-                if (_intraBlockCache[change.StorageAddress].Count == 0)
+                if (_intraBlockCache[change.StorageCell].Count == 0)
                 {
-                    _intraBlockCache.Remove(change.StorageAddress);
+                    _intraBlockCache.Remove(change.StorageCell);
                 }
             }
 
@@ -146,7 +146,7 @@ namespace Nethermind.Store
             {
                 _currentPosition++;
                 _changes[_currentPosition] = kept;
-                _intraBlockCache[kept.StorageAddress].Push(_currentPosition);
+                _intraBlockCache[kept.StorageCell].Push(_currentPosition);
             }
         }
 
@@ -155,8 +155,8 @@ namespace Nethermind.Store
             Commit(null);
         }
 
-        private static byte[] _zeroValue = {0}; 
-        
+        private static byte[] _zeroValue = {0};
+
         private struct ChangeTrace
         {
             public ChangeTrace(byte[] before, byte[] after)
@@ -164,17 +164,17 @@ namespace Nethermind.Store
                 After = after ?? _zeroValue;
                 Before = before ?? _zeroValue;
             }
-            
+
             public ChangeTrace(byte[] after)
             {
                 After = after ?? _zeroValue;
                 Before = _zeroValue;
             }
-            
+
             public byte[] Before { get; }
             public byte[] After { get; }
         }
-        
+
         public void Commit(IStorageTracer tracer)
         {
             if (_currentPosition == -1)
@@ -198,12 +198,12 @@ namespace Nethermind.Store
             HashSet<Address> toUpdateRoots = new HashSet<Address>();
 
             bool isTracing = tracer != null;
-            Dictionary<StorageAddress, ChangeTrace> trace = null;
+            Dictionary<StorageCell, ChangeTrace> trace = null;
             if (isTracing)
             {
-                trace = new Dictionary<StorageAddress, ChangeTrace>();
+                trace = new Dictionary<StorageCell, ChangeTrace>();
             }
-            
+
             for (int i = 0; i <= _currentPosition; i++)
             {
                 Change change = _changes[_currentPosition - i];
@@ -211,16 +211,22 @@ namespace Nethermind.Store
                 {
                     continue;
                 }
-                
-                if (_committedThisRound.Contains(change.StorageAddress))
+
+                if (_committedThisRound.Contains(change.StorageCell))
                 {
                     if (isTracing && change.ChangeType == ChangeType.JustCache)
                     {
-                        trace[change.StorageAddress] = new ChangeTrace(change.Value, trace[change.StorageAddress].After);
+                        trace[change.StorageCell] = new ChangeTrace(change.Value, trace[change.StorageCell].After);
                     }
-                    
+
                     continue;
                 }
+
+                if (isTracing && change.ChangeType == ChangeType.JustCache)
+                {
+                    tracer.ReportStorageRead(change.StorageCell);
+                }
+
 
 //                if (_destructedStorages.ContainsKey(change.StorageAddress.Address))
 //                {
@@ -229,15 +235,15 @@ namespace Nethermind.Store
 //                        continue;
 //                    }
 //                }
-                
-                _committedThisRound.Add(change.StorageAddress);
+
+                _committedThisRound.Add(change.StorageCell);
 
                 if (change.ChangeType == ChangeType.Destroy)
                 {
                     continue;
                 }
 
-                int forAssertion = _intraBlockCache[change.StorageAddress].Pop();
+                int forAssertion = _intraBlockCache[change.StorageCell].Pop();
                 if (forAssertion != _currentPosition - i)
                 {
                     throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
@@ -252,17 +258,18 @@ namespace Nethermind.Store
                     case ChangeType.Update:
                         if (_logger.IsTrace)
                         {
-                            _logger.Trace($"  Update {change.StorageAddress.Address}_{change.StorageAddress.Index} V = {change.Value.ToHexString(true)}");
+                            _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
                         }
 
-                        StorageTree tree = GetOrCreateStorage(change.StorageAddress.Address);
+                        StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
                         Metrics.StorageTreeWrites++;
-                        toUpdateRoots.Add(change.StorageAddress.Address);
-                        tree.Set(change.StorageAddress.Index, change.Value);
+                        toUpdateRoots.Add(change.StorageCell.Address);
+                        tree.Set(change.StorageCell.Index, change.Value);
                         if (isTracing)
                         {
-                            trace[change.StorageAddress] = new ChangeTrace(change.Value);
+                            trace[change.StorageCell] = new ChangeTrace(change.Value);
                         }
+
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
@@ -278,26 +285,26 @@ namespace Nethermind.Store
                     _stateProvider.UpdateStorageRoot(address, root);
                 }
             }
-            
+
             Resettable<Change>.Reset(ref _changes, ref _capacity, ref _currentPosition, StartCapacity);
             _committedThisRound.Reset();
             _intraBlockCache.Reset();
             _originalValues.Reset();
 //            _destructedStorages.Clear();
-            
+
             if (isTracing)
             {
                 ReportChanges(tracer, trace);
             }
         }
-        
-        private void ReportChanges(IStorageTracer tracer, Dictionary<StorageAddress, ChangeTrace> trace)
+
+        private void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, ChangeTrace> trace)
         {
-            foreach ((StorageAddress address, ChangeTrace change) in trace)
+            foreach ((StorageCell address, ChangeTrace change) in trace)
             {
                 byte[] before = change.Before;
                 byte[] after = change.After;
-                
+
                 if (!Bytes.AreEqual(before, after))
                 {
                     tracer.ReportStorageChange(address, before, after);
@@ -355,11 +362,11 @@ namespace Nethermind.Store
 
 //        private Dictionary<Address, (int ChangeIndex, StorageTree Storage)> _destructedStorages = new Dictionary<Address, (int, StorageTree)>();
 
-        private byte[] GetCurrentValue(StorageAddress storageAddress)
+        private byte[] GetCurrentValue(StorageCell storageCell)
         {
-            if (_intraBlockCache.ContainsKey(storageAddress))
+            if (_intraBlockCache.ContainsKey(storageCell))
             {
-                int lastChangeIndex = _intraBlockCache[storageAddress].Peek();
+                int lastChangeIndex = _intraBlockCache[storageCell].Peek();
 //                if (_destructedStorages.ContainsKey(storageAddress.Address))
 //                {
 //                    if (lastChangeIndex < _destructedStorages[storageAddress.Address].ChangeIndex)
@@ -371,34 +378,34 @@ namespace Nethermind.Store
                 return _changes[lastChangeIndex].Value;
             }
 
-            return LoadFromTree(storageAddress);
+            return LoadFromTree(storageCell);
         }
 
-        private byte[] LoadFromTree(StorageAddress storageAddress)
+        private byte[] LoadFromTree(StorageCell storageCell)
         {
-            StorageTree tree = GetOrCreateStorage(storageAddress.Address);
+            StorageTree tree = GetOrCreateStorage(storageCell.Address);
 
             Metrics.StorageTreeReads++;
-            byte[] value = tree.Get(storageAddress.Index);
-            PushToRegistryOnly(storageAddress, value);
+            byte[] value = tree.Get(storageCell.Index);
+            PushToRegistryOnly(storageCell, value);
             return value;
         }
 
-        private void PushToRegistryOnly(StorageAddress address, byte[] value)
+        private void PushToRegistryOnly(StorageCell cell, byte[] value)
         {
-            SetupRegistry(address);
+            SetupRegistry(cell);
             IncrementChangePosition();
-            _intraBlockCache[address].Push(_currentPosition);
-            _originalValues[address] = value;
-            _changes[_currentPosition] = new Change(ChangeType.JustCache, address, value);
+            _intraBlockCache[cell].Push(_currentPosition);
+            _originalValues[cell] = value;
+            _changes[_currentPosition] = new Change(ChangeType.JustCache, cell, value);
         }
 
-        private void PushUpdate(StorageAddress address, byte[] value)
+        private void PushUpdate(StorageCell cell, byte[] value)
         {
-            SetupRegistry(address);
+            SetupRegistry(cell);
             IncrementChangePosition();
-            _intraBlockCache[address].Push(_currentPosition);
-            _changes[_currentPosition] = new Change(ChangeType.Update, address, value);
+            _intraBlockCache[cell].Push(_currentPosition);
+            _changes[_currentPosition] = new Change(ChangeType.Update, cell, value);
         }
 
         private void IncrementChangePosition()
@@ -406,25 +413,25 @@ namespace Nethermind.Store
             Resettable<Change>.IncrementPosition(ref _changes, ref _capacity, ref _currentPosition);
         }
 
-        private void SetupRegistry(StorageAddress address)
+        private void SetupRegistry(StorageCell cell)
         {
-            if (!_intraBlockCache.ContainsKey(address))
+            if (!_intraBlockCache.ContainsKey(cell))
             {
-                _intraBlockCache[address] = new Stack<int>();
+                _intraBlockCache[cell] = new Stack<int>();
             }
         }
 
         private class Change
         {
-            public Change(ChangeType changeType, StorageAddress storageAddress, byte[] value)
+            public Change(ChangeType changeType, StorageCell storageCell, byte[] value)
             {
-                StorageAddress = storageAddress;
+                StorageCell = storageCell;
                 Value = value;
                 ChangeType = changeType;
             }
 
             public ChangeType ChangeType { get; }
-            public StorageAddress StorageAddress { get; }
+            public StorageCell StorageCell { get; }
             public byte[] Value { get; }
         }
 

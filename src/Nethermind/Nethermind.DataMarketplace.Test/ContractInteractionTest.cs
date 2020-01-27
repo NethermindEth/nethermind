@@ -37,7 +37,9 @@ using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Facade;
+using Nethermind.JsonRpc.Data;
 using Nethermind.Store;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -183,7 +185,7 @@ namespace Nethermind.DataMarketplace.Test
             public BlockchainBridge(TransactionProcessor processor, IReleaseSpec spec)
             {
                 _spec = spec;
-                _receiptsTracer = new BlockReceiptsTracer(new SingleReleaseSpecProvider(_spec, 99), Substitute.For<IStateProvider>());
+                _receiptsTracer = new BlockReceiptsTracer();
                 _processor = processor;
                 _receiptsTracer.SetOtherTracer(GethTracer);
                 _receiptsTracer.StartNewBlockTrace(_headBlock);
@@ -205,67 +207,29 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
-            public Block FindBlock(Keccak blockHash) => _headBlock.Hash == blockHash ? _headBlock : null;
-
-            public Block FindBlock(long blockNumber) => _headBlock.Number == blockNumber ? _headBlock : null;
-
-            public Block FindLatestBlock() => _headBlock;
-
-            public Block FindPendingBlock()
+            public Keccak HeadHash => _headBlock.Hash;
+            public Keccak GenesisHash => null;
+            public Keccak PendingHash => null;
+            public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options)
             {
-                throw new NotImplementedException();
+                return _headBlock.Hash == blockHash ? _headBlock : null;
             }
 
-            public BlockHeader FindHeader(Keccak blockHash)
+            public Block FindBlock(long blockNumber, BlockTreeLookupOptions options)
             {
-                throw new NotImplementedException();
+                return _headBlock.Number == blockNumber ? _headBlock : null;
             }
 
-            public BlockHeader FindHeader(long blockNumber)
+            public BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options)
             {
-                throw new NotImplementedException();
+                return _headBlock.Hash == blockHash ? _headBlock.Header : null;
             }
 
-            public BlockHeader FindGenesisHeader()
+            public BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options)
             {
-                throw new NotImplementedException();
+                return _headBlock.Number == blockNumber ? _headBlock.Header : null;
             }
-
-            public BlockHeader FindHeadHeader()
-            {
-                throw new NotImplementedException();
-            }
-
-            public BlockHeader FindEarliestHeader()
-            {
-                throw new NotImplementedException();
-            }
-
-            public BlockHeader FindLatestHeader()
-            {
-                throw new NotImplementedException();
-            }
-
-            public BlockHeader FindPendingHeader()
-            {
-                throw new NotImplementedException();
-            }
-
-            public Block FindEarliestBlock()
-            {
-                throw new NotImplementedException();
-            }
-
-            public Block FindHeadBlock()
-            {
-                throw new NotImplementedException();
-            }
-
-            public Block FindGenesisBlock()
-            {
-                throw new NotImplementedException();
-            }
-
+            
             public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
             {
                 return (new TxReceipt(), new Transaction
@@ -377,7 +341,7 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
-            public int NewFilter(FilterBlock fromBlock, FilterBlock toBlock, object address = null, IEnumerable<object> topics = null)
+            public int NewFilter(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null)
             {
                 throw new NotImplementedException();
             }
@@ -417,7 +381,7 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
-            public FilterLog[] GetLogs(FilterBlock fromBlock, FilterBlock toBlock, object address = null, IEnumerable<object> topics = null)
+            public FilterLog[] GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null)
             {
                 throw new NotImplementedException();
             }

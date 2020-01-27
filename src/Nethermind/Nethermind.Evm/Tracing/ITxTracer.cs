@@ -16,45 +16,92 @@
 
 using System;
 using System.Collections.Generic;
+using System.Data.SqlTypes;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
+using Newtonsoft.Json.Serialization;
 
 namespace Nethermind.Evm.Tracing
 {
     public interface ITxTracer : IStateTracer, IStorageTracer
     {
+        /// <summary>
+        /// Defines whether MarkAsSuccess or MarkAsFailed will be called
+        /// </summary>
         bool IsTracingReceipt { get; }
+        /// <summary>
+        /// High level calls with information on the target account
+        /// </summary>
         bool IsTracingActions { get; }
+        /// <summary>
+        /// SSTORE and SLOAD level storage operations
+        /// </summary>
         bool IsTracingOpLevelStorage { get; }
+        /// <summary>
+        /// EVM memory access operations
+        /// </summary>
         bool IsTracingMemory { get; }
         bool IsTracingInstructions { get; }
+        /// <summary>
+        /// Code deployment
+        /// </summary>
         bool IsTracingCode { get; }
+        /// <summary>
+        /// EVM stack tracing after each operation
+        /// </summary>
         bool IsTracingStack { get; }
+        /// <summary>
+        /// State changes at commit stage
+        /// </summary>
         bool IsTracingState { get; }
 
-        void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs);
-        void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error);
+        /// <summary>
+        /// Traces blockhash calls
+        /// </summary>
+        bool IsTracingBlockHash { get; }
+
+        void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null);
+
+        void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null);
 
         void StartOperation(int depth, long gas, Instruction opcode, int pc);
+
         void ReportOperationError(EvmExceptionType error);
+
         void ReportOperationRemainingGas(long gas);
+
         void SetOperationStack(List<string> stackTrace);
+
         void ReportStackPush(Span<byte> stackItem);
+
         void SetOperationMemory(List<string> memoryTrace);
+
         void SetOperationMemorySize(ulong newSize);
+
         void ReportMemoryChange(long offset, Span<byte> data);
+
         void ReportStorageChange(Span<byte> key, Span<byte> value);
+
         void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue);
-        
+
         void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress);
+
         void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false);
+
         void ReportActionEnd(long gas, byte[] output);
-        
+
         void ReportActionError(EvmExceptionType evmExceptionType);
+
         void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode);
+
+        void ReportBlockHash(Keccak blockHash);
+
         void ReportByteCode(byte[] byteCode);
+
         void ReportRefundForVmTrace(long refund, long gasAvailable);
+
         void ReportRefund(long refund);
     }
 }

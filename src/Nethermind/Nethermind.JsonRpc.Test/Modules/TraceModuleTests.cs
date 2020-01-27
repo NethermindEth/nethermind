@@ -17,11 +17,13 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
@@ -37,10 +39,10 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             ParityLikeTxTrace result = BuildParityTxTrace();
 
-            ITracer tracer = Substitute.For<ITracer>();
+            IParityStyleTracer tracer = Substitute.For<IParityStyleTracer>();
             tracer.ParityTrace(TestItem.KeccakC, Arg.Any<ParityTraceTypes>()).Returns(result);
 
-            ITraceModule module = new TraceModule(Substitute.For<IBlockchainBridge>(), NullLogManager.Instance, tracer);
+            ITraceModule module = new TraceModule(Substitute.For<IBlockchainBridge>(), tracer);
 
             string serialized = RpcTest.TestSerializedRequest(TraceModuleFactory.Converters, module, "trace_replayTransaction", TestItem.KeccakC.ToString(true), "[\"stateDiff\", \"trace\"]");
 
@@ -56,11 +58,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.TestObject;
             IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
             blockchainBridge.FindLatestBlock().Returns(block);
+            blockchainBridge.FindBlock(BlockParameter.Latest).Returns(block);
 
-            ITracer tracer = Substitute.For<ITracer>();
+            IParityStyleTracer tracer = Substitute.For<IParityStyleTracer>();
             tracer.ParityTraceBlock(block.Hash, Arg.Any<ParityTraceTypes>()).Returns(new[] {result1, result2});
 
-            ITraceModule module = new TraceModule(blockchainBridge, NullLogManager.Instance, tracer);
+            ITraceModule module = new TraceModule(blockchainBridge, tracer);
 
             string serialized = RpcTest.TestSerializedRequest(TraceModuleFactory.Converters, module, "trace_replayBlockTransactions", "latest", "[\"stateDiff\", \"trace\"]");
 
@@ -71,9 +74,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Trace_replayBlockTransactions_null()
         {
             IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
-            ITracer tracer = Substitute.For<ITracer>();
+            IParityStyleTracer tracer = Substitute.For<IParityStyleTracer>();
 
-            ITraceModule module = new TraceModule(blockchainBridge, NullLogManager.Instance, tracer);
+            ITraceModule module = new TraceModule(blockchainBridge, tracer);
 
             string serialized = RpcTest.TestSerializedRequest(TraceModuleFactory.Converters, module, "trace_replayBlockTransactions", "earliest", "[]");
 
@@ -89,11 +92,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.TestObject;
             IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
             blockchainBridge.FindEarliestBlock().Returns(block);
+            blockchainBridge.FindBlock(BlockParameter.Earliest).Returns(block);
 
-            ITracer tracer = Substitute.For<ITracer>();
+            IParityStyleTracer tracer = Substitute.For<IParityStyleTracer>();
             tracer.ParityTraceBlock(block.Hash, Arg.Any<ParityTraceTypes>()).Returns(new[] {result1, result2});
 
-            ITraceModule module = new TraceModule(blockchainBridge, NullLogManager.Instance, tracer);
+            ITraceModule module = new TraceModule(blockchainBridge, tracer);
 
             string serialized = RpcTest.TestSerializedRequest(TraceModuleFactory.Converters, module, "trace_block", "earliest");
 
@@ -110,10 +114,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
             blockchainBridge.FindEarliestBlock().Returns(block);
 
-            ITracer tracer = Substitute.For<ITracer>();
+            IParityStyleTracer tracer = Substitute.For<IParityStyleTracer>();
             tracer.ParityTraceBlock(block.Hash, Arg.Any<ParityTraceTypes>()).Returns(new[] {result1, result2});
 
-            ITraceModule module = new TraceModule(blockchainBridge, NullLogManager.Instance, tracer);
+            ITraceModule module = new TraceModule(blockchainBridge, tracer);
 
             string serialized = RpcTest.TestSerializedRequest(TraceModuleFactory.Converters, module, "trace_rawTransaction", "0xd46e8dd67c5d32be8d46e8dd67c5d32be8058bb8eb970870f072445675058bb8eb970870f072445675", "[\"trace\"]");
 
@@ -125,9 +129,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Trace_block_null()
         {
             IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
-            ITracer tracer = Substitute.For<ITracer>();
+            IParityStyleTracer tracer = Substitute.For<IParityStyleTracer>();
 
-            ITraceModule module = new TraceModule(blockchainBridge, NullLogManager.Instance, tracer);
+            ITraceModule module = new TraceModule(blockchainBridge, tracer);
 
             string serialized = RpcTest.TestSerializedRequest(TraceModuleFactory.Converters, module, "trace_block", "earliest");
 
