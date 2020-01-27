@@ -77,6 +77,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             storageProvider.Commit();
 
             stateProvider.Commit(specProvider.GenesisSpec);
+            stateProvider.CommitTree();
 
             ITxPool txPool = new TxPool(txStorage, Timestamper.Default, ethereumEcdsa, specProvider, new TxPoolConfig(), stateProvider, LimboLogs.Instance);
 
@@ -117,7 +118,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 previousBlock = block;
             }
 
-            resetEvent.Wait();
+            resetEvent.Wait(2000);
             _ethModule = new EthModule(new JsonRpcConfig(), LimboLogs.Instance, _blockchainBridge);
             _blockTree = blockTree;
         }
