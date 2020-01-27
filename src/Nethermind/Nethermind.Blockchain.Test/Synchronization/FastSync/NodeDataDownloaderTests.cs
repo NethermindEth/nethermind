@@ -37,7 +37,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization.FastSync
 {
-    [TestFixture, Ignore("Fails on CI but runs fine locally")]
+    [TestFixture]
     public class NodeDataDownloaderTests
     {
         private static readonly byte[] Code0 = {0, 0};
