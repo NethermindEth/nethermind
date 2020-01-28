@@ -48,7 +48,6 @@ using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.Db.Config;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.Monitoring;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 {
