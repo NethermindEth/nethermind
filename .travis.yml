@@ -151,7 +151,8 @@ jobs:
           dotnet test -c Release src/Nethermind/Nethermind.Network.Test;
         fi
       name: "Nethermind.Network.Test"
-    - script: 
+    - script:
+      - git submodule update --init src/Dirichlet
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$NETHERMIND_TEST_PROJECTS src/Nethermind/Nethermind.Secp256k1.Test;
         else 
