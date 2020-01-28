@@ -65,7 +65,7 @@ jobs:
         fi
       name: "Nethermind.Bls.Test"    
     - script: 
-      - git submodule update --init src/Dirichlet
+      - git submodule update --init src/Dirichlet src/rocksdb-sharp
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$NETHERMIND_TEST_PROJECTS src/Nethermind/Nethermind.Cli.Test;
         else 
