@@ -29,6 +29,28 @@ namespace Nethermind.Store.Test.Proofs
     public class AccountProofCollectorTests
     {
         [Test]
+        public void Addresses_are_correct()
+        {
+            StateTree tree = new StateTree();
+
+            Account account1 = Build.An.Account.WithBalance(1).TestObject;
+            Account account2 = Build.An.Account.WithBalance(2).TestObject;
+            tree.Set(TestItem.AddressA, account1);
+            tree.Set(TestItem.AddressB, account2);
+            tree.Commit();
+
+            AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA);
+            tree.Accept(accountProofCollector, tree.RootHash);
+            AccountProof proof = accountProofCollector.BuildResult();
+            Assert.AreEqual(TestItem.AddressA, proof.Address);
+
+            AccountProofCollector accountProofCollector2 = new AccountProofCollector(TestItem.AddressB);
+            tree.Accept(accountProofCollector2, tree.RootHash);
+            AccountProof proof2 = accountProofCollector2.BuildResult();
+            Assert.AreEqual(TestItem.AddressB, proof2.Address);
+        }
+        
+        [Test]
         public void Balance_is_correct()
         {
             StateTree tree = new StateTree();
