@@ -66,25 +66,6 @@ namespace Nethermind.Cli
             JintEngine.Execute(content);
         }
 
-        private static Delegate CreateDelegate(MethodInfo methodInfo, CliModuleBase module)
-        {
-            if (methodInfo == null)
-            {
-                throw new ArgumentNullException(nameof(methodInfo));
-            }
-
-            ParameterInfo[] parameterInfos = methodInfo.GetParameters();
-            Type[] types = new Type[parameterInfos.Length + 1];
-            for (int i = 0; i < parameterInfos.Length; i++)
-            {
-                types[i] = parameterInfos[i].ParameterType;
-            }
-
-            types[parameterInfos.Length] = methodInfo.ReturnType;
-
-            return methodInfo.CreateDelegate(Expression.GetDelegateType(), module);
-        }
-
         public JsValue Execute(string statement)
         {
             try
