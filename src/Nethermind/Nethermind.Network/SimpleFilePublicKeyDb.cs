@@ -23,7 +23,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Store;
 
-namespace Nethermind.Db
+namespace Nethermind.Network
 {
     public class SimpleFilePublicKeyDb : IFullDb
     {

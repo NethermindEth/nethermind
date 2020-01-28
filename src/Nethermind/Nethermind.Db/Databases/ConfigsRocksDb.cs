@@ -16,7 +16,6 @@
 
 using Nethermind.Db.Config;
 using Nethermind.Logging;
-using Nethermind.Store;
 
 namespace Nethermind.Db.Databases
 {

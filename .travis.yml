@@ -33,7 +33,7 @@ jobs:
         fi
       name: "Nethermind.Abi.Test"
     - script: 
-      - git submodule update --init src/Dirichlet src/rocksdb-sharp
+      - git submodule update --init src/Dirichlet
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$NETHERMIND_TEST_PROJECTS src/Nethermind/Nethermind.AuRa.Test;
         else 
@@ -41,7 +41,7 @@ jobs:
         fi
       name: "Nethermind.AuRa.Test"
     - script: 
-      - git submodule update --init src/Dirichlet src/rocksdb-sharp
+      - git submodule update --init src/Dirichlet
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$NETHERMIND_TEST_PROJECTS src/Nethermind/Nethermind.BeaconNode.Test;
         else 
@@ -49,7 +49,7 @@ jobs:
         fi
       name: "Nethermind.BeaconNode.Test"  
     - script: 
-      - git submodule update --init src/Dirichlet src/rocksdb-sharp
+      - git submodule update --init src/Dirichlet
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$NETHERMIND_TEST_PROJECTS src/Nethermind/Nethermind.Blockchain.Test;
         else 
@@ -65,7 +65,7 @@ jobs:
         fi
       name: "Nethermind.Bls.Test"    
     - script: 
-      - git submodule update --init src/Dirichlet src/rocksdb-sharp
+      - git submodule update --init src/Dirichlet
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$NETHERMIND_TEST_PROJECTS src/Nethermind/Nethermind.Cli.Test;
         else 
@@ -73,7 +73,7 @@ jobs:
         fi
       name: "Nethermind.Cli.Test"
     - script: 
-      - git submodule update --init src/Dirichlet src/rocksdb-sharp
+      - git submodule update --init src/Dirichlet
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$NETHERMIND_TEST_PROJECTS src/Nethermind/Nethermind.Clique.Test;
         else 
@@ -81,7 +81,7 @@ jobs:
         fi
       name: "Nethermind.Clique.Test"
     - script:
-      - git submodule update --init src/Dirichlet src/rocksdb-sharp
+      - git submodule update --init src/Dirichlet
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$NETHERMIND_TEST_PROJECTS src/Nethermind/Nethermind.Config.Test;
         else 
@@ -89,7 +89,7 @@ jobs:
         fi
       name: "Nethermind.Config.Test"
     - script: 
-      - git submodule update --init src/Dirichlet src/rocksdb-sharp
+      - git submodule update --init src/Dirichlet
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$NETHERMIND_TEST_PROJECTS src/Nethermind/Nethermind.Core.Test;
         else 
@@ -102,7 +102,7 @@ jobs:
     #  name: "Nethermind.Db.Test.Osx"
     #  os: osx
     - script: 
-      - git submodule update --init src/Dirichlet src/rocksdb-sharp
+      - git submodule update --init src/Dirichlet
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$NETHERMIND_TEST_PROJECTS src/Nethermind/Nethermind.Evm.Test;
         else 
@@ -110,7 +110,7 @@ jobs:
         fi
       name: "Nethermind.Evm.Test"
     - script: 
-      - git submodule update --init src/Dirichlet src/rocksdb-sharp
+      - git submodule update --init src/Dirichlet
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$NETHERMIND_TEST_PROJECTS src/Nethermind/Nethermind.Facade.Test;
         else 
@@ -118,7 +118,7 @@ jobs:
         fi
       name: "Nethermind.Facade.Test"
     - script:
-      - git submodule update --init src/Dirichlet src/rocksdb-sharp
+      - git submodule update --init src/Dirichlet
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$NETHERMIND_TEST_PROJECTS src/Nethermind/Nethermind.JsonRpc.Test;
         else 
@@ -135,7 +135,7 @@ jobs:
     #- script: dotnet test -c Release src/Nethermind/Nethermind.KeyStore.Test
     #  name: "Nethermind.KeyStore.Test"
     - script:
-      - git submodule update --init src/Dirichlet src/rocksdb-sharp
+      - git submodule update --init src/Dirichlet
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$NETHERMIND_TEST_PROJECTS src/Nethermind/Nethermind.Mining.Test;
         else 
@@ -143,7 +143,7 @@ jobs:
         fi
       name: "Nethermind.Mining.Test"
     - script:
-      - git submodule update --init src/Dirichlet src/rocksdb-sharp
+      - git submodule update --init src/Dirichlet
       - sudo apt-get install libsnappy-dev 
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$NETHERMIND_TEST_PROJECTS src/Nethermind/Nethermind.Network.Test;
@@ -152,7 +152,6 @@ jobs:
         fi
       name: "Nethermind.Network.Test"
     - script: 
-      - git submodule update --init src/Dirichlet src/rocksdb-sharp
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$NETHERMIND_TEST_PROJECTS src/Nethermind/Nethermind.Secp256k1.Test;
         else 
@@ -177,7 +176,7 @@ jobs:
         fi
       name: "Nethermind.Runner.Test"
     - script: 
-      - git submodule update --init src/Dirichlet src/rocksdb-sharp
+      - git submodule update --init src/Dirichlet
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$NETHERMIND_TEST_PROJECTS src/Nethermind/Nethermind.Ssz.Test;
         else 
@@ -185,7 +184,7 @@ jobs:
         fi
       name: "Nethermind.Ssz.Test"
     - script: 
-      - git submodule update --init src/Dirichlet src/rocksdb-sharp
+      - git submodule update --init src/Dirichlet
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$NETHERMIND_TEST_PROJECTS src/Nethermind/Nethermind.Core2.Test;
         else 
@@ -193,7 +192,7 @@ jobs:
         fi
       name: "Nethermind.Core2.Test"
     - script: 
-      - git submodule update --init src/Dirichlet src/rocksdb-sharp
+      - git submodule update --init src/Dirichlet
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$NETHERMIND_TEST_PROJECTS src/Nethermind/Nethermind.Store.Test;
         else 
@@ -201,7 +200,7 @@ jobs:
         fi
       name: "Nethermind.Store.Test"
     - script: 
-      - git submodule update --init src/Dirichlet src/rocksdb-sharp
+      - git submodule update --init src/Dirichlet
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$NETHERMIND_TEST_PROJECTS src/Nethermind/Nethermind.Wallet.Test;
         else 

@@ -22,7 +22,6 @@ using System.Reflection;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Db.Config;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Store;
 using RocksDbSharp;

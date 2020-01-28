@@ -15,13 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
-using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
-using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Db.Test
+namespace Nethermind.Network.Test
 {
     [TestFixture]
     public class SimpleFilePublicKeyDbTests
