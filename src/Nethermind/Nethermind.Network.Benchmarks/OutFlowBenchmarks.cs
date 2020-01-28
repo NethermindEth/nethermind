@@ -15,23 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
 using DotNetty.Buffers;
 using DotNetty.Common;
-using Microsoft.IO;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
-using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.Test;
-using Nethermind.Network.Test.Rlpx.Handshake;
-using Org.BouncyCastle.Crypto.Digests;
 
 namespace Nethermind.Network.Benchmarks
 {
