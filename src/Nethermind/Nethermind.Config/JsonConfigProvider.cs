@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+
 namespace Nethermind.Config
 {
     public class JsonConfigProvider : IConfigProvider
@@ -30,7 +32,7 @@ namespace Nethermind.Config
             return _provider.GetConfig<T>();
         }
 
-        public string GetRawValue(string category, string name)
+        public object GetRawValue(string category, string name)
         {
             return _provider.GetRawValue(category, name);
         }
@@ -38,6 +40,17 @@ namespace Nethermind.Config
         public void AddSource(IConfigSource configSource)
         {
             _provider.AddSource(configSource);
+        }
+
+        /// <summary>
+        /// AFAIK only used in tests and categories and not registered
+        /// </summary>
+        /// <param name="category"></param>
+        /// <param name="configType"></param>
+        /// <exception cref="NotSupportedException"></exception>
+        public void RegisterCategory(string category, Type configType)
+        {
+            throw new NotSupportedException();
         }
     }
 }

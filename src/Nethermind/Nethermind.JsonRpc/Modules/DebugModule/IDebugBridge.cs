@@ -34,7 +34,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         byte[] GetBlockRlp(Keccak blockHash);
         byte[] GetBlockRlp(long number);
         byte[] GetDbValue(string dbName, byte[] key);
-        string GetConfigValue(string category, string name);
+        object GetConfigValue(string category, string name);
         public ChainLevelInfo GetLevelInfo(long number);
         public void DeleteChainSlice(long startNumber, long endNumber);
     }
