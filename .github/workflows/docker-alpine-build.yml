@@ -16,11 +16,9 @@ jobs:
       uses: elgohr/Publish-Docker-Github-Action@master
       env:
         GIT_COMMIT: $(git log -1 --format=%h)
-        GIT_TAG: $(git describe --tags `git rev-list --tags --max-count=1`)
       with:
-        name: nethermind/nethermind
+        name: nethermind/nethermind:alpine
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
         build-args: GIT_COMMIT
-        dockerfile: Dockerfile
-        tags: latest, ${{ env.GIT_TAG }}
+        dockerfile: Dockerfile_alpine
