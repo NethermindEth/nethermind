@@ -124,7 +124,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                 }
                 else
                 {
-                    await Task.Delay(10);
+                    await Task.Delay(50);
                     if (_logger.IsDebug) _logger.Debug($"DIAG: 0 batches created with {_pendingRequests} pending requests, {_feed.TotalNodesPending} pending nodes");
                 }
             } while (_pendingRequests != 0 || oneMoreTry);
