@@ -76,6 +76,8 @@ eth
 
  - eth.chainId - 
 
+ - eth.estimateGas(json) - 
+
  - eth.getBalance(address, blockParameter) - 
 
  - eth.getBlockByHash(hash, returnFullTransactionObjects) - 
@@ -88,11 +90,13 @@ eth
 
  - eth.getCode(address, blockParameter) - 
 
- - eth.getLogs(json) - 
+ - eth.getLogs(filter) - 
 
  - eth.getStorageAt(address, positionIndex, blockParameter) - 
 
  - eth.getTransactionByBlockNumberAndIndex(blockParameter, index) - 
+
+ - eth.getTransactionByHash(txHash) - 
 
  - eth.getTransactionCount(address, blockParameter) - 
 
@@ -100,13 +104,15 @@ eth
 
  - eth.getUncleCountByBlockNumber(blockParameter) - 
 
+ - eth.pendingTransactions - 
+
  - eth.protocolVersion - 
 
  - eth.sendEth(from, to, amountInEth) - 
 
- - eth.sendWei(from, to, amountInWei) - 
-
  - eth.sendRawTransaction(txRlp) - 
+
+ - eth.sendWei(from, to, amountInWei) - 
 
 net
 ^^^
@@ -149,6 +155,15 @@ personal
  - personal.newAccount(password) - 
 
  - personal.unlockAccount(addressHex, password) - 
+
+proof
+^^^^^
+
+ - proof.call(tx, blockParameter) - 
+
+ - proof.getTransactionByHash(transactionHash, includeHeader) - 
+
+ - proof.getTransactionReceipt(transactionHash, includeHeader) - 
 
 system
 ^^^^^^
