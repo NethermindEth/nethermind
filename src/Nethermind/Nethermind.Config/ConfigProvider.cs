@@ -65,7 +65,7 @@ namespace Nethermind.Config
             return (T)_instances[typeof(T)];
         }
 
-        public string GetRawValue(string category, string name)
+        public object GetRawValue(string category, string name)
         {
             for (int i = 0; i < _configSource.Count; i++)
             {
@@ -76,13 +76,23 @@ namespace Nethermind.Config
                 }
             }
 
-            return null;
+            return Categories.ContainsKey(category) ? Categories[category].GetType()
+                .GetProperties(BindingFlags.Instance | BindingFlags.Public)
+                .SingleOrDefault(p => string.Equals(p.Name, name, StringComparison.InvariantCultureIgnoreCase))
+                ?.GetValue(Categories[category]) : null;
         }
 
         public void AddSource(IConfigSource configSource)
         {
             _configSource.Add(configSource);
         }
+
+        public void RegisterCategory(string category, Type configType)
+        {
+            Categories.Add(category, Activator.CreateInstance(configType));
+        }
+
+        private Dictionary<string, object> Categories { get; set; } = new Dictionary<string, object>(StringComparer.InvariantCultureIgnoreCase);
         
         private Dictionary<Type, Type> _implementations = new Dictionary<Type, Type>();
         

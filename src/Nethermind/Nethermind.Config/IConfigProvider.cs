@@ -14,14 +14,18 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+
 namespace Nethermind.Config
 {
     public interface IConfigProvider
     {    
         T GetConfig<T>() where T : IConfig;
         
-        string GetRawValue(string category, string name);
+        object GetRawValue(string category, string name);
         
         void AddSource(IConfigSource configSource);
+        
+        void RegisterCategory(string category, Type configType);
     }
 }

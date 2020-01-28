@@ -213,10 +213,10 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return ResultWrapper<byte[]>.Success(dbValue);
         }
 
-        public ResultWrapper<string> debug_getConfigValue(string category, string name)
+        public ResultWrapper<object> debug_getConfigValue(string category, string name)
         {
             var configValue = _debugBridge.GetConfigValue(category, name);
-            return ResultWrapper<string>.Success(configValue);
+            return ResultWrapper<object>.Success(configValue);
         }
     }
 }

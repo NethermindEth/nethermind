@@ -128,8 +128,8 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
             return _dbMappings[DbNames.Blocks].Get(hash);
         }
-
-        public string GetConfigValue(string category, string name)
+    
+        public object GetConfigValue(string category, string name)
         {
             return _configProvider.GetRawValue(category, name);
         }

@@ -60,7 +60,7 @@ namespace Nethermind.Runner
                 .ForEach(x => loadedAssemblies.Add(AppDomain.CurrentDomain.Load(x)));
             
             Type configurationType = typeof(IConfig);
-            var configs = AppDomain.CurrentDomain.GetAssemblies()
+            var configTypes = AppDomain.CurrentDomain.GetAssemblies()
                 .SelectMany(a => a.GetTypes())
                 .Where(t => configurationType.IsAssignableFrom(t) && !t.IsInterface)
                 .ToList();
@@ -72,7 +72,7 @@ namespace Nethermind.Runner
             CommandOption logLevelOverride = app.Option("-l|--log <logLevel>", "log level", CommandOptionType.SingleValue);
             CommandOption configsDirectory = app.Option("-cd|--configsDirectory <configsDirectory>", "configs directory", CommandOptionType.SingleValue);
             
-            foreach (Type configType in configs)
+            foreach (Type configType in configTypes)
             {
                 foreach (PropertyInfo propertyInfo in configType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
                 {
@@ -180,6 +180,8 @@ namespace Nethermind.Runner
 
                 Console.WriteLine($"Reading config file from {configFilePath}");
                 configProvider.AddSource(new JsonConfigSource(configFilePath));
+                configTypes.ForEach(configType => configProvider.RegisterCategory(configType.Name, configType));
+                
                 return configProvider;
             }
 

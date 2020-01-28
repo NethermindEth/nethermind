@@ -17,6 +17,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.KeyStore.Config;
@@ -38,13 +39,23 @@ namespace Nethermind.Config.Test
             var statsConfig = new StatsConfig();
         }
 
-
         [Test]
         public void Can_read_without_sources()
         {
             ConfigProvider configProvider = new ConfigProvider();
             IStatsConfig statsConfig = configProvider.GetConfig<IStatsConfig>();
             Assert.AreEqual(1000500L, statsConfig.PredefinedReputation);
+        }
+
+        public int DefaultTestProperty { get; set; } = 5;
+        
+        [Test]
+        public void Can_read_defaults_from_registered_categories()
+        {
+            ConfigProvider configProvider = new ConfigProvider();
+            configProvider.RegisterCategory("Nananana", typeof(DefaultConfigProviderTests));
+            var result = configProvider.GetRawValue("Nananana", nameof(DefaultTestProperty));
+            Assert.AreEqual(5, result);
         }
 
         [Test]
