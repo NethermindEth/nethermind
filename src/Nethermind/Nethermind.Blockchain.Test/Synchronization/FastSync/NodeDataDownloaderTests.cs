@@ -37,7 +37,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization.FastSync
 {
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class NodeDataDownloaderTests
     {
         private static readonly byte[] Code0 = {0, 0};
@@ -54,7 +54,9 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
         private static Account Account2;
         private static Account Account3;
 
-        public static (string Name, Action<StateTree, StateDb, StateDb> Action)[] Scenarios = InitScenarios();
+        private static (string Name, Action<StateTree, StateDb, StateDb> Action)[] _scenarios;
+
+        public static (string Name, Action<StateTree, StateDb, StateDb> Action)[] Scenarios => LazyInitializer.EnsureInitialized(ref _scenarios, InitScenarios);
 
         private static (string Name, Action<StateTree, StateDb, StateDb> Action)[] InitScenarios()
         {
@@ -309,20 +311,15 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
         }
 
         private ICryptoRandom _cryptoRandom = new CryptoRandom();
-        private StateDb _remoteCodeDb;
-        private StateDb _localCodeDb;
-        private MemDb _remoteDb;
-        private MemDb _localDb;
-        private StateDb _remoteStateDb;
-        private StateDb _localStateDb;
-        private StateTree _remoteStateTree;
-        private StateTree _localStateTree;
-        
+
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public void InitOnce()
+        private void InitOnce()
         {
             if (Empty == null)
             {
+                _logManager = LimboLogs.Instance;
+                _logger = LimboTraceLogger.Instance;
+
                 StorageTree remoteStorageTree = SetStorage(new MemDb());
                 Keccak storageRoot = remoteStorageTree.RootHash;
 
@@ -373,18 +370,31 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             InitOnce();
 //            _logger = new ConsoleAsyncLogger(LogLevel.Debug);
 //            _logManager = new OneLoggerLogManager(_logger);
-            _logManager = LimboLogs.Instance;
-            _logger = _logManager.GetLogger("test");
+        }
 
-            _remoteDb = new MemDb();
-            _localDb = new MemDb();
-            _remoteStateDb = new StateDb(_remoteDb);
-            _localStateDb = new StateDb(_localDb);
-            _localCodeDb = new StateDb(_localDb);
-            _remoteCodeDb = new StateDb(_remoteDb);
+        private class DbContext
+        {
+            public StateDb _remoteCodeDb;
+            public StateDb _localCodeDb;
+            public MemDb _remoteDb;
+            public MemDb _localDb;
+            public StateDb _remoteStateDb;
+            public StateDb _localStateDb;
+            public StateTree _remoteStateTree;
+            public StateTree _localStateTree;
 
-            _remoteStateTree = new StateTree(_remoteStateDb);
-            _localStateTree = new StateTree(_localStateDb);
+            public DbContext()
+            {
+                _remoteDb = new MemDb();
+                _localDb = new MemDb();
+                _remoteStateDb = new StateDb(_remoteDb);
+                _localStateDb = new StateDb(_localDb);
+                _localCodeDb = new StateDb(_localDb);
+                _remoteCodeDb = new StateDb(_remoteDb);
+
+                _remoteStateTree = new StateTree(_remoteStateDb);
+                _localStateTree = new StateTree(_localStateDb);
+            }
         }
 
         [TearDown]
@@ -394,10 +404,9 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
         }
 
         private static readonly IBlockTree BlockTree = Build.A.BlockTree().OfChainLength(100).TestObject;
-        
+
         private class ExecutorMock : ISyncPeer
         {
-            
             private readonly StateDb _stateDb;
             private readonly StateDb _codeDb;
 
@@ -410,7 +419,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
                 {
                     _executorResultFunction = executorResultFunction;
                 }
-                
+
                 Node = new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true);
             }
 
@@ -475,7 +484,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             {
                 throw new NotImplementedException();
             }
-            
+
             public Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token)
             {
                 return Task.FromResult(BlockTree.Head);
@@ -547,9 +556,10 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
 
         public Account NextAccountWithCode()
         {
+            DbContext dbContext = new DbContext();
             byte[] byteCode = _cryptoRandom.GenerateRandomBytes(100);
             Keccak codeHash = Keccak.Compute(byteCode);
-            _remoteCodeDb[codeHash.Bytes] = byteCode;
+            dbContext._remoteCodeDb[codeHash.Bytes] = byteCode;
 
             return new Account(2, 100, Keccak.EmptyTreeHash, codeHash);
         }
@@ -561,9 +571,10 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
         [Test]
         public async Task Can_download_an_empty_tree()
         {
-            ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
+            DbContext dbContext = new DbContext();
+            ExecutorMock mock = new ExecutorMock(dbContext._remoteStateDb, dbContext._remoteCodeDb);
             NodeDataDownloader downloader = PrepareDownloader(mock);
-            await downloader.SyncNodeData(CancellationToken.None, 1000, _remoteStateTree.RootHash);
+            await downloader.SyncNodeData(CancellationToken.None, 1000, dbContext._remoteStateTree.RootHash);
 
             CompareTrees("END");
         }
@@ -572,38 +583,40 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
 
         private NodeDataDownloader PrepareDownloader(ISyncPeer syncPeer)
         {
-            BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)BlockTree.BestSuggestedHeader.Number).TestObject;
+            DbContext dbContext = new DbContext();
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength((int) BlockTree.BestSuggestedHeader.Number).TestObject;
             _pool = new EthSyncPeerPool(blockTree, new NodeStatsManager(new StatsConfig(), LimboLogs.Instance), new SyncConfig {FastSync = true}, 25, LimboLogs.Instance);
             _pool.Start();
             _pool.AddPeer(syncPeer);
 
-            NodeDataFeed feed = new NodeDataFeed(_localCodeDb, _localStateDb, _logManager);
+            NodeDataFeed feed = new NodeDataFeed(dbContext._localCodeDb, dbContext._localStateDb, _logManager);
             NodeDataDownloader downloader = new NodeDataDownloader(_pool, feed, NullDataConsumer.Instance, _logManager);
 
             return downloader;
         }
 
-        private int _timeoutLength = 10000;
+        private int _timeoutLength = 1000;
 
         [Test, TestCaseSource("Scenarios"), Retry(5)]
         public async Task Can_download_in_multiple_connections((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
-            testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
-            _remoteStateDb.Commit();
+            DbContext dbContext = new DbContext();
+            testCase.SetupTree(dbContext._remoteStateTree, dbContext._remoteStateDb, dbContext._remoteCodeDb);
+            dbContext._remoteStateDb.Commit();
 
-            ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
-            mock.SetFilter(new[] {_remoteStateTree.RootHash});
+            ExecutorMock mock = new ExecutorMock(dbContext._remoteStateDb, dbContext._remoteCodeDb);
+            mock.SetFilter(new[] {dbContext._remoteStateTree.RootHash});
 
             NodeDataDownloader downloader = PrepareDownloader(mock);
 
-            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
-            _localStateDb.Commit();
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, dbContext._remoteStateTree.RootHash), Task.Delay(_timeoutLength));
+            dbContext._localStateDb.Commit();
 
             _pool.WakeUpAll();
 
             mock.SetFilter(null);
-            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
-            _localStateDb.Commit();
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, dbContext._remoteStateTree.RootHash), Task.Delay(_timeoutLength));
+            dbContext._localStateDb.Commit();
 
             CompareTrees("END");
         }
@@ -611,39 +624,40 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
         [Test, TestCaseSource("Scenarios"), Retry(5)]
         public async Task Can_download_with_moving_target((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
-            testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
-            _remoteStateDb.Commit();
+            DbContext dbContext = new DbContext();
+            testCase.SetupTree(dbContext._remoteStateTree, dbContext._remoteStateDb, dbContext._remoteCodeDb);
+            dbContext._remoteStateDb.Commit();
 
-            ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
-            mock.SetFilter(((MemDb) _remoteStateDb._db).Keys.Take(((MemDb) _remoteStateDb._db).Keys.Count - 1).Select(k => new Keccak(k)).ToArray());
+            ExecutorMock mock = new ExecutorMock(dbContext._remoteStateDb, dbContext._remoteCodeDb);
+            mock.SetFilter(((MemDb) dbContext._remoteStateDb._db).Keys.Take(((MemDb) dbContext._remoteStateDb._db).Keys.Count - 1).Select(k => new Keccak(k)).ToArray());
 
             CompareTrees("BEFORE FIRST SYNC");
 
             NodeDataDownloader downloader = PrepareDownloader(mock);
-            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
-            _localStateDb.Commit();
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, dbContext._remoteStateTree.RootHash), Task.Delay(_timeoutLength));
+            dbContext._localStateDb.Commit();
 
             CompareTrees("AFTER FIRST SYNC");
 
-            _localStateTree.RootHash = _remoteStateTree.RootHash;
-            _remoteStateTree.Set(TestItem.AddressA, AccountJustState0.WithChangedBalance(123.Ether()));
-            _remoteStateTree.Set(TestItem.AddressB, AccountJustState1.WithChangedBalance(123.Ether()));
-            _remoteStateTree.Set(TestItem.AddressC, AccountJustState2.WithChangedBalance(123.Ether()));
+            dbContext._localStateTree.RootHash = dbContext._remoteStateTree.RootHash;
+            dbContext._remoteStateTree.Set(TestItem.AddressA, AccountJustState0.WithChangedBalance(123.Ether()));
+            dbContext._remoteStateTree.Set(TestItem.AddressB, AccountJustState1.WithChangedBalance(123.Ether()));
+            dbContext._remoteStateTree.Set(TestItem.AddressC, AccountJustState2.WithChangedBalance(123.Ether()));
 
             CompareTrees("BEFORE ROOT HASH UPDATE");
 
-            _remoteStateTree.UpdateRootHash();
+            dbContext._remoteStateTree.UpdateRootHash();
 
             CompareTrees("BEFORE COMMIT");
 
-            _remoteStateTree.Commit();
-            _remoteStateDb.Commit();
+            dbContext._remoteStateTree.Commit();
+            dbContext._remoteStateDb.Commit();
 
             _pool.WakeUpAll();
 
             mock.SetFilter(null);
-            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
-            _localStateDb.Commit();
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, dbContext._remoteStateTree.RootHash), Task.Delay(_timeoutLength));
+            dbContext._localStateDb.Commit();
 
             CompareTrees("END");
             CompareCodeDbs();
@@ -652,62 +666,63 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
         [Test, TestCaseSource("Scenarios"), Retry(5)]
         public async Task Big_test((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
-            _remoteCodeDb[Keccak.Compute(Code0).Bytes] = Code0;
-            _remoteCodeDb[Keccak.Compute(Code1).Bytes] = Code1;
-            _remoteCodeDb[Keccak.Compute(Code2).Bytes] = Code2;
-            _remoteCodeDb[Keccak.Compute(Code3).Bytes] = Code3;
-            testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
-            _remoteStateDb.Commit();
+            DbContext dbContext = new DbContext();
+            dbContext._remoteCodeDb[Keccak.Compute(Code0).Bytes] = Code0;
+            dbContext._remoteCodeDb[Keccak.Compute(Code1).Bytes] = Code1;
+            dbContext._remoteCodeDb[Keccak.Compute(Code2).Bytes] = Code2;
+            dbContext._remoteCodeDb[Keccak.Compute(Code3).Bytes] = Code3;
+            testCase.SetupTree(dbContext._remoteStateTree, dbContext._remoteStateDb, dbContext._remoteCodeDb);
+            dbContext._remoteStateDb.Commit();
 
-            ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
-            mock.SetFilter(((MemDb) _remoteStateDb._db).Keys.Take(((MemDb) _remoteStateDb._db).Keys.Count - 4).Select(k => new Keccak(k)).ToArray());
+            ExecutorMock mock = new ExecutorMock(dbContext._remoteStateDb, dbContext._remoteCodeDb);
+            mock.SetFilter(((MemDb) dbContext._remoteStateDb._db).Keys.Take(((MemDb) dbContext._remoteStateDb._db).Keys.Count - 4).Select(k => new Keccak(k)).ToArray());
 
             CompareTrees("BEFORE FIRST SYNC", true);
 
             NodeDataDownloader downloader = PrepareDownloader(mock);
-            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
-            _localStateDb.Commit();
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, dbContext._remoteStateTree.RootHash), Task.Delay(_timeoutLength));
+            dbContext._localStateDb.Commit();
 
             CompareTrees("AFTER FIRST SYNC", true);
 
-            _localStateTree.RootHash = _remoteStateTree.RootHash;
+            dbContext._localStateTree.RootHash = dbContext._remoteStateTree.RootHash;
             for (byte i = 0; i < 8; i++)
             {
-                _remoteStateTree
+                dbContext._remoteStateTree
                     .Set(TestItem.Addresses[i], AccountJustState0.WithChangedBalance(i)
                         .WithChangedNonce(1)
                         .WithChangedCodeHash(Keccak.Compute(Code3))
-                        .WithChangedStorageRoot(SetStorage(_remoteStateDb, i).RootHash));
+                        .WithChangedStorageRoot(SetStorage(dbContext._remoteStateDb, i).RootHash));
             }
 
-            _remoteStateTree.UpdateRootHash();
-            _remoteStateTree.Commit();
-            _remoteStateDb.Commit();
+            dbContext._remoteStateTree.UpdateRootHash();
+            dbContext._remoteStateTree.Commit();
+            dbContext._remoteStateDb.Commit();
 
             _pool.WakeUpAll();
-            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
-            _localStateDb.Commit();
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, dbContext._remoteStateTree.RootHash), Task.Delay(_timeoutLength));
+            dbContext._localStateDb.Commit();
 
             CompareTrees("AFTER SECOND SYNC", true);
 
-            _localStateTree.RootHash = _remoteStateTree.RootHash;
+            dbContext._localStateTree.RootHash = dbContext._remoteStateTree.RootHash;
             for (byte i = 0; i < 16; i++)
             {
-                _remoteStateTree
+                dbContext._remoteStateTree
                     .Set(TestItem.Addresses[i], AccountJustState0.WithChangedBalance(i)
                         .WithChangedNonce(2)
                         .WithChangedCodeHash(Keccak.Compute(Code3))
-                        .WithChangedStorageRoot(SetStorage(_remoteStateDb, (byte) (i % 7)).RootHash));
+                        .WithChangedStorageRoot(SetStorage(dbContext._remoteStateDb, (byte) (i % 7)).RootHash));
             }
 
-            _remoteStateTree.UpdateRootHash();
-            _remoteStateTree.Commit();
-            _remoteStateDb.Commit();
+            dbContext._remoteStateTree.UpdateRootHash();
+            dbContext._remoteStateTree.Commit();
+            dbContext._remoteStateDb.Commit();
 
             _pool.WakeUpAll();
             mock.SetFilter(null);
-            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
-            _localStateDb.Commit();
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, dbContext._remoteStateTree.RootHash), Task.Delay(_timeoutLength));
+            dbContext._localStateDb.Commit();
 
             CompareTrees("END");
             CompareCodeDbs();
@@ -716,17 +731,18 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
         [Test, TestCaseSource("Scenarios"), Retry(5)]
         public async Task Can_download_when_executor_sends_shorter_responses((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
-            testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
-            _remoteStateDb.Commit();
+            DbContext dbContext = new DbContext();
+            testCase.SetupTree(dbContext._remoteStateTree, dbContext._remoteStateDb, dbContext._remoteCodeDb);
+            dbContext._remoteStateDb.Commit();
 
             CompareTrees("BEGIN");
 
-            ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
+            ExecutorMock mock = new ExecutorMock(dbContext._remoteStateDb, dbContext._remoteCodeDb);
             mock.MaxResponseLength = 1;
 
             NodeDataDownloader downloader = PrepareDownloader(mock);
-            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash), Task.Delay(_timeoutLength));
-            _localStateDb.Commit();
+            await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, dbContext._remoteStateTree.RootHash), Task.Delay(_timeoutLength));
+            dbContext._localStateDb.Commit();
 
             CompareTrees("END");
         }
@@ -734,14 +750,15 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
         [Test, TestCaseSource("Scenarios"), Retry(5)]
         public async Task Can_download_a_full_state((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
-            testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
-            _remoteStateDb.Commit();
+            DbContext dbContext = new DbContext();
+            testCase.SetupTree(dbContext._remoteStateTree, dbContext._remoteStateDb, dbContext._remoteCodeDb);
+            dbContext._remoteStateDb.Commit();
 
             CompareTrees("BEGIN");
 
-            ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
+            ExecutorMock mock = new ExecutorMock(dbContext._remoteStateDb, dbContext._remoteCodeDb);
             NodeDataDownloader downloader = PrepareDownloader(mock);
-            Task syncNode = downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash);
+            Task syncNode = downloader.SyncNodeData(CancellationToken.None, 1024, dbContext._remoteStateTree.RootHash);
 
             Task first = await Task.WhenAny(syncNode, Task.Delay(_timeoutLength));
             if (first == syncNode)
@@ -752,17 +769,18 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
                 }
             }
 
-            _localStateDb.Commit();
+            dbContext._localStateDb.Commit();
             CompareTrees("END");
         }
 
         [Test, TestCaseSource("Scenarios"), Retry(5)]
         public async Task Dependent_branch_counter_is_zero_and_leaf_is_short((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
-            testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
-            _remoteStateDb.Commit();
+            DbContext dbContext = new DbContext();
+            testCase.SetupTree(dbContext._remoteStateTree, dbContext._remoteStateDb, dbContext._remoteCodeDb);
+            dbContext._remoteStateDb.Commit();
 
-            StorageTree remoteStorageTree = new StorageTree(_remoteDb);
+            StorageTree remoteStorageTree = new StorageTree(dbContext._remoteDb);
             remoteStorageTree.Set(
                 Bytes.FromHexString("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb000"), new byte[] {1});
             remoteStorageTree.Set(
@@ -773,14 +791,14 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
                 Bytes.FromHexString("eeeeeeeeeeeeeeeeeeeeeb111111111111111111111111111111111111111111"), new byte[] {1});
             remoteStorageTree.Commit();
 
-            _remoteStateTree.Set(TestItem.AddressD, AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash));
-            _remoteStateTree.Commit();
+            dbContext._remoteStateTree.Set(TestItem.AddressD, AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash));
+            dbContext._remoteStateTree.Commit();
 
             CompareTrees("BEGIN");
 
-            ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
+            ExecutorMock mock = new ExecutorMock(dbContext._remoteStateDb, dbContext._remoteCodeDb);
             NodeDataDownloader downloader = PrepareDownloader(mock);
-            Task syncNode = downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash);
+            Task syncNode = downloader.SyncNodeData(CancellationToken.None, 1024, dbContext._remoteStateTree.RootHash);
 
             Task first = await Task.WhenAny(syncNode, Task.Delay(_timeoutLength));
             if (first == syncNode)
@@ -791,7 +809,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
                 }
             }
 
-            _localStateDb.Commit();
+            dbContext._localStateDb.Commit();
 
             CompareTrees("END");
         }
@@ -799,21 +817,22 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
         [Test, TestCaseSource("Scenarios"), Retry(5)]
         public async Task Scenario_plus_one_storage((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
-            testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
-            _remoteStateDb.Commit();
+            DbContext dbContext = new DbContext();
+            testCase.SetupTree(dbContext._remoteStateTree, dbContext._remoteStateDb, dbContext._remoteCodeDb);
+            dbContext._remoteStateDb.Commit();
 
-            StorageTree remoteStorageTree = new StorageTree(_remoteDb);
+            StorageTree remoteStorageTree = new StorageTree(dbContext._remoteDb);
             remoteStorageTree.Set((UInt256) 1, new byte[] {1});
             remoteStorageTree.Commit();
 
-            _remoteStateTree.Set(TestItem.AddressD, AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash));
-            _remoteStateTree.Commit();
+            dbContext._remoteStateTree.Set(TestItem.AddressD, AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash));
+            dbContext._remoteStateTree.Commit();
 
             CompareTrees("BEGIN");
 
-            ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
+            ExecutorMock mock = new ExecutorMock(dbContext._remoteStateDb, dbContext._remoteCodeDb);
             NodeDataDownloader downloader = PrepareDownloader(mock);
-            Task syncNode = downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash);
+            Task syncNode = downloader.SyncNodeData(CancellationToken.None, 1024, dbContext._remoteStateTree.RootHash);
 
             Task first = await Task.WhenAny(syncNode, Task.Delay(_timeoutLength));
             if (first == syncNode)
@@ -824,7 +843,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
                 }
             }
 
-            _localStateDb.Commit();
+            dbContext._localStateDb.Commit();
 
             CompareTrees("END");
         }
@@ -832,20 +851,21 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
         [Test, TestCaseSource("Scenarios"), Retry(5)]
         public async Task Scenario_plus_one_code((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
-            testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
-            _remoteStateDb.Commit();
+            DbContext dbContext = new DbContext();
+            testCase.SetupTree(dbContext._remoteStateTree, dbContext._remoteStateDb, dbContext._remoteCodeDb);
+            dbContext._remoteStateDb.Commit();
 
-            _remoteCodeDb.Set(Keccak.Compute(Code0), Code0);
-            _remoteCodeDb.Commit();
+            dbContext._remoteCodeDb.Set(Keccak.Compute(Code0), Code0);
+            dbContext._remoteCodeDb.Commit();
 
-            _remoteStateTree.Set(TestItem.AddressD, AccountJustState0.WithChangedCodeHash(Keccak.Compute(Code0)));
-            _remoteStateTree.Commit();
+            dbContext._remoteStateTree.Set(TestItem.AddressD, AccountJustState0.WithChangedCodeHash(Keccak.Compute(Code0)));
+            dbContext._remoteStateTree.Commit();
 
             CompareTrees("BEGIN");
 
-            ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
+            ExecutorMock mock = new ExecutorMock(dbContext._remoteStateDb, dbContext._remoteCodeDb);
             NodeDataDownloader downloader = PrepareDownloader(mock);
-            Task syncNode = downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash);
+            Task syncNode = downloader.SyncNodeData(CancellationToken.None, 1024, dbContext._remoteStateTree.RootHash);
 
             Task first = await Task.WhenAny(syncNode, Task.Delay(_timeoutLength));
             if (first == syncNode)
@@ -856,7 +876,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
                 }
             }
 
-            _localStateDb.Commit();
+            dbContext._localStateDb.Commit();
 
             CompareTrees("END");
         }
@@ -864,24 +884,25 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
         [Test, TestCaseSource("Scenarios"), Retry(5)]
         public async Task Scenario_plus_one_code_one_storage((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
-            testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
-            _remoteStateDb.Commit();
+            DbContext dbContext = new DbContext();
+            testCase.SetupTree(dbContext._remoteStateTree, dbContext._remoteStateDb, dbContext._remoteCodeDb);
+            dbContext._remoteStateDb.Commit();
 
-            _remoteCodeDb.Set(Keccak.Compute(Code0), Code0);
-            _remoteCodeDb.Commit();
+            dbContext._remoteCodeDb.Set(Keccak.Compute(Code0), Code0);
+            dbContext._remoteCodeDb.Commit();
 
-            StorageTree remoteStorageTree = new StorageTree(_remoteDb);
+            StorageTree remoteStorageTree = new StorageTree(dbContext._remoteDb);
             remoteStorageTree.Set((UInt256) 1, new byte[] {1});
             remoteStorageTree.Commit();
 
-            _remoteStateTree.Set(TestItem.AddressD, AccountJustState0.WithChangedCodeHash(Keccak.Compute(Code0)).WithChangedStorageRoot(remoteStorageTree.RootHash));
-            _remoteStateTree.Commit();
+            dbContext._remoteStateTree.Set(TestItem.AddressD, AccountJustState0.WithChangedCodeHash(Keccak.Compute(Code0)).WithChangedStorageRoot(remoteStorageTree.RootHash));
+            dbContext._remoteStateTree.Commit();
 
             CompareTrees("BEGIN");
 
-            ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb);
+            ExecutorMock mock = new ExecutorMock(dbContext._remoteStateDb, dbContext._remoteCodeDb);
             NodeDataDownloader downloader = PrepareDownloader(mock);
-            Task syncNode = downloader.SyncNodeData(CancellationToken.None, 1024, _remoteStateTree.RootHash);
+            Task syncNode = downloader.SyncNodeData(CancellationToken.None, 1024, dbContext._remoteStateTree.RootHash);
 
             Task first = await Task.WhenAny(syncNode, Task.Delay(_timeoutLength));
             if (first == syncNode)
@@ -892,7 +913,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
                 }
             }
 
-            _localStateDb.Commit();
+            dbContext._localStateDb.Commit();
 
             CompareTrees("END");
         }
@@ -900,7 +921,8 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
         [Test]
         public async Task Silences_bad_peers()
         {
-            ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb, ExecutorMock.NotPreimage);
+            DbContext dbContext = new DbContext();
+            ExecutorMock mock = new ExecutorMock(dbContext._remoteStateDb, dbContext._remoteCodeDb, ExecutorMock.NotPreimage);
             NodeDataDownloader downloader = PrepareDownloader(mock);
             await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, Keccak.Compute("the_peer_has_no_data")), Task.Delay(1000)).Unwrap()
                 .ContinueWith(t => { Assert.AreEqual(0, _pool.UsefulPeerCount); });
@@ -910,7 +932,8 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
         [Retry(5)]
         public async Task Silences_when_peer_sends_empty_byte_arrays()
         {
-            ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb, ExecutorMock.EmptyArraysInResponses);
+            DbContext dbContext = new DbContext();
+            ExecutorMock mock = new ExecutorMock(dbContext._remoteStateDb, dbContext._remoteCodeDb, ExecutorMock.EmptyArraysInResponses);
             NodeDataDownloader downloader = PrepareDownloader(mock);
             await Task.WhenAny(downloader.SyncNodeData(CancellationToken.None, 1024, Keccak.Compute("the_peer_has_no_data")), Task.Delay(1000)).Unwrap()
                 .ContinueWith(t => { Assert.AreEqual(0, _pool.UsefulPeerCount); });
@@ -918,42 +941,43 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
 
         private void CompareTrees(string stage, bool skipLogs = false)
         {
+            DbContext dbContext = new DbContext();
             if (!skipLogs) _logger.Info($"==================== {stage} ====================");
-            _localStateTree.RootHash = _remoteStateTree.RootHash;
+            dbContext._localStateTree.RootHash = dbContext._remoteStateTree.RootHash;
 
             if (!skipLogs) _logger.Info($"-------------------- REMOTE --------------------");
             TreeDumper dumper = new TreeDumper();
-            _remoteStateTree.Accept(dumper, _remoteStateTree.RootHash);
+            dbContext._remoteStateTree.Accept(dumper, dbContext._remoteStateTree.RootHash);
             string remote = dumper.ToString();
             if (!skipLogs) _logger.Info(remote);
             if (!skipLogs) _logger.Info($"-------------------- LOCAL --------------------");
             dumper.Reset();
-            _localStateTree.Accept(dumper, _localStateTree.RootHash);
+            dbContext._localStateTree.Accept(dumper, dbContext._localStateTree.RootHash);
             string local = dumper.ToString();
             if (!skipLogs) _logger.Info(local);
 
             if (stage == "END")
             {
                 Assert.AreEqual(remote, local, $"{remote}{Environment.NewLine}{local}");
-                TrieStatsCollector collector = new TrieStatsCollector(_localCodeDb, _logManager);
-                _localStateTree.Accept(collector, _localStateTree.RootHash);
+                TrieStatsCollector collector = new TrieStatsCollector(dbContext._localCodeDb, _logManager);
+                dbContext._localStateTree.Accept(collector, dbContext._localStateTree.RootHash);
                 Assert.AreEqual(0, collector.Stats.MissingCode);
             }
 
-//            Assert.AreEqual(_remoteCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), _localCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), "keys");
-//            Assert.AreEqual(_remoteCodeDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), _localCodeDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), "values");
+//            Assert.AreEqual(dbContext._remoteCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), dbContext._localCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), "keys");
+//            Assert.AreEqual(dbContext._remoteCodeDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), dbContext._localCodeDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), "values");
 //
-//            Assert.AreEqual(_remoteDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), _localDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), "keys");
-//            Assert.AreEqual(_remoteDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), _localDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), "values");
+//            Assert.AreEqual(dbContext._remoteDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), _localDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), "keys");
+//            Assert.AreEqual(dbContext._remoteDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), _localDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), "values");
         }
 
         private void CompareCodeDbs()
         {
-//            Assert.AreEqual(_remoteCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), _localCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), "keys");
-//            Assert.AreEqual(_remoteCodeDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), _localCodeDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), "values");
+//            Assert.AreEqual(dbContext._remoteCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), dbContext._localCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), "keys");
+//            Assert.AreEqual(dbContext._remoteCodeDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), dbContext._localCodeDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), "values");
 
-//            Assert.AreEqual(_remoteDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), _localDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), "keys");
-//            Assert.AreEqual(_remoteDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), _localDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), "values");
+//            Assert.AreEqual(dbContext._remoteDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), _localDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), "keys");
+//            Assert.AreEqual(dbContext._remoteDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), _localDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), "values");
         }
     }
 }

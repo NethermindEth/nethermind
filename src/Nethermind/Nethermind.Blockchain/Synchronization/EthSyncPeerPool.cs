@@ -725,7 +725,7 @@ namespace Nethermind.Blockchain.Synchronization
                     return allocation;
                 }
 
-                int waitTime = 10 * tryCount++;
+                int waitTime = 10 * tryCount;
 
                 await _signals.WaitOneAsync(waitTime, CancellationToken.None);
                 _signals.Reset(); // without this we have no delay
