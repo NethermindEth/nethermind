@@ -14,7 +14,7 @@ fi
 docker login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD
 
 for DOCKER_TAG in $DOCKER_TAGS; do
-    docker build -t $DOCKER_IMAGE_NAME:$DOCKER_TAG --build-arg GIT_COMMIT=$(git log -1 --format=%h) .
+    docker build -t $DOCKER_IMAGE_NAME:$DOCKER_TAG -f Dockerfile_alpine --build-arg GIT_COMMIT=$(git log -1 --format=%h) .
     docker tag $DOCKER_IMAGE_NAME:$DOCKER_TAG $DOCKER_USERNAME/$DOCKER_IMAGE_NAME:$DOCKER_TAG
     docker push $DOCKER_USERNAME/$DOCKER_IMAGE_NAME:$DOCKER_TAG
 done

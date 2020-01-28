@@ -268,7 +268,7 @@ jobs:
       name: "Ethereum.Transition.Test"
     - script:
       - git -c submodule."src/eth2.0-spec-tests".update=none submodule update --init && dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$ETHEREUM_TEST_PROJECTS src/Nethermind/Ethereum.Trie.Test
-      - ./scripts/docker-publish.sh
+      #- ./scripts/docker-publish.sh
       if: branch = master OR type = pull_request
       name: "Ethereum.Trie.Test"
       #- stage: Ethereum 2 Tests
