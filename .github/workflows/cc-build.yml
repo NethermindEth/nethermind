@@ -42,6 +42,9 @@ jobs:
     - name: Nethermind.Bls.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Bls.Test
+    - name: Nethermind.Cli.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Cli.Test
     - name: Nethermind.Clique.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Clique.Test
