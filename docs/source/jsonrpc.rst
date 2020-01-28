@@ -152,6 +152,8 @@ eth
 
  - eth_newPendingTransactionFilter() - Creates an update filter
 
+ - eth_pendingTransactions() - Returns the pending transactions list
+
  - eth_protocolVersion() - Returns ETH protocol version
 
  - eth_sendRawTransaction(transaction) - Send a raw transaction to the tx pool and broadcasting
@@ -209,6 +211,15 @@ personal
 " + len(message) + message))).
 
  - personal_unlockAccount(address, passphrase) - 
+
+proof
+^^^^^
+
+ - [NOT IMPLEMENTED]proof_call(tx, blockParameter) - This function returns the same result as `eth_getTransactionByHash` and also a tx proof and a serialized block header.
+
+ - proof_getTransactionByHash(txHash, includeHeader) - This function returns the same result as `eth_getTransactionReceipt` and also a tx proof, receipt proof and serialized block headers.
+
+ - proof_getTransactionReceipt(txHash, includeHeader) - This function should return the same result as `eth_call` and also proofs of all USED accunts and their storages and serialized block headers
 
 trace
 ^^^^^
