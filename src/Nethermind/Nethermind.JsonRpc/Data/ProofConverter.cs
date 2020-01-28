@@ -71,9 +71,10 @@ namespace Nethermind.JsonRpc.Data
             writer.WriteStartArray();
             for (int i = 0; i < value.Proof.Length; i++)
             {
-                writer.WriteValue(value.Proof[i].ToHexString(true));    
+                writer.WriteValue(value.Proof[i].ToHexString(true));
             }
             writer.WriteEnd();
+            writer.WriteProperty("address", value.Address, serializer);
             writer.WriteProperty("balance", value.Balance, serializer);
             writer.WriteProperty("codeHash", value.CodeHash, serializer);
             writer.WriteProperty("nonce", value.Nonce, serializer);
@@ -88,7 +89,7 @@ namespace Nethermind.JsonRpc.Data
                 writer.WriteStartArray();
                 for (int ip = 0; ip < value.StorageProofs[i].Proof.Length; ip++)
                 {
-                    writer.WriteValue(value.StorageProofs[i].Proof[ip].ToHexString(true));    
+                    writer.WriteValue(value.StorageProofs[i].Proof[ip].ToHexString(true));
                 }
                 writer.WriteEnd();
                 writer.WriteProperty("value", value.StorageProofs[i].Value, serializer);
@@ -96,7 +97,7 @@ namespace Nethermind.JsonRpc.Data
             }
             writer.WriteEnd();
             writer.WriteEnd();
-            
+
         }
 
         public override AccountProof ReadJson(JsonReader reader, Type objectType, AccountProof existingValue, bool hasExistingValue, JsonSerializer serializer)

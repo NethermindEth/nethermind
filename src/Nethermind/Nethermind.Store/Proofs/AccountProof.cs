@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
@@ -24,16 +25,18 @@ namespace Nethermind.Store.Proofs
     /// </summary>
     public class AccountProof
     {
+        public Address Address { get; set; }
+
         public byte[][] Proof { get; set; }
-        
+
         public UInt256 Balance { get; set; }
-        
+
         public Keccak CodeHash { get; set; }
-        
+
         public UInt256 Nonce { get; set; }
-        
+
         public Keccak StorageRoot { get; set; }
-        
+
         public StorageProof[] StorageProofs { get; set; }
     }
 }
