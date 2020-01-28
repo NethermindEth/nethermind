@@ -463,12 +463,12 @@ namespace Nethermind.Runner.Test
         [TestCase("goerli.cfg", true, true)]
         [TestCase("mainnet.cfg", false, false)]
         [TestCase("sokol.cfg", true, true)]
-        [TestCase("sokol_validator.cfg", false, false)]
+        [TestCase("sokol_validator.cfg", true, false)]
         [TestCase("sokol_fastsync.cfg", true, true)]
         [TestCase("poacore.cfg", true, true)]
-        [TestCase("poacore_validator.cfg", false, false)]
+        [TestCase("poacore_validator.cfg", true, false)]
         [TestCase("xdai.cfg", true, true)]
-        [TestCase("xdai_validator.cfg", false, false)]
+        [TestCase("xdai_validator.cfg", true, false)]
         [TestCase("volta.cfg", true, true)]
         public void Fast_sync_settings_as_expected(string configFile, bool downloadBodies, bool downloadsReceipts)
         {
