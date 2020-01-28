@@ -63,15 +63,16 @@ namespace Nethermind.Blockchain.Test.Proofs
         {
             Block block = Build.A.Block.WithTransactions(Enumerable.Repeat(Build.A.Transaction.TestObject, 1000).ToArray()).TestObject;
             TxTrie txTrie = new TxTrie(block.Transactions, true);
-            
-            byte[][] proof = txTrie.BuildProof(0);
-            Assert.AreEqual(3, proof.Length);
-            
+
             txTrie.UpdateRootHash();
-            VerifyProof(proof, txTrie.RootHash);
+            for (int i = 0; i < 1000; i++)
+            {
+                byte[][] proof = txTrie.BuildProof(i);    
+                VerifyProof(proof, txTrie.RootHash);    
+            }
         }
 
-        private void VerifyProof(byte[][] proof, Keccak txRoot)
+        private static void VerifyProof(byte[][] proof, Keccak txRoot)
         {
             for (int i = proof.Length; i > 0; i--)
             {
