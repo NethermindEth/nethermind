@@ -22,7 +22,7 @@ namespace Nethermind.Crypto.ZkSnarks
     /// <summary>
     ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
     /// </summary>
-    public class Fp : IField<Fp>
+    public struct Fp : IField<Fp>
     {
         static Fp()
         {
@@ -213,7 +213,7 @@ namespace Nethermind.Crypto.ZkSnarks
 
         public static bool operator ==(Fp a, Fp b)
         {
-            return a?.Equals(b) ?? ReferenceEquals(b, null);
+            return a.Equals(b);
         }
 
         public static bool operator !=(Fp a, Fp b)
