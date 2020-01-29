@@ -76,8 +76,8 @@ namespace Nethermind.AuRa
                 return null;
             }
 
-            var headerHash = block.Header.CalculateHash(RlpBehaviors.ForSealing);
-            var signature = _wallet.Sign(headerHash, _nodeAddress);
+            Keccak headerHash = block.Header.CalculateHash(RlpBehaviors.ForSealing);
+            Signature signature = _wallet.Sign(headerHash, _nodeAddress);
             block.Header.AuRaSignature = signature.BytesWithRecovery;
             
             return block;
@@ -89,11 +89,11 @@ namespace Nethermind.AuRa
                 ? throw new InvalidOperationException("Head block doesn't have AuRaStep specified.'")
                 : _blockTree.Head.AuRaStep.Value < step;
 
-            bool IsThisNodeTurn(long blockLevel, long step) => _validSealerStrategy.IsValidSealer(_validatorStore.GetValidators(), _nodeAddress, step);
+            bool IsThisNodeTurn(long step) => _validSealerStrategy.IsValidSealer(_validatorStore.GetValidators(), _nodeAddress, step);
 
-            var currentStep = _auRaStepCalculator.CurrentStep;
-            var stepNotYetProduced = StepNotYetProduced(currentStep);
-            var isThisNodeTurn = IsThisNodeTurn(blockNumber, currentStep);
+            long currentStep = _auRaStepCalculator.CurrentStep;
+            bool stepNotYetProduced = StepNotYetProduced(currentStep);
+            bool isThisNodeTurn = IsThisNodeTurn(currentStep);
             if (isThisNodeTurn)
             {
                 if (_logger.IsWarn && !stepNotYetProduced) _logger.Warn($"Cannot seal block {blockNumber}: AuRa step {currentStep} already produced.");
