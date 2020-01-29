@@ -25,8 +25,11 @@ using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.TxPools;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Clique;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Subsystems;
@@ -51,25 +54,34 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 return Task.CompletedTask;
             }
-
+            
+            // TODO: use ReadOnlyChainProcessingEnv here
             ReadOnlyChain GetProducerChain(
                 Func<ITransactionProcessor, IRewardCalculator> rewardCalculatorFactory = null,
                 Func<IDb, IStateProvider, IBlockTree, ITransactionProcessor, ILogManager, IEnumerable<IAdditionalBlockProcessor>> createAdditionalBlockProcessors = null,
                 bool allowStateModification = false)
             {
-                IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_context.DbProvider, allowStateModification);
-                ReadOnlyBlockTree readOnlyBlockTree = new ReadOnlyBlockTree(_context.BlockTree);
-                ReadOnlyChain producerChain = new ReadOnlyChain(
-                    readOnlyBlockTree,
-                    _context.BlockValidator,
-                    rewardCalculatorFactory ?? (p => _context.RewardCalculator),
-                    _context.SpecProvider,
-                    minerDbProvider,
-                    _context.RecoveryStep,
-                    _context.LogManager,
-                    _context.TxPool,
-                    _context.ReceiptStorage,
-                    createAdditionalBlockProcessors);
+                var logManager = _context.LogManager;
+                var specProvider = _context.SpecProvider;
+                var blockValidator = _context.BlockValidator;
+                var recoveryStep = _context.RecoveryStep;
+                var txPool = _context.TxPool;
+
+                var readOnlyDbProvider = new ReadOnlyDbProvider(_context.DbProvider, allowStateModification);
+                var readOnlyBlockTree = new ReadOnlyBlockTree(_context.BlockTree);
+                var readOnlyStateProvider = new StateProvider(readOnlyDbProvider.StateDb, readOnlyDbProvider.CodeDb, logManager);
+                var readOnlyStorageProvider = new StorageProvider(readOnlyDbProvider.StateDb, readOnlyStateProvider, logManager);
+                var readOnlyBlockHashProvider = new BlockhashProvider(readOnlyBlockTree, logManager);
+                var readOnlyVirtualMachine = new VirtualMachine(readOnlyStateProvider, readOnlyStorageProvider, readOnlyBlockHashProvider, specProvider, logManager);
+                var readOnlyTxProcessor = new TransactionProcessor(specProvider, readOnlyStateProvider, readOnlyStorageProvider, readOnlyVirtualMachine, logManager);
+                
+                IEnumerable<IAdditionalBlockProcessor> additionalBlockProcessors = createAdditionalBlockProcessors?.Invoke(readOnlyDbProvider.StateDb, readOnlyStateProvider, readOnlyBlockTree, readOnlyTxProcessor, logManager);
+                IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculatorFactory(readOnlyTxProcessor), readOnlyTxProcessor, readOnlyDbProvider.StateDb, readOnlyDbProvider.CodeDb, readOnlyStateProvider, readOnlyStorageProvider, txPool, _context.ReceiptStorage, logManager, additionalBlockProcessors);
+                IBlockchainProcessor chainProcessor = new OneTimeChainProcessor(readOnlyDbProvider, new BlockchainProcessor(readOnlyBlockTree, blockProcessor, recoveryStep, logManager, false));
+                
+                ReadOnlyChain producerChain = new ReadOnlyChain();
+                producerChain.ChainProcessor = chainProcessor;
+                producerChain.ReadOnlyStateProvider = readOnlyStateProvider;
                 return producerChain;
             }
 
@@ -83,8 +95,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     CliqueConfig cliqueConfig = new CliqueConfig();
                     cliqueConfig.BlockPeriod = _context.ChainSpec.Clique.Period;
                     cliqueConfig.Epoch = _context.ChainSpec.Clique.Epoch;
-                    _context.BlockProducer = new CliqueBlockProducer(pendingTransactionSelector, producerChain.Processor,
-                        _context.BlockTree, _context.Timestamper, _context.CryptoRandom, producerChain.ReadOnlyStateProvider, _context.SnapshotManager, (CliqueSealer) _context.Sealer, _context.NodeKey.Address, cliqueConfig, _context.LogManager);
+                    _context.BlockProducer = new CliqueBlockProducer(pendingTransactionSelector, producerChain.ChainProcessor, _context.BlockTree, _context.Timestamper, _context.CryptoRandom, producerChain.ReadOnlyStateProvider, _context.SnapshotManager, (CliqueSealer) _context.Sealer, _context.NodeKey.Address, cliqueConfig, _context.LogManager);
                     break;
                 }
 
@@ -93,7 +104,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     ReadOnlyChain producerChain = GetProducerChain();
                     PendingTransactionSelector pendingTransactionSelector = new PendingTransactionSelector(_context.TxPool, producerChain.ReadOnlyStateProvider, _context.LogManager);
                     if (_context.Logger.IsWarn) _context.Logger.Warn("Starting Dev block producer & sealer");
-                    _context.BlockProducer = new DevBlockProducer(pendingTransactionSelector, producerChain.Processor, _context.BlockTree, _context.BlockProcessingQueue, producerChain.ReadOnlyStateProvider, _context.Timestamper, _context.LogManager, _context.TxPool);
+                    _context.BlockProducer = new DevBlockProducer(pendingTransactionSelector, producerChain.ChainProcessor, _context.BlockTree, _context.BlockProcessingQueue, producerChain.ReadOnlyStateProvider, _context.Timestamper, _context.LogManager, _context.TxPool);
                     break;
                 }
 
@@ -105,7 +116,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                         (db, s, b, t, l)  => new[] {validator = new AuRaAdditionalBlockProcessorFactory(s, abiEncoder, t, new SingletonTransactionProcessorFactory(t), b, _context.ReceiptStorage, _context.ValidatorStore, l).CreateValidatorProcessor(_context.ChainSpec.AuRa.Validators)});
                     PendingTransactionSelector pendingTransactionSelector = new PendingTransactionSelector(_context.TxPool, producerChain.ReadOnlyStateProvider, _context.LogManager);
                     if (_context.Logger.IsWarn) _context.Logger.Warn("Starting AuRa block producer & sealer");
-                    _context.BlockProducer = new AuRaBlockProducer(pendingTransactionSelector, producerChain.Processor, _context.Sealer, _context.BlockTree, _context.BlockProcessingQueue, producerChain.ReadOnlyStateProvider, _context.Timestamper, _context.LogManager, new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper), _context.Config<IAuraConfig>(), _context.NodeKey.Address);
+                    _context.BlockProducer = new AuRaBlockProducer(pendingTransactionSelector, producerChain.ChainProcessor, _context.Sealer, _context.BlockTree, _context.BlockProcessingQueue, producerChain.ReadOnlyStateProvider, _context.Timestamper, _context.LogManager, new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper), _context.Config<IAuraConfig>(), _context.NodeKey.Address);
                     validator.SetFinalizationManager(_context.FinalizationManager, true);
                     break;
                 }
