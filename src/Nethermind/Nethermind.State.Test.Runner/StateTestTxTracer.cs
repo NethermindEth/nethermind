@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
@@ -42,14 +43,15 @@ namespace Nethermind.State.Test.Runner
         public bool IsTracingCode => false;
         public bool IsTracingStack { get; set; } = true;
         bool ITxTracer.IsTracingState => false;
-        
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
+        public bool IsTracingBlockHash { get; } = false;
+
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
         {
             _trace.Result.Output = output;
             _trace.Result.GasUsed = gasSpent;
         }
 
-        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error)
+        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
         {
             _trace.Result.Error = _traceEntry?.Error ?? error;
             _trace.Result.Output = output ?? Bytes.Empty;
@@ -201,6 +203,11 @@ namespace Nethermind.State.Test.Runner
         public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
         {
             throw new NotSupportedException();
+        }
+
+        public void ReportBlockHash(Keccak blockHash)
+        {
+            throw new NotImplementedException();
         }
 
         public void ReportByteCode(byte[] byteCode)
