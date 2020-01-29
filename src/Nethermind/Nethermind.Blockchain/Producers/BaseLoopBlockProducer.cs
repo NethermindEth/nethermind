@@ -82,7 +82,7 @@ namespace Nethermind.Blockchain.Producers
         
         protected virtual async ValueTask ProducerLoop()
         {
-            bool CanProduce() => _canProduce ?? BlockTree.BestKnownNumber == 0 && BlockProcessingQueue.IsEmpty;
+            bool CanProduce() => (_canProduce ?? BlockTree.BestKnownNumber == 0) && BlockProcessingQueue.IsEmpty;
 
             while (!_loopCancellationTokenSource.IsCancellationRequested)
             {
