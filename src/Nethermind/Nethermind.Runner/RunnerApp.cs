@@ -58,30 +58,55 @@ namespace Nethermind.Runner
                 .Where(y => loadedAssemblies.Any((a) => a.FullName == y.FullName) == false)
                 .ToList()
                 .ForEach(x => loadedAssemblies.Add(AppDomain.CurrentDomain.Load(x)));
-            
+
             Type configurationType = typeof(IConfig);
             var configTypes = AppDomain.CurrentDomain.GetAssemblies()
                 .SelectMany(a => a.GetTypes())
                 .Where(t => configurationType.IsAssignableFrom(t) && !t.IsInterface)
                 .ToList();
-            
+
             CommandLineApplication app = new CommandLineApplication {Name = "Nethermind.Runner"};
             app.HelpOption("-?|-h|--help");
             CommandOption configFile = app.Option("-c|--config <configFile>", "config file path", CommandOptionType.SingleValue);
             CommandOption dbBasePath = app.Option("-d|--baseDbPath <baseDbPath>", "base db path", CommandOptionType.SingleValue);
             CommandOption logLevelOverride = app.Option("-l|--log <logLevel>", "log level", CommandOptionType.SingleValue);
             CommandOption configsDirectory = app.Option("-cd|--configsDirectory <configsDirectory>", "configs directory", CommandOptionType.SingleValue);
-            
+            CommandOption loggerConfigSource = app.Option("-lcs|--loggerConfigSource <loggerConfigSource>", "path to the NLog config file", CommandOptionType.SingleValue);
+
             foreach (Type configType in configTypes)
             {
                 foreach (PropertyInfo propertyInfo in configType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
                 {
-                    app.Option($"--{configType.Name.Replace("Config", String.Empty)}.{propertyInfo.Name}", $"{configType.Name}.{propertyInfo.Name}", CommandOptionType.SingleValue);
+                    Type interfaceType = configType.GetInterface("I" + configType.Name);
+                    PropertyInfo interfaceProperty = interfaceType?.GetProperty(propertyInfo.Name);
+
+                    ConfigItemAttribute configItemAttribute = interfaceProperty?.GetCustomAttribute<ConfigItemAttribute>();
+                    app.Option($"--{configType.Name.Replace("Config", String.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute == null ? "<missing documentation>" : configItemAttribute?.Description ?? "<missing documentation>")}", CommandOptionType.SingleValue);
                 }
             }
 
             IConfigProvider BuildConfigProvider()
             {
+                if (loggerConfigSource.HasValue())
+                {
+                    string nLogPath = loggerConfigSource.Value();
+                    Console.WriteLine($"Loading NLog configuration file from {nLogPath}.");
+
+                    try
+                    {
+                        LogManager.Configuration = new XmlLoggingConfiguration(nLogPath);
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine($"Failed to load NLog configuration from {nLogPath}. {e}");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"Loading standard NLog.config file from {"NLog.config".GetApplicationResourcePath()}.");
+                    LogManager.Configuration = new XmlLoggingConfiguration("NLog.config".GetApplicationResourcePath());
+                }
+
                 // TODO: dynamically switch log levels from CLI!
                 if (logLevelOverride.HasValue())
                 {
@@ -108,7 +133,7 @@ namespace Nethermind.Runner
                             nLogLevel = NLog.LogLevel.Trace;
                             break;
                     }
-                    
+
                     Console.WriteLine($"Enabling log level override: {logLevel.ToUpperInvariant()}");
 
                     foreach (LoggingRule rule in LogManager.Configuration.LoggingRules)
@@ -146,7 +171,9 @@ namespace Nethermind.Runner
                 if (configDir == DefaultConfigsDirectory)
                 {
                     configFilePath = configFilePath.GetApplicationResourcePath();
-                } else {
+                }
+                else
+                {
                     configFilePath = Path.Combine(configDir, string.Concat(configFilePath));
                 }
 
@@ -164,7 +191,7 @@ namespace Nethermind.Runner
                 {
                     configFilePath = string.Concat(configFilePath, ".cfg");
                 }
-                
+
                 // Fallback to "{executingDirectory}/configs/{configFile}" if "configs" catalog was not specified.
                 if (!File.Exists(configFilePath))
                 {
@@ -181,7 +208,7 @@ namespace Nethermind.Runner
                 Console.WriteLine($"Reading config file from {configFilePath}");
                 configProvider.AddSource(new JsonConfigSource(configFilePath));
                 configTypes.ForEach(configType => configProvider.RegisterCategory(configType.Name, configType));
-                
+
                 return configProvider;
             }
 
