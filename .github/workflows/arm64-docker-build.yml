@@ -6,7 +6,6 @@ name: Publish ARM64 Image to Docker Registry
 #     - '*'
 
 on: push
-
 jobs:
   arm64_building:
     runs-on: [self-hosted, linux, ARM64]
