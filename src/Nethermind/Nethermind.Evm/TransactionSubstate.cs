@@ -14,8 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
+using System.Numerics;
+using System.Text;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm
@@ -46,7 +50,27 @@ namespace Nethermind.Evm
             DestroyList = destroyList;
             Logs = logs;
             ShouldRevert = shouldRevert;
-            Error = ShouldRevert ? "revert" : null;
+            if (ShouldRevert)
+            {
+                Error = "revert";
+                if (Output?.Length > 0)
+                {
+                    try
+                    {
+                        BigInteger start = Output.AsSpan().Slice(4, 32).ToUnsignedBigInteger();
+                        BigInteger length = Output.Slice((int) start + 4, 32).ToUnsignedBigInteger();
+                        Error = Encoding.ASCII.GetString(Output.Slice((int) start + 32 + 4, (int) length));
+                    }
+                    catch (Exception e)
+                    {
+                        // ignored
+                    }
+                }
+            }
+            else
+            {
+                Error = null;
+            }
         }
 
         public bool IsError => Error != null && !ShouldRevert;

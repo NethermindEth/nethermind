@@ -114,7 +114,7 @@ namespace Nethermind.Evm.Tracing.GethStyle
                 case EvmExceptionType.StackUnderflow:
                     return "StackUnderflow";
                 case EvmExceptionType.OutOfGas:
-                    return "OutOfGass";
+                    return "OutOfGas";
                 case EvmExceptionType.InvalidJumpDestination:
                     return "BadJumpDestination";
                 case EvmExceptionType.AccessViolation:
