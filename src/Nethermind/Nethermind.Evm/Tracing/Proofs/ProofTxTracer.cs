@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 
@@ -25,6 +26,13 @@ namespace Nethermind.Evm.Tracing.Proofs
 {
     public class ProofTxTracer : ITxTracer
     {
+        private readonly bool _treatSystemAccountDifferently;
+
+        public ProofTxTracer(bool treatSystemAccountDifferently)
+        {
+            _treatSystemAccountDifferently = treatSystemAccountDifferently;
+        }
+        
         public HashSet<Address> Accounts { get; } = new HashSet<Address>();
 
         public HashSet<StorageCell> Storages { get; } = new HashSet<StorageCell>();
@@ -70,16 +78,31 @@ namespace Nethermind.Evm.Tracing.Proofs
 
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
+            if (_treatSystemAccountDifferently && Address.SystemUser == address && before == null && after == UInt256.Zero)
+            {
+                return;
+            }
+            
             Accounts.Add(address);
         }
 
         public void ReportCodeChange(Address address, byte[] before, byte[] after)
         {
+            if (_treatSystemAccountDifferently && Address.SystemUser == address && before == null && after == Bytes.Empty)
+            {
+                return;
+            }
+            
             Accounts.Add(address);
         }
 
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
         {
+            if (_treatSystemAccountDifferently && Address.SystemUser == address && before == null && after == UInt256.Zero)
+            {
+                return;
+            }
+            
             Accounts.Add(address);
         }
 
@@ -96,9 +119,17 @@ namespace Nethermind.Evm.Tracing.Proofs
             // and so we do not need to add account to Accounts
             Storages.Add(storageCell);
         }
+
+        private bool _wasSystemAccountAccessedOnceAlready = false;
         
         public void ReportAccountRead(Address address)
         {
+            if (!_wasSystemAccountAccessedOnceAlready && address == Address.SystemUser)
+            {
+                _wasSystemAccountAccessedOnceAlready = true;
+                return;
+            }
+
             Accounts.Add(address);
         }
 

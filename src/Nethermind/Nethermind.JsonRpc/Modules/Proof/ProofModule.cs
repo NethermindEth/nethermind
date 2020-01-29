@@ -95,7 +95,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             Block block = new Block(header, new[] {transaction}, Enumerable.Empty<BlockHeader>());
 
-            ProofBlockTracer proofBlockTracer = new ProofBlockTracer(null);
+            ProofBlockTracer proofBlockTracer = new ProofBlockTracer(null, transaction.SenderAddress == Address.SystemUser);
             _tracer.Trace(block, proofBlockTracer);
 
             CallResultWithProof callResultWithProof = new CallResultWithProof();

@@ -374,6 +374,11 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _trace.StateChanges[address].Nonce = new ParityStateChange<UInt256?>(before, after);
         }
 
+        public void ReportAccountRead(Address address)
+        {
+            throw new NotSupportedException();
+        }
+
         public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
         {
             Dictionary<UInt256, ParityStateChange<byte[]>> storage = null;

@@ -171,6 +171,11 @@ namespace Nethermind.Evm.Tracing.GethStyle
             throw new NotSupportedException();
         }
 
+        public void ReportAccountRead(Address address)
+        {
+            throw new NotSupportedException();
+        }
+
         public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
         {
             throw new NotSupportedException();

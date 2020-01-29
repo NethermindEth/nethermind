@@ -79,6 +79,8 @@ namespace Nethermind.Evm.Tracing
         public void ReportCodeChange(Address address, byte[] before, byte[] after) => throw new InvalidOperationException(ErrorMessage);
 
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after) => throw new InvalidOperationException(ErrorMessage);
+        
+        public void ReportAccountRead(Address address) => throw new InvalidOperationException(ErrorMessage);
 
         public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after) => throw new InvalidOperationException(ErrorMessage);
 
