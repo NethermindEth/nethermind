@@ -360,6 +360,7 @@ namespace Nethermind.Store
 
         public void CreateAccount(Address address, in UInt256 balance)
         {
+            _needsStateRootUpdate = true;
             if (_logger.IsTrace) _logger.Trace($"Creating account: {address} with balance {balance}");
             Account account = balance.IsZero ? Account.TotallyEmpty : new Account(balance);
             PushNew(address, account);
