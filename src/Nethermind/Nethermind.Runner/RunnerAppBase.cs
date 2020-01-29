@@ -88,7 +88,6 @@ namespace Nethermind.Runner
                 appClosed.Reset();
                 IConfigProvider configProvider = buildConfigProvider();
                 IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
-                LogManager.Configuration = new XmlLoggingConfiguration("NLog.config".GetApplicationResourcePath());
                 _logger = new NLogLogger(initConfig.LogFileName, initConfig.LogDirectory);
                 if (_logger.IsInfo) _logger.Info($"Nethermind version: {ClientVersion.Description}");
                 LogMemoryConfiguration();
