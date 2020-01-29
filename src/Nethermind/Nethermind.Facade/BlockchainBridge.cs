@@ -185,8 +185,7 @@ namespace Nethermind.Facade
                 transaction.SenderAddress = Address.SystemUser;
             }
 
-            BlockHeader parentHeader = FindHeader(blockHeader.ParentHash, BlockTreeLookupOptions.None);
-
+            BlockHeader parentHeader = FindHeader(blockHeader.ParentHash, BlockTreeLookupOptions.None) ?? blockHeader;
             _stateProvider.StateRoot = parentHeader.StateRoot;
             if (transaction.Nonce == 0)
             {
