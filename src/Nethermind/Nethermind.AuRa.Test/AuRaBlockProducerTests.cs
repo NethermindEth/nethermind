@@ -37,7 +37,7 @@ namespace Nethermind.AuRa.Test
 {
     public class AuRaBlockProducerTests
     {
-        private IPendingTransactionSelector _pendingTransactionSelector;
+        private IPendingTxSelector _pendingTxSelector;
         private IBlockchainProcessor _blockchainProcessor;
         private ISealer _sealer;
         private IBlockTree _blockTree;
@@ -55,7 +55,7 @@ namespace Nethermind.AuRa.Test
         {
             _stepDelay = TimeSpan.FromMilliseconds(10);
             
-            _pendingTransactionSelector = Substitute.For<IPendingTransactionSelector>();
+            _pendingTxSelector = Substitute.For<IPendingTxSelector>();
             _blockchainProcessor = Substitute.For<IBlockchainProcessor>();
             _sealer = Substitute.For<ISealer>();
             _blockTree = Substitute.For<IBlockTree>();
@@ -66,7 +66,7 @@ namespace Nethermind.AuRa.Test
             _auraConfig = Substitute.For<IAuraConfig>();
             _nodeAddress = TestItem.AddressA;
             _auRaBlockProducer = new AuRaBlockProducer(
-                _pendingTransactionSelector,
+                _pendingTxSelector,
                 _blockchainProcessor,
                 _sealer,
                 _blockTree,
@@ -79,7 +79,7 @@ namespace Nethermind.AuRa.Test
                 _nodeAddress);
 
             _auraConfig.ForceSealing.Returns(true);
-            _pendingTransactionSelector.SelectTransactions(Arg.Any<long>()).Returns(Array.Empty<Transaction>());
+            _pendingTxSelector.SelectTransactions(Arg.Any<long>()).Returns(Array.Empty<Transaction>());
             _sealer.CanSeal(Arg.Any<long>(), Arg.Any<Keccak>()).Returns(true);
             _sealer.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(c => Task.FromResult(c.Arg<Block>()));
             _blockProcessingQueue.IsEmpty.Returns(true);
@@ -125,7 +125,7 @@ namespace Nethermind.AuRa.Test
         public async Task Produces_block_when_ForceSealing_is_false_and_there_are_transactions()
         {
             _auraConfig.ForceSealing.Returns(false);
-            _pendingTransactionSelector.SelectTransactions(Arg.Any<long>()).Returns(new[] {Build.A.Transaction.TestObject});
+            _pendingTxSelector.SelectTransactions(Arg.Any<long>()).Returns(new[] {Build.A.Transaction.TestObject});
             (await StartStop()).ShouldProduceBlocks(Quantity.AtLeastOne());
         }
         

@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.Producers
     {
         private readonly ITxPool _txPool;
 
-        public DevBlockProducer(IPendingTransactionSelector pendingTransactionSelector,
+        public DevBlockProducer(IPendingTxSelector pendingTxSelector,
             IBlockchainProcessor processor,
             IBlockTree blockTree,
             IBlockProcessingQueue blockProcessingQueue,
@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain.Producers
             ITimestamper timestamper,
             ILogManager logManager, 
             ITxPool txPool) 
-            : base(pendingTransactionSelector, processor, NullSealEngine.Instance, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager)
+            : base(pendingTxSelector, processor, NullSealEngine.Instance, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
         }

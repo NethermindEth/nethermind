@@ -25,18 +25,18 @@ using Nethermind.Store;
 
 namespace Nethermind.Blockchain
 {
-    public class PendingTransactionSelector : IPendingTransactionSelector
+    public class PendingTxSelector : IPendingTxSelector
     {
         private readonly ITxPool _transactionPool;
         private readonly IStateProvider _stateProvider;
         private readonly long _minGasPriceForMining;
         private readonly ILogger _logger;
 
-        public PendingTransactionSelector(ITxPool transactionPool, IStateProvider stateProvider, ILogManager logManager, long minGasPriceForMining = 1)
+        public PendingTxSelector(ITxPool transactionPool, IStateProvider stateProvider, ILogManager logManager, long minGasPriceForMining = 1)
         {
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _logger = logManager?.GetClassLogger<PendingTransactionSelector>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<PendingTxSelector>() ?? throw new ArgumentNullException(nameof(logManager));
             _minGasPriceForMining = minGasPriceForMining;
         }
         

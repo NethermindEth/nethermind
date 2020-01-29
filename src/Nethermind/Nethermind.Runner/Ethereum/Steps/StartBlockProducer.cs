@@ -40,97 +40,111 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependency(typeof(InitializeNetwork), typeof(InitializeFinalization))]
     public class StartBlockProducer : IStep, ISubsystemStateAware
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly EthereumRunnerContext _ethereumContext;
 
-        public StartBlockProducer(EthereumRunnerContext context)
+        public StartBlockProducer(EthereumRunnerContext ethereumContext)
         {
-            _context = context;
+            _ethereumContext = ethereumContext;
         }
 
         public Task Execute()
         {
-            IInitConfig jsonRpcConfig = _context.Config<IInitConfig>();
-            if (!jsonRpcConfig.IsMining)
+            IInitConfig initConfig = _ethereumContext.Config<IInitConfig>();
+            if (!initConfig.IsMining)
             {
                 return Task.CompletedTask;
             }
-            
-            // TODO: use ReadOnlyChainProcessingEnv here
-            ReadOnlyChain GetProducerChain(
-                Func<ITransactionProcessor, IRewardCalculator> rewardCalculatorFactory = null,
-                Func<IDb, IStateProvider, IBlockTree, ITransactionProcessor, ILogManager, IEnumerable<IAdditionalBlockProcessor>> createAdditionalBlockProcessors = null,
-                bool allowStateModification = false)
-            {
-                var logManager = _context.LogManager;
-                var specProvider = _context.SpecProvider;
-                var blockValidator = _context.BlockValidator;
-                var recoveryStep = _context.RecoveryStep;
-                var txPool = _context.TxPool;
 
-                var readOnlyDbProvider = new ReadOnlyDbProvider(_context.DbProvider, allowStateModification);
-                var readOnlyBlockTree = new ReadOnlyBlockTree(_context.BlockTree);
-                var readOnlyStateProvider = new StateProvider(readOnlyDbProvider.StateDb, readOnlyDbProvider.CodeDb, logManager);
-                var readOnlyStorageProvider = new StorageProvider(readOnlyDbProvider.StateDb, readOnlyStateProvider, logManager);
-                var readOnlyBlockHashProvider = new BlockhashProvider(readOnlyBlockTree, logManager);
-                var readOnlyVirtualMachine = new VirtualMachine(readOnlyStateProvider, readOnlyStorageProvider, readOnlyBlockHashProvider, specProvider, logManager);
-                var readOnlyTxProcessor = new TransactionProcessor(specProvider, readOnlyStateProvider, readOnlyStorageProvider, readOnlyVirtualMachine, logManager);
-                
-                IEnumerable<IAdditionalBlockProcessor> additionalBlockProcessors = createAdditionalBlockProcessors?.Invoke(readOnlyDbProvider.StateDb, readOnlyStateProvider, readOnlyBlockTree, readOnlyTxProcessor, logManager);
-                IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculatorFactory(readOnlyTxProcessor), readOnlyTxProcessor, readOnlyDbProvider.StateDb, readOnlyDbProvider.CodeDb, readOnlyStateProvider, readOnlyStorageProvider, txPool, _context.ReceiptStorage, logManager, additionalBlockProcessors);
-                IBlockchainProcessor chainProcessor = new OneTimeChainProcessor(readOnlyDbProvider, new BlockchainProcessor(readOnlyBlockTree, blockProcessor, recoveryStep, logManager, false));
-                
-                ReadOnlyChain producerChain = new ReadOnlyChain();
-                producerChain.ChainProcessor = chainProcessor;
-                producerChain.ReadOnlyStateProvider = readOnlyStateProvider;
-                return producerChain;
-            }
-
-            switch (_context.ChainSpec.SealEngineType)
+            switch (_ethereumContext.ChainSpec.SealEngineType)
             {
                 case SealEngineType.Clique:
                 {
-                    ReadOnlyChain producerChain = GetProducerChain();
-                    PendingTransactionSelector pendingTransactionSelector = new PendingTransactionSelector(_context.TxPool, producerChain.ReadOnlyStateProvider, _context.LogManager);
-                    if (_context.Logger.IsWarn) _context.Logger.Warn("Starting Clique block producer & sealer");
-                    CliqueConfig cliqueConfig = new CliqueConfig();
-                    cliqueConfig.BlockPeriod = _context.ChainSpec.Clique.Period;
-                    cliqueConfig.Epoch = _context.ChainSpec.Clique.Epoch;
-                    _context.BlockProducer = new CliqueBlockProducer(pendingTransactionSelector, producerChain.ChainProcessor, _context.BlockTree, _context.Timestamper, _context.CryptoRandom, producerChain.ReadOnlyStateProvider, _context.SnapshotManager, (CliqueSealer) _context.Sealer, _context.NodeKey.Address, cliqueConfig, _context.LogManager);
+                    if (_ethereumContext.Logger.IsWarn) _ethereumContext.Logger.Warn("Starting Clique block producer & sealer");
+                    BuildCliqueProducer();
                     break;
                 }
 
                 case SealEngineType.NethDev:
                 {
-                    ReadOnlyChain producerChain = GetProducerChain();
-                    PendingTransactionSelector pendingTransactionSelector = new PendingTransactionSelector(_context.TxPool, producerChain.ReadOnlyStateProvider, _context.LogManager);
-                    if (_context.Logger.IsWarn) _context.Logger.Warn("Starting Dev block producer & sealer");
-                    _context.BlockProducer = new DevBlockProducer(pendingTransactionSelector, producerChain.ChainProcessor, _context.BlockTree, _context.BlockProcessingQueue, producerChain.ReadOnlyStateProvider, _context.Timestamper, _context.LogManager, _context.TxPool);
+                    if (_ethereumContext.Logger.IsWarn) _ethereumContext.Logger.Warn("Starting Neth Dev block producer & sealer");
+                    BuildNethDevProducer();
                     break;
                 }
 
                 case SealEngineType.AuRa:
                 {
-                    IAuRaValidatorProcessor validator = null;
-                    var abiEncoder = new AbiEncoder();                    
-                    ReadOnlyChain producerChain = GetProducerChain(t => new AuRaRewardCalculator(_context.ChainSpec.AuRa, abiEncoder, t),
-                        (db, s, b, t, l)  => new[] {validator = new AuRaAdditionalBlockProcessorFactory(s, abiEncoder, t, new SingletonTransactionProcessorFactory(t), b, _context.ReceiptStorage, _context.ValidatorStore, l).CreateValidatorProcessor(_context.ChainSpec.AuRa.Validators)});
-                    PendingTransactionSelector pendingTransactionSelector = new PendingTransactionSelector(_context.TxPool, producerChain.ReadOnlyStateProvider, _context.LogManager);
-                    if (_context.Logger.IsWarn) _context.Logger.Warn("Starting AuRa block producer & sealer");
-                    _context.BlockProducer = new AuRaBlockProducer(pendingTransactionSelector, producerChain.ChainProcessor, _context.Sealer, _context.BlockTree, _context.BlockProcessingQueue, producerChain.ReadOnlyStateProvider, _context.Timestamper, _context.LogManager, new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper), _context.Config<IAuraConfig>(), _context.NodeKey.Address);
-                    validator.SetFinalizationManager(_context.FinalizationManager, true);
+                    if (_ethereumContext.Logger.IsWarn) _ethereumContext.Logger.Warn("Starting AuRa block producer & sealer");
+                    BuildAuRaProducer();
                     break;
                 }
-
-
+                
                 default:
-                    throw new NotSupportedException($"Mining in {_context.ChainSpec.SealEngineType} mode is not supported");
+                    throw new NotSupportedException($"Mining in {_ethereumContext.ChainSpec.SealEngineType} mode is not supported");
             }
 
-            _context.BlockProducer.Start();
-            
+            _ethereumContext.BlockProducer.Start();
+
             SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Running));
-            
+
             return Task.CompletedTask;
+        }
+
+        private void BuildAuRaProducer()
+        {
+            IAuRaValidatorProcessor validator = null;
+            AbiEncoder abiEncoder = new AbiEncoder();
+            BlockProducerContext producerContext = GetProducerChain(t => new AuRaRewardCalculator(_ethereumContext.ChainSpec.AuRa, abiEncoder, t),
+                (db, s, b, t, l) => new[] {validator = new AuRaAdditionalBlockProcessorFactory(s, abiEncoder, t, new SingletonTransactionProcessorFactory(t), b, _ethereumContext.ReceiptStorage, _ethereumContext.ValidatorStore, l).CreateValidatorProcessor(_ethereumContext.ChainSpec.AuRa.Validators)});
+            _ethereumContext.BlockProducer = new AuRaBlockProducer(producerContext.PendingTxSelector, producerContext.ChainProcessor, _ethereumContext.Sealer, _ethereumContext.BlockTree, _ethereumContext.BlockProcessingQueue, producerContext.ReadOnlyStateProvider, _ethereumContext.Timestamper, _ethereumContext.LogManager, new AuRaStepCalculator(_ethereumContext.ChainSpec.AuRa.StepDuration, _ethereumContext.Timestamper), _ethereumContext.Config<IAuraConfig>(), _ethereumContext.NodeKey.Address);
+            validator.SetFinalizationManager(_ethereumContext.FinalizationManager, true);
+        }
+
+        private void BuildNethDevProducer()
+        {
+            BlockProducerContext producerChain = GetProducerChain();
+            _ethereumContext.BlockProducer = new DevBlockProducer(producerChain.PendingTxSelector, producerChain.ChainProcessor, _ethereumContext.BlockTree, _ethereumContext.BlockProcessingQueue, producerChain.ReadOnlyStateProvider, _ethereumContext.Timestamper, _ethereumContext.LogManager, _ethereumContext.TxPool);
+        }
+
+        private void BuildCliqueProducer()
+        {
+            BlockProducerContext producerChain = GetProducerChain();
+            CliqueConfig cliqueConfig = new CliqueConfig();
+            cliqueConfig.BlockPeriod = _ethereumContext.ChainSpec.Clique.Period;
+            cliqueConfig.Epoch = _ethereumContext.ChainSpec.Clique.Epoch;
+            _ethereumContext.BlockProducer = new CliqueBlockProducer(producerChain.PendingTxSelector, producerChain.ChainProcessor, _ethereumContext.BlockTree, _ethereumContext.Timestamper, _ethereumContext.CryptoRandom, producerChain.ReadOnlyStateProvider, _ethereumContext.SnapshotManager, (CliqueSealer) _ethereumContext.Sealer, _ethereumContext.NodeKey.Address, cliqueConfig, _ethereumContext.LogManager);
+        }
+        
+        private BlockProducerContext GetProducerChain(
+            Func<ITransactionProcessor, IRewardCalculator> rewardCalculatorFactory = null,
+            Func<IDb, IStateProvider, IBlockTree, ITransactionProcessor, ILogManager, IEnumerable<IAdditionalBlockProcessor>> createAdditionalBlockProcessors = null,
+            bool allowStateModification = false)
+        {
+            // TODO: use ReadOnlyChainProcessingEnv here
+            
+            var logManager = _ethereumContext.LogManager;
+            var specProvider = _ethereumContext.SpecProvider;
+            var blockValidator = _ethereumContext.BlockValidator;
+            var recoveryStep = _ethereumContext.RecoveryStep;
+            var txPool = _ethereumContext.TxPool;
+
+            var readOnlyDbProvider = new ReadOnlyDbProvider(_ethereumContext.DbProvider, allowStateModification);
+            var readOnlyBlockTree = new ReadOnlyBlockTree(_ethereumContext.BlockTree);
+            var readOnlyStateProvider = new StateProvider(readOnlyDbProvider.StateDb, readOnlyDbProvider.CodeDb, logManager);
+            var readOnlyStorageProvider = new StorageProvider(readOnlyDbProvider.StateDb, readOnlyStateProvider, logManager);
+            var readOnlyBlockHashProvider = new BlockhashProvider(readOnlyBlockTree, logManager);
+            var readOnlyVirtualMachine = new VirtualMachine(readOnlyStateProvider, readOnlyStorageProvider, readOnlyBlockHashProvider, specProvider, logManager);
+            var readOnlyTxProcessor = new TransactionProcessor(specProvider, readOnlyStateProvider, readOnlyStorageProvider, readOnlyVirtualMachine, logManager);
+
+            IEnumerable<IAdditionalBlockProcessor> additionalBlockProcessors = createAdditionalBlockProcessors?.Invoke(readOnlyDbProvider.StateDb, readOnlyStateProvider, readOnlyBlockTree, readOnlyTxProcessor, logManager);
+            IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculatorFactory(readOnlyTxProcessor), readOnlyTxProcessor, readOnlyDbProvider.StateDb, readOnlyDbProvider.CodeDb, readOnlyStateProvider, readOnlyStorageProvider, txPool, _ethereumContext.ReceiptStorage, logManager, additionalBlockProcessors);
+            IBlockchainProcessor chainProcessor = new OneTimeChainProcessor(readOnlyDbProvider, new BlockchainProcessor(readOnlyBlockTree, blockProcessor, recoveryStep, logManager, false));
+            IPendingTxSelector pendingTxSelector = new PendingTxSelector(_ethereumContext.TxPool, readOnlyStateProvider, _ethereumContext.LogManager);
+            
+            BlockProducerContext producerChain = new BlockProducerContext();
+            producerChain.ChainProcessor = chainProcessor;
+            producerChain.ReadOnlyStateProvider = readOnlyStateProvider;
+            producerChain.PendingTxSelector = pendingTxSelector;
+            return producerChain;
         }
 
         public event EventHandler<SubsystemStateEventArgs> SubsystemStateChanged;

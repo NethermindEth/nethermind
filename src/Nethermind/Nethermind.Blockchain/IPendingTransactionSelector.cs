@@ -19,7 +19,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain
 {
-    public interface IPendingTransactionSelector
+    public interface IPendingTxSelector
     {
         IEnumerable<Transaction> SelectTransactions(long gasLimit);
     }

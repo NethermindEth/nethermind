@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain.Producers
         private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
 
         public MinedBlockProducer(
-            IPendingTransactionSelector pendingTransactionSelector,
+            IPendingTxSelector pendingTxSelector,
             IBlockchainProcessor processor,
             ISealer sealer,
             IBlockTree blockTree,
@@ -42,7 +42,7 @@ namespace Nethermind.Blockchain.Producers
             ITimestamper timestamper,
             ILogManager logManager,
             IDifficultyCalculator difficultyCalculator) 
-            : base(pendingTransactionSelector, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager)
+            : base(pendingTxSelector, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager)
         {
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
         }

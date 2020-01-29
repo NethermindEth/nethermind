@@ -129,7 +129,7 @@ namespace Nethermind.Blockchain.Test
             transactionPool.GetPendingTransactions().Returns(testCase.Transactions.ToArray());
             SetAccountStates();
 
-            var selector = new PendingTransactionSelector(transactionPool, stateProvider, NullLogManager.Instance, testCase.MinGasPriceForMining);
+            var selector = new PendingTxSelector(transactionPool, stateProvider, NullLogManager.Instance, testCase.MinGasPriceForMining);
 
             var selectedTransactions = selector.SelectTransactions(testCase.GasLimit);
             selectedTransactions.Should().BeEquivalentTo(testCase.ExpectedSelectedTransactions);
