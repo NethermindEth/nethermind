@@ -23,9 +23,17 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing
 {
-    [TestFixture]
+    [TestFixture(true)]
+    [TestFixture(false)]
     public class ProofTxTracerTests : VirtualMachineTestsBase
     {
+        private readonly bool _treatSystemAccountDifferently;
+
+        public ProofTxTracerTests(bool treatSystemAccountDifferently)
+        {
+            _treatSystemAccountDifferently = treatSystemAccountDifferently;
+        }
+    
         [Test]
         public void Can_trace_sender_recipient_miner()
         {
@@ -274,7 +282,7 @@ namespace Nethermind.Evm.Test.Tracing
         protected (ProofTxTracer trace, Block block, Transaction transaction) ExecuteAndTraceProofCall(SenderRecipientAndMiner addresses, params byte[] code)
         {
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, addresses);
-            ProofTxTracer tracer = new ProofTxTracer();
+            ProofTxTracer tracer = new ProofTxTracer(_treatSystemAccountDifferently);
             _processor.Execute(transaction, block.Header, tracer);
             return (tracer, block, transaction);
         }
