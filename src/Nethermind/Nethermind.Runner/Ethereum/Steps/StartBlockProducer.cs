@@ -20,9 +20,11 @@ using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.AuRa;
 using Nethermind.AuRa.Config;
+using Nethermind.AuRa.Rewards;
 using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Producers;
+using Nethermind.Blockchain.Rewards;
 using Nethermind.Clique;
 using Nethermind.Core;
 using Nethermind.Evm;
@@ -51,6 +53,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
 
             ReadOnlyChain GetProducerChain(
+                Func<ITransactionProcessor, IRewardCalculator> rewardCalculatorFactory = null,
                 Func<IDb, IStateProvider, IBlockTree, ITransactionProcessor, ILogManager, IEnumerable<IAdditionalBlockProcessor>> createAdditionalBlockProcessors = null,
                 bool allowStateModification = false)
             {
@@ -59,7 +62,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 ReadOnlyChain producerChain = new ReadOnlyChain(
                     readOnlyBlockTree,
                     _context.BlockValidator,
-                    _context.RewardCalculator,
+                    rewardCalculatorFactory ?? (p => _context.RewardCalculator),
                     _context.SpecProvider,
                     minerDbProvider,
                     _context.RecoveryStep,
@@ -97,8 +100,9 @@ namespace Nethermind.Runner.Ethereum.Steps
                 case SealEngineType.AuRa:
                 {
                     IAuRaValidatorProcessor validator = null;
-                    ReadOnlyChain producerChain = GetProducerChain((db, s, b, t, l)  => 
-                        new[] {validator = new AuRaAdditionalBlockProcessorFactory(s, new AbiEncoder(), t, b, _context.ReceiptStorage, _context.ValidatorStore, l).CreateValidatorProcessor(_context.ChainSpec.AuRa.Validators)});
+                    var abiEncoder = new AbiEncoder();                    
+                    ReadOnlyChain producerChain = GetProducerChain(t => new AuRaRewardCalculator(_context.ChainSpec.AuRa, abiEncoder, t),
+                        (db, s, b, t, l)  => new[] {validator = new AuRaAdditionalBlockProcessorFactory(s, abiEncoder, t, new SingletonTransactionProcessorFactory(t), b, _context.ReceiptStorage, _context.ValidatorStore, l).CreateValidatorProcessor(_context.ChainSpec.AuRa.Validators)});
                     PendingTransactionSelector pendingTransactionSelector = new PendingTransactionSelector(_context.TxPool, producerChain.ReadOnlyStateProvider, _context.LogManager);
                     if (_context.Logger.IsWarn) _context.Logger.Warn("Starting AuRa block producer & sealer");
                     _context.BlockProducer = new AuRaBlockProducer(pendingTransactionSelector, producerChain.Processor, _context.Sealer, _context.BlockTree, _context.BlockProcessingQueue, producerChain.ReadOnlyStateProvider, _context.Timestamper, _context.LogManager, new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper), _context.Config<IAuraConfig>(), _context.NodeKey.Address);

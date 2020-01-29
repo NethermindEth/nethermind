@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain
 
         public ReadOnlyChain(ReadOnlyBlockTree readOnlyTree,
             IBlockValidator blockValidator,
-            IRewardCalculator rewardCalculator,
+            Func<ITransactionProcessor, IRewardCalculator> rewardCalculatorFactory,
             ISpecProvider specProvider,
             IReadOnlyDbProvider dbProvider,
             IBlockDataRecoveryStep recoveryStep,
@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain
             ITransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, ReadOnlyStateProvider, storageProvider, virtualMachine, logManager);
             ITxPool txPool = customTxPool;
             AdditionalBlockProcessors = additionalBlockProcessorsFactory?.Invoke(dbProvider.StateDb, ReadOnlyStateProvider, readOnlyTree, transactionProcessor, logManager);
-            BlockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, ReadOnlyStateProvider, storageProvider, txPool, receiptStorage, logManager, AdditionalBlockProcessors);
+            BlockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculatorFactory(transactionProcessor), transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, ReadOnlyStateProvider, storageProvider, txPool, receiptStorage, logManager, AdditionalBlockProcessors);
             Processor = new OneTimeChainProcessor(dbProvider, new BlockchainProcessor(readOnlyTree, BlockProcessor, recoveryStep, logManager, false));
         }
     }

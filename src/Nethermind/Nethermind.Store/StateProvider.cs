@@ -722,6 +722,7 @@ namespace Nethermind.Store
             _nullReadsForTracing.Clear();
             _currentPosition = -1;
             Array.Clear(_changes, 0, _changes.Length);
+            _needsStateRootUpdate = false;
         }
 
         public void CommitTree()

@@ -246,7 +246,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 case SealEngineType.AuRa:
                     AbiEncoder abiEncoder = new AbiEncoder();
                     _context.ValidatorStore = new ValidatorStore(_context.DbProvider.BlockInfosDb);
-                    IAuRaValidatorProcessor validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_context.StateProvider, abiEncoder, _context.TransactionProcessor, _context.BlockTree, _context.ReceiptStorage, _context.ValidatorStore, _context.LogManager)
+                    ITransactionProcessorFactory readOnlyTransactionProcessorFactory = new ReadOnlyTransactionProcessorFactory(new ReadOnlyDbProvider(_context.DbProvider, false), _context.BlockTree, _context.SpecProvider, _context.LogManager);
+                    IAuRaValidatorProcessor validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_context.StateProvider, abiEncoder, _context.TransactionProcessor, readOnlyTransactionProcessorFactory, _context.BlockTree, _context.ReceiptStorage, _context.ValidatorStore, _context.LogManager)
                         .CreateValidatorProcessor(_context.ChainSpec.AuRa.Validators);
                     
                     AuRaStepCalculator auRaStepCalculator = new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper);    

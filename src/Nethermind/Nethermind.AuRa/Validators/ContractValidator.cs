@@ -43,7 +43,8 @@ namespace Nethermind.AuRa.Validators
         private readonly ILogger _logger;
         private readonly IStateProvider _stateProvider;
         private readonly ITransactionProcessor _transactionProcessor;
-        
+        private readonly ITransactionProcessorFactory _readOnlyTransactionProcessorFactory;
+
         private ValidatorContract _validatorContract;
         private PendingValidators _currentPendingValidators;
         private long _lastProcessedBlockNumber = 0;
@@ -66,6 +67,7 @@ namespace Nethermind.AuRa.Validators
             IStateProvider stateProvider,
             IAbiEncoder abiEncoder,
             ITransactionProcessor transactionProcessor,
+            ITransactionProcessorFactory readOnlyTransactionProcessorFactory,
             IBlockTree blockTree,
             IReceiptStorage receiptStorage,
             IValidatorStore validatorStore,
@@ -77,6 +79,7 @@ namespace Nethermind.AuRa.Validators
             ContractAddress = validator.Addresses?.FirstOrDefault() ?? throw new ArgumentException("Missing contract address for AuRa validator.", nameof(validator.Addresses));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
+            _readOnlyTransactionProcessorFactory = readOnlyTransactionProcessorFactory ?? throw new ArgumentNullException(nameof(readOnlyTransactionProcessorFactory));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -236,7 +239,7 @@ namespace Nethermind.AuRa.Validators
 
         private Address[] LoadValidatorsFromContract(BlockHeader blockHeader)
         {
-            ValidatorContract.InvokeTransaction(blockHeader, _transactionProcessor, ValidatorContract.GetValidators(), Output);
+            ValidatorContract.InvokeTransaction(blockHeader, _readOnlyTransactionProcessorFactory.Create(_stateProvider.StateRoot), ValidatorContract.GetValidators(), Output);
 
             if (Output.ReturnValue.Length == 0)
             {
