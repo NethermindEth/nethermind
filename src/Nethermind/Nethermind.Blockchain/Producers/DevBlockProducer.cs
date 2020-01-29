@@ -32,12 +32,12 @@ namespace Nethermind.Blockchain.Producers
 
         public DevBlockProducer(IPendingTxSelector pendingTxSelector,
             IBlockchainProcessor processor,
+            IStateProvider stateProvider,
             IBlockTree blockTree,
             IBlockProcessingQueue blockProcessingQueue,
-            IStateProvider stateProvider,
+            ITxPool txPool,
             ITimestamper timestamper,
-            ILogManager logManager, 
-            ITxPool txPool) 
+            ILogManager logManager) 
             : base(pendingTxSelector, processor, NullSealEngine.Instance, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));

@@ -92,17 +92,38 @@ namespace Nethermind.Runner.Ethereum.Steps
         private void BuildAuRaProducer()
         {
             IAuRaValidatorProcessor validator = null;
+            IAuRaStepCalculator stepCalculator = new AuRaStepCalculator(_ethereumContext.ChainSpec.AuRa.StepDuration, _ethereumContext.Timestamper);
             AbiEncoder abiEncoder = new AbiEncoder();
-            BlockProducerContext producerContext = GetProducerChain(t => new AuRaRewardCalculator(_ethereumContext.ChainSpec.AuRa, abiEncoder, t),
+            BlockProducerContext producerContext = GetProducerChain(
+                t => new AuRaRewardCalculator(_ethereumContext.ChainSpec.AuRa, abiEncoder, t),
                 (db, s, b, t, l) => new[] {validator = new AuRaAdditionalBlockProcessorFactory(s, abiEncoder, t, new SingletonTransactionProcessorFactory(t), b, _ethereumContext.ReceiptStorage, _ethereumContext.ValidatorStore, l).CreateValidatorProcessor(_ethereumContext.ChainSpec.AuRa.Validators)});
-            _ethereumContext.BlockProducer = new AuRaBlockProducer(producerContext.PendingTxSelector, producerContext.ChainProcessor, _ethereumContext.Sealer, _ethereumContext.BlockTree, _ethereumContext.BlockProcessingQueue, producerContext.ReadOnlyStateProvider, _ethereumContext.Timestamper, _ethereumContext.LogManager, new AuRaStepCalculator(_ethereumContext.ChainSpec.AuRa.StepDuration, _ethereumContext.Timestamper), _ethereumContext.Config<IAuraConfig>(), _ethereumContext.NodeKey.Address);
+            _ethereumContext.BlockProducer = new AuRaBlockProducer(
+                producerContext.PendingTxSelector,
+                producerContext.ChainProcessor,
+                producerContext.ReadOnlyStateProvider,
+                _ethereumContext.Sealer,
+                _ethereumContext.BlockTree,
+                _ethereumContext.BlockProcessingQueue,
+                _ethereumContext.Timestamper,
+                _ethereumContext.LogManager,
+                stepCalculator,
+                _ethereumContext.Config<IAuraConfig>(),
+                _ethereumContext.NodeKey.Address);
             validator.SetFinalizationManager(_ethereumContext.FinalizationManager, true);
         }
 
         private void BuildNethDevProducer()
         {
             BlockProducerContext producerChain = GetProducerChain();
-            _ethereumContext.BlockProducer = new DevBlockProducer(producerChain.PendingTxSelector, producerChain.ChainProcessor, _ethereumContext.BlockTree, _ethereumContext.BlockProcessingQueue, producerChain.ReadOnlyStateProvider, _ethereumContext.Timestamper, _ethereumContext.LogManager, _ethereumContext.TxPool);
+            _ethereumContext.BlockProducer = new DevBlockProducer(
+                producerChain.PendingTxSelector,
+                producerChain.ChainProcessor,
+                producerChain.ReadOnlyStateProvider,
+                _ethereumContext.BlockTree,
+                _ethereumContext.BlockProcessingQueue,
+                _ethereumContext.TxPool,
+                _ethereumContext.Timestamper,
+                _ethereumContext.LogManager);
         }
 
         private void BuildCliqueProducer()
@@ -111,7 +132,18 @@ namespace Nethermind.Runner.Ethereum.Steps
             CliqueConfig cliqueConfig = new CliqueConfig();
             cliqueConfig.BlockPeriod = _ethereumContext.ChainSpec.Clique.Period;
             cliqueConfig.Epoch = _ethereumContext.ChainSpec.Clique.Epoch;
-            _ethereumContext.BlockProducer = new CliqueBlockProducer(producerChain.PendingTxSelector, producerChain.ChainProcessor, _ethereumContext.BlockTree, _ethereumContext.Timestamper, _ethereumContext.CryptoRandom, producerChain.ReadOnlyStateProvider, _ethereumContext.SnapshotManager, (CliqueSealer) _ethereumContext.Sealer, _ethereumContext.NodeKey.Address, cliqueConfig, _ethereumContext.LogManager);
+            _ethereumContext.BlockProducer = new CliqueBlockProducer(
+                producerChain.PendingTxSelector,
+                producerChain.ChainProcessor,
+                producerChain.ReadOnlyStateProvider,
+                _ethereumContext.BlockTree,
+                _ethereumContext.Timestamper,
+                _ethereumContext.CryptoRandom,
+                _ethereumContext.SnapshotManager,
+                (CliqueSealer) _ethereumContext.Sealer,
+                _ethereumContext.NodeKey.Address,
+                cliqueConfig,
+                _ethereumContext.LogManager);
         }
         
         private BlockProducerContext GetProducerChain(
@@ -135,10 +167,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             var readOnlyVirtualMachine = new VirtualMachine(readOnlyStateProvider, readOnlyStorageProvider, readOnlyBlockHashProvider, specProvider, logManager);
             var readOnlyTxProcessor = new TransactionProcessor(specProvider, readOnlyStateProvider, readOnlyStorageProvider, readOnlyVirtualMachine, logManager);
 
-            IEnumerable<IAdditionalBlockProcessor> additionalBlockProcessors = createAdditionalBlockProcessors?.Invoke(readOnlyDbProvider.StateDb, readOnlyStateProvider, readOnlyBlockTree, readOnlyTxProcessor, logManager);
-            IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculatorFactory(readOnlyTxProcessor), readOnlyTxProcessor, readOnlyDbProvider.StateDb, readOnlyDbProvider.CodeDb, readOnlyStateProvider, readOnlyStorageProvider, txPool, _ethereumContext.ReceiptStorage, logManager, additionalBlockProcessors);
-            IBlockchainProcessor chainProcessor = new OneTimeChainProcessor(readOnlyDbProvider, new BlockchainProcessor(readOnlyBlockTree, blockProcessor, recoveryStep, logManager, false));
-            IPendingTxSelector pendingTxSelector = new PendingTxSelector(_ethereumContext.TxPool, readOnlyStateProvider, _ethereumContext.LogManager);
+            var additionalBlockProcessors = createAdditionalBlockProcessors?.Invoke(readOnlyDbProvider.StateDb, readOnlyStateProvider, readOnlyBlockTree, readOnlyTxProcessor, logManager);
+            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculatorFactory(readOnlyTxProcessor), readOnlyTxProcessor, readOnlyDbProvider.StateDb, readOnlyDbProvider.CodeDb, readOnlyStateProvider, readOnlyStorageProvider, txPool, _ethereumContext.ReceiptStorage, logManager, additionalBlockProcessors);
+            var chainProcessor = new OneTimeChainProcessor(readOnlyDbProvider, new BlockchainProcessor(readOnlyBlockTree, blockProcessor, recoveryStep, logManager, false));
+            var pendingTxSelector = new PendingTxSelector(_ethereumContext.TxPool, readOnlyStateProvider, _ethereumContext.LogManager);
             
             BlockProducerContext producerChain = new BlockProducerContext();
             producerChain.ChainProcessor = chainProcessor;

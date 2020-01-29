@@ -68,15 +68,12 @@ namespace Nethermind.AuRa.Test
             _auRaBlockProducer = new AuRaBlockProducer(
                 _pendingTxSelector,
                 _blockchainProcessor,
+                _stateProvider,
                 _sealer,
                 _blockTree,
                 _blockProcessingQueue,
-                _stateProvider,
                 _timestamper,
-                NullLogManager.Instance,
-                _auRaStepCalculator,
-                _auraConfig,
-                _nodeAddress);
+                NullLogManager.Instance, _auRaStepCalculator, _auraConfig, _nodeAddress);
 
             _auraConfig.ForceSealing.Returns(true);
             _pendingTxSelector.SelectTransactions(Arg.Any<long>()).Returns(Array.Empty<Transaction>());

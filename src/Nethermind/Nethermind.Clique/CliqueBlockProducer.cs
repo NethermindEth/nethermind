@@ -58,13 +58,12 @@ namespace Nethermind.Clique
         private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
         private readonly System.Timers.Timer _timer = new System.Timers.Timer();
 
-        public CliqueBlockProducer(
-            IPendingTxSelector pendingTxSelector,
+        public CliqueBlockProducer(IPendingTxSelector pendingTxSelector,
             IBlockchainProcessor blockchainProcessor,
+            IStateProvider stateProvider,
             IBlockTree blockTree,
             ITimestamper timestamper,
             ICryptoRandom cryptoRandom,
-            IStateProvider stateProvider,
             ISnapshotManager snapshotManager,
             ISealer cliqueSealer,
             Address address,

@@ -45,10 +45,10 @@ namespace Nethermind.AuRa
 
         public AuRaBlockProducer(IPendingTxSelector pendingTxSelector,
             IBlockchainProcessor processor,
+            IStateProvider stateProvider,
             ISealer sealer,
             IBlockTree blockTree,
             IBlockProcessingQueue blockProcessingQueue,
-            IStateProvider stateProvider,
             ITimestamper timestamper,
             ILogManager logManager,
             IAuRaStepCalculator auRaStepCalculator,
