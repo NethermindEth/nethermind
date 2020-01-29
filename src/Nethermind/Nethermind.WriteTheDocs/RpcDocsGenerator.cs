@@ -65,8 +65,9 @@ Some of the methods listed below are not implemented by Nethermind (they are mar
                 foreach (MethodInfo methodInfo in properties.OrderBy(p => p.Name))
                 {
                     JsonRpcMethodAttribute attribute = methodInfo.GetCustomAttribute<JsonRpcMethodAttribute>();
-                    string notImplementedString = attribute == null || attribute.IsImplemented ? string.Empty : "[NOT IMPLEMENTED]";
-                    descriptionsBuilder.AppendLine($" - {notImplementedString}{methodInfo.Name}({string.Join(", ", methodInfo.GetParameters().Select(p => p.Name))}) - {attribute?.Description}").AppendLine();
+                    string notImplementedString = attribute == null || attribute.IsImplemented ? string.Empty : "[NOT IMPLEMENTED] ";
+                    descriptionsBuilder.AppendLine($" {methodInfo.Name}({string.Join(", ", methodInfo.GetParameters().Select(p => p.Name))})")
+                        .AppendLine($"  {notImplementedString}{attribute?.Description ?? "<description missing>"}").AppendLine();
                 }
             }
 
@@ -74,7 +75,8 @@ Some of the methods listed below are not implemented by Nethermind (they are mar
 
             Console.WriteLine(result);
             File.WriteAllText("jsonrpc.rst", result);
-            File.WriteAllText(Path.Combine(Directory.GetParent(Environment.CurrentDirectory).Parent.FullName, @"../docs/source/jsonrpc.rst"), result);
+            string sourceDir = DocsDirFinder.FindDocsDir();
+            File.WriteAllText(Path.Combine(sourceDir, "jsonrpc.rst"), result);
         }
     }
 }

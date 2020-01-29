@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,16 +14,31 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.IO;
+using System.Linq;
+
 namespace Nethermind.WriteTheDocs
 {
-    static class Program
+    public static class DocsDirFinder
     {
-        static void Main(string[] args)
+        public static string FindDocsDir()
         {
-            new ConfigDocsGenerator().Generate();
-            new CliDocsGenerator().Generate();
-            new RpcDocsGenerator().Generate();
-            new MetricsDocsGenerator().Generate();
+            string currentDir = Environment.CurrentDirectory;
+            do
+            {
+                if (currentDir == null)
+                {
+                    return null;
+                }
+
+                if (Directory.GetDirectories(currentDir).Contains(Path.Combine(currentDir, "docs")))
+                {
+                    return Path.Combine(currentDir, "docs/source");
+                }
+
+                currentDir = new DirectoryInfo(currentDir).Parent?.FullName;
+            } while (true);
         }
     }
 }

@@ -6,200 +6,279 @@ CLI access is not currently included in the Nethermind launcher but will be adde
 admin
 ^^^^^
 
- - admin.addPeer(enode, addToStaticNodes) - 
+ admin.addPeer(enode, addToStaticNodes)
+  <check JSON RPC docs>
 
- - admin.peers - 
+ admin.peers
+  <check JSON RPC docs>
 
- - admin.removePeer(enode, removeFromStaticNodes) - 
+ admin.removePeer(enode, removeFromStaticNodes)
+  <check JSON RPC docs>
 
 clique
 ^^^^^^
 
- - clique.discard(address) - 
+ clique.discard(address)
+  <check JSON RPC docs>
 
- - clique.getSigners() - 
+ clique.getSigners()
+  <check JSON RPC docs>
 
- - clique.getSignersAnnotated() - 
+ clique.getSignersAnnotated()
+  <check JSON RPC docs>
 
- - clique.getSignersAtHash(hash) - 
+ clique.getSignersAtHash(hash)
+  <check JSON RPC docs>
 
- - clique.getSignersAtHashAnnotated(hash) - 
+ clique.getSignersAtHashAnnotated(hash)
+  <check JSON RPC docs>
 
- - clique.getSignersAtNumber(number) - 
+ clique.getSignersAtNumber(number)
+  <check JSON RPC docs>
 
- - clique.getSnapshot() - 
+ clique.getSnapshot()
+  <check JSON RPC docs>
 
- - clique.getSnapshotAtHash(hash) - 
+ clique.getSnapshotAtHash(hash)
+  <check JSON RPC docs>
 
- - clique.propose(address, vote) - 
+ clique.propose(address, vote)
+  <check JSON RPC docs>
 
 debug
 ^^^^^
 
- - debug.deleteChainSlice(startNumber, endNumber) - 
+ debug.deleteChainSlice(startNumber, endNumber)
+  <check JSON RPC docs>
 
- - debug.getBlockRlp(number) - 
+ debug.getBlockRlp(number)
+  <check JSON RPC docs>
 
- - debug.getBlockRlpByHash(hash) - 
+ debug.getBlockRlpByHash(hash)
+  <check JSON RPC docs>
 
- - debug.getChainlevel(number) - 
+ debug.getChainlevel(number)
+  <check JSON RPC docs>
 
- - debug.config(category, name) - 
+ debug.config(category, name)
+  <check JSON RPC docs>
 
- - debug.traceBlock(rlp, options) - 
+ debug.traceBlock(rlp, options)
+  <check JSON RPC docs>
 
- - debug.traceBlockByHash(hash, options) - 
+ debug.traceBlockByHash(hash, options)
+  <check JSON RPC docs>
 
- - debug.traceBlockByNumber(number, options) - 
+ debug.traceBlockByNumber(number, options)
+  <check JSON RPC docs>
 
- - debug.traceTransaction(hash, options) - 
+ debug.traceTransaction(hash, options)
+  <check JSON RPC docs>
 
- - debug.traceTransactionByBlockAndIndex(hash, options) - 
+ debug.traceTransactionByBlockAndIndex(hash, options)
+  <check JSON RPC docs>
 
- - debug.traceTransactionByBlockhashAndIndex(hash, options) - 
+ debug.traceTransactionByBlockhashAndIndex(hash, options)
+  <check JSON RPC docs>
 
- - debug.traceTransactionInBlockByHash(rlp, hash, options) - 
+ debug.traceTransactionInBlockByHash(rlp, hash, options)
+  <check JSON RPC docs>
 
- - debug.traceTransactionInBlockByIndex(rlp, index, options) - 
+ debug.traceTransactionInBlockByIndex(rlp, index, options)
+  <check JSON RPC docs>
 
 diag
 ^^^^
 
- - diag.cliVersion - 
+ diag.cliVersion
+  <check JSON RPC docs>
 
 eth
 ^^^
 
- - eth.blockNumber - 
+ eth.blockNumber
+  <check JSON RPC docs>
 
- - eth.call(tx, blockParameter) - 
+ eth.call(tx, blockParameter)
+  <check JSON RPC docs>
 
- - eth.chainId - 
+ eth.chainId
+  <check JSON RPC docs>
 
- - eth.estimateGas(json) - 
+ eth.estimateGas(json)
+  <check JSON RPC docs>
 
- - eth.getBalance(address, blockParameter) - 
+ eth.getBalance(address, blockParameter)
+  <check JSON RPC docs>
 
- - eth.getBlockByHash(hash, returnFullTransactionObjects) - 
+ eth.getBlockByHash(hash, returnFullTransactionObjects)
+  <check JSON RPC docs>
 
- - eth.getBlockByNumber(blockParameter, returnFullTransactionObjects) - 
+ eth.getBlockByNumber(blockParameter, returnFullTransactionObjects)
+  <check JSON RPC docs>
 
- - eth.getBlockTransactionCountByHash(hash) - 
+ eth.getBlockTransactionCountByHash(hash)
+  <check JSON RPC docs>
 
- - eth.getBlockTransactionCountByNumber(blockParameter) - 
+ eth.getBlockTransactionCountByNumber(blockParameter)
+  <check JSON RPC docs>
 
- - eth.getCode(address, blockParameter) - 
+ eth.getCode(address, blockParameter)
+  <check JSON RPC docs>
 
- - eth.getLogs(filter) - 
+ eth.getLogs(filter)
+  <check JSON RPC docs>
 
- - eth.getStorageAt(address, positionIndex, blockParameter) - 
+ eth.getStorageAt(address, positionIndex, blockParameter)
+  <check JSON RPC docs>
 
- - eth.getTransactionByBlockNumberAndIndex(blockParameter, index) - 
+ eth.getTransactionByBlockNumberAndIndex(blockParameter, index)
+  <check JSON RPC docs>
 
- - eth.getTransactionByHash(txHash) - 
+ eth.getTransactionByHash(txHash)
+  <check JSON RPC docs>
 
- - eth.getTransactionCount(address, blockParameter) - 
+ eth.getTransactionCount(address, blockParameter)
+  <check JSON RPC docs>
 
- - eth.getTransactionReceipt(txHash) - 
+ eth.getTransactionReceipt(txHash)
+  <check JSON RPC docs>
 
- - eth.getUncleCountByBlockNumber(blockParameter) - 
+ eth.getUncleCountByBlockNumber(blockParameter)
+  <check JSON RPC docs>
 
- - eth.pendingTransactions - 
+ eth.pendingTransactions
+  <check JSON RPC docs>
 
- - eth.protocolVersion - 
+ eth.protocolVersion
+  <check JSON RPC docs>
 
- - eth.sendEth(from, to, amountInEth) - 
+ eth.sendEth(from, to, amountInEth)
+  <check JSON RPC docs>
 
- - eth.sendRawTransaction(txRlp) - 
+ eth.sendRawTransaction(txRlp)
+  <check JSON RPC docs>
 
- - eth.sendWei(from, to, amountInWei) - 
+ eth.sendWei(from, to, amountInWei)
+  <check JSON RPC docs>
 
 net
 ^^^
 
- - net.localEnode - 
+ net.localEnode
+  <check JSON RPC docs>
 
- - net.peerCount - 
+ net.peerCount
+  <check JSON RPC docs>
 
- - net.version - 
+ net.version
+  <check JSON RPC docs>
 
 node
 ^^^^
 
- - node.address - 
+ node.address
+  <check JSON RPC docs>
 
- - node.enode - 
+ node.enode
+  <check JSON RPC docs>
 
- - node.setNodeKey(key) - 
+ node.setNodeKey(key)
+  <check JSON RPC docs>
 
- - node.switch(uri) - 
+ node.switch(uri)
+  <check JSON RPC docs>
 
- - node.switchLocal(uri) - 
+ node.switchLocal(uri)
+  <check JSON RPC docs>
 
- - node.uri - 
+ node.uri
+  <check JSON RPC docs>
 
 parity
 ^^^^^^
 
- - parity.getBlockReceipts(blockParameter) - Returns receipts from all transactions from particular block
+ parity.getBlockReceipts(blockParameter)
+  Returns receipts from all transactions from particular block
 
- - parity.pendingTransactions() - Returns the pending transactions using Parity format
+ parity.pendingTransactions()
+  Returns the pending transactions using Parity format
 
 personal
 ^^^^^^^^
 
- - personal.listAccounts - 
+ personal.listAccounts
+  <check JSON RPC docs>
 
- - personal.lockAccount(addressHex) - 
+ personal.lockAccount(addressHex)
+  <check JSON RPC docs>
 
- - personal.newAccount(password) - 
+ personal.newAccount(password)
+  <check JSON RPC docs>
 
- - personal.unlockAccount(addressHex, password) - 
+ personal.unlockAccount(addressHex, password)
+  <check JSON RPC docs>
 
 proof
 ^^^^^
 
- - proof.call(tx, blockParameter) - 
+ proof.call(tx, blockParameter)
+  <check JSON RPC docs>
 
- - proof.getTransactionByHash(transactionHash, includeHeader) - 
+ proof.getTransactionByHash(transactionHash, includeHeader)
+  <check JSON RPC docs>
 
- - proof.getTransactionReceipt(transactionHash, includeHeader) - 
+ proof.getTransactionReceipt(transactionHash, includeHeader)
+  <check JSON RPC docs>
 
 system
 ^^^^^^
 
- - system.getVariable(name, defaultValue) - 
+ system.getVariable(name, defaultValue)
+  <check JSON RPC docs>
 
- - system.memory - 
+ system.memory
+  <check JSON RPC docs>
 
 trace
 ^^^^^
 
- - trace.replayBlockTransactions(blockNumber, traceTypes) - Replays all transactions in a block returning the requested traces for each transaction.
+ trace.replayBlockTransactions(blockNumber, traceTypes)
+  Replays all transactions in a block returning the requested traces for each transaction.
 
- - trace.replayTransaction(txHash, traceTypes) - Replays a transaction, returning the traces.
+ trace.replayTransaction(txHash, traceTypes)
+  Replays a transaction, returning the traces.
 
- - trace.block(blockNumber) - Returns traces created at given block.
+ trace.block(blockNumber)
+  Returns traces created at given block.
 
- - trace.rawTransaction(txData, traceTypes) - Traces a call to eth_sendRawTransaction without making the call, returning the traces
+ trace.rawTransaction(txData, traceTypes)
+  Traces a call to eth_sendRawTransaction without making the call, returning the traces
 
- - trace.transaction(txHash) - Returns all traces of given transaction
+ trace.transaction(txHash)
+  Returns all traces of given transaction
 
 txpool
 ^^^^^^
 
- - txpool.content - 
+ txpool.content
+  <check JSON RPC docs>
 
- - txpool.inspect - 
+ txpool.inspect
+  <check JSON RPC docs>
 
- - txpool.status - 
+ txpool.status
+  <check JSON RPC docs>
 
 web3
 ^^^^
 
- - web3.clientVersion - 
+ web3.clientVersion
+  <check JSON RPC docs>
 
- - web3.sha3(data) - 
+ web3.sha3(data)
+  <check JSON RPC docs>
 
- - web3.toDecimal(hex) - 
+ web3.toDecimal(hex)
+  <check JSON RPC docs>
 

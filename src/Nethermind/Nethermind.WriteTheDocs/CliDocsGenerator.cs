@@ -71,12 +71,16 @@ CLI access is not currently included in the Nethermind launcher but will be adde
 
                     if (propertyAttribute != null)
                     {
-                        descriptionsBuilder.AppendLine($" - {propertyAttribute.ObjectName}.{propertyAttribute.PropertyName} - {propertyAttribute.Description}").AppendLine();
+                        descriptionsBuilder.AppendLine($" {propertyAttribute.ObjectName}.{propertyAttribute.PropertyName}")
+                            .AppendLine($"  {propertyAttribute.Description ?? "<check JSON RPC docs>"}")
+                            .AppendLine();
                     }
 
                     if (functionAttribute != null)
                     {
-                        descriptionsBuilder.AppendLine($" - {functionAttribute.ObjectName}.{functionAttribute.FunctionName}({string.Join(", ", methodInfo.GetParameters().Select(p => p.Name))}) - {functionAttribute.Description}").AppendLine();
+                        descriptionsBuilder.AppendLine($" {functionAttribute.ObjectName}.{functionAttribute.FunctionName}({string.Join(", ", methodInfo.GetParameters().Select(p => p.Name))})")
+                            .AppendLine($"  {functionAttribute.Description ?? "<check JSON RPC docs>"}")
+                            .AppendLine();
                     }
                 }
             }
@@ -84,8 +88,8 @@ CLI access is not currently included in the Nethermind launcher but will be adde
             string result = descriptionsBuilder.ToString();
 
             Console.WriteLine(result);
-            File.WriteAllText("cli.rst", result);
-            File.WriteAllText(Path.Combine(Directory.GetParent(Environment.CurrentDirectory).Parent.FullName, @"../docs/source/cli.rst"), result);
+            string sourceDir = DocsDirFinder.FindDocsDir();
+            File.WriteAllText(Path.Combine(sourceDir, "cli.rst"), result);
         }
     }
 }

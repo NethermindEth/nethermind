@@ -23,6 +23,7 @@ ToC
    private_networks
    configuration
    cli
+   metrics
    jsonrpc
    web3
    platforms

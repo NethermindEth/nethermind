@@ -14,20 +14,43 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.ComponentModel;
+
 namespace Nethermind.Blockchain
 {
     public static class Metrics
     {
+        [Description("Total MGas processed")]
         public static decimal Mgas { get; set; }
+        
+        [Description("Total number of transactions processed")]
         public static long Transactions { get; set; }
+        
+        [Description("Total number of blocks processed")]
         public static long Blocks { get; set; }
+        
+        [Description("Total number of chain reorganizations")]
         public static long Reorganizations { get; set; }
+        
+        [Description("Number of blocks awaiting for recovery of public keys from signatures.")]
         public static long RecoveryQueueSize { get; set; }
+        
+        [Description("Number of blocks awaiting for processing.")]
         public static long ProcessingQueueSize { get; set; }
+        
+        [Description("Number of sync peers.")]
         public static long SyncPeers { get; set; }
+        
+        [Description("Number of pending transactions broadcasted to peers.")]
         public static long PendingTransactionsSent { get; set; }
+        
+        [Description("Number of pending transactions received from peers.")]
         public static long PendingTransactionsReceived { get; set; }
+        
+        [Description("Number of pending transactions received that were ignored.")]
         public static long PendingTransactionsDiscarded { get; set; }
+        
+        [Description("Number of known pending transactions.")]
         public static long PendingTransactionsKnown { get; set; }
     }
 }

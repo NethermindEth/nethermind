@@ -14,24 +14,52 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.ComponentModel;
+
 namespace Nethermind.Evm
 {
     public class Metrics
     {
+        [Description("Number of EVM exceptions thrown by contracts.")]
         public static long EvmExceptions { get; set; }
+        
+        [Description("Number of SELFDESTRUCT calls.")]
         public static long SelfDestructs { get; set; }
+        
+        [Description("Number of calls to other contracts.")]
         public static long Calls { get; set; }
+        
+        [Description("Number of SLOAD opcodes executed.")]
         public static long SloadOpcode { get; set; }
+        
+        [Description("Number of SSTORE opcodes executed.")]
         public static long SstoreOpcode { get; set; }
+        
+        [Description("Number of MODEXP precompiles executed.")]
         public static long ModExpOpcode { get; set; }
+        
+        [Description("Number of BLOCKHASH opcodes executed.")]
         public static long BlockhashOpcode { get; set; }
+        
+        [Description("Number of BN128_MUL precompile calls.")]
         public static long Bn128MulPrecompile { get; set; }
+        
+        [Description("Number of BN128_ADD precompile calls.")]
         public static long Bn128AddPrecompile { get; set; }
+        
+        [Description("Number of BN128_PAIRING precompile calls.")]
         public static long Bn128PairingPrecompile { get; set; }
+        
+        [Description("Number of EC_RECOVERY precompile calls.")]
         public static long EcRecoverPrecompile { get; set; }
+        
+        [Description("Number of MODEXP precompile calls.")]
         public static long ModExpPrecompile { get; set; }
+        
+        [Description("Number of RIPEMD160 precompile calls.")]
         public static long Ripemd160Precompile { get; set; }
+        
+        [Description("Number of SHA256 precompile calls.")]
         public static long Sha256Precompile { get; set; }
-        public static long Blake2BPrecompile { get; set; }
     }
 }

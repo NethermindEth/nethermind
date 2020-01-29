@@ -50,7 +50,7 @@ namespace Nethermind.Monitoring.Metrics
             }
         }
 
-        private string BuildGaugeName(string propertyName)
+        public static string BuildGaugeName(string propertyName)
         {
             return Regex.Replace(propertyName, @"(\p{Ll})(\p{Lu})", "$1_$2").ToLowerInvariant();
         }

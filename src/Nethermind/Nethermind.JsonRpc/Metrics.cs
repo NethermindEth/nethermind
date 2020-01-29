@@ -14,14 +14,25 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.ComponentModel;
+
 namespace Nethermind.JsonRpc
 {
     public static class Metrics
     {
+        [Description("Total number of JSON RPC requests received by the node.")]
         public static long JsonRpcRequests { get; set; }
+        
+        [Description("Number of JSON RPC requests that failed JSON deserialization.")]
         public static long JsonRpcRequestDeserializationFailures { get; set; }
+        
+        [Description("Number of JSON RPC requests that were invalid.")]
         public static long JsonRpcInvalidRequests { get; set; }
+        
+        [Description("Number of JSON RPC requests processed with errors.")]
         public static long JsonRpcErrors { get; set; }
+        
+        [Description("Number of JSON RPC requests processed succesfully.")]
         public static long JsonRpcSuccesses { get; set; }
     }
 }
