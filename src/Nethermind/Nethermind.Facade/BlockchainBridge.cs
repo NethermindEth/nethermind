@@ -185,18 +185,17 @@ namespace Nethermind.Facade
                 transaction.SenderAddress = Address.SystemUser;
             }
 
-            BlockHeader header = new BlockHeader(blockHeader.Hash, Keccak.OfAnEmptySequenceRlp, blockHeader.Beneficiary,
-                blockHeader.Difficulty, blockHeader.Number + 1, (long) transaction.GasLimit, blockHeader.Timestamp + 1, Bytes.Empty);
+            BlockHeader parentHeader = FindHeader(blockHeader.ParentHash, BlockTreeLookupOptions.None);
 
-            _stateProvider.StateRoot = blockHeader.StateRoot;
+            _stateProvider.StateRoot = parentHeader.StateRoot;
             if (transaction.Nonce == 0)
             {
-                transaction.Nonce = GetNonce(blockHeader.StateRoot, transaction.SenderAddress);
+                transaction.Nonce = GetNonce(parentHeader.StateRoot, transaction.SenderAddress);
             }
             
             transaction.Hash = transaction.CalculateHash();
             CallOutputTracer callOutputTracer = new CallOutputTracer();
-            _transactionProcessor.CallAndRestore(transaction, header, callOutputTracer);
+            _transactionProcessor.CallAndRestore(transaction, blockHeader, callOutputTracer);
             _stateProvider.Reset();
             _storageProvider.Reset();
             return new CallOutput {Error = callOutputTracer.Error, GasSpent = callOutputTracer.GasSpent, OutputData = callOutputTracer.ReturnValue};
