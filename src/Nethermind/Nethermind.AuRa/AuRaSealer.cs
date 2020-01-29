@@ -32,7 +32,6 @@ namespace Nethermind.AuRa
     {
         private readonly IBlockTree _blockTree;
         private readonly IValidatorStore _validatorStore;
-        private readonly IAuRaValidator _validator;
         private readonly IAuRaStepCalculator _auRaStepCalculator;
         private readonly Address _nodeAddress;
         private readonly IBasicWallet _wallet;
@@ -41,7 +40,6 @@ namespace Nethermind.AuRa
         
         public AuRaSealer(
             IBlockTree blockTree,
-            IAuRaValidator validator,
             IValidatorStore validatorStore,
             IAuRaStepCalculator auRaStepCalculator,
             Address nodeAddress,
@@ -51,7 +49,6 @@ namespace Nethermind.AuRa
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
-            _validator = validator ?? throw new ArgumentNullException(nameof(validator));
             _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
             _nodeAddress = nodeAddress ?? throw new ArgumentNullException(nameof(nodeAddress));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
