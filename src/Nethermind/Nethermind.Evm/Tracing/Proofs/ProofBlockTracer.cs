@@ -22,15 +22,17 @@ namespace Nethermind.Evm.Tracing.Proofs
 {
     public class ProofBlockTracer : BlockTracerBase<ProofTxTracer, ProofTxTracer>, IBlockTracer
     {
+        private readonly bool _treatSystemAccountDifferently;
         private ProofTxTracer _txTracer;
 
-        public ProofBlockTracer(Keccak txHash) : base(txHash)
+        public ProofBlockTracer(Keccak txHash, bool treatSystemAccountDifferently) : base(txHash)
         {
+            _treatSystemAccountDifferently = treatSystemAccountDifferently;
         }
         
         protected override ProofTxTracer OnStart(Keccak txHash)
         {
-            return _txTracer = new ProofTxTracer();
+            return _txTracer = new ProofTxTracer(_treatSystemAccountDifferently);
         }
 
         /// <summary>
