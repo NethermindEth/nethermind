@@ -72,7 +72,6 @@ namespace Nethermind.AuRa.Test.Validators
             _blockTree = Substitute.For<IBlockTree>();
             _blockFinalizationManager = Substitute.For<IBlockFinalizationManager>();
             _receiptsStorage = Substitute.For<IReceiptStorage>();
-            _transactionProcessorFactory = Substitute.For<ITransactionProcessorFactory>();
             _validator = new AuRaParameters.Validator()
             {
                 Addresses = new[] {_contractAddress},
@@ -82,6 +81,9 @@ namespace Nethermind.AuRa.Test.Validators
             _block = new Block( Build.A.BlockHeader.WithNumber(1).WithAura(1, Bytes.Empty).TestObject, new BlockBody());
             
             _transactionProcessor = Substitute.For<ITransactionProcessor>();
+            _transactionProcessorFactory = Substitute.For<ITransactionProcessorFactory>();
+            _transactionProcessorFactory.Create(Arg.Any<Keccak>()).Returns(_transactionProcessor);
+            _stateProvider.StateRoot.Returns(TestItem.KeccakA);
             
             _abiEncoder
                 .Encode(AbiEncodingStyle.IncludeSignature, Arg.Is<AbiSignature>(s => s.Name == "getValidators"), Arg.Any<object[]>())
