@@ -81,6 +81,7 @@ namespace Nethermind.AuRa.Test
             _sealer.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(c => Task.FromResult(c.Arg<Block>()));
             _blockProcessingQueue.IsEmpty.Returns(true);
             _auRaStepCalculator.TimeToNextStep.Returns(_stepDelay);
+            _blockTree.BestKnownNumber.Returns(1);
             _blockTree.Head.Returns(Build.A.BlockHeader.WithAura(10, Bytes.Empty).TestObject);
             _blockchainProcessor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>()).Returns(c => c.Arg<Block>());
         }
@@ -95,6 +96,13 @@ namespace Nethermind.AuRa.Test
         public async Task Does_not_produce_block_when_ProcessingQueueEmpty_not_raised()
         {
             (await StartStop(false)).ShouldProduceBlocks(Quantity.None());
+        }
+        
+        [Test]
+        public async Task Produces_block_when_ProcessingQueueEmpty_not_raised_but_BestKnownNumber_is_0()
+        {
+            _blockTree.BestKnownNumber.Returns(0);
+            (await StartStop(false)).ShouldProduceBlocks(Quantity.AtLeastOne());
         }
         
         [Test]
