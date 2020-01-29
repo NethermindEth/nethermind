@@ -50,7 +50,7 @@ namespace Nethermind.Runner.Test.Ethereum
             context.BlockProcessor = Substitute.For<IBlockProcessor>();
             context.ReceiptStorage = Substitute.For<IReceiptStorage>();
             context.BlockValidator = Substitute.For<IBlockValidator>();
-            context.RewardCalculator = Substitute.For<IRewardCalculator>();
+            context.RewardCalculatorSource = Substitute.For<IRewardCalculatorSource>();
             context.RecoveryStep = Substitute.For<IBlockDataRecoveryStep>();
             context.TxPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();
             context.StaticNodesManager = Substitute.For<IStaticNodesManager>();

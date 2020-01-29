@@ -45,6 +45,7 @@ namespace Nethermind.AuRa.Test
             var factory = new AuRaAdditionalBlockProcessorFactory(Substitute.For<IStateProvider>(),
                 Substitute.For<IAbiEncoder>(), 
                 Substitute.For<ITransactionProcessor>(),
+                Substitute.For<IReadOnlyTransactionProcessorSource>(),
                 Substitute.For<IBlockTree>(),
                 Substitute.For<IReceiptStorage>(),
                 Substitute.For<IValidatorStore>(),

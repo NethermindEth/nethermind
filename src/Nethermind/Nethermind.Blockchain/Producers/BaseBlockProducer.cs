@@ -38,11 +38,11 @@ namespace Nethermind.Blockchain.Producers
         private readonly ISealer _sealer;
         private readonly IStateProvider _stateProvider;
         private readonly ITimestamper _timestamper;
-        private readonly IPendingTransactionSelector _pendingTransactionSelector;
+        private readonly IPendingTxSelector _pendingTxSelector;
         protected ILogger Logger { get; }
 
         protected BaseBlockProducer(
-            IPendingTransactionSelector pendingTransactionSelector,
+            IPendingTxSelector pendingTxSelector,
             IBlockchainProcessor processor,
             ISealer sealer,
             IBlockTree blockTree,
@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain.Producers
             ITimestamper timestamper,
             ILogManager logManager)
         {
-            _pendingTransactionSelector = pendingTransactionSelector ?? throw new ArgumentNullException(nameof(pendingTransactionSelector));
+            _pendingTxSelector = pendingTxSelector ?? throw new ArgumentNullException(nameof(pendingTxSelector));
             Processor = processor ?? throw new ArgumentNullException(nameof(processor));
             _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
             BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -151,7 +151,7 @@ namespace Nethermind.Blockchain.Producers
 
             if (Logger.IsDebug) Logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
 
-            Block block = new Block(header, _pendingTransactionSelector.SelectTransactions(header.GasLimit), new BlockHeader[0]);
+            Block block = new Block(header, _pendingTxSelector.SelectTransactions(header.GasLimit), new BlockHeader[0]);
             header.TxRoot = new TxTrie(block.Transactions).RootHash;
             return block;
         }

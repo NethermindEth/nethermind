@@ -297,7 +297,7 @@ namespace Nethermind.PerfTest
             {
                 var abiEncoder = new AbiEncoder();
                 _validatorStore = new ValidatorStore(dbProvider.StateDb);
-                var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(stateProvider, abiEncoder, processor, blockTree, receiptStorage, _validatorStore, _logManager)
+                var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(stateProvider, abiEncoder, processor, new ReadOnlyReadOnlyTransactionProcessorSource(dbProvider, blockTree, specProvider, _logManager), blockTree, receiptStorage, _validatorStore, _logManager)
                     .CreateValidatorProcessor(chainSpec.AuRa.Validators);
                     
                 sealValidator = new AuRaSealValidator(chainSpec.AuRa, new AuRaStepCalculator(chainSpec.AuRa.StepDuration, new Timestamper()), _validatorStore, ethereumSigner, _logManager);

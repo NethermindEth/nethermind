@@ -155,7 +155,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.BlockProcessor = new BlockProcessor(
                 _context.SpecProvider,
                 _context.BlockValidator,
-                _context.RewardCalculator,
+                _context.RewardCalculatorSource.Get(_context.TransactionProcessor),
                 _context.TransactionProcessor,
                 _context.DbProvider.StateDb,
                 _context.DbProvider.CodeDb,
@@ -204,10 +204,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                 case SealEngineType.None:
                     _context.Sealer = NullSealEngine.Instance;
                     _context.SealValidator = NullSealEngine.Instance;
-                    _context.RewardCalculator = NoBlockRewards.Instance;
+                    _context.RewardCalculatorSource = NoBlockRewards.Source;
                     break;
                 case SealEngineType.Clique:
-                    _context.RewardCalculator = NoBlockRewards.Instance;
+                    _context.RewardCalculatorSource = NoBlockRewards.Source;
                     CliqueConfig cliqueConfig = new CliqueConfig();
                     cliqueConfig.BlockPeriod = _context.ChainSpec.Clique.Period;
                     cliqueConfig.Epoch = _context.ChainSpec.Clique.Epoch;
@@ -227,10 +227,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                 case SealEngineType.NethDev:
                     _context.Sealer = NullSealEngine.Instance;
                     _context.SealValidator = NullSealEngine.Instance;
-                    _context.RewardCalculator = NoBlockRewards.Instance;
+                    _context.RewardCalculatorSource = NoBlockRewards.Source;
                     break;
                 case SealEngineType.Ethash:
-                    _context.RewardCalculator = new RewardCalculator(_context.SpecProvider);
+                    _context.RewardCalculatorSource = RewardCalculator.GetSource(_context.SpecProvider);
                     DifficultyCalculator difficultyCalculator = new DifficultyCalculator(_context.SpecProvider);
                     if (_context.Config<IInitConfig>().IsMining)
                     {
@@ -246,13 +246,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                 case SealEngineType.AuRa:
                     AbiEncoder abiEncoder = new AbiEncoder();
                     _context.ValidatorStore = new ValidatorStore(_context.DbProvider.BlockInfosDb);
-                    IAuRaValidatorProcessor validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_context.StateProvider, abiEncoder, _context.TransactionProcessor, _context.BlockTree, _context.ReceiptStorage, _context.ValidatorStore, _context.LogManager)
+                    IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource = new ReadOnlyReadOnlyTransactionProcessorSource(_context.DbProvider, _context.BlockTree, _context.SpecProvider, _context.LogManager);
+                    IAuRaValidatorProcessor validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_context.StateProvider, abiEncoder, _context.TransactionProcessor, readOnlyTransactionProcessorSource, _context.BlockTree, _context.ReceiptStorage, _context.ValidatorStore, _context.LogManager)
                         .CreateValidatorProcessor(_context.ChainSpec.AuRa.Validators);
                     
                     AuRaStepCalculator auRaStepCalculator = new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper);    
                     _context.SealValidator = new AuRaSealValidator(_context.ChainSpec.AuRa, auRaStepCalculator, _context.ValidatorStore, _context.EthereumEcdsa, _context.LogManager);
-                    _context.RewardCalculator = new AuRaRewardCalculator(_context.ChainSpec.AuRa, abiEncoder, _context.TransactionProcessor);
-                    _context.Sealer = new AuRaSealer(_context.BlockTree, validatorProcessor, _context.ValidatorStore, auRaStepCalculator, _context.NodeKey.Address, new BasicWallet(_context.NodeKey), new ValidSealerStrategy(), _context.LogManager);
+                    _context.RewardCalculatorSource = AuRaRewardCalculator.GetSource(_context.ChainSpec.AuRa, abiEncoder);
+                    _context.Sealer = new AuRaSealer(_context.BlockTree, _context.ValidatorStore, auRaStepCalculator, _context.NodeKey.Address, new BasicWallet(_context.NodeKey), new ValidSealerStrategy(), _context.LogManager);
                     blockProcessors.Add(validatorProcessor);
                     break;
                 default:

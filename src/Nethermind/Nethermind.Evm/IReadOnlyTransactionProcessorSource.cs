@@ -14,13 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
-using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Evm
 {
-    public interface IPendingTxSelector
+    public interface IReadOnlyTransactionProcessorSource
     {
-        IEnumerable<Transaction> SelectTransactions(long gasLimit);
+        IReadOnlyTransactionProcessor Get(Keccak stateRoot);
     }
 }

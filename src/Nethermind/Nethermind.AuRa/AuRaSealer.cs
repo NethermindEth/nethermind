@@ -32,7 +32,6 @@ namespace Nethermind.AuRa
     {
         private readonly IBlockTree _blockTree;
         private readonly IValidatorStore _validatorStore;
-        private readonly IAuRaValidator _validator;
         private readonly IAuRaStepCalculator _auRaStepCalculator;
         private readonly Address _nodeAddress;
         private readonly IBasicWallet _wallet;
@@ -41,7 +40,6 @@ namespace Nethermind.AuRa
         
         public AuRaSealer(
             IBlockTree blockTree,
-            IAuRaValidator validator,
             IValidatorStore validatorStore,
             IAuRaStepCalculator auRaStepCalculator,
             Address nodeAddress,
@@ -51,7 +49,6 @@ namespace Nethermind.AuRa
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
-            _validator = validator ?? throw new ArgumentNullException(nameof(validator));
             _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
             _nodeAddress = nodeAddress ?? throw new ArgumentNullException(nameof(nodeAddress));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
@@ -79,8 +76,8 @@ namespace Nethermind.AuRa
                 return null;
             }
 
-            var headerHash = block.Header.CalculateHash(RlpBehaviors.ForSealing);
-            var signature = _wallet.Sign(headerHash, _nodeAddress);
+            Keccak headerHash = block.Header.CalculateHash(RlpBehaviors.ForSealing);
+            Signature signature = _wallet.Sign(headerHash, _nodeAddress);
             block.Header.AuRaSignature = signature.BytesWithRecovery;
             
             return block;
@@ -92,11 +89,11 @@ namespace Nethermind.AuRa
                 ? throw new InvalidOperationException("Head block doesn't have AuRaStep specified.'")
                 : _blockTree.Head.AuRaStep.Value < step;
 
-            bool IsThisNodeTurn(long blockLevel, long step) => _validSealerStrategy.IsValidSealer(_validatorStore.GetValidators(), _nodeAddress, step);
+            bool IsThisNodeTurn(long step) => _validSealerStrategy.IsValidSealer(_validatorStore.GetValidators(), _nodeAddress, step);
 
-            var currentStep = _auRaStepCalculator.CurrentStep;
-            var stepNotYetProduced = StepNotYetProduced(currentStep);
-            var isThisNodeTurn = IsThisNodeTurn(blockNumber, currentStep);
+            long currentStep = _auRaStepCalculator.CurrentStep;
+            bool stepNotYetProduced = StepNotYetProduced(currentStep);
+            bool isThisNodeTurn = IsThisNodeTurn(currentStep);
             if (isThisNodeTurn)
             {
                 if (_logger.IsWarn && !stepNotYetProduced) _logger.Warn($"Cannot seal block {blockNumber}: AuRa step {currentStep} already produced.");

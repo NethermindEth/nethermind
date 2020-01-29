@@ -27,6 +27,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test
@@ -196,6 +197,19 @@ namespace Nethermind.Store.Test
             provider.GetBalance(_address1); // justcache
             provider.AddToBalance(_address1, 0, SpuriousDragon.Instance); // touch
             Assert.DoesNotThrow(() => provider.Commit(SpuriousDragon.Instance, tracer));
+        }
+
+        [Test]
+        public void Does_not_require_recalculation_after_reset()
+        {
+            StateProvider provider = new StateProvider(new StateDb(new MemDb()), Substitute.For<IDb>(), Logger);
+            provider.CreateAccount(TestItem.AddressA, 5);
+            
+            Action action = () => { var x = provider.StateRoot; };
+            action.Should().Throw<InvalidOperationException>();
+            
+            provider.Reset();
+            action.Should().NotThrow<InvalidOperationException>();
         }
     }
 }

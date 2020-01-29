@@ -360,6 +360,7 @@ namespace Nethermind.Store
 
         public void CreateAccount(Address address, in UInt256 balance)
         {
+            _needsStateRootUpdate = true;
             if (_logger.IsTrace) _logger.Trace($"Creating account: {address} with balance {balance}");
             Account account = balance.IsZero ? Account.TotallyEmpty : new Account(balance);
             PushNew(address, account);
@@ -723,6 +724,7 @@ namespace Nethermind.Store
             _readsForTracing.Clear();
             _currentPosition = -1;
             Array.Clear(_changes, 0, _changes.Length);
+            _needsStateRootUpdate = false;
         }
 
         public void CommitTree()

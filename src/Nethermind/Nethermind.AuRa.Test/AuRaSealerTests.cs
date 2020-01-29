@@ -43,7 +43,6 @@ namespace Nethermind.AuRa.Test
         private IBlockTree _blockTree;
         private int _headStep;
         private IAuRaStepCalculator _auRaStepCalculator;
-        private IAuRaValidator _auRaValidator;
         private Address _address;
         private IValidatorStore _validatorStore;
         private IValidSealerStrategy _validSealerStrategy;
@@ -56,7 +55,6 @@ namespace Nethermind.AuRa.Test
             _blockTree.Head.Returns(Build.A.BlockHeader.WithHash(Keccak.Compute("hash")).WithAura(_headStep, Bytes.Empty).TestObject);
 
             _auRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
-            _auRaValidator = Substitute.For<IAuRaValidator>();
             _validatorStore = Substitute.For<IValidatorStore>();
             _validSealerStrategy = Substitute.For<IValidSealerStrategy>();
             var wallet = new DevWallet(new WalletConfig(), NullLogManager.Instance);
@@ -64,7 +62,6 @@ namespace Nethermind.AuRa.Test
             
             _auRaSealer = new AuRaSealer(
                 _blockTree,
-                _auRaValidator,
                 _validatorStore,
                 _auRaStepCalculator,
                 _address,

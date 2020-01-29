@@ -109,6 +109,8 @@ namespace Ethereum.Test.Base
             {
                 stateProvider.CreateAccount(test.CurrentCoinbase, 0);
             }
+            
+            stateProvider.RecalculateStateRoot();
 
             List<string> differences = RunAssertions(test, stateProvider);
             EthereumTestResult testResult = new EthereumTestResult();

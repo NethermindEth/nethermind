@@ -37,17 +37,14 @@ namespace Nethermind.Clique.Test
             CliqueConfig cliqueConfig = new CliqueConfig();
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             CliqueBlockProducer producer = new CliqueBlockProducer(
-                Substitute.For<IPendingTransactionSelector>(),
+                Substitute.For<IPendingTxSelector>(),
                 Substitute.For<IBlockchainProcessor>(),
+                Substitute.For<IStateProvider>(),
                 blockTree,
                 Substitute.For<ITimestamper>(),
                 Substitute.For<ICryptoRandom>(),
-                Substitute.For<IStateProvider>(),
                 Substitute.For<ISnapshotManager>(),
-                new CliqueSealer(new BasicWallet(TestItem.PrivateKeyA), cliqueConfig, Substitute.For<ISnapshotManager>(), TestItem.PrivateKeyA.Address, NullLogManager.Instance),
-                TestItem.AddressA,
-                cliqueConfig,
-                NullLogManager.Instance);
+                new CliqueSealer(new BasicWallet(TestItem.PrivateKeyA), cliqueConfig, Substitute.For<ISnapshotManager>(), TestItem.PrivateKeyA.Address, NullLogManager.Instance), TestItem.AddressA, cliqueConfig, NullLogManager.Instance);
             
             SnapshotManager snapshotManager = new SnapshotManager(CliqueConfig.Default, new MemDb(), Substitute.For<IBlockTree>(), NullEthereumEcdsa.Instance, LimboLogs.Instance);
             

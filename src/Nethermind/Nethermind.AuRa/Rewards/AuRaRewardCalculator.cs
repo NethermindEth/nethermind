@@ -37,7 +37,7 @@ namespace Nethermind.AuRa.Rewards
         private readonly RewardContract _contract;
         private readonly CallOutputTracer _tracer = new CallOutputTracer();
 
-        public AuRaRewardCalculator(AuRaParameters auRaParameters, IAbiEncoder abiEncoder,  ITransactionProcessor transactionProcessor)
+        public AuRaRewardCalculator(AuRaParameters auRaParameters, IAbiEncoder abiEncoder, ITransactionProcessor transactionProcessor)
         {
             if (auRaParameters == null) throw new ArgumentNullException(nameof(AuRaParameters));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
@@ -121,6 +121,22 @@ namespace Nethermind.AuRa.Rewards
             }
 
             return RewardContract.Definition.BenefactorKind.ToBlockRewardType(kind);
+        }
+
+        public static IRewardCalculatorSource GetSource(AuRaParameters auRaParameters, IAbiEncoder abiEncoder) => new AuRaRewardCalculatorSource(auRaParameters, abiEncoder);
+
+        private class AuRaRewardCalculatorSource : IRewardCalculatorSource
+        {
+            private readonly AuRaParameters _auRaParameters;
+            private readonly IAbiEncoder _abiEncoder;
+
+            public AuRaRewardCalculatorSource(AuRaParameters auRaParameters, IAbiEncoder abiEncoder)
+            {
+                _auRaParameters = auRaParameters;
+                _abiEncoder = abiEncoder;
+            }
+
+            public IRewardCalculator Get(ITransactionProcessor processor) => new AuRaRewardCalculator(_auRaParameters, _abiEncoder, processor);
         }
     }
 }
