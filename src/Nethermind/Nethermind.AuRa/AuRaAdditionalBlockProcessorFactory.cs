@@ -44,7 +44,7 @@ namespace Nethermind.AuRa
         private readonly IStateProvider _stateProvider;
         private readonly IAbiEncoder _abiEncoder;
         private readonly ITransactionProcessor _transactionProcessor;
-        private readonly ITransactionProcessorFactory _readOnlyTransactionProcessorFactory;
+        private readonly IReadOnlyTransactionProcessorSource _readOnlyReadOnlyTransactionProcessorSource;
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
         private readonly IValidatorStore _validatorStore;
@@ -53,7 +53,7 @@ namespace Nethermind.AuRa
         public AuRaAdditionalBlockProcessorFactory(IStateProvider stateProvider,
             IAbiEncoder abiEncoder,
             ITransactionProcessor transactionProcessor,
-            ITransactionProcessorFactory readOnlyTransactionProcessorFactory,
+            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource,
             IBlockTree blockTree,
             IReceiptStorage receiptStorage,
             IValidatorStore validatorStore,
@@ -62,7 +62,7 @@ namespace Nethermind.AuRa
             _stateProvider = stateProvider;
             _abiEncoder = abiEncoder;
             _transactionProcessor = transactionProcessor;
-            _readOnlyTransactionProcessorFactory = readOnlyTransactionProcessorFactory;
+            _readOnlyReadOnlyTransactionProcessorSource = readOnlyTransactionProcessorSource;
             _blockTree = blockTree;
             _receiptStorage = receiptStorage;
             _validatorStore = validatorStore;
@@ -78,9 +78,9 @@ namespace Nethermind.AuRa
                 case AuRaParameters.ValidatorType.List:
                     return new ListValidator(validator, auRaSealerValidator, _logManager);
                 case AuRaParameters.ValidatorType.Contract:
-                    return new ContractValidator(validator, _stateProvider, _abiEncoder, _transactionProcessor, _readOnlyTransactionProcessorFactory, _blockTree, _receiptStorage, _validatorStore, auRaSealerValidator, _logManager, startBlockNumber);
+                    return new ContractValidator(validator, _stateProvider, _abiEncoder, _transactionProcessor, _readOnlyReadOnlyTransactionProcessorSource, _blockTree, _receiptStorage, _validatorStore, auRaSealerValidator, _logManager, startBlockNumber);
                 case AuRaParameters.ValidatorType.ReportingContract:
-                    return new ReportingContractValidator(validator, _stateProvider, _abiEncoder, _transactionProcessor, _readOnlyTransactionProcessorFactory, _blockTree, _receiptStorage, _validatorStore, auRaSealerValidator, _logManager, startBlockNumber);
+                    return new ReportingContractValidator(validator, _stateProvider, _abiEncoder, _transactionProcessor, _readOnlyReadOnlyTransactionProcessorSource, _blockTree, _receiptStorage, _validatorStore, auRaSealerValidator, _logManager, startBlockNumber);
                 case AuRaParameters.ValidatorType.Multi:
                     return new MultiValidator(validator, this, _blockTree, _validatorStore, _logManager);
                 default:

@@ -95,8 +95,18 @@ namespace Nethermind.Runner.Ethereum.Steps
             IAuRaStepCalculator stepCalculator = new AuRaStepCalculator(_ethereumContext.ChainSpec.AuRa.StepDuration, _ethereumContext.Timestamper);
             AbiEncoder abiEncoder = new AbiEncoder();
             BlockProducerContext producerContext = GetProducerChain(
-                t => new AuRaRewardCalculator(_ethereumContext.ChainSpec.AuRa, abiEncoder, t),
-                (db, s, b, t, l) => new[] {validator = new AuRaAdditionalBlockProcessorFactory(s, abiEncoder, t, new SingletonTransactionProcessorFactory(t), b, _ethereumContext.ReceiptStorage, _ethereumContext.ValidatorStore, l).CreateValidatorProcessor(_ethereumContext.ChainSpec.AuRa.Validators)});
+                (db, s, b, t, l) => new[]
+                {
+                    validator = new AuRaAdditionalBlockProcessorFactory(
+                        s, 
+                        abiEncoder, 
+                        t,
+                        new ReadOnlyReadOnlyTransactionProcessorSource(_ethereumContext.DbProvider, _ethereumContext.BlockTree, _ethereumContext.SpecProvider, _ethereumContext.LogManager),
+                        b, 
+                        _ethereumContext.ReceiptStorage, 
+                        _ethereumContext.ValidatorStore, 
+                        l).CreateValidatorProcessor(_ethereumContext.ChainSpec.AuRa.Validators)
+                });
             _ethereumContext.BlockProducer = new AuRaBlockProducer(
                 producerContext.PendingTxSelector,
                 producerContext.ChainProcessor,
@@ -147,19 +157,17 @@ namespace Nethermind.Runner.Ethereum.Steps
         }
         
         private BlockProducerContext GetProducerChain(
-            Func<ITransactionProcessor, IRewardCalculator> rewardCalculatorFactory = null,
-            Func<IDb, IStateProvider, IBlockTree, ITransactionProcessor, ILogManager, IEnumerable<IAdditionalBlockProcessor>> createAdditionalBlockProcessors = null,
-            bool allowStateModification = false)
+            Func<IDb, IStateProvider, IBlockTree, ITransactionProcessor, ILogManager, IEnumerable<IAdditionalBlockProcessor>> createAdditionalBlockProcessors = null
+            )
         {
             // TODO: use ReadOnlyChainProcessingEnv here
-            
             var logManager = _ethereumContext.LogManager;
             var specProvider = _ethereumContext.SpecProvider;
             var blockValidator = _ethereumContext.BlockValidator;
             var recoveryStep = _ethereumContext.RecoveryStep;
             var txPool = _ethereumContext.TxPool;
 
-            var readOnlyDbProvider = new ReadOnlyDbProvider(_ethereumContext.DbProvider, allowStateModification);
+            var readOnlyDbProvider = new ReadOnlyDbProvider(_ethereumContext.DbProvider, false);
             var readOnlyBlockTree = new ReadOnlyBlockTree(_ethereumContext.BlockTree);
             var readOnlyStateProvider = new StateProvider(readOnlyDbProvider.StateDb, readOnlyDbProvider.CodeDb, logManager);
             var readOnlyStorageProvider = new StorageProvider(readOnlyDbProvider.StateDb, readOnlyStateProvider, logManager);
@@ -168,7 +176,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             var readOnlyTxProcessor = new TransactionProcessor(specProvider, readOnlyStateProvider, readOnlyStorageProvider, readOnlyVirtualMachine, logManager);
 
             var additionalBlockProcessors = createAdditionalBlockProcessors?.Invoke(readOnlyDbProvider.StateDb, readOnlyStateProvider, readOnlyBlockTree, readOnlyTxProcessor, logManager);
-            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculatorFactory(readOnlyTxProcessor), readOnlyTxProcessor, readOnlyDbProvider.StateDb, readOnlyDbProvider.CodeDb, readOnlyStateProvider, readOnlyStorageProvider, txPool, _ethereumContext.ReceiptStorage, logManager, additionalBlockProcessors);
+            var blockProcessor = new BlockProcessor(specProvider, blockValidator, _ethereumContext.RewardCalculatorSource.Get(readOnlyTxProcessor), readOnlyTxProcessor, readOnlyDbProvider.StateDb, readOnlyDbProvider.CodeDb, readOnlyStateProvider, readOnlyStorageProvider, txPool, _ethereumContext.ReceiptStorage, logManager, additionalBlockProcessors);
             var chainProcessor = new OneTimeChainProcessor(readOnlyDbProvider, new BlockchainProcessor(readOnlyBlockTree, blockProcessor, recoveryStep, logManager, false));
             var pendingTxSelector = new PendingTxSelector(_ethereumContext.TxPool, readOnlyStateProvider, _ethereumContext.LogManager);
             

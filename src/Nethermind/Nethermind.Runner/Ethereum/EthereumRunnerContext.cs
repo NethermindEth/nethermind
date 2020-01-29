@@ -99,7 +99,7 @@ namespace Nethermind.Runner.Ethereum
         public IHeaderValidator HeaderValidator;
         public IBlockDataRecoveryStep RecoveryStep;
         public IBlockProcessor BlockProcessor;
-        public IRewardCalculator RewardCalculator;
+        public IRewardCalculatorSource RewardCalculatorSource;
         public ISpecProvider SpecProvider;
         public IStateProvider StateProvider;
         public ISealer Sealer;

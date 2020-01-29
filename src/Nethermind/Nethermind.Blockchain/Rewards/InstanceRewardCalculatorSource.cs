@@ -14,19 +14,22 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Crypto;
+using Nethermind.Evm;
 
-namespace Nethermind.Evm
+namespace Nethermind.Blockchain.Rewards
 {
-    public class SingletonTransactionProcessorFactory : ITransactionProcessorFactory
+    public class InstanceRewardCalculatorSource : IRewardCalculatorSource
     {
-        private readonly ITransactionProcessor _instance;
+        private readonly IRewardCalculator _calculator;
 
-        public SingletonTransactionProcessorFactory(ITransactionProcessor instance)
+        public InstanceRewardCalculatorSource(IRewardCalculator calculator)
         {
-            _instance = instance;
+            _calculator = calculator;
         }
-            
-        public ITransactionProcessor Create(Keccak stateRoot) => _instance;
+
+        public IRewardCalculator Get(ITransactionProcessor processor)
+        {
+            return _calculator;
+        }
     }
 }

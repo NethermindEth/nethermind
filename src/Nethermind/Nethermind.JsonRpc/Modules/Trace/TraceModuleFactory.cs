@@ -41,7 +41,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly IDbProvider _dbProvider;
         private readonly IBlockValidator _blockValidator;
         private readonly IEthereumEcdsa _ethereumEcdsa;
-        private readonly IRewardCalculator _rewardCalculator;
+        private readonly IRewardCalculatorSource _rewardCalculatorSource;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISpecProvider _specProvider;
         private readonly IJsonRpcConfig _jsonRpcConfig;
@@ -56,7 +56,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             IBlockValidator blockValidator,
             IEthereumEcdsa ethereumEcdsa,
             IBlockDataRecoveryStep recoveryStep,
-            IRewardCalculator rewardCalculator,
+            IRewardCalculatorSource rewardCalculatorSource,
             IReceiptStorage receiptStorage,
             ISpecProvider specProvider,
             IJsonRpcConfig rpcConfig,
@@ -68,7 +68,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _ethereumEcdsa = ethereumEcdsa ?? throw new ArgumentNullException(nameof(ethereumEcdsa));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
-            _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
+            _rewardCalculatorSource = rewardCalculatorSource ?? throw new ArgumentNullException(nameof(rewardCalculatorSource));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _jsonRpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
@@ -97,7 +97,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 _jsonRpcConfig.FindLogBlockDepthLimit
                 );
             
-            ReadOnlyChainProcessingEnv chainEnv = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculator, _receiptStorage, readOnlyDbProvider, _specProvider, _logManager);
+            ReadOnlyChainProcessingEnv chainEnv = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculatorSource.Get(txEnv.TransactionProcessor), _receiptStorage, readOnlyDbProvider, _specProvider, _logManager);
             IParityStyleTracer tracer = new ParityStyleTracer(chainEnv.ChainProcessor, _receiptStorage, new ReadOnlyBlockTree(_blockTree));
             
             return new TraceModule(blockchainBridge, tracer);

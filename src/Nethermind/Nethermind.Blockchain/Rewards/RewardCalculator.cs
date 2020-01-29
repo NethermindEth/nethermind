@@ -63,5 +63,7 @@ namespace Nethermind.Blockchain.Rewards
         {
             return blockReward - ((uint) (blockHeader.Number - ommer.Number) * blockReward >> 3);
         }
+
+        public static IRewardCalculatorSource GetSource(ISpecProvider specProvider) => new InstanceRewardCalculatorSource(new RewardCalculator(specProvider));
     }
 }

@@ -22,26 +22,19 @@ using Nethermind.Store;
 
 namespace Nethermind.Blockchain
 {
-    public class ReadOnlyTransactionProcessorFactory : ITransactionProcessorFactory
+    public class ReadOnlyReadOnlyTransactionProcessorSource : IReadOnlyTransactionProcessorSource
     {
-        private readonly IReadOnlyDbProvider _readOnlyDbProvider;
-        private readonly ISpecProvider _specProvider;
-        private readonly ILogManager _logManager;
-        private readonly ReadOnlyBlockTree _blockTree;
+        private readonly ReadOnlyTxProcessingEnv _environment;
 
-        public ReadOnlyTransactionProcessorFactory(IReadOnlyDbProvider readOnlyDbProvider, IBlockTree blockTree, ISpecProvider specProvider, ILogManager logManager)
+        public ReadOnlyReadOnlyTransactionProcessorSource(IDbProvider dbProvider, IBlockTree blockTree, ISpecProvider specProvider, ILogManager logManager)
         {
-            _readOnlyDbProvider = readOnlyDbProvider;
-            _specProvider = specProvider;
-            _logManager = logManager;
-            _blockTree = new ReadOnlyBlockTree(blockTree);
+            _environment = new ReadOnlyTxProcessingEnv(new ReadOnlyDbProvider(dbProvider, false), new ReadOnlyBlockTree(blockTree), specProvider, logManager);
         }
         
-        public ITransactionProcessor Create(Keccak stateRoot)
+        public IReadOnlyTransactionProcessor Get(Keccak stateRoot)
         {
-            ReadOnlyTxProcessingEnv environment = new ReadOnlyTxProcessingEnv(_readOnlyDbProvider, _blockTree, _specProvider, _logManager);
-            environment.StateProvider.StateRoot = stateRoot;
-            return environment.TransactionProcessor;
+            _environment.StateProvider.StateRoot = stateRoot;
+            return new ReadOnlyTransactionProcessor(_environment.TransactionProcessor, _environment.StateProvider);
         }
     }
 }

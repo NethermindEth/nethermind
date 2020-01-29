@@ -35,7 +35,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         private readonly IBlockTree _blockTree;
         private readonly IDbProvider _dbProvider;
         private readonly IBlockValidator _blockValidator;
-        private readonly IRewardCalculator _rewardCalculator;
+        private readonly IRewardCalculatorSource _rewardCalculatorSource;
         private readonly IReceiptStorage _receiptStorage;
         private readonly IConfigProvider _configProvider;
         private readonly ISpecProvider _specProvider;
@@ -48,7 +48,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             IBlockTree blockTree,
             IBlockValidator blockValidator,
             IBlockDataRecoveryStep recoveryStep,
-            IRewardCalculator rewardCalculator,
+            IRewardCalculatorSource rewardCalculator,
             IReceiptStorage receiptStorage,
             IConfigProvider configProvider,
             ISpecProvider specProvider,
@@ -58,7 +58,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
-            _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
+            _rewardCalculatorSource = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -71,7 +71,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(_blockTree);
             ReadOnlyTxProcessingEnv txEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree, _specProvider, _logManager);
-            ReadOnlyChainProcessingEnv readOnlyChainProcessingEnv = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculator, _receiptStorage, readOnlyDbProvider, _specProvider, _logManager);
+            ReadOnlyChainProcessingEnv readOnlyChainProcessingEnv = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculatorSource.Get(txEnv.TransactionProcessor), _receiptStorage, readOnlyDbProvider, _specProvider, _logManager);
             IGethStyleTracer tracer = new GethStyleTracer(readOnlyChainProcessingEnv.ChainProcessor, _receiptStorage, new ReadOnlyBlockTree(_blockTree));
 
             DebugBridge debugBridge = new DebugBridge(_configProvider, readOnlyDbProvider, tracer, readOnlyChainProcessingEnv.BlockProcessingQueue, _blockTree);

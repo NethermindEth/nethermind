@@ -30,14 +30,14 @@ namespace Nethermind.AuRa.Validators
             IStateProvider stateProvider,
             IAbiEncoder abiEncoder,
             ITransactionProcessor transactionProcessor,
-            ITransactionProcessorFactory readOnlyTransactionProcessorFactory,
+            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource,
             IBlockTree blockTree,
             IReceiptStorage receiptStorage,
             IValidatorStore validatorStore,
             IValidSealerStrategy validSealerStrategy,
             ILogManager logManager,
             long startBlockNumber) 
-            : base(validator, stateProvider, abiEncoder, transactionProcessor, readOnlyTransactionProcessorFactory, blockTree, receiptStorage, validatorStore, validSealerStrategy, logManager, startBlockNumber)
+            : base(validator, stateProvider, abiEncoder, transactionProcessor, readOnlyTransactionProcessorSource, blockTree, receiptStorage, validatorStore, validSealerStrategy, logManager, startBlockNumber)
         {
         }
     }
