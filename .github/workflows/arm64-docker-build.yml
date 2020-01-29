@@ -1,13 +1,14 @@
 name: Publish ARM64 Image to Docker Registry
 
-on:
-  push:
-    tags:
-    - '*'
+# on:
+#   push:
+#     tags:
+#     - '*'
+on: push
 
 jobs:
   arm64_building:
-    runs-on: ubuntu-18.04
+    runs-on: [self-hosted, linux, ARM64]
     name: Build on ARM64
     steps:
     - uses: actions/checkout@v2
