@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             writer.WriteStartObject();
             writer.WriteProperty("action", value.Action, serializer);
             writer.WriteProperty("blockHash", value.BlockHash, serializer);
-            writer.WriteProperty("blockNumbr", value.BlockNumber, serializer);
+            writer.WriteProperty("blockNumber", value.BlockNumber, serializer);
             writer.WriteProperty("result", value.Result, serializer);
             writer.WriteProperty("subtraces", value.Subtraces, serializer);
             writer.WriteProperty("subtraces", value.Subtraces, serializer);
