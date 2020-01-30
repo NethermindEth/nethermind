@@ -16,7 +16,7 @@ jobs:
     - uses: uraimo/run-on-arch-action@v1.0.5
       with:
         architecture: armv7
-        distribution: ubuntu18.04
+        distribution: buster
         run: |
           uname -a
           apt-get update && apt-get install docker.io -y
