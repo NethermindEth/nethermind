@@ -109,6 +109,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                             {
                                 if (!_hasFinishedExecution.GetValueOrDefault(dependency))
                                 {
+                                    Console.WriteLine($"{type} is waiting for {dependency}");
                                     allDependenciesFinished = false;
                                     break;
                                 }
