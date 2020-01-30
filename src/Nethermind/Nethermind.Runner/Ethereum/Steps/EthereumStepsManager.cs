@@ -55,18 +55,18 @@ namespace Nethermind.Runner.Ethereum.Steps
                     {
                         return null;
                     }
-                    
+
                     var stepTypeForContext = typesInGroup.Where(t => !t.IsAbstract)
                         .FirstOrDefault(t => HasConstructorWithParameter(t, contextType));
-                    
-                    return stepTypeForContext != null 
-                        ? stepTypeForContext 
+
+                    return stepTypeForContext != null
+                        ? stepTypeForContext
                         : GetStepTypeRecursive(contextType.BaseType);
                 }
 
                 return typesInGroup.Length == 0 ? typesInGroup[0] : GetStepTypeRecursive(_context.GetType());
             }
-            
+
             foreach (IGrouping<Type, Type> typeGroup in types)
             {
                 var type = GetStepType(typeGroup.ToArray());
@@ -80,11 +80,11 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             ReviewDependencies();
         }
-        
+
         private ConcurrentDictionary<Type, bool> _hasFinishedExecution = new ConcurrentDictionary<Type, bool>();
 
         private ConcurrentDictionary<Type, bool> _discoveredSteps = new ConcurrentDictionary<Type, bool>();
-        
+
         private bool IsStepType(Type t) => typeof(IStep).IsAssignableFrom(t);
 
         private Type GetStepBaseType(Type type) => IsStepType(type.BaseType) ? GetStepBaseType(type.BaseType) : type;
@@ -142,28 +142,25 @@ namespace Nethermind.Runner.Ethereum.Steps
             await Task.WhenAll(_allPending);
         }
 
-        private List<Task> _allPending = new List<Task>();
-        private List<Type> _allStarted = new List<Type>();
-        
+        private ConcurrentBag<Task> _allPending = new ConcurrentBag<Task>();
+        private ConcurrentBag<Type> _allStarted = new ConcurrentBag<Type>();
+
         private void RunOneRoundOfInitialization()
         {
             foreach ((Type discoveredStep, bool dependenciesInitialized) in _discoveredSteps)
             {
-                lock (_allStarted)
-                {
-                    if (_allStarted.Contains(discoveredStep))
-                    {
-                        continue;
-                    }
-                }
-
-                var stepBaseType = GetStepBaseType(discoveredStep);
-                
-                if(_hasFinishedExecution[stepBaseType])
+                if (_allStarted.Contains(discoveredStep))
                 {
                     continue;
                 }
-                
+
+                var stepBaseType = GetStepBaseType(discoveredStep);
+
+                if (_hasFinishedExecution[stepBaseType])
+                {
+                    continue;
+                }
+
                 if (!dependenciesInitialized)
                 {
                     continue;
@@ -201,14 +198,11 @@ namespace Nethermind.Runner.Ethereum.Steps
                     if (_logger.IsInfo) _logger.Info($"Step {step.GetType().Name.PadRight(24)} executed in {stopwatch.ElapsedMilliseconds}ms");
                 });
 
-                lock (_allStarted)
-                {
-                    _allStarted.Add(discoveredStep);
+                _allStarted.Add(discoveredStep);
 
-                    if (step.MustInitialize)
-                    {
-                        _allPending.Add(task);
-                    }
+                if (step.MustInitialize)
+                {
+                    _allPending.Add(task);
                 }
             }
         }
