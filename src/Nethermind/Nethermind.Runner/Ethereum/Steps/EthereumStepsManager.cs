@@ -191,7 +191,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 }
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
-                Task task = step.Execute().ContinueWith(t =>
+                Task task = step.Execute();
+                Task continuationTask = task.ContinueWith(t =>
                 {
                     _hasFinishedExecution[stepBaseType] = true;
                     stopwatch.Stop();
@@ -202,7 +203,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 if (step.MustInitialize)
                 {
-                    _allPending.Add(task);
+                    _allPending.Add(continuationTask);
                 }
             }
         }
