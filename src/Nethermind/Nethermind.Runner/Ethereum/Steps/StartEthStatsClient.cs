@@ -45,7 +45,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(newState));
         }
 
-        public bool MustInitialize => false;
+        bool IStep.MustInitialize => false;
         
         public async Task Execute()
         {
