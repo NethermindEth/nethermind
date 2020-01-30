@@ -30,7 +30,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public override ValueTask Execute()
+        public override Task Execute()
         {
             var result = base.Execute();
             CliqueModule cliqueModule = new CliqueModule(_context.LogManager, new CliqueBridge(_context.BlockProducer as ICliqueBlockProducer, _context.SnapshotManager, _context.BlockTree));

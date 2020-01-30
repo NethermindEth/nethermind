@@ -31,10 +31,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public ValueTask Execute()
+        public Task Execute()
         {
             _context.ChainSpec.Bootnodes = _context.ChainSpec.Bootnodes?.Where(n => !n.NodeId?.Equals(_context.NodeKey.PublicKey) ?? false).ToArray() ?? new NetworkNode[0];
-            return default;
+            return Task.CompletedTask;
         }
     }
 }

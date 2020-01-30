@@ -34,7 +34,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public ValueTask Execute()
+        public Task Execute()
         {
             IKeyStoreConfig keyStoreConfig = _context.Config<IKeyStoreConfig>();
             
@@ -62,7 +62,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.NodeKey = nodeKeyManager.LoadNodeKey();
             _context.Enode = new Enode(_context.NodeKey.PublicKey, IPAddress.Parse(_context.NetworkConfig.ExternalIp), _context.NetworkConfig.P2PPort);
             
-            return default;
+            return Task.CompletedTask;
         }
     }
 }

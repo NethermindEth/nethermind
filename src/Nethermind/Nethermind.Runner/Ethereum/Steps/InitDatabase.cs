@@ -35,7 +35,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public ValueTask Execute()
+        public Task Execute()
         {
             /* sync */
             IDbConfig dbConfig = _context.Config<IDbConfig>();
@@ -65,7 +65,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             // IDbProvider debugReader = new ReadOnlyDbProvider(new RocksDbProvider(Path.Combine(_context._initConfig.BaseDbPath, "debug"), dbConfig, _context._logManager, _context._initConfig.StoreTraces, _context._initConfig.StoreReceipts), false);
             // _context._dbProvider = debugReader;
-            return default;
+            return Task.CompletedTask;
         }
     }
 }

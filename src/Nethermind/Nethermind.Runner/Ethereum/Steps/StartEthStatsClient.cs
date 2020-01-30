@@ -45,7 +45,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(newState));
         }
 
-        public async ValueTask Execute()
+        public bool MustInitialize => false;
+        
+        public async Task Execute()
         {
             IEthStatsConfig ethStatsConfig = _context.Config<IEthStatsConfig>();
             if (!ethStatsConfig.Enabled)

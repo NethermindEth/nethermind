@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -72,7 +73,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 if (type != null)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Discovered Ethereum step: {type.Name}");
-                    _discoveredSteps.Add(type, false);
+                    _discoveredSteps[type] = false;
                     _hasFinishedExecution[GetStepBaseType(type)] = false;
                 }
             }
@@ -80,9 +81,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             ReviewDependencies();
         }
         
-        private Dictionary<Type, bool> _hasFinishedExecution = new Dictionary<Type, bool>();
+        private ConcurrentDictionary<Type, bool> _hasFinishedExecution = new ConcurrentDictionary<Type, bool>();
 
-        private Dictionary<Type, bool> _discoveredSteps = new Dictionary<Type, bool>();
+        private ConcurrentDictionary<Type, bool> _discoveredSteps = new ConcurrentDictionary<Type, bool>();
         
         private bool IsStepType(Type t) => typeof(IStep).IsAssignableFrom(t);
 
@@ -134,15 +135,28 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             while (_hasFinishedExecution.Values.Any(finished => !finished))
             {
-                await RunOneRoundOfInitialization();
+                RunOneRoundOfInitialization();
                 ReviewDependencies();
             }
+
+            await Task.WhenAll(_allPending);
         }
 
-        private async Task RunOneRoundOfInitialization()
+        private List<Task> _allPending = new List<Task>();
+        private List<Type> _allStarted = new List<Type>();
+        
+        private void RunOneRoundOfInitialization()
         {
             foreach ((Type discoveredStep, bool dependenciesInitialized) in _discoveredSteps)
             {
+                lock (_allStarted)
+                {
+                    if (_allStarted.Contains(discoveredStep))
+                    {
+                        continue;
+                    }
+                }
+
                 var stepBaseType = GetStepBaseType(discoveredStep);
                 
                 if(_hasFinishedExecution[stepBaseType])
@@ -180,10 +194,22 @@ namespace Nethermind.Runner.Ethereum.Steps
                 }
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
-                await step.Execute();
-                _hasFinishedExecution[stepBaseType] = true;
-                stopwatch.Stop();
-                if (_logger.IsInfo) _logger.Info($"Step {step.GetType().Name.PadRight(24)} executed in {stopwatch.ElapsedMilliseconds}ms");
+                Task task = step.Execute().ContinueWith(t =>
+                {
+                    _hasFinishedExecution[stepBaseType] = true;
+                    stopwatch.Stop();
+                    if (_logger.IsInfo) _logger.Info($"Step {step.GetType().Name.PadRight(24)} executed in {stopwatch.ElapsedMilliseconds}ms");
+                });
+
+                lock (_allStarted)
+                {
+                    _allStarted.Add(discoveredStep);
+
+                    if (step.MustInitialize)
+                    {
+                        _allPending.Add(task);
+                    }
+                }
             }
         }
 

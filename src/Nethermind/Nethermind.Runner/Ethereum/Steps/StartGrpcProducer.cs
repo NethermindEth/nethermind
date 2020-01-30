@@ -38,7 +38,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(newState));
         }
 
-        public ValueTask Execute()
+        public Task Execute()
         {
             IGrpcConfig grpcConfig = _context.Config<IGrpcConfig>();
             if (grpcConfig.Enabled)
@@ -54,7 +54,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Running));
             }
 
-            return default;
+            return Task.CompletedTask;
         }
 
         public event EventHandler<SubsystemStateEventArgs> SubsystemStateChanged;

@@ -28,7 +28,6 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Crypto;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Evm;
 using Nethermind.Mining;
 using Nethermind.PubSub;
@@ -49,13 +48,13 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public async ValueTask Execute()
+        public async Task Execute()
         {
             await InitBlockchain();
         }
         
          [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
-        private ValueTask InitBlockchain()
+        private Task InitBlockchain()
         {
             Account.AccountStartNonce = _context.ChainSpec.Parameters.AccountStartNonce;
 
@@ -173,7 +172,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             _context.DisposeStack.Push(subscription);
 
-            return default;
+            return Task.CompletedTask;
         }
 
         protected virtual BlockProcessor CreateBlockProcessor() =>

@@ -35,10 +35,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
         
-        public ValueTask Execute()
+        public Task Execute()
         {
             _context.FinalizationManager = InitFinalizationManager(_context.AuRaBlockProcessorExtension);
-            return default;
+            return Task.CompletedTask;
         }
         
         private IBlockFinalizationManager InitFinalizationManager(IAuRaBlockProcessorExtension auRaBlockProcessorExtension)
