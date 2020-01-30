@@ -44,25 +44,27 @@ namespace Nethermind.JsonRpc.Modules.Trace
         }
 
         /*
-         *    "action": {
-         *      "callType": "call",
-         *      "from": "0x430adc807210dab17ce7538aecd4040979a45137",
-         *      "gas": "0x1a1f8",
-         *      "input": "0x",
-         *      "to": "0x9bcb0733c56b1d8f0c7c4310949e00485cae4e9d",
-         *      "value": "0x2707377c7552d8000"
-         *    },
-         *    "blockHash": "0x3aa472d57e220458fe5b9f1587b9211de68b27504064f5f6e427c68fc1691a29",
-         *    "blockNumber": 2392500,
-         *    "result": {
-         *      "gasUsed": "0x2162",
-         *      "output": "0x"
-         *    },
-         *    "subtraces": 2,
-         *    "traceAddress": [],
-         *    "transactionHash": "0x847ed5e2e9430bc6ee925a81137ebebe0cea1352209f96723d3503eb7a707aa8",
-         *    "transactionPosition": 42,
-         *    "type": "call"
+         * {
+         *   "action": {
+         *     "callType": "call",
+         *     "from": "0x430adc807210dab17ce7538aecd4040979a45137",
+         *     "gas": "0x1a1f8",
+         *     "input": "0x",
+         *     "to": "0x9bcb0733c56b1d8f0c7c4310949e00485cae4e9d",
+         *     "value": "0x2707377c7552d8000"
+         *   },
+         *   "blockHash": "0x3aa472d57e220458fe5b9f1587b9211de68b27504064f5f6e427c68fc1691a29",
+         *   "blockNumber": 2392500,
+         *   "result": {
+         *     "gasUsed": "0x2162",
+         *     "output": "0x"
+         *   },
+         *   "subtraces": 2,
+         *   "traceAddress": [],
+         *   "transactionHash": "0x847ed5e2e9430bc6ee925a81137ebebe0cea1352209f96723d3503eb7a707aa8",
+         *   "transactionPosition": 42,
+         *   "type": "call"
+         * }
          */
         private void WriteJson(JsonWriter writer, ParityTraceAction traceAction, JsonSerializer serializer)
         {
