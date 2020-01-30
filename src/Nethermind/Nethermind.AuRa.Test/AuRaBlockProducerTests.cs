@@ -97,14 +97,7 @@ namespace Nethermind.AuRa.Test
         {
             (await StartStop(false)).ShouldProduceBlocks(Quantity.None());
         }
-        
-        [Test]
-        public async Task Produces_block_when_ProcessingQueueEmpty_not_raised_but_BestKnownNumber_is_0()
-        {
-            _blockTree.BestKnownNumber.Returns(0);
-            (await StartStop(false)).ShouldProduceBlocks(Quantity.AtLeastOne());
-        }
-        
+
         [Test]
         public async Task Does_not_produce_block_when_QueueNotEmpty()
         {
