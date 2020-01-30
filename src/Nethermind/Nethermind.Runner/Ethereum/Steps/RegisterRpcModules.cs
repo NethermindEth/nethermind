@@ -77,7 +77,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             DebugModuleFactory debugModuleFactory = new DebugModuleFactory(_context.DbProvider, _context.BlockTree, _context.BlockValidator, _context.RecoveryStep, _context.RewardCalculatorSource, _context.ReceiptStorage, _context.ConfigProvider, _context.SpecProvider, _context.LogManager);
             _context.RpcModuleProvider.Register(new BoundedModulePool<IDebugModule>(8, debugModuleFactory));
 
-            TraceModuleFactory traceModuleFactory = new TraceModuleFactory(_context.DbProvider, _context.TxPool, _context.BlockTree, _context.BlockValidator, _context.EthereumEcdsa, _context.RecoveryStep, _context.RewardCalculatorSource, _context.ReceiptStorage, _context.SpecProvider, rpcConfig, _context.LogManager);
+            TraceModuleFactory traceModuleFactory = new TraceModuleFactory(_context.DbProvider, _context.BlockTree, _context.RecoveryStep, _context.RewardCalculatorSource, _context.ReceiptStorage, _context.SpecProvider, _context.LogManager);
             _context.RpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(8, traceModuleFactory));
 
             if (initConfig.EnableUnsecuredDevWallet)

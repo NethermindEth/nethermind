@@ -33,27 +33,21 @@ namespace Nethermind.Facade
         void Sign(Transaction tx);
         int GetNetworkId();
         BlockHeader Head { get; }
-        BlockHeader BestSuggested { get; }
         long BestKnown { get; }
         bool IsSyncing { get; }
         void RecoverTxSenders(Block block);
         void RecoverTxSender(Transaction tx, long? blockNumber);
         (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash);
         Transaction[] GetPendingTransactions();
-        Keccak GetBlockHash(Keccak transactionHash);
         Keccak SendTransaction(Transaction transaction, bool isOwn = false);
         TxReceipt GetReceipt(Keccak txHash);
-        TxReceipt[] GetReceipts(Block block);
         BlockchainBridge.CallOutput Call(BlockHeader blockHeader, Transaction transaction);
-        long EstimateGas(Block block, Transaction transaction);
+        long EstimateGas(BlockHeader header, Transaction transaction);
         long GetChainId();
         byte[] GetCode(Address address);
         byte[] GetCode(Keccak codeHash);
         UInt256 GetNonce(Address address);
-        UInt256 GetBalance(Address address);
-        byte[] GetStorage(Address address, UInt256 index);
         byte[] GetStorage(Address address, UInt256 index, Keccak storageRoot);
-        Account GetAccount(Address address);
         Account GetAccount(Address address, Keccak stateRoot);
         int NewBlockFilter();
         int NewPendingTransactionFilter();

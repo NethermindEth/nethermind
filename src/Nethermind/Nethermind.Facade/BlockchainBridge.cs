@@ -35,7 +35,7 @@ using Block = Nethermind.Core.Block;
 
 namespace Nethermind.Facade
 {
-    [DoNotUseInSecuredContext("Not reviewed, work in progress")]
+    [Todo(Improve.Refactor, "I want to remove BlockchainBridge, split it into something with logging, state and tx processing. Then we can start using independent modules.")]
     public class BlockchainBridge : IBlockchainBridge
     {
         private readonly ITxPool _txPool;
@@ -97,8 +97,6 @@ namespace Nethermind.Facade
 
         public BlockHeader Head => _blockTree.Head;
         
-        public BlockHeader BestSuggested => _blockTree.BestSuggestedHeader;
-        
         public long BestKnown => _blockTree.BestKnownNumber;
         
         public bool IsSyncing => _blockTree.BestSuggestedHeader.Hash != _blockTree.Head.Hash;
@@ -122,8 +120,6 @@ namespace Nethermind.Facade
         }
 
         public Transaction[] GetPendingTransactions() => _txPool.GetPendingTransactions();
-
-        public Keccak GetBlockHash(Keccak transactionHash) => _receiptStorage.Find(transactionHash).BlockHash;
 
         public Keccak SendTransaction(Transaction transaction, bool isOwn = false)
         {
@@ -156,8 +152,6 @@ namespace Nethermind.Facade
             return txReceipt;
         }
 
-        public TxReceipt[] GetReceipts(Block block) => _receiptStorage.FindForBlock(block);
-
         public class CallOutput
         {
             public CallOutput()
@@ -180,6 +174,18 @@ namespace Nethermind.Facade
 
         public CallOutput Call(BlockHeader blockHeader, Transaction transaction)
         {
+            CallOutputTracer callOutputTracer = CallAndRestore(blockHeader, transaction);
+            return new CallOutput {Error = callOutputTracer.Error, GasSpent = callOutputTracer.GasSpent, OutputData = callOutputTracer.ReturnValue};
+        }
+        
+        public long EstimateGas(BlockHeader header, Transaction transaction)
+        {
+            CallOutputTracer callOutputTracer = CallAndRestore(header, transaction);
+            return callOutputTracer.GasSpent;
+        }
+
+        private CallOutputTracer CallAndRestore(BlockHeader blockHeader, Transaction transaction)
+        {
             if (transaction.SenderAddress == null)
             {
                 transaction.SenderAddress = Address.SystemUser;
@@ -191,27 +197,13 @@ namespace Nethermind.Facade
             {
                 transaction.Nonce = GetNonce(parentHeader.StateRoot, transaction.SenderAddress);
             }
-            
+
             transaction.Hash = transaction.CalculateHash();
             CallOutputTracer callOutputTracer = new CallOutputTracer();
             _transactionProcessor.CallAndRestore(transaction, blockHeader, callOutputTracer);
             _stateProvider.Reset();
             _storageProvider.Reset();
-            return new CallOutput {Error = callOutputTracer.Error, GasSpent = callOutputTracer.GasSpent, OutputData = callOutputTracer.ReturnValue};
-        }
-
-        public long EstimateGas(Block block, Transaction transaction)
-        {
-            _stateProvider.StateRoot = _blockTree.Head.StateRoot;
-            BlockHeader header = new BlockHeader(block.Hash, Keccak.OfAnEmptySequenceRlp, block.Beneficiary,
-                block.Difficulty, block.Number + 1, block.GasLimit, block.Timestamp + 1, Bytes.Empty);
-            transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
-            transaction.Hash = transaction.CalculateHash();
-            CallOutputTracer callOutputTracer = new CallOutputTracer();
-            _transactionProcessor.CallAndRestore(transaction, header, callOutputTracer);
-            _stateProvider.Reset();
-            _storageProvider.Reset();
-            return callOutputTracer.GasSpent;
+            return callOutputTracer;
         }
 
         public long GetChainId()
@@ -239,25 +231,10 @@ namespace Nethermind.Facade
             return _stateReader.GetNonce(stateRoot, address);
         }
 
-        public UInt256 GetBalance(Address address)
-        {
-            return _stateReader.GetBalance(_blockTree.Head.StateRoot, address);
-        }
-
-        public byte[] GetStorage(Address address, UInt256 index)
-        {
-            return GetStorage(address, index, _blockTree.Head.StateRoot);
-        }
-
         public byte[] GetStorage(Address address, UInt256 index, Keccak stateRoot)
         {
             _stateProvider.StateRoot = stateRoot;
             return _storageProvider.Get(new StorageCell(address, index));
-        }
-
-        public Account GetAccount(Address address)
-        {
-            return GetAccount(address, _blockTree.Head.StateRoot);
         }
 
         public Account GetAccount(Address address, Keccak stateRoot)
@@ -275,11 +252,6 @@ namespace Nethermind.Facade
         {
             LogFilter filter = _filterStore.CreateLogFilter(fromBlock, toBlock, address, topics, false);
             return _logFinder.FindLogs(filter);
-        }
-
-        public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot)	
-        {	
-            _stateReader.RunTreeVisitor(stateRoot, treeVisitor);	
         }
 
         public int NewFilter(BlockParameter fromBlock, BlockParameter toBlock,
@@ -320,14 +292,19 @@ namespace Nethermind.Facade
             }
         }
 
+        public Keccak[] GetPendingTransactionFilterChanges(int filterId) =>
+            _filterManager.PollPendingTransactionHashes(filterId);
+
         public void RecoverTxSender(Transaction tx, long? blockNumber)
         {
             tx.SenderAddress = _ecdsa.RecoverAddress(tx, blockNumber ?? _blockTree.BestKnownNumber);
         }
         
-        public Keccak[] GetPendingTransactionFilterChanges(int filterId) =>
-            _filterManager.PollPendingTransactionHashes(filterId);
-
+        public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot)	
+        {	
+            _stateReader.RunTreeVisitor(stateRoot, treeVisitor);	
+        }
+        
         public Keccak HeadHash => _blockTree.HeadHash;
         public Keccak GenesisHash => _blockTree.GenesisHash;
         public Keccak PendingHash => _blockTree.PendingHash;

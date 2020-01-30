@@ -63,28 +63,13 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter)
         {
-            BlockHeader header;
-            if (blockParameter.RequireCanonical)
+            SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+            if (searchResult.IsError)
             {
-                header = _blockFinder.FindHeader(blockParameter.BlockHash, BlockTreeLookupOptions.RequireCanonical);
-                if (header == null)
-                {
-                    header = _blockFinder.FindHeader(blockParameter.BlockHash);
-                    if (header != null)
-                    {
-                        return ResultWrapper<CallResultWithProof>.Fail($"{blockParameter.BlockHash} block is not canonical", ErrorCodes.InvalidInput);
-                    }
-                }
-            }
-            else
-            {
-                header = _blockFinder.FindHeader(blockParameter);
+                return ResultWrapper<CallResultWithProof>.Fail(searchResult);
             }
 
-            if (header == null)
-            {
-                return ResultWrapper<CallResultWithProof>.Fail($"{blockParameter.BlockHash} could not be found", ErrorCodes.ResourceNotFound);
-            }
+            BlockHeader header = searchResult.Object;
             
             Transaction transaction = tx.ToTransaction();
             transaction.SenderAddress ??= Address.SystemUser;
@@ -119,12 +104,13 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 return ResultWrapper<TransactionWithProof>.Fail($"{txHash} receipt (transaction) could not be found", ErrorCodes.ResourceNotFound);
             }
 
-            Block block = _blockFinder.FindBlock(receipt.BlockHash);
-            if (block == null)
+            SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(receipt.BlockHash));
+            if (searchResult.IsError)
             {
-                return ResultWrapper<TransactionWithProof>.Fail($"{receipt.BlockHash} block could not be found", ErrorCodes.ResourceNotFound);
+                return ResultWrapper<TransactionWithProof>.Fail(searchResult);
             }
 
+            Block block = searchResult.Object;
             Transaction[] txs = block.Transactions;
             Transaction transaction = txs[receipt.Index];
 
@@ -147,15 +133,17 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 return ResultWrapper<ReceiptWithProof>.Fail($"{txHash} receipt could not be found", ErrorCodes.ResourceNotFound);
             }
 
-            Block block = _blockFinder.FindBlock(receipt.BlockHash);
-            if (block == null)
+            SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(receipt.BlockHash));
+            if (searchResult.IsError)
             {
-                return ResultWrapper<ReceiptWithProof>.Fail($"{receipt.BlockHash} block could not be found", ErrorCodes.ResourceNotFound);
+                return ResultWrapper<ReceiptWithProof>.Fail(searchResult);
             }
+
+            Block block = searchResult.Object;
 
             BlockReceiptsTracer receiptsTracer = new BlockReceiptsTracer();
             receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
-            _tracer.Trace(receipt.BlockHash, receiptsTracer);
+            _tracer.Trace(block, receiptsTracer);
 
             TxReceipt[] receipts = receiptsTracer.TxReceipts;
             Transaction[] txs = block.Transactions;

@@ -25,37 +25,21 @@ namespace Nethermind.Blockchain.Tracing
     public class Tracer : ITracer
     {
         private readonly IStateProvider _stateProvider;
-        private readonly IBlockTree _blockTree;
         private readonly IBlockchainProcessor _blockProcessor;
 
         public Tracer(
-            IBlockTree blockTree,
             IStateProvider stateProvider,
             IBlockchainProcessor blockProcessor)
         {
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
         }
 
-        public Keccak Trace(Keccak blockHash, IBlockTracer blockTracer)
-        {
-            Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.RequireCanonical);
-            
-            /* We force process since we wan to process a block that has already been processed in the past and normally it would be ignored.
-               We also want to make it read only so the state is not modified persistently in any way. */
-            
-            blockTracer.StartNewBlockTrace(block);
-            _blockProcessor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain, blockTracer);
-            
-            return _stateProvider.StateRoot;
-        }
-        
         public Keccak Trace(Block block, IBlockTracer blockTracer)
         {
             /* We force process since we wan to process a block that has already been processed in the past and normally it would be ignored.
                We also want to make it read only so the state is not modified persistently in any way. */
-            
+
             blockTracer.StartNewBlockTrace(block);
             _blockProcessor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain, blockTracer);
 

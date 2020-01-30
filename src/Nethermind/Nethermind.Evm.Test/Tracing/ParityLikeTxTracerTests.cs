@@ -30,7 +30,7 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test.Tracing
 {
     [TestFixture]
-    public class ParityLikeCallTxTracerTests : VirtualMachineTestsBase
+    public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     {
         [Test]
         public void On_failure_result_is_null()

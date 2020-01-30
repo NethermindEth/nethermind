@@ -14,16 +14,32 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Crypto;
+using System.Collections.Generic;
+using Nethermind.Core;
 using Nethermind.Evm.Tracing.ParityStyle;
 
-namespace Nethermind.Blockchain.Tracing
+namespace Nethermind.JsonRpc.Modules.Trace
 {
-    public interface IParityStyleTracer
+    public class ParityTxTraceFromReplay
     {
-        ParityLikeTxTrace ParityTrace(Keccak txHash, ParityTraceTypes traceTypes);
-        ParityLikeTxTrace[] ParityTraceBlock(Keccak blockHash, ParityTraceTypes traceTypes);
-        ParityLikeTxTrace[] ParityTraceBlock(long blockNumber, ParityTraceTypes traceTypes);
-        ParityLikeTxTrace ParityTraceRawTransaction(byte[] txRlp, ParityTraceTypes traceTypes);
+        public ParityTxTraceFromReplay()
+        {
+        }
+        
+        public ParityTxTraceFromReplay(ParityLikeTxTrace txTrace)
+        {
+            Output = txTrace.Output;
+            VmTrace = txTrace.VmTrace;
+            Action = txTrace.Action;
+            StateChanges = txTrace.StateChanges;
+        }
+        
+        public byte[] Output { get; set; }
+
+        public ParityVmTrace VmTrace { get; set; }
+        
+        public ParityTraceAction Action { get; set; }
+
+        public Dictionary<Address, ParityAccountStateChange> StateChanges { get; set; }
     }
 }

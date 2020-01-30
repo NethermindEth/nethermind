@@ -270,7 +270,8 @@ namespace Nethermind.Cli
 
         private static void Setup()
         {
-            Serializer.RegisterConverter(new ParityLikeTxTraceConverter());
+            Serializer.RegisterConverter(new ParityTxTraceFromStoreConverter());
+            Serializer.RegisterConverter(new ParityTxTraceFromReplayConverter());
             Serializer.RegisterConverter(new ParityAccountStateChangeConverter());
             Serializer.RegisterConverter(new ParityTraceActionConverter());
             Serializer.RegisterConverter(new ParityTraceResultConverter());
