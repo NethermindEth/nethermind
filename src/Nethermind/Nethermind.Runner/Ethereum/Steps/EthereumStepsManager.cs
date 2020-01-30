@@ -205,7 +205,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     _allStarted.Add(discoveredStep);
 
-                    if (step.MistInitialize)
+                    if (step.MustInitialize)
                     {
                         _allPending.Add(task);
                     }

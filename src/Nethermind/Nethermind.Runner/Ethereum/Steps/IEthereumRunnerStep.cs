@@ -22,6 +22,6 @@ namespace Nethermind.Runner.Ethereum.Steps
     {
         Task Execute();
 
-        public bool MistInitialize => true;
+        public bool MustInitialize => true;
     }
 }
