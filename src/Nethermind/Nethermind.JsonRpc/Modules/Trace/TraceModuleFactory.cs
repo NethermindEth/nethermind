@@ -29,6 +29,7 @@ using Nethermind.Crypto;
 using Nethermind.Specs;
 using Nethermind.Facade;
 using Nethermind.Logging;
+using Nethermind.PubSub.Models;
 using Nethermind.Store;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
@@ -39,73 +40,47 @@ namespace Nethermind.JsonRpc.Modules.Trace
     {
         private readonly IBlockTree _blockTree;
         private readonly IDbProvider _dbProvider;
-        private readonly IBlockValidator _blockValidator;
-        private readonly IEthereumEcdsa _ethereumEcdsa;
-        private readonly IRewardCalculatorSource _rewardCalculatorSource;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISpecProvider _specProvider;
-        private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly ILogManager _logManager;
-        private readonly ITxPool _txPool;
         private readonly IBlockDataRecoveryStep _recoveryStep;
+        private readonly IRewardCalculatorSource _rewardCalculatorSource;
         private ILogger _logger;
 
-        public TraceModuleFactory(IDbProvider dbProvider,
-            ITxPool txPool,
+        public TraceModuleFactory(
+            IDbProvider dbProvider,
             IBlockTree blockTree,
-            IBlockValidator blockValidator,
-            IEthereumEcdsa ethereumEcdsa,
             IBlockDataRecoveryStep recoveryStep,
             IRewardCalculatorSource rewardCalculatorSource,
             IReceiptStorage receiptStorage,
             ISpecProvider specProvider,
-            IJsonRpcConfig rpcConfig,
             ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
-            _ethereumEcdsa = ethereumEcdsa ?? throw new ArgumentNullException(nameof(ethereumEcdsa));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _rewardCalculatorSource = rewardCalculatorSource ?? throw new ArgumentNullException(nameof(rewardCalculatorSource));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _jsonRpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger();
         }
         
         public override ITraceModule Create()
         {
-            ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(_blockTree);
-            IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
-            ReadOnlyTxProcessingEnv txEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree, _specProvider, _logManager);
+            var readOnlyTree = new ReadOnlyBlockTree(_blockTree);
+            var readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
+            var readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree, _specProvider, _logManager);
+            var readOnlyChainProcessingEnv = new ReadOnlyChainProcessingEnv(readOnlyTxProcessingEnv, AlwaysValidBlockValidator.Instance, _recoveryStep, _rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor), _receiptStorage, readOnlyDbProvider, _specProvider, _logManager);
+            Tracer tracer = new Tracer(readOnlyChainProcessingEnv.StateProvider, readOnlyChainProcessingEnv.ChainProcessor);
             
-            var blockchainBridge = new BlockchainBridge(
-                txEnv.StateReader,
-                txEnv.StateProvider,
-                txEnv.StorageProvider,
-                txEnv.BlockTree,
-                _txPool,
-                _receiptStorage,
-                NullFilterStore.Instance,
-                NullFilterManager.Instance,
-                NullWallet.Instance,
-                txEnv.TransactionProcessor,
-                _ethereumEcdsa,
-                _jsonRpcConfig.FindLogBlockDepthLimit
-                );
-            
-            ReadOnlyChainProcessingEnv chainEnv = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculatorSource.Get(txEnv.TransactionProcessor), _receiptStorage, readOnlyDbProvider, _specProvider, _logManager);
-            IParityStyleTracer tracer = new ParityStyleTracer(chainEnv.ChainProcessor, _receiptStorage, new ReadOnlyBlockTree(_blockTree));
-            
-            return new TraceModule(blockchainBridge, tracer);
+            return new TraceModule(_receiptStorage, tracer, readOnlyTree);
         }
         
         public static JsonConverter[] Converters = 
         {
-            new ParityLikeTxTraceConverter(),
+            new ParityTxTraceFromStoreConverter(),
+            new ParityTxTraceFromReplayConverter(),
             new ParityAccountStateChangeConverter(),
             new ParityTraceActionConverter(),
             new ParityTraceResultConverter(),

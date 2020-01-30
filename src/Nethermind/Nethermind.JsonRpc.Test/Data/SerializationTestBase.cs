@@ -47,6 +47,14 @@ namespace Nethermind.JsonRpc.Test.Data
 
             Assert.True(equalityComparer(item, deserialized));
         }
+        
+        protected void TestConverter<T>(T item, JsonConverter<T> converter, string expectedResult)
+        {
+            EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+            serializer.RegisterConverter(converter);
+            string result = serializer.Serialize(item);
+            Assert.AreEqual(expectedResult, result, result.Replace("\"", "\\\""));
+        }
 
         protected void TestSerialization<T>(T item, Func<T, T, bool> equalityComparer, string description = "")
         {
@@ -64,8 +72,6 @@ namespace Nethermind.JsonRpc.Test.Data
 
         private static JsonSerializer BuildSerializer<T>()
         {
-            TraceModule module = new TraceModule(Substitute.For<IBlockchainBridge>(), Substitute.For<IParityStyleTracer>());
-
             JsonSerializer serializer = new JsonSerializer();
             foreach (JsonConverter converter in EthModuleFactory.Converters)
             {

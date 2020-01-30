@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,26 +14,35 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.Tracing;
-using Nethermind.Store;
+using Nethermind.Evm.Tracing.ParityStyle;
 
-namespace Nethermind.Blockchain.Tracing
+namespace Nethermind.JsonRpc.Modules.Trace
 {
-    /// <summary>
-    /// A simple and flexible bridge for any tracing operations on blocks and transactions.
-    /// </summary>
-    public interface ITracer
+    public class ParityTxTraceFromStore
     {
-        /// <summary>
-        /// Allows to trace an arbitrarily constructed block.
-        /// </summary>
-        /// <param name="block">Block to trace.</param>
-        /// <param name="tracer">Trace to act on block processing events.</param>
-        /// <returns>Post trace state root</returns>
-        Keccak Trace(Block block, IBlockTracer tracer);
+        public ParityTxTraceFromStore(ParityLikeTxTrace txTrace)
+        {
+
+        }
         
-        void Accept(ITreeVisitor visitor, Keccak stateRoot);
+        public ParityTraceAction Action { get; set; }
+        
+        public ParityTraceResult Result { get; set; }
+        
+        public int Subtraces { get; set; }
+        
+        public int[] TraceAddress { get; set; }
+        
+        public Keccak BlockHash { get; set; }
+        
+        public long BlockNumber { get; set; }
+        
+        public Keccak TransactionHash { get; set; }
+        
+        public int TransactionPosition { get; set; }
+        
+        public string Type { get; set; }
+        
     }
 }

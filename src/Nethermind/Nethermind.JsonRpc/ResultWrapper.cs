@@ -16,6 +16,7 @@
 
 using Nethermind.Core;
 using Nethermind.Facade.Proxy;
+using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.JsonRpc
 {
@@ -27,6 +28,11 @@ namespace Nethermind.JsonRpc
 
         private ResultWrapper()
         {
+        }
+        
+        public static ResultWrapper<T> Fail<TSearch>(SearchResult<TSearch> searchResult) where TSearch : class
+        {
+            return new ResultWrapper<T> { Result = Result.Fail(searchResult.Error), ErrorCode = searchResult.ErrorCode};
         }
         
         public static ResultWrapper<T> Fail(string error)

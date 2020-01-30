@@ -23,21 +23,37 @@ using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
-    public class ParityTxTraceFromStoreConverter : JsonConverter<ParityTxTraceFromStore>
+    public class ParityTxTraceFromReplayConverter : JsonConverter<ParityTxTraceFromReplay>
     {
         private ParityTraceAddressConverter _traceAddressConverter = new ParityTraceAddressConverter();
 
-        public override void WriteJson(JsonWriter writer, ParityTxTraceFromStore value, JsonSerializer serializer)
+        public override void WriteJson(JsonWriter writer, ParityTxTraceFromReplay value, JsonSerializer serializer)
         {
             writer.WriteStartObject();
-            
-            writer.WriteProperty("action", value.Action, serializer);
 
-            if (value.TransactionHash != null)
+            writer.WriteProperty("output", value.Output, serializer);
+            writer.WritePropertyName("stateDiff");
+            if (value.StateChanges != null)
             {
-                writer.WriteProperty("transactionHash", value.TransactionHash, serializer);
+                writer.WriteStartObject();
+                foreach ((Address address, ParityAccountStateChange stateChange) in value.StateChanges.OrderBy(sc => sc.Key, AddressComparer.Instance)) writer.WriteProperty(address.ToString(), stateChange, serializer);
+
+                writer.WriteEndObject();
             }
-            
+            else
+            {
+                writer.WriteNull();
+            }
+
+            writer.WritePropertyName("trace");
+            writer.WriteStartArray();
+            if (value.Action != null)
+            {
+                WriteJson(writer, value.Action, serializer);
+            }
+            writer.WriteEndArray();
+            writer.WriteProperty("vmTrace", value.VmTrace, serializer);
+
             writer.WriteEndObject();
         }
 
@@ -89,7 +105,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             foreach (ParityTraceAction subtrace in traceAction.Subtraces) WriteJson(writer, subtrace, serializer);
         }
 
-        public override ParityTxTraceFromStore ReadJson(JsonReader reader, Type objectType, ParityTxTraceFromStore existingValue, bool hasExistingValue, JsonSerializer serializer)
+        public override ParityTxTraceFromReplay ReadJson(JsonReader reader, Type objectType, ParityTxTraceFromReplay existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
             throw new NotSupportedException();
         }

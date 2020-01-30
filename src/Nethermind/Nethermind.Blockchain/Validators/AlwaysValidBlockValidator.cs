@@ -21,6 +21,10 @@ namespace Nethermind.Blockchain.Validators
 {
     public class AlwaysValidBlockValidator : IBlockValidator
     {
+        private AlwaysValidBlockValidator()
+        {
+        }
+        
         private static AlwaysValidBlockValidator _instance;
 
         public static AlwaysValidBlockValidator Instance
