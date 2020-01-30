@@ -1,10 +1,10 @@
 name: Publish ARM32 Image to Docker Registry
 
-on:
-  push:
-    tags:
-    - '*'
-
+# on:
+#   push:
+#     tags:
+#     - '*'
+on: push
 jobs:
   arm64_building:
     runs-on: ubuntu-18.04
