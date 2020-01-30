@@ -21,6 +21,6 @@ namespace Nethermind.AuRa
 {
     public interface IAuRaValidatorProcessorFactory
     {
-        IAuRaValidatorProcessor CreateValidatorProcessor(AuRaParameters.Validator validator, long? startBlock = null);
+        IAuRaValidatorProcessorExtension CreateValidatorProcessor(AuRaParameters.Validator validator, long? startBlock = null);
     }
 }

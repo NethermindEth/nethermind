@@ -183,7 +183,7 @@ namespace Nethermind.AuRa.Test.Validators
             var pendingValidators = new PendingValidators(blockNumber, blockHash, validators);
             _validatorStore.PendingValidators.Returns(pendingValidators);
             
-            IAuRaValidatorProcessor validator = new ContractBasedValidator(_validator, _stateProvider, _abiEncoder, _transactionProcessor, _readOnlyTransactionProcessorSource, _blockTree, _receiptsStorage, _validatorStore, _validSealerStrategy, _logManager, 1);
+            IAuRaValidatorProcessorExtension validator = new ContractBasedValidator(_validator, _stateProvider, _abiEncoder, _transactionProcessor, _readOnlyTransactionProcessorSource, _blockTree, _receiptsStorage, _validatorStore, _validSealerStrategy, _logManager, 1);
             
             validator.SetFinalizationManager(_blockFinalizationManager);
             _blockFinalizationManager.BlocksFinalized +=
@@ -199,7 +199,7 @@ namespace Nethermind.AuRa.Test.Validators
             var initialValidator = TestItem.AddressA;
             SetupInitialValidators(initialValidator);
             var startBlockNumber = 1;
-            IAuRaValidatorProcessor validator = new ContractBasedValidator(_validator, _stateProvider, _abiEncoder, _transactionProcessor, _readOnlyTransactionProcessorSource, _blockTree, _receiptsStorage, _validatorStore, _validSealerStrategy, _logManager, startBlockNumber);
+            IAuRaValidatorProcessorExtension validator = new ContractBasedValidator(_validator, _stateProvider, _abiEncoder, _transactionProcessor, _readOnlyTransactionProcessorSource, _blockTree, _receiptsStorage, _validatorStore, _validSealerStrategy, _logManager, startBlockNumber);
             validator.SetFinalizationManager(_blockFinalizationManager);
 
             _block.Header.Number = 1;
@@ -507,7 +507,7 @@ namespace Nethermind.AuRa.Test.Validators
             var currentValidators = GenerateValidators(1);
             SetupInitialValidators(currentValidators);
             
-            IAuRaValidatorProcessor validator = new ContractBasedValidator(_validator, _stateProvider, _abiEncoder, _transactionProcessor, _readOnlyTransactionProcessorSource, _blockTree, _receiptsStorage, _validatorStore, _validSealerStrategy, _logManager, test.StartBlockNumber);
+            IAuRaValidatorProcessorExtension validator = new ContractBasedValidator(_validator, _stateProvider, _abiEncoder, _transactionProcessor, _readOnlyTransactionProcessorSource, _blockTree, _receiptsStorage, _validatorStore, _validSealerStrategy, _logManager, test.StartBlockNumber);
             validator.SetFinalizationManager(_blockFinalizationManager);
             
             test.TryDoReorganisations(test.StartBlockNumber, out _);
@@ -583,7 +583,7 @@ namespace Nethermind.AuRa.Test.Validators
             
             var blockTree = blockTreeBuilder.TestObject;
             SetupInitialValidators(blockTree.Head, validators);
-            IAuRaValidatorProcessor validator = new ContractBasedValidator(_validator, _stateProvider, _abiEncoder, _transactionProcessor, _readOnlyTransactionProcessorSource, blockTree, inMemoryReceiptStorage, _validatorStore, _validSealerStrategy, _logManager, 1);
+            IAuRaValidatorProcessorExtension validator = new ContractBasedValidator(_validator, _stateProvider, _abiEncoder, _transactionProcessor, _readOnlyTransactionProcessorSource, blockTree, inMemoryReceiptStorage, _validatorStore, _validSealerStrategy, _logManager, 1);
             validator.SetFinalizationManager(_blockFinalizationManager);
 
             _abiEncoder.Decode(ValidatorContract.Definition.addressArrayResult, Arg.Any<byte[]>())

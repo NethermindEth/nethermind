@@ -32,7 +32,7 @@ namespace Nethermind.AuRa
 {
     public class AuRaBlockProcessor : BlockProcessor
     {
-        private readonly IAuRaBlockProcessor _auRaBlockProcessor;
+        private readonly IAuRaBlockProcessorExtension _auRaBlockProcessorExtension;
 
         public AuRaBlockProcessor(
             ISpecProvider specProvider,
@@ -46,17 +46,17 @@ namespace Nethermind.AuRa
             ITxPool txPool,
             IReceiptStorage receiptStorage,
             ILogManager logManager,
-            IAuRaBlockProcessor auRaBlockProcessor)
+            IAuRaBlockProcessorExtension auRaBlockProcessorExtension)
             : base(specProvider, blockValidator, rewardCalculator, transactionProcessor, stateDb, codeDb, stateProvider, storageProvider, txPool, receiptStorage, logManager)
         {
-            _auRaBlockProcessor = auRaBlockProcessor ?? throw new ArgumentNullException(nameof(auRaBlockProcessor));
+            _auRaBlockProcessorExtension = auRaBlockProcessorExtension ?? throw new ArgumentNullException(nameof(auRaBlockProcessorExtension));
         }
 
         protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
         {
-            _auRaBlockProcessor.PreProcess(block, options);
+            _auRaBlockProcessorExtension.PreProcess(block, options);
             var receipts = base.ProcessBlock(block, blockTracer, options);
-            _auRaBlockProcessor.PostProcess(block, receipts, options);
+            _auRaBlockProcessorExtension.PostProcess(block, receipts, options);
             return receipts;
         }
     }

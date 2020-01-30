@@ -25,7 +25,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.AuRa.Validators
 {
-    public class MultiValidator : IAuRaValidatorProcessor
+    public class MultiValidator : IAuRaValidatorProcessorExtension
     {
         private readonly IAuRaValidatorProcessorFactory _validatorFactory;
         private readonly IBlockTree _blockTree;
@@ -33,7 +33,7 @@ namespace Nethermind.AuRa.Validators
         private IBlockFinalizationManager _blockFinalizationManager;
         private readonly IDictionary<long, AuRaParameters.Validator> _validators;
         private readonly ILogger _logger;
-        private IAuRaValidatorProcessor _currentValidator;
+        private IAuRaValidatorProcessorExtension _currentValidator;
         private AuRaParameters.Validator _currentValidatorPrototype;
         private bool _validatorUsedForSealing;
         private long _lastProcessedBlock = 0;
@@ -198,7 +198,7 @@ namespace Nethermind.AuRa.Validators
             }
         }
 
-        private IAuRaValidatorProcessor CreateValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype)
+        private IAuRaValidatorProcessorExtension CreateValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype)
         {
             return _validatorFactory.CreateValidatorProcessor(validatorPrototype, finalizedAtBlockNumber + 1);
         }

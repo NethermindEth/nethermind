@@ -25,12 +25,12 @@ using Nethermind.Logging;
 
 namespace Nethermind.AuRa.Validators
 {
-    public abstract class AuRaValidatorProcessor : IAuRaValidatorProcessor
+    public abstract class AuRaValidatorProcessorExtension : IAuRaValidatorProcessorExtension
     {
         private readonly IValidSealerStrategy _validSealerStrategy;
         private readonly ILogger _logger;
 
-        protected AuRaValidatorProcessor(AuRaParameters.Validator validator, IValidSealerStrategy validSealerStrategy, ILogManager logManager)
+        protected AuRaValidatorProcessorExtension(AuRaParameters.Validator validator, IValidSealerStrategy validSealerStrategy, ILogManager logManager)
         {
             if (validator == null) throw new ArgumentNullException(nameof(validator));
             _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));

@@ -37,14 +37,14 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         public ValueTask Execute()
         {
-            _context.FinalizationManager = InitFinalizationManager(_context.AuRaBlockProcessor);
+            _context.FinalizationManager = InitFinalizationManager(_context.AuRaBlockProcessorExtension);
             return default;
         }
         
-        private IBlockFinalizationManager InitFinalizationManager(IAuRaBlockProcessor auRaBlockProcessor)
+        private IBlockFinalizationManager InitFinalizationManager(IAuRaBlockProcessorExtension auRaBlockProcessorExtension)
         {
             AuRaBlockFinalizationManager finalizationManager = new AuRaBlockFinalizationManager(_context.BlockTree, _context.ChainLevelInfoRepository, _context.BlockProcessor, _context.ValidatorStore, new ValidSealerStrategy(), _context.LogManager);
-            auRaBlockProcessor.SetFinalizationManager(finalizationManager);
+            auRaBlockProcessorExtension.SetFinalizationManager(finalizationManager);
             return finalizationManager;
         }
     }

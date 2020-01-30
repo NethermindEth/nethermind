@@ -21,7 +21,7 @@ namespace Nethermind.Runner.Ethereum.Context
 {
     public class AuRaEthereumRunnerContext : EthereumRunnerContext
     {
-        public IAuRaBlockProcessor AuRaBlockProcessor { get; set; }
+        public IAuRaBlockProcessorExtension AuRaBlockProcessorExtension { get; set; }
         public IBlockFinalizationManager FinalizationManager { get; set; }
     }
 }

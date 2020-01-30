@@ -21,7 +21,7 @@ using Nethermind.Evm;
 
 namespace Nethermind.AuRa.Validators
 {
-    public interface IAuRaValidatorProcessor : IAuRaValidator, IAuRaBlockProcessor
+    public interface IAuRaValidatorProcessorExtension : IAuRaValidator, IAuRaBlockProcessorExtension
     {
     }
 }

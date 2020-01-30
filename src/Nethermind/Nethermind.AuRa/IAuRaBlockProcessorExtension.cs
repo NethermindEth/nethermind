@@ -19,7 +19,7 @@ using Nethermind.Core;
 
 namespace Nethermind.AuRa
 {
-    public interface IAuRaBlockProcessor
+    public interface IAuRaBlockProcessorExtension
     {
         void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None);
         void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None);

@@ -34,7 +34,7 @@ namespace Nethermind.AuRa.Test.Validators
         private AuRaParameters.Validator _validator;
         private IAuRaValidatorProcessorFactory _factory;
         private ILogManager _logManager;
-        private IDictionary<long, IAuRaValidatorProcessor> _innerValidators;
+        private IDictionary<long, IAuRaValidatorProcessorExtension> _innerValidators;
         private Block _block;
         private IBlockFinalizationManager _finalizationManager;
         private IBlockTree _blockTree;
@@ -44,7 +44,7 @@ namespace Nethermind.AuRa.Test.Validators
         public void SetUp()
         {
             _validator = GetValidator(AuRaParameters.ValidatorType.List);
-            _innerValidators = new SortedList<long, IAuRaValidatorProcessor>();
+            _innerValidators = new SortedList<long, IAuRaValidatorProcessorExtension>();
             _factory = Substitute.For<IAuRaValidatorProcessorFactory>();
             _logManager = Substitute.For<ILogManager>();
             _finalizationManager = Substitute.For<IBlockFinalizationManager>();
@@ -55,7 +55,7 @@ namespace Nethermind.AuRa.Test.Validators
             _factory.CreateValidatorProcessor(default, default)
                 .ReturnsForAnyArgs(x =>
                 {
-                    var innerValidator = Substitute.For<IAuRaValidatorProcessor>();
+                    var innerValidator = Substitute.For<IAuRaValidatorProcessorExtension>();
                     _innerValidators[x.Arg<long?>() ?? 0] = innerValidator;
                     return innerValidator;
                 });
@@ -123,7 +123,7 @@ namespace Nethermind.AuRa.Test.Validators
         {
             // Arrange
             _validator = GetValidator(validatorType);
-            IAuRaValidatorProcessor validator = new MultiValidator(_validator, _factory, _blockTree, _validatorStore, _logManager);
+            IAuRaValidatorProcessorExtension validator = new MultiValidator(_validator, _factory, _blockTree, _validatorStore, _logManager);
             var innerValidatorsFirstBlockCalls = GetInnerValidatorsFirstBlockCalls(_validator);
             var maxCalls = innerValidatorsFirstBlockCalls.Values.Max() + 10;
             validator.SetFinalizationManager(_finalizationManager);
@@ -166,7 +166,7 @@ namespace Nethermind.AuRa.Test.Validators
         [TestCase(21L, ExpectedResult = 21)]
         public long initializes_validator_when_producing_block(long blockNumber)
         {
-            IAuRaValidatorProcessor validator = new MultiValidator(_validator, _factory, _blockTree, _validatorStore, _logManager);
+            IAuRaValidatorProcessorExtension validator = new MultiValidator(_validator, _factory, _blockTree, _validatorStore, _logManager);
             _block.Header.Number = blockNumber;
             validator.PreProcess(_block, ProcessingOptions.ProducingBlock);
             _innerValidators.Count.Should().Be(1);
@@ -182,7 +182,7 @@ namespace Nethermind.AuRa.Test.Validators
         public long initializes_validator_when_on_nonconsecutive_block(long blockNumber, AuRaParameters.ValidatorType validatorType, bool finalizedLastValidatorBlockLevel)
         {
             _validator = GetValidator(validatorType);
-            IAuRaValidatorProcessor validator = new MultiValidator(_validator, _factory, _blockTree, _validatorStore, _logManager);
+            IAuRaValidatorProcessorExtension validator = new MultiValidator(_validator, _factory, _blockTree, _validatorStore, _logManager);
             validator.SetFinalizationManager(_finalizationManager);
             var validatorBlockLevel = (blockNumber - 1)/10*10;
             _finalizationManager.GetFinalizedLevel(validatorBlockLevel).Returns(finalizedLastValidatorBlockLevel ? blockNumber - 2 : (long?) null);
@@ -191,7 +191,7 @@ namespace Nethermind.AuRa.Test.Validators
             return _innerValidators.Keys.Last();
         }
         
-        private void ProcessBlocks(long count, IAuRaValidatorProcessor validator, int blocksToFinalization)
+        private void ProcessBlocks(long count, IAuRaValidatorProcessorExtension validator, int blocksToFinalization)
         {
             for (int i = 1; i < count; i++)
             {
@@ -209,7 +209,7 @@ namespace Nethermind.AuRa.Test.Validators
             }
         }
         
-        private void EnsureInnerValidatorsCalled(Func<int, (IAuRaValidatorProcessor Validator, int calls)> getValidatorWithCallCount)
+        private void EnsureInnerValidatorsCalled(Func<int, (IAuRaValidatorProcessorExtension Validator, int calls)> getValidatorWithCallCount)
         {
             for (var i = 0; i < _innerValidators.Count; i++)
             {

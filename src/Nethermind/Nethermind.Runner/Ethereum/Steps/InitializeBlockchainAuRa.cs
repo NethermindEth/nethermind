@@ -47,21 +47,21 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.TxPool,
                 _context.ReceiptStorage,
                 _context.LogManager,
-                _context.AuRaBlockProcessor);
+                _context.AuRaBlockProcessorExtension);
 
         protected override void InitSealEngine()
         {
             AbiEncoder abiEncoder = new AbiEncoder();
             _context.ValidatorStore = new ValidatorStore(_context.DbProvider.BlockInfosDb);
             IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource = new ReadOnlyTransactionProcessorSource(_context.DbProvider, _context.BlockTree, _context.SpecProvider, _context.LogManager);
-            IAuRaValidatorProcessor validatorProcessor = new AuRaValidatorProcessorFactory(_context.StateProvider, abiEncoder, _context.TransactionProcessor, readOnlyTransactionProcessorSource, _context.BlockTree, _context.ReceiptStorage, _context.ValidatorStore, _context.LogManager)
+            IAuRaValidatorProcessorExtension validatorProcessorExtension = new AuRaValidatorProcessorFactory(_context.StateProvider, abiEncoder, _context.TransactionProcessor, readOnlyTransactionProcessorSource, _context.BlockTree, _context.ReceiptStorage, _context.ValidatorStore, _context.LogManager)
                 .CreateValidatorProcessor(_context.ChainSpec.AuRa.Validators);
                     
             AuRaStepCalculator auRaStepCalculator = new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper);    
             _context.SealValidator = new AuRaSealValidator(_context.ChainSpec.AuRa, auRaStepCalculator, _context.ValidatorStore, _context.EthereumEcdsa, _context.LogManager);
             _context.RewardCalculatorSource = AuRaRewardCalculator.GetSource(_context.ChainSpec.AuRa, abiEncoder);
             _context.Sealer = new AuRaSealer(_context.BlockTree, _context.ValidatorStore, auRaStepCalculator, _context.NodeKey.Address, new BasicWallet(_context.NodeKey), new ValidSealerStrategy(), _context.LogManager);
-            _context.AuRaBlockProcessor = validatorProcessor;
+            _context.AuRaBlockProcessorExtension = validatorProcessorExtension;
         }
     }
 }

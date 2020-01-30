@@ -69,13 +69,13 @@ namespace Nethermind.AuRa
             _logManager = logManager;
         }
 
-        public IAuRaValidatorProcessor CreateValidatorProcessor(AuRaParameters.Validator validator, long? startBlock = null)
+        public IAuRaValidatorProcessorExtension CreateValidatorProcessor(AuRaParameters.Validator validator, long? startBlock = null)
         {
             var auRaSealerValidator = new ValidSealerStrategy();
             long startBlockNumber = startBlock ?? DefaultStartBlockNumber;
             return validator.ValidatorType switch
             {
-                AuRaParameters.ValidatorType.List => (IAuRaValidatorProcessor) new ListBasedValidator(validator, auRaSealerValidator, _logManager),
+                AuRaParameters.ValidatorType.List => (IAuRaValidatorProcessorExtension) new ListBasedValidator(validator, auRaSealerValidator, _logManager),
                 AuRaParameters.ValidatorType.Contract => new ContractBasedValidator(validator, _stateProvider, _abiEncoder, _transactionProcessor, _readOnlyReadOnlyTransactionProcessorSource, _blockTree, _receiptStorage, _validatorStore, auRaSealerValidator, _logManager, startBlockNumber),
                 AuRaParameters.ValidatorType.ReportingContract => new ReportingContractBasedValidator(validator, _stateProvider, _abiEncoder, _transactionProcessor, _readOnlyReadOnlyTransactionProcessorSource, _blockTree, _receiptStorage, _validatorStore, auRaSealerValidator, _logManager, startBlockNumber),
                 AuRaParameters.ValidatorType.Multi => new MultiValidator(validator, this, _blockTree, _validatorStore, _logManager),

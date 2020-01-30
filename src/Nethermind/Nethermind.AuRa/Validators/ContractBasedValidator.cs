@@ -38,7 +38,7 @@ using Nethermind.Store;
 
 namespace Nethermind.AuRa.Validators
 {
-    public class ContractBasedValidator : AuRaValidatorProcessor
+    public class ContractBasedValidator : AuRaValidatorProcessorExtension
     {
         private readonly ILogger _logger;
         private readonly IStateProvider _stateProvider;
