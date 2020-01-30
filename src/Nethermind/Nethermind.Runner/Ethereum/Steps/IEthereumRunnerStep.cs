@@ -20,6 +20,6 @@ namespace Nethermind.Runner.Ethereum.Steps
 {
     public interface IStep
     {
-        Task Execute();
+        ValueTask Execute();
     }
 }

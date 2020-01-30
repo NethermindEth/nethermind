@@ -25,12 +25,12 @@ using Nethermind.Logging;
 
 namespace Nethermind.AuRa.Validators
 {
-    public abstract class AuRaValidatorProcessorBase : IAuRaValidatorProcessor
+    public abstract class AuRaValidatorProcessor : IAuRaValidatorProcessor
     {
         private readonly IValidSealerStrategy _validSealerStrategy;
         private readonly ILogger _logger;
 
-        protected AuRaValidatorProcessorBase(AuRaParameters.Validator validator, IValidSealerStrategy validSealerStrategy, ILogManager logManager)
+        protected AuRaValidatorProcessor(AuRaParameters.Validator validator, IValidSealerStrategy validSealerStrategy, ILogManager logManager)
         {
             if (validator == null) throw new ArgumentNullException(nameof(validator));
             _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
@@ -39,12 +39,7 @@ namespace Nethermind.AuRa.Validators
         
         public Address[] Validators { get; protected set; }
 
-        void IAuRaValidator.SetFinalizationManager(IBlockFinalizationManager finalizationManager, bool forProducing)
-        {
-            SetFinalizationManagerInternal(finalizationManager, forProducing);
-        }
-
-        protected virtual void SetFinalizationManagerInternal(IBlockFinalizationManager finalizationManager, in bool forSealing) { }
+        public virtual void SetFinalizationManager(IBlockFinalizationManager finalizationManager, in bool forSealing) { }
 
         public virtual void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None)
         {

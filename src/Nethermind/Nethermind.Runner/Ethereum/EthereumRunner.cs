@@ -29,6 +29,7 @@ using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Network.Config;
+using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Steps;
 using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
@@ -37,7 +38,7 @@ namespace Nethermind.Runner.Ethereum
 {
     public class EthereumRunner : IRunner
     {
-        private EthereumRunnerContext _context = new EthereumRunnerContext();
+        private EthereumRunnerContext _context;
 
         public EthereumRunner(IRpcModuleProvider rpcModuleProvider, IConfigProvider configurationProvider,
             ILogManager logManager, IGrpcServer grpcServer,
@@ -45,7 +46,11 @@ namespace Nethermind.Runner.Ethereum
             INdmInitializer ndmInitializer, IWebSocketsManager webSocketsManager,
             IJsonSerializer ethereumJsonSerializer, IMonitoringService monitoringService)
         {
-            _context.LogManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            if (logManager == null) throw new ArgumentNullException(nameof(logManager));
+           
+            var logger = logManager.GetClassLogger();
+            _context = new EthereumRunnerContextCreator(configurationProvider, ethereumJsonSerializer, logger).Context;
+            _context.LogManager = logManager;
             _context.GrpcServer = grpcServer;
             _context.NdmConsumerChannelManager = ndmConsumerChannelManager;
             _context.NdmDataPublisher = ndmDataPublisher;
@@ -53,7 +58,7 @@ namespace Nethermind.Runner.Ethereum
             _context.WebSocketsManager = webSocketsManager;
             _context.EthereumJsonSerializer = ethereumJsonSerializer;
             _context.MonitoringService = monitoringService;
-            _context.Logger = _context.LogManager.GetClassLogger();
+            _context.Logger = logger;
 
             _context.ConfigProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
             _context.RpcModuleProvider = rpcModuleProvider ?? throw new ArgumentNullException(nameof(rpcModuleProvider));

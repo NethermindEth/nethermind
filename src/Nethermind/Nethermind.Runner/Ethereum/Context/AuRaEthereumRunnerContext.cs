@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,14 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.AuRa;
 using Nethermind.Blockchain;
-using Nethermind.Core;
-using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Evm;
 
-namespace Nethermind.AuRa.Validators
+namespace Nethermind.Runner.Ethereum.Context
 {
-    public interface IAuRaValidatorProcessor : IAuRaValidator, IAuRaBlockProcessor
+    public class AuRaEthereumRunnerContext : EthereumRunnerContext
     {
+        public IAuRaBlockProcessor AuRaBlockProcessor { get; set; }
+        public IBlockFinalizationManager FinalizationManager { get; set; }
     }
 }

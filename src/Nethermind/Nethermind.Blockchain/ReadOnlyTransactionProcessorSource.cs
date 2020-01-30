@@ -22,13 +22,18 @@ using Nethermind.Store;
 
 namespace Nethermind.Blockchain
 {
-    public class ReadOnlyReadOnlyTransactionProcessorSource : IReadOnlyTransactionProcessorSource
+    public class ReadOnlyTransactionProcessorSource : IReadOnlyTransactionProcessorSource
     {
         private readonly ReadOnlyTxProcessingEnv _environment;
 
-        public ReadOnlyReadOnlyTransactionProcessorSource(IDbProvider dbProvider, IBlockTree blockTree, ISpecProvider specProvider, ILogManager logManager)
+        public ReadOnlyTransactionProcessorSource(IDbProvider dbProvider, IBlockTree blockTree, ISpecProvider specProvider, ILogManager logManager)
         {
             _environment = new ReadOnlyTxProcessingEnv(new ReadOnlyDbProvider(dbProvider, false), new ReadOnlyBlockTree(blockTree), specProvider, logManager);
+        }
+
+        public ReadOnlyTransactionProcessorSource(ReadOnlyTxProcessingEnv environment)
+        {
+            _environment = environment;
         }
         
         public IReadOnlyTransactionProcessor Get(Keccak stateRoot)

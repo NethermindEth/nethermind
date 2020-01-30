@@ -18,6 +18,7 @@ using System;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
+    [AttributeUsage(AttributeTargets.Class)]
     public class RunnerStepDependencyAttribute : Attribute
     {
         public Type[] Dependencies { get; }

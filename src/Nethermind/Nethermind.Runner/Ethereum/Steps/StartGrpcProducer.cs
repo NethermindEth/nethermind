@@ -18,6 +18,7 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Grpc;
 using Nethermind.Grpc.Producers;
+using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Subsystems;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -37,24 +38,23 @@ namespace Nethermind.Runner.Ethereum.Steps
             SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(newState));
         }
 
-        public Task Execute()
+        public ValueTask Execute()
         {
             IGrpcConfig grpcConfig = _context.Config<IGrpcConfig>();
-            if (!grpcConfig.Enabled)
+            if (grpcConfig.Enabled)
             {
-                return Task.CompletedTask;
+                SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Initializing));
+
+                if (grpcConfig.ProducerEnabled)
+                {
+                    GrpcProducer grpcProducer = new GrpcProducer(_context.GrpcServer);
+                    _context.Producers.Add(grpcProducer);
+                }
+
+                SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Running));
             }
 
-            SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Initializing));
-
-            if (grpcConfig.ProducerEnabled)
-            {
-                GrpcProducer grpcProducer = new GrpcProducer(_context.GrpcServer);
-                _context.Producers.Add(grpcProducer);
-            }
-
-            SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Running));
-            return Task.CompletedTask;
+            return default;
         }
 
         public event EventHandler<SubsystemStateEventArgs> SubsystemStateChanged;

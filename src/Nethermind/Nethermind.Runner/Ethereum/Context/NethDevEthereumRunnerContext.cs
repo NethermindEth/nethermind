@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,13 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core;
-
-namespace Nethermind.Blockchain
+namespace Nethermind.Runner.Ethereum.Context
 {
-    public interface IAdditionalBlockProcessor
+    public class NethDevEthereumRunnerContext : EthereumRunnerContext
     {
-        void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None);
-        void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None);
     }
 }

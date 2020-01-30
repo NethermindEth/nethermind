@@ -48,7 +48,6 @@ namespace Nethermind.Blockchain
         private readonly IStorageProvider _storageProvider;
         private readonly IRewardCalculator _rewardCalculator;
         private readonly ITransactionProcessor _transactionProcessor;
-        private readonly IAdditionalBlockProcessor _additionalBlockProcessor;
 
         public BlockProcessor(ISpecProvider specProvider,
             IBlockValidator blockValidator,
@@ -60,8 +59,7 @@ namespace Nethermind.Blockchain
             IStorageProvider storageProvider,
             ITxPool txPool,
             IReceiptStorage receiptStorage,
-            ILogManager logManager,
-            IEnumerable<IAdditionalBlockProcessor> additionalBlockProcessors = null)
+            ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -75,17 +73,6 @@ namespace Nethermind.Blockchain
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _receiptsTracer = new BlockReceiptsTracer();
-
-            if (additionalBlockProcessors != null)
-            {
-                var additionalBlockProcessorsArray = additionalBlockProcessors.ToArray();
-                if (additionalBlockProcessorsArray.Length > 0)
-                {
-                    _additionalBlockProcessor = additionalBlockProcessorsArray.Length == 1
-                        ? additionalBlockProcessorsArray[0]
-                        : new CompositeAdditionalBlockProcessor(additionalBlockProcessorsArray);
-                }
-            }
         }
 
         public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
@@ -203,18 +190,7 @@ namespace Nethermind.Blockchain
                 }
 
                 block = PrepareBlockForProcessing(suggestedBlock);
-                _additionalBlockProcessor?.PreProcess(block, options);
-                
-                var receipts = ProcessTransactions(block, options, blockTracer);
-                SetReceiptsRoot(block, receipts);
-                ApplyMinerRewards(block, blockTracer);
-                
-                _stateProvider.Commit(_specProvider.GetSpec(block.Number));
-                _stateProvider.RecalculateStateRoot();
-                block.Header.StateRoot = _stateProvider.StateRoot;
-                block.Header.Hash = block.Header.CalculateHash();
-                
-                _additionalBlockProcessor?.PostProcess(block, receipts, options);
+                var receipts = ProcessBlock(block, blockTracer, options);
 
                 if ((options & ProcessingOptions.NoValidation) == 0 && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock))
                 {
@@ -235,6 +211,20 @@ namespace Nethermind.Blockchain
             }
 
             return block;
+        }
+
+        protected virtual TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
+        {
+            var receipts = ProcessTransactions(block, options, blockTracer);
+            SetReceiptsRoot(block, receipts);
+            ApplyMinerRewards(block, blockTracer);
+
+            _stateProvider.Commit(_specProvider.GetSpec(block.Number));
+            _stateProvider.RecalculateStateRoot();
+            block.Header.StateRoot = _stateProvider.StateRoot;
+            block.Header.Hash = block.Header.CalculateHash();
+
+            return receipts;
         }
 
         private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
@@ -330,32 +320,6 @@ namespace Nethermind.Blockchain
                 UInt256 balance = _stateProvider.GetBalance(daoAccount);
                 _stateProvider.AddToBalance(withdrawAccount, balance, Dao.Instance);
                 _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
-            }
-        }
-        
-        private class CompositeAdditionalBlockProcessor : IAdditionalBlockProcessor
-        {
-            private readonly IAdditionalBlockProcessor[] _additionalBlockProcessors;
-
-            public CompositeAdditionalBlockProcessor(params IAdditionalBlockProcessor[] additionalBlockProcessors)
-            {
-                _additionalBlockProcessors = additionalBlockProcessors ?? throw new ArgumentNullException(nameof(additionalBlockProcessors));
-            }
-            
-            public void PreProcess(Block block, ProcessingOptions options)
-            {
-                for (int i = 0; i < _additionalBlockProcessors.Length; i++)
-                {
-                    _additionalBlockProcessors[i].PreProcess(block, options);
-                }
-            }
-
-            public void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options)
-            {
-                for (int i = 0; i < _additionalBlockProcessors.Length; i++)
-                {
-                    _additionalBlockProcessors[i].PostProcess(block, receipts, options);
-                }
             }
         }
     }

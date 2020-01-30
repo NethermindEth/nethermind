@@ -16,16 +16,16 @@
 
 using System.Reflection;
 using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Network;
+using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency(typeof(LoadChainspec))]
+    [RunnerStepDependency()]
     public class InitRlp : IStep
     {
         private readonly EthereumRunnerContext _context;
@@ -36,16 +36,11 @@ namespace Nethermind.Runner.Ethereum.Steps
         }
 
         [Todo(Improve.Refactor, "Automatically scan all the references solutions?")]
-        public Task Execute()
+        public virtual ValueTask Execute()
         {
             Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(ParityTraceDecoder)));
             Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(NetworkNodeDecoder)));
-            if (_context.ChainSpec.SealEngineType == SealEngineType.AuRa)
-            {
-                Rlp.Decoders[typeof(BlockInfo)] = new BlockInfoDecoder(true);
-            }
-            
-            return Task.CompletedTask;
+            return default;
         }
     }
 }

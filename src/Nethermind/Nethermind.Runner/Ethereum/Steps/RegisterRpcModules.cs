@@ -16,7 +16,6 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.Clique;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
@@ -30,11 +29,12 @@ using Nethermind.JsonRpc.Modules.Personal;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.TxPool;
+using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Subsystems;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency(typeof(InitializeNetwork))]
+    [RunnerStepDependency(typeof(InitializeNetwork), typeof(SetupKeyStore))]
     public class RegisterRpcModules : IStep, ISubsystemStateAware
     {
         private readonly EthereumRunnerContext _context;
@@ -44,12 +44,12 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public Task Execute()
+        public virtual ValueTask Execute()
         { 
             IJsonRpcConfig jsonRpcConfig = _context.Config<IJsonRpcConfig>();
             if (!jsonRpcConfig.Enabled)
             {
-                return Task.CompletedTask;
+                return default;
             }
 
             // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
@@ -80,12 +80,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             TraceModuleFactory traceModuleFactory = new TraceModuleFactory(_context.DbProvider, _context.TxPool, _context.BlockTree, _context.BlockValidator, _context.EthereumEcdsa, _context.RecoveryStep, _context.RewardCalculatorSource, _context.ReceiptStorage, _context.SpecProvider, rpcConfig, _context.LogManager);
             _context.RpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(8, traceModuleFactory));
 
-            if (_context.SealValidator is CliqueSealValidator)
-            {
-                CliqueModule cliqueModule = new CliqueModule(_context.LogManager, new CliqueBridge(_context.BlockProducer as ICliqueBlockProducer, _context.SnapshotManager, _context.BlockTree));
-                _context.RpcModuleProvider.Register(new SingletonModulePool<ICliqueModule>(cliqueModule, true));
-            }
-
             if (initConfig.EnableUnsecuredDevWallet)
             {
                 PersonalBridge personalBridge = new PersonalBridge(_context.EthereumEcdsa, _context.Wallet);
@@ -106,7 +100,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.RpcModuleProvider.Register(new SingletonModulePool<IParityModule>(parityModule, true));
 
             SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Running));
-            return Task.CompletedTask;
+            return default;
         }
         
         public event EventHandler<SubsystemStateEventArgs> SubsystemStateChanged;

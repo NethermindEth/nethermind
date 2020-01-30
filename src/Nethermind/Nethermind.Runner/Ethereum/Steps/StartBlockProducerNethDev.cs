@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,32 +14,34 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Runner.Hive;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency(typeof(SetupKeyStore))]
-    public class SetupHive : IStep
+    public class StartBlockProducerNethDev : StartBlockProducer
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly NethDevEthereumRunnerContext _context;
 
-        public SetupHive(EthereumRunnerContext context)
+        public StartBlockProducerNethDev(NethDevEthereumRunnerContext context) : base(context)
         {
             _context = context;
         }
 
-        public async ValueTask Execute()
+        protected override void BuildProducer()
         {
-            bool hiveEnabled = Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true";
-            if (hiveEnabled)
-            {
-                HiveRunner hiveRunner = new HiveRunner(_context.BlockTree as BlockTree, _context.Wallet, _context.EthereumJsonSerializer, _context.ConfigProvider, _context.Logger);
-                await hiveRunner.Start();
-            }
+            if (_context.Logger.IsWarn) _context.Logger.Warn("Starting Neth Dev block producer & sealer");
+            BlockProducerContext producerChain = GetProducerChain();
+            _context.BlockProducer = new DevBlockProducer(
+                producerChain.PendingTxSelector,
+                producerChain.ChainProcessor,
+                producerChain.ReadOnlyStateProvider,
+                _context.BlockTree,
+                _context.BlockProcessingQueue,
+                _context.TxPool,
+                _context.Timestamper,
+                _context.LogManager);
         }
     }
 }

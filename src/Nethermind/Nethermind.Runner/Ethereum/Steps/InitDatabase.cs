@@ -20,11 +20,12 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
 using Nethermind.Db.Config;
+using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Store;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency(typeof(LoadChainspec))]
+    [RunnerStepDependency()]
     public class InitDatabase : IStep
     {
         private readonly EthereumRunnerContext _context;
@@ -34,7 +35,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public Task Execute()
+        public ValueTask Execute()
         {
             /* sync */
             IDbConfig dbConfig = _context.Config<IDbConfig>();
@@ -64,7 +65,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             // IDbProvider debugReader = new ReadOnlyDbProvider(new RocksDbProvider(Path.Combine(_context._initConfig.BaseDbPath, "debug"), dbConfig, _context._logManager, _context._initConfig.StoreTraces, _context._initConfig.StoreReceipts), false);
             // _context._dbProvider = debugReader;
-            return Task.CompletedTask;
+            return default;
         }
     }
 }

@@ -14,13 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.AuRa.Validators;
-using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Blockchain;
+using Nethermind.Core;
 
 namespace Nethermind.AuRa
 {
-    public interface IAuRaAdditionalBlockProcessorFactory
+    public interface IAuRaBlockProcessor
     {
-        IAuRaValidatorProcessor CreateValidatorProcessor(AuRaParameters.Validator validator, long? startBlock = null);
+        void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None);
+        void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None);
+        void SetFinalizationManager(IBlockFinalizationManager finalizationManager, in bool forSealing = false);
     }
 }

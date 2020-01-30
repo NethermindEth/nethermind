@@ -18,10 +18,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Abi;
-using Nethermind.AuRa;
-using Nethermind.AuRa.Rewards;
-using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -29,23 +25,21 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
-using Nethermind.Clique;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Crypto;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Evm;
 using Nethermind.Mining;
-using Nethermind.Mining.Difficulty;
 using Nethermind.PubSub;
+using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Stats;
 using Nethermind.Store;
 using Nethermind.Store.Repositories;
-using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency(typeof(InitRlp), typeof(LoadChainspec), typeof(InitDatabase))]
+    [RunnerStepDependency(typeof(InitRlp), typeof(InitDatabase), typeof(SetupKeyStore))]
     public class InitializeBlockchain : IStep
     {
         private readonly EthereumRunnerContext _context;
@@ -55,13 +49,13 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public async Task Execute()
+        public async ValueTask Execute()
         {
             await InitBlockchain();
         }
         
          [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
-        private Task InitBlockchain()
+        private ValueTask InitBlockchain()
         {
             Account.AccountStartNonce = _context.ChainSpec.Parameters.AccountStartNonce;
 
@@ -102,8 +96,6 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             _context.RecoveryStep = new TxSignaturesRecoveryStep(_context.EthereumEcdsa, _context.TxPool, _context.LogManager);
 
-            _context.SnapshotManager = null;
-
             _context.StorageProvider = new StorageProvider(
                 _context.DbProvider.StateDb,
                 _context.StateProvider,
@@ -127,7 +119,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 virtualMachine,
                 _context.LogManager);
 
-            _context.AdditionalBlockProcessors = InitSealEngine();
+            InitSealEngine();
 
             /* validation */
             _context.HeaderValidator = new HeaderValidator(
@@ -152,19 +144,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             _context.TxPoolInfoProvider = new TxPoolInfoProvider(_context.StateProvider, _context.TxPool);
 
-            _context.BlockProcessor = new BlockProcessor(
-                _context.SpecProvider,
-                _context.BlockValidator,
-                _context.RewardCalculatorSource.Get(_context.TransactionProcessor),
-                _context.TransactionProcessor,
-                _context.DbProvider.StateDb,
-                _context.DbProvider.CodeDb,
-                _context.StateProvider,
-                _context.StorageProvider,
-                _context.TxPool,
-                _context.ReceiptStorage,
-                _context.LogManager,
-                _context.AdditionalBlockProcessors);
+            _context.BlockProcessor = CreateBlockProcessor();
 
             BlockchainProcessor processor = new BlockchainProcessor(
                 _context.BlockTree,
@@ -193,74 +173,28 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             _context.DisposeStack.Push(subscription);
 
-            return Task.CompletedTask;
+            return default;
         }
-        
-        private IAdditionalBlockProcessor[] InitSealEngine()
+
+        protected virtual BlockProcessor CreateBlockProcessor() =>
+            new BlockProcessor(
+                _context.SpecProvider,
+                _context.BlockValidator,
+                _context.RewardCalculatorSource.Get(_context.TransactionProcessor),
+                _context.TransactionProcessor,
+                _context.DbProvider.StateDb,
+                _context.DbProvider.CodeDb,
+                _context.StateProvider,
+                _context.StorageProvider,
+                _context.TxPool,
+                _context.ReceiptStorage,
+                _context.LogManager);
+
+        protected virtual void InitSealEngine()
         {
-            IList<IAdditionalBlockProcessor> blockProcessors = new List<IAdditionalBlockProcessor>();
-            switch (_context.ChainSpec.SealEngineType)
-            {
-                case SealEngineType.None:
-                    _context.Sealer = NullSealEngine.Instance;
-                    _context.SealValidator = NullSealEngine.Instance;
-                    _context.RewardCalculatorSource = NoBlockRewards.Source;
-                    break;
-                case SealEngineType.Clique:
-                    _context.RewardCalculatorSource = NoBlockRewards.Source;
-                    CliqueConfig cliqueConfig = new CliqueConfig();
-                    cliqueConfig.BlockPeriod = _context.ChainSpec.Clique.Period;
-                    cliqueConfig.Epoch = _context.ChainSpec.Clique.Epoch;
-                    _context.SnapshotManager = new SnapshotManager(cliqueConfig, _context.DbProvider.BlocksDb, _context.BlockTree, _context.EthereumEcdsa, _context.LogManager);
-                    _context.SealValidator = new CliqueSealValidator(cliqueConfig, _context.SnapshotManager, _context.LogManager);
-                    _context.RecoveryStep = new CompositeDataRecoveryStep(_context.RecoveryStep, new AuthorRecoveryStep(_context.SnapshotManager));
-                    if (_context.Config<IInitConfig>().IsMining)
-                    {
-                        _context.Sealer = new CliqueSealer(new BasicWallet(_context.NodeKey), cliqueConfig, _context.SnapshotManager, _context.NodeKey.Address, _context.LogManager);
-                    }
-                    else
-                    {
-                        _context.Sealer = NullSealEngine.Instance;
-                    }
-
-                    break;
-                case SealEngineType.NethDev:
-                    _context.Sealer = NullSealEngine.Instance;
-                    _context.SealValidator = NullSealEngine.Instance;
-                    _context.RewardCalculatorSource = NoBlockRewards.Source;
-                    break;
-                case SealEngineType.Ethash:
-                    _context.RewardCalculatorSource = RewardCalculator.GetSource(_context.SpecProvider);
-                    DifficultyCalculator difficultyCalculator = new DifficultyCalculator(_context.SpecProvider);
-                    if (_context.Config<IInitConfig>().IsMining)
-                    {
-                        _context.Sealer = new EthashSealer(new Ethash(_context.LogManager), _context.LogManager);
-                    }
-                    else
-                    {
-                        _context.Sealer = NullSealEngine.Instance;
-                    }
-
-                    _context.SealValidator = new EthashSealValidator(_context.LogManager, difficultyCalculator, _context.CryptoRandom, new Ethash(_context.LogManager));
-                    break;
-                case SealEngineType.AuRa:
-                    AbiEncoder abiEncoder = new AbiEncoder();
-                    _context.ValidatorStore = new ValidatorStore(_context.DbProvider.BlockInfosDb);
-                    IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource = new ReadOnlyReadOnlyTransactionProcessorSource(_context.DbProvider, _context.BlockTree, _context.SpecProvider, _context.LogManager);
-                    IAuRaValidatorProcessor validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_context.StateProvider, abiEncoder, _context.TransactionProcessor, readOnlyTransactionProcessorSource, _context.BlockTree, _context.ReceiptStorage, _context.ValidatorStore, _context.LogManager)
-                        .CreateValidatorProcessor(_context.ChainSpec.AuRa.Validators);
-                    
-                    AuRaStepCalculator auRaStepCalculator = new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper);    
-                    _context.SealValidator = new AuRaSealValidator(_context.ChainSpec.AuRa, auRaStepCalculator, _context.ValidatorStore, _context.EthereumEcdsa, _context.LogManager);
-                    _context.RewardCalculatorSource = AuRaRewardCalculator.GetSource(_context.ChainSpec.AuRa, abiEncoder);
-                    _context.Sealer = new AuRaSealer(_context.BlockTree, _context.ValidatorStore, auRaStepCalculator, _context.NodeKey.Address, new BasicWallet(_context.NodeKey), new ValidSealerStrategy(), _context.LogManager);
-                    blockProcessors.Add(validatorProcessor);
-                    break;
-                default:
-                    throw new NotSupportedException($"Seal engine type {_context.ChainSpec.SealEngineType} is not supported in Nethermind");
-            }
-
-            return blockProcessors.ToArray();
+            _context.Sealer = NullSealEngine.Instance;
+            _context.SealValidator = NullSealEngine.Instance;
+            _context.RewardCalculatorSource = NoBlockRewards.Source;
         }       
     }
 }

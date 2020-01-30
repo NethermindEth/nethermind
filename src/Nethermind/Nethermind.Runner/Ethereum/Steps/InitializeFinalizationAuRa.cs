@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,43 +14,38 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Network.Config;
+using Nethermind.AuRa;
+using Nethermind.AuRa.Validators;
+using Nethermind.Blockchain;
+using Nethermind.Core;
 using Nethermind.Runner.Ethereum.Context;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency(typeof(InitRlp), typeof(FilterBootnodes))]
-    public class UpdateDiscoveryConfig : IStep
+    [RunnerStepDependency(typeof(LoadGenesisBlock), typeof(InitializeBlockchain))]
+    public class InitializeFinalizationAuRa : IStep
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly AuRaEthereumRunnerContext _context;
 
-        public UpdateDiscoveryConfig(EthereumRunnerContext context)
+        public InitializeFinalizationAuRa(AuRaEthereumRunnerContext context)
         {
             _context = context;
         }
-
+        
         public ValueTask Execute()
         {
-            Update();
+            _context.FinalizationManager = InitFinalizationManager(_context.AuRaBlockProcessor);
             return default;
         }
         
-        private void Update()
+        private IBlockFinalizationManager InitFinalizationManager(IAuRaBlockProcessor auRaBlockProcessor)
         {
-            IDiscoveryConfig discoveryConfig = _context.Config<IDiscoveryConfig>();
-            if (discoveryConfig.Bootnodes != string.Empty)
-            {
-                if (_context.ChainSpec.Bootnodes.Length != 0)
-                {
-                    discoveryConfig.Bootnodes += "," + string.Join(",", _context.ChainSpec.Bootnodes.Select(bn => bn.ToString()));
-                }
-            }
-            else
-            {
-                discoveryConfig.Bootnodes = string.Join(",", _context.ChainSpec.Bootnodes.Select(bn => bn.ToString()));
-            }
+            AuRaBlockFinalizationManager finalizationManager = new AuRaBlockFinalizationManager(_context.BlockTree, _context.ChainLevelInfoRepository, _context.BlockProcessor, _context.ValidatorStore, new ValidSealerStrategy(), _context.LogManager);
+            auRaBlockProcessor.SetFinalizationManager(finalizationManager);
+            return finalizationManager;
         }
     }
 }

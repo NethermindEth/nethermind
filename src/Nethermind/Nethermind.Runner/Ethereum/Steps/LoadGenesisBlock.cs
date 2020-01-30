@@ -15,16 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
+using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Specs.Forks;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -38,23 +36,27 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public Task Execute()
+        public ValueTask Execute()
         {
-            Load(string.IsNullOrWhiteSpace(_context.Config<IInitConfig>().GenesisHash) ? null : new Keccak(_context.Config<IInitConfig>().GenesisHash));
-            return Task.CompletedTask;
-        }
-
-        private void Load(Keccak expectedGenesisHash)
-        {
+            var initConfig = _context.Config<IInitConfig>();
+            var expectedGenesisHash = string.IsNullOrWhiteSpace(initConfig.GenesisHash) ? null : new Keccak(initConfig.GenesisHash);
+            
             // if we already have a database with blocks then we do not need to load genesis from spec
             if (_context.BlockTree.Genesis != null)
             {
                 ValidateGenesisHash(expectedGenesisHash);
-                return;
+            }
+            else
+            {
+                Load(expectedGenesisHash);    
             }
 
+            return default;
+        }
+
+        protected virtual void Load(Keccak expectedGenesisHash)
+        {
             Block genesis = _context.ChainSpec.Genesis;
-            CreateSystemAccounts();
 
             foreach ((Address address, ChainSpecAllocation allocation) in _context.ChainSpec.Allocations)
             {
@@ -109,18 +111,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
 
             ValidateGenesisHash(expectedGenesisHash);
-        }
-
-        private void CreateSystemAccounts()
-        {
-            bool isAura = _context.ChainSpec.SealEngineType == SealEngineType.AuRa;
-            bool hasConstructorAllocation = _context.ChainSpec.Allocations.Values.Any(a => a.Constructor != null);
-            if (isAura && hasConstructorAllocation)
-            {
-                _context.StateProvider.CreateAccount(Address.Zero, UInt256.Zero);
-                _context.StorageProvider.Commit();
-                _context.StateProvider.Commit(Homestead.Instance);
-            }
         }
 
         /// <summary>

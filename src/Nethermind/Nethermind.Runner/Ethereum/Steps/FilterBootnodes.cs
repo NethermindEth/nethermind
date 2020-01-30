@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,25 +14,27 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Blockchain;
-using Nethermind.Core;
-using Nethermind.Core.Extensions;
-using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Evm;
-using Nethermind.Logging;
+using System.Threading.Tasks;
+using Nethermind.Config;
+using Nethermind.Runner.Ethereum.Context;
 
-namespace Nethermind.AuRa.Validators
+namespace Nethermind.Runner.Ethereum.Steps
 {
-    public sealed class ListValidator : AuRaValidatorProcessorBase
+    [RunnerStepDependency(typeof(SetupKeyStore))]
+    public class FilterBootnodes : IStep
     {
-        public ListValidator(AuRaParameters.Validator validator, IValidSealerStrategy validSealerStrategy, ILogManager logManager) : base(validator, validSealerStrategy, logManager)
+        private readonly EthereumRunnerContext _context;
+
+        public FilterBootnodes(EthereumRunnerContext context)
         {
-            Validators = validator.Addresses?.Length > 0
-                ? validator.Addresses
-                : throw new ArgumentException("Empty validator Addresses.", nameof(validator.Addresses));
+            _context = context;
+        }
+
+        public ValueTask Execute()
+        {
+            _context.ChainSpec.Bootnodes = _context.ChainSpec.Bootnodes?.Where(n => !n.NodeId?.Equals(_context.NodeKey.PublicKey) ?? false).ToArray() ?? new NetworkNode[0];
+            return default;
         }
     }
 }

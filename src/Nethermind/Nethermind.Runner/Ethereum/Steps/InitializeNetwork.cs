@@ -43,11 +43,12 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
+using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Store.BeamSync;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency(typeof(LoadGenesisBlock), typeof(UpdateDiscoveryConfig), typeof(LoadChainspec), typeof(SetupKeyStore))]
+    [RunnerStepDependency(typeof(LoadGenesisBlock), typeof(UpdateDiscoveryConfig), typeof(SetupKeyStore))]
     public class InitializeNetwork : IStep
     {
         private const string DiscoveryNodesDbPath = "discoveryNodes";
@@ -60,7 +61,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public async Task Execute()
+        public async ValueTask Execute()
         {
             await Initialize();
         }
@@ -228,7 +229,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.DiscoveryApp.Initialize(_context.NodeKey.PublicKey);
         }
         
-          private Task StartSync()
+        private Task StartSync()
         {
             if (!_context.Config<ISyncConfig>().SynchronizationEnabled)
             {

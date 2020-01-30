@@ -32,7 +32,7 @@ namespace Nethermind.AuRa.Test.Validators
     public class MultiValidatorTests
     {
         private AuRaParameters.Validator _validator;
-        private IAuRaAdditionalBlockProcessorFactory _factory;
+        private IAuRaValidatorProcessorFactory _factory;
         private ILogManager _logManager;
         private IDictionary<long, IAuRaValidatorProcessor> _innerValidators;
         private Block _block;
@@ -45,7 +45,7 @@ namespace Nethermind.AuRa.Test.Validators
         {
             _validator = GetValidator(AuRaParameters.ValidatorType.List);
             _innerValidators = new SortedList<long, IAuRaValidatorProcessor>();
-            _factory = Substitute.For<IAuRaAdditionalBlockProcessorFactory>();
+            _factory = Substitute.For<IAuRaValidatorProcessorFactory>();
             _logManager = Substitute.For<ILogManager>();
             _finalizationManager = Substitute.For<IBlockFinalizationManager>();
             _blockTree = Substitute.For<IBlockTree>();
@@ -104,7 +104,7 @@ namespace Nethermind.AuRa.Test.Validators
         public void creates_inner_validators()
         {
             _validator = GetValidator(AuRaParameters.ValidatorType.Contract);
-            IAuRaValidator validator = new MultiValidator(_validator, _factory, _blockTree, _validatorStore, _logManager);
+            var validator = new MultiValidator(_validator, _factory, _blockTree, _validatorStore, _logManager);
             validator.SetFinalizationManager(_finalizationManager);
 
             foreach (var blockNumber in _validator.Validators.Keys.Skip(1))

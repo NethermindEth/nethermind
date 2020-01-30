@@ -25,6 +25,7 @@ using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Runner.Ethereum;
+using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Store;
 using Nethermind.Wallet;
 using NSubstitute;
