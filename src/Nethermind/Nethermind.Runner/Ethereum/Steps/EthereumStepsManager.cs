@@ -55,7 +55,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                         return null;
                     }
                     
-                    var stepTypeForContext = typesInGroup.FirstOrDefault(t => HasConstructorWithParameter(t, contextType));
+                    var stepTypeForContext = typesInGroup.FirstOrDefault(t => HasConstructorWithParameter(t, contextType) && !t.IsAbstract);
                     return stepTypeForContext != null 
                         ? stepTypeForContext 
                         : GetStepTypeRecursive(contextType.BaseType);
