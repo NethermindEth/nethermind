@@ -25,20 +25,20 @@ using Nethermind.Logging;
 
 namespace Nethermind.AuRa.Validators
 {
-    public class MultiValidator : IAuRaValidatorProcessor
+    public class MultiValidator : IAuRaValidatorProcessorExtension
     {
-        private readonly IAuRaAdditionalBlockProcessorFactory _validatorFactory;
+        private readonly IAuRaValidatorProcessorFactory _validatorFactory;
         private readonly IBlockTree _blockTree;
         private readonly IValidatorStore _validatorStore;
         private IBlockFinalizationManager _blockFinalizationManager;
         private readonly IDictionary<long, AuRaParameters.Validator> _validators;
         private readonly ILogger _logger;
-        private IAuRaValidatorProcessor _currentValidator;
+        private IAuRaValidatorProcessorExtension _currentValidator;
         private AuRaParameters.Validator _currentValidatorPrototype;
         private bool _validatorUsedForSealing;
         private long _lastProcessedBlock = 0;
         
-        public MultiValidator(AuRaParameters.Validator validator, IAuRaAdditionalBlockProcessorFactory validatorFactory, IBlockTree blockTree, IValidatorStore validatorStore, ILogManager logManager)
+        public MultiValidator(AuRaParameters.Validator validator, IAuRaValidatorProcessorFactory validatorFactory, IBlockTree blockTree, IValidatorStore validatorStore, ILogManager logManager)
         {
             if (validator == null) throw new ArgumentNullException(nameof(validator));
             if (validator.ValidatorType != AuRaParameters.ValidatorType.Multi) throw new ArgumentException("Wrong validator type.", nameof(validator));
@@ -158,7 +158,7 @@ namespace Nethermind.AuRa.Validators
             _lastProcessedBlock = block.Number;
         }
 
-        void IAuRaValidator.SetFinalizationManager(IBlockFinalizationManager finalizationManager, bool forProducing)
+        public void SetFinalizationManager(IBlockFinalizationManager finalizationManager, in bool forSealing = false)
         {
             if (_blockFinalizationManager != null)
             {
@@ -166,7 +166,7 @@ namespace Nethermind.AuRa.Validators
             }
 
             _blockFinalizationManager = finalizationManager;
-            _validatorUsedForSealing = forProducing;
+            _validatorUsedForSealing = forSealing;
             
             if (_blockFinalizationManager != null)
             {
@@ -174,7 +174,7 @@ namespace Nethermind.AuRa.Validators
                 InitCurrentValidator(_blockFinalizationManager.LastFinalizedBlockLevel);
             }
 
-            _currentValidator?.SetFinalizationManager(finalizationManager, forProducing);
+            _currentValidator?.SetFinalizationManager(finalizationManager, forSealing);
         }
 
         private void SetCurrentValidator(KeyValuePair<long, AuRaParameters.Validator> validatorInfo)
@@ -198,7 +198,7 @@ namespace Nethermind.AuRa.Validators
             }
         }
 
-        private IAuRaValidatorProcessor CreateValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype)
+        private IAuRaValidatorProcessorExtension CreateValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype)
         {
             return _validatorFactory.CreateValidatorProcessor(validatorPrototype, finalizedAtBlockNumber + 1);
         }

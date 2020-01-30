@@ -14,25 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Evm;
-using Nethermind.Logging;
 
 namespace Nethermind.AuRa.Validators
 {
-    public sealed class ListValidator : AuRaValidatorProcessorBase
+    public interface IAuRaValidatorProcessorExtension : IAuRaValidator, IAuRaBlockProcessorExtension
     {
-        public ListValidator(AuRaParameters.Validator validator, IValidSealerStrategy validSealerStrategy, ILogManager logManager) : base(validator, validSealerStrategy, logManager)
-        {
-            Validators = validator.Addresses?.Length > 0
-                ? validator.Addresses
-                : throw new ArgumentException("Empty validator Addresses.", nameof(validator.Addresses));
-        }
     }
 }

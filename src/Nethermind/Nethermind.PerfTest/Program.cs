@@ -215,8 +215,7 @@ namespace Nethermind.PerfTest
         private static readonly string FullPendingTxsDbPath = Path.Combine(DbBasePath, "pendingtxs");
         private static readonly string FullBlocksDbPath = Path.Combine(DbBasePath, "blocks");
         private static readonly string FullBlockInfosDbPath = Path.Combine(DbBasePath, "blockInfos");
-        private static ValidatorStore _validatorStore;
-
+        
         private const int BlocksToLoad = 100_000;
 
         private static async Task RunBenchmarkBlocks()
@@ -275,7 +274,6 @@ namespace Nethermind.PerfTest
             IBlockDataRecoveryStep recoveryStep = new TxSignaturesRecoveryStep(ethereumSigner, transactionPool, _logManager);
            
             /* blockchain processing */
-            IList<IAdditionalBlockProcessor> blockProcessors = new List<IAdditionalBlockProcessor>();
             var blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, _logManager);
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, _logManager);
@@ -293,17 +291,6 @@ namespace Nethermind.PerfTest
                 rewardCalculator = NoBlockRewards.Instance;
                 recoveryStep = new CompositeDataRecoveryStep(recoveryStep, new AuthorRecoveryStep(snapshotManager));
             }
-            else if (chainSpec.SealEngineType == SealEngineType.AuRa)
-            {
-                var abiEncoder = new AbiEncoder();
-                _validatorStore = new ValidatorStore(dbProvider.StateDb);
-                var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(stateProvider, abiEncoder, processor, new ReadOnlyReadOnlyTransactionProcessorSource(dbProvider, blockTree, specProvider, _logManager), blockTree, receiptStorage, _validatorStore, _logManager)
-                    .CreateValidatorProcessor(chainSpec.AuRa.Validators);
-                    
-                sealValidator = new AuRaSealValidator(chainSpec.AuRa, new AuRaStepCalculator(chainSpec.AuRa.StepDuration, new Timestamper()), _validatorStore, ethereumSigner, _logManager);
-                rewardCalculator = new AuRaRewardCalculator(chainSpec.AuRa, abiEncoder, processor);
-                blockProcessors.Add(validatorProcessor);
-            }
             else
             {
                 throw new NotSupportedException();
@@ -316,21 +303,9 @@ namespace Nethermind.PerfTest
             var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, _logManager);
             
             /* blockchain processing */
-            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, stateProvider, storageProvider, transactionPool, receiptStorage, _logManager, blockProcessors);
+            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, stateProvider, storageProvider, transactionPool, receiptStorage, _logManager);
             var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, recoveryStep, _logManager, true);
-            
-            if (chainSpec.SealEngineType == SealEngineType.AuRa)
-            {
-                stateProvider.CreateAccount(Address.Zero, UInt256.Zero);
-                storageProvider.Commit();
-                stateProvider.Commit(Homestead.Instance);
-                var finalizationManager = new AuRaBlockFinalizationManager(blockTree,blockInfoRepository, blockProcessor, _validatorStore, new ValidSealerStrategy(), _logManager);
-                foreach (IAuRaValidator auRaValidator in blockProcessors.OfType<IAuRaValidator>())
-                {
-                    auRaValidator.SetFinalizationManager(finalizationManager);
-                }
-            }
-            
+
             foreach ((Address address, ChainSpecAllocation allocation) in chainSpec.Allocations)
             {
                 stateProvider.CreateAccount(address, allocation.Balance);

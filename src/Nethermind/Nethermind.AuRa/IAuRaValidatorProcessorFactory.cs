@@ -14,12 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading.Tasks;
+using Nethermind.AuRa.Validators;
+using Nethermind.Specs.ChainSpecStyle;
 
-namespace Nethermind.Runner.Ethereum.Steps
+namespace Nethermind.AuRa
 {
-    public interface IStep
+    public interface IAuRaValidatorProcessorFactory
     {
-        ValueTask Execute();
+        IAuRaValidatorProcessorExtension CreateValidatorProcessor(AuRaParameters.Validator validator, long? startBlock = null);
     }
 }

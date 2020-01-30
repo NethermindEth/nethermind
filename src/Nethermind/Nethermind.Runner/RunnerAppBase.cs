@@ -45,6 +45,7 @@ using Nethermind.Logging;
 using Nethermind.Logging.NLog;
 using Nethermind.Monitoring.Config;
 using Nethermind.Runner.Ethereum;
+using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
 using Newtonsoft.Json;

@@ -37,11 +37,11 @@ namespace Nethermind.AuRa.Test.Validators
     {
         private ValidSealerStrategy _validSealerStrategy;
 
-        private ListValidator GetListValidator(params Address[] address)
+        private ListBasedValidator GetListValidator(params Address[] address)
         {
             var logManager = Substitute.For<ILogManager>();
             _validSealerStrategy = new ValidSealerStrategy();
-            var validator = new ListValidator(
+            var validator = new ListBasedValidator(
                 new AuRaParameters.Validator()
                 {
                     ValidatorType = AuRaParameters.ValidatorType.List,
@@ -93,7 +93,7 @@ namespace Nethermind.AuRa.Test.Validators
         public void throws_ArgumentNullException_on_empty_validator()
         {
             var logManager = Substitute.For<ILogManager>();
-            Action act = () => new ListValidator(null, new ValidSealerStrategy(), logManager); 
+            Action act = () => new ListBasedValidator(null, new ValidSealerStrategy(), logManager); 
             act.Should().Throw<ArgumentNullException>();
         }
         

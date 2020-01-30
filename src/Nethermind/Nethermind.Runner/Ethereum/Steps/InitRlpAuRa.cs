@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,13 +14,21 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.AuRa.Validators;
-using Nethermind.Specs.ChainSpecStyle;
+using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.AuRa
+namespace Nethermind.Runner.Ethereum.Steps
 {
-    public interface IAuRaAdditionalBlockProcessorFactory
+    public class InitRlpAuRa : InitRlp
     {
-        IAuRaValidatorProcessor CreateValidatorProcessor(AuRaParameters.Validator validator, long? startBlock = null);
+        public InitRlpAuRa(AuRaEthereumRunnerContext context) : base(context) { }
+
+        public override ValueTask Execute()
+        {
+            Rlp.Decoders[typeof(BlockInfo)] = new BlockInfoDecoder(true);
+            return base.Execute();
+        }
     }
 }

@@ -33,16 +33,16 @@ namespace Nethermind.AuRa.Test
 {
     public class AuRaAdditionalBlockProcessorFactoryTests
     {
-        [TestCase(AuRaParameters.ValidatorType.List, typeof(ListValidator))]
-        [TestCase(AuRaParameters.ValidatorType.Contract, typeof(ContractValidator))]
-        [TestCase(AuRaParameters.ValidatorType.ReportingContract, typeof(ReportingContractValidator))]
+        [TestCase(AuRaParameters.ValidatorType.List, typeof(ListBasedValidator))]
+        [TestCase(AuRaParameters.ValidatorType.Contract, typeof(ContractBasedValidator))]
+        [TestCase(AuRaParameters.ValidatorType.ReportingContract, typeof(ReportingContractBasedValidator))]
         [TestCase(AuRaParameters.ValidatorType.Multi, typeof(MultiValidator))]
         public void returns_correct_validator_type(AuRaParameters.ValidatorType validatorType, Type expectedType)
         {
             var stateDb = Substitute.For<IDb>();
             stateDb[Arg.Any<byte[]>()].Returns((byte[]) null);
             
-            var factory = new AuRaAdditionalBlockProcessorFactory(Substitute.For<IStateProvider>(),
+            var factory = new AuRaValidatorProcessorFactory(Substitute.For<IStateProvider>(),
                 Substitute.For<IAbiEncoder>(), 
                 Substitute.For<ITransactionProcessor>(),
                 Substitute.For<IReadOnlyTransactionProcessorSource>(),

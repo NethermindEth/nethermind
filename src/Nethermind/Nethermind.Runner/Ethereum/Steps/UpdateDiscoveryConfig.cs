@@ -17,10 +17,11 @@
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Network.Config;
+using Nethermind.Runner.Ethereum.Context;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency(typeof(InitRlp), typeof(LoadChainspec))]
+    [RunnerStepDependency(typeof(InitRlp), typeof(FilterBootnodes))]
     public class UpdateDiscoveryConfig : IStep
     {
         private readonly EthereumRunnerContext _context;
@@ -30,10 +31,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public Task Execute()
+        public ValueTask Execute()
         {
             Update();
-            return Task.CompletedTask;
+            return default;
         }
         
         private void Update()

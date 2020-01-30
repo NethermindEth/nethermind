@@ -19,10 +19,12 @@ using System.Threading.Tasks;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
 using Nethermind.Network;
+using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
+    [RunnerStepDependency()]
     public class SetupKeyStore : IStep
     {
         private readonly EthereumRunnerContext _context;
@@ -32,7 +34,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public Task Execute()
+        public ValueTask Execute()
         {
             IKeyStoreConfig keyStoreConfig = _context.Config<IKeyStoreConfig>();
             
@@ -59,8 +61,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             INodeKeyManager nodeKeyManager = new NodeKeyManager(_context.CryptoRandom, _context.KeyStore, keyStoreConfig, _context.LogManager);
             _context.NodeKey = nodeKeyManager.LoadNodeKey();
             _context.Enode = new Enode(_context.NodeKey.PublicKey, IPAddress.Parse(_context.NetworkConfig.ExternalIp), _context.NetworkConfig.P2PPort);
-
-            return Task.CompletedTask;
+            
+            return default;
         }
     }
 }

@@ -38,7 +38,7 @@ using Nethermind.Store;
 
 namespace Nethermind.AuRa.Validators
 {
-    public class ContractValidator : AuRaValidatorProcessorBase
+    public class ContractBasedValidator : AuRaValidatorProcessorExtension
     {
         private readonly ILogger _logger;
         private readonly IStateProvider _stateProvider;
@@ -62,7 +62,7 @@ namespace Nethermind.AuRa.Validators
 
         private PendingValidators CurrentPendingValidators => _currentPendingValidators;
 
-        public ContractValidator(
+        public ContractBasedValidator(
             AuRaParameters.Validator validator,
             IStateProvider stateProvider,
             IAbiEncoder abiEncoder,
@@ -88,9 +88,9 @@ namespace Nethermind.AuRa.Validators
             SetPendingValidators(LoadPendingValidators());
         }
 
-        protected override void SetFinalizationManagerInternal(IBlockFinalizationManager finalizationManager, in bool forSealing)
+        public override void SetFinalizationManager(IBlockFinalizationManager finalizationManager, in bool forSealing)
         {
-            base.SetFinalizationManagerInternal(finalizationManager, in forSealing);
+            base.SetFinalizationManager(finalizationManager, in forSealing);
             
             if (_blockFinalizationManager != null)
             {

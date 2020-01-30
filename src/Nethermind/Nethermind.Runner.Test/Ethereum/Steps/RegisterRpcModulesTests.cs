@@ -19,6 +19,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Runner.Ethereum;
+using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Steps;
 using NSubstitute;
 using NUnit.Framework;

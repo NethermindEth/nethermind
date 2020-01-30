@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,13 +14,27 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core;
+using System.Linq;
+using System.Threading.Tasks;
+using Nethermind.Config;
+using Nethermind.Runner.Ethereum.Context;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Runner.Ethereum.Steps
 {
-    public interface IAdditionalBlockProcessor
+    [RunnerStepDependency(typeof(SetupKeyStore))]
+    public class FilterBootnodes : IStep
     {
-        void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None);
-        void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None);
+        private readonly EthereumRunnerContext _context;
+
+        public FilterBootnodes(EthereumRunnerContext context)
+        {
+            _context = context;
+        }
+
+        public ValueTask Execute()
+        {
+            _context.ChainSpec.Bootnodes = _context.ChainSpec.Bootnodes?.Where(n => !n.NodeId?.Equals(_context.NodeKey.PublicKey) ?? false).ToArray() ?? new NetworkNode[0];
+            return default;
+        }
     }
 }

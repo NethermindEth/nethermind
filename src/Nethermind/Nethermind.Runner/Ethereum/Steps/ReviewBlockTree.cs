@@ -17,10 +17,11 @@
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Runner.Ethereum.Context;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency(typeof(StartBlockProducer))]
+    [RunnerStepDependency(typeof(InitializeBlockchain))]
     public class ReviewBlockTree : IStep
     {
         private readonly EthereumRunnerContext _context;
@@ -30,7 +31,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public async Task Execute()
+        public async ValueTask Execute()
         {
             if (_context.Config<IInitConfig>().ProcessingEnabled)
             {

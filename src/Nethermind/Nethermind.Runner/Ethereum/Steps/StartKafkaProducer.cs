@@ -20,6 +20,7 @@ using Nethermind.Blockchain;
 using Nethermind.PubSub;
 using Nethermind.PubSub.Kafka;
 using Nethermind.PubSub.Kafka.Avro;
+using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Subsystems;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -39,15 +40,13 @@ namespace Nethermind.Runner.Ethereum.Steps
             SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(newState));
         }
 
-        public async Task Execute()
+        public async ValueTask Execute()
         {
-            if (!_context.Config<IKafkaConfig>().Enabled)
+            if (_context.Config<IKafkaConfig>().Enabled)
             {
-                return;
+                IProducer kafkaProducer = await PrepareKafkaProducer(_context.BlockTree, _context.Config<IKafkaConfig>());
+                _context.Producers.Add(kafkaProducer);
             }
-
-            IProducer kafkaProducer = await PrepareKafkaProducer(_context.BlockTree, _context.Config<IKafkaConfig>());
-            _context.Producers.Add(kafkaProducer);
         }
 
         private async Task<IProducer> PrepareKafkaProducer(IBlockTree blockTree, IKafkaConfig kafkaConfig)

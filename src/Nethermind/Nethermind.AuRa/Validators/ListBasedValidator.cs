@@ -14,31 +14,25 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Abi;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Evm;
 using Nethermind.Logging;
-using Nethermind.Store;
 
 namespace Nethermind.AuRa.Validators
 {
-    public class ReportingContractValidator : ContractValidator
+    public sealed class ListBasedValidator : AuRaValidatorProcessorExtension
     {
-        public ReportingContractValidator(AuRaParameters.Validator validator,
-            IStateProvider stateProvider,
-            IAbiEncoder abiEncoder,
-            ITransactionProcessor transactionProcessor,
-            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource,
-            IBlockTree blockTree,
-            IReceiptStorage receiptStorage,
-            IValidatorStore validatorStore,
-            IValidSealerStrategy validSealerStrategy,
-            ILogManager logManager,
-            long startBlockNumber) 
-            : base(validator, stateProvider, abiEncoder, transactionProcessor, readOnlyTransactionProcessorSource, blockTree, receiptStorage, validatorStore, validSealerStrategy, logManager, startBlockNumber)
+        public ListBasedValidator(AuRaParameters.Validator validator, IValidSealerStrategy validSealerStrategy, ILogManager logManager) : base(validator, validSealerStrategy, logManager)
         {
+            Validators = validator.Addresses?.Length > 0
+                ? validator.Addresses
+                : throw new ArgumentException("Empty validator Addresses.", nameof(validator.Addresses));
         }
     }
 }

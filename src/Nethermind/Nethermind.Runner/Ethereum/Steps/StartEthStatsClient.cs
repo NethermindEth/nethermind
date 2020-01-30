@@ -24,11 +24,12 @@ using Nethermind.EthStats;
 using Nethermind.EthStats.Clients;
 using Nethermind.EthStats.Integrations;
 using Nethermind.EthStats.Senders;
+using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Subsystems;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency(typeof(LoadChainspec), typeof(InitializeBlockchain), typeof(InitializeNetwork))]
+    [RunnerStepDependency(typeof(InitializeBlockchain), typeof(InitializeNetwork))]
     public class StartEthStatsClient : IStep, ISubsystemStateAware
     {
         private readonly EthereumRunnerContext _context;
@@ -44,7 +45,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(newState));
         }
 
-        public async Task Execute()
+        public async ValueTask Execute()
         {
             IEthStatsConfig ethStatsConfig = _context.Config<IEthStatsConfig>();
             if (!ethStatsConfig.Enabled)

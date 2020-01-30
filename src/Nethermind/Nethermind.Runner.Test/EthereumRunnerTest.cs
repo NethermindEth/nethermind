@@ -15,6 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Config;
@@ -37,6 +41,7 @@ using Nethermind.Stats;
 using Nethermind.WebSockets;
 using NSubstitute;
 using NUnit.Framework;
+using Org.BouncyCastle.Utilities.Collections;
 
 namespace Nethermind.Runner.Test
 {
@@ -44,11 +49,18 @@ namespace Nethermind.Runner.Test
     {
         public class ConfigSource : IConfigSource
         {
+            private readonly string _chainspecPath;
+
+            public ConfigSource(string chainspecPath)
+            {
+                _chainspecPath = chainspecPath;
+            }
+            
             public (bool IsSet, object Value) GetValue(Type type, string category, string name)
             {
                 if (name == "ChainSpecPath")
                 {
-                    return (true, "testspec.json");
+                    return (true, _chainspecPath);
                 }
 
                 if (name == "UseMemDb")
@@ -64,9 +76,28 @@ namespace Nethermind.Runner.Test
                 return (false, null);
             }
         }
+
+        public static IEnumerable ChainSpecRunnerTests
+        {
+            get
+            {
+                ISet<string> ignoredSpecs = new HashSet<string>()
+                {
+                    "genesis.json",
+                    "ndm.json",
+                    "hive.json"
+                };
+                yield return new TestCaseData("testspec.json");
+                foreach (var config in Directory.GetFiles("chainspec").Where(c => !ignoredSpecs.Contains(Path.GetFileName(c))))
+                {
+                    yield return new TestCaseData(config);
+                }
+            }
+        }
         
-        [Test]
-        public async Task Smoke()
+        [TestCaseSource(nameof(ChainSpecRunnerTests))]
+        [Timeout(2000000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
+        public async Task Smoke(string chainSpecPath)
         {
             Type type1 = typeof(ITxPoolConfig);
             Type type2 = typeof(INetworkConfig);
@@ -77,7 +108,7 @@ namespace Nethermind.Runner.Test
             Type type7 = typeof(IEthStatsConfig);
 
             var configProvider = new ConfigProvider();
-            configProvider.AddSource(new ConfigSource());
+            configProvider.AddSource(new ConfigSource(chainSpecPath));
             
             Console.WriteLine(type1.Name);
             Console.WriteLine(type2.Name);

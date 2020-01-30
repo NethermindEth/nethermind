@@ -22,6 +22,5 @@ namespace Nethermind.AuRa.Validators
     public interface IAuRaValidator
     {
         Address[] Validators { get; }
-        void SetFinalizationManager(IBlockFinalizationManager finalizationManager, bool forProducing = false);
     }
 }

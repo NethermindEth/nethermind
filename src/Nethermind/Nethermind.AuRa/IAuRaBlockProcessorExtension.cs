@@ -14,12 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using Nethermind.Core;
 
-namespace Nethermind.Runner.Ethereum.Steps
+namespace Nethermind.AuRa
 {
-    public interface IStep
+    public interface IAuRaBlockProcessorExtension
     {
-        ValueTask Execute();
+        void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None);
+        void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None);
+        void SetFinalizationManager(IBlockFinalizationManager finalizationManager, in bool forSealing = false);
     }
 }
