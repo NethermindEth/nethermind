@@ -73,18 +73,18 @@ namespace Nethermind.JsonRpc.Modules.Trace
             if (header.IsGenesis)
             {
                 header = new BlockHeader(
-                    header.Hash, 
-                    Keccak.OfAnEmptySequenceRlp, 
+                    header.Hash,
+                    Keccak.OfAnEmptySequenceRlp,
                     Address.Zero,
                     header.Difficulty,
                     header.Number + 1,
-                    header.GasLimit, 
+                    header.GasLimit,
                     header.Timestamp + 1,
                     header.ExtraData);
 
                 header.TotalDifficulty = 2 * header.Difficulty;
             }
-            
+
             Transaction tx = _txDecoder.Decode(new RlpStream(data));
             Block block = new Block(header, new[] {tx}, Enumerable.Empty<BlockHeader>());
 
@@ -124,7 +124,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Block block = blockSearch.Object;
 
             ParityLikeTxTrace[] txTraces = TraceBlock(block, GetParityTypes(traceTypes));
-            
+
             // ReSharper disable once CoVariantArrayConversion
             return ResultWrapper<ParityTxTraceFromReplay[]>.Success(txTraces.Select(t => new ParityTxTraceFromReplay(t)).ToArray());
         }
@@ -145,33 +145,33 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Block block = blockSearch.Object;
 
             ParityLikeTxTrace[] txTraces = TraceBlock(block, ParityTraceTypes.Trace);
-            return ResultWrapper<ParityTxTraceFromStore[]>.Success(txTraces.Select(t => new ParityTxTraceFromStore(t)).ToArray());
+            return ResultWrapper<ParityTxTraceFromStore[]>.Success(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace).ToArray());
         }
 
-        public ResultWrapper<ParityTxTraceFromStore> trace_get(Keccak txHash, int[] positions)
+        public ResultWrapper<ParityTxTraceFromStore[]> trace_get(Keccak txHash, int[] positions)
         {
             throw new NotImplementedException();
         }
 
-        public ResultWrapper<ParityTxTraceFromStore> trace_transaction(Keccak txHash)
+        public ResultWrapper<ParityTxTraceFromStore[]> trace_transaction(Keccak txHash)
         {
             SearchResult<TxReceipt> receiptSearch = _receiptStorage.SearchForReceipt(txHash);
             if (receiptSearch.IsError)
             {
-                return ResultWrapper<ParityTxTraceFromStore>.Fail(receiptSearch);
+                return ResultWrapper<ParityTxTraceFromStore[]>.Fail(receiptSearch);
             }
 
             TxReceipt receipt = receiptSearch.Object;
             SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(new BlockParameter(receipt.BlockHash));
             if (blockSearch.IsError)
             {
-                return ResultWrapper<ParityTxTraceFromStore>.Fail(blockSearch);
+                return ResultWrapper<ParityTxTraceFromStore[]>.Fail(blockSearch);
             }
 
             Block block = blockSearch.Object;
 
             ParityLikeTxTrace txTrace = TraceTx(block, txHash, ParityTraceTypes.Trace);
-            return ResultWrapper<ParityTxTraceFromStore>.Success(new ParityTxTraceFromStore(txTrace));
+            return ResultWrapper<ParityTxTraceFromStore[]>.Success(ParityTxTraceFromStore.FromTxTrace(txTrace));
         }
 
         private ParityLikeTxTrace[] TraceBlock(Block block, ParityTraceTypes traceTypes)

@@ -180,6 +180,12 @@ namespace Nethermind.Facade
 
         public CallOutput Call(BlockHeader blockHeader, Transaction transaction)
         {
+            CallOutputTracer callOutputTracer = CallAndRestore(blockHeader, transaction);
+            return new CallOutput {Error = callOutputTracer.Error, GasSpent = callOutputTracer.GasSpent, OutputData = callOutputTracer.ReturnValue};
+        }
+
+        private CallOutputTracer CallAndRestore(BlockHeader blockHeader, Transaction transaction)
+        {
             if (transaction.SenderAddress == null)
             {
                 transaction.SenderAddress = Address.SystemUser;
@@ -191,26 +197,18 @@ namespace Nethermind.Facade
             {
                 transaction.Nonce = GetNonce(parentHeader.StateRoot, transaction.SenderAddress);
             }
-            
+
             transaction.Hash = transaction.CalculateHash();
             CallOutputTracer callOutputTracer = new CallOutputTracer();
             _transactionProcessor.CallAndRestore(transaction, blockHeader, callOutputTracer);
             _stateProvider.Reset();
             _storageProvider.Reset();
-            return new CallOutput {Error = callOutputTracer.Error, GasSpent = callOutputTracer.GasSpent, OutputData = callOutputTracer.ReturnValue};
+            return callOutputTracer;
         }
 
-        public long EstimateGas(Block block, Transaction transaction)
+        public long EstimateGas(BlockHeader header, Transaction transaction)
         {
-            _stateProvider.StateRoot = _blockTree.Head.StateRoot;
-            BlockHeader header = new BlockHeader(block.Hash, Keccak.OfAnEmptySequenceRlp, block.Beneficiary,
-                block.Difficulty, block.Number + 1, block.GasLimit, block.Timestamp + 1, Bytes.Empty);
-            transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
-            transaction.Hash = transaction.CalculateHash();
-            CallOutputTracer callOutputTracer = new CallOutputTracer();
-            _transactionProcessor.CallAndRestore(transaction, header, callOutputTracer);
-            _stateProvider.Reset();
-            _storageProvider.Reset();
+            CallOutputTracer callOutputTracer = CallAndRestore(header, transaction);
             return callOutputTracer.GasSpent;
         }
 

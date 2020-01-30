@@ -45,7 +45,7 @@ namespace Nethermind.Facade
         TxReceipt GetReceipt(Keccak txHash);
         TxReceipt[] GetReceipts(Block block);
         BlockchainBridge.CallOutput Call(BlockHeader blockHeader, Transaction transaction);
-        long EstimateGas(Block block, Transaction transaction);
+        long EstimateGas(BlockHeader header, Transaction transaction);
         long GetChainId();
         byte[] GetCode(Address address);
         byte[] GetCode(Keccak codeHash);

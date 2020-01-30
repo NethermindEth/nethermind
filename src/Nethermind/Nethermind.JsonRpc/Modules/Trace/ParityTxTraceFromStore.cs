@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing.ParityStyle;
 
@@ -21,28 +22,54 @@ namespace Nethermind.JsonRpc.Modules.Trace
 {
     public class ParityTxTraceFromStore
     {
-        public ParityTxTraceFromStore(ParityLikeTxTrace txTrace)
+        public static ParityTxTraceFromStore[] FromTxTrace(ParityLikeTxTrace txTrace)
         {
-
+            List<ParityTxTraceFromStore> results = new List<ParityTxTraceFromStore>();
+            AddActionsRecursively(results, txTrace, txTrace.Action);
+            return results.ToArray();
         }
-        
+
+        private static void AddActionsRecursively(List<ParityTxTraceFromStore> results, ParityLikeTxTrace txTrace, ParityTraceAction txTraceAction)
+        {
+            ParityTxTraceFromStore result = new ParityTxTraceFromStore();
+            result.Action = txTraceAction;
+            result.Result = txTraceAction.Result;
+            result.Subtraces = txTraceAction.Subtraces.Count;
+            result.Type = txTraceAction.Type;
+            result.BlockHash = txTrace.BlockHash;
+            result.BlockNumber = txTrace.BlockNumber;
+            result.TransactionHash = txTrace.TransactionHash;
+            result.TransactionPosition = txTrace.TransactionPosition ?? -1;
+            result.TraceAddress = txTraceAction.TraceAddress;
+
+            foreach (ParityTraceAction subtrace in txTraceAction.Subtraces)
+            {
+                AddActionsRecursively(results, txTrace, subtrace);
+            }
+
+            results.Add(result);
+        }
+
+        private ParityTxTraceFromStore()
+        {
+        }
+
         public ParityTraceAction Action { get; set; }
-        
+
         public ParityTraceResult Result { get; set; }
-        
+
         public int Subtraces { get; set; }
-        
+
         public int[] TraceAddress { get; set; }
-        
+
         public Keccak BlockHash { get; set; }
-        
+
         public long BlockNumber { get; set; }
-        
+
         public Keccak TransactionHash { get; set; }
-        
+
         public int TransactionPosition { get; set; }
-        
+
         public string Type { get; set; }
-        
     }
 }
