@@ -30,14 +30,16 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public override void WriteJson(JsonWriter writer, ParityTxTraceFromStore value, JsonSerializer serializer)
         {
             writer.WriteStartObject();
-            
             writer.WriteProperty("action", value.Action, serializer);
-
-            if (value.TransactionHash != null)
-            {
-                writer.WriteProperty("transactionHash", value.TransactionHash, serializer);
-            }
-            
+            writer.WriteProperty("blockHash", value.BlockHash, serializer);
+            writer.WriteProperty("blockNumbr", value.BlockNumber, serializer);
+            writer.WriteProperty("result", value.Result, serializer);
+            writer.WriteProperty("subtraces", value.Subtraces, serializer);
+            writer.WriteProperty("subtraces", value.Subtraces, serializer);
+            writer.WriteProperty("traceAddress", value.TraceAddress, serializer);
+            writer.WriteProperty("transactionHash", value.TransactionHash, serializer);
+            writer.WriteProperty("transactionPosition", value.TransactionPosition, serializer);
+            writer.WriteProperty("type", value.Type, serializer);
             writer.WriteEndObject();
         }
 

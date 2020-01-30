@@ -41,13 +41,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
             result.TransactionHash = txTrace.TransactionHash;
             result.TransactionPosition = txTrace.TransactionPosition ?? -1;
             result.TraceAddress = txTraceAction.TraceAddress;
-
+            results.Add(result);
+            
             foreach (ParityTraceAction subtrace in txTraceAction.Subtraces)
             {
                 AddActionsRecursively(results, txTrace, subtrace);
             }
-
-            results.Add(result);
         }
 
         private ParityTxTraceFromStore()

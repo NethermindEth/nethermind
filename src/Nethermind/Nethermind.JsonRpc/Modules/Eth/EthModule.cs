@@ -308,7 +308,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall)
         {
-            BlockHeader headBlock = _blockchainBridge.FindHeadHeader();
+            BlockHeader headBlock = _blockchainBridge.FindLatestHeader();
+            
             if (transactionCall.Gas == null || transactionCall.Gas == 0)
             {
                 transactionCall.Gas = Math.Min(_rpcConfig.GasCap ?? long.MaxValue, headBlock.GasLimit);
