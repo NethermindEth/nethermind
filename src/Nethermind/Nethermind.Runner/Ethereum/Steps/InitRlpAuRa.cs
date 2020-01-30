@@ -25,7 +25,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     {
         public InitRlpAuRa(AuRaEthereumRunnerContext context) : base(context) { }
 
-        public override ValueTask Execute()
+        public override Task Execute()
         {
             Rlp.Decoders[typeof(BlockInfo)] = new BlockInfoDecoder(true);
             return base.Execute();

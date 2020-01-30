@@ -44,12 +44,12 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public virtual ValueTask Execute()
+        public virtual Task Execute()
         { 
             IJsonRpcConfig jsonRpcConfig = _context.Config<IJsonRpcConfig>();
             if (!jsonRpcConfig.Enabled)
             {
-                return default;
+                return Task.CompletedTask;
             }
 
             // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
@@ -100,7 +100,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.RpcModuleProvider.Register(new SingletonModulePool<IParityModule>(parityModule, true));
 
             SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Running));
-            return default;
+            return Task.CompletedTask;
         }
         
         public event EventHandler<SubsystemStateEventArgs> SubsystemStateChanged;

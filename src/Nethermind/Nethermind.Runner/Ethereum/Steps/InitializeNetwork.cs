@@ -61,7 +61,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public async ValueTask Execute()
+        public async Task Execute()
         {
             await Initialize();
         }

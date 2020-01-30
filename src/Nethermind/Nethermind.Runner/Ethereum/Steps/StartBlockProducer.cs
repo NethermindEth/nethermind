@@ -43,7 +43,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public ValueTask Execute()
+        public Task Execute()
         {
             IInitConfig initConfig = _context.Config<IInitConfig>();
             if (initConfig.IsMining)
@@ -55,7 +55,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Running));
             }
 
-            return default;
+            return Task.CompletedTask;
         }
 
         protected virtual void BuildProducer()

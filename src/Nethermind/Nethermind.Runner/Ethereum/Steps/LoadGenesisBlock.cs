@@ -36,7 +36,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public ValueTask Execute()
+        public Task Execute()
         {
             var initConfig = _context.Config<IInitConfig>();
             var expectedGenesisHash = string.IsNullOrWhiteSpace(initConfig.GenesisHash) ? null : new Keccak(initConfig.GenesisHash);
@@ -51,7 +51,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 Load(expectedGenesisHash);    
             }
 
-            return default;
+            return Task.CompletedTask;
         }
 
         protected virtual void Load(Keccak expectedGenesisHash)

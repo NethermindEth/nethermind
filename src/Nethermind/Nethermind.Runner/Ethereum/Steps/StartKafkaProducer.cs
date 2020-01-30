@@ -40,7 +40,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(newState));
         }
 
-        public async ValueTask Execute()
+        public async Task Execute()
         {
             if (_context.Config<IKafkaConfig>().Enabled)
             {

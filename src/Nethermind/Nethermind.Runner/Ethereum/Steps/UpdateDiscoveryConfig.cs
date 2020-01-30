@@ -31,10 +31,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public ValueTask Execute()
+        public Task Execute()
         {
             Update();
-            return default;
+            return Task.CompletedTask;
         }
         
         private void Update()
