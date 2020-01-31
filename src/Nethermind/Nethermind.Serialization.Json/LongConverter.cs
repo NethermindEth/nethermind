@@ -23,6 +23,9 @@ namespace Nethermind.Serialization.Json
 {
     public class LongConverter : JsonConverter<long>
     {
+        public static readonly LongConverter Hex = new LongConverter(NumberConversion.Hex);
+        public static readonly LongConverter Decimal = new LongConverter(NumberConversion.Decimal);
+        
         private readonly NumberConversion _conversion;
 
         public LongConverter()

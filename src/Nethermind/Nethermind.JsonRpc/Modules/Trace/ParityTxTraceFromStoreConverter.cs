@@ -19,21 +19,23 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
     public class ParityTxTraceFromStoreConverter : JsonConverter<ParityTxTraceFromStore>
     {
-        private ParityTraceAddressConverter _traceAddressConverter = new ParityTraceAddressConverter();
-
+        private readonly ParityTraceAddressConverter _traceAddressConverter = new ParityTraceAddressConverter();
+        
         public override void WriteJson(JsonWriter writer, ParityTxTraceFromStore value, JsonSerializer serializer)
         {
             writer.WriteStartObject();
             writer.WriteProperty("action", value.Action, serializer);
             writer.WriteProperty("blockHash", value.BlockHash, serializer);
-            writer.WriteProperty("blockNumber", value.BlockNumber, serializer);
-            writer.WriteProperty("result", value.Result, serializer);
+            writer.WritePropertyName("blockNumber");
+            LongConverter.Decimal.WriteJson(writer, value.BlockNumber, serializer);
+            writer.WriteProperty("result",  value.Result, serializer);
             writer.WriteProperty("subtraces", value.Subtraces, serializer);
             writer.WriteProperty("traceAddress", value.TraceAddress, serializer);
             writer.WriteProperty("transactionHash", value.TransactionHash, serializer);

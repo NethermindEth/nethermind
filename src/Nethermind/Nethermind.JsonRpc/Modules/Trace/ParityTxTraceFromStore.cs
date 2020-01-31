@@ -17,6 +17,8 @@
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Serialization.Json;
+using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
@@ -31,16 +33,18 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private static void AddActionsRecursively(List<ParityTxTraceFromStore> results, ParityLikeTxTrace txTrace, ParityTraceAction txTraceAction)
         {
-            ParityTxTraceFromStore result = new ParityTxTraceFromStore();
-            result.Action = txTraceAction;
-            result.Result = txTraceAction.Result;
-            result.Subtraces = txTraceAction.Subtraces.Count;
-            result.Type = txTraceAction.Type;
-            result.BlockHash = txTrace.BlockHash;
-            result.BlockNumber = txTrace.BlockNumber;
-            result.TransactionHash = txTrace.TransactionHash;
-            result.TransactionPosition = txTrace.TransactionPosition;
-            result.TraceAddress = txTraceAction.TraceAddress;
+            ParityTxTraceFromStore result = new ParityTxTraceFromStore
+            {
+                Action = txTraceAction,
+                Result = txTraceAction.Result,
+                Subtraces = txTraceAction.Subtraces.Count,
+                Type = txTraceAction.Type,
+                BlockHash = txTrace.BlockHash,
+                BlockNumber = txTrace.BlockNumber,
+                TransactionHash = txTrace.TransactionHash,
+                TransactionPosition = txTrace.TransactionPosition,
+                TraceAddress = txTraceAction.TraceAddress
+            };
             results.Add(result);
             
             foreach (ParityTraceAction subtrace in txTraceAction.Subtraces)
@@ -63,6 +67,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public Keccak BlockHash { get; set; }
 
+        [JsonConverter(typeof(LongConverter), NumberConversion.Decimal)] 
         public long BlockNumber { get; set; }
 
         public Keccak TransactionHash { get; set; }

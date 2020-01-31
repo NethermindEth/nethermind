@@ -26,12 +26,11 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.JsonRpc.Modules.Trace;
-using Nethermind.JsonRpc.Test.Data;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace
 {
-    public class ParityTxTraceFromReplayConverterTest : SerializationTestBase
+    public class ParityTxTraceFromReplayConverterTest : ParityLikeTxTraceSerializationTestBase
     {
         [Test]
         public void Trace_replay_transaction()
@@ -112,46 +111,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             ParityLikeTxTrace trace = ((ParityLikeBlockTracer) blockTracer).BuildResult().SingleOrDefault();
 
             TestOneWaySerialization(trace, "{\"output\":null,\"stateDiff\":{\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":{\"*\":{\"from\":\"0x0\",\"to\":\"0x29a2241af62c0000\"}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}}},\"trace\":null,\"vmTrace\":null}");
-        }
-
-        private static ParityLikeTxTrace BuildParityTxTrace()
-        {
-            ParityTraceAction subtrace = new ParityTraceAction();
-            subtrace.Value = 67890;
-            subtrace.CallType = "call";
-            subtrace.From = TestItem.AddressC;
-            subtrace.To = TestItem.AddressD;
-            subtrace.Input = Bytes.Empty;
-            subtrace.Gas = 10000;
-            subtrace.TraceAddress = new int[] {0, 0};
-
-            ParityLikeTxTrace result = new ParityLikeTxTrace();
-            result.Action = new ParityTraceAction();
-            result.Action.Value = 12345;
-            result.Action.CallType = "init";
-            result.Action.From = TestItem.AddressA;
-            result.Action.To = TestItem.AddressB;
-            result.Action.Input = new byte[] {1, 2, 3, 4, 5, 6};
-            result.Action.Gas = 40000;
-            result.Action.TraceAddress = new int[] {0};
-            result.Action.Subtraces.Add(subtrace);
-
-            result.BlockHash = TestItem.KeccakB;
-            result.BlockNumber = 123456;
-            result.TransactionHash = TestItem.KeccakC;
-            result.TransactionPosition = 5;
-            result.Action.TraceAddress = new int[] {1, 2, 3};
-
-            ParityAccountStateChange stateChange = new ParityAccountStateChange();
-            stateChange.Balance = new ParityStateChange<UInt256?>(1, 2);
-            stateChange.Nonce = new ParityStateChange<UInt256?>(0, 1);
-            stateChange.Storage = new Dictionary<UInt256, ParityStateChange<byte[]>>();
-            stateChange.Storage[1] = new ParityStateChange<byte[]>(new byte[] {1}, new byte[] {2});
-            stateChange.Code = new ParityStateChange<byte[]>(new byte[] {1}, new byte[] {2});
-
-            result.StateChanges = new Dictionary<Address, ParityAccountStateChange>();
-            result.StateChanges.Add(TestItem.AddressC, stateChange);
-            return result;
         }
     }
 }
