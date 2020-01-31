@@ -125,13 +125,15 @@ namespace Nethermind.Db
             int writeBufferNumber = (int) ReadConfig<uint>(dbConfig, nameof(dbConfig.WriteBufferNumber));
             options.SetMaxWriteBufferNumber(writeBufferNumber);
             options.SetMinWriteBufferNumberToMerge(2);
-
-
-            _maxThisDbSize += (long) writeBufferSize * writeBufferNumber;
-            Interlocked.Add(ref _maxRocksSize, _maxThisDbSize);
-            if(_logger.IsDebug) _logger.Debug($"Expected max memory footprint of {Name} DB is {_maxThisDbSize / 1024 / 1024}MB ({writeBufferNumber} * {writeBufferSize / 1024 / 1024}MB + {blockCacheSize / 1024 / 1024}MB)");
-            if(_logger.IsDebug) _logger.Debug($"Total max DB footprint so far is {_maxRocksSize / 1024 / 1024}MB");
-            ThisNodeInfo.AddInfo("DB mem est   :", $"{_maxRocksSize / 1024 / 1024}MB");
+            
+            lock (DbsByPath)
+            {
+                _maxThisDbSize += (long) writeBufferSize * writeBufferNumber;
+                Interlocked.Add(ref _maxRocksSize, _maxThisDbSize);
+                if (_logger.IsDebug) _logger.Debug($"Expected max memory footprint of {Name} DB is {_maxThisDbSize / 1024 / 1024}MB ({writeBufferNumber} * {writeBufferSize / 1024 / 1024}MB + {blockCacheSize / 1024 / 1024}MB)");
+                if (_logger.IsDebug) _logger.Debug($"Total max DB footprint so far is {_maxRocksSize / 1024 / 1024}MB");
+                ThisNodeInfo.AddInfo("DB mem est   :", $"{_maxRocksSize / 1024 / 1024}MB");
+            }
 
             options.SetBlockBasedTableFactory(tableOptions);
 

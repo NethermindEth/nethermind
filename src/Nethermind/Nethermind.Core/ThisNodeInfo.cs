@@ -14,7 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Linq;
 using Nethermind.Logging;
 
@@ -22,18 +22,11 @@ namespace Nethermind.Core
 {
     public static class ThisNodeInfo
     {
-        private static Dictionary<string, string> _nodeInfoItems = new Dictionary<string, string>();
+        private static ConcurrentDictionary<string, string> _nodeInfoItems = new ConcurrentDictionary<string, string>();
 
         public static void AddInfo(string infoDescription, string value)
         {
-            if (_nodeInfoItems.ContainsKey(infoDescription))
-            {
-                _nodeInfoItems[infoDescription] = value;
-            }
-            else
-            {
-                _nodeInfoItems.Add(infoDescription, value);
-            }
+            _nodeInfoItems[infoDescription] = value;
         }
 
         public static void LogAll(ILogger logger)
