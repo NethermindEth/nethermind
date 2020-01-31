@@ -264,6 +264,7 @@ namespace Nethermind.Stats
                 rlpxReputation += _statCountersArray[(int)NodeStatsEventType.P2PInitialized] > 0 ? 10 : 0;
                 rlpxReputation += _statCountersArray[(int)NodeStatsEventType.Eth62Initialized] > 0 ? 20 : 0;
                 rlpxReputation += _statCountersArray[(int)NodeStatsEventType.SyncStarted] > 0 ? 1000 : 0;
+                rlpxReputation +=  (rlpxReputation != 0 && !HasDisconnectedOnce) ? 1 : 0;
             }
 
             if (HasDisconnectedOnce)
@@ -300,7 +301,7 @@ namespace Nethermind.Stats
                 rlpxReputation = (long)(rlpxReputation * 0.4);
             }
 
-            return discoveryReputation + 100 * rlpxReputation + (!HasDisconnectedOnce ? 100 : 0);
+            return discoveryReputation + 100 * rlpxReputation;
         }
 
         private bool IsReputationPenalized()
