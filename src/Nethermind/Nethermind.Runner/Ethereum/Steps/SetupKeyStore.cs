@@ -34,9 +34,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public Task Execute()
+        public async Task Execute()
         {
-            return Task.Run(() =>
+            await Task.Run(() =>
             {
                 IKeyStoreConfig keyStoreConfig = _context.Config<IKeyStoreConfig>();
 

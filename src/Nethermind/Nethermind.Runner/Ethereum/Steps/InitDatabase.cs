@@ -34,33 +34,37 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public Task Execute()
+        public async Task Execute()
         {
-            return Task.Run(() =>
+            /* sync */
+            IDbConfig dbConfig = _context.Config<IDbConfig>();
+            ISyncConfig syncConfig = _context.Config<ISyncConfig>();
+            IInitConfig initConfig = _context.Config<IInitConfig>();
+
+            foreach (PropertyInfo propertyInfo in typeof(IDbConfig).GetProperties())
             {
-                /* sync */
-                IDbConfig dbConfig = _context.Config<IDbConfig>();
-                ISyncConfig syncConfig = _context.Config<ISyncConfig>();
-                IInitConfig initConfig = _context.Config<IInitConfig>();
+                if (_context.Logger.IsDebug) _context.Logger.Debug($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");
+            }
 
-                foreach (PropertyInfo propertyInfo in typeof(IDbConfig).GetProperties())
+            if (syncConfig.BeamSyncEnabled)
+            {
+                _context.DbProvider = new BeamSyncDbProvider(initConfig.BaseDbPath, dbConfig, _context.LogManager, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
+            }
+            else
+            {
+                if (initConfig.UseMemDb)
                 {
-                    if (_context.Logger.IsDebug) _context.Logger.Debug($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");
-                }
-
-                if (syncConfig.BeamSyncEnabled)
-                {
-                    _context.DbProvider = new BeamSyncDbProvider(initConfig.BaseDbPath, dbConfig, _context.LogManager, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
+                    _context.DbProvider = new MemDbProvider();
                 }
                 else
                 {
-                    _context.DbProvider = initConfig.UseMemDb
-                        ? (IDbProvider) new MemDbProvider()
-                        : new RocksDbProvider(initConfig.BaseDbPath, dbConfig, _context.LogManager, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
+                    RocksDbProvider rocksDbProvider = new RocksDbProvider(_context.LogManager);
+                    await rocksDbProvider.Init(initConfig.BaseDbPath, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
+                    _context.DbProvider = rocksDbProvider;
                 }
+            }
 
-                _context.DisposeStack.Push(_context.DbProvider);
-            });
+            _context.DisposeStack.Push(_context.DbProvider);
 
             // IDbProvider debugRecorder = new RocksDbProvider(Path.Combine(_context._initConfig.BaseDbPath, "debug"), dbConfig, _context._logManager, _context._initConfig.StoreTraces, _context._initConfig.StoreReceipts);
             // _context._dbProvider = new RpcDbProvider(_context._jsonSerializer, new BasicJsonRpcClient(KnownRpcUris.Localhost, _context._jsonSerializer, _context._logManager), _context._logManager, debugRecorder);
