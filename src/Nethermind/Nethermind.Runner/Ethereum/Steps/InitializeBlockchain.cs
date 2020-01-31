@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -30,9 +29,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Mining;
-using Nethermind.PubSub;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Stats;
 using Nethermind.Store;
 using Nethermind.Store.Repositories;
 
@@ -153,25 +150,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.Config<IInitConfig>().StoreReceipts); 
             _context.BlockchainProcessor = processor;
             _context.BlockProcessingQueue = processor;
-
-            // create shared objects between discovery and peer manager
-            IStatsConfig statsConfig = _context.Config<IStatsConfig>();
-            _context.NodeStatsManager = new NodeStatsManager(statsConfig, _context.LogManager);
-
-            _context.BlockchainProcessor.Start();
-
-            ISubscription subscription;
-            if (_context.Producers.Any())
-            {
-                subscription = new Subscription(_context.Producers, _context.BlockProcessor, _context.LogManager);
-            }
-            else
-            {
-                subscription = new EmptySubscription();
-            }
-
-            _context.DisposeStack.Push(subscription);
-
+            
             return Task.CompletedTask;
         }
 

@@ -179,6 +179,7 @@ namespace Nethermind.Blockchain
             Block block;
             if (suggestedBlock.IsGenesis)
             {
+                ProcessBlock(suggestedBlock, blockTracer, options);
                 block = suggestedBlock;
             }
             else
@@ -215,16 +216,21 @@ namespace Nethermind.Blockchain
 
         protected virtual TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
         {
-            var receipts = ProcessTransactions(block, options, blockTracer);
-            SetReceiptsRoot(block, receipts);
-            ApplyMinerRewards(block, blockTracer);
+            if (!block.IsGenesis)
+            {
+                var receipts = ProcessTransactions(block, options, blockTracer);
+                SetReceiptsRoot(block, receipts);
+                ApplyMinerRewards(block, blockTracer);
 
-            _stateProvider.Commit(_specProvider.GetSpec(block.Number));
-            _stateProvider.RecalculateStateRoot();
-            block.Header.StateRoot = _stateProvider.StateRoot;
-            block.Header.Hash = block.Header.CalculateHash();
+                _stateProvider.Commit(_specProvider.GetSpec(block.Number));
+                _stateProvider.RecalculateStateRoot();
+                block.Header.StateRoot = _stateProvider.StateRoot;
+                block.Header.Hash = block.Header.CalculateHash();
 
-            return receipts;
+                return receipts;
+            }
+
+            return Array.Empty<TxReceipt>();
         }
 
         private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
