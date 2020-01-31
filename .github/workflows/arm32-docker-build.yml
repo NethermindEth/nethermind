@@ -16,18 +16,19 @@ jobs:
     - uses: uraimo/run-on-arch-action@v1.0.5
       with:
         architecture: armv7
-        distribution: ubuntu18.04
+        distribution: buster
         run: |
           uname -a
           apt-get update && apt-get install docker.io -y
           mv Dockerfile_arm32 Dockerfile
-    - name: Publish to Docker
-      uses: elgohr/Publish-Docker-Github-Action@master
-      env:
-        GIT_COMMIT: $(git log -1 --format=%h)
-      with:
-        name: nethermind/nethermind:arm32
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
-        build-args: GIT_COMMIT
-        dockerfile: Dockerfile
+          docker build -t arm .
+    # - name: Publish to Docker
+    #   uses: elgohr/Publish-Docker-Github-Action@master
+    #   env:
+    #     GIT_COMMIT: $(git log -1 --format=%h)
+    #   with:
+    #     name: nethermind/nethermind:arm32
+    #     username: ${{ secrets.DOCKER_USERNAME }}
+    #     password: ${{ secrets.DOCKER_PASSWORD }}
+    #     build-args: GIT_COMMIT
+    #     dockerfile: Dockerfile

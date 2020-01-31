@@ -31,6 +31,4 @@ ToC
    hardware_requirements
    security
    docker
-   docker_arm32
-   docker_arm64
    contact
