@@ -300,7 +300,7 @@ namespace Nethermind.Stats
                 rlpxReputation = (long)(rlpxReputation * 0.4);
             }
 
-            return discoveryReputation + 100 * rlpxReputation;
+            return discoveryReputation + 100 * rlpxReputation + (!HasDisconnectedOnce ? 100 : 0);
         }
 
         private bool IsReputationPenalized()
