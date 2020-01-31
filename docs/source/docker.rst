@@ -6,7 +6,7 @@ Using an existing image
 
 https://hub.docker.com/r/nethermind/nethermind/
 
-The image tagged as ``latest`` or tag e.g. ``1.5.3`` are ubuntu based. We highly encourage to use a lighter container which is Alpine based, tagged as ``alpine`` (Possible benefit of less memory consumption).
+The image tagged as ``latest`` or tag e.g. ``1.5.7`` are ubuntu based. We highly encourage to use a lighter container which is Alpine based, tagged as ``alpine`` (Possible benefit of less memory consumption).
 
 Docker pull command::
 
@@ -20,10 +20,10 @@ You can use ``--help`` to get a list of possible start parameters for Nethermind
 
     docker run -it nethermind/nethermind --help
 
-To enable JSON RPC, publish port 8545 and set NETHERMIND_JSONRPCCONFIG_ENABLED=true and NETHERMIND_URL=http://*:8545
-or --JsonRpc.Enabled true --JsonRpc.Host 0.0.0.0::
+To enable JSON RPC, publish port 8545 and set NETHERMIND_JSONRPCCONFIG_ENABLED=true or --JsonRpc.Enabled true. If running from a VM you may want to expose JSON RPC to 
+the outer world via NETHERMIND_JSONRPCCONFIG_HOST={hostmachine_ip} or --JsonRpc.Host {hostmachine_ip}:
     
-    docker run -it -e NETHERMIND_URL=http://*:8545 -e NETHERMIND_JSONRPCCONFIG_ENABLED=true -e NETHERMIND_NETWORKCONFIG_P2PPORT=30312 -e NETHERMIND_NETWORKCONFIG_DISCOVERYPORT=30312 nethermind/nethermind
+    docker run -it -e NETHERMIND_JSONRPCCONFIG_ENABLED=true -e NETHERMIND_NETWORKCONFIG_P2PPORT=30312 -e NETHERMIND_NETWORKCONFIG_DISCOVERYPORT=30312 nethermind/nethermind
 
     or
 
@@ -49,7 +49,7 @@ For example::
 
 It's also possible to modify each configuration property via environment variable, using a simple convention::
     
-    NETHERMIND_{MODULE}_{PROPERTY}
+    NETHERMIND_{MODULE}CONFIG_{PROPERTY}
 
 For example::
 
