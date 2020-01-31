@@ -39,7 +39,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             result.BlockHash = txTrace.BlockHash;
             result.BlockNumber = txTrace.BlockNumber;
             result.TransactionHash = txTrace.TransactionHash;
-            result.TransactionPosition = txTrace.TransactionPosition ?? -1;
+            result.TransactionPosition = txTrace.TransactionPosition;
             result.TraceAddress = txTraceAction.TraceAddress;
             results.Add(result);
             
@@ -67,7 +67,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public Keccak TransactionHash { get; set; }
 
-        public int TransactionPosition { get; set; }
+        public int? TransactionPosition { get; set; }
 
         public string Type { get; set; }
     }

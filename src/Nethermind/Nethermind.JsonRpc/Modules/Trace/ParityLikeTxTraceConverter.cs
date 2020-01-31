@@ -35,7 +35,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
             writer.WriteProperty("blockNumber", value.BlockNumber, serializer);
             writer.WriteProperty("result", value.Result, serializer);
             writer.WriteProperty("subtraces", value.Subtraces, serializer);
-            writer.WriteProperty("subtraces", value.Subtraces, serializer);
             writer.WriteProperty("traceAddress", value.TraceAddress, serializer);
             writer.WriteProperty("transactionHash", value.TransactionHash, serializer);
             writer.WriteProperty("transactionPosition", value.TransactionPosition, serializer);
