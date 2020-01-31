@@ -16,6 +16,7 @@
 
 using System;
 using System.Globalization;
+using Microsoft.VisualBasic;
 using Nethermind.Core.Extensions;
 using Newtonsoft.Json;
 
@@ -37,19 +38,16 @@ namespace Nethermind.Serialization.Json
 
         public override void WriteJson(JsonWriter writer, long value, Newtonsoft.Json.JsonSerializer serializer)
         {
-            if (value == 0L)
-            {
-                writer.WriteValue("0x0");
-                return;
-            }
-            
             switch (_conversion)
             {
                 case NumberConversion.Hex:
-                    writer.WriteValue(value.ToHexString(true));
+                    writer.WriteValue(value == 0L ? "0x0" : value.ToHexString(true));
                     break;
                 case NumberConversion.Decimal:
-                    writer.WriteValue(value.ToString());
+                    writer.WriteValue(value == 0 ? "0" : value.ToString());
+                    break;
+                case NumberConversion.Raw:
+                    writer.WriteValue(value);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
