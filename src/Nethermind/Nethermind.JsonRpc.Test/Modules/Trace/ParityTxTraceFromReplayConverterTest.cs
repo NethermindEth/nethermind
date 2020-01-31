@@ -95,7 +95,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
 
             ParityLikeTxTrace trace = ((ParityLikeBlockTracer) blockTracer).BuildResult().SingleOrDefault();
 
-            TestOneWaySerialization(new ParityTxTraceFromReplay(trace), "{\"output\":null,\"stateDiff\":{\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":{\"*\":{\"from\":\"0x0\",\"to\":\"0x29a2241af62c0000\"}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}}},\"trace\":[{\"action\":{\"callType\":\"reward\",\"from\":null,\"gas\":\"0x0\",\"input\":null,\"to\":null,\"value\":\"0x1\"},\"result\":{\"gasUsed\":\"0x0\",\"output\":null},\"subtraces\":0,\"traceAddress\":[],\"type\":null}],\"vmTrace\":null}");
+            TestOneWaySerialization(new ParityTxTraceFromReplay(trace), "{\"output\":null,\"stateDiff\":{\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":{\"*\":{\"from\":\"0x0\",\"to\":\"0x29a2241af62c0000\"}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}}},\"trace\":[{\"action\":{\"author\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"rewardType\":\"block\",\"value\":\"0x1\"},\"result\":null,\"subtraces\":0,\"traceAddress\":[],\"type\":\"reward\"}],\"vmTrace\":null}");
         }
 
         [Test, Ignore("Reenable it after running compare on PoW chains")]
