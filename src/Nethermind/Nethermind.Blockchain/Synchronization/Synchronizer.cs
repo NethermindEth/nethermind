@@ -455,6 +455,7 @@ namespace Nethermind.Blockchain.Synchronization
             _syncLoopCancellation?.Dispose();
             _peerSyncCancellation?.Dispose();
             _syncRequested?.Dispose();
+            _syncReport?.Dispose();
         }
 
         private void FreeBlocksSyncAllocation()
