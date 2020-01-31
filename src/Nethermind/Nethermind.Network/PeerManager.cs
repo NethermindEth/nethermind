@@ -606,23 +606,7 @@ namespace Nethermind.Network
 
             public int GetHashCode(Peer obj) => obj?.Node is null ? 0 : obj.Node.GetHashCode();
         }
-
-//        private void LogPeerEventHistory(Peer peer)
-//        {
-//            var log = GetEventHistoryLog(peer.NodeStats);
-//            var fileName = Path.Combine(_eventLogsDirectoryPath, peer.Node.Id.PublicKey.ToString(), ".log");
-//            File.AppendAllText(fileName, log);
-//        }
-//
-//        private void LogLatencyComparison(Peer[] peers)
-//        {
-//            if(_logger.IsInfo)
-//            {
-//                var latencyDict = peers.Select(x => new {x, Av = GetAverageLatencies(x.NodeStats)}).OrderBy(x => x.Av.Select(y => new {y.Key, y.Value}).FirstOrDefault(y => y.Key == NodeLatencyStatType.BlockHeaders)?.Value ?? 10000);
-//                _logger.Info($"Overall latency stats: {Environment.NewLine}{string.Join(Environment.NewLine, latencyDict.Select(x => $"{x.x.Node.Id}: {string.Join(" | ", x.Av.Select(y => $"{y.Key.ToString()}: {y.Value?.ToString() ?? "-"}"))}"))}");
-//            }
-//        }
-
+        
         private string GetIncompatibleDesc(IReadOnlyCollection<Peer> incompatibleNodes)
         {
             if (!incompatibleNodes.Any())
@@ -638,7 +622,6 @@ namespace Nethermind.Network
         {
             try
             {
-                if (_logger.IsWarn) _logger.Warn($"Initializing peer connection {candidate.Node}");
                 await _rlpxPeer.ConnectAsync(candidate.Node);
                 return true;
             }
@@ -973,7 +956,6 @@ namespace Nethermind.Network
                 {
                     _peerPersistenceTimer.Enabled = false;
                     RunPeerCommit();
-                    //_logger.Info($"TESTTEST Candidate Count: {_candidatePeers.Count}, Active Count: {_activePeers.Count}, Persisted Peer count: {_peerStorage.GetPersistedNodes().Length}");
                 }
                 catch (Exception exception)
                 {
@@ -1012,7 +994,7 @@ namespace Nethermind.Network
 
                 if (!_peerStorage.AnyPendingChange())
                 {
-//                    if (_logger.IsTrace) _logger.Trace("No changes in peer storage, skipping commit.");
+                    if (_logger.IsTrace) _logger.Trace("No changes in peer storage, skipping commit.");
                     return;
                 }
 
@@ -1084,10 +1066,6 @@ namespace Nethermind.Network
                 _peerStorage.RemoveNodes(nodesToRemove);
                 if (_logger.IsDebug) _logger.Debug($"Removing persisted peers: {nodesToRemove.Length}, prevPersistedCount: {storedNodes.Length}, newPersistedCount: {_peerStorage.GetPersistedNodes().Length}, PersistedPeerCountCleanupThreshold: {_networkConfig.PersistedPeerCountCleanupThreshold}, MaxPersistedPeerCount: {_networkConfig.MaxPersistedPeerCount}");
             }
-
-            //_logger.Info($"Active Nodes: \n{string.Join("\n", activePeers.Select(x => $"{x.Node.Id}: {x.NodeStats.NewPersistedNodeReputation}"))}");
-            //_logger.Info($"NonActiveNodes Nodes: \n{string.Join("\n", nonActiveNodes.Select(x => $"{x.NodeId}: {x.Reputation}"))}");
-            //_logger.Info($"NodesToRemove: \n{string.Join("\n", nodesToRemove.Select(x => $"{x.NodeId}: {x.Reputation}"))}");
         }
 
         private void CleanupCandidatePeers()
@@ -1120,9 +1098,6 @@ namespace Nethermind.Network
 
                 if (_logger.IsDebug) _logger.Debug($"Removing candidate peers: {nodesToRemove.Length}, failedValidationRemovedCount: {failedValidationRemovedCount}, otherRemovedCount: {remainingCount}, prevCount: {candidates.Length}, newCount: {_candidatePeers.Count}, CandidatePeerCountCleanupThreshold: {_networkConfig.CandidatePeerCountCleanupThreshold}, MaxCandidatePeerCount: {_networkConfig.MaxCandidatePeerCount}");
             }
-
-            //_logger.Info($"candidates: \n{string.Join("\n", candidates.Select(x => $"{x.Node.Id}: {x.NodeStats.CurrentNodeReputation}"))}");
-            //_logger.Info($"nodesToRemove: \n{string.Join("\n", nodesToRemove.Select(x => $"{x.Node.Id}: {x.NodeStats.CurrentNodeReputation}"))}");
         }
 
         private enum ActivePeerSelectionCounter
