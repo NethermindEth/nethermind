@@ -58,17 +58,17 @@ namespace Nethermind.JsonRpc.Modules.Trace
         }
 
         public ParityTraceAction Action { get; set; }
+        
+        public Keccak BlockHash { get; set; }
+        
+        [JsonConverter(typeof(LongConverter), NumberConversion.Raw)] 
+        public long BlockNumber { get; set; }
 
         public ParityTraceResult Result { get; set; }
 
         public int Subtraces { get; set; }
 
         public int[] TraceAddress { get; set; }
-
-        public Keccak BlockHash { get; set; }
-
-        [JsonConverter(typeof(LongConverter), NumberConversion.Decimal)] 
-        public long BlockNumber { get; set; }
 
         public Keccak TransactionHash { get; set; }
 

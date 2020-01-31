@@ -26,6 +26,7 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
 using NSubstitute;
 using NUnit.Framework;
 using JsonSerializer = Newtonsoft.Json.JsonSerializer;
@@ -72,7 +73,12 @@ namespace Nethermind.JsonRpc.Test.Data
 
         private static JsonSerializer BuildSerializer<T>()
         {
-            JsonSerializer serializer = new JsonSerializer();
+            JsonSerializerSettings jsonSettings = new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            };
+            
+            JsonSerializer serializer = JsonSerializer.Create(jsonSettings);
             foreach (JsonConverter converter in EthModuleFactory.Converters)
             {
                 serializer.Converters.Add(converter);
