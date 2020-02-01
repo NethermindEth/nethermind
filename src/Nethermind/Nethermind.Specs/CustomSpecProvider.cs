@@ -16,7 +16,6 @@
 
 using System;
 using System.Linq;
-using System.Numerics;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 
@@ -43,7 +42,7 @@ namespace Nethermind.Specs
 
             _transitions = transitions.OrderBy(r => r.BlockNumber).ToArray();
 
-            if (transitions[0].BlockNumber != BigInteger.Zero)
+            if (transitions[0].BlockNumber != 0L)
             {
                 throw new ArgumentException($"First release specified when instantiating {nameof(CustomSpecProvider)} should be at genesis block (0)", $"{nameof(transitions)}");
             }

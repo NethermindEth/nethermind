@@ -23,8 +23,18 @@ using NUnit.Framework;
 namespace Nethermind.Core.Test.Json
 {
     [TestFixture]
-    public class UInt256ConverterTests
+    public class UInt256ConverterTests : ConverterTestBase<UInt256>
     {
+        [TestCase(NumberConversion.Hex)]
+        [TestCase(NumberConversion.Decimal)]
+        public void Test_roundtrip(NumberConversion numberConversion)
+        {
+            UInt256Converter converter = new UInt256Converter(numberConversion);
+            TestConverter(int.MaxValue, (integer, bigInteger) => integer.Equals(bigInteger), converter);
+            TestConverter(UInt256.One, (integer, bigInteger) => integer.Equals(bigInteger), converter);
+            TestConverter(UInt256.Zero, (integer, bigInteger) => integer.Equals(bigInteger), converter);
+        }
+        
         [Test]
         public void Regression_0xa00000()
         {
