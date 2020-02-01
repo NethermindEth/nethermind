@@ -296,6 +296,11 @@ namespace Nethermind.Serialization.Rlp
             return Encode(new[] {value});
         }
 
+        public static Rlp Encode(short value)
+        {
+            return Encode((long) value);
+        }
+
         public static Rlp Encode(ushort value)
         {
             return Encode((long) value);

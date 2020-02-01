@@ -45,6 +45,7 @@ using Org.BouncyCastle.Utilities.Collections;
 
 namespace Nethermind.Runner.Test
 {
+    [TestFixture]
     public class EthereumRunnerTest
     {
         public class ConfigSource : IConfigSource
