@@ -1,10 +1,9 @@
 name: Publish Debian amd64 image to docker registry
 
-# on:
-#   push:
-#     tags:
-#     - '*'
-on: push
+on:
+  push:
+    tags:
+    - '*'
 
 jobs:
   amd64-build:
