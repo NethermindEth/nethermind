@@ -35,9 +35,6 @@ namespace Nethermind.Serialization.Rlp
     {
         public const int LengthOfKeccakRlp = 33;
         public const int LengthOfAddressRlp = 21;
-        public const int LengthOfBloomRlp = 259;
-        public const int LengthOfEmptyArrayRlp = 1;
-        public const int LengthOfEmptySequenceRlp = 1;
 
         internal const int DebugMessageContentLength = 2048;
 
@@ -46,9 +43,7 @@ namespace Nethermind.Serialization.Rlp
         public static readonly Rlp OfEmptySequence = new Rlp(192);
         
         internal static readonly Rlp OfEmptyTreeHash = Encode(Keccak.EmptyTreeHash.Bytes); // use bytes to avoid stack overflow
-        
-        internal static readonly Rlp OfEmptySequenceRlpHash = Encode(Keccak.OfAnEmptySequenceRlp.Bytes); // use bytes to avoid stack overflow
-        
+
         internal static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
         
         internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes); // use bytes to avoid stack overflow
@@ -306,11 +301,6 @@ namespace Nethermind.Serialization.Rlp
             return Encode((long) value);
         }
 
-        public static Rlp Encode(short value)
-        {
-            return Encode((long) value);
-        }
-        
         public static Rlp Encode(uint value)
         {
             return value == 0U ? OfEmptyByteArray : Encode((long) value);
@@ -958,17 +948,6 @@ namespace Nethermind.Serialization.Rlp
                 UInt256.CreateFromBigEndian(out UInt256 result, byteSpan);
                 return result;
             }
-            
-            public UInt256? DecodeNullableUInt256()
-            {
-                if (Data[Position] == 0)
-                {
-                    Position++;
-                    return null;
-                }
-
-                return DecodeUInt256();
-            }
 
             public BigInteger DecodeUBigInt()
             {
@@ -1020,66 +999,6 @@ namespace Nethermind.Serialization.Rlp
             public bool IsNextItemNull()
             {
                 return Data[Position] == 192;
-            }
-
-            public bool DecodeBool()
-            {
-                int prefix = ReadByte();
-                if (prefix <= 128)
-                {
-                    return prefix == 1;
-                }
-
-                if (prefix <= 183)
-                {
-                    int length = prefix - 128;
-                    if (length == 1 && Data[Position] < 128)
-                    {
-                        throw new RlpException($"Unexpected byte value {Data[Position]}");
-                    }
-
-                    bool result = Data[Position] == 1;
-                    Position += length;
-                    return result;
-                }
-
-                if (prefix < 192)
-                {
-                    int lengthOfLength = prefix - 183;
-                    if (lengthOfLength > 4)
-                    {
-                        // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                        throw new RlpException("Expected length of length less or equal 4");
-                    }
-
-                    int length = DeserializeLength(lengthOfLength);
-                    if (length < 56)
-                    {
-                        throw new RlpException("Expected length greater or equal 56 and was {length}");
-                    }
-
-                    bool result = Data[Position] == 1;
-                    Position += length;
-                    return result;
-                }
-
-                throw new RlpException($"Unexpected prefix of {prefix} when decoding a byte array at position {Position} in the message of length {Data.Length} starting with {Data.Slice(0, Math.Min(DebugMessageContentLength, Data.Length)).ToHexString()}");
-            }
-
-            public string DecodeString()
-            {
-                Span<byte> bytes = DecodeByteArraySpan();
-                return System.Text.Encoding.UTF8.GetString(bytes);
-            }
-
-            public byte DecodeByte()
-            {
-                Span<byte> bytes = DecodeByteArraySpan();
-                return bytes.Length == 0 ? (byte)0 :
-                    bytes.Length == 1 ? bytes[0] == (byte)128
-                        ? (byte)0
-                        : bytes[0]
-                    : bytes[1];
             }
 
             public int DecodeInt()
