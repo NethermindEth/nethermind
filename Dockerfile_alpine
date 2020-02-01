@@ -17,7 +17,7 @@ RUN echo "@testing http://dl-cdn.alpinelinux.org/alpine/edge/testing/" >> /etc/a
     apk upgrade && apk add git openssl-dev@testing libssl1.0@v3.8 && \
     git submodule update --init src/Dirichlet src/rocksdb-sharp && \
     dotnet publish src/Nethermind/Nethermind.Runner -c release -o out && \
-    git describe --tags --long > out/git-hash
+    git describe --tags --always --long > out/git-hash
 
 FROM mcr.microsoft.com/dotnet/core/aspnet:3.1-alpine
 
