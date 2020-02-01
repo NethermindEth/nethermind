@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Numerics;
 using System.Text;
 using MathNet.Numerics;
@@ -318,6 +319,44 @@ namespace Nethermind.Abi.Test
             byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(arguments[0], data);
+        }
+        
+        [TestCase(0, 0)]
+        [TestCase(0, 19)]
+        [TestCase(8, 0)]
+        [TestCase(256 + 8, 19)]
+        [TestCase(8, 128)]
+        [TestCase(9, 8)]
+        public void Test_ufixed_exception(int length, int precision)
+        {
+            Assert.Throws<ArgumentException>(() => _ = new AbiUFixed(length, precision));
+        }
+        
+        [TestCase(0, 0)]
+        [TestCase(0, 19)]
+        [TestCase(8, 0)]
+        [TestCase(256 + 8, 19)]
+        [TestCase(8, 128)]
+        [TestCase(9, 8)]
+        public void Test_fixed_exception(int length, int precision)
+        {
+            Assert.Throws<ArgumentException>(() => _ = new AbiFixed(length, precision));
+        }
+        
+        [TestCase(0)]
+        [TestCase(7)]
+        [TestCase(264)]
+        public void Test_int_exception(int length)
+        {
+            Assert.Throws<ArgumentException>(() => _ = new AbiInt(length));
+        }
+        
+        [TestCase(0)]
+        [TestCase(7)]
+        [TestCase(264)]
+        public void Test_uint_exception(int length)
+        {
+            Assert.Throws<ArgumentException>(() => _ = new AbiUInt(length));
         }
 
         [TestCase(AbiEncodingStyle.IncludeSignature)]
