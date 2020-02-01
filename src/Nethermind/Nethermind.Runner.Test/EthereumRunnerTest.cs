@@ -86,7 +86,9 @@ namespace Nethermind.Runner.Test
                 {
                     "genesis.json",
                     "ndm.json",
-                    "hive.json"
+                    "hive.json",
+                    "ndmtestnet0.json",
+                    "ndmtestnet0_local.json",
                 };
                 yield return new TestCaseData("testspec.json");
                 foreach (var config in Directory.GetFiles("chainspec").Where(c => !ignoredSpecs.Contains(Path.GetFileName(c))))
