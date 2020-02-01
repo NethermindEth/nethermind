@@ -94,6 +94,11 @@ namespace Nethermind.Abi
                 bytes = new byte[8];
                 BinaryPrimitives.WriteInt64BigEndian(bytes, longInput);
             }
+            else if (arg is ulong ulongInput)
+            {
+                bytes = new byte[8];
+                BinaryPrimitives.WriteUInt64BigEndian(bytes, ulongInput);
+            }
             else if (arg is short shortInput)
             {
                 bytes = new byte[8];

@@ -86,6 +86,19 @@ namespace Nethermind.Clique.Test
             Assert.True(validHeader);
             Assert.True(validSeal);
         }
+        
+        [TestCase(Block4Rlp)]
+        public void Test_no_signer_data_at_epoch_fails(string blockRlp)
+        {
+            CliqueConfig config = new CliqueConfig {Epoch = 4};
+            _clique = new CliqueSealer(NullWallet.Instance, config, _snapshotManager, Address.Zero, LimboLogs.Instance);
+            _sealValidator = new CliqueSealValidator(config, _snapshotManager, LimboLogs.Instance);
+            Block block = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
+            bool validHeader = _sealValidator.ValidateParams(_blockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.None), block.Header);
+            bool validSeal = _sealValidator.ValidateSeal(block.Header, true);
+            Assert.False(validHeader);
+            Assert.True(validSeal);
+        }
 
         public static Block GetRinkebyGenesis()
         {

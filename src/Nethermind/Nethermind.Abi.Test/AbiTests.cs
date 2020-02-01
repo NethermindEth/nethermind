@@ -237,6 +237,33 @@ namespace Nethermind.Abi.Test
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(BigInteger.MinusOne, arguments[0]);
         }
+        
+        [TestCase(AbiEncodingStyle.None)]
+        public void Test_single_uint_with_casting(AbiEncodingStyle encodingStyle)
+        {
+            AbiType type = AbiType.UInt256;
+            AbiSignature signature = new AbiSignature("abc", type);
+            
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, UInt256.One);
+            object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
+            Assert.AreEqual(BigInteger.One, arguments[0]);
+            
+            encoded = _abiEncoder.Encode(encodingStyle, signature, 1L);
+            arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
+            Assert.AreEqual(BigInteger.One, arguments[0]);
+            
+            encoded = _abiEncoder.Encode(encodingStyle, signature, 1UL);
+            arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
+            Assert.AreEqual(BigInteger.One, arguments[0]);
+            
+            encoded = _abiEncoder.Encode(encodingStyle, signature, 1);
+            arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
+            Assert.AreEqual(BigInteger.One, arguments[0]);
+            
+            encoded = _abiEncoder.Encode(encodingStyle, signature, 1U);
+            arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
+            Assert.AreEqual(BigInteger.One, arguments[0]);
+        }
 
         [TestCase(AbiEncodingStyle.IncludeSignature)]
         [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]

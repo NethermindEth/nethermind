@@ -176,12 +176,9 @@ namespace Nethermind.Clique
                 foreach (Address signer in snapshot.Signers.Keys) Array.Copy(signer.Bytes, 0, signersBytes, signerIndex++ * Address.ByteLength, Address.ByteLength);
 
                 int extraSuffix = header.ExtraData.Length - Clique.ExtraSealLength;
-                for (int i = 0; i < extraSuffix - Clique.ExtraVanityLength; i++)
+                if (!header.ExtraData.AsSpan(Clique.ExtraVanityLength, extraSuffix).SequenceEqual(signersBytes))
                 {
-                    if (header.ExtraData[Clique.ExtraVanityLength + i] != signersBytes[i])
-                    {
-                        return false;
-                    }
+                    return false;
                 }
             }
 
