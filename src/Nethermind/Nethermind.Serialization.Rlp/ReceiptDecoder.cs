@@ -176,65 +176,7 @@ namespace Nethermind.Serialization.Rlp
             Encode(stream, item, rlpBehaviors);
             return stream.Data;
         }
-        
-        public void Encode(MemoryStream stream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item == null)
-            {
-                stream.Write(Rlp.OfEmptySequence.Bytes);
-                return;
-            }
-            
-            var (totalLength, logsLength) = GetContentLength(item, rlpBehaviors);
-            
-            bool isStorage = (rlpBehaviors & RlpBehaviors.Storage) != 0;
-            bool isEip658receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
-            Rlp.StartSequence(stream, totalLength);
-            if (isEip658receipts)
-            {
-                Rlp.Encode(stream, item.StatusCode);
-            }
-            else
-            {
-                Rlp.Encode(stream, item.PostTransactionState);
-            }
-
-            if (isStorage)
-            {
-                Rlp.Encode(stream, item.BlockHash);
-                Rlp.Encode(stream, item.BlockNumber);
-                Rlp.Encode(stream, item.Index);
-                Rlp.Encode(stream, item.Sender);
-                Rlp.Encode(stream, item.Recipient);
-                Rlp.Encode(stream, item.ContractAddress);
-                Rlp.Encode(stream, item.GasUsed);
-                Rlp.Encode(stream, item.GasUsedTotal);
-                Rlp.Encode(stream, item.Bloom);
-                
-                Rlp.StartSequence(stream, logsLength);
-
-                for (var i = 0; i < item.Logs.Length; i++)
-                {
-                    Rlp.Encode(stream, item.Logs[i]);
-                }
-                
-                Rlp.Encode(stream, item.Error);
-            }
-            else
-            {
-                Rlp.Encode(stream, item.GasUsedTotal);
-                Rlp.Encode(stream, item.Bloom);
-                
-                Rlp.StartSequence(stream, logsLength);
-
-                for (var i = 0; i < item.Logs.Length; i++)
-                {
-                    Rlp.Encode(stream, item.Logs[i]);
-                }
-            }
-        }
-        
         private (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
             var contentLength = 0;

@@ -14,8 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.IO;
-
 namespace Nethermind.Serialization.Rlp
 {
     public interface IRlpDecoder
@@ -26,7 +24,6 @@ namespace Nethermind.Serialization.Rlp
     {
         T Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
         Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
-        void Encode(MemoryStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
         int GetLength(T item, RlpBehaviors rlpBehaviors);
     }
     
@@ -34,7 +31,6 @@ namespace Nethermind.Serialization.Rlp
     {
         T Decode(Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
         Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
-        void Encode(MemoryStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
         int GetLength(T item, RlpBehaviors rlpBehaviors);
     }
 }

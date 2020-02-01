@@ -66,24 +66,6 @@ namespace Nethermind.Serialization.Rlp
             return new Block(header, transactions, ommerHeaders);
         }
 
-        public void Encode(MemoryStream stream, Block item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            (int contentLength, int txsLength, int ommersLength) = GetContentLength(item, rlpBehaviors);
-            Rlp.StartSequence(stream, contentLength);
-            _headerDecoder.Encode(stream, item.Header);
-            Rlp.StartSequence(stream, txsLength);
-            for (int i = 0; i < item.Transactions.Length; i++)
-            {
-                _txDecoder.Encode(stream, item.Transactions[i]);
-            }
-            
-            Rlp.StartSequence(stream, ommersLength);
-            for (int i = 0; i < item.Ommers.Length; i++)
-            {
-                _headerDecoder.Encode(stream, item.Ommers[i]);
-            }
-        }
-
         private (int Total, int Txs, int Ommers) GetContentLength(Block item, RlpBehaviors rlpBehaviors)
         {   
             int contentLength = _headerDecoder.GetLength(item.Header, rlpBehaviors);
