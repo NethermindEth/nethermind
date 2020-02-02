@@ -21,7 +21,7 @@ using Nethermind.Runner.Ethereum.Context;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency(typeof(SetupKeyStore))]
+    [RunnerStepDependency]
     public class FilterBootnodes : IStep
     {
         private readonly EthereumRunnerContext _context;

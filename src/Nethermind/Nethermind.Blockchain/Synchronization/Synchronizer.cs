@@ -300,7 +300,7 @@ namespace Nethermind.Blockchain.Synchronization
                             syncProgressTask = _blockDownloader.DownloadBlocks(bestPeer, 0, linkedCancellation.Token);
                             break;
                         case SyncMode.Beam:
-                            syncProgressTask = _blockDownloader.DownloadBlocks(bestPeer, 0, pivotNumber, linkedCancellation.Token);
+                            syncProgressTask = _blockDownloader.DownloadHeaders(bestPeer, 0, linkedCancellation.Token);
                             break;
                         case SyncMode.NotStarted:
                             syncProgressTask = Task.Delay(1000).ContinueWith(_ => 0L);

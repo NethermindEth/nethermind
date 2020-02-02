@@ -21,7 +21,7 @@ using Nethermind.Runner.Ethereum.Context;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency(typeof(InitRlp), typeof(FilterBootnodes))]
+    [RunnerStepDependency(typeof(FilterBootnodes))]
     public class UpdateDiscoveryConfig : IStep
     {
         private readonly EthereumRunnerContext _context;
