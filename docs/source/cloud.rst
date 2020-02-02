@@ -46,16 +46,16 @@ Wait for the packages (input 'Y' when prompted)
 .. image:: clouds/do/8.png
 
 
-Download Nethermind Launcher::
+Download Nethermind Launcher (you may need to change the url to download the latest version, check `here <https://github.com/NethermindEth/nethermind/releases>`_.)::
 
-  wget https://github.com/NethermindEth/nethermind/releases/download/1.3.2/nethermind-linux-amd64-1.3.2-9d65c01-20191215.zip
+  wget wget https://github.com/NethermindEth/nethermind/releases/download/1.5.8/nethermind-linux-amd64-1.5.8-b482b39.zip
 
 .. image:: clouds/do/9.png
 
 
 Unzip the package::
 
-  unzip nethermind-linux-amd64-1.3.2-9d65c01-20191215.zip -d nethermind && cd nethermind
+  unzip nethermind-linux-amd64-1.5.8-b482b39.zip -d nethermind && cd nethermind
 
 .. image:: clouds/do/10.png
 .. image:: clouds/do/11.png
@@ -134,16 +134,16 @@ Wait for the packages (input 'Y' when prompted)
 .. image:: clouds/do/8.png
 
 
-Download Nethermind Launcher::
+Download Nethermind Launcher (you may need to change the url to download the latest version, check `here <https://github.com/NethermindEth/nethermind/releases>`_.)::
 
-  wget https://github.com/NethermindEth/nethermind/releases/download/1.3.2/nethermind-linux-amd64-1.3.2-9d65c01-20191215.zip
+  wget https://github.com/NethermindEth/nethermind/releases/download/1.5.8/nethermind-linux-amd64-1.5.8-b482b39.zip
 
 .. image:: clouds/do/9.png
 
 
 Unzip the package::
 
-  unzip nethermind-linux-amd64-1.3.2-9d65c01-20191215.zip -d nethermind && cd nethermind
+  unzip nethermind-linux-amd64-1.5.8-b482b39.zip -d nethermind && cd nethermind
 
 .. image:: clouds/do/10.png
 .. image:: clouds/do/11.png
