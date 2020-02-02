@@ -7,7 +7,7 @@ Generally the faster IO operations the better. For this reason Digital Ocean and
   1GB disk space | 1GB RAM | 1 Core CPU
  
  Mainnet Fast Sync
-  60GB disk space | 8GB RAM |2 Cores CPU
+  60GB disk space | 4GB RAM |2 Cores CPU
 
  Rinkeby Fast Sync
   20GB | 4GB RAM | 2 Cores CPU
