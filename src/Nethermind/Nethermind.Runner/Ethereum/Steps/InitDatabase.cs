@@ -24,7 +24,6 @@ using Nethermind.Store;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency]
     public class InitDatabase : IStep
     {
         private readonly EthereumRunnerContext _context;
