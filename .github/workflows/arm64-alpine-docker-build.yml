@@ -1,4 +1,4 @@
-name: Publish Debian arm32 image to docker registry
+name: Publish Alpine arm64 image to docker registry
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
     - '*'
 
 jobs:
-  arm32-build:
+  arm64-alpine-build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -17,7 +17,7 @@ jobs:
         id: settings
         run: |
           echo ::set-output name=docker_username::${{ secrets.DOCKER_USERNAME }}
-          echo ::set-output name=docker_image::nethermind/nethermind:arm32
+          echo ::set-output name=docker_image::nethermind/nethermind:arm64.alpine
       - name: Set up docker buildx
         id: buildx
         uses: crazy-max/ghaction-docker-buildx@v1
@@ -31,7 +31,7 @@ jobs:
           echo "${DOCKER_PASSWORD}" | docker login --username "${{ steps.settings.outputs.docker_username }}" --password-stdin
       - name: Build & Push image to docker registry
         run: |
-          docker buildx build --platform=linux/arm/v7 -t ${{ steps.settings.outputs.docker_image }} -f Dockerfile_arm32 . --push
+          docker buildx build --platform=linux/arm64 -t ${{ steps.settings.outputs.docker_image }} -f Dockerfile_alpine_arm64 . --push
       - name: Clear
         if: always()
         run: |

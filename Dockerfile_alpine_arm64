@@ -27,7 +27,7 @@ COPY . .
 RUN apt-get update && apt-get install -y libsnappy-dev libc6-dev libc6 libzstd1 libgflags-dev libssl1.0.0
 RUN git submodule update --init src/Dirichlet src/rocksdb-sharp
 RUN dotnet publish /source/src/Nethermind/Nethermind.Runner --configuration Release --runtime linux-musl-arm64 --output /artifacts
-RUN git describe --tags --long > /artifacts/git-hash
+RUN git describe --tags --always --long > /artifacts/git-hash
 
 ##################################################
 FROM mcr.microsoft.com/dotnet/core/aspnet:3.1-alpine3.10-arm64v8 AS image
