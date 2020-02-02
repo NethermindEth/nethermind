@@ -40,7 +40,6 @@ namespace Nethermind.Evm.Test
         [SetUp]
         public override void Setup()
         {
-            base.Setup();
             _blockNumber = MainNetSpecProvider.ByzantiumBlockNumber;
         }
         

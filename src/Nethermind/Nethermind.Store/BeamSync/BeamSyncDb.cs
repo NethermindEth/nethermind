@@ -15,10 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 
 namespace Nethermind.Store.BeamSync
 {
@@ -26,39 +28,57 @@ namespace Nethermind.Store.BeamSync
     {
         private MemDb _memDb = new MemDb();
 
+        private ILogger _logger;
+        
+        public BeamSyncDb(ILogManager logManager)
+        {
+            _logger = logManager.GetClassLogger<BeamSyncDb>();
+        }
+        
         public void Dispose()
         {
         }
 
-        public string Name => "BeamSyncDb";
+        public string Name => "Hmb";
 
-        private ConcurrentQueue<Keccak> _requestedNodes =new ConcurrentQueue<Keccak>(); 
-        
+        private HashSet<Keccak> _requestedNodes = new HashSet<Keccak>();
+
         public byte[] this[byte[] key]
         {
             get
             {
                 // it is not possible for the item to be requested from the DB and missing in the DB unless the DB is corrupted
                 // if it is missing in the MemDb then it must exist somewhere on the web (unless the block is corrupted / invalid)
-                
+
                 // we grab the node from the web through requests
-                
+
                 // if the block is invalid then we will be timing out for a long time
                 // in such case it would be good to have some gossip about corrupted blocks
                 // but such gossip would be cheap
                 // if we keep timing out then we would finally reject the block (but only shelve it instead of marking invalid)
-
+                
                 while (true)
                 {
                     var fromMem = _memDb[key];
                     if (fromMem == null)
                     {
-                        _requestedNodes.Enqueue(new Keccak(key));
+                        // we store sync progress data at Keccak.Zero;
+                        if (Bytes.AreEqual(key, Keccak.Zero.Bytes))
+                        {
+                            return null;
+                        }
+
+                        _requestedNodes.Add(new Keccak(key));
+                        // _logger.Error($"Requested {key.ToHexString()}");
+
                         NeedsData = true;
+                        NeedMoreData?.Invoke(this, EventArgs.Empty);
                         _autoReset.WaitOne();
                     }
                     else
                     {
+                        _requestedNodes.Clear();
+                        _logger.Info($"BEAM SYNC Resolved {key.ToHexString()} - db size {_memDb.Keys.Count}");
                         return fromMem;
                     }
                 }
@@ -94,22 +114,29 @@ namespace Nethermind.Store.BeamSync
 
         public Keccak[] PrepareRequest()
         {
-            List<Keccak> request = new List<Keccak>();
-            while (_requestedNodes.TryDequeue(out Keccak requestedNode))
+            NeedsData = false;
+            return _requestedNodes.ToArray();
+        }
+
+        public int HandleResponse(Keccak[] hashes, byte[][] data)
+        {
+            int consumed = 0;
+            if (data != null)
             {
-                request.Add(requestedNode);
+                for (int i = 0; i < hashes.Length; i++)
+                {
+                    _memDb[hashes[i].Bytes] = data[i];
+                    consumed++;
+                }
+                
             }
 
-            return request.ToArray();
-        }
-
-        public void HandleResponse(Keccak[] hashes, byte[][] data)
-        {
             _autoReset.Set();
+            return consumed;
         }
 
-        private AutoResetEvent _autoReset = new AutoResetEvent(true);
-        
+        private AutoResetEvent _autoReset = new AutoResetEvent(false);
+
         public bool NeedsData { get; private set; }
     }
 }

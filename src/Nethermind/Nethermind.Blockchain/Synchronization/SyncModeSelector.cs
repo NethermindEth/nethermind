@@ -37,24 +37,26 @@ namespace Nethermind.Blockchain.Synchronization
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-
+            
             if (syncConfig.FastSyncCatchUpHeightDelta <= FullSyncThreshold)
             {
                 if (_logger.IsWarn) _logger.Warn($"'FastSyncCatchUpHeightDelta' parameter is less or equal to {FullSyncThreshold}, which is a threshold of blocks always downloaded in full sync. 'FastSyncCatchUpHeightDelta' will have no effect.");
             }
-
+            
             Current = SyncMode.NotStarted;
         }
 
         public SyncMode Current { get; private set; }
-
+        
+        public bool IsParallel => Current == SyncMode.FastBlocks || Current == SyncMode.StateNodes;
+        
         public void Update()
         {
             if (_syncPeerPool.PeerCount == 0)
             {
                 return;
             }
-
+            
             if (_syncConfig.BeamSyncEnabled)
             {
                 if (Current != SyncMode.Beam)
@@ -64,7 +66,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 return;
             }
-            
+
             // if we are not in fast sync then it means we are in full sync and we just want to have two modes:
             //   * NOT_STARTED
             //   * FULL
@@ -113,11 +115,6 @@ namespace Nethermind.Blockchain.Synchronization
 
                 return;
             }
-            
-            // if (maxBlockNumberAmongPeers <= FullSyncThreshold)
-            // {
-            //     return;
-            // }
 
             SyncMode newSyncMode;
             long bestFull = Math.Max(bestFullState, bestFullBlock);

@@ -22,8 +22,12 @@ namespace Nethermind.Store.BeamSync
 {
     public class NullDataConsumer : INodeDataConsumer
     {
-        private static NullDataConsumer _instance;
+        private static NullDataConsumer _instance = new NullDataConsumer();
 
+        private NullDataConsumer()
+        {
+        }
+        
         public static NullDataConsumer Instance => LazyInitializer.EnsureInitialized(ref _instance);
 
         public event EventHandler NeedMoreData
@@ -37,7 +41,7 @@ namespace Nethermind.Store.BeamSync
             return Array.Empty<Keccak>();
         }
 
-        public void HandleResponse(Keccak[] hashes, byte[][] data)
+        public int HandleResponse(Keccak[] hashes, byte[][] data)
         {
             throw new InvalidOperationException("Should never receive response here");
         }

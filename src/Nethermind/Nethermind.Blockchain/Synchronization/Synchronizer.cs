@@ -215,6 +215,12 @@ namespace Nethermind.Blockchain.Synchronization
 
         private async Task RunSyncLoop()
         {
+            long pivotNumber = 0;
+            if (long.TryParse(_syncConfig.PivotNumber, out long pivotNumberParsed))
+            {
+                pivotNumber = pivotNumberParsed;
+            }
+            
             while (true)
             {
                 if (_logger.IsTrace) _logger.Trace("Sync loop - WAIT.");
@@ -294,7 +300,7 @@ namespace Nethermind.Blockchain.Synchronization
                             syncProgressTask = _blockDownloader.DownloadBlocks(bestPeer, 0, linkedCancellation.Token);
                             break;
                         case SyncMode.Beam:
-                            syncProgressTask = _blockDownloader.DownloadBlocks(bestPeer, 0, linkedCancellation.Token);
+                            syncProgressTask = _blockDownloader.DownloadBlocks(bestPeer, 0, pivotNumber, linkedCancellation.Token);
                             break;
                         case SyncMode.NotStarted:
                             syncProgressTask = Task.Delay(1000).ContinueWith(_ => 0L);

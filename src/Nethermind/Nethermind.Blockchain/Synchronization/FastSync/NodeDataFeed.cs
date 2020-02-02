@@ -80,7 +80,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
         private Stopwatch _networkWatch = new Stopwatch();
         private Stopwatch _handleWatch = new Stopwatch();
 
-        private Keccak _rootNode;
+        private Keccak _rootNode = Keccak.EmptyTreeHash;
 
         private ISnapshotableDb _codeDb;
         private ILogger _logger;

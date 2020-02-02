@@ -26,5 +26,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
         public byte[][] Responses { get; set; }
         
         public SyncPeerAllocation AssignedPeer { get; set; }
+
+        public bool IsAdditionalDataConsumer { get; set; }
     }
 }

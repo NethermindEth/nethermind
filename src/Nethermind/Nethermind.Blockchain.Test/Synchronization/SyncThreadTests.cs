@@ -37,13 +37,13 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Store;
-using Nethermind.Store.BeamSync;
 using Nethermind.Store.Repositories;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Store.BeamSync;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization

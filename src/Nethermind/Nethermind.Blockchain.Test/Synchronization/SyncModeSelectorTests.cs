@@ -122,7 +122,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 Assert.True(changedInvoked, "changed");
             }
         }
-
+        
         [TestCase(1032, 999, 0, 0, SyncMode.Beam)]
         [TestCase(1032, 1000, 0, 0, SyncMode.Beam)]
         [TestCase(1032, 1000, 0, 0, SyncMode.Beam)]
