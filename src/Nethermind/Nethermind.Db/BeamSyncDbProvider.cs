@@ -28,10 +28,9 @@ namespace Nethermind.Db
         
         public BeamSyncDbProvider(string description, string basePath, IDbConfig dbConfig, ILogManager logManager, bool useReceiptsDb)
         {
-            BeamSyncDb codeDb = new BeamSyncDb(description, logManager);
-            BeamSyncDb stateDb = new BeamSyncDb(description, logManager);
+            BeamSyncDb codeDb = new BeamSyncDb(new CodeRocksDb(basePath, dbConfig, logManager), description, logManager);
+            BeamSyncDb stateDb = new BeamSyncDb(new StateRocksDb(basePath, dbConfig, logManager), description, logManager);
             NodeDataConsumer = new CompositeDataConsumer(codeDb, stateDb);
-            
             BlocksDb = new BlocksRocksDb(basePath, dbConfig, logManager);
             HeadersDb = new HeadersRocksDb(basePath, dbConfig, logManager);
             BlockInfosDb = new BlockInfosRocksDb(basePath, dbConfig, logManager);

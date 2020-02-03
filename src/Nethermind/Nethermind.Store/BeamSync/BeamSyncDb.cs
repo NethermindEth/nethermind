@@ -30,25 +30,34 @@ namespace Nethermind.Store.BeamSync
         private readonly string _description;
         private static DateTime _lastProgressInContext;
         
+        /// <summary>
+        /// This can be in this hacky way as it will obviously have to be changed
+        /// There must be some BeamSync managing class passed to various processors so this info can be shared
+        /// Also some better design is needed for how to decide that beam sync has to be dropped for given context
+        /// </summary>
         public static object Context
         {
             get => _context;
             set
             {
                 _context = value;
-                Console.WriteLine("Starting new context: " + _context);
+                // Console.WriteLine("Starting new context: " + _context);
                 _lastProgressInContext = DateTime.UtcNow;
             }
         }
 
-        private MemDb _memDb = new MemDb();
+        /// <summary>
+        /// This DB should be not in memory, in fact we should write to the underlying rocksDb and only keep a cache in memory
+        /// </summary>
+        private IDb _db;
 
         private ILogger _logger;
         
-        public BeamSyncDb(string description, ILogManager logManager)
+        public BeamSyncDb(IDb db, string description, ILogManager logManager)
         {
             _description = description;
             _logger = logManager.GetClassLogger<BeamSyncDb>();
+            _db = db ?? throw new ArgumentNullException(nameof(db));
         }
         
         public void Dispose()
@@ -76,11 +85,11 @@ namespace Nethermind.Store.BeamSync
                 bool wasInDb = true;
                 while (true)
                 {
-                    var fromMem = _memDb[key];
+                    var fromMem = _db[key];
                     if (fromMem == null)
                     {
                         wasInDb = false;
-                        _logger.Info($"BEAM SYNC Asking for {key.ToHexString()} - db size {_memDb.Keys.Count}");
+                        _logger.Info($"BEAM SYNC Asking for {key.ToHexString()} - db size {_db.Keys.Count}");
                         // we store sync progress data at Keccak.Zero;
                         if (Bytes.AreEqual(key, Keccak.Zero.Bytes))
                         {
@@ -106,7 +115,7 @@ namespace Nethermind.Store.BeamSync
 
                         if (!wasInDb)
                         {
-                            if(_logger.IsInfo) _logger.Info($"{_description} BEAM SYNC Resolved {key.ToHexString()} - db size {_memDb.Keys.Count}");
+                            if(_logger.IsInfo) _logger.Info($"{_description} BEAM SYNC Resolved {key.ToHexString()} - db size {_db.Keys.Count}");
                         }
 
                         return fromMem;
@@ -114,7 +123,7 @@ namespace Nethermind.Store.BeamSync
                 }
             }
 
-            set => _memDb[key] = value;
+            set => _db[key] = value;
         }
 
         public byte[][] GetAll()
@@ -132,12 +141,12 @@ namespace Nethermind.Store.BeamSync
 
         public void Remove(byte[] key)
         {
-            _memDb.Remove(key);
+            _db.Remove(key);
         }
 
         public bool KeyExists(byte[] key)
         {
-            return _memDb.KeyExists(key);
+            return _db.KeyExists(key);
         }
 
         public event EventHandler NeedMoreData;
@@ -157,7 +166,7 @@ namespace Nethermind.Store.BeamSync
                 {
                     if (data.Length > i && data[i] != null)
                     {
-                        _memDb[hashes[i].Bytes] = data[i];
+                        _db[hashes[i].Bytes] = data[i];
                         consumed++;
                     }
                 }
