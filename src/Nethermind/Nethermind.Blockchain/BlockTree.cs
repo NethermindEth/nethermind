@@ -430,6 +430,7 @@ namespace Nethermind.Blockchain
 
             BlockInfo blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? 0);
             ChainLevelInfo chainLevel = new ChainLevelInfo(false, blockInfo);
+            chainLevel.HasBlockOnMainChain = true;
             _chainLevelInfoRepository.PersistLevel(header.Number, chainLevel);
 
             if (header.Number < (LowestInsertedHeader?.Number ?? long.MaxValue))
@@ -440,6 +441,11 @@ namespace Nethermind.Blockchain
             if (header.Number > BestKnownNumber)
             {
                 BestKnownNumber = header.Number;
+            }
+
+            if (header.Number > BestSuggestedHeader.Number)
+            {
+                BestSuggestedHeader = header;
             }
 
             return AddBlockResult.Added;
@@ -953,33 +959,31 @@ namespace Nethermind.Blockchain
             }
 #endif
 
-            long lastNumber = ascendingOrder ? processedBlocks[processedBlocks.Length - 1].Number : processedBlocks[0].Number;
+            long lastNumber = ascendingOrder ? processedBlocks[^1].Number : processedBlocks[0].Number;
             long previousHeadNumber = Head?.Number ?? 0L;
-            using (var batch = _chainLevelInfoRepository.StartBatch())
+            using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
+            if (previousHeadNumber > lastNumber)
             {
-                if (previousHeadNumber > lastNumber)
+                for (long i = 0; i < previousHeadNumber - lastNumber; i++)
                 {
-                    for (long i = 0; i < previousHeadNumber - lastNumber; i++)
-                    {
-                        long levelNumber = previousHeadNumber - i;
+                    long levelNumber = previousHeadNumber - i;
 
-                        ChainLevelInfo level = LoadLevel(levelNumber);
-                        level.HasBlockOnMainChain = false;
-                        _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
-                    }
+                    ChainLevelInfo level = LoadLevel(levelNumber);
+                    level.HasBlockOnMainChain = false;
+                    _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
+                }
+            }
+
+            for (int i = 0; i < processedBlocks.Length; i++)
+            {
+                Block block = processedBlocks[i];
+                if (ShouldCache(block.Number))
+                {
+                    _blockCache.Set(block.Hash, processedBlocks[i]);
+                    _headerCache.Set(block.Hash, block.Header);
                 }
 
-                for (int i = 0; i < processedBlocks.Length; i++)
-                {
-                    Block block = processedBlocks[i];
-                    if (ShouldCache(block.Number))
-                    {
-                        _blockCache.Set(block.Hash, processedBlocks[i]);
-                        _headerCache.Set(block.Hash, block.Header);
-                    }
-
-                    MoveToMain(processedBlocks[i], batch);
-                }
+                MoveToMain(processedBlocks[i], batch);
             }
         }
 

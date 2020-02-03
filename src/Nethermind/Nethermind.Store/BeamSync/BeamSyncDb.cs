@@ -72,12 +72,14 @@ namespace Nethermind.Store.BeamSync
                 // in such case it would be good to have some gossip about corrupted blocks
                 // but such gossip would be cheap
                 // if we keep timing out then we would finally reject the block (but only shelve it instead of marking invalid)
-                
+
+                bool wasInDb = true;
                 while (true)
                 {
                     var fromMem = _memDb[key];
                     if (fromMem == null)
                     {
+                        wasInDb = false;
                         _logger.Info($"BEAM SYNC Asking for {key.ToHexString()} - db size {_memDb.Keys.Count}");
                         // we store sync progress data at Keccak.Zero;
                         if (Bytes.AreEqual(key, Keccak.Zero.Bytes))
@@ -101,7 +103,12 @@ namespace Nethermind.Store.BeamSync
                     {
                         _lastProgressInContext = DateTime.UtcNow;
                         _requestedNodes.Clear();
-                        _logger.Info($"{_description} BEAM SYNC Resolved {key.ToHexString()} - db size {_memDb.Keys.Count}");
+
+                        if (!wasInDb)
+                        {
+                            if(_logger.IsInfo) _logger.Info($"{_description} BEAM SYNC Resolved {key.ToHexString()} - db size {_memDb.Keys.Count}");
+                        }
+
                         return fromMem;
                     }
                 }

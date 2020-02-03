@@ -65,7 +65,7 @@ namespace Nethermind.Blockchain.Synchronization
             _syncBatchSize = new SyncBatchSize(logManager);
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
         }
-        
+
         private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
         {
             _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
@@ -108,8 +108,8 @@ namespace Nethermind.Blockchain.Synchronization
                         if (_logger.IsWarn) _logger.Warn($"Could not find common ancestor with {bestPeer}");
                         throw new EthSynchronizationException("Peer with inconsistent chain in sync");
                     }
-                    
-                    int ancestorJump = _ancestorJumps[ancestorLookupLevel] - _ancestorJumps[ancestorLookupLevel - 1]; 
+
+                    int ancestorJump = _ancestorJumps[ancestorLookupLevel] - _ancestorJumps[ancestorLookupLevel - 1];
                     currentNumber = currentNumber >= ancestorJump ? (currentNumber - ancestorJump) : 0L;
                     continue;
                 }
@@ -147,7 +147,7 @@ namespace Nethermind.Blockchain.Synchronization
                         throw new EthSynchronizationException($"{bestPeer} sent a block {currentHeader.ToString(BlockHeader.Format.Short)} with an invalid header");
                     }
 
-                    if (HandleAddResult(currentHeader, i == 0, _blockTree.SuggestHeader(currentHeader)))
+                    if (HandleAddResult(currentHeader, i == 0, _blockTree.Insert(currentHeader)))
                     {
                         headersSynced++;
                     }
@@ -168,28 +168,29 @@ namespace Nethermind.Blockchain.Synchronization
 
             return headersSynced;
         }
-        
-        public Task<long> DownloadBlocks(PeerInfo bestPeer, int numberOfLatestBlocksToBeIgnored, CancellationToken cancellation, BlockDownloaderOptions options = BlockDownloaderOptions.DownloadAndProcess)
+
+        public Task<long> DownloadBlocks(PeerInfo bestPeer, int numberOfLatestBlocksToBeIgnored, CancellationToken cancellation, BlockDownloaderOptions options = BlockDownloaderOptions.Process)
         {
             return DownloadBlocks(bestPeer, numberOfLatestBlocksToBeIgnored, 0, cancellation, options);
         }
-        
-        public async Task<long> DownloadBlocks(PeerInfo bestPeer, int numberOfLatestBlocksToBeIgnored, long pivotNumber, CancellationToken cancellation, BlockDownloaderOptions options = BlockDownloaderOptions.DownloadAndProcess)
+
+        public async Task<long> DownloadBlocks(PeerInfo bestPeer, int numberOfLatestBlocksToBeIgnored, long pivotNumber, CancellationToken cancellation, BlockDownloaderOptions options = BlockDownloaderOptions.Process)
         {
             if (bestPeer == null)
             {
                 string message = $"Not expecting best peer to be null inside the {nameof(BlockDownloader)}";
-                if(_logger.IsError) _logger.Error(message);
+                if (_logger.IsError) _logger.Error(message);
                 throw new ArgumentNullException(message);
             }
 
-            bool downloadReceipts = options == BlockDownloaderOptions.DownloadWithReceipts;
-            bool shouldProcess = options == BlockDownloaderOptions.DownloadAndProcess;
-            
+            bool downloadReceipts = (options & BlockDownloaderOptions.DownloadReceipts) == BlockDownloaderOptions.DownloadReceipts;
+            bool shouldProcess = (options & BlockDownloaderOptions.Process) == BlockDownloaderOptions.Process;
+            bool shouldMoveToMain = (options & BlockDownloaderOptions.MoveToMain) == BlockDownloaderOptions.MoveToMain;
+
             int blocksSynced = 0;
             int ancestorLookupLevel = 0;
 
-            
+
             long currentNumber = Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
             // pivot number - 6 for uncle validation
             // long currentNumber = Math.Max(Math.Max(0, pivotNumber - 6), Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
@@ -204,7 +205,7 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     break;
                 }
-                
+
                 headersToRequest = Math.Min(headersToRequest, bestPeer.MaxHeadersPerRequest());
                 if (_logger.IsTrace) _logger.Trace($"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
 
@@ -240,8 +241,8 @@ namespace Nethermind.Blockchain.Synchronization
                             if (_logger.IsWarn) _logger.Warn($"Could not find common ancestor with {bestPeer}");
                             throw new EthSynchronizationException("Peer with inconsistent chain in sync");
                         }
-                        
-                        int ancestorJump = _ancestorJumps[ancestorLookupLevel] - _ancestorJumps[ancestorLookupLevel - 1]; 
+
+                        int ancestorJump = _ancestorJumps[ancestorLookupLevel] - _ancestorJumps[ancestorLookupLevel - 1];
                         currentNumber = currentNumber >= ancestorJump ? (currentNumber - ancestorJump) : 0L;
                         continue;
                     }
@@ -261,12 +262,12 @@ namespace Nethermind.Blockchain.Synchronization
 
                     // can move this to block tree now?
                     bool isPostPivot = currentBlock.Number > pivotNumber;
-                    bool shouldValidateCurrentBlock = isPostPivot; 
+                    bool shouldValidateCurrentBlock = isPostPivot;
                     if (shouldValidateCurrentBlock && !_blockValidator.ValidateSuggestedBlock(currentBlock))
                     {
                         throw new EthSynchronizationException($"{bestPeer} sent an invalid block {currentBlock.ToString(Block.Format.Short)}.");
                     }
-                    
+
                     bool shouldProcessCurrentBlock = shouldProcess && isPostPivot;
                     if (HandleAddResult(currentBlock.Header, blockIndex == 0, _blockTree.SuggestBlock(currentBlock, shouldProcessCurrentBlock)))
                     {
@@ -279,6 +280,11 @@ namespace Nethermind.Blockchain.Synchronization
                         }
 
                         blocksSynced++;
+                    }
+
+                    if (shouldMoveToMain)
+                    {
+                        _blockTree.UpdateMainChain(new[] {currentBlock});
                     }
 
                     currentNumber += 1;
@@ -297,7 +303,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             return blocksSynced;
         }
-        
+
         private ValueTask DownloadFailHandler<T>(Task<T> downloadTask, string entities)
         {
             if (downloadTask.IsFaulted)
@@ -329,7 +335,7 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         private Guid _sealValidatorUserGuid = Guid.NewGuid();
-        
+
         private async Task<BlockHeader[]> RequestHeaders(PeerInfo peer, CancellationToken cancellation, long currentNumber, int headersToRequest)
         {
             _sealValidator.HintValidationRange(_sealValidatorUserGuid, currentNumber - 1028, currentNumber + 30000);
