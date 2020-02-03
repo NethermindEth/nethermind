@@ -65,8 +65,8 @@ namespace Nethermind.Evm.Test
         {
             ILogManager logger = LimboLogs.Instance;
             
-            ISnapshotableDb beamSyncDb = new StateDb(new BeamSyncDb(LimboLogs.Instance));
-            IDb beamSyncCodeDb = new BeamSyncDb(LimboLogs.Instance);
+            ISnapshotableDb beamSyncDb = new StateDb(new BeamSyncDb("test", LimboLogs.Instance));
+            IDb beamSyncCodeDb = new BeamSyncDb("test", LimboLogs.Instance);
             IDb codeDb = UseBeamSync ? beamSyncCodeDb : new StateDb();
             _stateDb = UseBeamSync ? beamSyncDb : new StateDb();
             TestState = new StateProvider(_stateDb, codeDb, logger);

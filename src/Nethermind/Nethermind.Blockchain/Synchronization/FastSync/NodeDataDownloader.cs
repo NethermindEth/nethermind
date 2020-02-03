@@ -108,50 +108,53 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             }
         }
 
-        private async Task SyncOnce(CancellationToken token, bool forAdditionalConsumers)
+        private async Task KeepSyncing(CancellationToken token)
         {
-            bool oneMoreTry = false;
-
+            int lastRequestSize; 
             do
             {
                 if (token.IsCancellationRequested)
                 {
                     return;
                 }
-
-                oneMoreTry = false;
-                StateSyncBatch request = PrepareRequest(forAdditionalConsumers);
-                if (request.RequestedNodes.Length != 0)
-                {
-                    request.AssignedPeer = await _syncPeerPool.BorrowAsync(BorrowOptions.DoNotReplace, "node sync", null, 1000);
-
-                    Interlocked.Increment(ref _pendingRequests);
-                    // if (_logger.IsWarn) _logger.Warn($"Creating new request with {request.RequestedNodes.Length} nodes");
-                    Task task = ExecuteRequest(token, request);
-#pragma warning disable 4014
-                    task.ContinueWith(t =>
-#pragma warning restore 4014
-                    {
-                        if (t.IsFaulted)
-                        {
-                            if (_logger.IsWarn) _logger.Warn($"Failure when executing node data request {t.Exception}");
-                        }
-
-                        Interlocked.Decrement(ref _pendingRequests);
-                        if (request.RequestedNodes.Length != 0)
-                        {
-                            oneMoreTry = true;
-                        }
-                    });
-                }
-                else
-                {
-                    await Task.Delay(50);
-                    if (_logger.IsDebug) _logger.Debug($"DIAG: 0 batches created with {_pendingRequests} pending requests, {_feed.TotalNodesPending} pending nodes");
-                }
-            } while (_pendingRequests != 0 || oneMoreTry);
+                
+                lastRequestSize = await SyncOnce(token, false);
+            } while (_pendingRequests != 0 || lastRequestSize > 0);
 
             if (_logger.IsInfo) _logger.Info($"Finished with {_pendingRequests} pending requests and {_syncPeerPool.UsefulPeerCount} useful peers.");
+        }
+
+        private async Task<int> SyncOnce(CancellationToken token, bool forAdditionalConsumers)
+        {
+            int requestSize = 0;
+            StateSyncBatch request = PrepareRequest(forAdditionalConsumers);
+            if (request.RequestedNodes.Length != 0)
+            {
+                request.AssignedPeer = await _syncPeerPool.BorrowAsync(BorrowOptions.DoNotReplace, "node sync", null, 1000);
+
+                Interlocked.Increment(ref _pendingRequests);
+                // if (_logger.IsWarn) _logger.Warn($"Creating new request with {request.RequestedNodes.Length} nodes");
+                Task task = ExecuteRequest(token, request);
+#pragma warning disable 4014
+                task.ContinueWith(t =>
+#pragma warning restore 4014
+                {
+                    if (t.IsFaulted)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Failure when executing node data request {t.Exception}");
+                    }
+
+                    Interlocked.Decrement(ref _pendingRequests);
+                    requestSize = request.RequestedNodes.Length;
+                });
+            }
+            else
+            {
+                await Task.Delay(50);
+                if (_logger.IsDebug) _logger.Debug($"DIAG: 0 batches created with {_pendingRequests} pending requests, {_feed.TotalNodesPending} pending nodes");
+            }
+
+            return requestSize;
         }
 
         private StateSyncBatch PrepareRequest(bool forAdditionalConsumers)
@@ -186,7 +189,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
         {
             _consumedNodesCount = 0;
             _feed.SetNewStateRoot(number, rootNode);
-            await SyncOnce(token, false);
+            await KeepSyncing(token);
             return _consumedNodesCount;
         }
 

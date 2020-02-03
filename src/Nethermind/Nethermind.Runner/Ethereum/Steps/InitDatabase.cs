@@ -47,7 +47,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (syncConfig.BeamSyncEnabled)
             {
-                BeamSyncDbProvider beamSyncProvider = new BeamSyncDbProvider(initConfig.BaseDbPath, dbConfig, _context.LogManager, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
+                BeamSyncDbProvider beamSyncProvider = new BeamSyncDbProvider("processor DB", initConfig.BaseDbPath, dbConfig, _context.LogManager, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
                 _context.DbProvider = beamSyncProvider;
                 _context.NodeDataConsumer = beamSyncProvider.NodeDataConsumer;
 

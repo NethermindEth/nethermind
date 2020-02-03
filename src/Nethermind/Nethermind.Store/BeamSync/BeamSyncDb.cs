@@ -27,6 +27,7 @@ namespace Nethermind.Store.BeamSync
 {
     public class BeamSyncDb : IDb, INodeDataConsumer
     {
+        private readonly string _description;
         private static DateTime _lastProgressInContext;
         
         public static object Context
@@ -44,8 +45,9 @@ namespace Nethermind.Store.BeamSync
 
         private ILogger _logger;
         
-        public BeamSyncDb(ILogManager logManager)
+        public BeamSyncDb(string description, ILogManager logManager)
         {
+            _description = description;
             _logger = logManager.GetClassLogger<BeamSyncDb>();
         }
         
@@ -91,15 +93,15 @@ namespace Nethermind.Store.BeamSync
                         _autoReset.WaitOne(1000);
                         if (DateTime.UtcNow - _lastProgressInContext > TimeSpan.FromSeconds(15))
                         {
-                            _logger.Error($"Context failure for {_context}");
-                            throw new InvalidDataException("Context fail in beam sync");
+                            // _logger.Error($"Context failure for {_context}");
+                            // throw new InvalidDataException("Context fail in beam sync");
                         }
                     }
                     else
                     {
                         _lastProgressInContext = DateTime.UtcNow;
                         _requestedNodes.Clear();
-                        _logger.Info($"BEAM SYNC Resolved {key.ToHexString()} - db size {_memDb.Keys.Count}");
+                        _logger.Info($"{_description} BEAM SYNC Resolved {key.ToHexString()} - db size {_memDb.Keys.Count}");
                         return fromMem;
                     }
                 }

@@ -289,6 +289,13 @@ namespace Nethermind.Blockchain
                         break; //failure here
                     }
 
+                    // TODO: implement this
+                    bool isBeamSync = true;
+                    if (isBeamSync)
+                    {
+                        break;
+                    }
+                    
                     bool isFastSyncTransition = _blockTree.Head == _blockTree.Genesis && toBeProcessed.Number > 1; 
                     if (!isFastSyncTransition)
                     {

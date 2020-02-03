@@ -26,10 +26,10 @@ namespace Nethermind.Db
     {
         public INodeDataConsumer NodeDataConsumer { get; }
         
-        public BeamSyncDbProvider(string basePath, IDbConfig dbConfig, ILogManager logManager, bool useReceiptsDb)
+        public BeamSyncDbProvider(string description, string basePath, IDbConfig dbConfig, ILogManager logManager, bool useReceiptsDb)
         {
-            BeamSyncDb codeDb = new BeamSyncDb(logManager);
-            BeamSyncDb stateDb = new BeamSyncDb(logManager);
+            BeamSyncDb codeDb = new BeamSyncDb(description, logManager);
+            BeamSyncDb stateDb = new BeamSyncDb(description, logManager);
             NodeDataConsumer = new CompositeDataConsumer(codeDb, stateDb);
             
             BlocksDb = new BlocksRocksDb(basePath, dbConfig, logManager);

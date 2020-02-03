@@ -58,7 +58,7 @@ namespace Nethermind.Blockchain.Synchronization
             // if we are not in fast sync then it means we are in full sync and we just want to have two modes:
             //   * NOT_STARTED
             //   * FULL
-            if (!_syncConfig.FastSync)
+            if (!_syncConfig.FastSync && !_syncConfig.BeamSyncEnabled)
             {
                 if (Current == SyncMode.NotStarted)
                 {
@@ -76,18 +76,6 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (maxBlockNumberAmongPeers == 0)
             {
-                return;
-            }
-
-            if (_syncConfig.BeamSyncEnabled)
-            {
-                if (Current != SyncMode.Beam)
-                {
-                    ChangeSyncMode(_syncProgressResolver.FindBestHeader() == maxBlockNumberAmongPeers
-                        ? SyncMode.Full
-                        : SyncMode.Beam);
-                }
-
                 return;
             }
 
@@ -121,6 +109,26 @@ namespace Nethermind.Blockchain.Synchronization
             if (!_syncProgressResolver.IsFastBlocksFinished())
             {
                 newSyncMode = SyncMode.FastBlocks;
+            }
+            else if (_syncConfig.BeamSyncEnabled)
+            {
+                if (Current == SyncMode.Beam)
+                {
+                    bool switchToFull = (_syncProgressResolver.FindBestHeader() == maxBlockNumberAmongPeers)
+                                        && _syncProgressResolver.FindBestHeader() != 0;
+
+                    newSyncMode = switchToFull
+                        ? SyncMode.Full
+                        : SyncMode.Beam;
+                }
+                else if(Current != SyncMode.Full)
+                {
+                    newSyncMode = SyncMode.Beam;
+                }
+                else
+                {
+                    newSyncMode = SyncMode.Full;
+                }
             }
             else if (maxBlockNumberAmongPeers - bestFull <= FullSyncThreshold)
             {
