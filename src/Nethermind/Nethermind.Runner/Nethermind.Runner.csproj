@@ -67,7 +67,7 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="git-hash*">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
     <Content Remove="out\**" />
     <Content Remove="keystore\**" />
@@ -94,16 +94,9 @@
     <None Remove="keystore\**" />
   </ItemGroup>
   <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">
-    <Exec Command="git describe --tags --always --long &gt; git-hash" />
+    <Exec Command="git describe --tags --long &gt; git-hash" />
   </Target>
   <Target Name="StoreGitHash" AfterTargets="Build">
-    <Exec Command="git describe --tags --always --long &gt; git-hash" />
+    <Exec Command="git describe --tags --long &gt; git-hash" />
   </Target>
-  <PropertyGroup>  
-    <BuildDependsOn>  
-        $(BuildDependsOn);
-        StoreGitHash;
-        StoreGitHashBeforeBuild;
-    </BuildDependsOn>  
-</PropertyGroup> 
  </Project>
