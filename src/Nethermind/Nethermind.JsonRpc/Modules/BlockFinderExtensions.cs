@@ -24,6 +24,13 @@ namespace Nethermind.JsonRpc.Modules
     {
         public static SearchResult<BlockHeader> SearchForHeader(this IBlockFinder blockFinder, BlockParameter blockParameter)
         {
+            if (blockFinder.Head == null)
+            {
+                return new SearchResult<BlockHeader>("Incorrect head block", ErrorCodes.InternalError);
+            }
+            
+            blockParameter ??= BlockParameter.Latest;
+
             BlockHeader header;
             if (blockParameter.RequireCanonical)
             {
@@ -47,13 +54,13 @@ namespace Nethermind.JsonRpc.Modules
                 : new SearchResult<BlockHeader>(header);
         }
         
-        public static SearchResult<Block> SearchForBlock(this IBlockFinder blockFinder, BlockParameter blockParameter)
+        public static SearchResult<Block> SearchForBlock(this IBlockFinder blockFinder, BlockParameter blockParameter, bool allowNulls = false)
         {
             Block block;
             if (blockParameter.RequireCanonical)
             {
                 block = blockFinder.FindBlock(blockParameter.BlockHash, BlockTreeLookupOptions.RequireCanonical);
-                if (block == null)
+                if (block == null && !allowNulls)
                 {
                     var header = blockFinder.FindHeader(blockParameter.BlockHash);
                     if (header != null)
@@ -67,7 +74,7 @@ namespace Nethermind.JsonRpc.Modules
                 block = blockFinder.FindBlock(blockParameter);
             }
 
-            return block == null
+            return block == null && !allowNulls
                 ? new SearchResult<Block>($"{blockParameter.BlockHash} could not be found", ErrorCodes.ResourceNotFound)
                 : new SearchResult<Block>(block);
         }

@@ -270,7 +270,12 @@ namespace Nethermind.Blockchain
 
             BlockHeader branchingPoint = null;
             Block[] processedBlocks = null;
-            if (_blockTree.Head == null || totalDifficulty > _blockTree.Head.TotalDifficulty || (options & ProcessingOptions.ForceProcessing) != 0)
+
+            bool shouldProcess = suggestedBlock.IsGenesis
+                || totalDifficulty > (_blockTree.Head?.TotalDifficulty ?? _blockTree.BestSuggestedHeader?.TotalDifficulty - 1)
+                || (options & ProcessingOptions.ForceProcessing) == ProcessingOptions.ForceProcessing;
+            
+            if (shouldProcess)
             {
                 List<Block> blocksToBeAddedToMain = new List<Block>();
                 Block toBeProcessed = suggestedBlock;
