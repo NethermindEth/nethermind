@@ -169,8 +169,11 @@ namespace Nethermind.Store.BeamSync
                 {
                     if (data.Length > i && data[i] != null)
                     {
-                        _db[hashes[i].Bytes] = data[i];
-                        consumed++;
+                        if (Keccak.Compute(data[i]) == hashes[i])
+                        {
+                            _db[hashes[i].Bytes] = data[i];
+                            consumed++;
+                        }
                     }
                 }
             }
