@@ -102,6 +102,7 @@ namespace Nethermind.Blockchain
                 _stateProvider.StateRoot = branchStateRoot;
             }
 
+            var readOnly = (options & ProcessingOptions.ReadOnlyChain) != 0;
             var processedBlocks = new Block[suggestedBlocks.Length];
             try
             {
@@ -111,9 +112,14 @@ namespace Nethermind.Blockchain
                     if (_logger.IsTrace) _logger.Trace($"Committing trees - state root {_stateProvider.StateRoot}");
                     _stateProvider.CommitTree();
                     _storageProvider.CommitTrees();
+                    
+                    if (!readOnly)
+                    {
+                        BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlocks[i]));
+                    }
                 }
-
-                if ((options & ProcessingOptions.ReadOnlyChain) != 0)
+                
+                if (readOnly)
                 {
                     _receiptsTracer.BeforeRestore(_stateProvider);
                     Restore(stateSnapshot, codeSnapshot, snapshotStateRoot);
@@ -204,11 +210,6 @@ namespace Nethermind.Blockchain
                 {
                     StoreTxReceipts(block, receipts);
                 }
-            }
-
-            if ((options & ProcessingOptions.ReadOnlyChain) == 0)
-            {
-                BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(block));
             }
 
             return block;
