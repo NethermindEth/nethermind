@@ -57,8 +57,7 @@ namespace Nethermind.Store.BeamSync
         {
             _description = description;
             _logger = logManager.GetClassLogger<BeamSyncDb>();
-            // _db = db ?? throw new ArgumentNullException(nameof(db));
-            _db = new MemDb();
+            _db = db ?? throw new ArgumentNullException(nameof(db));
         }
         
         public void Dispose()
