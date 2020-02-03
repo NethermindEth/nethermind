@@ -19,6 +19,7 @@ namespace Nethermind.Serialization.Json
     public enum NumberConversion
     {
         Hex,
-        Decimal
+        Decimal,
+        Raw
     }
 }

@@ -79,7 +79,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
         
         public static JsonConverter[] Converters = 
         {
-            new ParityTxTraceFromStoreConverter(),
             new ParityTxTraceFromReplayConverter(),
             new ParityAccountStateChangeConverter(),
             new ParityTraceActionConverter(),

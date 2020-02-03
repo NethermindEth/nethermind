@@ -1,4 +1,4 @@
-name: Publish Nethermind Image to Docker Registry
+name: Publish Nethermind Alpine Image to Docker Registry
 
 on:
   push:
