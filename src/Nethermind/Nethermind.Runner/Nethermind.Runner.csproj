@@ -97,6 +97,7 @@
     <None Remove="out\**" />
     <None Remove="keystore\**" />
   </ItemGroup>
+  <Target Name="Build" DependsOnTargets="$(BuildDependsOn)"/>
   <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">
     <Exec Command="git describe --tags --always --long &gt; git-hash" />
   </Target>
