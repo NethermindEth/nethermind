@@ -33,7 +33,7 @@ namespace Nethermind.Store.BeamSync
             }
         }
 
-        private void DataConsumerOnNeedMoreData(object? sender, EventArgs e)
+        private void DataConsumerOnNeedMoreData(object sender, EventArgs e)
         {
             NeedMoreData?.Invoke(this, EventArgs.Empty);
         }

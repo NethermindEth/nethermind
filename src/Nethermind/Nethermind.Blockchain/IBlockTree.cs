@@ -62,12 +62,7 @@ namespace Nethermind.Blockchain
         /// Best downloaded block number
         /// </summary>
         long BestKnownNumber { get; }
-        
-        /// <summary>
-        /// Best processed block
-        /// </summary>
-        BlockHeader Head { get; }
-        
+
         /// <summary>
         /// Inserts a disconnected block header (without body)
         /// </summary>
