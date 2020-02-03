@@ -8,6 +8,7 @@
     <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
     <BuildDependsOn>
       StoreGitHashBeforeBuild;
+      StoreGitHash;
     </BuildDependsOn>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -97,6 +98,9 @@
     <None Remove="keystore\**" />
   </ItemGroup>
   <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">
+    <Exec Command="git describe --tags --always --long &gt; git-hash" />
+  </Target>
+  <Target Name="StoreGitHash" BeforeTargets="Build">
     <Exec Command="git describe --tags --always --long &gt; git-hash" />
   </Target>
  </Project>
