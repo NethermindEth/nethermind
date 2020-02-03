@@ -81,9 +81,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             ReviewDependencies();
         }
 
-        private ConcurrentDictionary<Type, bool> _hasFinishedExecution = new ConcurrentDictionary<Type, bool>();
+        private readonly ConcurrentDictionary<Type, bool> _hasFinishedExecution = new ConcurrentDictionary<Type, bool>();
 
-        private ConcurrentDictionary<Type, bool> _discoveredSteps = new ConcurrentDictionary<Type, bool>();
+        private readonly ConcurrentDictionary<Type, bool> _discoveredSteps = new ConcurrentDictionary<Type, bool>();
 
         private bool IsStepType(Type t) => typeof(IStep).IsAssignableFrom(t);
 
@@ -147,6 +147,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private void RunOneRoundOfInitialization()
         {
+            int startedThisRound = 0;
             foreach ((Type discoveredStep, bool dependenciesInitialized) in _discoveredSteps)
             {
                 if (_allStarted.Contains(discoveredStep))
@@ -192,6 +193,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
                 Task task = step.Execute();
+                startedThisRound++;
                 Task continuationTask = task.ContinueWith(t =>
                 {
                     _hasFinishedExecution[stepBaseType] = true;
@@ -213,6 +215,11 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     _allPending.Add(continuationTask);
                 }
+            }
+
+            if (startedThisRound == 0 && _allPending.All(t => t.IsCompleted))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Didn't start any initialization steps during initialization round and all previous steps are already completed.");
             }
         }
 

@@ -21,7 +21,7 @@ using Nethermind.Runner.Ethereum.Context;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency(typeof(InitializeBlockchain))]
+    [RunnerStepDependency(typeof(StartBlockProcessor))]
     public class ReviewBlockTree : IStep
     {
         private readonly EthereumRunnerContext _context;

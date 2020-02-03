@@ -63,10 +63,10 @@
       <Link>chainspec\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="configs\*.cfg">
+    <Content Include="git-hash">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="git-hash*">
+    <Content Include="configs\*.cfg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Remove="out\**" />
@@ -93,7 +93,10 @@
     <None Remove="out\**" />
     <None Remove="keystore\**" />
   </ItemGroup>
-  <Target Name="StoreGitHash" BeforeTargets="Build">
+  <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">
+    <Exec Command="git describe --tags --long &gt; git-hash" />
+  </Target>
+  <Target Name="StoreGitHash" BeforeTargets="BeforePublish">
     <Exec Command="git describe --tags --long &gt; git-hash" />
   </Target>
  </Project>

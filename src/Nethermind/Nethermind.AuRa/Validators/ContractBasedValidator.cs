@@ -112,6 +112,12 @@ namespace Nethermind.AuRa.Validators
 
         public override void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None)
         {
+            if (block.IsGenesis)
+            {
+                _validatorStore.SetValidators(block.Number, LoadValidatorsFromContract(block.Header));
+                return;
+            }
+            
             var isProducingBlock = options.IsProducingBlock();
             var isProcessingBlock = !isProducingBlock;
             var isInitBlock = InitBlockNumber == block.Number;
