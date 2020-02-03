@@ -126,7 +126,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             ParityLikeTxTrace[] txTraces = TraceBlock(block, GetParityTypes(traceTypes));
 
             // ReSharper disable once CoVariantArrayConversion
-            return ResultWrapper<ParityTxTraceFromReplay[]>.Success(txTraces.Select(t => new ParityTxTraceFromReplay(t)).ToArray());
+            return ResultWrapper<ParityTxTraceFromReplay[]>.Success(txTraces.Select(t => new ParityTxTraceFromReplay(t, true)).ToArray());
         }
 
         public ResultWrapper<ParityTxTraceFromStore[]> trace_filter(BlockParameter fromBlock, BlockParameter toBlock, Address toAddress, int after, int count)

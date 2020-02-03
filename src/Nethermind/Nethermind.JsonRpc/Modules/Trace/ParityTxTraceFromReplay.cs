@@ -16,6 +16,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing.ParityStyle;
 
 namespace Nethermind.JsonRpc.Modules.Trace
@@ -26,15 +27,18 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
         }
         
-        public ParityTxTraceFromReplay(ParityLikeTxTrace txTrace)
+        public ParityTxTraceFromReplay(ParityLikeTxTrace txTrace, bool includeTransactionHash = false)
         {
             Output = txTrace.Output;
             VmTrace = txTrace.VmTrace;
             Action = txTrace.Action;
             StateChanges = txTrace.StateChanges;
+            TransactionHash = includeTransactionHash ? txTrace.TransactionHash : null;
         }
         
         public byte[] Output { get; set; }
+        
+        public Keccak TransactionHash { get; set; }
 
         public ParityVmTrace VmTrace { get; set; }
         
