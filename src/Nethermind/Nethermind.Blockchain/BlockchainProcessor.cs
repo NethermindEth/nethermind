@@ -293,10 +293,9 @@ namespace Nethermind.Blockchain
                     {
                         break; //failure here
                     }
-
-                    // TODO: implement this
-                    bool isBeamSync = true;
-                    if (isBeamSync)
+                    
+                    // for beam sync
+                    if((_blockTree.Head?.Number ?? 0) == 0)
                     {
                         break;
                     }
