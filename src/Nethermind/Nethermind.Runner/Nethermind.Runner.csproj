@@ -99,4 +99,11 @@
   <Target Name="StoreGitHash" AfterTargets="Build">
     <Exec Command="git describe --tags --always --long &gt; git-hash" />
   </Target>
+  <PropertyGroup>  
+    <BuildDependsOn>  
+        $(BuildDependsOn);
+        StoreGitHash;
+        StoreGitHashBeforeBuild;
+    </BuildDependsOn>  
+</PropertyGroup> 
  </Project>
