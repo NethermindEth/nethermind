@@ -57,15 +57,18 @@ namespace Nethermind.Store.BeamSync
         {
             _description = description;
             _logger = logManager.GetClassLogger<BeamSyncDb>();
-            _db = db ?? throw new ArgumentNullException(nameof(db));
+            // _db = db ?? throw new ArgumentNullException(nameof(db));
+            _db = new MemDb();
         }
         
         public void Dispose()
         {
         }
 
-        public string Name => "Hmb";
+        public string Name => _db.Name;
 
+        private int _resolvedKeysCount;
+        
         private HashSet<Keccak> _requestedNodes = new HashSet<Keccak>();
 
         public byte[] this[byte[] key]
@@ -89,7 +92,7 @@ namespace Nethermind.Store.BeamSync
                     if (fromMem == null)
                     {
                         wasInDb = false;
-                        _logger.Info($"BEAM SYNC Asking for {key.ToHexString()} - db size {_db.Keys.Count}");
+                        _logger.Info($"BEAM SYNC Asking for {key.ToHexString()} - resolved keys so far {_resolvedKeysCount}");
                         // we store sync progress data at Keccak.Zero;
                         if (Bytes.AreEqual(key, Keccak.Zero.Bytes))
                         {
@@ -115,7 +118,8 @@ namespace Nethermind.Store.BeamSync
 
                         if (!wasInDb)
                         {
-                            if(_logger.IsInfo) _logger.Info($"{_description} BEAM SYNC Resolved {key.ToHexString()} - db size {_db.Keys.Count}");
+                            if(_logger.IsInfo) _logger.Info($"{_description} BEAM SYNC Resolved {key.ToHexString()} - resolved keys so far {_resolvedKeysCount}");
+                            _resolvedKeysCount++;
                         }
 
                         return fromMem;

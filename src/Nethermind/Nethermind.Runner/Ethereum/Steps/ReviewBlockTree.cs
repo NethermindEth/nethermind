@@ -68,7 +68,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     }
                 });
             }
-            else
+            else if(!syncConfig.BeamSyncEnabled)
             {
                 await _context.BlockTree.FixFastSyncGaps(_context.RunnerCancellation.Token).ContinueWith(t =>
                 {

@@ -424,6 +424,11 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("Genesis block should not be inserted.");
             }
 
+            if (header.TotalDifficulty == null)
+            {
+                SetTotalDifficulty(header);
+            }
+            
             // validate hash here
             Rlp newRlp = _headerDecoder.Encode(header);
             _headerDb.Set(header.Hash, newRlp.Bytes);
