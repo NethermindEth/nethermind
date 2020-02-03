@@ -44,12 +44,17 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             _additionalConsumer.NeedMoreData += AdditionalConsumerOnNeedMoreData;
         }
 
-        private void AdditionalConsumerOnNeedMoreData(object? sender, EventArgs e)
+        private void AdditionalConsumerOnNeedMoreData(object sender, EventArgs e)
         {
-            _moreDataNeeded.Set();
+            Task keepSyncing = SyncOnce(CancellationToken.None, true);
+            keepSyncing.ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    _logger.Error($"Requesting node data failed: {t.Exception}");
+                }
+            });
         }
-        
-        private AutoResetEvent _moreDataNeeded = new AutoResetEvent(false);
 
         private async Task ExecuteRequest(CancellationToken token, StateSyncBatch batch)
         {
@@ -78,9 +83,9 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                 }
                 else
                 {
-                    result = _feed.HandleResponse(batch);    
+                    result = _feed.HandleResponse(batch);
                 }
-                
+
                 if (result.Result == NodeDataHandlerResult.BadQuality)
                 {
                     _syncPeerPool.ReportBadPeer(batch.AssignedPeer);
@@ -94,21 +99,16 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             Interlocked.Add(ref _consumedNodesCount, result.NodesConsumed);
             if (result.NodesConsumed == 0 && peer != null)
             {
-                _syncPeerPool.ReportNoSyncProgress(batch.AssignedPeer);
+                _syncPeerPool.ReportNoSyncProgress(batch.AssignedPeer, !batch.IsAdditionalDataConsumer);
             }
 
             if (batch.AssignedPeer != null)
             {
                 _syncPeerPool.Free(batch.AssignedPeer);
             }
-
-            if (batch.IsAdditionalDataConsumer)
-            {
-                await _moreDataNeeded.WaitOneAsync(token);
-            }
         }
 
-        private async Task KeepSyncing(CancellationToken token)
+        private async Task SyncOnce(CancellationToken token, bool forAdditionalConsumers)
         {
             bool oneMoreTry = false;
 
@@ -118,9 +118,9 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                 {
                     return;
                 }
-                
+
                 oneMoreTry = false;
-                StateSyncBatch request = PrepareRequest();
+                StateSyncBatch request = PrepareRequest(forAdditionalConsumers);
                 if (request.RequestedNodes.Length != 0)
                 {
                     request.AssignedPeer = await _syncPeerPool.BorrowAsync(BorrowOptions.DoNotReplace, "node sync", null, 1000);
@@ -152,14 +152,23 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             } while (_pendingRequests != 0 || oneMoreTry);
 
             if (_logger.IsInfo) _logger.Info($"Finished with {_pendingRequests} pending requests and {_syncPeerPool.UsefulPeerCount} useful peers.");
-
         }
 
-        private StateSyncBatch PrepareRequest()
+        private StateSyncBatch PrepareRequest(bool forAdditionalConsumers)
         {
-            if (_additionalConsumer.NeedsData)
+            if (forAdditionalConsumers)
             {
+                if (!_additionalConsumer.NeedsData)
+                {
+                    return StateSyncBatch.Empty;
+                }
+
                 Keccak[] hashes = _additionalConsumer.PrepareRequest();
+                if (hashes.Length == 0)
+                {
+                    return StateSyncBatch.Empty;
+                }
+
                 StateSyncBatch priorityBatch = new StateSyncBatch();
                 priorityBatch.RequestedNodes = hashes.Select(h => new StateSyncItem(h, NodeDataType.Code, 0, 0)).ToArray();
                 // if (_logger.IsWarn) _logger.Warn($"!!! Priority batch {priorityBatch.RequestedNodes.Length}");
@@ -177,19 +186,8 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
         {
             _consumedNodesCount = 0;
             _feed.SetNewStateRoot(number, rootNode);
-            await KeepSyncing(token);
+            await SyncOnce(token, false);
             return _consumedNodesCount;
-        }
-        
-        public async Task<long> SyncNodeDataForever(CancellationToken token)
-        {
-            await _moreDataNeeded.WaitOneAsync(token);
-            while (true)
-            {
-                // _logger.Warn("Starting HMB request loop");
-                await KeepSyncing(token);
-                // _logger.Warn("Finished HMB request loop");
-            }
         }
 
         public bool IsFullySynced(BlockHeader header) => _feed.IsFullySynced(header.StateRoot);

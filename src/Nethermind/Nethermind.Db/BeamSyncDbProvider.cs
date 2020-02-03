@@ -24,7 +24,7 @@ namespace Nethermind.Db
 {
     public class BeamSyncDbProvider : IDbProvider
     {
-        public INodeDataConsumer NodeDataConsumer { get; set; }
+        public INodeDataConsumer NodeDataConsumer { get; }
         
         public BeamSyncDbProvider(string basePath, IDbConfig dbConfig, ILogManager logManager, bool useReceiptsDb)
         {

@@ -56,22 +56,25 @@ namespace Nethermind.Blockchain.Synchronization
         private Task _refreshLoopTask;
         private CancellationTokenSource _refreshLoopCancellation = new CancellationTokenSource();
         private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens = new ConcurrentDictionary<PublicKey, CancellationTokenSource>();
-        private TimeSpan _timeBeforeWakingPeerUp = TimeSpan.FromSeconds(3);
+        private TimeSpan _timeBeforeWakingDeepSleepingPeerUp = TimeSpan.FromSeconds(3);
+        private TimeSpan _timeBeforeWakingShallowSleepingPeerUp = TimeSpan.FromMilliseconds(500);
+        
 
-        public void ReportNoSyncProgress(SyncPeerAllocation allocation)
+        public void ReportNoSyncProgress(SyncPeerAllocation allocation, bool isSevere = true)
         {
-            ReportNoSyncProgress(allocation?.Current);
+            ReportNoSyncProgress(allocation?.Current, isSevere);
         }
 
-        public void ReportNoSyncProgress(PeerInfo peerInfo)
+        public void ReportNoSyncProgress(PeerInfo peerInfo, bool isSevere = true)
         {
             if (peerInfo == null)
             {
                 return;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"No sync progress reported with {peerInfo}");
+            _logger.Error(LogConditions.BeamPoolOverrides, LogLevel.Debug, $"No sync progress reported with {peerInfo}");
             peerInfo.SleepingSince = DateTime.UtcNow;
+            peerInfo.IsSleepingDeeply = isSevere;
         }
 
         public void ReportInvalid(SyncPeerAllocation allocation, string details)
@@ -349,6 +352,7 @@ namespace Nethermind.Blockchain.Synchronization
         private void WakeUpPeer(PeerInfo info)
         {
             info.SleepingSince = null;
+            info.IsSleepingDeeply = false;
             _signals.Set();
         }
 
@@ -596,9 +600,12 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (info.IsAsleep)
                 {
-                    if (DateTime.UtcNow - info.SleepingSince < _timeBeforeWakingPeerUp)
+                    if (DateTime.UtcNow - info.SleepingSince <
+                        (info.IsSleepingDeeply
+                            ? _timeBeforeWakingDeepSleepingPeerUp
+                            : _timeBeforeWakingShallowSleepingPeerUp))
                     {
-                        if (_logger.IsWarn) _logger.Warn($"[{reason}] asleep");
+                        if (_logger.IsWarn) _logger.Warn(LogConditions.BeamPoolOverrides, LogLevel.Trace, $"[{reason}] {(info.IsSleepingDeeply ? "deeply" : "lightly")} asleep");
                         continue;
                     }
 
@@ -624,12 +631,12 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (_peers.Count == 0)
             {
-                if (_logger.IsWarn) _logger.Warn($"[{reason}] count 0");
+                if (_logger.IsWarn) _logger.Warn(LogConditions.BeamPoolOverrides, LogLevel.Trace, $"[{reason}] count 0");
             }
             
             if (bestPeer.Info == null)
             {
-                if (_logger.IsWarn) _logger.Warn($"[{reason}] No peer found for ETH sync");
+                if (_logger.IsWarn) _logger.Warn(LogConditions.BeamPoolOverrides, LogLevel.Trace, $"[{reason}] No peer found for ETH sync");
             }
             else
             {

@@ -14,22 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.Diagnostics;
-
-namespace Nethermind.Blockchain.Synchronization.FastSync
+namespace Nethermind.Logging
 {
-    [DebuggerDisplay("Requested Nodes: {RequestedNodes?.Length ?? 0}, Responses: {Responses?.Length ?? 0}, Assigned: {AssignedPeer?.Current}")]
-    public class StateSyncBatch
+    /// <summary>
+    /// used for diagnostics, just in case they make it all the way to PROD
+    /// </summary>
+    public static class LogConditions
     {
-        public static StateSyncBatch Empty = new StateSyncBatch{RequestedNodes = Array.Empty<StateSyncItem>()};
-        
-        public StateSyncItem[] RequestedNodes { get; set; }
-        
-        public byte[][] Responses { get; set; }
-        
-        public SyncPeerAllocation AssignedPeer { get; set; }
-
-        public bool IsAdditionalDataConsumer { get; set; }
+        public const bool BeamPoolOverrides = false;
+        public const bool BeamProcessorOverrides = true;
     }
 }

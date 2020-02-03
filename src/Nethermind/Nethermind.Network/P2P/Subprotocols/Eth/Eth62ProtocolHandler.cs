@@ -167,6 +167,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
 
             int size = message.Content.ReadableBytes;
+            
+            // Logger.Warn($"Received a message {message.Protocol}.{Enum.GetName(typeof(Eth62MessageCode), message.PacketType)} of size {size/1024}kb");
+            
             switch (message.PacketType)
             {
                 case Eth62MessageCode.Status:

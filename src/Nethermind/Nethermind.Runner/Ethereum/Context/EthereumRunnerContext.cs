@@ -50,6 +50,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats;
 using Nethermind.Store;
+using Nethermind.Store.BeamSync;
 using Nethermind.Store.Repositories;
 using Nethermind.Wallet;
 using Nethermind.WebSockets;
@@ -71,6 +72,7 @@ namespace Nethermind.Runner.Ethereum.Context
         public INdmConsumerChannelManager NdmConsumerChannelManager { get; set; }
         public INdmDataPublisher NdmDataPublisher { get; set; }
         public INdmInitializer NdmInitializer { get; set; }
+        public INodeDataConsumer NodeDataConsumer { get; set; } = NullDataConsumer.Instance;
         public ILogger Logger { get; set; }
 
         public IRpcModuleProvider RpcModuleProvider { get; set; }

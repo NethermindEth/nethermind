@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using Nethermind.Core.Crypto;
@@ -26,6 +27,19 @@ namespace Nethermind.Store.BeamSync
 {
     public class BeamSyncDb : IDb, INodeDataConsumer
     {
+        private static DateTime _lastProgressInContext;
+        
+        public static object Context
+        {
+            get => _context;
+            set
+            {
+                _context = value;
+                Console.WriteLine("Starting new context: " + _context);
+                _lastProgressInContext = DateTime.UtcNow;
+            }
+        }
+
         private MemDb _memDb = new MemDb();
 
         private ILogger _logger;
@@ -62,6 +76,7 @@ namespace Nethermind.Store.BeamSync
                     var fromMem = _memDb[key];
                     if (fromMem == null)
                     {
+                        _logger.Info($"BEAM SYNC Asking for {key.ToHexString()} - db size {_memDb.Keys.Count}");
                         // we store sync progress data at Keccak.Zero;
                         if (Bytes.AreEqual(key, Keccak.Zero.Bytes))
                         {
@@ -73,10 +88,16 @@ namespace Nethermind.Store.BeamSync
 
                         NeedsData = true;
                         NeedMoreData?.Invoke(this, EventArgs.Empty);
-                        _autoReset.WaitOne();
+                        _autoReset.WaitOne(1000);
+                        if (DateTime.UtcNow - _lastProgressInContext > TimeSpan.FromSeconds(15))
+                        {
+                            _logger.Error($"Context failure for {_context}");
+                            throw new InvalidDataException("Context fail in beam sync");
+                        }
                     }
                     else
                     {
+                        _lastProgressInContext = DateTime.UtcNow;
                         _requestedNodes.Clear();
                         _logger.Info($"BEAM SYNC Resolved {key.ToHexString()} - db size {_memDb.Keys.Count}");
                         return fromMem;
@@ -125,10 +146,12 @@ namespace Nethermind.Store.BeamSync
             {
                 for (int i = 0; i < hashes.Length; i++)
                 {
-                    _memDb[hashes[i].Bytes] = data[i];
-                    consumed++;
+                    if (data.Length > i && data[i] != null)
+                    {
+                        _memDb[hashes[i].Bytes] = data[i];
+                        consumed++;
+                    }
                 }
-                
             }
 
             _autoReset.Set();
@@ -136,6 +159,7 @@ namespace Nethermind.Store.BeamSync
         }
 
         private AutoResetEvent _autoReset = new AutoResetEvent(false);
+        private static object _context;
 
         public bool NeedsData { get; private set; }
     }

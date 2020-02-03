@@ -32,6 +32,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Store;
+using Nethermind.Store.BeamSync;
 
 namespace Nethermind.Blockchain
 {
@@ -80,7 +81,7 @@ namespace Nethermind.Blockchain
 
         public Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
         {
-            if(_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlocks[0].Number} from state root: {branchStateRoot}");
+            if(_logger.IsWarn) _logger.Warn(LogConditions.BeamProcessorOverrides, LogLevel.Trace, $"Processing block {suggestedBlocks[0].Number} from state root: {branchStateRoot}");
             
             if (suggestedBlocks.Length == 0) return Array.Empty<Block>();
 
@@ -142,7 +143,7 @@ namespace Nethermind.Blockchain
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                if (_logger.IsTrace) _logger.Trace($"Processing transaction {i}");
+                if (_logger.IsWarn) _logger.Warn(LogConditions.BeamProcessorOverrides, LogLevel.Trace, $"Processing transaction {i} out of {block.Transactions.Length}");
                 Transaction currentTx = block.Transactions[i];
                 _receiptsTracer.StartNewTxTrace(currentTx.Hash);
                 _transactionProcessor.Execute(currentTx, block.Header, _receiptsTracer);
@@ -150,6 +151,7 @@ namespace Nethermind.Blockchain
 
                 if ((processingOptions & ProcessingOptions.ReadOnlyChain) == 0)
                 {
+                    if (_logger.IsWarn) _logger.Warn(LogConditions.BeamProcessorOverrides, LogLevel.Trace, $"Processed transaction {i} out of {block.Transactions.Length}");
                     TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(_receiptsTracer.TxReceipts[i]));
                 }
             }
@@ -176,6 +178,7 @@ namespace Nethermind.Blockchain
 
         private Block ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
         {
+            BeamSyncDb.Context = suggestedBlock.Hash;
             Block block;
             if (suggestedBlock.IsGenesis)
             {
@@ -224,6 +227,7 @@ namespace Nethermind.Blockchain
             block.Header.StateRoot = _stateProvider.StateRoot;
             block.Header.Hash = block.Header.CalculateHash();
 
+            if (_logger.IsWarn) _logger.Warn(LogConditions.BeamProcessorOverrides, LogLevel.Trace, $"Processed block {block.ToString(Block.Format.Short)}");
             return receipts;
         }
 

@@ -50,7 +50,8 @@ namespace Nethermind.Store.BeamSync
                 }
             }
 
-            throw new InvalidOperationException("No data needed");
+            // throw new InvalidOperationException("No data needed");
+            return Array.Empty<Keccak>();
         }
 
         public int HandleResponse(Keccak[] hashes, byte[][] data)

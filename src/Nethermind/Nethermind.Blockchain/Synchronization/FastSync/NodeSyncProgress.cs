@@ -33,8 +33,9 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
         public NodeSyncProgress(long syncBlockNumber, ILogger logger)
         {
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             CurrentSyncBlock = syncBlockNumber;
-            _logger = logger;
+            _logger.Info($"Now syncing nodes starting from root of block {syncBlockNumber}");
             _syncProgress = new NodeProgressState[256];
         }
         

@@ -23,7 +23,7 @@ namespace Nethermind.Blockchain.Synchronization
     {
         public const int FullSyncThreshold = 32;
         public const string FullSyncThresholdString = "32";
-        
+
         private readonly SyncProgressSnapshot _syncProgressSnapshot = new SyncProgressSnapshot(SyncProgressSnapshot.SyncProgressType.AllValuesChanged);
 
         private readonly ISyncProgressResolver _syncProgressResolver;
@@ -37,33 +37,21 @@ namespace Nethermind.Blockchain.Synchronization
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            
+
             if (syncConfig.FastSyncCatchUpHeightDelta <= FullSyncThreshold)
             {
                 if (_logger.IsWarn) _logger.Warn($"'FastSyncCatchUpHeightDelta' parameter is less or equal to {FullSyncThreshold}, which is a threshold of blocks always downloaded in full sync. 'FastSyncCatchUpHeightDelta' will have no effect.");
             }
-            
+
             Current = SyncMode.NotStarted;
         }
 
         public SyncMode Current { get; private set; }
-        
-        public bool IsParallel => Current == SyncMode.FastBlocks || Current == SyncMode.StateNodes;
-        
+
         public void Update()
         {
             if (_syncPeerPool.PeerCount == 0)
             {
-                return;
-            }
-            
-            if (_syncConfig.BeamSyncEnabled)
-            {
-                if (Current != SyncMode.Beam)
-                {
-                    ChangeSyncMode(SyncMode.Beam);
-                }
-
                 return;
             }
 
@@ -80,20 +68,7 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
-            long bestHeader = _syncProgressResolver.FindBestHeader();
-            long bestFullBlock = _syncProgressResolver.FindBestFullBlock();
-            long bestFullState = _syncProgressResolver.FindBestFullState();
             long maxBlockNumberAmongPeers = 0;
-            if (bestFullBlock < 0
-                || bestHeader < 0
-                || bestFullState < 0
-                || bestFullBlock > bestHeader)
-            {
-                string errorMessage = $"Invalid best state calculation: {BuildStateString(bestHeader, bestFullBlock, bestFullBlock, maxBlockNumberAmongPeers)}";
-                if (_logger.IsError) _logger.Error(errorMessage);
-                throw new InvalidOperationException(errorMessage);
-            }
-
             foreach (PeerInfo peerInfo in _syncPeerPool.UsefulPeers)
             {
                 maxBlockNumberAmongPeers = Math.Max(maxBlockNumberAmongPeers, peerInfo.HeadNumber);
@@ -102,6 +77,31 @@ namespace Nethermind.Blockchain.Synchronization
             if (maxBlockNumberAmongPeers == 0)
             {
                 return;
+            }
+
+            if (_syncConfig.BeamSyncEnabled)
+            {
+                if (Current != SyncMode.Beam)
+                {
+                    ChangeSyncMode(_syncProgressResolver.FindBestHeader() == maxBlockNumberAmongPeers
+                        ? SyncMode.Full
+                        : SyncMode.Beam);
+                }
+
+                return;
+            }
+
+            long bestHeader = _syncProgressResolver.FindBestHeader();
+            long bestFullBlock = _syncProgressResolver.FindBestFullBlock();
+            long bestFullState = _syncProgressResolver.FindBestFullState();
+            if (bestFullBlock < 0
+                || bestHeader < 0
+                || bestFullState < 0
+                || bestFullBlock > bestHeader)
+            {
+                string errorMessage = $"Invalid best state calculation: {BuildStateString(bestHeader, bestFullBlock, bestFullBlock, maxBlockNumberAmongPeers)}";
+                if (_logger.IsError) _logger.Error(errorMessage);
+                throw new InvalidOperationException(errorMessage);
             }
 
             long bestProcessedBlock = _syncProgressResolver.FindBestProcessedBlock();
@@ -142,14 +142,14 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             _syncProgressSnapshot.TakeSnapshot(bestHeader, bestFullBlock, bestFullState);
-            
+
             if (newSyncMode != Current)
             {
                 if (_logger.IsInfo) _logger.Info($"Switching sync mode from {Current} to {newSyncMode} {BuildStateString(bestHeader, bestFullBlock, bestFullState, maxBlockNumberAmongPeers)}");
                 _syncProgressSnapshot.Notify();
                 ChangeSyncMode(newSyncMode);
             }
-            else 
+            else
             {
                 if (_syncProgressSnapshot.ShouldLog())
                 {
@@ -203,7 +203,7 @@ namespace Nethermind.Blockchain.Synchronization
                     SyncProgressType.AllValuesChanged => (BestHeader != bestHeader && BestFullBlock != bestFullBlock && BestFullState != bestFullState),
                     _ => false
                 };
-                
+
                 if (hasProgressed)
                 {
                     BestHeader = bestHeader;
@@ -222,7 +222,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 return CheckDelay(LastSnapshotTime, MaxSyncDelay) && CheckDelay(LastNotification, NoSyncDelay);
             }
-            
+
             public enum SyncProgressType
             {
                 SomeValuesChanged,

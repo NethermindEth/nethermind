@@ -54,7 +54,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 return;
             }
 
-            if (!syncConfig.FastSync)
+            if (!syncConfig.FastSync && !syncConfig.BeamSyncEnabled)
             {
                 await _context.BlockTree.LoadBlocksFromDb(_context.RunnerCancellation.Token, null).ContinueWith(t =>
                 {
