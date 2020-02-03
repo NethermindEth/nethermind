@@ -33,6 +33,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             writer.WriteProperty("output", value.Output, serializer);
             writer.WritePropertyName("stateDiff");
+            
             if (value.StateChanges != null)
             {
                 writer.WriteStartObject();
@@ -46,13 +47,19 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             writer.WritePropertyName("trace");
+            
             writer.WriteStartArray();
             if (value.Action != null)
             {
                 WriteJson(writer, value.Action, serializer);
             }
-
             writer.WriteEndArray();
+
+            if (value.TransactionHash != null)
+            {
+                writer.WriteProperty("transactionHash", value.TransactionHash, serializer);
+            }
+            
             writer.WriteProperty("vmTrace", value.VmTrace, serializer);
 
             writer.WriteEndObject();
