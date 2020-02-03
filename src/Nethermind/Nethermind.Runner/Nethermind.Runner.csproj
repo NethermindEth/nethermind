@@ -6,10 +6,6 @@
     <ServerGarbageCollection>true</ServerGarbageCollection>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
     <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
-    <BuildDependsOn>
-      StoreGitHashBeforeBuild;
-      StoreGitHash;
-    </BuildDependsOn>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <WarningsAsErrors />
@@ -99,6 +95,9 @@
   </ItemGroup>
   <Target Name="Build" DependsOnTargets="$(BuildDependsOn)"/>
   <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">
+    <Exec Command="git describe --tags --always --long &gt; git-hash" />
+  </Target>
+  <Target Name="StoreGitHashBeforePublish" BeforeTargets="BeforePublish">
     <Exec Command="git describe --tags --always --long &gt; git-hash" />
   </Target>
   <Target Name="StoreGitHash" BeforeTargets="Build">
