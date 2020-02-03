@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,29 +14,28 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Reflection;
 using System.Threading.Tasks;
-using Nethermind.Core.Attributes;
-using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.ParityStyle;
-using Nethermind.Network;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Stats;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependency]
-    public class InitRlp : IStep
+    public class InitializeNodeStats : IStep
     {
-        public InitRlp(EthereumRunnerContext context)
+        private readonly EthereumRunnerContext _context;
+
+        public InitializeNodeStats(EthereumRunnerContext context)
         {
+            _context = context;
         }
 
-        [Todo(Improve.Refactor, "Automatically scan all the references solutions?")]
-        public virtual Task Execute()
+        public Task Execute()
         {
-            Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(ParityTraceDecoder)));
-            Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(NetworkNodeDecoder)));
+            // create shared objects between discovery and peer manager
+            IStatsConfig statsConfig = _context.Config<IStatsConfig>();
+            _context.NodeStatsManager = new NodeStatsManager(statsConfig, _context.LogManager);
+
             return Task.CompletedTask;
         }
     }

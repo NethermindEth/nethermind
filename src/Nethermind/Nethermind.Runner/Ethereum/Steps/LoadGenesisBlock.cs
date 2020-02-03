@@ -26,7 +26,7 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency(typeof(InitializeBlockchain))]
+    [RunnerStepDependency(typeof(StartBlockProcessor), typeof(InitializeBlockchain))]
     public class LoadGenesisBlock : IStep
     {
         private readonly EthereumRunnerContext _context;
