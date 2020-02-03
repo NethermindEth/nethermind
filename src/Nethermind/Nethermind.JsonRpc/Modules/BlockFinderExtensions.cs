@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc.Modules
 {
     public static class BlockFinderExtensions
     {
-        public static SearchResult<BlockHeader> SearchForHeader(this IBlockFinder blockFinder, BlockParameter blockParameter)
+        public static SearchResult<BlockHeader> SearchForHeader(this IBlockFinder blockFinder, BlockParameter blockParameter, bool allowNulls = false)
         {
             if (blockFinder.Head == null)
             {
@@ -35,7 +35,7 @@ namespace Nethermind.JsonRpc.Modules
             if (blockParameter.RequireCanonical)
             {
                 header = blockFinder.FindHeader(blockParameter.BlockHash, BlockTreeLookupOptions.RequireCanonical);
-                if (header == null)
+                if (header == null && !allowNulls)
                 {
                     header = blockFinder.FindHeader(blockParameter.BlockHash);
                     if (header != null)
@@ -49,7 +49,7 @@ namespace Nethermind.JsonRpc.Modules
                 header = blockFinder.FindHeader(blockParameter);
             }
 
-            return header == null
+            return header == null && !allowNulls
                 ? new SearchResult<BlockHeader>($"{blockParameter.BlockHash} could not be found", ErrorCodes.ResourceNotFound)
                 : new SearchResult<BlockHeader>(header);
         }

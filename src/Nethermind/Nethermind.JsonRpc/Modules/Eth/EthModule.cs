@@ -323,19 +323,33 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private ResultWrapper<BlockForRpc> GetBlock(BlockParameter blockParameter, bool returnFullTransactionObjects)
         {
-            SearchResult<Block> searchResult = _blockchainBridge.SearchForBlock(blockParameter, true);
-            if (searchResult.IsError)
+            if (returnFullTransactionObjects)
             {
-                return ResultWrapper<BlockForRpc>.Fail(searchResult);
-            }
+                SearchResult<Block> searchResult = _blockchainBridge.SearchForBlock(blockParameter, true);
+                if (searchResult.IsError)
+                {
+                    return ResultWrapper<BlockForRpc>.Fail(searchResult);
+                }
 
-            Block block = searchResult.Object;
-            if (block != null && returnFullTransactionObjects)
+                Block block = searchResult.Object;
+                if (block != null)
+                {
+                    _blockchainBridge.RecoverTxSenders(block);
+                }
+
+                return ResultWrapper<BlockForRpc>.Success(block == null ? null : new BlockForRpc(block, true));   
+            }
+            else
             {
-                _blockchainBridge.RecoverTxSenders(block);
-            }
+                SearchResult<BlockHeader> searchResult = _blockchainBridge.SearchForHeader(blockParameter, true);
+                if (searchResult.IsError)
+                {
+                    return ResultWrapper<BlockForRpc>.Fail(searchResult);
+                }
 
-            return ResultWrapper<BlockForRpc>.Success(block == null ? null : new BlockForRpc(block, returnFullTransactionObjects));
+                BlockHeader header = searchResult.Object;
+                return ResultWrapper<BlockForRpc>.Success(header == null ? null : new BlockForRpc(new Block(header), false));
+            }
         }
 
         public ResultWrapper<TransactionForRpc> eth_getTransactionByHash(Keccak transactionHash)

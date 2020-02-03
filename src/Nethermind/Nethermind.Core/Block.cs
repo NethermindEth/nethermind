@@ -54,7 +54,7 @@ namespace Nethermind.Core
         }
 
         public Block(BlockHeader blockHeader, params BlockHeader[] ommers)
-            : this(blockHeader, Enumerable.Empty<Transaction>(), ommers)
+            : this(blockHeader, BlockBody.Empty)
         {
         }
 
