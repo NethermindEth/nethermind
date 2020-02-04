@@ -147,8 +147,8 @@ namespace Nethermind.Blockchain.Synchronization
             receipt.TxHash = transaction.Hash;
             receipt.Index = transactionIndex;
             receipt.Sender = transaction.SenderAddress;
-            receipt.Recipient = transaction.IsContractCreation ? null : transaction.To;
-            receipt.ContractAddress = transaction.IsContractCreation ? transaction.To : null;
+            receipt.Recipient = transaction.GetRecipient();
+            receipt.ContractAddress = transaction.GetCreatedContract();
             receipt.GasUsed = receipt.GasUsedTotal - gasUsedBefore;
             if (receipt.StatusCode != StatusCode.Success)
             {

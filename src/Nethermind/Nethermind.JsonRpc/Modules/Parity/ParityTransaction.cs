@@ -17,6 +17,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
+using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Parity
 {
@@ -24,19 +25,25 @@ namespace Nethermind.JsonRpc.Modules.Parity
     {
         public Keccak Hash { get; set; }
         public UInt256? Nonce { get; set; }
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Keccak BlockHash { get; set; }
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public UInt256? BlockNumber { get; set; }
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public UInt256? TransactionIndex { get; set; }
         public Address From { get; set; }
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Address To { get; set; }
         public UInt256? Value { get; set; }
         public UInt256? GasPrice { get; set; }
         public long? Gas { get; set; }
         public byte[] Input { get; set; }
         public byte[] Raw { get; set; }
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Address Creates { get; set; }
         public PublicKey PublicKey { get; set; }
         public int? ChainId { get; set; }
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public object Condition { get; set; }
         public byte[] R { get; set; }
         public byte[] S { get; set; }
@@ -56,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
             BlockNumber = blockNumber;
             TransactionIndex = txIndex;
             From = transaction.SenderAddress;
-            To = transaction.To;
+            To = transaction.GetRecipient();
             Value = transaction.Value;
             GasPrice = transaction.GasPrice;
             Gas = transaction.GasLimit;
@@ -68,6 +75,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
             S = transaction.Signature.S;
             V = new UInt256(transaction.Signature.V);
             StandardV = transaction.Signature.RecoveryId;
+            Creates = transaction.GetCreatedContract();
         }
     }
 }
