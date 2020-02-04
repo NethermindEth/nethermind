@@ -23,7 +23,7 @@ using Nethermind.Store;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency(typeof(InitializeNetwork), typeof(InitializeFinalizationAuRa), typeof(SetupKeyStore))]
+    [RunnerStepDependencies(typeof(InitializeNetwork), typeof(InitializeFinalizationAuRa), typeof(SetupKeyStore))]
     public class StartBlockProducerAuRa : StartBlockProducer
     {
         private readonly AuRaEthereumRunnerContext _context;

@@ -33,6 +33,7 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Store;
 using Nethermind.Store.BeamSync;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization.FastSync

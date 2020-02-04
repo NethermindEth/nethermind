@@ -25,8 +25,6 @@ namespace Nethermind.State.Test.Runner
 {
     internal class Program
     {
-        private static long _totalMs;
-
         public class Options
         {
             [Option('i', "input", Required = true, HelpText = "Set the state test input file or directory.")]

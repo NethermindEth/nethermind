@@ -21,7 +21,7 @@ using Nethermind.Runner.Ethereum.Context;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency(typeof(StartBlockProcessor))]
+    [RunnerStepDependencies(typeof(StartBlockProcessor))]
     public class ReviewBlockTree : IStep
     {
         private readonly EthereumRunnerContext _context;
@@ -54,7 +54,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 return;
             }
 
-            if (!syncConfig.FastSync)
+            if (!syncConfig.FastSync && !syncConfig.BeamSyncEnabled)
             {
                 await _context.BlockTree.LoadBlocksFromDb(_context.RunnerCancellation.Token, null).ContinueWith(t =>
                 {
@@ -68,7 +68,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     }
                 });
             }
-            else
+            else if(!syncConfig.BeamSyncEnabled)
             {
                 await _context.BlockTree.FixFastSyncGaps(_context.RunnerCancellation.Token).ContinueWith(t =>
                 {

@@ -493,7 +493,7 @@ namespace Nethermind.Network
             bool hasOnlyStaticNodes = false;
             if (!_currentSelection.PreCandidates.Any() && _staticNodes.Values.Any())
             {
-                _currentSelection.Candidates.AddRange(_staticNodes.Values);
+                _currentSelection.Candidates.AddRange(_staticNodes.Values.Where(sn => !_activePeers.ContainsKey(sn.Node.Id)));
                 hasOnlyStaticNodes = true;
             }
 
@@ -545,7 +545,7 @@ namespace Nethermind.Network
 
             if (!hasOnlyStaticNodes)
             {
-                _currentSelection.Candidates.AddRange(_staticNodes.Values);
+                _currentSelection.Candidates.AddRange(_staticNodes.Values.Where(sn => !_activePeers.ContainsKey(sn.Node.Id)));
             }
 
             _currentSelection.Candidates.Sort(_peerComparer);

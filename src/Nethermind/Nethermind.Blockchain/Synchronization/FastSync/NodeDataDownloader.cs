@@ -40,11 +40,25 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             _feed = nodeDataFeed ?? throw new ArgumentNullException(nameof(nodeDataFeed));
             _additionalConsumer = additionalConsumer ?? throw new ArgumentNullException(nameof(additionalConsumer));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+
+            _additionalConsumer.NeedMoreData += AdditionalConsumerOnNeedMoreData;
+        }
+
+        private void AdditionalConsumerOnNeedMoreData(object sender, EventArgs e)
+        {
+            Task keepSyncing = SyncOnce(CancellationToken.None, true);
+            keepSyncing.ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    _logger.Error($"Requesting node data failed: {t.Exception}");
+                }
+            });
         }
 
         private async Task ExecuteRequest(CancellationToken token, StateSyncBatch batch)
         {
-            ISyncPeer peer = batch.AssignedPeer?.Current?.SyncPeer;
+            var peer = batch.AssignedPeer?.Current?.SyncPeer;
             if (peer != null)
             {
                 var hashes = batch.RequestedNodes.Select(r => r.Hash).ToArray();
@@ -63,7 +77,15 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             (NodeDataHandlerResult Result, int NodesConsumed) result = (NodeDataHandlerResult.InvalidFormat, 0);
             try
             {
-                result = _feed.HandleResponse(batch);
+                if (batch.IsAdditionalDataConsumer)
+                {
+                    result = (NodeDataHandlerResult.OK, _additionalConsumer.HandleResponse(batch.RequestedNodes.Select(r => r.Hash).ToArray(), batch.Responses));
+                }
+                else
+                {
+                    result = _feed.HandleResponse(batch);
+                }
+
                 if (result.Result == NodeDataHandlerResult.BadQuality)
                 {
                     _syncPeerPool.ReportBadPeer(batch.AssignedPeer);
@@ -77,7 +99,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             Interlocked.Add(ref _consumedNodesCount, result.NodesConsumed);
             if (result.NodesConsumed == 0 && peer != null)
             {
-                _syncPeerPool.ReportNoSyncProgress(batch.AssignedPeer);
+                _syncPeerPool.ReportNoSyncProgress(batch.AssignedPeer, !batch.IsAdditionalDataConsumer);
             }
 
             if (batch.AssignedPeer != null)
@@ -88,63 +110,79 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
         private async Task KeepSyncing(CancellationToken token)
         {
-            bool oneMoreTry = false;
-
+            int lastRequestSize; 
             do
             {
                 if (token.IsCancellationRequested)
                 {
                     return;
                 }
-
-                oneMoreTry = false;
-                StateSyncBatch request = PrepareRequest();
-                if (request.RequestedNodes.Length != 0)
-                {
-                    request.AssignedPeer = await _syncPeerPool.BorrowAsync(BorrowOptions.DoNotReplace, "node sync", null, 1000);
-
-                    Interlocked.Increment(ref _pendingRequests);
-                    if (_logger.IsTrace) _logger.Trace($"Creating new request with {request.RequestedNodes.Length} nodes");
-                    Task task = ExecuteRequest(token, request);
-#pragma warning disable 4014
-                    task.ContinueWith(t =>
-#pragma warning restore 4014
-                    {
-                        if (t.IsFaulted)
-                        {
-                            if (_logger.IsWarn) _logger.Warn($"Failure when executing node data request {t.Exception}");
-                        }
-
-                        Interlocked.Decrement(ref _pendingRequests);
-                        if (request.RequestedNodes.Length != 0)
-                        {
-                            oneMoreTry = true;
-                        }
-                    });
-                }
-                else
-                {
-                    await Task.Delay(50);
-                    if (_logger.IsDebug) _logger.Debug($"DIAG: 0 batches created with {_pendingRequests} pending requests, {_feed.TotalNodesPending} pending nodes");
-                }
-            } while (_pendingRequests != 0 || oneMoreTry);
+                
+                lastRequestSize = await SyncOnce(token, false);
+            } while (_pendingRequests != 0 || lastRequestSize > 0);
 
             if (_logger.IsInfo) _logger.Info($"Finished with {_pendingRequests} pending requests and {_syncPeerPool.UsefulPeerCount} useful peers.");
         }
 
-        private StateSyncBatch PrepareRequest()
+        private async Task<int> SyncOnce(CancellationToken token, bool forAdditionalConsumers)
         {
-            if (_additionalConsumer.NeedsData)
+            int requestSize = 0;
+            StateSyncBatch request = PrepareRequest(forAdditionalConsumers);
+            if (request.RequestedNodes.Length != 0)
             {
+                request.AssignedPeer = await _syncPeerPool.BorrowAsync(BorrowOptions.DoNotReplace, "node sync", null, 1000);
+
+                Interlocked.Increment(ref _pendingRequests);
+                // if (_logger.IsWarn) _logger.Warn($"Creating new request with {request.RequestedNodes.Length} nodes");
+                Task task = ExecuteRequest(token, request);
+#pragma warning disable 4014
+                task.ContinueWith(t =>
+#pragma warning restore 4014
+                {
+                    if (t.IsFaulted)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Failure when executing node data request {t.Exception}");
+                    }
+
+                    Interlocked.Decrement(ref _pendingRequests);
+                    requestSize = request.RequestedNodes.Length;
+                });
+            }
+            else
+            {
+                await Task.Delay(50);
+                if (_logger.IsDebug) _logger.Debug($"DIAG: 0 batches created with {_pendingRequests} pending requests, {_feed.TotalNodesPending} pending nodes");
+            }
+
+            return requestSize;
+        }
+
+        private StateSyncBatch PrepareRequest(bool forAdditionalConsumers)
+        {
+            if (forAdditionalConsumers)
+            {
+                if (!_additionalConsumer.NeedsData)
+                {
+                    return StateSyncBatch.Empty;
+                }
+
                 Keccak[] hashes = _additionalConsumer.PrepareRequest();
+                if (hashes.Length == 0)
+                {
+                    return StateSyncBatch.Empty;
+                }
+
                 StateSyncBatch priorityBatch = new StateSyncBatch();
                 priorityBatch.RequestedNodes = hashes.Select(h => new StateSyncItem(h, NodeDataType.Code, 0, 0)).ToArray();
-                if (_logger.IsWarn) _logger.Warn($"!!! Priority batch {_pendingRequests}");
+                // if (_logger.IsWarn) _logger.Warn($"!!! Priority batch {priorityBatch.RequestedNodes.Length}");
+                priorityBatch.IsAdditionalDataConsumer = true;
                 return priorityBatch;
             }
 
             if (_logger.IsTrace) _logger.Trace($"Pending requests {_pendingRequests}");
-            return _feed.PrepareRequest();
+            StateSyncBatch standardBatch = _feed.PrepareRequest();
+            // if (_logger.IsWarn) _logger.Warn($"!!! Standard batch {standardBatch.RequestedNodes.Length}");
+            return standardBatch;
         }
 
         public async Task<long> SyncNodeData(CancellationToken token, long number, Keccak rootNode)

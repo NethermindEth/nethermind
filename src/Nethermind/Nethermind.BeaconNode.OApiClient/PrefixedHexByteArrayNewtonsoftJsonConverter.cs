@@ -25,7 +25,7 @@ namespace Nethermind.BeaconNode.OApiClient
     {
         public override void WriteJson(JsonWriter writer, byte[] value, JsonSerializer serializer)
         {
-            writer.WriteValue(Nethermind.Core2.Bytes.ToHexString(value, withZeroX: true));
+            writer.WriteValue(value.ToHexString(withZeroX: true));
         }
         
         public override byte[] ReadJson(JsonReader reader, Type objectType, byte[] existingValue, bool hasExistingValue,

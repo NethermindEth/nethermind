@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Diagnostics;
 
 namespace Nethermind.Blockchain.Synchronization.FastSync
@@ -21,10 +22,14 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
     [DebuggerDisplay("Requested Nodes: {RequestedNodes?.Length ?? 0}, Responses: {Responses?.Length ?? 0}, Assigned: {AssignedPeer?.Current}")]
     public class StateSyncBatch
     {
+        public static StateSyncBatch Empty = new StateSyncBatch{RequestedNodes = Array.Empty<StateSyncItem>()};
+        
         public StateSyncItem[] RequestedNodes { get; set; }
         
         public byte[][] Responses { get; set; }
         
         public SyncPeerAllocation AssignedPeer { get; set; }
+
+        public bool IsAdditionalDataConsumer { get; set; }
     }
 }

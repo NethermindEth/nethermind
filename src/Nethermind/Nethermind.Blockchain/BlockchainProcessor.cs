@@ -250,7 +250,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Returns from processing loop");
+            if (_logger.IsInfo) _logger.Info("Block processor queue stopped.");
         }
 
         public event EventHandler ProcessingQueueEmpty;
@@ -270,7 +270,12 @@ namespace Nethermind.Blockchain
 
             BlockHeader branchingPoint = null;
             Block[] processedBlocks = null;
-            if (_blockTree.Head == null || totalDifficulty > _blockTree.Head.TotalDifficulty || (options & ProcessingOptions.ForceProcessing) != 0)
+
+            bool shouldProcess = suggestedBlock.IsGenesis
+                || totalDifficulty > (_blockTree.Head?.TotalDifficulty ?? _blockTree.BestSuggestedHeader?.TotalDifficulty - 1)
+                || (options & ProcessingOptions.ForceProcessing) == ProcessingOptions.ForceProcessing;
+            
+            if (shouldProcess)
             {
                 List<Block> blocksToBeAddedToMain = new List<Block>();
                 Block toBeProcessed = suggestedBlock;
@@ -288,7 +293,13 @@ namespace Nethermind.Blockchain
                     {
                         break; //failure here
                     }
-
+                    
+                    // for beam sync
+                    if((_blockTree.Head?.Number ?? 0) == 0)
+                    {
+                        break;
+                    }
+                    
                     bool isFastSyncTransition = _blockTree.Head == _blockTree.Genesis && toBeProcessed.Number > 1; 
                     if (!isFastSyncTransition)
                     {

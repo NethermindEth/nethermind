@@ -122,15 +122,14 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 Assert.True(changedInvoked, "changed");
             }
         }
-
+        
         [TestCase(1032, 999, 0, 0, SyncMode.Beam)]
         [TestCase(1032, 1000, 0, 0, SyncMode.Beam)]
         [TestCase(1032, 1000, 0, 0, SyncMode.Beam)]
         [TestCase(1032, 1000, 0, 1000, SyncMode.Beam)]
-        [TestCase(0, 1032, 0, 1032, SyncMode.Beam)]
+        [TestCase(0, 1032, 0, 1032, SyncMode.NotStarted)]
         [TestCase(1, 1032, 0, 1032, SyncMode.Beam)]
         [TestCase(33, 1032, 0, 1032, SyncMode.Beam)]
-        [TestCase(0, 1032, 0, 1032, SyncMode.Beam)]
         [TestCase(4506571, 4506571, 4506571, 4506452, SyncMode.Beam)]
         public void Selects_correctly_in_beam_sync(long bestRemote, long bestHeader, long bestBlock, long bestLocalState, SyncMode expected)
         {

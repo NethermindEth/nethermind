@@ -16,6 +16,8 @@
 
 using System.Globalization;
 using Jint.Native;
+using Nethermind.Abi;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Cli.Modules
 {
@@ -34,5 +36,8 @@ namespace Nethermind.Cli.Modules
         
         [CliFunction("web3", "toDecimal")]
         public int ToDecimal(string hex) => int.Parse(hex.Replace("0x", string.Empty), NumberStyles.AllowHexSpecifier);
+        
+        [CliFunction("web3", "abi")]
+        public string Abi(string name) => new AbiSignature(name).Address.ToHexString();
     }
 }

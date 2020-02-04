@@ -361,19 +361,19 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _responseBuilder = new ResponseBuilder(_blockTree, _testHeaderMapping);
         }
 
-        [TestCase(1L, BlockDownloaderOptions.DownloadAndProcess)]
-        [TestCase(32L, BlockDownloaderOptions.DownloadAndProcess)]
-        [TestCase(32L, BlockDownloaderOptions.Download)]
-        [TestCase(1L, BlockDownloaderOptions.DownloadWithReceipts)]
-        [TestCase(2L, BlockDownloaderOptions.DownloadWithReceipts)]
-        [TestCase(3L, BlockDownloaderOptions.DownloadWithReceipts)]
-        [TestCase(32L, BlockDownloaderOptions.DownloadWithReceipts)]
-        [TestCase(SyncBatchSize.Max * 8, BlockDownloaderOptions.DownloadWithReceipts)]
-        [TestCase(SyncBatchSize.Max * 8, BlockDownloaderOptions.DownloadAndProcess)]
+        [TestCase(1L, BlockDownloaderOptions.Process)]
+        [TestCase(32L, BlockDownloaderOptions.Process)]
+        [TestCase(32L, BlockDownloaderOptions.None)]
+        [TestCase(1L, BlockDownloaderOptions.DownloadReceipts)]
+        [TestCase(2L, BlockDownloaderOptions.DownloadReceipts)]
+        [TestCase(3L, BlockDownloaderOptions.DownloadReceipts)]
+        [TestCase(32L, BlockDownloaderOptions.DownloadReceipts)]
+        [TestCase(SyncBatchSize.Max * 8, BlockDownloaderOptions.DownloadReceipts)]
+        [TestCase(SyncBatchSize.Max * 8, BlockDownloaderOptions.Process)]
         public async Task Happy_path(long headNumber, int options)
         {
             BlockDownloaderOptions blockDownloaderOptions = (BlockDownloaderOptions) options;
-            bool withReceipts = blockDownloaderOptions == BlockDownloaderOptions.DownloadWithReceipts;
+            bool withReceipts = blockDownloaderOptions == BlockDownloaderOptions.DownloadReceipts;
             InMemoryReceiptStorage inMemoryReceiptStorage = new InMemoryReceiptStorage();
             BlockDownloader blockDownloader = new BlockDownloader(_blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
 
@@ -396,7 +396,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             syncPeer.ExtendTree(peerInfo.HeadNumber + 1);
             await blockDownloader.DownloadBlocks(peerInfo, 0, CancellationToken.None, blockDownloaderOptions);
             _blockTree.BestSuggestedHeader.Number.Should().Be(Math.Max(0, peerInfo.HeadNumber));
-            _blockTree.IsMainChain(_blockTree.BestSuggestedHeader.Hash).Should().Be(blockDownloaderOptions != BlockDownloaderOptions.DownloadAndProcess);
+            _blockTree.IsMainChain(_blockTree.BestSuggestedHeader.Hash).Should().Be(blockDownloaderOptions != BlockDownloaderOptions.Process);
 
             int receiptCount = 0;
             for (int i = (int) Math.Max(0, (headNumber - SyncModeSelector.FullSyncThreshold)); i < peerInfo.HeadNumber; i++)
@@ -437,7 +437,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 Assert.AreEqual(_blockTree.FindBlock(i, BlockTreeLookupOptions.None).Hash, syncPeer.BlockTree.FindBlock(i, BlockTreeLookupOptions.None).Hash, i.ToString());
             }
 
-            await blockDownloader.DownloadBlocks(peerInfo, 0, CancellationToken.None, BlockDownloaderOptions.DownloadWithReceipts);
+            await blockDownloader.DownloadBlocks(peerInfo, 0, CancellationToken.None, BlockDownloaderOptions.DownloadReceipts);
             _blockTree.BestSuggestedHeader.Number.Should().Be(peerInfo.HeadNumber);
             _blockTree.IsMainChain(_blockTree.BestSuggestedHeader.Hash).Should().Be(true);
         }
@@ -870,13 +870,13 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             peerInfo.HeadNumber *= 2;
 
-            Func<Task> action = async () => await blockDownloader.DownloadBlocks(peerInfo, 0, CancellationToken.None, BlockDownloaderOptions.Download);
+            Func<Task> action = async () => await blockDownloader.DownloadBlocks(peerInfo, 0, CancellationToken.None, BlockDownloaderOptions.None);
             action.Should().Throw<EthSynchronizationException>().WithInnerException<AggregateException>().WithInnerException<TimeoutException>();
         }
 
-        [TestCase(BlockDownloaderOptions.DownloadWithReceipts, true)]
-        [TestCase(BlockDownloaderOptions.Download, false)]
-        [TestCase(BlockDownloaderOptions.DownloadAndProcess, false)]
+        [TestCase(BlockDownloaderOptions.DownloadReceipts, true)]
+        [TestCase(BlockDownloaderOptions.None, false)]
+        [TestCase(BlockDownloaderOptions.Process, false)]
         public async Task Throws_on_receipt_task_exception_when_downloading_receipts(int options, bool shouldThrow)
         {
             BlockDownloaderOptions blockDownloaderOptions = (BlockDownloaderOptions) options;
@@ -934,7 +934,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             peerInfo.HeadNumber *= 2;
 
-            Func<Task> action = async () => await blockDownloader.DownloadBlocks(peerInfo, 0, CancellationToken.None, BlockDownloaderOptions.DownloadWithReceipts);
+            Func<Task> action = async () => await blockDownloader.DownloadBlocks(peerInfo, 0, CancellationToken.None, BlockDownloaderOptions.DownloadReceipts);
             action.Should().Throw<EthSynchronizationException>();
         }
 
@@ -962,7 +962,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             peerInfo.HeadNumber *= 2;
 
-            Func<Task> action = async () => await blockDownloader.DownloadBlocks(peerInfo, 0, CancellationToken.None, BlockDownloaderOptions.DownloadWithReceipts);
+            Func<Task> action = async () => await blockDownloader.DownloadBlocks(peerInfo, 0, CancellationToken.None, BlockDownloaderOptions.DownloadReceipts);
             action.Should().Throw<EthSynchronizationException>();
         }
 
@@ -989,7 +989,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             peerInfo.HeadNumber *= 2;
 
-            Func<Task> action = async () => await blockDownloader.DownloadBlocks(peerInfo, 0, CancellationToken.None, BlockDownloaderOptions.DownloadWithReceipts);
+            Func<Task> action = async () => await blockDownloader.DownloadBlocks(peerInfo, 0, CancellationToken.None, BlockDownloaderOptions.DownloadReceipts);
             action.Should().Throw<EthSynchronizationException>();
         }
 

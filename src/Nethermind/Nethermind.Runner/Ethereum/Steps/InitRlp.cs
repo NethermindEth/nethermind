@@ -25,7 +25,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency]
+    [RunnerStepDependencies]
     public class InitRlp : IStep
     {
         public InitRlp(EthereumRunnerContext context)

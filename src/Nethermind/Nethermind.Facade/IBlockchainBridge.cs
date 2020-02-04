@@ -32,7 +32,6 @@ namespace Nethermind.Facade
         Signature Sign(Address address, Keccak message);
         void Sign(Transaction tx);
         int GetNetworkId();
-        BlockHeader Head { get; }
         long BestKnown { get; }
         bool IsSyncing { get; }
         void RecoverTxSenders(Block block);

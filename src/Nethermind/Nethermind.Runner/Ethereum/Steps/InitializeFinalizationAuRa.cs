@@ -14,18 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.AuRa;
 using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
-using Nethermind.Core;
 using Nethermind.Runner.Ethereum.Context;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency(typeof(InitializeBlockchain))]
+    [RunnerStepDependencies(typeof(InitializeBlockchain))]
     public class InitializeFinalizationAuRa : IStep
     {
         private readonly AuRaEthereumRunnerContext _context;

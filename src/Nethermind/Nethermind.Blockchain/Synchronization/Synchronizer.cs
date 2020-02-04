@@ -258,7 +258,7 @@ namespace Nethermind.Blockchain.Synchronization
                 if (_blocksSyncAllocation != null)
                 {
                     UInt256 ourTotalDifficulty = _blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0;
-                    _syncPeerPool.EnsureBest(); // can we remove it yet?
+                    _syncPeerPool.EnsureBest();
                     bestPeer = _blocksSyncAllocation?.Current;
                     if (bestPeer == null || bestPeer.TotalDifficulty <= ourTotalDifficulty)
                     {
@@ -274,14 +274,21 @@ namespace Nethermind.Blockchain.Synchronization
                 using (CancellationTokenSource linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(_peerSyncCancellation.Token, _syncLoopCancellation.Token))
                 {
                     Task<long> syncProgressTask;
+                    BlockDownloaderOptions options = BlockDownloaderOptions.None;
+                    if (_syncConfig.DownloadReceiptsInFastSync)
+                    {
+                        options |= BlockDownloaderOptions.DownloadReceipts;
+                    }
+
                     switch (_syncMode.Current)
                     {
                         case SyncMode.FastBlocks:
                             syncProgressTask = _fastBlockDownloader.Sync(linkedCancellation.Token);
                             break;
                         case SyncMode.FastSync:
+                            options |= BlockDownloaderOptions.MoveToMain;
                             syncProgressTask = _syncConfig.DownloadBodiesInFastSync
-                                ? _blockDownloader.DownloadBlocks(bestPeer, SyncModeSelector.FullSyncThreshold, linkedCancellation.Token, _syncConfig.DownloadReceiptsInFastSync ? BlockDownloaderOptions.DownloadWithReceipts : BlockDownloaderOptions.Download)
+                                ? _blockDownloader.DownloadBlocks(bestPeer, SyncModeSelector.FullSyncThreshold, linkedCancellation.Token, options)
                                 : _blockDownloader.DownloadHeaders(bestPeer, SyncModeSelector.FullSyncThreshold, linkedCancellation.Token);
                             break;
                         case SyncMode.StateNodes:
@@ -294,7 +301,10 @@ namespace Nethermind.Blockchain.Synchronization
                             syncProgressTask = _blockDownloader.DownloadBlocks(bestPeer, 0, linkedCancellation.Token);
                             break;
                         case SyncMode.Beam:
-                            syncProgressTask = _blockDownloader.DownloadBlocks(bestPeer, 0, linkedCancellation.Token);
+                            options |= BlockDownloaderOptions.MoveToMain;
+                            syncProgressTask = _syncConfig.DownloadBodiesInFastSync
+                                ? _blockDownloader.DownloadBlocks(bestPeer, 0, linkedCancellation.Token, options)
+                                : _blockDownloader.DownloadHeaders(bestPeer, 0, linkedCancellation.Token);
                             break;
                         case SyncMode.NotStarted:
                             syncProgressTask = Task.Delay(1000).ContinueWith(_ => 0L);

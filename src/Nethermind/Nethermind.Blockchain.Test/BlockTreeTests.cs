@@ -1220,7 +1220,7 @@ namespace Nethermind.Blockchain.Test
 
             for (long i = beginIndex; i > beginIndex - insertedBlocks; i--)
             {
-                tree.Insert(Build.A.BlockHeader.WithNumber(i).TestObject);
+                tree.Insert(Build.A.BlockHeader.WithNumber(i).WithTotalDifficulty(i).TestObject);
             }
 
             BlockTree loadedTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainNetSpecProvider.Instance, NullTxPool.Instance, syncConfig, LimboLogs.Instance);
@@ -1246,7 +1246,7 @@ namespace Nethermind.Blockchain.Test
 
             for (long i = beginIndex; i > beginIndex - insertedBlocks; i--)
             {
-                Block block = Build.A.Block.WithNumber(i).TestObject;
+                Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(i).TestObject;
                 tree.Insert(block.Header);
                 tree.Insert(block);
             }
@@ -1274,7 +1274,7 @@ namespace Nethermind.Blockchain.Test
 
             for (long i = beginIndex; i > beginIndex - insertedBlocks; i--)
             {
-                Block block = Build.A.Block.WithNumber(i).TestObject;
+                Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(i).TestObject;
                 tree.Insert(block.Header);
                 tree.Insert(block);
             }
@@ -1305,7 +1305,7 @@ namespace Nethermind.Blockchain.Test
             Block pivotBlock = null;
             for (long i = pivotNumber; i > 0; i--)
             {
-                Block block = Build.A.Block.WithNumber(i).TestObject;
+                Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(i).TestObject;
                 if (pivotBlock == null) pivotBlock = block;
                 tree.Insert(block.Header);
             }
@@ -1358,7 +1358,7 @@ namespace Nethermind.Blockchain.Test
             List<Block> blocks = new List<Block>();
             for (long i = 5; i > 0; i--)
             {
-                Block block = Build.A.Block.WithNumber(i).TestObject;
+                Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(1L).TestObject;
                 tree.Insert(block.Header);
                 blocks.Add(block);
             }

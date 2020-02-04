@@ -65,6 +65,8 @@ namespace Nethermind.Blockchain.Synchronization
         public bool IsAllocated { get; set; }
         public bool IsInitialized { get; set; }
         public DateTime? SleepingSince { get; set; }
+        
+        public bool IsSleepingDeeply { get; set; }
         public bool IsAsleep => SleepingSince != null;
         public ISyncPeer SyncPeer { get; }
         public UInt256 TotalDifficulty { get; set; }

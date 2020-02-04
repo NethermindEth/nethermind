@@ -14,19 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using Nethermind.Core.Crypto;
-
-namespace Nethermind.Store
+namespace Nethermind.Logging
 {
-    public interface INodeDataConsumer
+    /// <summary>
+    /// used for diagnostics, just in case they make it all the way to PROD
+    /// </summary>
+    public static class LogConditions
     {
-        event EventHandler NeedMoreData;
-
-        Keccak[] PrepareRequest();
-        
-        int HandleResponse(Keccak[] hashes, byte[][] data);
-
-        bool NeedsData { get; }
+        public const bool BeamPoolOverrides = false;
+        public const bool BeamProcessorOverrides = true;
     }
 }

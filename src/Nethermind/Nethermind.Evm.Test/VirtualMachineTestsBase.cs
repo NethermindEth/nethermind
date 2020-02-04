@@ -14,8 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -27,7 +25,6 @@ using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Store;
 using Nethermind.Store.BeamSync;
@@ -54,7 +51,7 @@ namespace Nethermind.Evm.Test
         protected static Address Sender { get; } = TestItem.AddressA;
         protected static Address Recipient { get; } = TestItem.AddressB;
         protected static Address Miner { get; } = TestItem.AddressD;
-        
+
         protected static PrivateKey SenderKey { get; } = TestItem.PrivateKeyA;
         protected static PrivateKey RecipientKey { get; } = TestItem.PrivateKeyB;
         protected static PrivateKey MinerKey { get; } = TestItem.PrivateKeyD;
@@ -67,9 +64,9 @@ namespace Nethermind.Evm.Test
         public virtual void Setup()
         {
             ILogManager logger = LimboLogs.Instance;
-
-            ISnapshotableDb beamSyncDb = new StateDb(new BeamSyncDb());
-            IDb beamSyncCodeDb = new BeamSyncDb();
+            
+            ISnapshotableDb beamSyncDb = new StateDb(new BeamSyncDb(new MemDb(), "test", LimboLogs.Instance));
+            IDb beamSyncCodeDb = new BeamSyncDb(new MemDb(), "test", LimboLogs.Instance);
             IDb codeDb = UseBeamSync ? beamSyncCodeDb : new StateDb();
             _stateDb = UseBeamSync ? beamSyncDb : new StateDb();
             TestState = new StateProvider(_stateDb, codeDb, logger);
@@ -207,7 +204,7 @@ namespace Nethermind.Evm.Test
             byte[] actualValue = Storage.Get(new StorageCell(Recipient, address));
             Assert.AreEqual(expectedValue.ToBigEndianByteArray(), actualValue, "storage");
         }
-
+        
         protected void AssertStorage(StorageCell storageCell, BigInteger expectedValue)
         {
             byte[] actualValue = Storage.Get(storageCell);

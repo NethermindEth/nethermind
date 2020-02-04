@@ -30,8 +30,18 @@ namespace Nethermind.Core
             Ommers = ommers;
         }
 
-        public Transaction[] Transactions { get; set; }
-        public BlockHeader[] Ommers { get; set; }
+        public BlockBody WithChangedTransactions(Transaction[] transactions)
+        {
+            return new BlockBody(transactions, Ommers);
+        }
+        
+        public BlockBody WithChangedOmmers(BlockHeader[] ommers)
+        {
+            return new BlockBody(Transactions, ommers);
+        }
+
+        public Transaction[] Transactions { get; }
+        public BlockHeader[] Ommers { get; }
         
         public static BlockBody Empty = new BlockBody(); 
     }

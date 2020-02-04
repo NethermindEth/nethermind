@@ -34,7 +34,7 @@ using Nethermind.Runner.Ethereum.Subsystems;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency(typeof(InitializeNetwork), typeof(SetupKeyStore), typeof(InitializeBlockchain))]
+    [RunnerStepDependencies(typeof(InitializeNetwork), typeof(SetupKeyStore), typeof(InitializeBlockchain))]
     public class RegisterRpcModules : IStep, ISubsystemStateAware
     {
         private readonly EthereumRunnerContext _context;

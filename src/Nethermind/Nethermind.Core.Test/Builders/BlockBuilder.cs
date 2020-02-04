@@ -62,7 +62,7 @@ namespace Nethermind.Core.Test.Builders
         
         public BlockBuilder WithTransactions(params Transaction[] transactions)
         {
-            TestObjectInternal.Body.Transactions = transactions;
+            TestObjectInternal.Body = TestObjectInternal.Body.WithChangedTransactions(transactions);
             return this;
         }
         
@@ -72,6 +72,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockBuilder WithTotalDifficulty(long difficulty)
+        {
+            TestObjectInternal.Header.TotalDifficulty = (ulong)difficulty;
+            return this;
+        }
+        
         public BlockBuilder WithTotalDifficulty(UInt256 difficulty)
         {
             TestObjectInternal.Header.TotalDifficulty = difficulty;
@@ -111,13 +117,13 @@ namespace Nethermind.Core.Test.Builders
         
         public BlockBuilder WithOmmers(params Block[] ommers)
         {
-            TestObjectInternal.Body.Ommers = ommers.Select(o => o.Header).ToArray();
+            TestObjectInternal.Body = TestObjectInternal.Body.WithChangedOmmers(ommers.Select(o => o.Header).ToArray());
             return this;
         }
         
         public BlockBuilder WithOmmers(params BlockHeader[] ommers)
         {
-            TestObjectInternal.Body.Ommers = ommers;
+            TestObjectInternal.Body = TestObjectInternal.Body.WithChangedOmmers(ommers);
             return this;
         }
 

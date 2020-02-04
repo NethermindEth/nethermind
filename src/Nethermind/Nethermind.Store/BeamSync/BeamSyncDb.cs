@@ -15,56 +15,119 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Threading;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 
 namespace Nethermind.Store.BeamSync
 {
     public class BeamSyncDb : IDb, INodeDataConsumer
     {
-        private MemDb _memDb = new MemDb();
-
-        public void Dispose()
+        private readonly string _description;
+        private static DateTime _lastProgressInContext;
+        
+        /// <summary>
+        /// This can be in this hacky way as it will obviously have to be changed
+        /// There must be some BeamSync managing class passed to various processors so this info can be shared
+        /// Also some better design is needed for how to decide that beam sync has to be dropped for given context
+        /// </summary>
+        public static object Context
         {
+            get => _context;
+            set
+            {
+                _context = value;
+                // Console.WriteLine("Starting new context: " + _context);
+                _lastProgressInContext = DateTime.UtcNow;
+            }
         }
 
-        public string Name => "BeamSyncDb";
+        /// <summary>
+        /// This DB should be not in memory, in fact we should write to the underlying rocksDb and only keep a cache in memory
+        /// </summary>
+        private IDb _db;
 
-        private ConcurrentQueue<Keccak> _requestedNodes =new ConcurrentQueue<Keccak>(); 
+        private ILogger _logger;
         
+        public BeamSyncDb(IDb db, string description, ILogManager logManager)
+        {
+            _description = description;
+            _logger = logManager.GetClassLogger<BeamSyncDb>();
+            _db = db ?? throw new ArgumentNullException(nameof(db));
+        }
+        
+        public void Dispose()
+        {
+            _db.Dispose();
+        }
+
+        public string Name => _db.Name;
+
+        private int _resolvedKeysCount;
+        
+        private HashSet<Keccak> _requestedNodes = new HashSet<Keccak>();
+
         public byte[] this[byte[] key]
         {
             get
             {
                 // it is not possible for the item to be requested from the DB and missing in the DB unless the DB is corrupted
                 // if it is missing in the MemDb then it must exist somewhere on the web (unless the block is corrupted / invalid)
-                
+
                 // we grab the node from the web through requests
-                
+
                 // if the block is invalid then we will be timing out for a long time
                 // in such case it would be good to have some gossip about corrupted blocks
                 // but such gossip would be cheap
                 // if we keep timing out then we would finally reject the block (but only shelve it instead of marking invalid)
 
+                bool wasInDb = true;
                 while (true)
                 {
-                    var fromMem = _memDb[key];
+                    var fromMem = _db[key];
                     if (fromMem == null)
                     {
-                        _requestedNodes.Enqueue(new Keccak(key));
+                        wasInDb = false;
+                        _logger.Info($"BEAM SYNC Asking for {key.ToHexString()} - resolved keys so far {_resolvedKeysCount}");
+                        // we store sync progress data at Keccak.Zero;
+                        if (Bytes.AreEqual(key, Keccak.Zero.Bytes))
+                        {
+                            return null;
+                        }
+
+                        _requestedNodes.Add(new Keccak(key));
+                        // _logger.Error($"Requested {key.ToHexString()}");
+
                         NeedsData = true;
-                        _autoReset.WaitOne();
+                        NeedMoreData?.Invoke(this, EventArgs.Empty);
+                        _autoReset.WaitOne(1000);
+                        if (DateTime.UtcNow - _lastProgressInContext > TimeSpan.FromSeconds(15))
+                        {
+                            // _logger.Error($"Context failure for {_context}");
+                            // throw new InvalidDataException("Context fail in beam sync");
+                        }
                     }
                     else
                     {
+                        _lastProgressInContext = DateTime.UtcNow;
+                        _requestedNodes.Clear();
+
+                        if (!wasInDb)
+                        {
+                            if(_logger.IsInfo) _logger.Info($"{_description} BEAM SYNC Resolved {key.ToHexString()} - resolved keys so far {_resolvedKeysCount}");
+                            _resolvedKeysCount++;
+                        }
+
                         return fromMem;
                     }
                 }
             }
 
-            set => _memDb[key] = value;
+            set => _db[key] = value;
         }
 
         public byte[][] GetAll()
@@ -82,34 +145,47 @@ namespace Nethermind.Store.BeamSync
 
         public void Remove(byte[] key)
         {
-            _memDb.Remove(key);
+            _db.Remove(key);
         }
 
         public bool KeyExists(byte[] key)
         {
-            return _memDb.KeyExists(key);
+            return _db.KeyExists(key);
         }
 
         public event EventHandler NeedMoreData;
 
         public Keccak[] PrepareRequest()
         {
-            List<Keccak> request = new List<Keccak>();
-            while (_requestedNodes.TryDequeue(out Keccak requestedNode))
+            NeedsData = false;
+            return _requestedNodes.ToArray();
+        }
+
+        public int HandleResponse(Keccak[] hashes, byte[][] data)
+        {
+            int consumed = 0;
+            if (data != null)
             {
-                request.Add(requestedNode);
+                for (int i = 0; i < hashes.Length; i++)
+                {
+                    if (data.Length > i && data[i] != null)
+                    {
+                        if (Keccak.Compute(data[i]) == hashes[i])
+                        {
+                            _db[hashes[i].Bytes] = data[i];
+                            consumed++;
+                        }
+                    }
+                }
             }
 
-            return request.ToArray();
-        }
-
-        public void HandleResponse(Keccak[] hashes, byte[][] data)
-        {
             _autoReset.Set();
+            return consumed;
         }
 
-        private AutoResetEvent _autoReset = new AutoResetEvent(true);
-        
+        private AutoResetEvent _autoReset = new AutoResetEvent(false);
+        private static object _context;
+
         public bool NeedsData { get; private set; }
     }
 }
