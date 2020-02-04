@@ -215,6 +215,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     _allPending.Add(continuationTask);
                 }
+                else
+                {
+                    _hasFinishedExecution[discoveredStep] = true;
+                }
             }
 
             if (startedThisRound == 0 && _allPending.All(t => t.IsCompleted))
