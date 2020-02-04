@@ -25,6 +25,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.Proofs;
@@ -69,16 +70,27 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 return ResultWrapper<CallResultWithProof>.Fail(searchResult);
             }
 
-            BlockHeader header = searchResult.Object;
+            BlockHeader sourceHeader = searchResult.Object;
+            BlockHeader callHeader = new BlockHeader(
+                sourceHeader.Hash,
+                Keccak.OfAnEmptySequenceRlp,
+                Address.Zero,
+                0,
+                sourceHeader.Number + 1,
+                sourceHeader.GasLimit,
+                sourceHeader.Timestamp,
+                Bytes.Empty);
+            callHeader.TotalDifficulty = sourceHeader.TotalDifficulty + callHeader.Difficulty;
             
             Transaction transaction = tx.ToTransaction();
             transaction.SenderAddress ??= Address.SystemUser;
             if (transaction.GasLimit == 0)
             {
-                transaction.GasLimit = header.GasLimit;
+                transaction.GasLimit = callHeader.GasLimit;
             }
 
-            Block block = new Block(header, new[] {transaction}, Enumerable.Empty<BlockHeader>());
+            
+            Block block = new Block(callHeader, new[] {transaction}, Enumerable.Empty<BlockHeader>());
 
             ProofBlockTracer proofBlockTracer = new ProofBlockTracer(null, transaction.SenderAddress == Address.SystemUser);
             _tracer.Trace(block, proofBlockTracer);
@@ -86,12 +98,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
             CallResultWithProof callResultWithProof = new CallResultWithProof();
             ProofTxTracer proofTxTracer = proofBlockTracer.BuildResult().Single();
 
-            callResultWithProof.BlockHeaders = CollectHeaderBytes(proofTxTracer, header);
+            callResultWithProof.BlockHeaders = CollectHeaderBytes(proofTxTracer, sourceHeader);
             callResultWithProof.Result = proofTxTracer.Output;
 
             // we collect proofs from before execution (after learning which addresses will be touched)
             // if we wanted to collect post execution proofs then we would need to use BeforeRestore on the tracer
-            callResultWithProof.Accounts = CollectAccountProofs(header.StateRoot, proofTxTracer);
+            callResultWithProof.Accounts = CollectAccountProofs(sourceHeader.StateRoot, proofTxTracer);
 
             return ResultWrapper<CallResultWithProof>.Success(callResultWithProof);
         }
