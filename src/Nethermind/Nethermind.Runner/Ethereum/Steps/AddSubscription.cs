@@ -21,7 +21,7 @@ using Nethermind.Runner.Ethereum.Context;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency(typeof(InitializeBlockchain), typeof(StartGrpcProducer), typeof(StartKafkaProducer))]
+    [RunnerStepDependencies(typeof(InitializeBlockchain), typeof(StartGrpcProducer), typeof(StartKafkaProducer))]
     public class AddSubscription : IStep
     {
         private readonly EthereumRunnerContext _context;

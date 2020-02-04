@@ -24,6 +24,7 @@ using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
+    [RunnerStepDependencies]
     public class SetupKeyStore : IStep
     {
         private readonly EthereumRunnerContext _context;

@@ -102,11 +102,11 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     if (!allDependenciesInitialized)
                     {
-                        RunnerStepDependencyAttribute dependencyAttribute = type.GetCustomAttribute<RunnerStepDependencyAttribute>();
+                        RunnerStepDependenciesAttribute dependenciesAttribute = type.GetCustomAttribute<RunnerStepDependenciesAttribute>();
                         bool allDependenciesFinished = true;
-                        if (dependencyAttribute != null)
+                        if (dependenciesAttribute != null)
                         {
-                            foreach (Type dependency in dependencyAttribute.Dependencies)
+                            foreach (Type dependency in dependenciesAttribute.Dependencies)
                             {
                                 if (!_hasFinishedExecution.GetValueOrDefault(dependency))
                                 {

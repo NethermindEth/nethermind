@@ -35,7 +35,7 @@ using Nethermind.Store.Repositories;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency(typeof(InitRlp), typeof(InitDatabase), typeof(SetupKeyStore))]
+    [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(SetupKeyStore))]
     public class InitializeBlockchain : IStep
     {
         private readonly EthereumRunnerContext _context;

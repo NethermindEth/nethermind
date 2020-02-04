@@ -20,7 +20,7 @@ using Nethermind.Stats;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency]
+    [RunnerStepDependencies]
     public class InitializeNodeStats : IStep
     {
         private readonly EthereumRunnerContext _context;

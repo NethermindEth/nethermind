@@ -62,6 +62,7 @@ namespace Nethermind.Store.BeamSync
         
         public void Dispose()
         {
+            _db.Dispose();
         }
 
         public string Name => _db.Name;

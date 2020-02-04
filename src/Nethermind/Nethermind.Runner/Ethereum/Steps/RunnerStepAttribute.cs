@@ -19,11 +19,11 @@ using System;
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [AttributeUsage(AttributeTargets.Class)]
-    public class RunnerStepDependencyAttribute : Attribute
+    public class RunnerStepDependenciesAttribute : Attribute
     {
         public Type[] Dependencies { get; }
 
-        public RunnerStepDependencyAttribute(params Type[] dependencies)
+        public RunnerStepDependenciesAttribute(params Type[] dependencies)
         {
             Dependencies = dependencies;
         }
