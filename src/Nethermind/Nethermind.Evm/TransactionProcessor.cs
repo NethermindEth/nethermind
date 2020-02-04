@@ -16,6 +16,7 @@
 
 using System;
 using System.Linq;
+using System.Security.Cryptography.X509Certificates;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -60,14 +61,14 @@ namespace Nethermind.Evm
             Execute(transaction, block, txTracer, false);
         }
 
-        private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer)
+        private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, string reason)
         {
             block.GasUsed += tx.GasLimit;
             Address recipient = tx.To ?? ContractAddress.From(tx.SenderAddress, _stateProvider.GetNonce(tx.SenderAddress));
             
             _stateProvider.RecalculateStateRoot();
             Keccak stateRoot = _specProvider.GetSpec(block.Number).IsEip658Enabled ? null : _stateProvider.StateRoot;
-            if (txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, tx.GasLimit, Bytes.Empty, "invalid", stateRoot);
+            if (txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, tx.GasLimit, Bytes.Empty, reason ?? "invalid", stateRoot);
         }
 
         private EthereumEcdsa _ecdsa;
@@ -94,7 +95,7 @@ namespace Nethermind.Evm
             if (sender == null)
             {
                 TraceLogInvalidTx(transaction, "SENDER_NOT_SPECIFIED");
-                QuickFail(transaction, block, txTracer);
+                QuickFail(transaction, block, txTracer, "sender not specified");
                 return;
             }
 
@@ -106,7 +107,7 @@ namespace Nethermind.Evm
                 if (gasLimit < intrinsicGas)
                 {
                     TraceLogInvalidTx(transaction, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {gasLimit} < {intrinsicGas}");
-                    QuickFail(transaction, block, txTracer);
+                    QuickFail(transaction, block, txTracer, "gas limit below intrinsic gas");
                     return;
                 }
 
@@ -114,7 +115,7 @@ namespace Nethermind.Evm
                 {
                     TraceLogInvalidTx(transaction,
                         $"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
-                    QuickFail(transaction, block, txTracer);
+                    QuickFail(transaction, block, txTracer, "block gas limit exceeded");
                     return;
                 }
             }
@@ -148,14 +149,14 @@ namespace Nethermind.Evm
                 if ((ulong) intrinsicGas * gasPrice + value > senderBalance)
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({sender})_BALANCE = {senderBalance}");
-                    QuickFail(transaction, block, txTracer);
+                    QuickFail(transaction, block, txTracer, "insufficient sender balance");
                     return;
                 }
 
                 if (transaction.Nonce != _stateProvider.GetNonce(sender))
                 {
                     TraceLogInvalidTx(transaction, $"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(sender)})");
-                    QuickFail(transaction, block, txTracer);
+                    QuickFail(transaction, block, txTracer, "wrong transaction nonce");
                     return;
                 }
 
