@@ -162,7 +162,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeys[i]));
             }
         }
-        
+
         [Test]
         public async Task Will_disconnect_one_when_at_max()
         {
@@ -220,7 +220,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.Start();
             _pool.EnsureBest();
         }
-        
+
         [Test]
         public void Does_not_crash_when_removing_non_existing_peer()
         {
@@ -443,7 +443,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             Assert.NotNull(allocation1.Current, "second A");
             Assert.NotNull(allocation2.Current, "second B");
         }
-        
+
         [Test]
         public async Task Does_not_allocate_sleeping_peers()
         {
@@ -453,12 +453,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
             SyncPeerAllocation allocation1 = await _pool.BorrowAsync();
             SyncPeerAllocation allocation2 = await _pool.BorrowAsync();
             SyncPeerAllocation allocation3 = await _pool.BorrowAsync();
-            
+
             Assert.True(allocation1.HasPeer);
             Assert.True(allocation2.HasPeer);
             Assert.False(allocation3.HasPeer);
         }
-        
+
         [Test]
         public async Task Can_wake_up_all_sleeping_peers()
         {
@@ -467,7 +467,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.ReportNoSyncProgress(_pool.AllPeers.Last());
 
             _pool.WakeUpAll();
-            
+
             SyncPeerAllocation allocation1 = await _pool.BorrowAsync();
             SyncPeerAllocation allocation2 = await _pool.BorrowAsync();
             SyncPeerAllocation allocation3 = await _pool.BorrowAsync();
@@ -476,7 +476,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             Assert.True(allocation2.HasPeer);
             Assert.True(allocation3.HasPeer);
         }
-        
+
         [Test]
         public async Task Useful_peers_does_not_return_sleeping_peers()
         {
@@ -486,7 +486,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             Assert.AreEqual(1, _pool.UsefulPeers.Count());
         }
-        
+
         [Test]
         public async Task Report_invalid_invokes_disconnection()
         {
@@ -495,31 +495,31 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             Assert.True(peers[0].DisconnectRequested);
         }
-        
+
         [Test]
         public async Task Report_invalid_via_allocation_invokes_disconnection()
         {
-            var peers = await SetupPeers(3);
-            var allocation = await _pool.BorrowAsync(BorrowOptions.DoNotReplace);
+            SimpleSyncPeerMock[] peers = await SetupPeers(3);
+            SyncPeerAllocation allocation = await _pool.BorrowAsync(BorrowOptions.DoNotReplace);
             _pool.ReportInvalid(allocation, "issue details");
 
-            Assert.True(peers[0].DisconnectRequested);
+            Assert.True(peers.Count(p => p.DisconnectRequested) == 1);
         }
-        
+
         [Test]
         public async Task Report_bad_peer_only_disconnects_after_11_times()
         {
-            var peers = await SetupPeers(1);
-            var allocation = await _pool.BorrowAsync(BorrowOptions.DoNotReplace);
-            
+            SimpleSyncPeerMock[] peers = await SetupPeers(1);
+            SyncPeerAllocation allocation = await _pool.BorrowAsync(BorrowOptions.DoNotReplace);
+
             for (int i = 0; i < 10; i++)
             {
                 _pool.ReportBadPeer(allocation);
-                Assert.False(peers[0].DisconnectRequested);
+                Assert.AreEqual(0, peers.Count(p => p.DisconnectRequested));
             }
-            
+
             _pool.ReportBadPeer(allocation);
-            Assert.True(peers[0].DisconnectRequested);
+            Assert.AreEqual(1, peers.Count(p => p.DisconnectRequested));
         }
 
         [Test]

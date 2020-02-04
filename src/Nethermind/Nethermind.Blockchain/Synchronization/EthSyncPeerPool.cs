@@ -329,7 +329,7 @@ namespace Nethermind.Blockchain.Synchronization
         public void EnsureBest()
         {
             // we will reuse this method to find a peer that has higher difficulty than us
-            UpdateAllocations("ENSURE BEST", true);
+            UpdateAllocations("ENSURE BEST");
         }
 
         private ConcurrentDictionary<PeerInfo, int> _peerBadness = new ConcurrentDictionary<PeerInfo, int>();
@@ -574,19 +574,16 @@ namespace Nethermind.Blockchain.Synchronization
                 initCancelTokenSource?.Cancel();
             }
         }
+        
+        private static Random _random = new Random();
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        private PeerInfo SelectBestPeerForAllocation(SyncPeerAllocation allocation, string reason, bool isLowPriority, bool onlyHigherDifficulty = false)
+        private PeerInfo SelectBestPeerForAllocation(SyncPeerAllocation allocation, string reason, bool isLowPriority)
         {
             // if (_logger.IsWarn) _logger.Warn($"[{reason}] Selecting best peer for {allocation}");
             (PeerInfo Info, long TransferSpeed) bestPeer = (null, isLowPriority ? long.MaxValue : -1);
-            foreach ((_, PeerInfo info) in _peers)
+            foreach ((_, PeerInfo info) in _peers.OrderBy(kvp => _random.Next()))
             {
-                if (onlyHigherDifficulty && info.TotalDifficulty <= (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero))
-                {
-                    continue;
-                }
-                
                 if (allocation.MinBlocksAhead.HasValue && info.HeadNumber < (_blockTree.BestSuggestedHeader?.Number ?? 0) + allocation.MinBlocksAhead.Value)
                 {
                     continue;
@@ -676,8 +673,8 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
-            var currentSpeed = _stats.GetOrAdd(allocation.Current?.SyncPeer.Node)?.GetAverageTransferSpeed() ?? 0;
-            var newSpeed = _stats.GetOrAdd(peerInfo.SyncPeer.Node)?.GetAverageTransferSpeed() ?? 0;
+            long currentSpeed = _stats.GetOrAdd(allocation.Current?.SyncPeer.Node)?.GetAverageTransferSpeed() ?? 0;
+            long newSpeed = _stats.GetOrAdd(peerInfo.SyncPeer.Node)?.GetAverageTransferSpeed() ?? 0;
 
             if (newSpeed / (decimal) Math.Max(1L, currentSpeed) > 1m + _minDiffPercentageForSpeedSwitch
                 && newSpeed > currentSpeed + _minDiffForSpeedSwitch)
@@ -691,7 +688,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        private void UpdateAllocations(string reason, bool onlyHigherDifficulty = false)
+        private void UpdateAllocations(string reason)
         {
             foreach ((SyncPeerAllocation allocation, _) in _replaceableAllocations)
             {
@@ -700,7 +697,7 @@ namespace Nethermind.Blockchain.Synchronization
                     throw new InvalidOperationException("Unreplaceable allocation in the replacable allocations collection");
                 }
 
-                PeerInfo bestPeer = SelectBestPeerForAllocation(allocation, reason, false, onlyHigherDifficulty);
+                PeerInfo bestPeer = SelectBestPeerForAllocation(allocation, reason, false);
                 if (bestPeer != allocation.Current)
                 {
                     ReplaceIfWorthReplacing(allocation, bestPeer);
