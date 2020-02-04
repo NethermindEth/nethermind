@@ -280,29 +280,34 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             BlockHeader header = searchResult.Object;
-            if (transactionCall.Gas == null || transactionCall.Gas == 0)
-            {
-                transactionCall.Gas = Math.Min(_rpcConfig.GasCap ?? long.MaxValue, header.GasLimit);
-            }
-            
+            FixCallTx(transactionCall, header);
+
             Transaction tx = transactionCall.ToTransaction();
             BlockchainBridge.CallOutput result = _blockchainBridge.Call(header, tx);
 
             return result.Error != null ? ResultWrapper<string>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error) : ResultWrapper<string>.Success(result.OutputData.ToHexString(true));
         }
 
-        public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall)
+        private void FixCallTx(TransactionForRpc transactionCall, BlockHeader header)
         {
-            BlockHeader headBlock = _blockchainBridge.FindLatestHeader();
-            
             if (transactionCall.Gas == null || transactionCall.Gas == 0)
             {
-                transactionCall.Gas = Math.Min(_rpcConfig.GasCap ?? long.MaxValue, headBlock.GasLimit);
+                transactionCall.Gas = Math.Min(_rpcConfig.GasCap ?? long.MaxValue, header.GasLimit);
             }
-            
-            transactionCall.From ??= Address.SystemUser;
+            else
+            {
+                transactionCall.Gas = Math.Min(_rpcConfig.GasCap ?? long.MaxValue, transactionCall.Gas.Value);
+            }
 
-            long result = _blockchainBridge.EstimateGas(headBlock, transactionCall.ToTransaction());
+            transactionCall.From ??= Address.SystemUser;
+        }
+
+        public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall)
+        {
+            BlockHeader head = _blockchainBridge.FindLatestHeader();
+            FixCallTx(transactionCall, head);
+
+            long result = _blockchainBridge.EstimateGas(head, transactionCall.ToTransaction());
             return ResultWrapper<UInt256?>.Success((UInt256) result);
         }
 

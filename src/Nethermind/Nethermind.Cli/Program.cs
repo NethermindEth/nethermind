@@ -44,17 +44,10 @@ namespace Nethermind.Cli
         private const string HistoryFilePath = "cli.cmd.history";
         private static readonly ColorScheme ColorScheme = new DraculaColorScheme();
 
-        private static void CurrentDomainOnProcessExit(object sender, EventArgs e)
-        {
-            File.WriteAllLines(HistoryFilePath, ReadLine.GetHistory().Distinct().TakeLast(60));
-        }
-
         static void Main(string[] args)
         {
             _cliConsole = new CliConsole();
             _terminal = _cliConsole.Init(ColorScheme);
-
-            AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
 
             Setup();
             LoadModules();
@@ -131,6 +124,8 @@ namespace Nethermind.Cli
             return statement;
         }
         
+        private static List<string> _historyCloned = new List<string>();
+        
         private static void RunEvalLoop()
         {
             try
@@ -142,6 +137,7 @@ namespace Nethermind.Cli
                         if (line != _removedString)
                         {
                             ReadLine.AddHistory(line);
+                            _historyCloned.Insert(0, line);
                         }
                     }
                 }
@@ -180,17 +176,13 @@ namespace Nethermind.Cli
                             if (ReadLine.GetHistory().Last() != statement)
                             {
                                 ReadLine.AddHistory(statement);
-                            }
-                            
-                            
-                            using (var fileStream = File.AppendText(HistoryFilePath))
-                            {
-                                fileStream.WriteLine(statement);
+                                _historyCloned.Insert(0, statement);
                             }
                         }
                         else
                         {
                             ReadLine.AddHistory(_removedString);
+                            _historyCloned.Insert(0, statement);
                         }
                     }
 
@@ -198,6 +190,8 @@ namespace Nethermind.Cli
                     {
                         break;
                     }
+                    
+                    File.WriteAllLines(HistoryFilePath, ((IEnumerable<string>)_historyCloned).Distinct().Reverse().ToArray());
 
                     JsValue result = _engine.Execute(statement);
                     if (result.IsObject() && result.AsObject().Class == "Function")
