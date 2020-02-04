@@ -28,7 +28,7 @@ You can use ``--help`` to get a list of possible start parameters for Nethermind
     docker run -it nethermind/nethermind --help
 
 To enable JSON RPC, publish port 8545 and set NETHERMIND_JSONRPCCONFIG_ENABLED=true or --JsonRpc.Enabled true. If running from a VM you may want to expose JSON RPC to 
-the outer world via NETHERMIND_JSONRPCCONFIG_HOST={hostmachine_ip} or --JsonRpc.Host {hostmachine_ip}:
+the outer world via NETHERMIND_JSONRPCCONFIG_HOST={hostmachine_ip} or --JsonRpc.Host {hostmachine_ip}::
     
     docker run -it -e NETHERMIND_JSONRPCCONFIG_ENABLED=true -e NETHERMIND_NETWORKCONFIG_P2PPORT=30312 -e NETHERMIND_NETWORKCONFIG_DISCOVERYPORT=30312 nethermind/nethermind
 
