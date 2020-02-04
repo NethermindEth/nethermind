@@ -82,7 +82,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             };
 
             result.StateChanges = new Dictionary<Address, ParityAccountStateChange> {{TestItem.AddressC, stateChange}};
-
             TestToJson(new ParityTxTraceFromReplay(result, includeTransactionHash), expectedResult);
         }
 

@@ -19,6 +19,7 @@ using System.Linq;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using NUnit.Framework;
@@ -39,11 +40,14 @@ namespace Nethermind.JsonRpc.Test
             IJsonRpcService service = BuildRpcService(module);
             JsonRpcRequest request = GetJsonRequest(method, parameters);
             JsonRpcResponse response = service.SendRequestAsync(request).Result;
-            JsonSerializerSettings settings = new JsonSerializerSettings();
-            settings.ContractResolver = new CamelCasePropertyNamesContractResolver();
-            settings.Converters = service.Converters.Union(converters).ToArray();
-            string serialized = JsonConvert.SerializeObject(response, settings);
-            TestContext.WriteLine(serialized.Replace("\"", "\\\""));
+            var serializer = new EthereumJsonSerializer();
+            foreach (var converter in converters)
+            {
+                serializer.RegisterConverter(converter);
+            }
+            var serialized = serializer.Serialize(response);
+            TestContext.Out?.WriteLine("Serialized:");
+            TestContext.Out?.WriteLine(serialized);
             return serialized;
         }
         
