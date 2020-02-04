@@ -169,7 +169,7 @@ The arm32 version is not yet available as it is not supported for now (track her
 Dockerfiles
 -----------
 
--  `Dockerfile_arm32 <https://github.com/NethermindEth/nethermind/blob/master/Dockerfile_arm32>`_ - requires to have a cloned repository in order to build an ARM64 Debian based image.
+-  `Dockerfile_arm32 <https://github.com/NethermindEth/nethermind/blob/master/Dockerfile_arm32>`_ - requires to have a cloned repository in order to build an ARM32 Debian based image.
 
 Docker (Alpine ARM64 Customized)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
