@@ -25,13 +25,13 @@ namespace Nethermind.Blockchain.Synchronization
     internal class SyncProgressResolver : ISyncProgressResolver
     {
         private const int _maxLookup = 64;
-        
+
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
         private readonly INodeDataDownloader _nodeDataDownloader;
         private readonly ISyncConfig _syncConfig;
         private ILogger _logger;
-        
+
         public SyncProgressResolver(IBlockTree blockTree, IReceiptStorage receiptStorage, INodeDataDownloader nodeDataDownloader, ISyncConfig syncConfig, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain.Synchronization
             _nodeDataDownloader = nodeDataDownloader ?? throw new ArgumentNullException(nameof(nodeDataDownloader));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
         }
-        
+
         public long FindBestFullState()
         {
             /* There is an interesting scenario (unlikely) here where we download more than 'full sync threshold'
@@ -62,6 +62,12 @@ namespace Nethermind.Blockchain.Synchronization
                     break;
                 }
 
+                if (_syncConfig.BeamSyncEnabled)
+                {
+                    bestFullState = bestSuggested.Number;
+                    break;
+                }
+                
                 if (_nodeDataDownloader.IsFullySynced(bestSuggested))
                 {
                     bestFullState = bestSuggested.Number;
@@ -73,13 +79,13 @@ namespace Nethermind.Blockchain.Synchronization
 
             return bestFullState;
         }
-        
+
         public long FindBestHeader() => _blockTree.BestSuggestedHeader?.Number ?? 0;
 
         public long FindBestFullBlock() => Math.Min(FindBestHeader(), _blockTree.BestSuggestedBody?.Number ?? 0); // avoiding any potential concurrency issue
 
         public bool IsFastBlocksFinished() =>
-            !_syncConfig.FastBlocks 
+            !_syncConfig.FastBlocks
             || (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1
             && (!_syncConfig.DownloadReceiptsInFastSync || (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) <= 1)
             && (!_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1);
