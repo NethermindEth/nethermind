@@ -111,7 +111,7 @@ namespace Nethermind.Blockchain.Tracing
         public GethLikeTxTrace Trace(Block block, Keccak txHash, GethTraceOptions options)
         {
             GethLikeBlockTracer listener = new GethLikeBlockTracer(txHash, options);
-            _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain, listener);
+            _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, listener);
             return listener.BuildResult().SingleOrDefault();
         }
 

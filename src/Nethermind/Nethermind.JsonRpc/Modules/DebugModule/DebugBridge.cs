@@ -86,6 +86,13 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         public GethLikeTxTrace GetTransactionTrace(BlockParameter blockParameter, Transaction transaction, GethTraceOptions gethTraceOptions = null)
         {
             Block block = _blockTree.FindBlock(blockParameter);
+            if (transaction.GasLimit == 0)
+            {
+                transaction.GasLimit = block.GasLimit;
+            }
+
+            transaction.SenderAddress ??= Address.SystemUser;
+            transaction.Hash = transaction.CalculateHash();
             Block tracedBlock = new Block(block.Header, new Transaction[] {transaction}, new BlockHeader[] { });
             
             return _tracer.Trace(tracedBlock, transaction.Hash, gethTraceOptions ?? GethTraceOptions.Default);

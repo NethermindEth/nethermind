@@ -34,7 +34,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         ResultWrapper<bool> debug_deleteChainSlice(in long startNumber, in long endNumber);
 
         [JsonRpcMethod(Description = "", IsReadOnly = true)]
-        ResultWrapper<GethLikeTxTrace> debug_traceCall(BlockParameter blockParameter, Transaction transaction, GethTraceOptions options = null);
+        ResultWrapper<GethLikeTxTrace> debug_traceCall(BlockParameter blockParameter, TransactionForRpc transaction, GethTraceOptions options = null);
         
         [JsonRpcMethod(Description = "", IsReadOnly = true)]
         ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Keccak transactionHash, GethTraceOptions options = null);
