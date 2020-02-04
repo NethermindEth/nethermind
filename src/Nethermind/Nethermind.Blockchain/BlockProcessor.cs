@@ -111,7 +111,7 @@ namespace Nethermind.Blockchain
                 for (int i = 0; i < suggestedBlocks.Length; i++)
                 {
                     Stopwatch stopwatch = Stopwatch.StartNew();
-                    _logger.Warn($"Processing block {suggestedBlocks[i].ToString(Block.Format.Short)} with total diffuculty {suggestedBlocks[i]}");
+                    _logger.Warn($"Processing block {suggestedBlocks[i].ToString(Block.Format.Short)} with total diffuculty {suggestedBlocks[i].TotalDifficulty}");
                     processedBlocks[i] = ProcessOne(suggestedBlocks[i], options, blockTracer);
                     _logger.Warn($"Processed block {suggestedBlocks[i].ToString(Block.Format.Short)} {suggestedBlocks[i]} in {stopwatch.ElapsedMilliseconds}ms");
                     stopwatch.Stop();
