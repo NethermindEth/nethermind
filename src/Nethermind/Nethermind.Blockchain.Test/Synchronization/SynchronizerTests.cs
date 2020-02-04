@@ -405,7 +405,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             {
                 return Wait(WaitTime);
             }
-            
+
             public SyncingContext WaitUntilInitialized()
             {
                 WaitFor(() => SyncPeerPool.AllPeers.All(p => p.IsInitialized));
@@ -492,7 +492,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                     Thread.Sleep(waitInterval);
                 }
             }
-            
+
             public SyncingContext Stop()
             {
                 Synchronizer.SyncEvent -= SynchronizerOnSyncEvent;
@@ -825,7 +825,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggestedHeaderIs(peerB.HeadHeader).Stop();
         }
 
-        [Test,Retry(3)]
+        [Test, Retry(3)]
         public void Can_extend_chain_on_new_block_when_high_difficulty_low_number()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");

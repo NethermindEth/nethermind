@@ -328,7 +328,8 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void EnsureBest()
         {
-            UpdateAllocations("ENSURE BEST");
+            // we will reuse this method to find a peer that has higher difficulty than us
+            UpdateAllocations("ENSURE BEST", true);
         }
 
         private ConcurrentDictionary<PeerInfo, int> _peerBadness = new ConcurrentDictionary<PeerInfo, int>();
@@ -575,12 +576,17 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        private PeerInfo SelectBestPeerForAllocation(SyncPeerAllocation allocation, string reason, bool isLowPriority)
+        private PeerInfo SelectBestPeerForAllocation(SyncPeerAllocation allocation, string reason, bool isLowPriority, bool onlyHigherDifficulty = false)
         {
             // if (_logger.IsWarn) _logger.Warn($"[{reason}] Selecting best peer for {allocation}");
             (PeerInfo Info, long TransferSpeed) bestPeer = (null, isLowPriority ? long.MaxValue : -1);
             foreach ((_, PeerInfo info) in _peers)
             {
+                if (onlyHigherDifficulty && info.TotalDifficulty <= (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero))
+                {
+                    continue;
+                }
+                
                 if (allocation.MinBlocksAhead.HasValue && info.HeadNumber < (_blockTree.BestSuggestedHeader?.Number ?? 0) + allocation.MinBlocksAhead.Value)
                 {
                     continue;
@@ -685,7 +691,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        private void UpdateAllocations(string reason)
+        private void UpdateAllocations(string reason, bool onlyHigherDifficulty = false)
         {
             foreach ((SyncPeerAllocation allocation, _) in _replaceableAllocations)
             {
@@ -694,7 +700,7 @@ namespace Nethermind.Blockchain.Synchronization
                     throw new InvalidOperationException("Unreplaceable allocation in the replacable allocations collection");
                 }
 
-                PeerInfo bestPeer = SelectBestPeerForAllocation(allocation, reason, false);
+                PeerInfo bestPeer = SelectBestPeerForAllocation(allocation, reason, false, onlyHigherDifficulty);
                 if (bestPeer != allocation.Current)
                 {
                     ReplaceIfWorthReplacing(allocation, bestPeer);

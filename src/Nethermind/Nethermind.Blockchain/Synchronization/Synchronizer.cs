@@ -215,12 +215,6 @@ namespace Nethermind.Blockchain.Synchronization
 
         private async Task RunSyncLoop()
         {
-            long pivotNumber = 0;
-            if (long.TryParse(_syncConfig.PivotNumber, out long pivotNumberParsed))
-            {
-                pivotNumber = pivotNumberParsed;
-            }
-            
             while (true)
             {
                 if (_logger.IsTrace) _logger.Trace("Sync loop - WAIT.");
@@ -264,7 +258,7 @@ namespace Nethermind.Blockchain.Synchronization
                 if (_blocksSyncAllocation != null)
                 {
                     UInt256 ourTotalDifficulty = _blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0;
-                    _syncPeerPool.EnsureBest(); // can we remove it yet?
+                    _syncPeerPool.EnsureBest();
                     bestPeer = _blocksSyncAllocation?.Current;
                     if (bestPeer == null || bestPeer.TotalDifficulty <= ourTotalDifficulty)
                     {
