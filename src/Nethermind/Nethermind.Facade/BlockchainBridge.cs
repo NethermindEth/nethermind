@@ -190,21 +190,26 @@ namespace Nethermind.Facade
             {
                 transaction.SenderAddress = Address.SystemUser;
             }
-
-            BlockHeader parentHeader =
-                blockHeader.IsGenesis
-                    ? blockHeader
-                    : FindHeader(blockHeader.ParentHash, BlockTreeLookupOptions.None) ?? blockHeader;
             
-            _stateProvider.StateRoot = parentHeader.StateRoot;
+            _stateProvider.StateRoot = blockHeader.StateRoot;
             if (transaction.Nonce == 0)
             {
-                transaction.Nonce = GetNonce(parentHeader.StateRoot, transaction.SenderAddress);
+                transaction.Nonce = GetNonce(blockHeader.StateRoot, transaction.SenderAddress);
             }
+            
+            BlockHeader callHeader = new BlockHeader(
+                blockHeader.Hash,
+                Keccak.OfAnEmptySequenceRlp, 
+                blockHeader.Beneficiary,
+                blockHeader.Difficulty,
+                blockHeader.Number + 1,
+                blockHeader.GasLimit,
+                blockHeader.Timestamp,
+                blockHeader.ExtraData);
 
             transaction.Hash = transaction.CalculateHash();
             CallOutputTracer callOutputTracer = new CallOutputTracer();
-            _transactionProcessor.CallAndRestore(transaction, blockHeader, callOutputTracer);
+            _transactionProcessor.CallAndRestore(transaction, callHeader, callOutputTracer);
             _stateProvider.Reset();
             _storageProvider.Reset();
             return callOutputTracer;
