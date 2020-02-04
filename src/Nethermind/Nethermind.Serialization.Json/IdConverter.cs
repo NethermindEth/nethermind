@@ -38,6 +38,9 @@ namespace Nethermind.Serialization.Json
                 case string typedValue:
                     writer.WriteValue(typedValue);
                     break;
+                case null:
+                    writer.WriteValue(null);
+                    break;
                 default:
                     throw new NotSupportedException();
             }
@@ -51,6 +54,8 @@ namespace Nethermind.Serialization.Json
                     return reader.Value;
                 case JsonToken.String:
                     return reader.Value as string;
+                case JsonToken.Null:
+                    return null;
                 default:
                     throw new NotSupportedException($"{reader.TokenType}");
             }
