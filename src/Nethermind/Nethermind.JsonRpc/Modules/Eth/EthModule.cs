@@ -288,12 +288,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Transaction tx = transactionCall.ToTransaction();
             BlockchainBridge.CallOutput result = _blockchainBridge.Call(header, tx);
 
-            if (result.Error != null)
-            {
-                return ResultWrapper<string>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error);
-            }
-
-            return ResultWrapper<string>.Success(result.OutputData.ToHexString(true));
+            return result.Error != null ? ResultWrapper<string>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error) : ResultWrapper<string>.Success(result.OutputData.ToHexString(true));
         }
 
         public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall)

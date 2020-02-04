@@ -20,12 +20,12 @@ using NUnit.Framework;
 namespace Nethermind.JsonRpc.Test.Data
 {
     [TestFixture]
-    public class AddressSerializationTests : SerializationTestBase
+    public class AddressConverterTests : SerializationTestBase
     {
         [Test]
         public void Can_do_roundtrip()
         {
-            TestSerialization(TestItem.AddressA, (a, b) => a.Equals(b));
+            TestRoundtrip(TestItem.AddressA);
         }
     }
 }

@@ -37,7 +37,5 @@ namespace Nethermind.Evm.Tracing.GethStyle
         
         [JsonProperty(PropertyName = "structLogs")]
         public List<GethTxTraceEntry> Entries { get; set; }
-
-        public static GethLikeTxTrace QuickFail { get; } = new GethLikeTxTrace {Failed = true, ReturnValue = Bytes.Empty};
     }
 }

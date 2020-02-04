@@ -111,13 +111,13 @@ namespace Nethermind.JsonRpc.Test.Data
         [Test]
         public void Can_do_roundtrip()
         {
-            TestSerialization(BlockParameter.Latest, (a, b) => a.Equals(b), "latest");
-            TestSerialization(BlockParameter.Pending, (a, b) => a.Equals(b), "pending");
-            TestSerialization(BlockParameter.Earliest, (a, b) => a.Equals(b), "earliest");
-            TestSerialization(new BlockParameter(0L), (a, b) => a.Equals(b), "zero");
-            TestSerialization(new BlockParameter(long.MaxValue), (a, b) => a.Equals(b), "max");
-            TestSerialization(new BlockParameter(TestItem.KeccakA), (a, b) => a.Equals(b), "hash");
-            TestSerialization(new BlockParameter(TestItem.KeccakA, true), (a, b) => a.Equals(b), "hash with canonical");
+            TestRoundtrip(BlockParameter.Latest, "latest");
+            TestRoundtrip(BlockParameter.Pending, "pending");
+            TestRoundtrip(BlockParameter.Earliest, "earliest");
+            TestRoundtrip(new BlockParameter(0L), "zero");
+            TestRoundtrip(new BlockParameter(long.MaxValue), "max");
+            TestRoundtrip(new BlockParameter(TestItem.KeccakA), "hash");
+            TestRoundtrip(new BlockParameter(TestItem.KeccakA, true), "hash with canonical");
         }
     }
 }

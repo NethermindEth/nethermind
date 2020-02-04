@@ -74,6 +74,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public int? TransactionPosition { get; set; }
 
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public string Type { get; set; }
     }
 }

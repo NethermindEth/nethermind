@@ -47,6 +47,10 @@ namespace Nethermind.Evm.Test
             _specProvider = MainNetSpecProvider.Instance;
             StateDb stateDb = new StateDb();
             _stateProvider = new StateProvider(stateDb, new MemDb(), LimboLogs.Instance);
+            _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
+            _stateProvider.Commit(_specProvider.GenesisSpec);
+            _stateProvider.CommitTree();
+            
             StorageProvider storageProvider = new StorageProvider(stateDb, _stateProvider, LimboLogs.Instance);
             VirtualMachine virtualMachine = new VirtualMachine(_stateProvider, storageProvider, Substitute.For<IBlockhashProvider>(), _specProvider, LimboLogs.Instance);
             _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
@@ -59,8 +63,7 @@ namespace Nethermind.Evm.Test
         [TestCase(false, false)]
         public void Can_process_simple_transaction(bool withStateDiff, bool withTrace)
         {
-            GiveEtherToA();
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithGasLimit(100000).TestObject;
 
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -76,8 +79,7 @@ namespace Nethermind.Evm.Test
         [TestCase(false, false)]
         public void Sets_state_root_on_receipts_before_eip658(bool withStateDiff, bool withTrace)
         {
-            GiveEtherToA();
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithGasLimit(100000).TestObject;
 
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -93,7 +95,6 @@ namespace Nethermind.Evm.Test
         [TestCase(false, false)]
         public void Can_handle_quick_fail_on_intrinsic_gas(bool withStateDiff, bool withTrace)
         {
-            GiveEtherToA();
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithGasLimit(20000).TestObject;
 
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
@@ -110,8 +111,39 @@ namespace Nethermind.Evm.Test
         [TestCase(false, false)]
         public void Can_handle_quick_fail_on_missing_sender(bool withStateDiff, bool withTrace)
         {
-            GiveEtherToA();
-            Transaction tx = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyA, 1).TestObject;
+            Transaction tx = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithGasLimit(100000).TestObject;
+
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+
+            BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
+            Execute(tracer, tx, block);
+
+            Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
+        }
+        
+        [TestCase(true, true)]
+        [TestCase(true, false)]
+        [TestCase(false, true)]
+        [TestCase(false, false)]
+        public void Can_handle_quick_fail_on_non_existing_sender_account(bool withStateDiff, bool withTrace)
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB, 1).WithGasLimit(100000).TestObject;
+
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+
+            BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
+            Execute(tracer, tx, block);
+
+            Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
+        }
+        
+        [TestCase(true, true)]
+        [TestCase(true, false)]
+        [TestCase(false, true)]
+        [TestCase(false, false)]
+        public void Can_handle_quick_fail_on_invalid_nonce(bool withStateDiff, bool withTrace)
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithGasLimit(100000).WithNonce(100).TestObject;
 
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -127,8 +159,9 @@ namespace Nethermind.Evm.Test
         [TestCase(false, false)]
         public void Can_handle_quick_fail_on_not_enough_balance(bool withStateDiff, bool withTrace)
         {
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).TestObject;
-
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithGasLimit(100000).TestObject;
+            tx.Value = 2.Ether();
+            
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
             BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
@@ -143,7 +176,7 @@ namespace Nethermind.Evm.Test
         [TestCase(false, false)]
         public void Can_handle_quick_fail_on_above_block_gas_limit(bool withStateDiff, bool withTrace)
         {
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithGasLimit(100000).TestObject;
 
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(20000).TestObject;
 
@@ -151,6 +184,22 @@ namespace Nethermind.Evm.Test
             Execute(tracer, tx, block);
 
             Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
+        }
+        
+        [TestCase(true, true)]
+        [TestCase(true, false)]
+        [TestCase(false, true)]
+        [TestCase(false, false)]
+        public void Will_not_cause_quick_fail_above_block_gas_limit_during_calls(bool withStateDiff, bool withTrace)
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithGasLimit(100000).TestObject;
+
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(20000).TestObject;
+
+            BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
+            CallAndRestore(tracer, tx, block);
+
+            Assert.AreEqual(StatusCode.Success, tracer.TxReceipts[0].StatusCode);
         }
         
         [Test]
@@ -171,7 +220,7 @@ namespace Nethermind.Evm.Test
             Execute(tracer, tx, block);
             _stateProvider.AccountExists(tx.SenderAddress).Should().BeTrue();
         }
-        
+
         private BlockReceiptsTracer BuildTracer(Block block, Transaction tx, bool stateDiff, bool trace)
         {
             ParityTraceTypes types = ParityTraceTypes.None;
@@ -179,22 +228,16 @@ namespace Nethermind.Evm.Test
             {
                 types = types | ParityTraceTypes.StateDiff;
             }
-            
+
             if (trace)
             {
                 types = types | ParityTraceTypes.Trace;
             }
-            
-            IBlockTracer otherTracer = types != ParityTraceTypes.None ? new ParityLikeBlockTracer(tx.Hash, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff) : (IBlockTracer)NullBlockTracer.Instance; 
+
+            IBlockTracer otherTracer = types != ParityTraceTypes.None ? new ParityLikeBlockTracer(tx.Hash, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff) : (IBlockTracer) NullBlockTracer.Instance;
             BlockReceiptsTracer tracer = new BlockReceiptsTracer();
             tracer.SetOtherTracer(otherTracer);
             return tracer;
-        }
-
-        private void GiveEtherToA()
-        {
-            _stateProvider.CreateAccount(TestItem.PrivateKeyA.Address, 1.Ether());
-            _stateProvider.Commit(_specProvider.GetSpec(1));
         }
 
         private void Execute(BlockReceiptsTracer tracer, Transaction tx, Block block)
@@ -202,6 +245,14 @@ namespace Nethermind.Evm.Test
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(tx.Hash);
             _transactionProcessor.Execute(tx, block.Header, tracer);
+            tracer.EndTxTrace();
+        }
+        
+        private void CallAndRestore(BlockReceiptsTracer tracer, Transaction tx, Block block)
+        {
+            tracer.StartNewBlockTrace(block);
+            tracer.StartNewTxTrace(tx.Hash);
+            _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
             tracer.EndTxTrace();
         }
     }
