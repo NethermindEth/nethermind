@@ -114,7 +114,6 @@ namespace Nethermind.Store.BeamSync
                     else
                     {
                         _lastProgressInContext = DateTime.UtcNow;
-                        _requestedNodes.Clear();
 
                         if (!wasInDb)
                         {
@@ -173,6 +172,7 @@ namespace Nethermind.Store.BeamSync
                         if (Keccak.Compute(data[i]) == hashes[i])
                         {
                             _db[hashes[i].Bytes] = data[i];
+                            _requestedNodes.Remove(hashes[i]);
                             consumed++;
                         }
                     }
