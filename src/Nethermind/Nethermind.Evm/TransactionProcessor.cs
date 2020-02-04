@@ -17,7 +17,6 @@
 using System;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -50,8 +49,7 @@ namespace Nethermind.Evm
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _ecdsa = new EthereumEcdsa(specProvider, logManager);
         }
-
-        [Todo("Wider work needed to split calls and execution properly")]
+        
         public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer)
         {
             Execute(transaction, block, txTracer, true);
@@ -62,7 +60,7 @@ namespace Nethermind.Evm
             Execute(transaction, block, txTracer, false);
         }
 
-        private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, bool readOnly)
+        private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer)
         {
             block.GasUsed += tx.GasLimit;
             Address recipient = tx.To ?? ContractAddress.From(tx.SenderAddress, _stateProvider.GetNonce(tx.SenderAddress));
@@ -74,7 +72,7 @@ namespace Nethermind.Evm
 
         private EthereumEcdsa _ecdsa;
 
-        private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, bool readOnly)
+        private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, bool isCall)
         {
             var notSystemTransaction = !transaction.IsSystem();
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
@@ -96,7 +94,7 @@ namespace Nethermind.Evm
             if (sender == null)
             {
                 TraceLogInvalidTx(transaction, "SENDER_NOT_SPECIFIED");
-                QuickFail(transaction, block, txTracer, readOnly);
+                QuickFail(transaction, block, txTracer);
                 return;
             }
 
@@ -108,15 +106,15 @@ namespace Nethermind.Evm
                 if (gasLimit < intrinsicGas)
                 {
                     TraceLogInvalidTx(transaction, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {gasLimit} < {intrinsicGas}");
-                    QuickFail(transaction, block, txTracer, readOnly);
+                    QuickFail(transaction, block, txTracer);
                     return;
                 }
 
-                if (gasLimit > block.GasLimit - block.GasUsed)
+                if (!isCall && gasLimit > block.GasLimit - block.GasUsed)
                 {
                     TraceLogInvalidTx(transaction,
                         $"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
-                    QuickFail(transaction, block, txTracer, readOnly);
+                    QuickFail(transaction, block, txTracer);
                     return;
                 }
             }
@@ -150,14 +148,14 @@ namespace Nethermind.Evm
                 if ((ulong) intrinsicGas * gasPrice + value > senderBalance)
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({sender})_BALANCE = {senderBalance}");
-                    QuickFail(transaction, block, txTracer, readOnly);
+                    QuickFail(transaction, block, txTracer);
                     return;
                 }
 
                 if (transaction.Nonce != _stateProvider.GetNonce(sender))
                 {
                     TraceLogInvalidTx(transaction, $"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(sender)})");
-                    QuickFail(transaction, block, txTracer, readOnly);
+                    QuickFail(transaction, block, txTracer);
                     return;
                 }
 
@@ -288,7 +286,7 @@ namespace Nethermind.Evm
                 }
             }
 
-            if (!readOnly)
+            if (!isCall)
             {
                 _storageProvider.Commit(txTracer.IsTracingState ? txTracer : null);
                 _stateProvider.Commit(spec, txTracer.IsTracingState ? txTracer : null);
@@ -299,7 +297,7 @@ namespace Nethermind.Evm
                 _stateProvider.Reset();
             }
 
-            if (!readOnly && notSystemTransaction)
+            if (!isCall && notSystemTransaction)
             {
                 block.GasUsed += spentGas;
             }
