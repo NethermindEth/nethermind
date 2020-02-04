@@ -102,7 +102,7 @@ Keystore::
     -v /home/user/keystore:/nethermind/keystore
     
 Building an image
------------------
+=================
 
 `Dockerfile` can be found in the repository `root <https://github.com/NethermindEth/nethermind>`_ and it comes with 3 flavors:
 
@@ -128,11 +128,8 @@ Example usage of the locally created docker-image::
 Docker (Debian/Alpine ARM64)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Using an existing image
-=======================
-
-Available tags:
----------------
+Available tags
+==============
 
 - ``arm64`` The latest Nethermind ARM64 Debian based image
 - ``alpine-arm64`` The latest Nethermind ARM64 Alpine based image
@@ -144,7 +141,7 @@ We highly encourage to use a lighter container which is Alpine based, tagged as 
 Running instructions are just like described `here <https://nethermind.readthedocs.io/en/latest/docker.html#docker-debian-alpine>`_. The only thing that changes is the ``tag`` specified for ARM64 platform.
 
 Dockerfiles
------------
+===========
 
 -  `Dockerfile_arm64 <https://github.com/NethermindEth/nethermind/blob/master/Dockerfile_arm64>`_ - requires to have a cloned repository in order to build an ARM64 Debian based image.
 
@@ -153,11 +150,8 @@ Dockerfiles
 Docker (Debian ARM32)
 ^^^^^^^^^^^^^^^^^^^^^
 
-Using an existing image
-=======================
-
-Available tags:
----------------
+Available tags
+==============
 
 - ``arm32`` The latest Nethermind ARM32 Debian based image
 - ``{tag}-arm32`` e.g. ``1.5.8-arm32`` Current or past version of Nethermind ARM32 Debian based image `tags history <https://github.com/NethermindEth/nethermind/tags>`_. 
@@ -167,7 +161,7 @@ Running instructions are just like described `here <https://nethermind.readthedo
 The arm32 version is not yet available as it is not supported for now (track here: https://github.com/dotnet/dotnet-docker/issues/1059).
 
 Dockerfiles
------------
+===========
 
 -  `Dockerfile_arm32 <https://github.com/NethermindEth/nethermind/blob/master/Dockerfile_arm32>`_ - requires to have a cloned repository in order to build an ARM32 Debian based image.
 
@@ -186,8 +180,8 @@ Install instructions for the Docker Engine can be found at: https://docs.docker.
 
 Port ``30303`` has to be accessible if you want incoming connections. (tcp and udp)
 
-Build an image
---------------
+Building an image
+=================
 ::
 
     git clone https://github.com/NethermindEth/nethermind
