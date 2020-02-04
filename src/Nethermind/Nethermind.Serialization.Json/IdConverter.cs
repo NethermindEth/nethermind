@@ -38,9 +38,6 @@ namespace Nethermind.Serialization.Json
                 case string typedValue:
                     writer.WriteValue(typedValue);
                     break;
-                case null:
-                    writer.WriteNull();
-                    break;
                 default:
                     throw new NotSupportedException();
             }

@@ -31,7 +31,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             result.GasUsed = 12345;
             result.Output = new byte[] {6, 7, 8, 9, 0};
 
-            TestOneWaySerialization(result, "{\"gasUsed\":\"0x3039\",\"output\":\"0x0607080900\"}");
+            TestToJson(result, "{\"gasUsed\":\"0x3039\",\"output\":\"0x0607080900\"}");
         }
         
         [Test]
@@ -39,7 +39,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         {
             ParityTraceResult result = new ParityTraceResult();
 
-            TestOneWaySerialization(result, "{\"gasUsed\":\"0x0\",\"output\":null}");
+            TestToJson(result, "{\"gasUsed\":\"0x0\",\"output\":null}");
         }
     }
 }

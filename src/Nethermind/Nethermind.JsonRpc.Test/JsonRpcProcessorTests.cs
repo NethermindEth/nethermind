@@ -65,17 +65,24 @@ namespace Nethermind.JsonRpc.Test
         }
         
         [Test]
-        public async Task Can_process_long()
+        public async Task Can_process_long_ids()
         {
             JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync("{\"id\":9223372036854775807,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
             Assert.AreEqual(long.MaxValue,result.Response.Id);
         }
         
         [Test]
-        public async Task Can_process_special_characters()
+        public async Task Can_process_special_characters_in_ids()
         {
             JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync("{\"id\":\";\\\\\\\"\",\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
             Assert.AreEqual(";\\\"",result.Response.Id);
+        }
+        
+        [Test]
+        public async Task Can_process_null_in_ids()
+        {
+            JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync("{\"id\":null,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
+            Assert.AreEqual(null,result.Response.Id);
         }
     }
 }

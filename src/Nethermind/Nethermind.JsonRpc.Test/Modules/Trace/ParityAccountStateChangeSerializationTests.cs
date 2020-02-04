@@ -35,7 +35,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             result.Storage = new Dictionary<UInt256, ParityStateChange<byte[]>>();
             result.Storage[1] = new ParityStateChange<byte[]>(new byte[] {1}, new byte[] {2});
 
-            TestOneWaySerialization(result, "{\"balance\":{\"*\":{\"from\":\"0x1\",\"to\":\"0x2\"}},\"code\":\"=\",\"nonce\":{\"*\":{\"from\":\"0x0\",\"to\":\"0x1\"}},\"storage\":{\"0x0000000000000000000000000000000000000000000000000000000000000001\":{\"*\":{\"from\":\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"to\":\"0x0000000000000000000000000000000000000000000000000000000000000002\"}}}}");
+            TestToJson(result, "{\"balance\":{\"*\":{\"from\":\"0x1\",\"to\":\"0x2\"}},\"code\":\"=\",\"nonce\":{\"*\":{\"from\":\"0x0\",\"to\":\"0x1\"}},\"storage\":{\"0x0000000000000000000000000000000000000000000000000000000000000001\":{\"*\":{\"from\":\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"to\":\"0x0000000000000000000000000000000000000000000000000000000000000002\"}}}}");
         }
         
         [Test]
@@ -43,7 +43,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         {
             ParityAccountStateChange result = new ParityAccountStateChange();
 
-            TestOneWaySerialization(result, "{\"balance\":\"=\",\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}}");
+            TestToJson(result, "{\"balance\":\"=\",\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}}");
         }
     }
 }

@@ -14,18 +14,24 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Test.Builders;
+using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Data
 {
     [TestFixture]
-    public class KeccakSerializationTests : SerializationTestBase
+    public class UInt256ConverterTests : SerializationTestBase
     {
         [Test]
         public void Can_do_roundtrip()
         {
-            TestSerialization(TestItem.KeccakA, (a, b) => a.Equals(b));
+            TestRoundtrip((UInt256) 123456789);
+        }
+        
+        [Test]
+        public void Can_do_roundtrip_big()
+        {
+            TestRoundtrip(UInt256.Parse("1321312414124781461278412647816487146817246816418746187246187468714681"));
         }
     }
 }
