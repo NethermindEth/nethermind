@@ -182,8 +182,9 @@ namespace Nethermind.Blockchain
 
         private Block ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
         {
+            // can we treat genesis same here?
             Block block;
-            if (suggestedBlock.IsGenesis)
+            if (suggestedBlock.IsGenesis && (options & ProcessingOptions.ForceProcessing) == ProcessingOptions.None)
             {
                 ProcessBlock(suggestedBlock, blockTracer, options);
                 block = suggestedBlock;
@@ -217,7 +218,7 @@ namespace Nethermind.Blockchain
 
         protected virtual TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
         {
-            if (!block.IsGenesis)
+            if (!block.IsGenesis || (options & ProcessingOptions.ForceProcessing) == ProcessingOptions.ForceProcessing)
             {
                 var receipts = ProcessTransactions(block, options, blockTracer);
                 SetReceiptsRoot(block, receipts);

@@ -28,6 +28,7 @@ namespace Nethermind.Blockchain.Tracing
         GethLikeTxTrace Trace(long blockNumber, int txIndex, GethTraceOptions options);
         GethLikeTxTrace Trace(Keccak blockHash, int txIndex, GethTraceOptions options);
         GethLikeTxTrace Trace(Rlp blockRlp, Keccak txHash, GethTraceOptions options);
+        GethLikeTxTrace Trace(Block block, Keccak txHash, GethTraceOptions options);
         GethLikeTxTrace[] TraceBlock(Keccak blockHash, GethTraceOptions options);
         GethLikeTxTrace[] TraceBlock(long blockNumber, GethTraceOptions options);
         GethLikeTxTrace[] TraceBlock(Rlp blockRlp, GethTraceOptions options);

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Blockchain;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
@@ -31,6 +32,9 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         
         [JsonRpcMethod(Description = "Deletes a slice of a chain from the tree on all branches (Nethermind specific).", IsReadOnly = true)]
         ResultWrapper<bool> debug_deleteChainSlice(in long startNumber, in long endNumber);
+
+        [JsonRpcMethod(Description = "", IsReadOnly = true)]
+        ResultWrapper<GethLikeTxTrace> debug_traceCall(BlockParameter blockParameter, Transaction transaction, GethTraceOptions options = null);
         
         [JsonRpcMethod(Description = "", IsReadOnly = true)]
         ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Keccak transactionHash, GethTraceOptions options = null);

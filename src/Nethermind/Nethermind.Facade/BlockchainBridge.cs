@@ -96,9 +96,9 @@ namespace Nethermind.Facade
         }
 
         public BlockHeader Head => _blockTree.Head;
-        
+
         public long BestKnown => _blockTree.BestKnownNumber;
-        
+
         public bool IsSyncing => _blockTree.BestSuggestedHeader.Hash != _blockTree.Head.Hash;
 
         public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
@@ -115,7 +115,7 @@ namespace Nethermind.Facade
             }
             else
             {
-                return (null, null);                
+                return (null, null);
             }
         }
 
@@ -177,7 +177,7 @@ namespace Nethermind.Facade
             CallOutputTracer callOutputTracer = CallAndRestore(blockHeader, transaction);
             return new CallOutput {Error = callOutputTracer.Error, GasSpent = callOutputTracer.GasSpent, OutputData = callOutputTracer.ReturnValue};
         }
-        
+
         public long EstimateGas(BlockHeader header, Transaction transaction)
         {
             CallOutputTracer callOutputTracer = CallAndRestore(header, transaction);
@@ -191,7 +191,11 @@ namespace Nethermind.Facade
                 transaction.SenderAddress = Address.SystemUser;
             }
 
-            BlockHeader parentHeader = FindHeader(blockHeader.ParentHash, BlockTreeLookupOptions.None) ?? blockHeader;
+            BlockHeader parentHeader =
+                blockHeader.IsGenesis
+                    ? blockHeader
+                    : FindHeader(blockHeader.ParentHash, BlockTreeLookupOptions.None) ?? blockHeader;
+            
             _stateProvider.StateRoot = parentHeader.StateRoot;
             if (transaction.Nonce == 0)
             {
@@ -225,7 +229,7 @@ namespace Nethermind.Facade
         {
             return GetNonce(_blockTree.Head.StateRoot, address);
         }
-        
+
         private UInt256 GetNonce(Keccak stateRoot, Address address)
         {
             return _stateReader.GetNonce(stateRoot, address);
@@ -299,12 +303,12 @@ namespace Nethermind.Facade
         {
             tx.SenderAddress = _ecdsa.RecoverAddress(tx, blockNumber ?? _blockTree.BestKnownNumber);
         }
-        
-        public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot)	
-        {	
-            _stateReader.RunTreeVisitor(stateRoot, treeVisitor);	
+
+        public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot)
+        {
+            _stateReader.RunTreeVisitor(stateRoot, treeVisitor);
         }
-        
+
         public Keccak HeadHash => _blockTree.HeadHash;
         public Keccak GenesisHash => _blockTree.GenesisHash;
         public Keccak PendingHash => _blockTree.PendingHash;

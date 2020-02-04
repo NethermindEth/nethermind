@@ -55,6 +55,12 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return ResultWrapper<bool>.Success(true);
         }
 
+        public ResultWrapper<GethLikeTxTrace> debug_traceCall(BlockParameter blockParameter, Transaction transaction, GethTraceOptions options = null)
+        {
+            GethLikeTxTrace trace = _debugBridge.GetTransactionTrace(blockParameter, transaction, options);
+            return ResultWrapper<GethLikeTxTrace>.Success(trace);
+        }
+
         public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Keccak transactionHash, GethTraceOptions options = null)
         {
             GethLikeTxTrace transactionTrace = _debugBridge.GetTransactionTrace(transactionHash, options);

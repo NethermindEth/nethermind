@@ -108,7 +108,7 @@ namespace Nethermind.Blockchain.Tracing
             return TraceBlock(GetBlockToTrace(blockRlp), options);
         }
 
-        private GethLikeTxTrace Trace(Block block, Keccak txHash, GethTraceOptions options)
+        public GethLikeTxTrace Trace(Block block, Keccak txHash, GethTraceOptions options)
         {
             GethLikeBlockTracer listener = new GethLikeBlockTracer(txHash, options);
             _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain, listener);

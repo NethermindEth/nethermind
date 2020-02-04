@@ -16,6 +16,7 @@
 
 using Jint.Native;
 using Jint.Runtime;
+using Nethermind.Blockchain;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Modules.DebugModule;
@@ -55,6 +56,12 @@ namespace Nethermind.Cli.Modules
             return NodeManager.PostJint("debug_traceBlockByHash", hash, options).Result;
         }
 
+        [CliFunction("debug", "traceCall")]
+        public JsValue TraceCall(object blockParameter, object tx, object options)
+        {
+            return NodeManager.PostJint("debug_traceCall", blockParameter, tx, options).Result;
+        }
+        
         [CliFunction("debug", "traceTransaction")]
         public JsValue TraceTransaction(string hash, object options)
         {
