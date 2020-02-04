@@ -273,6 +273,9 @@ txpool
 web3
 ^^^^
 
+ web3.abi(name)
+  <check JSON RPC docs>
+
  web3.clientVersion
   <check JSON RPC docs>
 
