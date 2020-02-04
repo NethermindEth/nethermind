@@ -62,7 +62,8 @@ namespace Nethermind.Core.Test.Builders
         
         public BlockBuilder WithTransactions(params Transaction[] transactions)
         {
-            TestObjectInternal.Body.Transactions = transactions;
+            BlockBody body = new BlockBody(transactions, TestObjectInternal.Ommers);
+            TestObjectInternal.Body = body;
             return this;
         }
         
@@ -111,13 +112,15 @@ namespace Nethermind.Core.Test.Builders
         
         public BlockBuilder WithOmmers(params Block[] ommers)
         {
-            TestObjectInternal.Body.Ommers = ommers.Select(o => o.Header).ToArray();
+            BlockBody body = new BlockBody(TestObjectInternal.Transactions, ommers.Select(o => o.Header).ToArray());
+            TestObjectInternal.Body = body;
             return this;
         }
         
         public BlockBuilder WithOmmers(params BlockHeader[] ommers)
         {
-            TestObjectInternal.Body.Ommers = ommers;
+            BlockBody body = new BlockBody(TestObjectInternal.Transactions, ommers);
+            TestObjectInternal.Body = body;
             return this;
         }
 

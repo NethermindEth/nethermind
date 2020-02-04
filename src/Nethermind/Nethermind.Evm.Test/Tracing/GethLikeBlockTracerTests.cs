@@ -40,7 +40,7 @@ namespace Nethermind.Evm.Test.Tracing
         public void Number_of_tx_traces_equals_number_of_txs_in_a_block()
         {
             Block block = Build.A.Block.TestObject;
-            block.Body.Transactions = new Transaction[3];
+            block.Body = new BlockBody(new Transaction[3], new BlockHeader[0]);
 
             GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(GethTraceOptions.Default);
 
@@ -57,7 +57,7 @@ namespace Nethermind.Evm.Test.Tracing
         public void Records_trace_properly()
         {
             Block block = Build.A.Block.TestObject;
-            block.Body.Transactions = new Transaction[3];
+            block.Body = new BlockBody(new Transaction[3], new BlockHeader[0]);
 
             GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(GethTraceOptions.Default);
             ((IBlockTracer) blockTracer).StartNewTxTrace(TestItem.KeccakA);
@@ -79,7 +79,7 @@ namespace Nethermind.Evm.Test.Tracing
         public void Throws_when_ending_without_starting()
         {
             Block block = Build.A.Block.TestObject;
-            block.Body.Transactions = new Transaction[3];
+            block.Body = new BlockBody(new Transaction[3], new BlockHeader[0]);
             block.Transactions[0] = Build.A.Transaction.TestObject;
             block.Transactions[1] = Build.A.Transaction.TestObject;
             block.Transactions[2] = Build.A.Transaction.TestObject;

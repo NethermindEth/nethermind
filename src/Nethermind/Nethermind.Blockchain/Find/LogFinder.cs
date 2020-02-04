@@ -41,13 +41,13 @@ namespace Nethermind.Blockchain.Find
         public FilterLog[] FindLogs(LogFilter filter)
         {
             int count = 0;
-            var block = _blockFinder.FindHeader((BlockParameter) filter.ToBlock);
+            var block = _blockFinder.FindHeader(filter.ToBlock);
             if (block is null)
             {
                 return Array.Empty<FilterLog>();
             }
             
-            var fromBlock = _blockFinder.FindHeader((BlockParameter) filter.FromBlock);
+            var fromBlock = _blockFinder.FindHeader(filter.FromBlock);
             List<FilterLog> results = new List<FilterLog>();
 
             while (count < _maxBlockDepth && block.Number >= (fromBlock?.Number ?? long.MaxValue))

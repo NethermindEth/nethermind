@@ -112,11 +112,11 @@ namespace Nethermind.AuRa.Test.Reward
         public void calculates_rewards_correctly_for_ommers(long blockNumber, long expectedReward)
         {
             _block.Header.Number = blockNumber;
-            _block.Body.Ommers = new[]
+            _block.Body = new BlockBody(_block.Body.Transactions, new[]
             {
                  Build.A.BlockHeader.WithBeneficiary(Address.FromNumber(777)).WithNumber(blockNumber - 1).TestObject,
                  Build.A.BlockHeader.WithBeneficiary(Address.FromNumber(888)).WithNumber(blockNumber - 2).TestObject
-            };
+            });
             
             var expected = new BlockReward[]
             {
@@ -135,11 +135,11 @@ namespace Nethermind.AuRa.Test.Reward
         public void calculates_rewards_correctly_for_external_addresses()
         {
             _block.Header.Number = 10;
-            _block.Body.Ommers = new[]
+            _block.Body = new BlockBody(_block.Body.Transactions, new[]
             {
                  Build.A.BlockHeader.WithBeneficiary(Address.FromNumber(777)).WithNumber(9).TestObject,
                  Build.A.BlockHeader.WithBeneficiary(Address.FromNumber(888)).WithNumber(8).TestObject
-            };
+            });
             
             var expected = new BlockReward[]
             {
