@@ -614,7 +614,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var allocation = await _pool.BorrowAsync();
             allocation.Cancel();
 
-            _blockTree.NewHeadBlock += Raise.EventWith(new object(), new BlockEventArgs(Build.A.Block.WithTotalDifficulty(1).TestObject));
+            _blockTree.NewHeadBlock += Raise.EventWith(new object(), new BlockEventArgs(Build.A.Block.WithTotalDifficulty(1L).TestObject));
         }
 
         [Test]

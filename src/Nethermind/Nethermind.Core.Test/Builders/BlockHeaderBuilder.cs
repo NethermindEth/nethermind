@@ -128,6 +128,12 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Number = blockNumber;
             return this;
         }
+        
+        public BlockHeaderBuilder WithTotalDifficulty(long totalDifficulty)
+        {
+            TestObjectInternal.TotalDifficulty = (ulong)totalDifficulty;
+            return this;
+        }
 
         public BlockHeaderBuilder WithGasLimit(long gasLimit)
         {

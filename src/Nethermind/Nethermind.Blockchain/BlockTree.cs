@@ -1305,6 +1305,11 @@ namespace Nethermind.Blockchain
 
         private void SetTotalDifficulty(BlockHeader header)
         {
+            if (header.TotalDifficulty != null)
+            {
+                return;
+            }
+            
             if (_logger.IsTrace)
             {
                 _logger.Trace($"Calculating total difficulty for {header}");

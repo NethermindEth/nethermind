@@ -73,6 +73,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockBuilder WithTotalDifficulty(long difficulty)
+        {
+            TestObjectInternal.Header.TotalDifficulty = (ulong)difficulty;
+            return this;
+        }
+        
         public BlockBuilder WithTotalDifficulty(UInt256 difficulty)
         {
             TestObjectInternal.Header.TotalDifficulty = difficulty;
