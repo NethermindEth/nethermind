@@ -53,7 +53,7 @@ namespace Nethermind.AuRa.Test
         [SetUp]
         public void SetUp()
         {
-            _stepDelay = TimeSpan.FromMilliseconds(10);
+            _stepDelay = TimeSpan.FromMilliseconds(20);
             
             _pendingTxSelector = Substitute.For<IPendingTxSelector>();
             _blockchainProcessor = Substitute.For<IBlockchainProcessor>();
@@ -162,7 +162,7 @@ namespace Nethermind.AuRa.Test
         }
 
 
-        private async Task<TestResult> StartStop(bool processingQueueEmpty = true, bool newBestSuggestedBlock = false)
+        private async Task<TestResult> StartStop(bool processingQueueEmpty = true, bool newBestSuggestedBlock = false, int stepDelayMultiplier = 50)
         {
             ManualResetEvent processedEvent = new ManualResetEvent(false);
             _blockTree.SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>())
@@ -171,7 +171,7 @@ namespace Nethermind.AuRa.Test
 
             _auRaBlockProducer.Start();
 
-            await Task.Delay(_stepDelay * 0.1);
+            await Task.Delay(_stepDelay);
             if (processingQueueEmpty)
             {
                 _blockProcessingQueue.ProcessingQueueEmpty += Raise.Event();
@@ -182,7 +182,7 @@ namespace Nethermind.AuRa.Test
                 _blockTree.NewBestSuggestedBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.TestObject));
             }
 
-            await processedEvent.WaitOneAsync(_stepDelay * 40, CancellationToken.None);
+            await processedEvent.WaitOneAsync(_stepDelay * stepDelayMultiplier, CancellationToken.None);
             await _auRaBlockProducer.StopAsync();
 
             return new TestResult(q => _blockTree.Received(q).SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>()));
