@@ -72,9 +72,5 @@ namespace Nethermind.Core
         public override string ToString() => ToString(string.Empty);
 
         public bool IsSystem() => SenderAddress == Address.SystemUser || _isSystem;
-
-        public Address GetCreatedContract() => IsContractCreation ? To : null;
-
-        public Address GetRecipient() => IsContractCreation ? null : To;
     }
 }

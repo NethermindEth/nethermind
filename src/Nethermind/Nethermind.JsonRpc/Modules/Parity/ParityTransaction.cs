@@ -17,6 +17,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Evm;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Parity
@@ -63,7 +64,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
             BlockNumber = blockNumber;
             TransactionIndex = txIndex;
             From = transaction.SenderAddress;
-            To = transaction.GetRecipient();
+            To = transaction.IsContractCreation ? null : transaction.To;
             Value = transaction.Value;
             GasPrice = transaction.GasPrice;
             Gas = transaction.GasLimit;
@@ -75,7 +76,8 @@ namespace Nethermind.JsonRpc.Modules.Parity
             S = transaction.Signature.S;
             V = new UInt256(transaction.Signature.V);
             StandardV = transaction.Signature.RecoveryId;
-            Creates = transaction.GetCreatedContract();
+            // TKS: it does not seem to work with CREATE2
+            Creates = transaction.IsContractCreation ? ContractAddress.From(transaction.SenderAddress, transaction.Nonce) : null;
         }
     }
 }
