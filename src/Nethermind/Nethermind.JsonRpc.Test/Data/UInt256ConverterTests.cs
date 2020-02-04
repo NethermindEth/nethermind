@@ -14,30 +14,24 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Reflection;
-using System.Threading.Tasks;
-using Nethermind.Core.Attributes;
-using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.ParityStyle;
-using Nethermind.Network;
-using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Dirichlet.Numerics;
+using NUnit.Framework;
 
-namespace Nethermind.Runner.Ethereum.Steps
+namespace Nethermind.JsonRpc.Test.Data
 {
-    [RunnerStepDependency]
-    public class InitRlp : IStep
+    [TestFixture]
+    public class UInt256ConverterTests : SerializationTestBase
     {
-        public InitRlp(EthereumRunnerContext context)
+        [Test]
+        public void Can_do_roundtrip()
         {
+            TestRoundtrip((UInt256) 123456789);
         }
-
-        [Todo(Improve.Refactor, "Automatically scan all the references solutions?")]
-        public virtual Task Execute()
+        
+        [Test]
+        public void Can_do_roundtrip_big()
         {
-            Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(ParityTraceDecoder)));
-            Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(NetworkNodeDecoder)));
-            return Task.CompletedTask;
+            TestRoundtrip(UInt256.Parse("1321312414124781461278412647816487146817246816418746187246187468714681"));
         }
     }
 }

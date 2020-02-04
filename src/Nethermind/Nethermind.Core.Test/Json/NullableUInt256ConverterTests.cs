@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
-using System.Numerics;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
 using NUnit.Framework;
@@ -23,57 +23,57 @@ using NUnit.Framework;
 namespace Nethermind.Core.Test.Json
 {
     [TestFixture]
-    public class BigIntegerConverterTests : ConverterTestBase<BigInteger>
+    public class NullableUInt256ConverterTests : ConverterTestBase<UInt256?>
     {
         [TestCase(NumberConversion.Hex)]
-        [TestCase(NumberConversion.Raw)]
         [TestCase(NumberConversion.Decimal)]
         public void Test_roundtrip(NumberConversion numberConversion)
         {
-            BigIntegerConverter converter = new BigIntegerConverter(numberConversion);
+            NullableUInt256Converter converter = new NullableUInt256Converter(numberConversion);
+            TestConverter(null, (integer, bigInteger) => integer.Equals(bigInteger), converter);
             TestConverter(int.MaxValue, (integer, bigInteger) => integer.Equals(bigInteger), converter);
-            TestConverter(BigInteger.One, (integer, bigInteger) => integer.Equals(bigInteger), converter);
-            TestConverter(BigInteger.Zero, (integer, bigInteger) => integer.Equals(bigInteger), converter);
+            TestConverter(UInt256.One, (integer, bigInteger) => integer.Equals(bigInteger), converter);
+            TestConverter(UInt256.Zero, (integer, bigInteger) => integer.Equals(bigInteger), converter);
         }
         
         [Test]
         public void Regression_0xa00000()
         {
-            BigIntegerConverter converter = new BigIntegerConverter();
+            NullableUInt256Converter converter = new NullableUInt256Converter();
             JsonReader reader = new JsonTextReader(new StringReader("0xa00000"));
             reader.ReadAsString();
-            BigInteger result = converter.ReadJson(reader, typeof(BigInteger), BigInteger.Zero, false, JsonSerializer.CreateDefault());
-            Assert.AreEqual(BigInteger.Parse("10485760"), result);
+            UInt256? result = converter.ReadJson(reader, typeof(UInt256?), UInt256.Zero, false, JsonSerializer.CreateDefault());
+            Assert.AreEqual(UInt256.Parse("10485760"), result);
         }
         
         [Test]
         public void Can_read_0x0()
         {
-            BigIntegerConverter converter = new BigIntegerConverter();
+            NullableUInt256Converter converter = new NullableUInt256Converter();
             JsonReader reader = new JsonTextReader(new StringReader("0x0"));
             reader.ReadAsString();
-            BigInteger result = converter.ReadJson(reader, typeof(BigInteger), BigInteger.Zero, false, JsonSerializer.CreateDefault());
-            Assert.AreEqual(BigInteger.Parse("0"), result);
+            UInt256? result = converter.ReadJson(reader, typeof(UInt256?), UInt256.Zero, false, JsonSerializer.CreateDefault());
+            Assert.AreEqual(UInt256.Parse("0"), result);
         }
         
         [Test]
         public void Can_read_0()
         {
-            BigIntegerConverter converter = new BigIntegerConverter();
+            NullableUInt256Converter converter = new NullableUInt256Converter();
             JsonReader reader = new JsonTextReader(new StringReader("0"));
             reader.ReadAsString();
-            BigInteger result = converter.ReadJson(reader, typeof(BigInteger), BigInteger.Zero, false, JsonSerializer.CreateDefault());
-            Assert.AreEqual(BigInteger.Parse("0"), result);
+            UInt256? result = converter.ReadJson(reader, typeof(UInt256?), UInt256.Zero, false, JsonSerializer.CreateDefault());
+            Assert.AreEqual(UInt256.Parse("0"), result);
         }
         
         [Test]
         public void Can_read_1()
         {
-            BigIntegerConverter converter = new BigIntegerConverter();
+            NullableUInt256Converter converter = new NullableUInt256Converter();
             JsonReader reader = new JsonTextReader(new StringReader("1"));
             reader.ReadAsString();
-            BigInteger result = converter.ReadJson(reader, typeof(BigInteger), BigInteger.Zero, false, JsonSerializer.CreateDefault());
-            Assert.AreEqual(BigInteger.Parse("1"), result);
+            UInt256? result = converter.ReadJson(reader, typeof(UInt256?), UInt256.Zero, false, JsonSerializer.CreateDefault());
+            Assert.AreEqual(UInt256.Parse("1"), result);
         }
     }
 }

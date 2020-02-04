@@ -17,6 +17,7 @@
 using System;
 using System.Globalization;
 using System.Numerics;
+using Nethermind.Core.Extensions;
 using Newtonsoft.Json;
 
 namespace Nethermind.Serialization.Json
@@ -46,10 +47,13 @@ namespace Nethermind.Serialization.Json
             switch (_conversion)
             {
                 case NumberConversion.Hex:
-                    writer.WriteValue(string.Concat("0x", value.ToString("x").TrimStart('0')));
+                    writer.WriteValue(string.Concat("0x", value.ToByteArray(false, true).ToHexString()));
                     break;
                 case NumberConversion.Decimal:
                     writer.WriteValue(value.ToString());
+                    break;
+                case NumberConversion.Raw:
+                    writer.WriteValue(value);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
@@ -69,16 +73,24 @@ namespace Nethermind.Serialization.Json
                 return BigInteger.Zero;
             }
 
+            bool isHex = false;
+            Span<char> withZero = null;
             if (s.StartsWith("0x0"))
             {
-                return BigInteger.Parse(s.AsSpan(2), NumberStyles.AllowHexSpecifier);
+                withZero = s.AsSpan(2).ToArray();
+                isHex = true;
             }
-
-            if (s.StartsWith("0x"))
+            else if (s.StartsWith("0x"))
             {
-                Span<char> withZero = new Span<char>(new char[s.Length - 1]);
+                withZero = new Span<char>(new char[s.Length - 1]);
                 withZero[0] = '0';
                 s.AsSpan(2).CopyTo(withZero.Slice(1));
+                isHex = true;
+            }
+
+            if (isHex)
+            {
+                // withZero.Reverse();
                 return BigInteger.Parse(withZero, NumberStyles.AllowHexSpecifier);
             }
 

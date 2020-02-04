@@ -1,4 +1,4 @@
-name: Publish ARM64 Image to Docker Registry
+name: Publish Debian arm64 image to docker registry
 
 on:
   push:
@@ -6,20 +6,33 @@ on:
     - '*'
 
 jobs:
-  arm64_building:
-    runs-on: [self-hosted, linux, ARM64]
-    name: Build on ARM64
+  arm64-build:
+    runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - name: Unshallow fetching
-      run: git fetch --unshallow
-    - name: Publish to Docker
-      uses: elgohr/Publish-Docker-Github-Action@master
-      env:
-        GIT_COMMIT: $(git log -1 --format=%h)
-      with:
-        name: nethermind/nethermind:arm64
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
-        build-args: GIT_COMMIT
-        dockerfile: Dockerfile_alpine_arm64
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      - name: Unshallow fetching
+        run: git fetch --unshallow
+      - name: Settings
+        id: settings
+        run: |
+          echo ::set-output name=docker_username::${{ secrets.DOCKER_USERNAME }}
+          echo ::set-output name=docker_image::nethermind/nethermind:arm64
+      - name: Set up docker buildx
+        id: buildx
+        uses: crazy-max/ghaction-docker-buildx@v1
+        with:
+          version: latest
+      - name: Docker Login
+        if: success()
+        env:
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          echo "${DOCKER_PASSWORD}" | docker login --username "${{ steps.settings.outputs.docker_username }}" --password-stdin
+      - name: Build & Push image to docker registry
+        run: |
+          docker buildx build --platform=linux/arm64 -t ${{ steps.settings.outputs.docker_image }} -f Dockerfile_arm64 . --push
+      - name: Clear
+        if: always()
+        run: |
+          rm -f ${HOME}/.docker/config.json

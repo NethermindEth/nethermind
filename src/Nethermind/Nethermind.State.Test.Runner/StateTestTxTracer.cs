@@ -180,6 +180,11 @@ namespace Nethermind.State.Test.Runner
             throw new NotSupportedException();
         }
 
+        public void ReportAccountRead(Address address)
+        {
+            throw new NotImplementedException();
+        }
+
         public void ReportStorageChange(StorageCell storageAddress, byte[] before, byte[] after)
         {
             throw new NotSupportedException();

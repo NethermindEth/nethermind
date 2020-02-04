@@ -14,18 +14,28 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Test.Builders;
+using System;
+using System.IO;
+using System.Text;
+using Newtonsoft.Json;
 using NUnit.Framework;
 
-namespace Nethermind.JsonRpc.Test.Data
+namespace Nethermind.Core.Test.Json
 {
-    [TestFixture]
-    public class KeccakSerializationTests : SerializationTestBase
+    public class ConverterTestBase<T>
     {
-        [Test]
-        public void Can_do_roundtrip()
+        protected void TestConverter(T item, Func<T, T, bool> equalityComparer, JsonConverter<T> converter)
         {
-            TestSerialization(TestItem.KeccakA, (a, b) => a.Equals(b));
+            JsonSerializer serializer = new JsonSerializer();
+            serializer.Converters.Add(converter);
+            StringBuilder builder = new StringBuilder();
+            StringWriter writer = new StringWriter(builder);
+            serializer.Serialize(writer, item);
+            string result = builder.ToString();
+            JsonReader reader = new JsonTextReader(new StringReader(result));
+            T deserialized = serializer.Deserialize<T>(reader);
+
+            Assert.True(equalityComparer(item, deserialized));
         }
     }
 }

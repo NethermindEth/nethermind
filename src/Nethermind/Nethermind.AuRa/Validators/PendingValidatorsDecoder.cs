@@ -69,20 +69,6 @@ namespace Nethermind.AuRa.Validators
             return new Rlp(rlpStream.Data);
         }
 
-        public void Encode(MemoryStream stream, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            (int contentLength, int addressesLength) = GetContentLength(item, rlpBehaviors);
-            Rlp.StartSequence(stream, contentLength);
-            Rlp.Encode(stream, item.BlockNumber);
-            Rlp.Encode(stream, item.BlockHash);
-            Rlp.StartSequence(stream, addressesLength);
-            for (int i = 0; i < item.Addresses.Length; i++)
-            {
-                Rlp.Encode(stream, item.Addresses[i]);
-            }
-            Rlp.Encode(stream, item.AreFinalized);
-        }
-
         public void Encode(RlpStream rlpStream, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             (int contentLength, int addressesLength) = GetContentLength(item, rlpBehaviors);

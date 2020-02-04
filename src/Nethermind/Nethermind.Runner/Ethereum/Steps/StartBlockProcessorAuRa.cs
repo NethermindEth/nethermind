@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,18 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Test.Builders;
-using NUnit.Framework;
+using Nethermind.Runner.Ethereum.Context;
 
-namespace Nethermind.JsonRpc.Test.Data
+namespace Nethermind.Runner.Ethereum.Steps
 {
-    [TestFixture]
-    public class AddressSerializationTests : SerializationTestBase
+    [RunnerStepDependency(typeof(InitializeBlockchain), typeof(InitializeFinalizationAuRa))]
+    public class StartBlockProcessorAuRa : StartBlockProcessor
     {
-        [Test]
-        public void Can_do_roundtrip()
+        public StartBlockProcessorAuRa(AuRaEthereumRunnerContext context) : base(context)
         {
-            TestSerialization(TestItem.AddressA, (a, b) => a.Equals(b));
         }
     }
 }

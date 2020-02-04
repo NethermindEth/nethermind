@@ -56,6 +56,8 @@ namespace Nethermind.Serialization.Json
                 case NumberConversion.Decimal:
                     writer.WriteRawValue(value.ToString());
                     break;
+                case NumberConversion.Raw:
+                    throw new NotSupportedException($"{NumberConversion.Raw} format is not supported for {nameof(UInt256)}");
                 default:
                     throw new ArgumentOutOfRangeException();
             }

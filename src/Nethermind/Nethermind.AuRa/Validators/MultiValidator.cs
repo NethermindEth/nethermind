@@ -101,34 +101,37 @@ namespace Nethermind.AuRa.Validators
         
         public void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None)
         {
-            bool ValidatorWasAlreadyFinalized(KeyValuePair<long, AuRaParameters.Validator> validatorInfo) => _blockFinalizationManager.LastFinalizedBlockLevel >= validatorInfo.Key;
-
-            bool isProducingBlock = options.IsProducingBlock();
-            long previousBlockNumber = block.Number - 1;
-            bool isNotConsecutive = previousBlockNumber != _lastProcessedBlock;
-
-            if (isProducingBlock || isNotConsecutive)
+            if (!block.IsGenesis)
             {
-                if (TryGetLastValidator(previousBlockNumber, out var validatorInfo))
+                bool ValidatorWasAlreadyFinalized(KeyValuePair<long, AuRaParameters.Validator> validatorInfo) => _blockFinalizationManager.LastFinalizedBlockLevel >= validatorInfo.Key;
+
+                bool isProducingBlock = options.IsProducingBlock();
+                long previousBlockNumber = block.Number - 1;
+                bool isNotConsecutive = previousBlockNumber != _lastProcessedBlock;
+
+                if (isProducingBlock || isNotConsecutive)
                 {
-                    if (validatorInfo.Value.ValidatorType.CanChangeImmediately() || ValidatorWasAlreadyFinalized(validatorInfo))
+                    if (TryGetLastValidator(previousBlockNumber, out var validatorInfo))
                     {
-                        SetCurrentValidator(validatorInfo);
-                    }
-                    else if (!isProducingBlock)
-                    {
-                        bool canSetValidatorAsCurrent = !TryGetLastValidator(validatorInfo.Key - 1, out var previousValidatorInfo);
-                        long? finalizedAtBlockNumber = null;
-                        if (!canSetValidatorAsCurrent)
+                        if (validatorInfo.Value.ValidatorType.CanChangeImmediately() || ValidatorWasAlreadyFinalized(validatorInfo))
                         {
-                            SetCurrentValidator(previousValidatorInfo);
-                            finalizedAtBlockNumber = _blockFinalizationManager.GetFinalizedLevel(validatorInfo.Key);
-                            canSetValidatorAsCurrent = finalizedAtBlockNumber != null;
+                            SetCurrentValidator(validatorInfo);
                         }
-                    
-                        if (canSetValidatorAsCurrent)
+                        else if (!isProducingBlock)
                         {
-                            SetCurrentValidator(finalizedAtBlockNumber ?? validatorInfo.Key, validatorInfo.Value);
+                            bool canSetValidatorAsCurrent = !TryGetLastValidator(validatorInfo.Key - 1, out var previousValidatorInfo);
+                            long? finalizedAtBlockNumber = null;
+                            if (!canSetValidatorAsCurrent)
+                            {
+                                SetCurrentValidator(previousValidatorInfo);
+                                finalizedAtBlockNumber = _blockFinalizationManager.GetFinalizedLevel(validatorInfo.Key);
+                                canSetValidatorAsCurrent = finalizedAtBlockNumber != null;
+                            }
+
+                            if (canSetValidatorAsCurrent)
+                            {
+                                SetCurrentValidator(finalizedAtBlockNumber ?? validatorInfo.Key, validatorInfo.Value);
+                            }
                         }
                     }
                 }
@@ -143,19 +146,22 @@ namespace Nethermind.AuRa.Validators
         {
             _currentValidator?.PostProcess(block, receipts, options);
 
-            var notProducing = !options.IsProducingBlock();
-
-            if (TryGetValidator(block.Number, out var validator))
+            if (!block.IsGenesis)
             {
-                if (validator.ValidatorType.CanChangeImmediately())
-                {
-                    SetCurrentValidator(block.Number, validator);
-                    if (_logger.IsInfo && notProducing) _logger.Info($"Immediately applying chainspec validator change signalled at block {block.ToString(Block.Format.Short)} to {validator.ValidatorType}.");
-                }
-                else if (_logger.IsInfo && notProducing) _logger.Info($"Signal for switch to chainspec {validator.ValidatorType} based validator set at block {block.ToString(Block.Format.Short)}.");
-            }
+                var notProducing = !options.IsProducingBlock();
 
-            _lastProcessedBlock = block.Number;
+                if (TryGetValidator(block.Number, out var validator))
+                {
+                    if (validator.ValidatorType.CanChangeImmediately())
+                    {
+                        SetCurrentValidator(block.Number, validator);
+                        if (_logger.IsInfo && notProducing) _logger.Info($"Immediately applying chainspec validator change signalled at block {block.ToString(Block.Format.Short)} to {validator.ValidatorType}.");
+                    }
+                    else if (_logger.IsInfo && notProducing) _logger.Info($"Signal for switch to chainspec {validator.ValidatorType} based validator set at block {block.ToString(Block.Format.Short)}.");
+                }
+
+                _lastProcessedBlock = block.Number;
+            }
         }
 
         public void SetFinalizationManager(IBlockFinalizationManager finalizationManager, in bool forSealing = false)
@@ -193,7 +199,14 @@ namespace Nethermind.AuRa.Validators
                 
                 if (!_validatorUsedForSealing)
                 {
-                    _validatorStore.SetValidators(finalizedAtBlockNumber, _currentValidator.Validators);
+                    if (_currentValidator.Validators != null)
+                    {
+                        _validatorStore.SetValidators(finalizedAtBlockNumber, _currentValidator.Validators);
+                    }
+                    else if (_blockTree.Head != null)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Validators not found in validator initialized at block {finalizedAtBlockNumber}, even after genesis block loaded.");
+                    }
                 }
             }
         }

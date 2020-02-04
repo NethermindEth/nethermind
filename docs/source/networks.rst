@@ -7,10 +7,15 @@ By default Nethermind launches with mainnet network configuration but you can sy
 
 Network name can be any of the following
 
+
 * mainnet
-* rinkeby
 * goerli
+* rinkeby
 * ropsten
+* xdai
+* poacore
+* sokol
+* volta
 
 Mainnet
 ^^^^^^^

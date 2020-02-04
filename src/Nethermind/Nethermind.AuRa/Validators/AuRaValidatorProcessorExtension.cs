@@ -43,7 +43,7 @@ namespace Nethermind.AuRa.Validators
 
         public virtual void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None)
         {
-            if (!options.IsProducingBlock())
+            if (!options.IsProducingBlock() && !block.IsGenesis)
             {
                 var auRaStep = block.Header.AuRaStep.Value;
                 if (!_validSealerStrategy.IsValidSealer(Validators, block.Beneficiary, auRaStep))

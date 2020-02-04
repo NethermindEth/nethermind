@@ -51,6 +51,8 @@ namespace Nethermind.Serialization.Json
                     return reader.Value;
                 case JsonToken.String:
                     return reader.Value as string;
+                case JsonToken.Null:
+                    return null;
                 default:
                     throw new NotSupportedException($"{reader.TokenType}");
             }

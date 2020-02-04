@@ -78,28 +78,6 @@ namespace Nethermind.Serialization.Rlp
             rlpStream.Encode(item.Data);   
         }
         
-        public void Encode(MemoryStream stream, LogEntry item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item == null)
-            {
-                stream.Write(Rlp.OfEmptySequence.Bytes);
-                return;
-            }
-
-            var (total, topics) = GetContentLength(item);
-            Rlp.StartSequence(stream, total);
-            
-            Rlp.Encode(stream, item.LoggersAddress);
-            Rlp.StartSequence(stream, topics);
-
-            for (var i = 0; i < item.Topics.Length; i++)
-            {
-                Rlp.Encode(stream, item.Topics[i]);
-            }
-            
-            Rlp.Encode(stream, item.Data);
-        }
-
         public int GetLength(LogEntry item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)

@@ -200,48 +200,6 @@ namespace Nethermind.Serialization.Rlp
             Encode(rlpStream, item, rlpBehaviors);
             return new Rlp(rlpStream.Data);
         }
-        
-        public void Encode(MemoryStream stream, BlockHeader item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item == null)
-            {
-                stream.Write(Rlp.OfEmptySequence.Bytes);
-                return;
-            }
-
-            bool notForSealing = (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing;
-            Rlp.StartSequence(stream, GetContentLength(item, rlpBehaviors));
-            Rlp.Encode(stream, item.ParentHash);
-            Rlp.Encode(stream, item.OmmersHash);
-            Rlp.Encode(stream, item.Beneficiary);
-            Rlp.Encode(stream, item.StateRoot);
-            Rlp.Encode(stream, item.TxRoot);
-            Rlp.Encode(stream, item.ReceiptsRoot);
-            Rlp.Encode(stream, item.Bloom);
-            Rlp.Encode(stream, item.Difficulty);
-            Rlp.Encode(stream, item.Number);
-            Rlp.Encode(stream, item.GasLimit);
-            Rlp.Encode(stream, item.GasUsed);
-            Rlp.Encode(stream, item.Timestamp);
-            Rlp.Encode(stream, item.ExtraData);
-
-            if (notForSealing)
-            {
-                bool isAuRa = item.AuRaSignature != null;
-                
-                if (isAuRa)
-                {
-                    Rlp.Encode(stream, item.AuRaStep.Value);
-                    Rlp.Encode(stream, item.AuRaSignature);
-                }
-                else
-                {
-                    Rlp.Encode(stream, item.MixHash);
-                    Rlp.Encode(stream, item.Nonce);
-                }
-                
-            }
-        }
 
         private int GetContentLength(BlockHeader item, RlpBehaviors rlpBehaviors)
         {

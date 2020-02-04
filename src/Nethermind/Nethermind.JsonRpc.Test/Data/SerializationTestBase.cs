@@ -35,79 +35,88 @@ namespace Nethermind.JsonRpc.Test.Data
 {
     public class SerializationTestBase
     {
-        protected void TestConverter<T>(T item, Func<T, T, bool> equalityComparer, JsonConverter<T> converter)
+        protected void TestRoundtrip<T>(T item, Func<T, T, bool> equalityComparer, JsonConverter<T> converter = null, string description = null)
         {
-            JsonSerializer serializer = new JsonSerializer();
-            serializer.Converters.Add(converter);
-            StringBuilder builder = new StringBuilder();
-            StringWriter writer = new StringWriter(builder);
-            serializer.Serialize(writer, item);
-            string result = builder.ToString();
-            JsonReader reader = new JsonTextReader(new StringReader(result));
-            T deserialized = serializer.Deserialize<T>(reader);
+            EthereumJsonSerializer serializer = BuildSerializer();
+            if (converter != null)
+            {
+                serializer.RegisterConverter(converter);
+            }
 
-            Assert.True(equalityComparer(item, deserialized));
+            string result = serializer.Serialize(item);
+            T deserialized = serializer.Deserialize<T>(result);
+
+            if (equalityComparer == null)
+            {
+                Assert.AreEqual(item, deserialized, description);
+            }
+            else
+            {
+                Assert.True(equalityComparer(item, deserialized), description);    
+            }
         }
         
-        protected void TestConverter<T>(T item, JsonConverter<T> converter, string expectedResult)
+        protected void TestRoundtrip<T>(T item, JsonConverter<T> converter = null, string description = null)
         {
-            EthereumJsonSerializer serializer = new EthereumJsonSerializer();
-            serializer.RegisterConverter(converter);
+            TestRoundtrip(item, (a,b) => a.Equals(b), converter, description);
+        }
+        
+        protected void TestRoundtrip<T>(T item, string description)
+        {
+            TestRoundtrip(item, null, null, description);
+        }
+        
+        protected void TestRoundtrip<T>(T item, Func<T, T, bool> equalityComparer, string description = null)
+        {
+            TestRoundtrip(item, equalityComparer, null, description);
+        }
+
+        protected void TestRoundtrip<T>(string json, JsonConverter converter = null)
+        {
+            EthereumJsonSerializer serializer = BuildSerializer();
+            if (converter != null)
+            {
+                serializer.RegisterConverter(converter);
+            }
+
+            T deserialized = serializer.Deserialize<T>(json);
+            string result = serializer.Serialize(deserialized);
+            Assert.AreEqual(json, result);
+        }
+
+        private void TestToJson<T>(T item, JsonConverter<T> converter, string expectedResult)
+        {
+            EthereumJsonSerializer serializer = BuildSerializer();
+            if (converter != null)
+            {
+                serializer.RegisterConverter(converter);
+            }
+
             string result = serializer.Serialize(item);
             Assert.AreEqual(expectedResult, result, result.Replace("\"", "\\\""));
         }
 
-        protected void TestSerialization<T>(T item, Func<T, T, bool> equalityComparer, string description = "")
+        protected void TestToJson<T>(T item, string expectedResult)
         {
-            JsonSerializer serializer = BuildSerializer<T>();
-
-            StringBuilder builder = new StringBuilder();
-            StringWriter writer = new StringWriter(builder);
-            serializer.Serialize(writer, item);
-            string result = builder.ToString();
-            JsonReader reader = new JsonTextReader(new StringReader(result));
-            T deserialized = serializer.Deserialize<T>(reader);
-
-            Assert.True(equalityComparer(item, deserialized), description);
+            TestToJson(item, null, expectedResult);
         }
 
-        private static JsonSerializer BuildSerializer<T>()
+        private static EthereumJsonSerializer BuildSerializer()
         {
-            JsonSerializerSettings jsonSettings = new JsonSerializerSettings
-            {
-                ContractResolver = new CamelCasePropertyNamesContractResolver()
-            };
-            
-            JsonSerializer serializer = JsonSerializer.Create(jsonSettings);
+            EthereumJsonSerializer serializer = new EthereumJsonSerializer();
             foreach (JsonConverter converter in EthModuleFactory.Converters)
             {
-                serializer.Converters.Add(converter);
-            }            
-            
+                serializer.RegisterConverter(converter);
+            }
+
             foreach (JsonConverter converter in TraceModuleFactory.Converters)
             {
-                serializer.Converters.Add(converter);
+                serializer.RegisterConverter(converter);
             }
 
-            foreach (JsonConverter converter in EthereumJsonSerializer.BasicConverters)
-            {
-                serializer.Converters.Add(converter);
-            }
-            
-            serializer.Converters.Add(new BlockParameterConverter());
+            serializer.RegisterConverter(new BlockParameterConverter());
 
             return serializer;
-        }
-
-        protected void TestOneWaySerialization<T>(T item, string expectedResult)
-        {
-            JsonSerializer serializer = BuildSerializer<T>();
-
-            StringBuilder builder = new StringBuilder();
-            StringWriter writer = new StringWriter(builder);
-            serializer.Serialize(writer, item);
-            string result = builder.ToString();
-            Assert.AreEqual(expectedResult, result, result.Replace("\"", "\\\""));
         }
     }
 }

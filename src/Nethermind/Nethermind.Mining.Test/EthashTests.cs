@@ -16,9 +16,13 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Mining.Difficulty;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Mining.Test
@@ -801,7 +805,35 @@ namespace Nethermind.Mining.Test
         public void Test_real_block_from_ethereumJ(string blockRlp)
         {
             Block b = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
-            bool valid = new Ethash(NullLogManager.Instance).Validate(b.Header);
+
+            Ethash ethash = new Ethash(NullLogManager.Instance);
+            EthashSealValidator sealValidator = new EthashSealValidator(LimboLogs.Instance, new DifficultyCalculator(MainNetSpecProvider.Instance), new CryptoRandom(), ethash);
+            bool valid = sealValidator.ValidateSeal(b.Header, true);
+            Assert.True(valid);
+        }
+        
+        [TestCase("f9036ef90217a0cb927dc709468a107fac77151c6dff1ab73eabcccc57d82d238a7b5554f6db51a01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d4934794580992b51e3925e23280efb93d3047c82f17e038a03a68272caba0b4a825667d3d223bb8c18f6f793bd8151822b27798716c0b23cba01e360dfc633f5d2edad4e75cfa36555ae480ce346dcce8f253bb0d298e043dcaa0644b51189a7f9d4287e78fb923ced0b8b30edee234d6756fd06b45abc7ec12bdb90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008606b7be32fc9c830a2acf832fefd882f618845668803a98d783010400844765746887676f312e352e31856c696e7578a09a1a1cb1182fa1c8baeb7f2abd3f109d85b136f5968c76c3c26977dad5dba1ec88de7908cc14f57037f90150f86e82b609850ba43b740083015f909454cec426307c1acaa63b25aa48fade5df9e5d418872fe2475ad71000801ba0884206762dfebbdc69d5fb92ca1c33999a419f9c9ec116e02594f9535a30c9a0a05daf584f1b480ff599e4ed62278bac9c9d4c4f16af1d65504c13dbb713aa3539f86f82b60a850ba43b740083015f9094f442c4ab4d8cf106bcda6b1f7994485f3f4291a9880df897c536bccc00801ba0a7c7855917b5f8319651d241f3ca2ac5d728a76c83c43cb9e60adc9af1988051a009f117ce8cdfccc762d7a221abc19eb8773176c6f56b75c8ce2a1b907e0a3babf86d81d6850ba43b740082562294fbb1b73c4f0bda4f67dca266ce6ef42f520fbb988820d04471d11f6800801ba065586cc9545ea639580de624574644c34ea9bd0d2e7bfd8bab8f5ed3de572d86a0431d8fc8fcc803413f9f0ded6eaf267cb072bfed75fff97286623dd78e0e3d40c0")]
+        public void Can_use_cache(string blockRlp)
+        {
+            Block b = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
+
+            Ethash ethash = new Ethash(NullLogManager.Instance);
+            EthashSealValidator sealValidator = new EthashSealValidator(LimboLogs.Instance, new DifficultyCalculator(MainNetSpecProvider.Instance), new CryptoRandom(), ethash);
+            sealValidator.ValidateSeal(b.Header, true);
+            b.Header.MixHash = Keccak.Zero;
+            bool valid = sealValidator.ValidateSeal(b.Header, true);
+            Assert.True(valid);
+        }
+
+        [TestCase("f9021af90215a0cc395ced01d7af387640ac1258ab8819b84ca3e59ff476d933441c3800c63928a01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d4934794738db714c08b8a32a29e0e68af00215079aa9c5ca03665d3f9edac25c8a8cdad22945e0fb2e6812f679bea3445639b3890f310ced9a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008606b4637b26e7830a2ac9832fefd8808456687ffc98d783010203844765746887676f312e352e31856c696e7578a0a64edb0df18caa7d36fcb8ca740fee12d4d82b39883ddb3d729414122ba7410688524d07ed4c40ab09c0c0")]
+        public void Can_skip_when_not_forced(string blockRlp)
+        {
+            Block b = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
+            b.Header.MixHash = Keccak.Zero;
+
+            Ethash ethash = new Ethash(NullLogManager.Instance);
+            EthashSealValidator sealValidator = new EthashSealValidator(LimboLogs.Instance, new DifficultyCalculator(MainNetSpecProvider.Instance), new CryptoRandom(), ethash);
+            bool valid = sealValidator.ValidateSeal(b.Header, false);
             Assert.True(valid);
         }
 
@@ -810,7 +842,7 @@ namespace Nethermind.Mining.Test
         {
             for (int i = 0; i < _dataSizes.Length; i++)
             {
-                ulong size = Ethash.GetDataSize((uint)i);
+                ulong size = Ethash.GetDataSize((uint) i);
                 Assert.AreEqual(size, _dataSizes[i], i, $"failed at epoch: {i}");
             }
         }
@@ -820,7 +852,7 @@ namespace Nethermind.Mining.Test
         {
             for (int i = 0; i < _cacheSizes.Length; i++)
             {
-                ulong size = Ethash.GetCacheSize((uint)i);
+                ulong size = Ethash.GetCacheSize((uint) i);
                 Assert.AreEqual(size, _cacheSizes[i], i);
             }
         }

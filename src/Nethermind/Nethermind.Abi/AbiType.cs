@@ -48,11 +48,6 @@ namespace Nethermind.Abi
 
         public abstract string Name { get; }
 
-        public virtual bool Validate(byte[] data)
-        {
-            return true;
-        }
-
         public abstract (object, int) Decode(byte[] data, int position, bool packed);
 
         public abstract byte[] Encode(object arg, bool packed);

@@ -104,21 +104,6 @@ namespace Nethermind.Serialization.Rlp
             return new Rlp(rlpStream.Data);
         }
 
-        public void Encode(MemoryStream stream, Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            int contentLength = GetContentLength(item, false);
-            Rlp.StartSequence(stream, contentLength);
-            Rlp.Encode(stream, item.Nonce);
-            Rlp.Encode(stream, item.GasPrice);
-            Rlp.Encode(stream, item.GasLimit);
-            Rlp.Encode(stream, item.To);
-            Rlp.Encode(stream, item.Value);
-            Rlp.Encode(stream, item.To == null ? item.Init : item.Data);
-            Rlp.Encode(stream, item.Signature?.V ?? 0);
-            Rlp.Encode(stream, item.Signature == null ? null : item.Signature.RAsSpan.WithoutLeadingZeros());
-            Rlp.Encode(stream, item.Signature == null ? null : item.Signature.SAsSpan.WithoutLeadingZeros());
-        }
-        
         public void Encode(RlpStream stream, Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int contentLength = GetContentLength(item, false);

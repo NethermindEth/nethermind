@@ -910,7 +910,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             dbContext.CompareTrees("END");
         }
 
-        [Test]
+        [Test, Retry(5)]
         public async Task Silences_bad_peers()
         {
             DbContext dbContext = new DbContext(_logger);

@@ -35,9 +35,6 @@ namespace Nethermind.Serialization.Rlp
     {
         public const int LengthOfKeccakRlp = 33;
         public const int LengthOfAddressRlp = 21;
-        public const int LengthOfBloomRlp = 259;
-        public const int LengthOfEmptyArrayRlp = 1;
-        public const int LengthOfEmptySequenceRlp = 1;
 
         internal const int DebugMessageContentLength = 2048;
 
@@ -46,9 +43,7 @@ namespace Nethermind.Serialization.Rlp
         public static readonly Rlp OfEmptySequence = new Rlp(192);
         
         internal static readonly Rlp OfEmptyTreeHash = Encode(Keccak.EmptyTreeHash.Bytes); // use bytes to avoid stack overflow
-        
-        internal static readonly Rlp OfEmptySequenceRlpHash = Encode(Keccak.OfAnEmptySequenceRlp.Bytes); // use bytes to avoid stack overflow
-        
+
         internal static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
         
         internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes); // use bytes to avoid stack overflow
@@ -166,22 +161,6 @@ namespace Nethermind.Serialization.Rlp
             throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
         }
 
-        public static void Encode<T>(MemoryStream stream, T item, RlpBehaviors behaviors = RlpBehaviors.None)
-        {
-            if (item is Rlp rlp)
-            {
-                stream.Write(Encode(new[] {rlp}).Bytes);
-            }
-
-            if (Decoders.ContainsKey(typeof(T)))
-            {
-                ((IRlpDecoder<T>) Decoders[typeof(T)]).Encode(stream, item, behaviors);
-                return;
-            }
-
-            throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
-        }
-
         public static Rlp Encode<T>(T[] items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
             if (items == null)
@@ -272,79 +251,7 @@ namespace Nethermind.Serialization.Rlp
 
             return Encode(sequence);
         }
-
-        public static void Encode(MemoryStream stream, UInt256 value, int length = -1)
-        {
-            if (value.IsZero && length == -1)
-            {
-                stream.WriteByte(OfEmptyByteArray.Bytes[0]);
-            }
-            else
-            {
-                Span<byte> bytes = stackalloc byte[32];
-                value.ToBigEndian(bytes);
-                if (length != -1)
-                {
-                    Encode(stream, bytes.Slice(bytes.Length - length, length));
-                }
-                else
-                {
-                    Encode(stream, bytes.WithoutLeadingZeros());
-                }
-            }
-        }
-
-        /// <summary>
-        /// Watch out - this only works for positive values
-        /// </summary>
-        /// <param name="stream"></param>
-        /// <param name="value"></param>
-        public static void Encode(MemoryStream stream, int value)
-        {
-            Encode(stream, (long) value);
-        }
-
-        /// <summary>
-        /// Watch out - this only works for positive values
-        /// </summary>
-        /// <param name="stream"></param>
-        /// <param name="value"></param>
-        public static void Encode(MemoryStream stream, long value)
-        {
-            if (value == 0L)
-            {
-                stream.WriteByte(OfEmptyByteArray.Bytes[0]);
-            }
-            else
-            {
-                if (value < 128L)
-                {
-                    stream.WriteByte((byte) value);
-                }
-                else if (value <= byte.MaxValue)
-                {
-                    stream.WriteByte(129);
-                    stream.WriteByte((byte) value);
-                }
-                else
-                {
-                    Encode(stream, (UInt256) value);
-                }
-            }
-        }
         
-        public static void Encode(MemoryStream stream, string value)
-        {
-            if (value == null)
-            {
-                stream.WriteByte(OfEmptyByteArray.Bytes[0]);
-            }
-            else
-            {
-                Encode(stream, System.Text.Encoding.ASCII.GetBytes(value));
-            }
-        }
-
         public static Rlp Encode(UInt256? value)
         {
             if (value.HasValue)
@@ -389,16 +296,16 @@ namespace Nethermind.Serialization.Rlp
             return Encode(new[] {value});
         }
 
+        public static Rlp Encode(short value)
+        {
+            return Encode((long) value);
+        }
+
         public static Rlp Encode(ushort value)
         {
             return Encode((long) value);
         }
 
-        public static Rlp Encode(short value)
-        {
-            return Encode((long) value);
-        }
-        
         public static Rlp Encode(uint value)
         {
             return value == 0U ? OfEmptyByteArray : Encode((long) value);
@@ -484,16 +391,6 @@ namespace Nethermind.Serialization.Rlp
             return Encode(new BigInteger(value), 8);
         }
 
-        /// <summary>
-        /// Used for nonce only - different behaviour (treated as a byte array)
-        /// </summary>
-        /// <param name="stream"></param>
-        /// <param name="value"></param>
-        public static void Encode(MemoryStream stream, ulong value)
-        {
-            Encode(stream, value, 8);
-        }
-
         public static Rlp Encode(BigInteger bigInteger, int outputLength = -1)
         {
             return bigInteger == 0 ? OfEmptyByteArray : Encode(bigInteger.ToBigEndianByteArray(outputLength));
@@ -507,37 +404,6 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return Encode(System.Text.Encoding.ASCII.GetBytes(s));
-        }
-
-        public static void Encode(MemoryStream stream, Span<byte> input)
-        {
-            if (input == null || input.Length == 0)
-            {
-                stream.Write(OfEmptyByteArray.Bytes);
-            }
-            else if (input.Length == 1 && input[0] < 128)
-            {
-                stream.WriteByte(input[0]);
-            }
-            else if (input.Length < 56)
-            {
-                byte smallPrefix = (byte) (input.Length + 128);
-                stream.WriteByte(smallPrefix);
-                stream.Write(input);
-            }
-            else
-            {
-                int lengthOfLength = LengthOfLength(input.Length);
-                byte prefix = (byte) (183 + lengthOfLength);
-                stream.WriteByte(prefix);
-                SerializeLength(stream, input.Length);
-                stream.Write(input);
-            }
-        }
-
-        public static void Encode(MemoryStream stream, byte[] data)
-        {
-            Encode(stream, data.AsSpan());
         }
 
         public static int Encode(Span<byte> buffer, int position, byte[] input)
@@ -609,33 +475,7 @@ namespace Nethermind.Serialization.Rlp
         {
             return Encode(input.AsSpan());
         }
-
-        public static void SerializeLength(MemoryStream stream, int value)
-        {
-            if (value < 1 << 8)
-            {
-                stream.WriteByte((byte) value);
-            }
-            else if (value < 1 << 16)
-            {
-                stream.WriteByte((byte) (value >> 8));
-                stream.WriteByte((byte) value);
-            }
-            else if (value < 1 << 24)
-            {
-                stream.WriteByte((byte) (value >> 16));
-                stream.WriteByte((byte) (value >> 8));
-                stream.WriteByte((byte) value);
-            }
-            else
-            {
-                stream.WriteByte((byte) (value >> 24));
-                stream.WriteByte((byte) (value >> 16));
-                stream.WriteByte((byte) (value >> 8));
-                stream.WriteByte((byte) value);
-            }
-        }
-
+        
         public static int SerializeLength(Span<byte> buffer, int position, int value)
         {
             if (value < 1 << 8)
@@ -741,62 +581,6 @@ namespace Nethermind.Serialization.Rlp
             return new Rlp(result);
         }
 
-        public static void Encode(MemoryStream stream, Keccak keccak)
-        {
-            if (keccak == null)
-            {
-                stream.WriteByte(OfEmptyByteArray.Bytes[0]);
-            }
-            else if (ReferenceEquals(keccak, Keccak.EmptyTreeHash))
-            {
-                stream.Write(OfEmptyTreeHash.Bytes);
-            }
-            else if (ReferenceEquals(keccak, Keccak.OfAnEmptyString))
-            {
-                stream.Write(OfEmptyStringHash.Bytes);
-            }
-            else
-            {
-                stream.WriteByte(160);
-                stream.Write(keccak.Bytes);
-            }
-        }
-
-        public static void Encode(MemoryStream stream, Address address)
-        {
-            if (address == null)
-            {
-                stream.WriteByte(OfEmptyByteArray.Bytes[0]);
-            }
-            else
-            {
-                stream.WriteByte(148);
-                stream.Write(address.Bytes);
-            }
-        }
-
-        public static void Encode(MemoryStream stream, Bloom bloom)
-        {
-            if (ReferenceEquals(bloom, Bloom.Empty))
-            {
-                stream.WriteByte(185);
-                stream.WriteByte(1);
-                stream.WriteByte(0);
-                stream.Position += 256;
-            }
-            else if (bloom == null)
-            {
-                stream.WriteByte(OfEmptyByteArray.Bytes[0]);
-            }
-            else
-            {
-                stream.WriteByte(185);
-                stream.WriteByte(1);
-                stream.WriteByte(0);
-                stream.Write(bloom.Bytes);
-            }
-        }
-
         public static Rlp Encode(Keccak keccak)
         {
             if (keccak == null)
@@ -854,23 +638,7 @@ namespace Nethermind.Serialization.Rlp
 
             return totalLength;
         }
-
-        public static void StartSequence(MemoryStream stream, int contentLength)
-        {
-            byte prefix;
-            if (contentLength < 56)
-            {
-                prefix = (byte) (192 + contentLength);
-                stream.WriteByte(prefix);
-            }
-            else
-            {
-                prefix = (byte) (247 + LengthOfLength(contentLength));
-                stream.WriteByte(prefix);
-                SerializeLength(stream, contentLength);
-            }
-        }
-
+        
         public static int StartSequence(byte[] buffer, int position, int sequenceLength)
         {
             byte prefix;
@@ -1185,17 +953,6 @@ namespace Nethermind.Serialization.Rlp
                 UInt256.CreateFromBigEndian(out UInt256 result, byteSpan);
                 return result;
             }
-            
-            public UInt256? DecodeNullableUInt256()
-            {
-                if (Data[Position] == 0)
-                {
-                    Position++;
-                    return null;
-                }
-
-                return DecodeUInt256();
-            }
 
             public BigInteger DecodeUBigInt()
             {
@@ -1247,66 +1004,6 @@ namespace Nethermind.Serialization.Rlp
             public bool IsNextItemNull()
             {
                 return Data[Position] == 192;
-            }
-
-            public bool DecodeBool()
-            {
-                int prefix = ReadByte();
-                if (prefix <= 128)
-                {
-                    return prefix == 1;
-                }
-
-                if (prefix <= 183)
-                {
-                    int length = prefix - 128;
-                    if (length == 1 && Data[Position] < 128)
-                    {
-                        throw new RlpException($"Unexpected byte value {Data[Position]}");
-                    }
-
-                    bool result = Data[Position] == 1;
-                    Position += length;
-                    return result;
-                }
-
-                if (prefix < 192)
-                {
-                    int lengthOfLength = prefix - 183;
-                    if (lengthOfLength > 4)
-                    {
-                        // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                        throw new RlpException("Expected length of length less or equal 4");
-                    }
-
-                    int length = DeserializeLength(lengthOfLength);
-                    if (length < 56)
-                    {
-                        throw new RlpException("Expected length greater or equal 56 and was {length}");
-                    }
-
-                    bool result = Data[Position] == 1;
-                    Position += length;
-                    return result;
-                }
-
-                throw new RlpException($"Unexpected prefix of {prefix} when decoding a byte array at position {Position} in the message of length {Data.Length} starting with {Data.Slice(0, Math.Min(DebugMessageContentLength, Data.Length)).ToHexString()}");
-            }
-
-            public string DecodeString()
-            {
-                Span<byte> bytes = DecodeByteArraySpan();
-                return System.Text.Encoding.UTF8.GetString(bytes);
-            }
-
-            public byte DecodeByte()
-            {
-                Span<byte> bytes = DecodeByteArraySpan();
-                return bytes.Length == 0 ? (byte)0 :
-                    bytes.Length == 1 ? bytes[0] == (byte)128
-                        ? (byte)0
-                        : bytes[0]
-                    : bytes[1];
             }
 
             public int DecodeInt()

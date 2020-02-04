@@ -25,7 +25,7 @@ using Nethermind.Runner.Ethereum.Context;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency(typeof(LoadGenesisBlock), typeof(InitializeBlockchain))]
+    [RunnerStepDependency(typeof(InitializeBlockchain))]
     public class InitializeFinalizationAuRa : IStep
     {
         private readonly AuRaEthereumRunnerContext _context;

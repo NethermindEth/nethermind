@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,29 +14,31 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Reflection;
+using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Core.Attributes;
-using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.ParityStyle;
-using Nethermind.Network;
+using Nethermind.PubSub;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency]
-    public class InitRlp : IStep
+    [RunnerStepDependency(typeof(InitializeBlockchain), typeof(StartGrpcProducer), typeof(StartKafkaProducer))]
+    public class AddSubscription : IStep
     {
-        public InitRlp(EthereumRunnerContext context)
+        private readonly EthereumRunnerContext _context;
+
+        public AddSubscription(EthereumRunnerContext context)
         {
+            _context = context;
         }
 
-        [Todo(Improve.Refactor, "Automatically scan all the references solutions?")]
-        public virtual Task Execute()
+        public Task Execute()
         {
-            Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(ParityTraceDecoder)));
-            Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(NetworkNodeDecoder)));
+            ISubscription subscription = _context.Producers.Any() 
+                ? new Subscription(_context.Producers, _context.BlockProcessor, _context.LogManager) 
+                : (ISubscription) new EmptySubscription();
+
+            _context.DisposeStack.Push(subscription);
+
             return Task.CompletedTask;
         }
     }

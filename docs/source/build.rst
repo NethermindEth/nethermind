@@ -10,13 +10,13 @@ IDE (optional)
 SDKs
 ^^^^
 
-You will need .NET SDK 3.0
+You will need .NET SDK 3.0 <
  * Windows https://www.microsoft.com/net/download?initial-os=windows
  * Linux https://www.microsoft.com/net/download?initial-os=linux (make sure to select the right distribution)
  * Mac https://www.microsoft.com/net/download?initial-os=macos
 
 Linux (Ubuntu 16.04)
-^^^^^
+^^^^^^^^^^^^^^^^^^^^
 
 ::
 
@@ -26,15 +26,15 @@ Linux (Ubuntu 16.04)
     sudo apt-get install gcc-6 g++-6 && \
     sudo apt install libzstd1
 
-Linux (Ubuntu 18.04/Debian 10)
-^^^^^
+Linux (Ubuntu 18.04+/Debian 10)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ::
 
     sudo apt-get update && sudo apt-get install libsnappy-dev libc6-dev libc6
 
 Linux (CentOS 8)
-^^^^^
+^^^^^^^^^^^^^^^^
 
 ::
 
@@ -45,9 +45,10 @@ Linux (CentOS 8)
     sudo ln -s `find /usr/lib64/ -type f -name "libsnappy.so.1*"` /usr/lib64/libsnappy.so
 
 Linux (Fedora 31)
-^^^^^
+^^^^^^^^^^^^^^^^^
 
 ::
+
     sudo yum install -y glibc-devel && \
     sudo yum install -y snappy && \
     sudo yum install -y libzstd && \
@@ -71,7 +72,7 @@ All Platforms
 
 ::
 
-    git clone https://github.com/tkstanczak/nethermind --recursive
+    git clone https://github.com/NethermindEth/nethermind.git --recursive
     cd nethermind/src/Nethermind
     dotnet build Nethermind.sln -c Release
 

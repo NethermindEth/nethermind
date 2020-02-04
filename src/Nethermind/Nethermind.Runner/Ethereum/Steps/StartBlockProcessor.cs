@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,24 +14,25 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Dirichlet.Numerics;
-using NUnit.Framework;
+using System.Threading.Tasks;
+using Nethermind.Runner.Ethereum.Context;
 
-namespace Nethermind.JsonRpc.Test.Data
+namespace Nethermind.Runner.Ethereum.Steps
 {
-    [TestFixture]
-    public class UInt256SerializationTests : SerializationTestBase
+    [RunnerStepDependency(typeof(InitializeBlockchain))]
+    public class StartBlockProcessor : IStep
     {
-        [Test]
-        public void Can_do_roundtrip()
+        private readonly EthereumRunnerContext _context;
+
+        public StartBlockProcessor(EthereumRunnerContext context)
         {
-            TestSerialization((UInt256) 123456789, (a, b) => a.Equals(b));
+            _context = context;
         }
         
-        [Test]
-        public void Can_do_roundtrip_big()
+        public Task Execute()
         {
-            TestSerialization(UInt256.Parse("1321312414124781461278412647816487146817246816418746187246187468714681"), (a, b) => a.Equals(b));
+            _context.BlockchainProcessor.Start();
+            return Task.CompletedTask;
         }
     }
 }
