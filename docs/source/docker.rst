@@ -9,7 +9,7 @@ Using an existing image
 
 https://hub.docker.com/r/nethermind/nethermind/
 
-The image tagged as ``latest`` or tag e.g. ``1.5.8`` are ubuntu based. We highly encourage to use a lighter container which is Alpine based, tagged as ``alpine`` (Possible benefit of less memory consumption).
+The image tagged as ``latest`` or tag e.g. ``1.5.8`` are ubuntu based. We highly encourage to use a lighter container which is Alpine based, tagged as ``alpine`` or ``1.5.8-alpine`` (Possible benefit of less memory consumption).
 
 Docker pull command::
 
@@ -136,13 +136,13 @@ Sync with mainnet
 -----------------
 ::
 
-    docker run -it --network host --volume /var/lib/nethermind/mainnet:/data nethermind/nethermind:arm64.alpine
+    docker run -it --network host --volume /var/lib/nethermind/mainnet:/data nethermind/nethermind:arm64-alpine
 
 Enable JSON-RPC
 ---------------
 ::
 
-    docker run -it --network host --volume /var/lib/nethermind/mainnet:/data nethermind/nethermind:arm64.alpine --JsonRpc.Enabled true
+    docker run -it --network host --volume /var/lib/nethermind/mainnet:/data nethermind/nethermind:arm64-alpine --JsonRpc.Enabled true
     
 The default JSON-RPC port is 8545.
 
@@ -165,7 +165,7 @@ Available configurations
 
 ::
 
-    docker run -it --network host --volume /var/lib/nethermind/goerli:/data nethermind/nethermind:arm64.alpine --config goerli
+    docker run -it --network host --volume /var/lib/nethermind/goerli:/data nethermind/nethermind:arm64-alpine --config goerli
 
 Run as daemon and start on (re)boot
 -----------------------------------
@@ -193,8 +193,8 @@ If you want to update your image, just delete the container and create a new one
 
     docker stop nethermind --time 30
     docker container rm nethermind
-    docker pull nethermind/nethermind:arm64.alpine
-    docker run -d --name nethermind --restart always --network host --volume /var/lib/nethermind/mainnet:/data --stop-timeout 30 nethermind/nethermind:arm64.alpine
+    docker pull nethermind/nethermind:arm64-alpine
+    docker run -d --name nethermind --restart always --network host --volume /var/lib/nethermind/mainnet:/data --stop-timeout 30 nethermind/nethermind:arm64-alpine
 
 Advanced docker usage
 ---------------------
@@ -220,7 +220,7 @@ Docker images are available for both arm64 and arm32 architectures.
 
 https://hub.docker.com/r/nethermind/nethermind/
 
-Images tagged as ``arm64`` and ``arm32`` are Debian based. For arm64 container we highly encourage to use a lighter version which is Alpine based, tagged as ``arm64.alpine`` (Possible benefit of less memory consumption).
+Images tagged as ``arm64`` and ``arm32`` or ``1.5.8-arm64`` and ``1.5.8-arm32`` are Debian based. For arm64 container we highly encourage to use a lighter version which is Alpine based, tagged as ``arm64.alpine`` (Possible benefit of less memory consumption).
 The arm32 version is not yet available as it is not supported for now (track here: https://github.com/dotnet/dotnet-docker/issues/1059).
 
 Docker pull command::
