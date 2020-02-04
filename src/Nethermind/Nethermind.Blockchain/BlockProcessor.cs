@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using Nethermind.Blockchain.Proofs;
 using Nethermind.Blockchain.Receipts;
@@ -109,7 +110,11 @@ namespace Nethermind.Blockchain
             {
                 for (int i = 0; i < suggestedBlocks.Length; i++)
                 {
+                    Stopwatch stopwatch = Stopwatch.StartNew();
+                    _logger.Warn($"Processing block {suggestedBlocks[i].ToString(Block.Format.Short)} with total diffuculty {suggestedBlocks[i]}");
                     processedBlocks[i] = ProcessOne(suggestedBlocks[i], options, blockTracer);
+                    _logger.Warn($"Processed block {suggestedBlocks[i].ToString(Block.Format.Short)} {suggestedBlocks[i]} in {stopwatch.ElapsedMilliseconds}ms");
+                    stopwatch.Stop();
                     if (_logger.IsTrace) _logger.Trace($"Committing trees - state root {_stateProvider.StateRoot}");
                     _stateProvider.CommitTree();
                     _storageProvider.CommitTrees();

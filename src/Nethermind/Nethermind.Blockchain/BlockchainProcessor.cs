@@ -88,6 +88,7 @@ namespace Nethermind.Blockchain
             {
                 try
                 {
+                    _logger.Warn($"Enqueing block {block.ToString(Block.Format.Short)} with total difficulty {block.TotalDifficulty}");
                     _recoveryQueue.Add(blockRef);
                     if (_logger.IsTrace) _logger.Trace($"A new block {block.ToString(Block.Format.Short)} enqueued for processing.");
                 }
