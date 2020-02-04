@@ -148,7 +148,9 @@ namespace Nethermind.Blockchain.Synchronization
             receipt.Index = transactionIndex;
             receipt.Sender = transaction.SenderAddress;
             receipt.Recipient = transaction.IsContractCreation ? null : transaction.To;
-            receipt.ContractAddress = transaction.IsContractCreation ? transaction.To : null;
+            
+            // how would it be in CREATE2?
+            receipt.ContractAddress = transaction.IsContractCreation ? ContractAddress.From(transaction.SenderAddress, transaction.Nonce) : null; 
             receipt.GasUsed = receipt.GasUsedTotal - gasUsedBefore;
             if (receipt.StatusCode != StatusCode.Success)
             {
