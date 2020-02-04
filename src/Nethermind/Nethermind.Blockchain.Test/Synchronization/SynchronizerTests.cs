@@ -585,7 +585,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggestedHeaderIs(peerA.HeadHeader).Stop();
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Can_reorg_on_new_block_message()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
@@ -825,7 +825,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggestedHeaderIs(peerB.HeadHeader).Stop();
         }
 
-        [Test]
+        [Test,Retry(3)]
         public void Can_extend_chain_on_new_block_when_high_difficulty_low_number()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
