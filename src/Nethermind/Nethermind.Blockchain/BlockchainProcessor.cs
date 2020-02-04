@@ -80,7 +80,7 @@ namespace Nethermind.Blockchain
 
         public void SuggestBlock(Block block, ProcessingOptions processingOptions)
         {
-            if (_logger.IsWarn) _logger.Warn(LogConditions.BeamProcessorOverrides, LogLevel.Trace, $"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
+            if (_logger.IsTrace) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
 
             int currentRecoveryQueueSize = Interlocked.Add(ref _currentRecoveryQueueSize, block.Transactions.Length);
             BlockRef blockRef = currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx ? new BlockRef(block.Hash, processingOptions) : new BlockRef(block, processingOptions);
@@ -228,7 +228,7 @@ namespace Nethermind.Blockchain
 
                 Block block = blockRef.Block;
 
-                if (_logger.IsWarn) _logger.Warn(LogConditions.BeamProcessorOverrides, LogLevel.Trace, $"Processing block {block.ToString(Block.Format.Short)}).");
+                if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
 
                 IBlockTracer tracer = NullBlockTracer.Instance;
 
@@ -282,7 +282,7 @@ namespace Nethermind.Blockchain
                 do
                 {
                     blocksToBeAddedToMain.Add(toBeProcessed);
-                    if (_logger.IsWarn) _logger.Warn(LogConditions.BeamProcessorOverrides, LogLevel.Trace, $"To be processed (of {suggestedBlock.ToString(Block.Format.Short)}) is {toBeProcessed?.ToString(Block.Format.Short)}");
+                    if (_logger.IsTrace) _logger.Trace($"To be processed (of {suggestedBlock.ToString(Block.Format.Short)}) is {toBeProcessed?.ToString(Block.Format.Short)}");
                     if (toBeProcessed.IsGenesis)
                     {
                         break;

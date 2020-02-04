@@ -72,7 +72,7 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
-            _logger.Error(LogConditions.BeamPoolOverrides, LogLevel.Debug, $"No sync progress reported with {peerInfo}");
+            if(_logger.IsDebug) _logger.Debug($"No sync progress reported with {peerInfo}");
             peerInfo.SleepingSince = DateTime.UtcNow;
             peerInfo.IsSleepingDeeply = isSevere;
         }
@@ -510,7 +510,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void AddPeer(ISyncPeer syncPeer)
         {
-            if (_logger.IsWarn) _logger.Warn(LogConditions.BeamPoolOverrides, LogLevel.Debug, $"Adding sync peer {syncPeer.Node:c}");
+            if (_logger.IsDebug) _logger.Debug($"Adding sync peer {syncPeer.Node:c}");
             if (!_isStarted)
             {
                 if (_logger.IsDebug) _logger.Debug($"Sync peer pool not started yet - adding peer is blocked: {syncPeer.Node:s}");
@@ -534,7 +534,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void RemovePeer(ISyncPeer syncPeer)
         {
-            if (_logger.IsWarn) _logger.Warn(LogConditions.BeamPoolOverrides, LogLevel.Debug, $"Removing sync peer {syncPeer.Node:c}");
+            if (_logger.IsDebug) _logger.Debug($"Removing sync peer {syncPeer.Node:c}");
             
             if (!_isStarted)
             {
@@ -605,7 +605,7 @@ namespace Nethermind.Blockchain.Synchronization
                             ? _timeBeforeWakingDeepSleepingPeerUp
                             : _timeBeforeWakingShallowSleepingPeerUp))
                     {
-                        if (_logger.IsWarn) _logger.Warn(LogConditions.BeamPoolOverrides, LogLevel.Trace, $"[{reason}] {(info.IsSleepingDeeply ? "deeply" : "lightly")} asleep");
+                        if (_logger.IsTrace) _logger.Trace($"[{reason}] {(info.IsSleepingDeeply ? "deeply" : "lightly")} asleep");
                         continue;
                     }
 
@@ -631,12 +631,12 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (_peers.Count == 0)
             {
-                if (_logger.IsWarn) _logger.Warn(LogConditions.BeamPoolOverrides, LogLevel.Trace, $"[{reason}] count 0");
+                if (_logger.IsTrace) _logger.Trace($"[{reason}] count 0");
             }
             
             if (bestPeer.Info == null)
             {
-                if (_logger.IsWarn) _logger.Warn(LogConditions.BeamPoolOverrides, LogLevel.Trace, $"[{reason}] No peer found for ETH sync");
+                if (_logger.IsTrace) _logger.Trace($"[{reason}] No peer found for ETH sync");
             }
             else
             {
