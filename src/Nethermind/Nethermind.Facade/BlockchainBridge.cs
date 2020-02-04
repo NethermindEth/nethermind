@@ -202,7 +202,7 @@ namespace Nethermind.Facade
                 blockHeader.Hash,
                 Keccak.OfAnEmptySequenceRlp,
                 Address.Zero,
-                1,
+                0,
                 blockHeader.Number + 1,
                 blockHeader.GasLimit,
                 blockHeader.Timestamp,
