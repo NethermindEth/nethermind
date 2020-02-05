@@ -276,7 +276,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                     if (shouldMoveToMain)
                     {
-                        _blockTree.UpdateMainChain(new[] {currentBlock});
+                        _blockTree.UpdateMainChain(new[] {currentBlock}, false);
                     }
 
                     currentNumber += 1;

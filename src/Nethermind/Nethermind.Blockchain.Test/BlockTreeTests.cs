@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Test
         private static void AddToMain(BlockTree blockTree, Block block0)
         {
             blockTree.SuggestBlock(block0);
-            blockTree.UpdateMainChain(new[] {block0});
+            blockTree.UpdateMainChain(new[] {block0}, true);
         }
 
         [Test]
@@ -747,7 +747,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(block0);
             blockTree.SuggestBlock(block1);
             Assert.False(blockTree.WasProcessed(block1.Number, block1.Hash), "before");
-            blockTree.UpdateMainChain(new[] {block0, block1});
+            blockTree.UpdateMainChain(new[] {block0, block1}, true);
             Assert.True(blockTree.WasProcessed(block1.Number, block1.Hash), "after");
         }
 

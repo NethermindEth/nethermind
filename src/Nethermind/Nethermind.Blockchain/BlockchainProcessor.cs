@@ -389,7 +389,7 @@ namespace Nethermind.Blockchain
 
                 if ((options & ProcessingOptions.ReadOnlyChain) == 0)
                 {
-                    _blockTree.UpdateMainChain(blocksToBeAddedToMain.ToArray());
+                    _blockTree.UpdateMainChain(blocksToBeAddedToMain.ToArray(), true);
                 }
             }
             else

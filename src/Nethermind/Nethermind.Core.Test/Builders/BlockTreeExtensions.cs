@@ -35,13 +35,13 @@ namespace Nethermind.Core.Test.Builders
             
             if (branchLength > blockTree.Head.Number)
             {
-                blockTree.UpdateMainChain(blocks.ToArray());    
+                blockTree.UpdateMainChain(blocks.ToArray(), true);    
             }
         }
         
         public static void UpdateMainChain(this BlockTree blockTree, Block block)
         {
-            blockTree.UpdateMainChain(new [] {block});
+            blockTree.UpdateMainChain(new [] {block}, true);
         }
     }
 }

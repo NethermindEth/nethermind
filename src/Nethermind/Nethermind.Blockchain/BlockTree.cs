@@ -930,7 +930,7 @@ namespace Nethermind.Blockchain
             return levelInfo.BlockInfos[index.Value].WasProcessed;
         }
 
-        public void UpdateMainChain(Block[] processedBlocks)
+        public void UpdateMainChain(Block[] processedBlocks, bool wereProcessed)
         {
             if (processedBlocks.Length == 0)
             {
@@ -988,13 +988,13 @@ namespace Nethermind.Blockchain
                     _headerCache.Set(block.Hash, block.Header);
                 }
 
-                MoveToMain(processedBlocks[i], batch);
+                MoveToMain(processedBlocks[i], batch, wereProcessed);
             }
         }
 
         private TaskCompletionSource<object> _dbBatchProcessed;
 
-        private void MoveToMain(Block block, BatchWrite batch)
+        private void MoveToMain(Block block, BatchWrite batch, bool wasProcessed)
         {
             if (_logger.IsTrace) _logger.Trace($"Moving {block.ToString(Block.Format.Short)} to main");
 
@@ -1008,7 +1008,7 @@ namespace Nethermind.Blockchain
             Keccak hashOfThePreviousMainBlock = level.MainChainBlock?.BlockHash;
 
             BlockInfo info = level.BlockInfos[index.Value];
-            info.WasProcessed = true;
+            info.WasProcessed = wasProcessed;
             if (index.Value != 0)
             {
                 (level.BlockInfos[index.Value], level.BlockInfos[0]) = (level.BlockInfos[0], level.BlockInfos[index.Value]);
@@ -1031,7 +1031,10 @@ namespace Nethermind.Blockchain
                     throw new InvalidOperationException("Head block with null total difficulty");
                 }
 
-                UpdateHeadBlock(block);
+                if (wasProcessed)
+                {
+                    UpdateHeadBlock(block);
+                }
             }
 
             for (int i = 0; i < block.Transactions.Length; i++)
