@@ -19,10 +19,24 @@ using System;
 namespace Nethermind.Blockchain.Synchronization
 {
     [Flags]
-    public enum BorrowOptions
+    public enum PeerSelectionOptions
     {
         None = 0,
-        DoNotReplace = 1,
-        LowPriority = 2
+        
+        /// <summary>
+        /// Try to allocate a peer with high latency / low quality first
+        /// </summary>
+        LowPriority = 1,
+        
+        /// <summary>
+        /// Require only peers with higher total difficulty to be allocated
+        /// </summary>
+        HigherTotalDiff = 2,
+        
+        /// <summary>
+        /// Do not try to upgrade this peer allocation before it is freed or cancelled.
+        /// </summary>
+        DoNotReplace = 4,
+        All = 7,
     }
 }

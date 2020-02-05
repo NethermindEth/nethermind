@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain.Synchronization
     {
         bool TryFind(PublicKey nodeId, out PeerInfo peerInfo);
         
-        Task<SyncPeerAllocation> BorrowAsync(BorrowOptions borrowOptions = BorrowOptions.None, string description = "", long? minNumber = null, int timeoutMilliseconds = 0);
+        Task<SyncPeerAllocation> BorrowAsync(PeerSelectionOptions peerSelectionOptions = PeerSelectionOptions.None, string description = "", long? minNumber = null, int timeoutMilliseconds = 0);
         
         void Free(SyncPeerAllocation syncPeerAllocation);
         
@@ -49,7 +49,6 @@ namespace Nethermind.Blockchain.Synchronization
         
         int PeerMaxCount { get; }
         
-        void Refresh(PublicKey nodeId);
         void Refresh(PeerInfo peerInfo, Keccak hash);
         
         void RemovePeer(ISyncPeer syncPeer);
@@ -59,8 +58,6 @@ namespace Nethermind.Blockchain.Synchronization
         void Start();
         
         Task StopAsync();
-        
-        void EnsureBest();
         
         void ReportBadPeer(SyncPeerAllocation batchAssignedPeer);
         

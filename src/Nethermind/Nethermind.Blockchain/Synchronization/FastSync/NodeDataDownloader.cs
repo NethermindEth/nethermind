@@ -130,7 +130,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             StateSyncBatch request = PrepareRequest(forAdditionalConsumers);
             if (request.RequestedNodes.Length != 0)
             {
-                request.AssignedPeer = await _syncPeerPool.BorrowAsync(BorrowOptions.DoNotReplace, "node sync", null, 1000);
+                request.AssignedPeer = await _syncPeerPool.BorrowAsync(PeerSelectionOptions.DoNotReplace, "node sync", null, 1000);
 
                 Interlocked.Increment(ref _pendingRequests);
                 // if (_logger.IsWarn) _logger.Warn($"Creating new request with {request.RequestedNodes.Length} nodes");
