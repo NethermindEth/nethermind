@@ -273,7 +273,8 @@ namespace Nethermind.Blockchain
             Block[] processedBlocks = null;
 
             bool shouldProcess = suggestedBlock.IsGenesis
-                                 || (options & ProcessingOptions.ForceProcessing) == ProcessingOptions.ForceProcessing;
+                || totalDifficulty > _blockTree.Head?.TotalDifficulty
+                || (options & ProcessingOptions.ForceProcessing) == ProcessingOptions.ForceProcessing;
             
             if (shouldProcess)
             {
