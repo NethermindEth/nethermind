@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading;
 using Nethermind.Core.Extensions;
 using Nethermind.HashLib;
 
@@ -21,26 +22,27 @@ namespace Nethermind.Crypto
 {
     public static class Ripemd
     {
-        private static readonly IHash Hash = HashFactory.Crypto.CreateRIPEMD160();
+        private static ThreadLocal<IHash> _ripemd160 = new ThreadLocal<IHash>();
 
+        private static void InitIfNeeded()
+        {
+            if (!_ripemd160.IsValueCreated)
+            {
+                var ripemd = HashFactory.Crypto.CreateRIPEMD160();
+                ripemd.Initialize();
+                _ripemd160.Value = ripemd;
+            }
+        }
+        
         public static byte[] Compute(byte[] input)
         {
-            return Hash.ComputeBytes(input).GetBytes();
+            InitIfNeeded();
+            return _ripemd160.Value.ComputeBytes(input).GetBytes();
         }
 
         public static string ComputeString(byte[] input)
         {
             return Compute(input).ToHexString(false);
-        }
-
-        public static byte[] Compute(string input)
-        {
-            return Compute(System.Text.Encoding.UTF8.GetBytes(input));
-        }
-
-        public static string ComputeString(string input)
-        {
-            return ComputeString(System.Text.Encoding.UTF8.GetBytes(input));
         }
     }
 }
