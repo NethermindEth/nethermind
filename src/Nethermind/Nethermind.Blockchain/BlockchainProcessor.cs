@@ -276,7 +276,7 @@ namespace Nethermind.Blockchain
                 // || totalDifficulty > _blockTree.Head?.TotalDifficulty
                 // so above is better and more correct but creates an impression of the node staying behind on stats page
                 // so we are okay to process slightly more
-                || totalDifficulty >= _blockTree.Head?.TotalDifficulty 
+                || totalDifficulty > _blockTree.Head?.TotalDifficulty 
                 || (options & ProcessingOptions.ForceProcessing) == ProcessingOptions.ForceProcessing;
             
             if (shouldProcess)
