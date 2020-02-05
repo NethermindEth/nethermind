@@ -179,15 +179,7 @@ namespace Nethermind.Blockchain.Synchronization
                     if (result == AddBlockResult.UnknownParent)
                     {
                         _logger.Warn($"Requesting reorg for {block.ToString(Block.Format.Short)}");
-                        _pool.Refresh(peerInfo, block.Hash);
                         _synchronizer.RequestSynchronization(SyncTriggerType.Reorganization);
-                    }
-                    else
-                    {
-                        if ((block.TotalDifficulty ?? 0) > peerInfo.TotalDifficulty)
-                        {
-                            peerInfo.TotalDifficulty = block.TotalDifficulty ?? 0;
-                        }
                     }
                 }
             }
