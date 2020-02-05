@@ -361,13 +361,13 @@ namespace Nethermind.Blockchain.Synchronization
                     {
                         if (firstToComplete.IsFaulted || firstToComplete == delayTask)
                         {
-                            if (_logger.IsDebug) _logger.Debug($"InitPeerInfo failed for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
+                            _logger.Warn($"InitPeerInfo failed for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
                             _stats.ReportSyncEvent(syncPeer.Node, peerInfo.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
                             syncPeer.Disconnect(DisconnectReason.DisconnectRequested, "refresh peer info fault - timeout");
                         }
                         else if (firstToComplete.IsCanceled)
                         {
-                            if (_logger.IsTrace) _logger.Trace($"InitPeerInfo canceled for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
+                            _logger.Warn($"InitPeerInfo canceled for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
                             _stats.ReportSyncEvent(syncPeer.Node, peerInfo.IsInitialized ? NodeStatsEventType.SyncCancelled : NodeStatsEventType.SyncInitCancelled);
                             token.ThrowIfCancellationRequested();
                         }
@@ -377,14 +377,14 @@ namespace Nethermind.Blockchain.Synchronization
                             BlockHeader header = getHeadHeaderTask.Result;
                             if (header == null)
                             {
-                                if (_logger.IsDebug) _logger.Debug($"InitPeerInfo failed for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
+                                _logger.Warn($"InitPeerInfo failed for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
 
                                 _stats.ReportSyncEvent(syncPeer.Node, peerInfo.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
                                 syncPeer.Disconnect(DisconnectReason.DisconnectRequested, "refresh peer info fault - null response");
                                 return;
                             }
 
-                            if (_logger.IsTrace) _logger.Trace($"Received head block info from {syncPeer.Node:c} with head block numer {header.Number}");
+                            _logger.Warn($"Received head block info from {syncPeer.Node:c} with head block numer {header.Number}");
                             if (!peerInfo.IsInitialized)
                             {
                                 _stats.ReportSyncEvent(syncPeer.Node, NodeStatsEventType.SyncInitCompleted);
