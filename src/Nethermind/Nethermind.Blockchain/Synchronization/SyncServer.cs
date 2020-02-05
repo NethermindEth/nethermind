@@ -216,7 +216,10 @@ namespace Nethermind.Blockchain.Synchronization
                     /* do not add as this is a hint only */
                 }
 
-                _pool.Refresh(peerInfo, null);
+                if(!_blockTree.IsKnownBlock(number, hash))
+                {
+                    _pool.Refresh(peerInfo, null);
+                }
             }
         }
 
