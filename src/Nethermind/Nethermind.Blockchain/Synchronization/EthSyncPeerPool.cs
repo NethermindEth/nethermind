@@ -131,7 +131,6 @@ namespace Nethermind.Blockchain.Synchronization
                     {
                         if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x.InnerException is TimeoutException))
                         {
-                            Console.WriteLine("TIMEOUTTTTT");
                             if (_logger.IsTrace) _logger.Trace($"Refreshing info for {peerInfo} failed due to timeout: {t.Exception.Message}");
                         }
                         else if (_logger.IsDebug) _logger.Debug($"Refreshing info for {peerInfo} failed {t.Exception}");
