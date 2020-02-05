@@ -49,7 +49,7 @@ namespace Nethermind.Blockchain.Synchronization
         
         int PeerMaxCount { get; }
         
-        void Refresh(PublicKey nodeId);
+        void Refresh(PeerInfo peerInfo, Keccak hash);
         
         void RemovePeer(ISyncPeer syncPeer);
         
