@@ -74,7 +74,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             _blockTree.IsKnownBlock(1, TestItem.KeccakA).ReturnsForAnyArgs(true);
             _syncServer.HintBlock(TestItem.KeccakA, 1, _nodeWhoSentTheBlock);
-            _peerPool.DidNotReceiveWithAnyArgs().Refresh(null, null);
+            _peerPool.DidNotReceiveWithAnyArgs().RefreshTotalDifficulty(null, null);
         }
         
         [Test]

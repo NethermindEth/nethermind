@@ -521,7 +521,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             }
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Init_condition_are_as_expected()
         {
             When.Syncing
@@ -531,7 +531,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggested.BlockIsSameAsGenesis().Stop();
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Can_sync_with_one_peer_straight()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
@@ -542,8 +542,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggested.BlockIsSameAsGenesis().Stop();
         }
 
-        [Test]
-        [Retry(3)]
+        [Test, Retry(3)]
         public void Can_sync_with_one_peer_straight_and_extend_chain()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
@@ -555,7 +554,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggestedHeaderIs(peerA.HeadHeader).Stop();
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Will_ignore_blocks_it_does_not_know_about()
         {
             // testing the test framework here
@@ -570,7 +569,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggestedBlockHasNumber(1).Stop();
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Can_extend_chain_by_one_on_new_block_message()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
@@ -585,7 +584,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggestedHeaderIs(peerA.HeadHeader).Stop();
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Can_reorg_on_new_block_message()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
@@ -604,7 +603,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggestedHeaderIs(peerB.HeadHeader).Stop();
         }
 
-        [Test]
+        [Test, Retry(3)]
         [Ignore("Not supported for now - still analyzing this scenario")]
         public void Can_reorg_on_hint_block_message()
         {
@@ -624,8 +623,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggestedHeaderIs(peerB.HeadHeader).Stop();
         }
 
-        [Test]
-        [Retry(3)]
+        [Test, Retry(3)]
         public void Can_extend_chain_by_one_on_block_hint_message()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
@@ -640,8 +638,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggestedHeaderIs(peerA.HeadHeader).Stop();
         }
 
-        [Test]
-        [Retry(3)]
+        [Test, Retry(3)]
         public void Can_extend_chain_by_more_than_one_on_new_block_message()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
@@ -658,8 +655,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             Console.WriteLine("why?");
         }
 
-        [Test]
-        [Retry(3)]
+        [Test, Retry(3)]
         public void Will_ignore_new_block_that_is_far_ahead()
         {
             // this test was designed for no sync-timer sync process
@@ -676,7 +672,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggestedHeaderIs(peerA.HeadHeader).Stop();
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Can_sync_when_best_peer_is_timing_out()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
@@ -693,7 +689,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggestedBlockHasNumber(1).Stop();
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Will_inform_connecting_peer_about_the_alternative_branch_with_same_difficulty()
         {
             if (_synchronizerType == SynchronizerType.Fast)
@@ -721,7 +717,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             Assert.AreEqual(peerB.ReceivedBlocks.Peek().Hash, peerA.HeadBlock.Hash);
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Will_not_add_same_peer_twice()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
@@ -731,13 +727,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(peerA)
                 .AfterPeerIsAdded(peerA)
-                .WaitAMoment()
-                .WaitAMoment()
+                .WaitUntilInitialized()
                 .PeerCountIs(1)
                 .BestSuggestedBlockHasNumber(1).Stop();
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Will_remove_peer_when_init_fails()
         {
             SyncPeerMock peerA = new SyncPeerMock("A", true, true);
@@ -751,7 +746,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
 
-        [Test]
+        [Test, Retry(3)]
         public void Can_remove_peers()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
@@ -771,8 +766,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .PeerCountIs(0).Stop();
         }
 
-        [Test]
-        [Retry(3)]
+        [Test, Retry(3)]
         public void Can_reorg_on_add_peer()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
@@ -789,7 +783,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggestedHeaderIs(peerB.HeadHeader).Stop();
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Can_reorg_based_on_total_difficulty()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
@@ -806,7 +800,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggestedHeaderIs(peerB.HeadHeader).Stop();
         }
 
-        [Test]
+        [Test, Retry(3)]
         [Ignore("Not supported for now - still analyzing this scenario")]
         public void Can_extend_chain_on_hint_block_when_high_difficulty_low_number()
         {
@@ -827,7 +821,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggestedHeaderIs(peerB.HeadHeader).Stop();
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Can_extend_chain_on_new_block_when_high_difficulty_low_number()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
@@ -848,7 +842,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggestedHeaderIs(peerB.HeadHeader).Stop();
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Will_not_reorganize_on_same_chain_length()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
@@ -865,7 +859,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggestedHeaderIs(peerA.HeadHeader).Stop();
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Will_not_reorganize_more_than_max_reorg_length()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
@@ -894,7 +888,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggestedHeaderIs(peerA.HeadHeader).Stop();
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Can_sync_exactly_one_batch()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
@@ -907,7 +901,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .Stop();
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Can_stop()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");

@@ -394,7 +394,7 @@ namespace Nethermind.Blockchain.Synchronization
                             if (parent != null)
                             {
                                 UInt256 newTotalDifficulty = (parent.TotalDifficulty ?? UInt256.Zero) + header.Difficulty;
-                                if (newTotalDifficulty > peerInfo.TotalDifficulty)
+                                if (newTotalDifficulty >= peerInfo.TotalDifficulty)
                                 {
                                     _logger.Warn($"REFRESH Updating header of {peerInfo} from {peerInfo.HeadNumber} {peerInfo.TotalDifficulty} to {header.Number} {newTotalDifficulty}");
                                     peerInfo.TotalDifficulty = newTotalDifficulty;
@@ -482,7 +482,7 @@ namespace Nethermind.Blockchain.Synchronization
         public int UsefulPeerCount => UsefulPeers.Count();
         public int PeerMaxCount { get; }
 
-        public void Refresh(PeerInfo peerInfo, Keccak blockHash)
+        public void RefreshTotalDifficulty(PeerInfo peerInfo, Keccak blockHash)
         {
             _peerRefreshQueue.Add(new RefreshTotalDiffTask {PeerInfo = peerInfo, BlockHash = blockHash});
         }
@@ -625,7 +625,8 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     decimal diff = (decimal)averageTransferSpeed / (bestPeer.TransferSpeed == 0 ? 1 : bestPeer.TransferSpeed);
                     // if not much difference in speed then prefer total diff
-                    if (diff > 0.8m && diff < 1.2m)
+                    
+                    if (diff > 0.75m && diff < 1.25m)
                     {
                         if (info.TotalDifficulty > bestPeer.Info.TotalDifficulty)
                         {

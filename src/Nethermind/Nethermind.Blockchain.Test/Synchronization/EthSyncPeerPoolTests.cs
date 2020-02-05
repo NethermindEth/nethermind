@@ -277,7 +277,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
             _pool.AddPeer(syncPeer);
-            _pool.Refresh(new PeerInfo(syncPeer), null);
+            _pool.RefreshTotalDifficulty(new PeerInfo(syncPeer), null);
             await Task.Delay(100);
 
             await syncPeer.Received(2).GetHeadBlockHeader(Arg.Any<Keccak>(), Arg.Any<CancellationToken>());

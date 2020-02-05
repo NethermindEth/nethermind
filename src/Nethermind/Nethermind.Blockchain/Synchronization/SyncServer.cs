@@ -215,7 +215,7 @@ namespace Nethermind.Blockchain.Synchronization
                 
                 if(!_blockTree.IsKnownBlock(number, hash))
                 {
-                    _pool.Refresh(peerInfo, hash);
+                    _pool.RefreshTotalDifficulty(peerInfo, hash);
                     _synchronizer.RequestSynchronization(SyncTriggerType.NewNearBlock);
                 }
             }
