@@ -666,7 +666,7 @@ namespace Nethermind.Blockchain.Synchronization
             if (newSpeed / (decimal) Math.Max(1L, currentSpeed) > 1m + MinDiffPercentageForSpeedSwitch
                 && newSpeed > currentSpeed + MinDiffForSpeedSwitch)
             {
-                if (_logger.IsInfo) _logger.Info($"Sync peer substitution{Environment.NewLine}  OUT: {allocation.Current}[{currentSpeed}]{Environment.NewLine}  IN : {peerInfo}[{newSpeed}]");
+                if (_logger.IsDebug) _logger.Debug($"Sync peer substitution{Environment.NewLine}  OUT: {allocation.Current}[{currentSpeed}]{Environment.NewLine}  IN : {peerInfo}[{newSpeed}]");
                 allocation.ReplaceCurrent(peerInfo);
             }
             else
