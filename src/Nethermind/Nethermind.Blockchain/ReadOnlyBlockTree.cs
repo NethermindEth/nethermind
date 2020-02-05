@@ -159,7 +159,7 @@ namespace Nethermind.Blockchain
             throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteChainSlice)} calls");
         }
 
-        public void UpdateMainChain(Block[] processedBlocks)
+        public void UpdateMainChain(Block[] processedBlocks, bool wereProcessed)
         {
             throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateMainChain)} calls");
         }

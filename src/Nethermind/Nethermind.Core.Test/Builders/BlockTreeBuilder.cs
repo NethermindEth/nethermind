@@ -200,7 +200,7 @@ namespace Nethermind.Core.Test.Builders
         public static void AddBlock(IBlockTree blockTree, Block block)
         {
             blockTree.SuggestBlock(block);
-            blockTree.UpdateMainChain(new[] {block});
+            blockTree.UpdateMainChain(new[] {block}, true);
         }
 
         public static void ExtendTree(IBlockTree blockTree, int newChainLength)
@@ -211,7 +211,7 @@ namespace Nethermind.Core.Test.Builders
             {
                 previous = Build.A.Block.WithNumber(i).WithParent(previous).TestObject;
                 blockTree.SuggestBlock(previous);
-                blockTree.UpdateMainChain(new[] {previous});
+                blockTree.UpdateMainChain(new[] {previous}, true);
             }
         }
 

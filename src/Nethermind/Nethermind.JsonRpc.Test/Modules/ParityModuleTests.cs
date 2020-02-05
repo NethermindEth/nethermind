@@ -77,7 +77,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .TestObject;
             
             blockTree.SuggestBlock(genesis);
-            blockTree.UpdateMainChain(new[] {genesis});
+            blockTree.UpdateMainChain(new[] {genesis}, true);
 
             Block previousBlock = genesis;
             Block block = Build.A.Block.WithNumber(blockNumber).WithParent(previousBlock)
@@ -86,7 +86,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     .TestObject;
                 
             blockTree.SuggestBlock(block);
-            blockTree.UpdateMainChain(new[] {block});
+            blockTree.UpdateMainChain(new[] {block}, true);
 
             var logEntries = new[] {Build.A.LogEntry.TestObject};
             receiptStorage.Add(new TxReceipt()

@@ -116,12 +116,13 @@ namespace Nethermind.Blockchain
         /// <param name="blockHash">Hash of the block to check</param>
         /// <returns><value>True</value> if processed, otherwise <value>False</value></returns>
         bool WasProcessed(long number, Keccak blockHash);
-        
+
         /// <summary>
         /// Marks all <paramref name="processedBlocks"/> as processed, changes chain head to the last of them and updates all the chain levels./>
         /// </summary>
         /// <param name="processedBlocks">Blocks that will now be at the top of the chain</param>
-        void UpdateMainChain(Block[] processedBlocks);
+        /// <param name="wereProcessed"></param>
+        void UpdateMainChain(Block[] processedBlocks, bool wereProcessed);
 
         bool CanAcceptNewBlocks { get; }
         
