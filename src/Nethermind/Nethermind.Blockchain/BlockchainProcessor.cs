@@ -270,11 +270,14 @@ namespace Nethermind.Blockchain
 
             BlockHeader branchingPoint = null;
             Block[] processedBlocks = null;
-
-            bool shouldProcess = suggestedBlock.IsGenesis
-                || totalDifficulty >= (_blockTree.Head?.TotalDifficulty ?? _blockTree.BestSuggestedHeader?.TotalDifficulty - 1)
-                || (options & ProcessingOptions.ForceProcessing) == ProcessingOptions.ForceProcessing;
             
+            bool shouldProcess = suggestedBlock.IsGenesis
+                                 || totalDifficulty > (_blockTree.Head?.TotalDifficulty ?? 0)
+                                 // so above is better and more correct but creates an impression of the node staying behind on stats page
+                                 // so we are okay to process slightly more
+                                 // and below is less correct but potentially reporting well
+                                 // || totalDifficulty >= (_blockTree.Head?.TotalDifficulty ?? 0)
+                                 || (options & ProcessingOptions.ForceProcessing) == ProcessingOptions.ForceProcessing;
             if (shouldProcess)
             {
                 List<Block> blocksToBeAddedToMain = new List<Block>();
