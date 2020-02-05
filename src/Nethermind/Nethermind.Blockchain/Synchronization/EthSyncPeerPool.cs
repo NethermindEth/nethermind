@@ -617,12 +617,31 @@ namespace Nethermind.Blockchain.Synchronization
                     // note this is only 2 difficulty difference which means that is just for the POA / Clique chains
                     continue;
                 }
-
+                
                 long averageTransferSpeed = _stats.GetOrAdd(info.SyncPeer.Node).GetAverageTransferSpeed() ?? 0;
 
-                if (isLowPriority ? (averageTransferSpeed <= bestPeer.TransferSpeed) : (averageTransferSpeed > bestPeer.TransferSpeed))
+                bool selectedByDiff = false;
+                if (requireHigherDifficulty)
                 {
-                    bestPeer = (info, averageTransferSpeed);
+                    decimal diff = (decimal)averageTransferSpeed / (bestPeer.TransferSpeed == 0 ? 1 : bestPeer.TransferSpeed);
+                    // if not much difference in speed then prefer total diff
+                    if (diff > 0.8m && diff < 1.2m)
+                    {
+                        if (info.TotalDifficulty > bestPeer.Info.TotalDifficulty)
+                        {
+                            bestPeer = (info, averageTransferSpeed);
+                        }
+
+                        selectedByDiff = true;
+                    }
+                }
+                
+                if(!selectedByDiff)
+                {
+                    if (isLowPriority ? (averageTransferSpeed <= bestPeer.TransferSpeed) : (averageTransferSpeed > bestPeer.TransferSpeed))
+                    {
+                        bestPeer = (info, averageTransferSpeed);
+                    }                    
                 }
             }
 
