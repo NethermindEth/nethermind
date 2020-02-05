@@ -257,7 +257,7 @@ namespace Nethermind.Blockchain.Synchronization
                         throw new EthSynchronizationException($"{bestPeer} sent an invalid block {currentBlock.ToString(Block.Format.Short)}.");
                     }
 
-                    if (HandleAddResult(currentBlock.Header, blockIndex == 0, _blockTree.SuggestBlock(currentBlock, shouldProcess)))
+                    if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, _blockTree.SuggestBlock(currentBlock, shouldProcess)))
                     {
                         if (downloadReceipts)
                         {
@@ -432,8 +432,18 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        private bool HandleAddResult(BlockHeader block, bool isFirstInBatch, AddBlockResult addResult)
+        private bool HandleAddResult(PeerInfo peerInfo, BlockHeader block, bool isFirstInBatch, AddBlockResult addResult)
         {
+            static void UpdatePeerInfo(PeerInfo peerInfo, BlockHeader header)
+            {
+                if (header.TotalDifficulty > peerInfo.TotalDifficulty)
+                {
+                    peerInfo.TotalDifficulty = header.TotalDifficulty.Value;
+                    peerInfo.TotalDifficulty = header.TotalDifficulty.Value;
+                    peerInfo.TotalDifficulty = header.TotalDifficulty.Value;
+                }
+            }
+            
             switch (addResult)
             {
                 // this generally should not happen as there is a consistency check before
@@ -453,15 +463,16 @@ namespace Nethermind.Blockchain.Synchronization
                         throw new EthSynchronizationException(message);
                     }
                 }
-
                 case AddBlockResult.CannotAccept:
                     throw new EthSynchronizationException("Block tree rejected block/header");
                 case AddBlockResult.InvalidBlock:
                     throw new EthSynchronizationException("Peer sent an invalid block/header");
                 case AddBlockResult.Added:
+                    UpdatePeerInfo(peerInfo, block);
                     if (_logger.IsTrace) _logger.Trace($"Block/header {block.Number} suggested for processing");
                     return true;
                 case AddBlockResult.AlreadyKnown:
+                    UpdatePeerInfo(peerInfo, block);
                     if (_logger.IsTrace) _logger.Trace($"Block/header {block.Number} skipped - already known");
                     return false;
                 default:
