@@ -118,20 +118,5 @@ namespace Nethermind.Blockchain.Synchronization
         {
             return string.Concat("[Allocation|", Description, "]");
         }
-
-        public void FinishSync()
-        {
-            PeerInfo current = Current;
-            if (current == null)
-            {
-                return;
-            }
-            
-            lock (_allocationLock)
-            {
-                current.IsAllocated = false;
-                Current = null;
-            }
-        }
     }
 }

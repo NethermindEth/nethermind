@@ -249,10 +249,6 @@ namespace Nethermind.Blockchain.Synchronization
                         }
                     }
                 }
-                else
-                {
-                    FreeBlocksSyncAllocation();
-                }
 
                 PeerInfo bestPeer = null;
                 if (_blocksSyncAllocation != null)
@@ -336,7 +332,7 @@ namespace Nethermind.Blockchain.Synchronization
                         }
                     }
 
-                    _blocksSyncAllocation?.FinishSync();
+                    FreeBlocksSyncAllocation();
                 }
 
                 var source = _peerSyncCancellation;
