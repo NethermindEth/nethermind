@@ -1088,7 +1088,7 @@ namespace Nethermind.Blockchain
         public bool IsKnownBlock(long number, Keccak blockHash)
         {
             if (number > BestKnownNumber)
-            {_logger.Warn("Is not known - beyond head");
+            {_logger.Warn($"{number} {blockHash.ToShortString()} Is not known - beyond head");
                 return false;
             }
 
@@ -1096,19 +1096,19 @@ namespace Nethermind.Blockchain
             // and these are very likely to be all at the head of the chain
             if (blockHash == Head?.Hash)
             {
-                _logger.Warn("Is known - head");
+                _logger.Warn("{number} {blockHash.ToShortString()} is known - head");
                 return true;
             }
 
             if (_headerCache.Get(blockHash) != null)
             {
-                _logger.Warn("Is known - cache");
+                _logger.Warn("{number} {blockHash.ToShortString()} is known - cache");
                 return true;
             }
 
             ChainLevelInfo level = LoadLevel(number);
             bool isKnown = level != null && FindIndex(blockHash, level).HasValue;
-            _logger.Warn($"Is known: {isKnown} {string.Join("", level?.BlockInfos.Select(bi => bi.BlockHash.ToShortString()) ?? Array.Empty<string>())}");
+            _logger.Warn($"{number} {blockHash.ToShortString()} is known: {isKnown} {string.Join("", level?.BlockInfos.Select(bi => bi.BlockHash.ToShortString()) ?? Array.Empty<string>())}");
             return isKnown;
         }
 
