@@ -346,7 +346,7 @@ namespace Nethermind.Blockchain.Synchronization
         private async Task ExecuteRefreshTask(RefreshTotalDiffTask refreshTotalDiffTask, CancellationToken token)
         {
             PeerInfo peerInfo = refreshTotalDiffTask.PeerInfo;
-            if (_logger.IsTrace) _logger.Trace($"Requesting head block info from {peerInfo.SyncPeer.Node:s}");
+            _logger.Warn($"Requesting head block info from {peerInfo.SyncPeer.Node:s}");
 
             ISyncPeer syncPeer = peerInfo.SyncPeer;
             Task<BlockHeader> getHeadHeaderTask = peerInfo.SyncPeer.GetHeadBlockHeader(refreshTotalDiffTask.BlockHash ?? peerInfo.HeadHash, token);
@@ -390,14 +390,13 @@ namespace Nethermind.Blockchain.Synchronization
                                 _stats.ReportSyncEvent(syncPeer.Node, NodeStatsEventType.SyncInitCompleted);
                             }
 
-                            if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {peerInfo} from {peerInfo.HeadNumber} to {header.Number}");
-                            
                             BlockHeader parent = _blockTree.FindHeader(header.ParentHash, BlockTreeLookupOptions.None);
                             if (parent != null)
                             {
                                 UInt256 newTotalDifficulty = (parent.TotalDifficulty ?? UInt256.Zero) + header.Difficulty;
                                 if (newTotalDifficulty > peerInfo.TotalDifficulty)
                                 {
+                                    _logger.Warn($"REFRESH Updating header of {peerInfo} from {peerInfo.HeadNumber} {peerInfo.TotalDifficulty} to {header.Number} {newTotalDifficulty}");
                                     peerInfo.TotalDifficulty = newTotalDifficulty;
                                     peerInfo.HeadNumber = header.Number;
                                     peerInfo.HeadHash = header.Hash;
@@ -405,6 +404,7 @@ namespace Nethermind.Blockchain.Synchronization
                             }
                             else if (header.Number > peerInfo.HeadNumber)
                             {
+                                _logger.Warn($"REFRESH Updating header of {peerInfo} from {peerInfo.HeadNumber} {peerInfo.TotalDifficulty} to {header.Number} -");
                                 peerInfo.HeadNumber = header.Number;
                                 peerInfo.HeadHash = header.Hash;
                             }
