@@ -52,13 +52,13 @@ namespace Nethermind.Blockchain.Synchronization
         private int _allocationsUpgradeIntervalInMs;
         private System.Timers.Timer _upgradeTimer;
 
-        private readonly BlockingCollection<PeerInfo> _peerRefreshQueue = new BlockingCollection<PeerInfo>();
+        private readonly BlockingCollection<RefreshTask> _peerRefreshQueue = new BlockingCollection<RefreshTask>();
         private Task _refreshLoopTask;
         private CancellationTokenSource _refreshLoopCancellation = new CancellationTokenSource();
         private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens = new ConcurrentDictionary<PublicKey, CancellationTokenSource>();
         private TimeSpan _timeBeforeWakingDeepSleepingPeerUp = TimeSpan.FromSeconds(3);
         private TimeSpan _timeBeforeWakingShallowSleepingPeerUp = TimeSpan.FromMilliseconds(500);
-        
+
 
         public void ReportNoSyncProgress(SyncPeerAllocation allocation, bool isSevere = true)
         {
@@ -72,7 +72,7 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
-            if(_logger.IsDebug) _logger.Debug($"No sync progress reported with {peerInfo}");
+            if (_logger.IsDebug) _logger.Debug($"No sync progress reported with {peerInfo}");
             peerInfo.SleepingSince = DateTime.UtcNow;
             peerInfo.IsSleepingDeeply = isSevere;
         }
@@ -81,7 +81,7 @@ namespace Nethermind.Blockchain.Synchronization
         {
             ReportInvalid(allocation?.Current, details);
         }
-        
+
         public void ReportInvalid(PeerInfo peerInfo, string details)
         {
             if (peerInfo != null)
@@ -119,14 +119,15 @@ namespace Nethermind.Blockchain.Synchronization
 
         private async Task RunRefreshPeerLoop()
         {
-            foreach (PeerInfo peerInfo in _peerRefreshQueue.GetConsumingEnumerable(_refreshLoopCancellation.Token))
+            foreach (RefreshTask refreshTask in _peerRefreshQueue.GetConsumingEnumerable(_refreshLoopCancellation.Token))
             {
+                PeerInfo peerInfo = refreshTask.PeerInfo;
                 if (_logger.IsDebug) _logger.Debug($"Refreshing info for {peerInfo}.");
                 CancellationTokenSource initCancelSource = _refreshCancelTokens[peerInfo.SyncPeer.Node.Id] = new CancellationTokenSource();
                 CancellationTokenSource linkedSource = CancellationTokenSource.CreateLinkedTokenSource(initCancelSource.Token, _refreshLoopCancellation.Token);
 
 #pragma warning disable 4014
-                RefreshPeerInfo(peerInfo, linkedSource.Token).ContinueWith(t =>
+                ExecuteRefreshTask(refreshTask, linkedSource.Token).ContinueWith(t =>
 #pragma warning restore 4014
                 {
                     _refreshCancelTokens.TryRemove(peerInfo.SyncPeer.Node.Id, out _);
@@ -350,12 +351,24 @@ namespace Nethermind.Blockchain.Synchronization
 
         private static int InitTimeout = 10000; // the Eth.Timeout should hit us earlier
 
-        private async Task RefreshPeerInfo(PeerInfo peerInfo, CancellationToken token)
+        public class RefreshTask
         {
+            public Keccak Keccak { get; set; }
+
+            public PeerInfo PeerInfo { get; set; }
+        }
+
+        public void Refresh(PeerInfo peerInfo, Keccak hash)
+        {
+        }
+
+        private async Task ExecuteRefreshTask(RefreshTask refreshTask, CancellationToken token)
+        {
+            PeerInfo peerInfo = refreshTask.PeerInfo;
             if (_logger.IsTrace) _logger.Trace($"Requesting head block info from {peerInfo.SyncPeer.Node:s}");
 
             ISyncPeer syncPeer = peerInfo.SyncPeer;
-            Task<BlockHeader> getHeadHeaderTask = peerInfo.SyncPeer.GetHeadBlockHeader(peerInfo.HeadHash, token);
+            Task<BlockHeader> getHeadHeaderTask = peerInfo.SyncPeer.GetHeadBlockHeader(refreshTask.Keccak ?? peerInfo.HeadHash, token);
             CancellationTokenSource delaySource = new CancellationTokenSource();
             CancellationTokenSource linkedSource = CancellationTokenSource.CreateLinkedTokenSource(delaySource.Token, token);
             Task delayTask = Task.Delay(InitTimeout, linkedSource.Token);
@@ -484,7 +497,7 @@ namespace Nethermind.Blockchain.Synchronization
             TryFind(publicKey, out PeerInfo peerInfo);
             if (peerInfo != null)
             {
-                _peerRefreshQueue.Add(peerInfo);
+                _peerRefreshQueue.Add(new RefreshTask {PeerInfo = peerInfo});
             }
         }
 
@@ -509,13 +522,13 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (_logger.IsDebug) _logger.Debug($"Adding {syncPeer.Node:c} to refresh queue");
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportInterestingEvent(peerInfo.SyncPeer.Node.Host, "adding node to refresh queue");
-            _peerRefreshQueue.Add(peerInfo);
+            _peerRefreshQueue.Add(new RefreshTask {PeerInfo = peerInfo});
         }
 
         public void RemovePeer(ISyncPeer syncPeer)
         {
             if (_logger.IsDebug) _logger.Debug($"Removing sync peer {syncPeer.Node:c}");
-            
+
             if (!_isStarted)
             {
                 if (_logger.IsDebug) _logger.Debug($"Sync peer pool not started yet - removing {syncPeer.Node:c} is blocked.");
@@ -553,7 +566,7 @@ namespace Nethermind.Blockchain.Synchronization
                 initCancelTokenSource?.Cancel();
             }
         }
-        
+
         private static Random _random = new Random();
 
         [MethodImpl(MethodImplOptions.Synchronized)]
@@ -602,7 +615,7 @@ namespace Nethermind.Blockchain.Synchronization
                     // note this is only 2 difficulty difference which means that is just for the POA / Clique chains
                     continue;
                 }
-                
+
                 if (info.TotalDifficulty - (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero) <= 2 && info.SyncPeer.ClientId.Contains("Parity"))
                 {
                     _logger.Warn("PARITY BUT NOT PARITY");
@@ -621,7 +634,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 if (_logger.IsTrace) _logger.Trace($"[{reason}] count 0");
             }
-            
+
             if (bestPeer.Info == null)
             {
                 if (_logger.IsTrace) _logger.Trace($"[{reason}] No peer found for ETH sync");

@@ -118,12 +118,6 @@ namespace Nethermind.Blockchain.Synchronization
                 peerInfo.TotalDifficulty = block.TotalDifficulty ?? peerInfo.TotalDifficulty;
             }
 
-            if ((block.TotalDifficulty ?? 0) < _blockTree.BestSuggestedHeader.TotalDifficulty)
-            {
-                peerInfo.SyncPeer.SendNewBlock(_blockTree.FindBlock(_blockTree.BestSuggestedHeader.Hash));
-                return;
-            }
-
             lock (_recentlySuggested)
             {
                 if (_recentlySuggested.Get(block.Hash) != null) return;
@@ -184,6 +178,7 @@ namespace Nethermind.Blockchain.Synchronization
                     }
 
                     _logger.Warn($"Requesting reorg for {block.ToString(Block.Format.Short)}");
+                    _pool.Refresh(peerInfo, block.ParentHash);
                     if (result == AddBlockResult.UnknownParent) _synchronizer.RequestSynchronization(SyncTriggerType.Reorganization);
                 }
             }
@@ -217,7 +212,7 @@ namespace Nethermind.Blockchain.Synchronization
                     /* do not add as this is a hint only */
                 }
 
-                _pool.Refresh(node.Id);
+                _pool.Refresh(peerInfo, hash);
             }
         }
 
