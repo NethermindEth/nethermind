@@ -554,8 +554,6 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        private static Random _random = new Random();
-
         [MethodImpl(MethodImplOptions.Synchronized)]
         private PeerInfo SelectBestPeerForAllocation(SyncPeerAllocation allocation, string reason, PeerSelectionOptions options)
         {
@@ -563,7 +561,7 @@ namespace Nethermind.Blockchain.Synchronization
             bool requireHigherDifficulty = options.RequiresHigherDifficulty();
             
             (PeerInfo Info, long TransferSpeed) bestPeer = (null, isLowPriority ? long.MaxValue : -1);
-            foreach ((_, PeerInfo info) in _peers.OrderBy(kvp => _random.Next()))
+            foreach ((_, PeerInfo info) in _peers)
             {
                 if (info.IsAllocated && info != allocation.Current)
                 {
