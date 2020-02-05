@@ -360,6 +360,10 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void Refresh(PeerInfo peerInfo, Keccak hash)
         {
+            if (peerInfo != null)
+            {
+                _peerRefreshQueue.Add(new RefreshTask {PeerInfo = peerInfo, Keccak = hash});
+            }
         }
 
         private async Task ExecuteRefreshTask(RefreshTask refreshTask, CancellationToken token)
