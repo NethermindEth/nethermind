@@ -180,15 +180,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                     if (result == AddBlockResult.UnknownParent)
                     {
-                        _pool.Refresh(peerInfo, block.Hash);
                         _synchronizer.RequestSynchronization(SyncTriggerType.Reorganization);
-                    }
-                    else
-                    {
-                        if ((block.TotalDifficulty ?? 0) > peerInfo.TotalDifficulty)
-                        {
-                            peerInfo.TotalDifficulty = block.TotalDifficulty ?? 0;
-                        }
                     }
                 }
             }
@@ -224,7 +216,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if(!_blockTree.IsKnownBlock(number, hash))
                 {
-                    _pool.Refresh(peerInfo, hash);
+                    _pool.RefreshTotalDifficulty(peerInfo, hash);
                     _synchronizer.RequestSynchronization(SyncTriggerType.NewNearBlock);
                 }
             }

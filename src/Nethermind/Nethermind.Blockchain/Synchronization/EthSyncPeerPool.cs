@@ -483,7 +483,7 @@ namespace Nethermind.Blockchain.Synchronization
         public int UsefulPeerCount => UsefulPeers.Count();
         public int PeerMaxCount { get; }
 
-        public void Refresh(PeerInfo peerInfo, Keccak blockHash)
+        public void RefreshTotalDifficulty(PeerInfo peerInfo, Keccak blockHash)
         {
             _peerRefreshQueue.Add(new RefreshTotalDiffTask {PeerInfo = peerInfo, BlockHash = blockHash});
         }
