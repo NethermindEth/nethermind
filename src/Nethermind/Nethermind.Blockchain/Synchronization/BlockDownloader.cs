@@ -168,13 +168,8 @@ namespace Nethermind.Blockchain.Synchronization
 
             return headersSynced;
         }
-
-        public Task<long> DownloadBlocks(PeerInfo bestPeer, int numberOfLatestBlocksToBeIgnored, CancellationToken cancellation, BlockDownloaderOptions options = BlockDownloaderOptions.Process)
-        {
-            return DownloadBlocks(bestPeer, numberOfLatestBlocksToBeIgnored, 0, cancellation, options);
-        }
-
-        public async Task<long> DownloadBlocks(PeerInfo bestPeer, int numberOfLatestBlocksToBeIgnored, long pivotNumber, CancellationToken cancellation, BlockDownloaderOptions options = BlockDownloaderOptions.Process)
+        
+        public async Task<long> DownloadBlocks(PeerInfo bestPeer, int numberOfLatestBlocksToBeIgnored, CancellationToken cancellation, BlockDownloaderOptions options = BlockDownloaderOptions.Process)
         {
             if (bestPeer == null)
             {
@@ -261,15 +256,12 @@ namespace Nethermind.Blockchain.Synchronization
                     if (_logger.IsTrace) _logger.Trace($"Received {currentBlock} from {bestPeer}");
 
                     // can move this to block tree now?
-                    bool isPostPivot = currentBlock.Number > pivotNumber;
-                    bool shouldValidateCurrentBlock = isPostPivot;
-                    if (shouldValidateCurrentBlock && !_blockValidator.ValidateSuggestedBlock(currentBlock))
+                    if (!_blockValidator.ValidateSuggestedBlock(currentBlock))
                     {
                         throw new EthSynchronizationException($"{bestPeer} sent an invalid block {currentBlock.ToString(Block.Format.Short)}.");
                     }
-
-                    bool shouldProcessCurrentBlock = shouldProcess && isPostPivot;
-                    if (HandleAddResult(currentBlock.Header, blockIndex == 0, _blockTree.SuggestBlock(currentBlock, shouldProcessCurrentBlock)))
+                    
+                    if (HandleAddResult(currentBlock.Header, blockIndex == 0, _blockTree.SuggestBlock(currentBlock, shouldProcess)))
                     {
                         if (downloadReceipts)
                         {
