@@ -131,7 +131,6 @@ namespace Nethermind.Blockchain.Synchronization
                     {
                         if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x.InnerException is TimeoutException))
                         {
-                            Console.WriteLine("TIMEOUTTTTT");
                             if (_logger.IsTrace) _logger.Trace($"Refreshing info for {peerInfo} failed due to timeout: {t.Exception.Message}");
                         }
                         else if (_logger.IsDebug) _logger.Debug($"Refreshing info for {peerInfo} failed {t.Exception}");
@@ -666,7 +665,7 @@ namespace Nethermind.Blockchain.Synchronization
             if (newSpeed / (decimal) Math.Max(1L, currentSpeed) > 1m + MinDiffPercentageForSpeedSwitch
                 && newSpeed > currentSpeed + MinDiffForSpeedSwitch)
             {
-                if (_logger.IsInfo) _logger.Info($"Sync peer substitution{Environment.NewLine}  OUT: {allocation.Current}[{currentSpeed}]{Environment.NewLine}  IN : {peerInfo}[{newSpeed}]");
+                if (_logger.IsDebug) _logger.Debug($"Sync peer substitution{Environment.NewLine}  OUT: {allocation.Current}[{currentSpeed}]{Environment.NewLine}  IN : {peerInfo}[{newSpeed}]");
                 allocation.ReplaceCurrent(peerInfo);
             }
             else
