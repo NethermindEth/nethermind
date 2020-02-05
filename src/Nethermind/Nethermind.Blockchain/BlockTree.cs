@@ -1021,7 +1021,11 @@ namespace Nethermind.Blockchain
 
             BlockAddedToMain?.Invoke(this, new BlockEventArgs(block));
 
-            if (block.IsGenesis || block.TotalDifficulty > (Head?.TotalDifficulty ?? 0))
+            if (block.IsGenesis || block.TotalDifficulty > (Head?.TotalDifficulty ?? 0)
+                || block.TotalDifficulty == (Head?.TotalDifficulty ?? 0) && block.Number > (Head?.Number ?? 0))
+                // the last condition here is something that I disagree with but if not implemented it creates an impression of the node staying behind on ethstats
+                // I believe that we should prefer shorter chains if they have same total difficulty
+                // this luckily only affects Clique chains
             {
                 if (block.Number == 0)
                 {
