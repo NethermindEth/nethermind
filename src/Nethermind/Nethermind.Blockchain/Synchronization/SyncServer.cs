@@ -176,10 +176,13 @@ namespace Nethermind.Blockchain.Synchronization
                         result = _blockTree.SuggestBlock(block, true);
                         if (_logger.IsTrace) _logger.Trace($"{block.Hash} ({block.Number}) adding result is {result}");
                     }
-
-                    _logger.Warn($"Requesting reorg for {block.ToString(Block.Format.Short)}");
-                    _pool.Refresh(peerInfo, block.ParentHash);
-                    if (result == AddBlockResult.UnknownParent) _synchronizer.RequestSynchronization(SyncTriggerType.Reorganization);
+                    
+                    if (result == AddBlockResult.UnknownParent)
+                    {
+                        _logger.Warn($"Requesting reorg for {block.ToString(Block.Format.Short)}");
+                        _pool.Refresh(peerInfo, block.ParentHash);
+                        _synchronizer.RequestSynchronization(SyncTriggerType.Reorganization);
+                    }
                 }
             }
             else
