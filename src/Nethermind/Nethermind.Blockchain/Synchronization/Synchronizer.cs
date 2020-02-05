@@ -258,7 +258,6 @@ namespace Nethermind.Blockchain.Synchronization
                 if (_blocksSyncAllocation != null)
                 {
                     UInt256 ourTotalDifficulty = _blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0;
-                    _syncPeerPool.EnsureBest();
                     bestPeer = _blocksSyncAllocation?.Current;
                     if (bestPeer == null || bestPeer.TotalDifficulty <= ourTotalDifficulty)
                     {
@@ -401,7 +400,7 @@ namespace Nethermind.Blockchain.Synchronization
             if (_blocksSyncAllocation == null)
             {
                 if (_logger.IsDebug) _logger.Debug("Allocating block sync.");
-                _blocksSyncAllocation = await _syncPeerPool.BorrowAsync(BorrowOptions.None, "synchronizer");
+                _blocksSyncAllocation = await _syncPeerPool.BorrowAsync(PeerSelectionOptions.HigherTotalDiff, "synchronizer");
                 _blocksSyncAllocation.Replaced += AllocationOnReplaced;
                 _blocksSyncAllocation.Cancelled += AllocationOnCancelled;
                 _blocksSyncAllocation.Refreshed += AllocationOnRefreshed;

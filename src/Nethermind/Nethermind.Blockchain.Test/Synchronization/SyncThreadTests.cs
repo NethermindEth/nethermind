@@ -283,7 +283,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var processor = new BlockchainProcessor(tree, blockProcessor, step, logManager, true);
 
             var nodeStatsManager = new NodeStatsManager(new StatsConfig(), logManager);
-            var syncPeerPool = new EthSyncPeerPool(tree, nodeStatsManager, syncConfig, 25, logManager);
+            var syncPeerPool = new EthSyncPeerPool(tree, nodeStatsManager, 25, logManager);
 
             StateProvider devState = new StateProvider(stateDb, codeDb, logManager);
             StorageProvider devStorage = new StorageProvider(stateDb, devState, logManager);

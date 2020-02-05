@@ -76,7 +76,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
 
             int maxPeersCount = _context.NetworkConfig.ActivePeersMaxCount;
-            _context.SyncPeerPool = new EthSyncPeerPool(_context.BlockTree, _context.NodeStatsManager, _context.Config<ISyncConfig>(), maxPeersCount, _context.LogManager);
+            _context.SyncPeerPool = new EthSyncPeerPool(_context.BlockTree, _context.NodeStatsManager, maxPeersCount, _context.LogManager);
             NodeDataFeed feed = new NodeDataFeed(_context.DbProvider.CodeDb, _context.DbProvider.StateDb, _context.LogManager);
             NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_context.SyncPeerPool, feed, _context.NodeDataConsumer, _context.LogManager);
             _context.Synchronizer = new Synchronizer(_context.SpecProvider, _context.BlockTree, _context.ReceiptStorage, _context.BlockValidator, _context.SealValidator, _context.SyncPeerPool, _context.Config<ISyncConfig>(), nodeDataDownloader, _context.NodeStatsManager, _context.LogManager);

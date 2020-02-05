@@ -45,7 +45,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             _blockTree = Substitute.For<IBlockTree>();
             _stats = Substitute.For<INodeStatsManager>();
-            _pool = new EthSyncPeerPool(_blockTree, _stats, new SyncConfig(), 25, 50, LimboLogs.Instance);
+            _pool = new EthSyncPeerPool(_blockTree, _stats, 25, 50, LimboLogs.Instance);
         }
 
         [TearDown]
@@ -211,14 +211,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA));
 
             Assert.AreEqual(1, _pool.PeerCount);
-        }
-
-        [Test]
-        public void Ensure_best_does_not_throw_on_no_allocations()
-        {
-            _pool.EnsureBest();
-            _pool.Start();
-            _pool.EnsureBest();
         }
 
         [Test]
@@ -500,7 +492,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public async Task Report_invalid_via_allocation_invokes_disconnection()
         {
             SimpleSyncPeerMock[] peers = await SetupPeers(3);
-            SyncPeerAllocation allocation = await _pool.BorrowAsync(BorrowOptions.DoNotReplace);
+            SyncPeerAllocation allocation = await _pool.BorrowAsync(PeerSelectionOptions.DoNotReplace);
             _pool.ReportInvalid(allocation, "issue details");
 
             Assert.True(peers.Count(p => p.DisconnectRequested) == 1);
@@ -510,7 +502,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public async Task Report_bad_peer_only_disconnects_after_11_times()
         {
             SimpleSyncPeerMock[] peers = await SetupPeers(1);
-            SyncPeerAllocation allocation = await _pool.BorrowAsync(BorrowOptions.DoNotReplace);
+            SyncPeerAllocation allocation = await _pool.BorrowAsync(PeerSelectionOptions.DoNotReplace);
 
             for (int i = 0; i < 10; i++)
             {
@@ -625,7 +617,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var allocationTasks = new Task<SyncPeerAllocation>[3];
             for (int i = 0; i < allocationTasks.Length; i++)
             {
-                allocationTasks[i] = _pool.BorrowAsync(BorrowOptions.None, string.Empty, null, 50);
+                allocationTasks[i] = _pool.BorrowAsync(PeerSelectionOptions.None, string.Empty, null, 50);
             }
 
             await Task.WhenAll(allocationTasks);
@@ -678,7 +670,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             {
                 if (iterations > 0)
                 {
-                    SyncPeerAllocation allocation = await _pool.BorrowAsync(BorrowOptions.None, string.Empty, null, 10);
+                    SyncPeerAllocation allocation = await _pool.BorrowAsync(PeerSelectionOptions.None, string.Empty, null, 10);
                     if (!allocation.HasPeer)
                     {
                         failures++;
