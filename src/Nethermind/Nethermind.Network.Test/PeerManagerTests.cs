@@ -370,7 +370,7 @@ namespace Nethermind.Network.Test
             }
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing_with_max_candidates_40_with_random_incoming_connections()
         {
             _networkConfig.MaxCandidatePeerCount = 40;
