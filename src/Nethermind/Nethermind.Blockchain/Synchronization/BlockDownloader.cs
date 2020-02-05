@@ -147,7 +147,7 @@ namespace Nethermind.Blockchain.Synchronization
                         throw new EthSynchronizationException($"{bestPeer} sent a block {currentHeader.ToString(BlockHeader.Format.Short)} with an invalid header");
                     }
 
-                    if (HandleAddResult(currentHeader, i == 0, _blockTree.Insert(currentHeader)))
+                    if (HandleAddResult(bestPeer, currentHeader, i == 0, _blockTree.Insert(currentHeader)))
                     {
                         headersSynced++;
                     }
@@ -436,7 +436,7 @@ namespace Nethermind.Blockchain.Synchronization
         {
             static void UpdatePeerInfo(PeerInfo peerInfo, BlockHeader header)
             {
-                if (header.TotalDifficulty > peerInfo.TotalDifficulty)
+                if (header.TotalDifficulty != null && header.TotalDifficulty > peerInfo.TotalDifficulty)
                 {
                     peerInfo.TotalDifficulty = header.TotalDifficulty.Value;
                     peerInfo.TotalDifficulty = header.TotalDifficulty.Value;
