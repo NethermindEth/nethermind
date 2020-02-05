@@ -236,7 +236,7 @@ namespace Nethermind.Blockchain
                 Block processedBlock = Process(block, blockRef.ProcessingOptions, tracer);
                 if (processedBlock == null)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
+                    if (_logger.IsWarn) _logger.Warn($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
                 }
                 else
                 {
