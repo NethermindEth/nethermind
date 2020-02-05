@@ -75,7 +75,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
                 _ecdsa, _nodePublicKey, LimboLogs.Instance);
         }
 
-        [Test]
+        [Test, Retry(3)]
         public async Task send_should_fail_if_deposit_does_not_exist()
         {
             var receipt = GetDataDeliveryReceiptRequest();
@@ -103,7 +103,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
             _sessionService.Received(fetchSessionRetries + 1).GetActive(receipt.DepositId);
         }
 
-        [Test]
+        [Test, Retry(3)]
         public async Task send_should_fail_if_provider_does_not_exist()
         {
             var receipt = GetDataDeliveryReceiptRequest();
@@ -118,7 +118,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
                 deposit.Deposit.Units);
         }
 
-        [Test]
+        [Test, Retry(3)]
         public async Task send_should_fail_if_validation_fails()
         {
             var receipt = GetDataDeliveryReceiptRequest();
@@ -187,7 +187,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
                 x.Signature.Equals(new Signature(1, 1, 27))));
         }
 
-        [Test]
+        [Test, Retry(3)]
         public async Task send_should_succeed_when_receipt_is_valid()
         {
             var receipt = GetDataDeliveryReceiptRequest();
