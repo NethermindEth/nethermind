@@ -626,7 +626,12 @@ namespace Nethermind.Blockchain.Synchronization
                     // if not much difference in speed then prefer total diff
                     if (diff > 0.75m && diff < 1.25m)
                     {
-                        if (info.TotalDifficulty > bestPeer.Info.TotalDifficulty)
+                        if (info.TotalDifficulty == 0 && info.HeadNumber > bestPeer.Info.HeadNumber)
+                        {
+                            // actually worth to learn about the difficulty of this peer and this may be a good way
+                            bestPeer = (info, averageTransferSpeed);
+                        }
+                        else if (info.TotalDifficulty > bestPeer.Info.TotalDifficulty)
                         {
                             bestPeer = (info, averageTransferSpeed);
                         }
