@@ -602,6 +602,12 @@ namespace Nethermind.Blockchain.Synchronization
                     // note this is only 2 difficulty difference which means that is just for the POA / Clique chains
                     continue;
                 }
+                
+                if (info.TotalDifficulty - (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero) <= 2 && info.SyncPeer.ClientId.Contains("Parity"))
+                {
+                    _logger.Warn("PARITY BUT NOT PARITY");
+                    continue;
+                }
 
                 long averageTransferSpeed = _stats.GetOrAdd(info.SyncPeer.Node).GetAverageTransferSpeed() ?? 0;
 

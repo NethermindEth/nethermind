@@ -414,6 +414,8 @@ namespace Nethermind.Blockchain
 
         public AddBlockResult Insert(BlockHeader header)
         {
+            _logger.Error("Unexpected insert on diag");
+            
             if (!CanAcceptNewBlocks)
             {
                 return AddBlockResult.CannotAccept;

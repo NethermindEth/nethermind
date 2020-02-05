@@ -19,7 +19,8 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
-[assembly:InternalsVisibleTo("Nethermind.Blockchain.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
+
 namespace Nethermind.Blockchain.Synchronization
 {
     public enum PeerClientType
@@ -30,13 +31,18 @@ namespace Nethermind.Blockchain.Synchronization
         Parity,
         Unknown
     }
-    
+
     public class PeerInfo
     {
         public PeerInfo(ISyncPeer syncPeer)
         {
             SyncPeer = syncPeer;
             TotalDifficulty = syncPeer.TotalDifficultyOnSessionStart;
+
+            if (syncPeer.ClientId == null)
+            {
+                Console.WriteLine("CLIENT ID IS NULL WHEN PEER INFO IS CREATED");
+            }
 
             if (syncPeer.ClientId?.Contains("BeSu", StringComparison.InvariantCultureIgnoreCase) ?? false)
             {
@@ -58,14 +64,13 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 PeerClientType = PeerClientType.Unknown;
             }
-            
         }
 
-        public PeerClientType PeerClientType { get; set; }
+        public PeerClientType PeerClientType { get; }
         public bool IsAllocated { get; set; }
         public bool IsInitialized { get; set; }
         public DateTime? SleepingSince { get; set; }
-        
+
         public bool IsSleepingDeeply { get; set; }
         public bool IsAsleep => SleepingSince != null;
         public ISyncPeer SyncPeer { get; }
