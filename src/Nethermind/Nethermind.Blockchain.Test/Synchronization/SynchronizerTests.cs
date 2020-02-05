@@ -478,21 +478,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 return Wait(Moment);
             }
 
-            private void WaitFor(Func<bool> isConditionMet, string description = "condition to be met")
-            {
-                const int waitInterval = 10;
-                for (int i = 0; i < WaitTime / waitInterval; i++)
-                {
-                    if (isConditionMet())
-                    {
-                        return;
-                    }
-
-                    TestContext.WriteLine($"({i}) Waiting {waitInterval} for {description}");
-                    Thread.Sleep(waitInterval);
-                }
-            }
-
             public SyncingContext Stop()
             {
                 Synchronizer.SyncEvent -= SynchronizerOnSyncEvent;
@@ -507,6 +492,21 @@ namespace Nethermind.Blockchain.Test.Synchronization
             }
         }
 
+        private static void WaitFor(Func<bool> isConditionMet, string description = "condition to be met")
+        {
+            const int waitInterval = 10;
+            for (int i = 0; i < WaitTime / waitInterval; i++)
+            {
+                if (isConditionMet())
+                {
+                    return;
+                }
+
+                TestContext.WriteLine($"({i}) Waiting {waitInterval} for {description}");
+                Thread.Sleep(waitInterval);
+            }
+        }
+        
         [SetUp]
         public void Setup()
         {
@@ -585,7 +585,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggestedHeaderIs(peerA.HeadHeader).Stop();
         }
 
-        [Test, Retry(3)]
+        [Test]
         public void Can_reorg_on_new_block_message()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
@@ -676,7 +676,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggestedHeaderIs(peerA.HeadHeader).Stop();
         }
 
-        [Test, Retry(3)]
+        [Test]
         public void Can_sync_when_best_peer_is_timing_out()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
@@ -693,7 +693,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggestedBlockHasNumber(1).Stop();
         }
 
-        [Test, Retry(3)]
+        [Test]
         public void Will_inform_connecting_peer_about_the_alternative_branch_with_same_difficulty()
         {
             if (_synchronizerType == SynchronizerType.Fast)
@@ -716,6 +716,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .Stop();
 
             Assert.AreNotEqual(peerB.HeadBlock.Hash, peerA.HeadBlock.Hash);
+            
+            WaitFor(() => peerB.ReceivedBlocks.Peek().Hash == peerA.HeadBlock.Hash);
             Assert.AreEqual(peerB.ReceivedBlocks.Peek().Hash, peerA.HeadBlock.Hash);
         }
 
@@ -787,7 +789,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggestedHeaderIs(peerB.HeadHeader).Stop();
         }
 
-        [Test, Retry(3)]
+        [Test]
         public void Can_reorg_based_on_total_difficulty()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
@@ -825,7 +827,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggestedHeaderIs(peerB.HeadHeader).Stop();
         }
 
-        [Test, Retry(3)]
+        [Test]
         public void Can_extend_chain_on_new_block_when_high_difficulty_low_number()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
