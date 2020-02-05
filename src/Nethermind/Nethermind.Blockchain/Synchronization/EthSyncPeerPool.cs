@@ -397,7 +397,7 @@ namespace Nethermind.Blockchain.Synchronization
                             if (parent != null)
                             {
                                 UInt256 newTotalDifficulty = (parent.TotalDifficulty ?? UInt256.Zero) + header.Difficulty;
-                                if (newTotalDifficulty > peerInfo.TotalDifficulty)
+                                if (newTotalDifficulty >= peerInfo.TotalDifficulty)
                                 {
                                     peerInfo.TotalDifficulty = newTotalDifficulty;
                                     peerInfo.HeadNumber = header.Number;
