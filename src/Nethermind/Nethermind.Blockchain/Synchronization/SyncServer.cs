@@ -168,7 +168,6 @@ namespace Nethermind.Blockchain.Synchronization
                     bool isKnownParent = _blockTree.IsKnownBlock(block.Number - 1, block.ParentHash);
                     if (isKnownParent)
                     {
-
                         if (!_blockValidator.ValidateSuggestedBlock(block))
                         {
                             if (_logger.IsDebug) _logger.Debug($"Peer {peerInfo.SyncPeer?.Node:c} sent an invalid block");
@@ -178,10 +177,18 @@ namespace Nethermind.Blockchain.Synchronization
                         result = _blockTree.SuggestBlock(block, true);
                         if (_logger.IsTrace) _logger.Trace($"{block.Hash} ({block.Number}) adding result is {result}");
                     }
-                    
+
                     if (result == AddBlockResult.UnknownParent)
                     {
+                        _pool.Refresh(peerInfo, block.Hash);
                         _synchronizer.RequestSynchronization(SyncTriggerType.Reorganization);
+                    }
+                    else
+                    {
+                        if ((block.TotalDifficulty ?? 0) > peerInfo.TotalDifficulty)
+                        {
+                            peerInfo.TotalDifficulty = block.TotalDifficulty ?? 0;
+                        }
                     }
                 }
             }
@@ -217,6 +224,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if(!_blockTree.IsKnownBlock(number, hash))
                 {
+                    _pool.Refresh(peerInfo, hash);
                     _synchronizer.RequestSynchronization(SyncTriggerType.NewNearBlock);
                 }
             }
