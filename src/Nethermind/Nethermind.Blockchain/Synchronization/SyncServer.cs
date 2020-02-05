@@ -178,9 +178,12 @@ namespace Nethermind.Blockchain.Synchronization
                         result = _blockTree.SuggestBlock(block, true);
                         if (_logger.IsTrace) _logger.Trace($"{block.Hash} ({block.Number}) adding result is {result}");
                     }
-
                     
-                    if (result == AddBlockResult.UnknownParent) _synchronizer.RequestSynchronization(SyncTriggerType.Reorganization);
+                    if (result == AddBlockResult.UnknownParent)
+                    {
+                        _pool.Refresh(peerInfo, block.ParentHash);
+                        _synchronizer.RequestSynchronization(SyncTriggerType.Reorganization);
+                    }
                 }
             }
             else
@@ -213,7 +216,7 @@ namespace Nethermind.Blockchain.Synchronization
                     /* do not add as this is a hint only */
                 }
 
-                _pool.Refresh(node.Id);
+                _pool.Refresh(peerInfo, null);
             }
         }
 

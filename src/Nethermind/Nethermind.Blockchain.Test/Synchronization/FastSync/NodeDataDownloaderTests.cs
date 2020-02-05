@@ -573,7 +573,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
         {
             DbContext dbContext = new DbContext(_logger);
             BlockTree blockTree = Build.A.BlockTree().OfChainLength((int) BlockTree.BestSuggestedHeader.Number).TestObject;
-            _pool = new EthSyncPeerPool(blockTree, new NodeStatsManager(new StatsConfig(), LimboLogs.Instance), new SyncConfig {FastSync = true}, 25, LimboLogs.Instance);
+            _pool = new EthSyncPeerPool(blockTree, new NodeStatsManager(new StatsConfig(), LimboLogs.Instance), 25, LimboLogs.Instance);
             _pool.Start();
             _pool.AddPeer(syncPeer);
 
