@@ -26,6 +26,7 @@ using Nethermind.Mining;
 using Nethermind.Stats.Model;
 using Nethermind.Store;
 using NSubstitute;
+using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization
@@ -37,12 +38,21 @@ namespace Nethermind.Blockchain.Test.Synchronization
         private IEthSyncPeerPool _peerPool;
         private ISynchronizer _synchronizer;
         private SyncServer _syncServer;
+        private Node _nodeWhoSentTheBlock;
 
         [SetUp]
         public void Setup()
         {
-            _blockTree = Substitute.For<IBlockTree>();
+            _nodeWhoSentTheBlock = new Node(TestItem.PublicKeyA, "127.0.0.1", 30303);
             _peerPool = Substitute.For<IEthSyncPeerPool>();
+            _peerPool.TryFind(_nodeWhoSentTheBlock.Id, out PeerInfo peerInfo).Returns(x =>
+            {
+                ISyncPeer peer = Substitute.For<ISyncPeer>();
+                x[1] = new PeerInfo(peer);
+                return true;
+            });
+            
+            _blockTree = Substitute.For<IBlockTree>();
             _synchronizer = Substitute.For<ISynchronizer>();
             _syncServer = new SyncServer(new StateDb(), new StateDb(), _blockTree, NullReceiptStorage.Instance, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, _peerPool, _synchronizer, new SyncConfig(), LimboLogs.Instance);
         }
@@ -57,6 +67,22 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _blockTree.DidNotReceive().FindHeader(Arg.Any<Keccak>(), Arg.Any<BlockTreeLookupOptions>());
             _blockTree.DidNotReceive().FindBlock(Arg.Any<Keccak>(), Arg.Any<BlockTreeLookupOptions>());
             Assert.AreEqual(TestItem.KeccakA, result);
+        }
+        
+        [Test]
+        public void Does_not_request_peer_refresh_on_known_hints()
+        {
+            _blockTree.IsKnownBlock(1, TestItem.KeccakA).ReturnsForAnyArgs(true);
+            _syncServer.HintBlock(TestItem.KeccakA, 1, _nodeWhoSentTheBlock);
+            _peerPool.DidNotReceiveWithAnyArgs().Refresh(null, null);
+        }
+        
+        [Test]
+        public void Requests_peer_refresh_on_unknown_hints()
+        {
+            _blockTree.IsKnownBlock(1, TestItem.KeccakA).ReturnsForAnyArgs(false);
+            _syncServer.HintBlock(TestItem.KeccakA, 1, _nodeWhoSentTheBlock);
+            _peerPool.Received().ReceivedWithAnyArgs();
         }
 
         [Test]
@@ -77,24 +103,18 @@ namespace Nethermind.Blockchain.Test.Synchronization
             ISealValidator sealValidator = sealOk ? TestSealValidator.AlwaysValid : TestSealValidator.NeverValid;
             IBlockValidator blockValidator = validationOk ? TestBlockValidator.AlwaysValid : TestBlockValidator.NeverValid;
             _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, blockValidator, sealValidator, _peerPool, _synchronizer, new SyncConfig(), LimboLogs.Instance);
-
-            Node knownNode = new Node(TestItem.PublicKeyA, "127.0.0.1", 30303);
-            _peerPool.TryFind(knownNode.Id, out PeerInfo peerInfo).Returns(x =>
-            {
-                x[1] = new PeerInfo(Substitute.For<ISyncPeer>());
-                return true;
-            });
+            
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
 
             _synchronizer.SyncMode.Returns(SyncMode.Full);
 
             if (!accepted)
             {
-                Assert.Throws<EthSynchronizationException>(() => _syncServer.AddNewBlock(block, knownNode));
+                Assert.Throws<EthSynchronizationException>(() => _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock));
             }
             else
             {
-                _syncServer.AddNewBlock(block, knownNode);
+                _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock);
             }
             
             if (accepted)
@@ -114,17 +134,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
 
             _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, _peerPool, _synchronizer, new SyncConfig(), LimboLogs.Instance);
-
-            Node knownNode = new Node(TestItem.PublicKeyA, "127.0.0.1", 30303);
-            _peerPool.TryFind(knownNode.Id, out PeerInfo peerInfo).Returns(x =>
-            {
-                x[1] = new PeerInfo(Substitute.For<ISyncPeer>());
-                return true;
-            });
+            
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
 
             _synchronizer.SyncMode.Returns(SyncMode.Full);
-            _syncServer.AddNewBlock(block, knownNode);
+            _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock);
 
             Assert.AreEqual(localBlockTree.BestSuggestedHeader, block.Header);
         }
@@ -138,17 +152,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
             ISealValidator sealValidator = Substitute.For<ISealValidator>();
             IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
             _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, blockValidator, sealValidator, _peerPool, _synchronizer, new SyncConfig(), LimboLogs.Instance);
-
-            Node knownNode = new Node(TestItem.PublicKeyA, "127.0.0.1", 30303);
-            _peerPool.TryFind(knownNode.Id, out PeerInfo peerInfo).Returns(x =>
-            {
-                x[1] = new PeerInfo(Substitute.For<ISyncPeer>());
-                return true;
-            });
+            
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
 
             _synchronizer.SyncMode.Returns(SyncMode.Full);
-            _syncServer.AddNewBlock(block, knownNode);
+            _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock);
 
             sealValidator.DidNotReceive().ValidateSeal(Arg.Any<BlockHeader>(), Arg.Any<bool>());
         }
