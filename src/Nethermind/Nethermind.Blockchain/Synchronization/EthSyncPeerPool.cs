@@ -400,11 +400,15 @@ namespace Nethermind.Blockchain.Synchronization
                                 if (newTotalDifficulty > peerInfo.TotalDifficulty)
                                 {
                                     peerInfo.TotalDifficulty = newTotalDifficulty;
+                                    peerInfo.HeadNumber = header.Number;
+                                    peerInfo.HeadHash = header.Hash;
                                 }
                             }
-                            
-                            peerInfo.HeadNumber = header.Number;
-                            peerInfo.HeadHash = header.Hash;
+                            else if (header.Number > peerInfo.HeadNumber)
+                            {
+                                peerInfo.HeadNumber = header.Number;
+                                peerInfo.HeadHash = header.Hash;
+                            }
 
                             peerInfo.IsInitialized = true;
                             foreach ((SyncPeerAllocation allocation, object _) in _replaceableAllocations)
