@@ -611,12 +611,6 @@ namespace Nethermind.Blockchain.Synchronization
                     continue;
                 }
 
-                if (info.TotalDifficulty - (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero) <= 2 && info.SyncPeer.ClientId.Contains("Parity"))
-                {
-                    _logger.Warn("PARITY BUT NOT PARITY");
-                    continue;
-                }
-
                 long averageTransferSpeed = _stats.GetOrAdd(info.SyncPeer.Node).GetAverageTransferSpeed() ?? 0;
 
                 if (isLowPriority ? (averageTransferSpeed <= bestPeer.TransferSpeed) : (averageTransferSpeed > bestPeer.TransferSpeed))
