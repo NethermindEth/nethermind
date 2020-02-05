@@ -196,27 +196,6 @@ namespace Nethermind.Blockchain.Synchronization
 
             _isStarted = true;
             StartUpgradeTimer();
-
-            // commenting out in version 1.4.2 to check if this is still needed
-            // feel free to remove this and the handler method if left out for longer
-            // _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
-        }
-
-        private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
-        {
-            foreach ((SyncPeerAllocation allocation, _) in _replaceableAllocations)
-            {
-                PeerInfo currentPeer = allocation.Current;
-                if (currentPeer == null)
-                {
-                    continue;
-                }
-
-                if (currentPeer.TotalDifficulty < (e.Block.TotalDifficulty ?? 0))
-                {
-                    allocation.Cancel();
-                }
-            }
         }
 
         private void StartUpgradeTimer()
@@ -589,7 +568,7 @@ namespace Nethermind.Blockchain.Synchronization
                     continue;
                 }
 
-                if (!info.IsInitialized || info.TotalDifficulty < (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero))
+                if (!info.IsInitialized || info.TotalDifficulty <= (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero))
                 {
                     // if (_logger.IsWarn) _logger.Warn($"[{reason}] not initialized {info.IsInitialized} {info.TotalDifficulty} < {_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero}");
                     continue;
