@@ -568,7 +568,7 @@ namespace Nethermind.Blockchain.Synchronization
                     continue;
                 }
 
-                if (!info.IsInitialized || info.TotalDifficulty <= (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero))
+                if (!info.IsInitialized || info.TotalDifficulty < (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero))
                 {
                     // if (_logger.IsWarn) _logger.Warn($"[{reason}] not initialized {info.IsInitialized} {info.TotalDifficulty} < {_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero}");
                     continue;

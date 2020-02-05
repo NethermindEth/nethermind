@@ -1096,13 +1096,13 @@ namespace Nethermind.Blockchain
             // and these are very likely to be all at the head of the chain
             if (blockHash == Head?.Hash)
             {
-                _logger.Warn("{number} {blockHash.ToShortString()} is known - head");
+                _logger.Warn($"{number} {blockHash?.ToShortString()} is known - head");
                 return true;
             }
 
             if (_headerCache.Get(blockHash) != null)
             {
-                _logger.Warn("{number} {blockHash.ToShortString()} is known - cache");
+                _logger.Warn($"{number} {blockHash.ToShortString()} is known - cache");
                 return true;
             }
 
