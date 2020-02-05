@@ -254,19 +254,23 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public Task<ResultWrapper<Keccak>> eth_sendTransaction(TransactionForRpc transactionForRpc)
         {
             Transaction tx = transactionForRpc.ToTransactionWithDefaults();
+            return SendTx(tx);
+        }
+
+        public Task<ResultWrapper<Keccak>> eth_sendRawTransaction(byte[] transaction)
+        {
+            Transaction tx = Rlp.Decode<Transaction>(transaction, RlpBehaviors.AllowUnsigned);
+            return SendTx(tx);
+        }
+
+        private Task<ResultWrapper<Keccak>> SendTx(Transaction tx)
+        {
             if (tx.Signature == null)
             {
                 tx.Nonce = _blockchainBridge.GetNonce(tx.SenderAddress);
                 _blockchainBridge.Sign(tx);
             }
 
-            Keccak txHash = _blockchainBridge.SendTransaction(tx, true);
-            return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
-        }
-
-        public Task<ResultWrapper<Keccak>> eth_sendRawTransaction(byte[] transaction)
-        {
-            Transaction tx = Rlp.Decode<Transaction>(transaction);
             Keccak txHash = _blockchainBridge.SendTransaction(tx, true);
             return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
         }
