@@ -138,7 +138,7 @@ namespace Nethermind.Network
                     return false;
                 }
                 
-                session.LastPongUtc = DateTime.Now;
+                session.LastPongUtc = DateTime.UtcNow;
                 return true;
             }
 
