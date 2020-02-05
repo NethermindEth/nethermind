@@ -181,7 +181,6 @@ namespace Nethermind.Blockchain.Synchronization
                     
                     if (result == AddBlockResult.UnknownParent)
                     {
-                        _pool.Refresh(peerInfo, block.ParentHash);
                         _synchronizer.RequestSynchronization(SyncTriggerType.Reorganization);
                     }
                 }
@@ -218,7 +217,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if(!_blockTree.IsKnownBlock(number, hash))
                 {
-                    _pool.Refresh(peerInfo, null);
+                    _synchronizer.RequestSynchronization(SyncTriggerType.NewNearBlock);
                 }
             }
         }
