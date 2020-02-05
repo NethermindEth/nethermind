@@ -183,7 +183,7 @@ namespace Nethermind.Blockchain.Synchronization
                         if (_logger.IsTrace) _logger.Trace($"{block.Hash} ({block.Number}) adding result is {result}");
                     }
 
-                    
+                    _logger.Warn($"Requesting reorg for {block.ToString(Block.Format.Short)}");
                     if (result == AddBlockResult.UnknownParent) _synchronizer.RequestSynchronization(SyncTriggerType.Reorganization);
                 }
             }
