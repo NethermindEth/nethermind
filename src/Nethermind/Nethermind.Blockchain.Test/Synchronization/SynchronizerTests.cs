@@ -543,7 +543,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
         [Test, Retry(3)]
-        [Retry(3)]
         public void Can_sync_with_one_peer_straight_and_extend_chain()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
@@ -625,7 +624,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
         [Test, Retry(3)]
-        [Retry(3)]
         public void Can_extend_chain_by_one_on_block_hint_message()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
@@ -641,7 +639,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
         [Test, Retry(3)]
-        [Retry(3)]
         public void Can_extend_chain_by_more_than_one_on_new_block_message()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
@@ -659,7 +656,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
         [Test, Retry(3)]
-        [Retry(3)]
         public void Will_ignore_new_block_that_is_far_ahead()
         {
             // this test was designed for no sync-timer sync process
@@ -731,8 +727,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(peerA)
                 .AfterPeerIsAdded(peerA)
-                .WaitAMoment()
-                .WaitAMoment()
+                .WaitUntilInitialized()
                 .PeerCountIs(1)
                 .BestSuggestedBlockHasNumber(1).Stop();
         }
@@ -772,7 +767,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
         [Test, Retry(3)]
-        [Retry(3)]
         public void Can_reorg_on_add_peer()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");

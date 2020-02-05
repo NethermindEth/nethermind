@@ -397,7 +397,7 @@ namespace Nethermind.Blockchain.Synchronization
                             if (parent != null)
                             {
                                 UInt256 newTotalDifficulty = (parent.TotalDifficulty ?? UInt256.Zero) + header.Difficulty;
-                                if (newTotalDifficulty > peerInfo.TotalDifficulty)
+                                if (newTotalDifficulty >= peerInfo.TotalDifficulty)
                                 {
                                     peerInfo.TotalDifficulty = newTotalDifficulty;
                                     peerInfo.HeadNumber = header.Number;
@@ -621,9 +621,28 @@ namespace Nethermind.Blockchain.Synchronization
 
                 long averageTransferSpeed = _stats.GetOrAdd(info.SyncPeer.Node).GetAverageTransferSpeed() ?? 0;
 
-                if (isLowPriority ? (averageTransferSpeed <= bestPeer.TransferSpeed) : (averageTransferSpeed > bestPeer.TransferSpeed))
+                bool selectedByDiff = false;
+                if (requireHigherDifficulty)
                 {
-                    bestPeer = (info, averageTransferSpeed);
+                    decimal diff = (decimal)averageTransferSpeed / (bestPeer.TransferSpeed == 0 ? 1 : bestPeer.TransferSpeed);
+                    // if not much difference in speed then prefer total diff
+                    if (diff > 0.75m && diff < 1.25m)
+                    {
+                        if (info.TotalDifficulty > bestPeer.Info.TotalDifficulty)
+                        {
+                            bestPeer = (info, averageTransferSpeed);
+                        }
+
+                        selectedByDiff = true;
+                    }
+                }
+                
+                if(!selectedByDiff)
+                {
+                    if (isLowPriority ? (averageTransferSpeed <= bestPeer.TransferSpeed) : (averageTransferSpeed > bestPeer.TransferSpeed))
+                    {
+                        bestPeer = (info, averageTransferSpeed);
+                    }                    
                 }
             }
 
