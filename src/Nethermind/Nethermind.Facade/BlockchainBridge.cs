@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Security;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -126,20 +127,30 @@ namespace Nethermind.Facade
             _stateProvider.StateRoot = _blockTree.Head.StateRoot;
             try
             {
+                if (tx.Signature == null)
+                {
+                    if (_wallet.IsUnlocked(tx.SenderAddress))
+                    {
+                        Sign(tx);
+                    }
+                    else
+                    {
+                        throw new SecurityException("Your account is locked. Unlock the account via CLI, personal_unlockAccount or use Trusted Signer.");
+                    }
+                }
+                
                 tx.Hash = tx.CalculateHash();
                 tx.Timestamp = _timestamper.EpochSeconds;
 
-                if (tx.Signature != null)
+                AddTxResult result = _txPool.AddTransaction(tx, _blockTree.Head.Number, txHandlingOptions);
+                
+                if (result == AddTxResult.OwnNonceAlreadyUsed && (txHandlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce)
                 {
-                    AddTxResult result = _txPool.AddTransaction(tx, _blockTree.Head.Number, txHandlingOptions);
-                    if (result == AddTxResult.OwnNonceAlreadyUsed && (txHandlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce)
-                    {
-                        // below the temporary NDM support - needs some review
-                        tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
-                        Sign(tx);
-                        tx.Hash = tx.CalculateHash();
-                        _txPool.AddTransaction(tx, _blockTree.Head.Number, txHandlingOptions);
-                    }
+                    // below the temporary NDM support - needs some review
+                    tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
+                    Sign(tx);
+                    tx.Hash = tx.CalculateHash();
+                    _txPool.AddTransaction(tx, _blockTree.Head.Number, txHandlingOptions);
                 }
 
                 return tx.Hash;
