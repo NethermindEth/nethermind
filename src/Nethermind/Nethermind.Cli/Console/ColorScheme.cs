@@ -17,7 +17,7 @@
 using System.Drawing;
 using System.Globalization;
 
-namespace Nethermind.Cli
+namespace Nethermind.Cli.Console
 {
     public abstract class ColorScheme
     {

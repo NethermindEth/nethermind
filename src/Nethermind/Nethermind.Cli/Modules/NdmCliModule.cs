@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Threading;
 using Jint.Native;
 using Nethermind.Core;
@@ -40,7 +39,7 @@ namespace Nethermind.Cli.Modules
             tx.From = new Address(address);
 
             Keccak txHash = NodeManager.Post<Keccak>("eth_sendTransaction", tx).Result;
-            Console.WriteLine($"Sent transaction {tx.From}->{tx.To} with gas {tx.Gas} at price {tx.GasPrice} and received tx hash: {txHash}");
+            Colorful.Console.WriteLine($"Sent transaction {tx.From}->{tx.To} with gas {tx.Gas} at price {tx.GasPrice} and received tx hash: {txHash}");
             if (txHash == null)
             {
                 return null;
@@ -49,7 +48,7 @@ namespace Nethermind.Cli.Modules
             JsValue receipt = null;
             while (receipt == JsValue.Null)
             {
-                Console.WriteLine("Awaiting receipt...");
+                Colorful.Console.WriteLine("Awaiting receipt...");
                 receipt = NodeManager.PostJint("eth_getTransactionReceipt", txHash).Result;
                 Thread.Sleep(1000);
             }

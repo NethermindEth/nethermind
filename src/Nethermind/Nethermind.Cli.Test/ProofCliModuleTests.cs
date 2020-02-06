@@ -17,6 +17,7 @@
 using System;
 using System.Dynamic;
 using Jint.Native;
+using Nethermind.Cli.Console;
 using Nethermind.Cli.Modules;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;

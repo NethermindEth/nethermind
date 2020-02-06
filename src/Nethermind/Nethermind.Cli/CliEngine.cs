@@ -24,6 +24,7 @@ using Jint.Native.Object;
 using Jint.Parser;
 using Jint.Runtime;
 using Jint.Runtime.Interop;
+using Nethermind.Cli.Console;
 using Nethermind.Cli.Converters;
 using Nethermind.Cli.Modules;
 using Nethermind.Core.Extensions;
@@ -44,7 +45,7 @@ namespace Nethermind.Cli
             JintEngine.SetValue("log", new Action<JsValue>(v =>
             {
 //                File.AppendAllText("C:\\temp\\cli.txt", v.ToString());
-                Console.WriteLine(v.ToString());
+                Colorful.Console.WriteLine(v.ToString());
             }));
             
             JintEngine.Global.FastAddProperty("window", JintEngine.Global, false, false, false);
@@ -54,7 +55,7 @@ namespace Nethermind.Cli
             console.Put("log", (JsValue) ((ObjectInstance) new DelegateWrapper(JintEngine, new Action<JsValue>(v =>
             {
 //                File.AppendAllText("C:\\temp\\cli.txt", v.ToString());
-                Console.WriteLine(v.ToString());
+                Colorful.Console.WriteLine(v.ToString());
             }))), false);
             
             JintEngine.ClrTypeConverter = new FallbackTypeConverter(JintEngine.ClrTypeConverter, new BigIntegerTypeConverter());
