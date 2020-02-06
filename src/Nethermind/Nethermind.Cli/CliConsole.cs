@@ -131,7 +131,7 @@ namespace Nethermind.Cli
         
         public void WriteInteresting(string interesting)
         {
-            Console.Write(interesting, GetColor(_colorScheme.Interesting));
+            Console.WriteLine(interesting, GetColor(_colorScheme.Interesting));
         }
 
         public void WriteLine()

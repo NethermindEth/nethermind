@@ -31,12 +31,5 @@ namespace Nethermind.Core.Test
             string result = Ripemd.ComputeString(new byte[] { });
             Assert.AreEqual(RipemdOfEmptyString, result);
         }
-
-        [Test]
-        public void Empty_string()
-        {
-            string result = Ripemd.ComputeString(string.Empty);
-            Assert.AreEqual(RipemdOfEmptyString, result);
-        }
     }
 }

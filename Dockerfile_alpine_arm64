@@ -20,28 +20,27 @@ RUN PORTABLE=1 make shared_lib
 RUN strip librocksdb.so
 
 ##################################################
-FROM mcr.microsoft.com/dotnet/core/sdk:3.1-bionic-arm64v8 AS build
-WORKDIR /source
+FROM mcr.microsoft.com/dotnet/core/sdk:3.1 AS build
 
 COPY . .
-RUN apt-get update && apt-get install -y libsnappy-dev libc6-dev libc6 libzstd1 libgflags-dev libssl1.0.0
+RUN apt-get update && apt-get install -y libsnappy-dev libc6-dev libc6 libzstd1 libgflags-dev libssl1.0
 RUN git submodule update --init src/Dirichlet src/rocksdb-sharp
-RUN dotnet publish /source/src/Nethermind/Nethermind.Runner --configuration Release --runtime linux-musl-arm64 --output /artifacts
-RUN git describe --tags --always --long > /artifacts/git-hash
+RUN dotnet publish src/Nethermind/Nethermind.Runner --configuration Release --runtime linux-musl-arm64 --output out
+RUN git describe --tags --always --long > out/git-hash
 
 ##################################################
-FROM mcr.microsoft.com/dotnet/core/aspnet:3.1-alpine3.10-arm64v8 AS image
-
-COPY scripts/entrypoint.sh /entrypoint.sh
+FROM mcr.microsoft.com/dotnet/core/aspnet:3.1-alpine-arm64v8
 
 RUN echo "@testing http://dl-cdn.alpinelinux.org/alpine/edge/testing/" >> /etc/apk/repositories && \
-    apk upgrade && apk add coreutils gosu@testing snappy-dev@testing && rm -rf /var/cache/apk/* && \
-    addgroup -g 1337 nethermind && adduser nethermind -u 1337 -D -G nethermind && \
-    chmod +x /entrypoint.sh && \
-    mkdir /data
+    apk upgrade && apk add coreutils gosu@testing snappy-dev@testing && rm -rf /var/cache/apk/*
 
-COPY --from=build --chown=nethermind:nethermind /artifacts /nethermind
-COPY --from=secp256k1 --chown=nethermind:nethermind /source/.libs/libsecp256k1.so /nethermind/runtimes/linux-x64/native/libsecp256k1.so
-COPY --from=rocksdb --chown=nethermind:nethermind /source/librocksdb.so /nethermind/runtimes/linux-arm64/native/librocksdb.so
+WORKDIR /nethermind
 
-ENTRYPOINT ["/entrypoint.sh"]
+COPY --from=build /out .
+COPY --from=secp256k1 /source/.libs/libsecp256k1.so /nethermind/runtimes/linux-x64/native/libsecp256k1.so
+COPY --from=rocksdb /source/librocksdb.so /nethermind/runtimes/linux-arm64/native/librocksdb.so
+
+ARG GIT_COMMIT=unspecified
+LABEL git_commit=$GIT_COMMIT
+
+ENTRYPOINT ["./Nethermind.Runner"]

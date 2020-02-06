@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Mime;
 using System.Reflection;
 using Jint.Native;
 using Jint.Parser.Ast;
@@ -130,6 +131,7 @@ namespace Nethermind.Cli
         {
             try
             {
+                _cliConsole.WriteInteresting($"Loading history file from {Path.Combine(AppDomain.CurrentDomain.BaseDirectory, HistoryFilePath)}" + Environment.NewLine);
                 if (File.Exists(HistoryFilePath))
                 {
                     foreach (string line in File.ReadLines(HistoryFilePath).Distinct().TakeLast(60))
@@ -173,7 +175,8 @@ namespace Nethermind.Cli
                         
                         if (!SecuredCommands.Any(sc => statement.Contains(sc)))
                         {
-                            if (ReadLine.GetHistory().Last() != statement)
+                            List<string> history = ReadLine.GetHistory();
+                            if (history.Any() && history.Last() != statement)
                             {
                                 ReadLine.AddHistory(statement);
                                 _historyCloned.Insert(0, statement);
