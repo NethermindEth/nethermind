@@ -132,7 +132,7 @@ namespace Nethermind.Facade
                 if (tx.Signature != null)
                 {
                     AddTxResult result = _txPool.AddTransaction(tx, _blockTree.Head.Number, txHandlingOptions);
-                    if (result == AddTxResult.OwnNonceAlreadyUsed)
+                    if (result == AddTxResult.OwnNonceAlreadyUsed && (txHandlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce)
                     {
                         // below the temporary NDM support - needs some review
                         tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
