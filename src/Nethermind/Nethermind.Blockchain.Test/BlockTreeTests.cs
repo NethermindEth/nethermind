@@ -1442,7 +1442,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.UpdateMainChain(block1A);
             blockTree.UpdateMainChain(block1B);
 
-            txPoolMock.Received().AddTransaction(t1, 1);
+            txPoolMock.Received().AddTransaction(t1, 1, TxHandlingOptions.None);
         }
         
         [Test]

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,17 +16,14 @@
 
 using System;
 
-namespace Nethermind.Serialization.Rlp
+namespace Nethermind.Blockchain.TxPools
 {
     [Flags]
-    public enum RlpBehaviors
+    public enum TxHandlingOptions
     {
-        None,
-        AllowExtraData = 1,
-        ForSealing = 2,
-        Storage = 4,
-        Eip658Receipts = 8,
-        AllowUnsigned = 16,
-        All = 31
+        None = 0,
+        ManagedNonce = 1,
+        PersistentBroadcast = 2,
+        All = 3
     }
 }

@@ -31,7 +31,7 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.ReadByte();
                 return null;
             }
-            
+
             var transactionSequence = rlpStream.PeekNextItem();
 
             int transactionLength = rlpStream.ReadSequenceLength();
@@ -57,36 +57,49 @@ namespace Nethermind.Serialization.Rlp
                 Span<byte> rBytes = rlpStream.DecodeByteArraySpan();
                 Span<byte> sBytes = rlpStream.DecodeByteArraySpan();
 
+                bool allowUnsigned = (rlpBehaviors & RlpBehaviors.AllowUnsigned) == RlpBehaviors.AllowUnsigned;
+                bool isSignatureOk = true;
+                string signatureError = null;
                 if (vBytes == null || rBytes == null || sBytes == null)
                 {
-                    throw new RlpException("VRS null when decoding Transaction");
+                    isSignatureOk = false;
+                    signatureError = "VRS null when decoding Transaction";
+                }
+                else if (vBytes.Length == 0 || rBytes.Length == 0 || sBytes.Length == 0)
+                {
+                    isSignatureOk = false;
+                    signatureError = "VRS is 0 length when decoding Transaction";
+                }
+                else if (vBytes[0] == 0 || rBytes[0] == 0 || sBytes[0] == 0)
+                {
+                    isSignatureOk = false;
+                    signatureError = "VRS starting with 0";
+                }
+                else if (rBytes.Length > 32 || sBytes.Length > 32)
+                {
+                    isSignatureOk = false;
+                    signatureError = "R and S lengths expected to be less or equal 32";
+                }
+                else if (rBytes.SequenceEqual(Bytes.Zero32) && sBytes.SequenceEqual(Bytes.Zero32))
+                {
+                    isSignatureOk = false;
+                    signatureError = "Both 'r' and 's' are zero when decoding a transaction.";
                 }
                 
-                if (vBytes.Length == 0 || rBytes.Length == 0 || sBytes.Length == 0)
+                if (isSignatureOk)
                 {
-                    throw new RlpException("VRS is 0 length when decoding Transaction");
+                    int v = vBytes.ReadEthInt32();
+                    Signature signature = new Signature(rBytes, sBytes, v);
+                    transaction.Signature = signature;
+                    transaction.Hash = Keccak.Compute(transactionSequence);
                 }
-                
-                if (vBytes[0] == 0 || rBytes[0] == 0 || sBytes[0] == 0)
+                else
                 {
-                    throw new RlpException("VRS starting with 0");
+                    if (!allowUnsigned)
+                    {
+                        throw new RlpException(signatureError);
+                    }
                 }
-
-                if (rBytes.Length > 32 || sBytes.Length > 32)
-                {
-                    throw new RlpException("R and S lengths expected to be less or equal 32");
-                }
-
-                int v = vBytes.ReadEthInt32();
-
-                if (rBytes.SequenceEqual(Bytes.Zero32) && sBytes.SequenceEqual(Bytes.Zero32))
-                {
-                    throw new RlpException("Both 'r' and 's' are zero when decoding a transaction.");
-                }
-
-                Signature signature = new Signature(rBytes, sBytes, v);
-                transaction.Signature = signature;
-                transaction.Hash = Keccak.Compute(transactionSequence);
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
@@ -119,7 +132,7 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.Signature == null ? null : item.Signature.SAsSpan.WithoutLeadingZeros());
         }
 
-        private int GetContentLength(Transaction item, bool forSigning , bool isEip155Enabled = false, int chainId = 0)
+        private int GetContentLength(Transaction item, bool forSigning, bool isEip155Enabled = false, int chainId = 0)
         {
             int contentLength = Rlp.LengthOf(item.Nonce)
                                 + Rlp.LengthOf(item.GasPrice)

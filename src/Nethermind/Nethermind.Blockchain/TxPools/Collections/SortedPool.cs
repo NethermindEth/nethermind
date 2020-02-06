@@ -111,7 +111,7 @@ namespace Nethermind.Blockchain.TxPools.Collections
                     LruList.AddLast(newNode);
                 }
 
-                Add(key, newNode);
+                InsertCore(key, newNode);
 
                 if (CacheMap.Count > _capacity)
                 {
@@ -147,7 +147,7 @@ namespace Nethermind.Blockchain.TxPools.Collections
             return true;
         }
         
-        protected virtual void Add(TKey key, LinkedListNode<KeyValuePair<TKey, TValue>> newNode)
+        protected virtual void InsertCore(TKey key, LinkedListNode<KeyValuePair<TKey, TValue>> newNode)
         {
             CacheMap.Add(key, newNode);
         }

@@ -1049,7 +1049,7 @@ namespace Nethermind.Blockchain
                 for (int i = 0; i < previous.Transactions.Length; i++)
                 {
                     Transaction tx = previous.Transactions[i];
-                    _txPool.AddTransaction(tx, previous.Number);
+                    _txPool.AddTransaction(tx, previous.Number, TxHandlingOptions.None);
                 }
             }
 

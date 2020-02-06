@@ -21,6 +21,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -254,20 +255,18 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public Task<ResultWrapper<Keccak>> eth_sendTransaction(TransactionForRpc transactionForRpc)
         {
             Transaction tx = transactionForRpc.ToTransactionWithDefaults();
-            if (tx.Signature == null)
-            {
-                tx.Nonce = _blockchainBridge.GetNonce(tx.SenderAddress);
-                _blockchainBridge.Sign(tx);
-            }
-
-            Keccak txHash = _blockchainBridge.SendTransaction(tx, true);
-            return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
+            return SendTx(tx);
         }
 
         public Task<ResultWrapper<Keccak>> eth_sendRawTransaction(byte[] transaction)
         {
-            Transaction tx = Rlp.Decode<Transaction>(transaction);
-            Keccak txHash = _blockchainBridge.SendTransaction(tx, true);
+            Transaction tx = Rlp.Decode<Transaction>(transaction, RlpBehaviors.AllowUnsigned);
+            return SendTx(tx);
+        }
+
+        private Task<ResultWrapper<Keccak>> SendTx(Transaction tx)
+        {
+            Keccak txHash = _blockchainBridge.SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
             return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
         }
 

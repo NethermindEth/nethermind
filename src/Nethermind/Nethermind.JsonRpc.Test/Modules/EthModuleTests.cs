@@ -44,6 +44,7 @@ using Nethermind.Store;
 using Nethermind.Store.Repositories;
 using Nethermind.Wallet;
 using NSubstitute;
+using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -499,6 +500,21 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, module, "eth_chainid");
 
             Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x1\"}", serialized);
+        }
+        
+        [Test]
+        public void Send_transaction_with_signature_will_not_try_to_sign()
+        {
+            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+            bridge.SendTransaction(null, TxHandlingOptions.PersistentBroadcast).ReturnsForAnyArgs(TestItem.KeccakA);
+            
+            IEthModule module = new EthModule(new JsonRpcConfig(), NullLogManager.Instance, bridge);
+
+            Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance), TestItem.PrivateKeyA, 10000000).TestObject;
+            string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, module, "eth_sendRawTransaction", Rlp.Encode(tx, RlpBehaviors.None).Bytes.ToHexString());
+
+            bridge.DidNotReceiveWithAnyArgs().Sign(null);
+            Assert.AreEqual($"{{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"{TestItem.KeccakA.Bytes.ToHexString(true)}\"}}", serialized);
         }
     }
 }

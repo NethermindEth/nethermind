@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain.TxPools
         {
         }
 
-        public AddTxResult AddTransaction(Transaction tx, long blockNumber, bool isOwn = false) => AddTxResult.Added;
+        public AddTxResult AddTransaction(Transaction tx, long blockNumber, TxHandlingOptions txHandlingOptions) => AddTxResult.Added;
 
         public void RemoveTransaction(Keccak hash, long blockNumber)
         {
