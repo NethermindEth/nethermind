@@ -516,20 +516,5 @@ namespace Nethermind.JsonRpc.Test.Modules
             bridge.DidNotReceiveWithAnyArgs().Sign(null);
             Assert.AreEqual($"{{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"{TestItem.KeccakA.Bytes.ToHexString(true)}\"}}", serialized);
         }
-        
-        [Test]
-        public void Send_transaction_without_signature_will_try_to_sign()
-        {
-            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            bridge.SendTransaction(null, TxHandlingOptions.PersistentBroadcast).ReturnsForAnyArgs(TestItem.KeccakA);
-
-            IEthModule module = new EthModule(new JsonRpcConfig(), NullLogManager.Instance, bridge);
-
-            Transaction tx = Build.A.Transaction.TestObject;
-            string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, module, "eth_sendRawTransaction", Rlp.Encode(tx, RlpBehaviors.None).Bytes.ToHexString());
-
-            bridge.ReceivedWithAnyArgs().Sign(null);
-            Assert.AreEqual($"{{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"{TestItem.KeccakA.Bytes.ToHexString(true)}\"}}", serialized);
-        }
     }
 }

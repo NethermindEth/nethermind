@@ -44,8 +44,7 @@ namespace Nethermind.Blockchain.TxPools
     {
         private readonly object _locker = new object();
 
-        private readonly ConcurrentDictionary<Address, AddressNonces> _nonces =
-            new ConcurrentDictionary<Address, AddressNonces>();
+        private readonly ConcurrentDictionary<Address, AddressNonces> _nonces = new ConcurrentDictionary<Address, AddressNonces>();
 
         /// <summary>
         /// Number of blocks after which own transaction will not be resurrected any more

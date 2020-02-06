@@ -124,25 +124,30 @@ namespace Nethermind.Facade
         public Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             _stateProvider.StateRoot = _blockTree.Head.StateRoot;
-
-            tx.Hash = tx.CalculateHash();
-            tx.Timestamp = _timestamper.EpochSeconds;
-
-            if (tx.Signature != null)
+            try
             {
-                AddTxResult result = _txPool.AddTransaction(tx, _blockTree.Head.Number, txHandlingOptions);
-                if (result == AddTxResult.OwnNonceAlreadyUsed)
-                {
-                    // below the temporary NDM support - needs some review
-                    tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
-                    Sign(tx);
-                    tx.Hash = tx.CalculateHash();
-                    _txPool.AddTransaction(tx, _blockTree.Head.Number, txHandlingOptions);
-                }
-            }
+                tx.Hash = tx.CalculateHash();
+                tx.Timestamp = _timestamper.EpochSeconds;
 
-            _stateProvider.Reset();
-            return tx.Hash;
+                if (tx.Signature != null)
+                {
+                    AddTxResult result = _txPool.AddTransaction(tx, _blockTree.Head.Number, txHandlingOptions);
+                    if (result == AddTxResult.OwnNonceAlreadyUsed)
+                    {
+                        // below the temporary NDM support - needs some review
+                        tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
+                        Sign(tx);
+                        tx.Hash = tx.CalculateHash();
+                        _txPool.AddTransaction(tx, _blockTree.Head.Number, txHandlingOptions);
+                    }
+                }
+
+                return tx.Hash;
+            }
+            finally
+            {
+                _stateProvider.Reset();
+            }
         }
 
         public TxReceipt GetReceipt(Keccak txHash)
@@ -197,27 +202,33 @@ namespace Nethermind.Facade
 
 
             _stateProvider.StateRoot = blockHeader.StateRoot;
-            if (transaction.Nonce == 0)
+            try
             {
-                transaction.Nonce = GetNonce(_stateProvider.StateRoot, transaction.SenderAddress);
+                if (transaction.Nonce == 0)
+                {
+                    transaction.Nonce = GetNonce(_stateProvider.StateRoot, transaction.SenderAddress);
+                }
+
+                BlockHeader callHeader = new BlockHeader(
+                    blockHeader.Hash,
+                    Keccak.OfAnEmptySequenceRlp,
+                    Address.Zero,
+                    0,
+                    blockHeader.Number + 1,
+                    blockHeader.GasLimit,
+                    blockHeader.Timestamp,
+                    Bytes.Empty);
+
+                transaction.Hash = transaction.CalculateHash();
+                CallOutputTracer callOutputTracer = new CallOutputTracer();
+                _transactionProcessor.CallAndRestore(transaction, callHeader, callOutputTracer);
+                return callOutputTracer;
             }
-
-            BlockHeader callHeader = new BlockHeader(
-                blockHeader.Hash,
-                Keccak.OfAnEmptySequenceRlp,
-                Address.Zero,
-                0,
-                blockHeader.Number + 1,
-                blockHeader.GasLimit,
-                blockHeader.Timestamp,
-                Bytes.Empty);
-
-            transaction.Hash = transaction.CalculateHash();
-            CallOutputTracer callOutputTracer = new CallOutputTracer();
-            _transactionProcessor.CallAndRestore(transaction, callHeader, callOutputTracer);
-            _stateProvider.Reset();
-            _storageProvider.Reset();
-            return callOutputTracer;
+            finally
+            {
+                _stateProvider.Reset();
+                _storageProvider.Reset();
+            }
         }
 
         public long GetChainId()

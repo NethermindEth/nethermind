@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         private ITxStorage _inMemoryTxStorage;
         private ITxStorage _persistentTxStorage;
         private IStateProvider _stateProvider;
-
+        
         [SetUp]
         public void Setup()
         {
@@ -162,16 +162,19 @@ namespace Nethermind.Blockchain.Test.TxPools
             var transactions = AddOwnTransactionToPool();
             _txPool.RemoveTransaction(transactions[0].Hash, 1);
             _txPool.RemoveTransaction(TestItem.KeccakA, 100);
-            _txPool.AddTransaction(transactions[0], 100, TxHandlingOptions.PersistentBroadcast);
+            _txPool.AddTransaction(transactions[0], 100, TxHandlingOptions.None);
             Assert.AreEqual(0, _txPool.GetOwnPendingTransactions().Length);
         }
 
-        [Test]
-        public void should_add_pending_transactions()
+        [TestCase(true, true,10)]
+        [TestCase(false, true,100)]
+        [TestCase(true, false,100)]
+        [TestCase(false, false,100)]
+        public void should_add_pending_transactions(bool sameTransactionSenderPerPeer, bool sameNoncePerPeer, int expectedTransactions)
         {
             _txPool = CreatePool(_noTxStorage);
-            var transactions = AddTransactionsToPool();
-            _txPool.GetPendingTransactions().Length.Should().Be(transactions.Length);
+            AddTransactionsToPool(sameTransactionSenderPerPeer, sameNoncePerPeer);
+            _txPool.GetPendingTransactions().Length.Should().Be(expectedTransactions);
         }
 
         [Test]
@@ -347,9 +350,9 @@ namespace Nethermind.Blockchain.Test.TxPools
         private ISyncPeer GetPeer(PublicKey publicKey)
             => new SyncPeerMock(_remoteBlockTree, publicKey);
 
-        private Transaction[] AddTransactionsToPool(int transactionsPerPeer = 10)
+        private Transaction[] AddTransactionsToPool(bool sameTransactionSenderPerPeer = true, bool sameNoncePerPeer= true, int transactionsPerPeer = 10)
         {
-            var transactions = GetTransactions(GetPeers(transactionsPerPeer));
+            var transactions = GetTransactions(GetPeers(transactionsPerPeer), sameTransactionSenderPerPeer, sameNoncePerPeer);
             foreach (var transaction in transactions)
             {
                 _txPool.AddTransaction(transaction, 1, TxHandlingOptions.PersistentBroadcast);
@@ -377,23 +380,22 @@ namespace Nethermind.Blockchain.Test.TxPools
             IEnumerable<Transaction> transactions)
             => transactions.Select(t => storage.Get(t.Hash)).Where(t => !(t is null)).ToArray();
 
-        private Transaction[] GetTransactions(IDictionary<ISyncPeer, PrivateKey> peers,
-            int transactionsPerPeer = 10)
+        private Transaction[] GetTransactions(IDictionary<ISyncPeer, PrivateKey> peers, bool sameTransactionSenderPerPeer = true, bool sameNoncePerPeer = true, int transactionsPerPeer = 10)
         {
             var transactions = new List<Transaction>();
             foreach ((_, PrivateKey privateKey) in peers)
             {
                 for (var i = 0; i < transactionsPerPeer; i++)
                 {
-                    transactions.Add(GetTransaction(privateKey, Address.FromNumber((UInt256)i)));
+                    transactions.Add(GetTransaction(sameTransactionSenderPerPeer ? privateKey : Build.A.PrivateKey.TestObject, Address.FromNumber((UInt256)i), sameNoncePerPeer ? UInt256.Zero : (UInt256?) i));
                 }
             }
 
             return transactions.ToArray();
         }
 
-        private Transaction GetTransaction(PrivateKey privateKey, Address to = null)
-            => GetTransaction(0, 1, 1000, to, new byte[0], privateKey);
+        private Transaction GetTransaction(PrivateKey privateKey, Address to = null, UInt256? nonce = null)
+            => GetTransaction(nonce ?? UInt256.Zero, 1, 1000, to, new byte[0], privateKey);
 
         private Transaction GetTransaction(UInt256 nonce, long gasLimit, UInt256 gasPrice, Address to, byte[] data,
             PrivateKey privateKey)
