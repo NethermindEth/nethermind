@@ -15,25 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.TxPools
 {
-    public interface ITxPool
+    [Flags]
+    public enum TxHandlingOptions
     {
-        Transaction[] GetPendingTransactions();
-        Transaction[] GetOwnPendingTransactions();
-        void AddFilter<T>(T filter) where T : ITxFilter;
-        void AddPeer(ISyncPeer peer);
-        void RemovePeer(PublicKey nodeId);
-        AddTxResult AddTransaction(Transaction tx, long blockNumber, TxHandlingOptions handlingOptions);
-        void RemoveTransaction(Keccak hash, long blockNumber);
-        bool TryGetPendingTransaction(Keccak hash, out Transaction transaction);
-        UInt256 ReserveOwnTransactionNonce(Address address);
-        event EventHandler<TxEventArgs> NewPending;
-        event EventHandler<TxEventArgs> RemovedPending;
+        None = 0,
+        ManagedNonce = 1,
+        PersistentBroadcast = 2,
+        All = 3
     }
 }

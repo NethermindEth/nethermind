@@ -101,6 +101,6 @@ namespace Nethermind.DataMarketplace.Core.Services
         }
 
         public Task<Keccak> SendOwnTransactionAsync(Transaction transaction)
-            => Task.FromResult(_blockchainBridge.SendTransaction(transaction, true));
+            => Task.FromResult(_blockchainBridge.SendTransaction(transaction, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast));
     }
 }

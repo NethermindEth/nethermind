@@ -506,7 +506,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Send_transaction_with_signature_will_not_try_to_sign()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            bridge.SendTransaction(null).ReturnsForAnyArgs(TestItem.KeccakA);
+            bridge.SendTransaction(null, TxHandlingOptions.PersistentBroadcast).ReturnsForAnyArgs(TestItem.KeccakA);
             
             IEthModule module = new EthModule(new JsonRpcConfig(), NullLogManager.Instance, bridge);
 
@@ -521,7 +521,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Send_transaction_without_signature_will_try_to_sign()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            bridge.SendTransaction(null).ReturnsForAnyArgs(TestItem.KeccakA);
+            bridge.SendTransaction(null, TxHandlingOptions.PersistentBroadcast).ReturnsForAnyArgs(TestItem.KeccakA);
 
             IEthModule module = new EthModule(new JsonRpcConfig(), NullLogManager.Instance, bridge);
 

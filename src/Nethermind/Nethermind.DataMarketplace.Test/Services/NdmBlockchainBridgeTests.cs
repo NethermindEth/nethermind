@@ -224,9 +224,9 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             var transaction = Build.A.Transaction.TestObject;
             var hash = TestItem.KeccakA;
-            _blockchainBridge.SendTransaction(transaction, true).Returns(hash);
+            _blockchainBridge.SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce).Returns(hash);
             var result = await _ndmBridge.SendOwnTransactionAsync(transaction);
-            _blockchainBridge.Received().SendTransaction(transaction, true);
+            _blockchainBridge.Received().SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce);
             result.Should().Be(hash);
         }
     }

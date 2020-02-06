@@ -62,14 +62,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             var pendingTransaction = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, blockNumber)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber)).TestObject;
             pendingTransaction.Signature.V = 37;
-            txPool.AddTransaction(pendingTransaction, blockNumber);
+            txPool.AddTransaction(pendingTransaction, blockNumber, TxHandlingOptions.None);
             
             blockNumber = 1;
             var transaction = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, blockNumber)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber))
                 .WithNonce(100).TestObject;
             transaction.Signature.V = 37;
-            txPool.AddTransaction(transaction, blockNumber);
+            txPool.AddTransaction(transaction, blockNumber, TxHandlingOptions.None);
 
             
             Block genesis = Build.A.Block.Genesis

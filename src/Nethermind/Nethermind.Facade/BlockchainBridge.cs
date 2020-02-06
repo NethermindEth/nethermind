@@ -121,24 +121,28 @@ namespace Nethermind.Facade
 
         public Transaction[] GetPendingTransactions() => _txPool.GetPendingTransactions();
 
-        public Keccak SendTransaction(Transaction transaction, bool isOwn = false)
+        public Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             _stateProvider.StateRoot = _blockTree.Head.StateRoot;
 
-            transaction.Hash = transaction.CalculateHash();
-            transaction.Timestamp = _timestamper.EpochSeconds;
+            tx.Hash = tx.CalculateHash();
+            tx.Timestamp = _timestamper.EpochSeconds;
 
-            var result = _txPool.AddTransaction(transaction, _blockTree.Head.Number, isOwn);
-            if (isOwn && result == AddTxResult.OwnNonceAlreadyUsed)
+            if (tx.Signature != null)
             {
-                transaction.Nonce = _txPool.ReserveOwnTransactionNonce(transaction.SenderAddress);
-                Sign(transaction);
-                transaction.Hash = transaction.CalculateHash();
-                _txPool.AddTransaction(transaction, _blockTree.Head.Number, true);
+                AddTxResult result = _txPool.AddTransaction(tx, _blockTree.Head.Number, txHandlingOptions);
+                if (result == AddTxResult.OwnNonceAlreadyUsed)
+                {
+                    // below the temporary NDM support - needs some review
+                    tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
+                    Sign(tx);
+                    tx.Hash = tx.CalculateHash();
+                    _txPool.AddTransaction(tx, _blockTree.Head.Number, txHandlingOptions);
+                }
             }
 
             _stateProvider.Reset();
-            return transaction.Hash;
+            return tx.Hash;
         }
 
         public TxReceipt GetReceipt(Keccak txHash)

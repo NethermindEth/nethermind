@@ -136,7 +136,7 @@ namespace Nethermind.DataMarketplace.Test
             deployContract.GasLimit = 4000000;
             deployContract.Init = initCode;
             deployContract.Nonce = _bridge.GetNonce(_providerAccount);
-            Keccak txHash = _bridge.SendTransaction(deployContract);
+            Keccak txHash = _bridge.SendTransaction(deployContract, TxHandlingOptions.None);
             TxReceipt receipt = _bridge.GetReceipt(txHash);
             Assert.AreEqual(StatusCode.Success, receipt.StatusCode, $"contract deployed {receipt.Error}");
             return receipt;
@@ -194,7 +194,6 @@ namespace Nethermind.DataMarketplace.Test
             private Block _headBlock = Build.A.Block.WithNumber(1).WithTransactions(new Transaction[100]).TestObject;
 
             public BlockHeader Head => _headBlock.Header;
-            public BlockHeader BestSuggested { get; }
             public long BestKnown { get; }
             public bool IsSyncing { get; }
             public void RecoverTxSenders(Block block)
@@ -243,23 +242,18 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
-            public Keccak GetBlockHash(Keccak transactionHash)
-            {
-                throw new NotImplementedException();
-            }
-
             private BlockReceiptsTracer _receiptsTracer;
 
             private int _txIndex = 0;
 
-            public Keccak SendTransaction(Transaction transaction, bool isOwn = false)
+            public Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
             {
-                transaction.Hash = transaction.CalculateHash();
-                _headBlock.Transactions[_txIndex++] = transaction;
-                _receiptsTracer.StartNewTxTrace(transaction.Hash);
-                _processor.Execute(transaction, Head, _receiptsTracer);
+                tx.Hash = tx.CalculateHash();
+                _headBlock.Transactions[_txIndex++] = tx;
+                _receiptsTracer.StartNewTxTrace(tx.Hash);
+                _processor.Execute(tx, Head, _receiptsTracer);
                 _receiptsTracer.EndTxTrace();
-                return transaction.CalculateHash();
+                return tx.CalculateHash();
             }
 
             public TxReceipt GetReceipt(Keccak txHash) => _receiptsTracer.TxReceipts.Single(r => r?.TxHash == txHash);
