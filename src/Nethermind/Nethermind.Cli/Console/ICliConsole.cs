@@ -16,18 +16,30 @@
 
 using System;
 
-namespace Nethermind.Cli
+namespace Nethermind.Cli.Console
 {
-    public class CliFunctionAttribute : Attribute
+    public interface ICliConsole
     {
-        public string ObjectName { get; }
-        public string FunctionName { get; }
-        public string Description { get; set; }
+        void WriteException(Exception e);
 
-        public CliFunctionAttribute(string objectName, string functionName)
-        {
-            ObjectName = objectName;
-            FunctionName = functionName;
-        }
+        void WriteErrorLine(string errorMessage);
+
+        void WriteLine(object objectToWrite);
+        
+        void Write(object objectToWrite);
+
+        void WriteCommentLine(object objectToWrite);
+
+        void WriteLessImportant(object objectToWrite);
+
+        void WriteKeyword(string keyword);
+
+        void WriteInteresting(string interesting);
+
+        void WriteLine();
+
+        void WriteGood(string goodText);
+
+        void WriteString(object result);
     }
 }

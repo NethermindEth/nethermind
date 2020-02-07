@@ -408,7 +408,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             public SyncingContext WaitUntilInitialized()
             {
-                WaitFor(() => SyncPeerPool.AllPeers.All(p => p.IsInitialized));
+                SpinWait.SpinUntil(() => SyncPeerPool.AllPeers.All(p => p.IsInitialized), dynamicTimeout);
                 return this;
             }
 
@@ -492,21 +492,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
             }
         }
 
-        private static void WaitFor(Func<bool> isConditionMet, string description = "condition to be met")
-        {
-            const int waitInterval = 10;
-            for (int i = 0; i < WaitTime / waitInterval; i++)
-            {
-                if (isConditionMet())
-                {
-                    return;
-                }
-
-                TestContext.WriteLine($"({i}) Waiting {waitInterval} for {description}");
-                Thread.Sleep(waitInterval);
-            }
-        }
-        
         [SetUp]
         public void Setup()
         {
@@ -713,7 +698,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             Assert.AreNotEqual(peerB.HeadBlock.Hash, peerA.HeadBlock.Hash);
             
-            WaitFor(() => peerB.ReceivedBlocks.Peek().Hash == peerA.HeadBlock.Hash);
+            SpinWait.SpinUntil(() => peerB.ReceivedBlocks.Peek().Hash == peerA.HeadBlock.Hash, WaitTime);
             Assert.AreEqual(peerB.ReceivedBlocks.Peek().Hash, peerA.HeadBlock.Hash);
         }
 

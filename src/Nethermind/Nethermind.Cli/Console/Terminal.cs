@@ -14,30 +14,16 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-
-namespace Nethermind.Cli
+namespace Nethermind.Cli.Console
 {
-    public interface ICliConsole
+    public enum Terminal
     {
-        void WriteException(Exception e);
-
-        void WriteErrorLine(string errorMessage);
-
-        void WriteLine(object objectToWrite);
-
-        void WriteCommentLine(object objectToWrite);
-
-        void WriteLessImportant(object objectToWrite);
-
-        void WriteKeyword(string keyword);
-
-        void WriteInteresting(string interesting);
-
-        void WriteLine();
-
-        void WriteGood(string goodText);
-
-        void WriteString(object result);
+        Unknown,
+        LinuxBash,
+        MacBash,
+        Cmd,
+        Cmder,
+        Powershell,
+        Cygwin
     }
 }

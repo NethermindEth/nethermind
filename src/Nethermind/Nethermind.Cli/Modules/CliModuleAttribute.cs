@@ -14,16 +14,17 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Cli
+using System;
+
+namespace Nethermind.Cli.Modules
 {
-    public enum Terminal
+    public class CliModuleAttribute : Attribute
     {
-        Unknown,
-        LinuxBash,
-        MacBash,
-        Cmd,
-        Cmder,
-        Powershell,
-        Cygwin
+        public string ModuleName { get; }
+
+        public CliModuleAttribute(string moduleName)
+        {
+            ModuleName = moduleName;
+        }
     }
 }

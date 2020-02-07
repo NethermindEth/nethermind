@@ -84,7 +84,7 @@ namespace Nethermind.Network.Test.Discovery
             _discoveryManager.MessageSender = _messageSender;
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void OnPingMessageTest()
         {
             //receiving ping
@@ -99,7 +99,7 @@ namespace Nethermind.Network.Test.Discovery
             _messageSender.Received(3).SendMessage(Arg.Is<PingMessage>(m => m.FarAddress.Address.ToString() == _host && m.FarAddress.Port == _port));
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void OnPongMessageTest()
         {
             //receiving pong
@@ -115,7 +115,7 @@ namespace Nethermind.Network.Test.Discovery
             Assert.AreEqual(NodeLifecycleState.Active, manager.State);
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void OnFindNodeMessageTest()
         {
             //receiving pong to have a node in the system
@@ -137,7 +137,7 @@ namespace Nethermind.Network.Test.Discovery
             _messageSender.Received(1).SendMessage(Arg.Is<NeighborsMessage>(m => m.FarAddress.Address.ToString() == _host && m.FarAddress.Port == _port));
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void OnNeighborsMessageTest()
         {
             //receiving pong to have a node in the system
