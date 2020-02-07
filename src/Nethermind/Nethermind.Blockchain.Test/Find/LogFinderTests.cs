@@ -18,6 +18,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
@@ -27,6 +28,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Store;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -37,6 +39,7 @@ namespace Nethermind.Blockchain.Test.Find
         private IBlockTree _blockTree;
         private IReceiptStorage _receiptStorage;
         private LogFinder _logFinder;
+        private IBloomStorage _bloomStorage;
 
         [SetUp]
         public void SetUp()
@@ -45,8 +48,8 @@ namespace Nethermind.Blockchain.Test.Find
             specProvider.GetSpec(Arg.Any<long>()).IsEip155Enabled.Returns(true);
             _receiptStorage = new InMemoryReceiptStorage();
             _blockTree = Build.A.BlockTree().WithTransactions(_receiptStorage, specProvider, LogsForBlockBuilder).OfChainLength(5).TestObject;
-            
-            _logFinder = new LogFinder(_blockTree,  _receiptStorage);
+            _bloomStorage = new BloomStorage(new MemColumnDb<byte>());
+            _logFinder = new LogFinder(_blockTree, _receiptStorage, _bloomStorage);
 
         }
 
@@ -81,7 +84,7 @@ namespace Nethermind.Blockchain.Test.Find
         public void filter_all_logs()
         {
             var logFilter = AllBlockFilter().Build();
-            var logs = _logFinder.FindLogs(logFilter);
+            var logs = _logFinder.FindLogs(logFilter).ToArray();
             logs.Length.Should().Be(5);
             logs.Select(l => (int) l.LogIndex).Should().BeEquivalentTo(new []{0, 1, 0, 1, 2});
         }
@@ -90,18 +93,18 @@ namespace Nethermind.Blockchain.Test.Find
         public void filter_all_logs_when_receipts_ar_missing()
         {
             _receiptStorage = NullReceiptStorage.Instance;
-            _logFinder = new LogFinder(_blockTree,  _receiptStorage);
+            _logFinder = new LogFinder(_blockTree, _receiptStorage, _bloomStorage);
             
             var logFilter = AllBlockFilter().Build();
             var logs = _logFinder.FindLogs(logFilter);
-            logs.Length.Should().Be(0);
+            logs.Should().BeEmpty();
         }
         
         [Test]
         public void filter_all_logs_should_return_empty_array_when_to_block_is_null()
         {
             var blockFinder = Substitute.For<IBlockFinder>();
-            _logFinder = new LogFinder(blockFinder, _receiptStorage);
+            _logFinder = new LogFinder(_blockTree, _receiptStorage, _bloomStorage);
             var logFilter = AllBlockFilter().Build();
             var logs = _logFinder.FindLogs(logFilter);
             logs.Should().BeEmpty();
@@ -128,7 +131,7 @@ namespace Nethermind.Blockchain.Test.Find
             filterBuilder = addresses.Length == 1 ? filterBuilder.WithAddress(addresses[0]) : filterBuilder.WithAddresses(addresses);
             var logFilter = filterBuilder.Build();
             
-            var logs = _logFinder.FindLogs(logFilter);
+            var logs = _logFinder.FindLogs(logFilter).ToArray();
 
             logs.Length.Should().Be(expectedCount);
         }
@@ -151,7 +154,7 @@ namespace Nethermind.Blockchain.Test.Find
         {
             var logFilter = AllBlockFilter().WithTopicExpressions(topics).Build();
             
-            var logs = _logFinder.FindLogs(logFilter);
+            var logs = _logFinder.FindLogs(logFilter).ToArray();
 
             logs.Length.Should().Be(expectedCount);
         }
@@ -172,7 +175,7 @@ namespace Nethermind.Blockchain.Test.Find
         [TestCaseSource(nameof(FilterByBlocksTestsData))]
         public void filter_by_blocks(LogFilter filter, int expectedCount)
         {
-            var logs = _logFinder.FindLogs(filter);
+            var logs = _logFinder.FindLogs(filter).ToArray();
 
             logs.Length.Should().Be(expectedCount);
         }
@@ -180,9 +183,9 @@ namespace Nethermind.Blockchain.Test.Find
         [Test]
         public void filter_by_blocks_with_limit()
         {
-            _logFinder = new LogFinder(_blockTree,  _receiptStorage, 2);
+            _logFinder = new LogFinder(_blockTree,  _receiptStorage, _bloomStorage, 2);
             var filter = FilterBuilder.New().FromLatestBlock().ToLatestBlock().Build();
-            var logs = _logFinder.FindLogs(filter);
+            var logs = _logFinder.FindLogs(filter).ToArray();
 
             logs.Length.Should().Be(3);
         }
@@ -209,7 +212,7 @@ namespace Nethermind.Blockchain.Test.Find
         [TestCaseSource(nameof(ComplexFilterTestsData))]
         public void complex_filter(LogFilter filter, int expectedCount)
         {
-            var logs = _logFinder.FindLogs(filter);
+            var logs = _logFinder.FindLogs(filter).ToArray();
 
             logs.Length.Should().Be(expectedCount);
         }

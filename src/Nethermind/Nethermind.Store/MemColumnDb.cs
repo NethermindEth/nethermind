@@ -18,8 +18,10 @@ using System.Collections.Generic;
 
 namespace Nethermind.Store
 {
-    public interface IColumnDb<in TKey> : IDb
+    public class MemColumnDb<TKey> : MemDb, IColumnDb<TKey>
     {
-        IDb GetColumnDb(TKey key);
+        private readonly IDictionary<TKey, IDb> _columnDbs = new Dictionary<TKey,IDb>();
+        
+        public IDb GetColumnDb(TKey key) => !_columnDbs.TryGetValue(key, out var db) ? _columnDbs[key] = new MemDb() : db;
     }
 }

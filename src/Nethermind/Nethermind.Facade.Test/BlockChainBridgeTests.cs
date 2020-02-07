@@ -17,6 +17,7 @@
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
@@ -46,6 +47,7 @@ namespace Nethermind.Facade.Test
         private IWallet _wallet;
         private ITransactionProcessor _transactionProcessor;
         private IEthereumEcdsa _ethereumEcdsa;
+        private IBloomStorage _bloomStorage;
 
         [SetUp]
         public void SetUp()
@@ -61,6 +63,7 @@ namespace Nethermind.Facade.Test
             _wallet = Substitute.For<IWallet>();
             _transactionProcessor = Substitute.For<ITransactionProcessor>();
             _ethereumEcdsa = Substitute.For<IEthereumEcdsa>();
+            _bloomStorage = Substitute.For<IBloomStorage>();
             _blockchainBridge = new BlockchainBridge(
                 _stateReader, 
                 _stateProvider,
@@ -72,7 +75,8 @@ namespace Nethermind.Facade.Test
                 _filterManager,
                 _wallet,
                 _transactionProcessor,
-                _ethereumEcdsa);
+                _ethereumEcdsa,
+                _bloomStorage);
         }
 
         [Test]

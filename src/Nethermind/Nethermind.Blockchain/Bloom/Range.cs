@@ -14,12 +14,19 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
+using System;
 
-namespace Nethermind.Store
+namespace Nethermind.Blockchain.Bloom
 {
-    public interface IColumnDb<in TKey> : IDb
+    public readonly struct Range<T> where T : IComparable<T>
     {
-        IDb GetColumnDb(TKey key);
+        public readonly T Start;
+        public readonly T End;
+
+        public Range(T start, T end)
+        {
+            Start = start;
+            End = end;
+        }
     }
 }

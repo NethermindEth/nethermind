@@ -16,10 +16,10 @@
 
 using System.Collections.Generic;
 
-namespace Nethermind.Store
+namespace Nethermind.Blockchain.Bloom
 {
-    public interface IColumnDb<in TKey> : IDb
+    public interface IBloomEnumerator : IEnumerator<Core.Bloom>
     {
-        IDb GetColumnDb(TKey key);
+        bool TryGetBlockRange(out Range<long> blockRange);
     }
 }
