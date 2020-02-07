@@ -36,7 +36,8 @@ namespace Nethermind.Blockchain.Synchronization
 
         public PeerInfo Select(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
-            long currentSpeed = currentPeer == null ? 0 : nodeStatsManager.GetOrAdd(currentPeer.SyncPeer.Node).GetAverageTransferSpeed() ?? 0;
+            long nullSpeed = _priority ? -1 : long.MaxValue;
+            long currentSpeed = currentPeer == null ? nullSpeed : nodeStatsManager.GetOrAdd(currentPeer.SyncPeer.Node).GetAverageTransferSpeed() ?? nullSpeed;
             (PeerInfo Info, long TransferSpeed) bestPeer = (currentPeer, currentSpeed);
 
             foreach (PeerInfo info in peers)
@@ -44,7 +45,7 @@ namespace Nethermind.Blockchain.Synchronization
                 (this as IPeerSelectionStrategy).CheckAsyncState(info);
 
                 long averageTransferSpeed = nodeStatsManager.GetOrAdd(info.SyncPeer.Node).GetAverageTransferSpeed() ?? 0;
-                if (_priority ? averageTransferSpeed > bestPeer.TransferSpeed : averageTransferSpeed <= bestPeer.TransferSpeed)
+                if (_priority ? averageTransferSpeed > bestPeer.TransferSpeed : averageTransferSpeed < bestPeer.TransferSpeed)
                 {
                     bestPeer = (info, averageTransferSpeed);
                 }

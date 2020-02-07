@@ -220,6 +220,7 @@ namespace Nethermind.Blockchain.Synchronization
                 if (_logger.IsTrace) _logger.Trace("Sync loop - WAIT.");
                 _syncRequested.Wait(_syncLoopCancellation.Token);
                 _syncRequested.Reset();
+                FreeBlocksSyncAllocation();
 
                 if (_logger.IsTrace) _logger.Trace("Sync loop - IN.");
                 if (_syncLoopCancellation.IsCancellationRequested)
@@ -233,6 +234,7 @@ namespace Nethermind.Blockchain.Synchronization
                 _syncMode.Update();
                 _syncReport.CurrentSyncMode = _syncMode.Current;
 
+                Console.WriteLine("aasad");
                 if (RequiresBlocksSyncAllocation(_syncMode.Current))
                 {
                     if (_blocksSyncAllocation == null)

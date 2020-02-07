@@ -301,7 +301,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 lock (_isAllocatedChecks)
                 {
-                    allocation.AllocateBestPeer(UsefulPeers, _stats, _blockTree, "INIT");
+                    allocation.AllocateBestPeer(UsefulPeers.Where(p => !p.IsAllocated), _stats, _blockTree, "INIT");
                     if (allocation.HasPeer)
                     {
                         if (peerSelectionStrategy.CanBeReplaced)

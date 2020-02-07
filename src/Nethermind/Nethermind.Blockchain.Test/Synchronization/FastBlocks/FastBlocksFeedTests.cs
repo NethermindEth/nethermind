@@ -112,17 +112,23 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             _syncPeerPool.WhenForAnyArgs(p => p.ReportNoSyncProgress(Arg.Any<PeerInfo>()))
                 .Do(ci =>
                 {
-                    LatencySyncPeerMock mock = ((LatencySyncPeerMock) ci.Arg<PeerInfo>().SyncPeer);
-                    mock.BusyUntil = _time + 5000;
-                    mock.IsReported = true;
+                    LatencySyncPeerMock mock = (LatencySyncPeerMock) ci.Arg<PeerInfo>()?.SyncPeer;
+                    if (mock != null)
+                    {
+                        mock.BusyUntil = _time + 5000;
+                        mock.IsReported = true;
+                    }
                 });
 
             _syncPeerPool.WhenForAnyArgs(p => p.ReportInvalid(Arg.Any<PeerInfo>(), "test"))
                 .Do(ci =>
                 {
-                    LatencySyncPeerMock mock = ((LatencySyncPeerMock) ci.Arg<PeerInfo>().SyncPeer);
-                    mock.BusyUntil = _time + 30000;
-                    mock.IsReported = true;
+                    LatencySyncPeerMock mock = (LatencySyncPeerMock) ci.Arg<PeerInfo>()?.SyncPeer;
+                    if (mock != null)
+                    {
+                        mock.BusyUntil = _time + 30000;
+                        mock.IsReported = true;
+                    }
                 });
 
             _syncPeerPool.AllPeers.Returns((ci) => _syncPeers.Select(sp => new PeerInfo(sp) {HeadNumber = sp.Tree.Head.Number}));
@@ -784,6 +790,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                                 }
 
                                 batch.Allocation = new SyncPeerAllocation(new StaticSelectionStrategy(new PeerInfo(syncPeer)));
+                                batch.Allocation.AllocateBestPeer(null, null, null, null);
                                 _pendingResponses.Add(syncPeer, batch);
                                 TestContext.WriteLine($"{_time,6} |SENDING {batch} REQUEST TO {syncPeer.Node:s}");
                                 wasAssigned = true;

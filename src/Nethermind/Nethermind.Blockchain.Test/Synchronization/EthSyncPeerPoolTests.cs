@@ -301,7 +301,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.Start();
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA, "A"));
             await WaitForPeersInitialization();
-            SyncPeerAllocation allocation = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
+            var allocation = await _pool.BorrowAsync(new BlocksSyncPeerSelectionStrategy(null, LimboNoErrorLogger.Instance));
             bool replaced = false;
             allocation.Replaced += (sender, args) => replaced = true;
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyB, "B"));
@@ -531,7 +531,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             var peers = await SetupPeers(1);
 
-            var allocation = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
+            var allocation = await _pool.BorrowAsync(new BlocksSyncPeerSelectionStrategy(null, LimboNoErrorLogger.Instance));
             _pool.RemovePeer(peers[0]);
 
             Assert.Null(allocation.Current);

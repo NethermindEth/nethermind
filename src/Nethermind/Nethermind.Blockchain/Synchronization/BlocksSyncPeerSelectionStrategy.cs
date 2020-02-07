@@ -43,12 +43,13 @@ namespace Nethermind.Blockchain.Synchronization
 
         public PeerInfo Select(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
+            int nullSpeed = -1;
             decimal averageSpeed = 0M;
             int peersCount = 0;
 
             bool wasNull = currentPeer == null;
             
-            long currentSpeed = wasNull ? 0 : nodeStatsManager.GetOrAdd(currentPeer.SyncPeer.Node).GetAverageTransferSpeed() ?? 0;
+            long currentSpeed = wasNull ? nullSpeed : nodeStatsManager.GetOrAdd(currentPeer.SyncPeer.Node).GetAverageTransferSpeed() ?? nullSpeed;
             (PeerInfo Info, long TransferSpeed) fastestPeer = (currentPeer, currentSpeed);
             (PeerInfo Info, long TransferSpeed) bestDiffPeer = (currentPeer, currentSpeed);
 
