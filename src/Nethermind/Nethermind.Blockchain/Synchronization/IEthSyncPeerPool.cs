@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain.Synchronization
     {
         bool TryFind(PublicKey nodeId, out PeerInfo peerInfo);
 
-        Task<SyncPeerAllocation> BorrowAsync(PeerSelectionOptions peerSelectionOptions = PeerSelectionOptions.None, string description = "", long? minNumber = null, int timeoutMilliseconds = 0);
+        Task<SyncPeerAllocation> BorrowAsync(IPeerSelectionStrategy peerSelectionStrategy, string description = "", int timeoutMilliseconds = 0);
 
         void Free(SyncPeerAllocation syncPeerAllocation);
 

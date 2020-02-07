@@ -20,6 +20,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
+using Nethermind.Stats;
 
 namespace Nethermind.Blockchain.Test.Synchronization.Mocks
 {
@@ -32,10 +35,13 @@ namespace Nethermind.Blockchain.Test.Synchronization.Mocks
             throw new NotImplementedException();
         }
 
-        public Task<SyncPeerAllocation> BorrowAsync(PeerSelectionOptions peerSelectionOptions = PeerSelectionOptions.None, string description = "", long? minNumber = null, int timeoutMilliseconds = 0)
+        public IBlockTree SyncPeerTree { get; set; } = Build.A.BlockTree().OfChainLength(1).TestObject;
+
+        public Task<SyncPeerAllocation> BorrowAsync(IPeerSelectionStrategy peerSelectionStrategy, string description = "", int timeoutMilliseconds = 0)
         {
-            // TODO: allow for a mocked selection strategy
-            return Task.FromResult(new SyncPeerAllocation(UsefulPeers.FirstOrDefault(p => p.IsAllocated), $"TEST {SelectionStrategy.Name}"));
+            SyncPeerAllocation allocation = new SyncPeerAllocation(peerSelectionStrategy);
+            allocation.AllocateBestPeer(UsefulPeers.Where(p => !p.IsAllocated), new NodeStatsManager(new StatsConfig(), LimboLogs.Instance), SyncPeerTree, description);
+            return Task.FromResult(allocation);
         }
 
         public void Free(SyncPeerAllocation syncPeerAllocation)

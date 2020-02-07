@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -40,11 +41,9 @@ namespace Nethermind.Blockchain.Synchronization
     /// </summary>
     public class EthSyncPeerPool : IEthSyncPeerPool
     {
-        private const decimal MinDiffPercentageForSpeedSwitch = 0.10m;
-        private const int MinDiffForSpeedSwitch = 10;
         private const int MaxPeerWeakness = 10;
         private const int InitTimeout = 10000; // the Eth.Timeout should hit us earlier
-        
+
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
         private readonly BlockingCollection<RefreshTotalDiffTask> _peerRefreshQueue = new BlockingCollection<RefreshTotalDiffTask>();
@@ -59,7 +58,6 @@ namespace Nethermind.Blockchain.Synchronization
 
         private DateTime _lastUselessPeersDropTime = DateTime.UtcNow;
 
-        private ConcurrentDictionary<PeerInfo, int> _peerWeakness = new ConcurrentDictionary<PeerInfo, int>();
         private CancellationTokenSource _refreshLoopCancellation = new CancellationTokenSource();
         private Task _refreshLoopTask;
 
@@ -113,35 +111,21 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void ReportWeakPeer(SyncPeerAllocation allocation)
         {
-            if (allocation.CanBeReplaced)
-            {
-                /* we are sneaking some external knowledge here
-                 * we generally do not want to confuse the invalid / weak scenario
-                 * weak peer is one that we want to give some time and then use again
-                 * invalid peer is one that we prefer not to talk to as it behaves in a malicious way
-                 * we know that more dynamic allocations are short lived and not replaceable
-                 * and only such allocations should define weak peers
-                 */
-                throw new InvalidOperationException("Reporting weak peer is only supported for non-dynamic allocations");
-            }
-
             PeerInfo weakPeer = allocation.Current;
-            if (weakPeer == null) 
+            if (weakPeer == null)
             {
                 /* it may have just got disconnected and in such case the allocation would be nullified
                  * in such case there is no need to talk about whether the peer is good or bad
                  */
                 return;
             }
-            
-            _peerWeakness.AddOrUpdate(weakPeer, 0, (pi, weaknessMeasure) => weaknessMeasure + 1);
-            if (_peerWeakness[weakPeer] >= MaxPeerWeakness)
+
+            if (weakPeer.IncreaseWeakness() > MaxPeerWeakness)
             {
                 /* fast Geth nodes send invalid nodes quite often :/
                  * so we let them deliver fast and only disconnect them when they really misbehave
                  */
                 allocation.Current.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "peer is too weak");
-                _peerWeakness.TryRemove(weakPeer, out _);
             }
         }
 
@@ -290,8 +274,10 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 if (allocation.Current?.SyncPeer.Node.Id == id)
                 {
+                    PeerInfo peerInfo = allocation.Current;
                     if (_logger.IsTrace) _logger.Trace($"Requesting peer cancel with {syncPeer.Node:c} on {allocation}");
                     allocation.Cancel();
+                    peerInfo.MarkDisconnected();
                 }
             }
 
@@ -303,34 +289,33 @@ namespace Nethermind.Blockchain.Synchronization
             return _peers.TryGetValue(nodeId, out peerInfo);
         }
 
-        public async Task<SyncPeerAllocation> BorrowAsync(PeerSelectionOptions peerSelectionOptions = PeerSelectionOptions.None, string description = "", long? minNumber = null, int timeoutMilliseconds = 0)
+        private object _isAllocatedChecks = new object();
+
+        public async Task<SyncPeerAllocation> BorrowAsync(IPeerSelectionStrategy peerSelectionStrategy, string description = "", int timeoutMilliseconds = 0)
         {
             int tryCount = 1;
             DateTime startTime = DateTime.UtcNow;
-            SyncPeerAllocation allocation = new SyncPeerAllocation(description);
-            allocation.MinBlocksAhead = minNumber - _blockTree.BestSuggestedHeader?.Number;
 
-            if ((peerSelectionOptions & PeerSelectionOptions.DoNotReplace) == PeerSelectionOptions.DoNotReplace)
-            {
-                allocation.CanBeReplaced = false;
-            }
-            else
-            {
-                _replaceableAllocations.TryAdd(allocation, null);
-            }
-
+            SyncPeerAllocation allocation = new SyncPeerAllocation(peerSelectionStrategy);
             while (true)
             {
-                PeerInfo bestPeer = SelectBestPeerForAllocation(allocation, "BORROW", peerSelectionOptions);
-                if (bestPeer != null)
+                lock (_isAllocatedChecks)
                 {
-                    allocation.ReplaceCurrent(bestPeer);
-                    return allocation;
+                    allocation.AllocateBestPeer(UsefulPeers, _stats, _blockTree, "INIT");
+                    if (allocation.HasPeer)
+                    {
+                        if (peerSelectionStrategy.CanBeReplaced)
+                        {
+                            _replaceableAllocations.TryAdd(allocation, null);
+                        }
+
+                        return allocation;
+                    }
                 }
 
                 bool timeoutReached = timeoutMilliseconds == 0
                                       || (DateTime.UtcNow - startTime).TotalMilliseconds > timeoutMilliseconds;
-                if (timeoutReached) return allocation;
+                if (timeoutReached) return SyncPeerAllocation.FailedAllocation;
 
                 int waitTime = 10 * tryCount++;
 
@@ -346,13 +331,6 @@ namespace Nethermind.Blockchain.Synchronization
         public void Free(SyncPeerAllocation syncPeerAllocation)
         {
             if (_logger.IsTrace) _logger.Trace($"Returning {syncPeerAllocation}");
-
-            PeerInfo peerInfo = syncPeerAllocation.Current;
-            if (peerInfo != null && !syncPeerAllocation.CanBeReplaced)
-            {
-                // TODO: need to investigate it - does it negate any meaning of weak peers?
-                _peerWeakness.TryRemove(peerInfo, out _);
-            }
 
             _replaceableAllocations.TryRemove(syncPeerAllocation, out _);
             syncPeerAllocation.Cancel();
@@ -464,7 +442,7 @@ namespace Nethermind.Blockchain.Synchronization
                 if (peerInfo.HeadNumber == 0
                     && peerInfo.IsInitialized
                     && ourNumber != 0
-                    && !peerInfo.SyncPeer.ClientId.Contains("Nethermind"))
+                    && peerInfo.PeerClientType != PeerClientType.Nethermind)
                     // we know that Nethermind reports 0 HeadNumber when it is in sync (and it can still serve a lot of data to other nodes)
                 {
                     peersDropped++;
@@ -593,139 +571,6 @@ namespace Nethermind.Blockchain.Synchronization
                 }, token);
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        private PeerInfo SelectBestPeerForAllocation(SyncPeerAllocation allocation, string reason, PeerSelectionOptions options)
-        {
-            bool isLowPriority = options.IsLowPriority();
-            bool requireHigherDifficulty = options.RequiresHigherDifficulty();
-
-            (PeerInfo Info, long TransferSpeed) bestPeer = (null, isLowPriority ? long.MaxValue : -1);
-            foreach ((_, PeerInfo info) in _peers)
-            {
-                if (info.IsAllocated && info != allocation.Current)
-                    // this means that the peer is already allocated somewhere else
-                    continue;
-
-                if (!info.IsInitialized)
-                    // if peer is not yet initialized then we do not know much about its highest block
-                    continue;
-
-                if (allocation.MinBlocksAhead.HasValue && info.HeadNumber < (_blockTree.BestSuggestedHeader?.Number ?? 0) + allocation.MinBlocksAhead.Value)
-                    // in some sync modes we need to be able to download some blocks ahead
-                    continue;
-
-                UInt256 localTotalDiff = _blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero;
-                if (requireHigherDifficulty && info.TotalDifficulty <= localTotalDiff)
-                    // if we require higher difficulty then we need to discard peers with same diff as ours
-                    continue;
-
-                if (!requireHigherDifficulty && info.TotalDifficulty < localTotalDiff)
-                    // if we do not require higher difficulty then we discard only peers with lower diff than ours
-                    continue;
-
-                if (info.IsAsleep)
-                {
-                    if (DateTime.UtcNow - info.SleepingSince <
-                        (info.IsSleepingDeeply
-                            ? _timeBeforeWakingDeepSleepingPeerUp
-                            : _timeBeforeWakingShallowSleepingPeerUp))
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"[{reason}] {(info.IsSleepingDeeply ? "deeply" : "lightly")} asleep");
-                        continue;
-                    }
-
-                    WakeUpPeer(info);
-                }
-
-                if (info.TotalDifficulty - (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero) <= 2 && info.PeerClientType == PeerClientType.Parity)
-                    // if (_logger.IsWarn) _logger.Warn($"[{reason}] parity diff");
-                    // Parity advertises a better block but never sends it back and then it disconnects after a few conversations like this
-                    // Geth responds all fine here
-                    // note this is only 2 difficulty difference which means that is just for the POA / Clique chains
-                    continue;
-
-                long averageTransferSpeed = _stats.GetOrAdd(info.SyncPeer.Node).GetAverageTransferSpeed() ?? 0;
-
-                bool selectedByDiff = false;
-                if (requireHigherDifficulty)
-                {
-                    decimal diff = (decimal) averageTransferSpeed / (bestPeer.TransferSpeed == 0 ? 1 : bestPeer.TransferSpeed);
-                    // if not much difference in speed then prefer total diff
-                    if (diff > 0.75m && diff < 1.25m)
-                    {
-                        if (info.TotalDifficulty == 0 && info.HeadNumber > bestPeer.Info.HeadNumber)
-                            // actually worth to learn about the difficulty of this peer and this may be a good way
-                            bestPeer = (info, averageTransferSpeed);
-                        else if (info.TotalDifficulty > bestPeer.Info.TotalDifficulty) bestPeer = (info, averageTransferSpeed);
-
-                        selectedByDiff = true;
-                    }
-                }
-
-                if (!selectedByDiff)
-                    if (isLowPriority ? averageTransferSpeed <= bestPeer.TransferSpeed : averageTransferSpeed > bestPeer.TransferSpeed)
-                        bestPeer = (info, averageTransferSpeed);
-            }
-
-            if (_peers.Count == 0)
-                if (_logger.IsTrace)
-                    _logger.Trace($"[{reason}] count 0");
-
-            if (bestPeer.Info == null)
-            {
-                if (_logger.IsTrace) _logger.Trace($"[{reason}] No peer found for ETH sync");
-            }
-            else
-            {
-                if (_logger.IsTrace) _logger.Trace($"[{reason}] Best ETH sync peer: {bestPeer.Info} | BlockHeaderAvSpeed: {bestPeer.TransferSpeed}");
-            }
-
-            return bestPeer.Info;
-        }
-
-        private void ReplaceIfWorthReplacing(SyncPeerAllocation allocation, PeerInfo candidatePeerInfo)
-        {
-            if (!allocation.CanBeReplaced) return;
-
-            if (candidatePeerInfo == null) return;
-
-            PeerInfo currentPeer = allocation.Current;
-            if (currentPeer == null)
-            {
-                /* any peer is better than no peer when we need a peer
-                 */
-                if (_logger.IsTrace) _logger.Trace($"{allocation} had no peer and now has {candidatePeerInfo}");
-                allocation.ReplaceCurrent(candidatePeerInfo);
-                return;
-            }
-
-            if (candidatePeerInfo == allocation.Current)
-            {
-                if (_logger.IsTrace) _logger.Trace($"{allocation} is already syncing with best peer {candidatePeerInfo}");
-                return;
-            }
-
-            long currentSpeed = _stats.GetOrAdd(currentPeer.SyncPeer.Node)?.GetAverageTransferSpeed() ?? 0;
-            long newSpeed = _stats.GetOrAdd(candidatePeerInfo.SyncPeer.Node)?.GetAverageTransferSpeed() ?? 0;
-
-            /* we used to select based on latency
-             * and it was generally worse except for some cases:
-             *   1) we can see some significant speed differences between block and node data sync speed
-             *      and so sometimes a good block data peer will get selected for node data
-             *   2) newly joining peers have to have some arbitrarily high number assigned
-             */
-            if (newSpeed / (decimal) Math.Max(1L, currentSpeed) > 1m + MinDiffPercentageForSpeedSwitch
-                && newSpeed > currentSpeed + MinDiffForSpeedSwitch)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Sync peer substitution{Environment.NewLine}  OUT: {allocation.Current}[{currentSpeed}]{Environment.NewLine}  IN : {candidatePeerInfo}[{newSpeed}]");
-                allocation.ReplaceCurrent(candidatePeerInfo);
-            }
-            else
-            {
-                if (_logger.IsTrace) _logger.Trace($"Staying with current peer {allocation.Current}[{currentSpeed}] (ignoring {candidatePeerInfo}[{newSpeed}])");
-            }
-        }
-
         /// <summary>
         ///     This is an important operation for long lasting allocations.
         ///     For example the full sync tends to allocate the same peer for many minutes and we use this method to ensure that
@@ -738,18 +583,33 @@ namespace Nethermind.Blockchain.Synchronization
         private void UpgradeAllocations(string reason)
         {
             DropUselessPeers();
+            WakeUpPeerThatSleptEnough(reason);
             foreach ((SyncPeerAllocation allocation, _) in _replaceableAllocations)
             {
-                if (!allocation.CanBeReplaced) throw new InvalidOperationException("Unreplaceable allocation in the replacable allocations collection");
-
-                PeerInfo bestPeer = SelectBestPeerForAllocation(allocation, reason, PeerSelectionOptions.None);
-                if (bestPeer != allocation.Current)
+                lock (_isAllocatedChecks)
                 {
-                    ReplaceIfWorthReplacing(allocation, bestPeer);
+                    var unallocatedPeers = UsefulPeers.Where(p => !p.IsAllocated);
+                    allocation.AllocateBestPeer(unallocatedPeers, _stats, _blockTree, reason);
                 }
-                else
+            }
+        }
+
+        private void WakeUpPeerThatSleptEnough(string reason)
+        {
+            foreach (PeerInfo info in AllPeers)
+            {
+                if (info.IsAsleep)
                 {
-                    if (_logger.IsTrace) _logger.Trace("No better peer to sync with when updating allocations");
+                    if (DateTime.UtcNow - info.SleepingSince <
+                        (info.IsSleepingDeeply
+                            ? _timeBeforeWakingDeepSleepingPeerUp
+                            : _timeBeforeWakingShallowSleepingPeerUp))
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"[{reason}] {(info.IsSleepingDeeply ? "deeply" : "lightly")} asleep");
+                        continue;
+                    }
+
+                    WakeUpPeer(info);
                 }
             }
         }

@@ -14,15 +14,27 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Blockchain.Test.Synchronization.Mocks
+using System.Collections.Generic;
+using Nethermind.Stats;
+
+namespace Nethermind.Blockchain.Synchronization
 {
     /// <summary>
-    /// I believe that this interface should actually make it to the original class (and not stay in test)
-    /// Then whenever Borrow is invoked - we can pass the peer selection strategy and it can be very helpful when replacing.
-    /// Then it can even have IsUpgradeable field
+    /// used only for failed allocations
     /// </summary>
-    public interface IPeerSelectionStrategy
+    public class NullStrategy : IPeerSelectionStrategy
     {
-        public string Name { get; }
+        private NullStrategy()
+        {
+        }
+
+        public static IPeerSelectionStrategy Instance { get; } = new NullStrategy();
+
+        public string Name => "null";
+        public bool CanBeReplaced => false;
+        public PeerInfo Select(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
+        {
+            return null;
+        }
     }
 }

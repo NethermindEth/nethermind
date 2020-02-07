@@ -237,16 +237,8 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     if (_blocksSyncAllocation == null)
                     {
-                        await AllocateBlocksSync();
-
-                        if (_syncMode.Current == SyncMode.FastSync)
-                        {
-                            _blocksSyncAllocation.MinBlocksAhead = SyncModeSelector.FullSyncThreshold;
-                        }
-                        else
-                        {
-                            _blocksSyncAllocation.MinBlocksAhead = null;
-                        }
+                        long? minBlocksAhead = _syncMode.Current == SyncMode.FastSync ? SyncModeSelector.FullSyncThreshold : (long?)null; 
+                        await AllocateBlocksSync(minBlocksAhead);
                     }
                 }
 
@@ -391,12 +383,12 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        private async Task AllocateBlocksSync()
+        private async Task AllocateBlocksSync(long? minBlocksAhead)
         {
             if (_blocksSyncAllocation == null)
             {
                 if (_logger.IsDebug) _logger.Debug("Allocating block sync.");
-                _blocksSyncAllocation = await _syncPeerPool.BorrowAsync(PeerSelectionOptions.HigherTotalDiff, "synchronizer");
+                _blocksSyncAllocation = await _syncPeerPool.BorrowAsync(new BlocksSyncPeerSelectionStrategy(minBlocksAhead, _logger));
                 _blocksSyncAllocation.Replaced += AllocationOnReplaced;
                 _blocksSyncAllocation.Cancelled += AllocationOnCancelled;
                 _blocksSyncAllocation.Refreshed += AllocationOnRefreshed;

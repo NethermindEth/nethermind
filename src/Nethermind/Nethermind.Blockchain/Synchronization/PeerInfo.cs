@@ -16,6 +16,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
@@ -33,11 +34,17 @@ namespace Nethermind.Blockchain.Synchronization
     
     public class PeerInfo
     {
+        private int _weakness;
+
         public PeerInfo(ISyncPeer syncPeer)
         {
             SyncPeer = syncPeer;
             TotalDifficulty = syncPeer.TotalDifficultyOnSessionStart;
+            RecognizeClientType(syncPeer);
+        }
 
+        private void RecognizeClientType(ISyncPeer syncPeer)
+        {
             if (syncPeer.ClientId?.Contains("BeSu", StringComparison.InvariantCultureIgnoreCase) ?? false)
             {
                 PeerClientType = PeerClientType.BeSu;
@@ -58,14 +65,14 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 PeerClientType = PeerClientType.Unknown;
             }
-            
         }
 
-        public PeerClientType PeerClientType { get; set; }
+        public int Weakness => _weakness;
+
+        public PeerClientType PeerClientType { get; private set; }
         public bool IsAllocated { get; set; }
         public bool IsInitialized { get; set; }
         public DateTime? SleepingSince { get; set; }
-        
         public bool IsSleepingDeeply { get; set; }
         public bool IsAsleep => SleepingSince != null;
         public ISyncPeer SyncPeer { get; }
@@ -73,10 +80,18 @@ namespace Nethermind.Blockchain.Synchronization
         public long HeadNumber { get; set; }
         public Keccak HeadHash { get; set; }
 
+        public bool HasBeenDisconnected { get; private set; }
+
+        public void MarkDisconnected()
+        {
+            HasBeenDisconnected = true;
+        }
+
         public override string ToString() => $"[Peer|{SyncPeer?.Node:s}|{HeadNumber}|{SyncPeer?.ClientId}]";
-
-        public string ToString(string format) => ToString(format, null);
-
-        public string ToString(string format, IFormatProvider formatProvider) => $"[Peer|{SyncPeer?.Node.ToString(format)}|{HeadNumber}|{SyncPeer?.ClientId}]";
+        
+        public int IncreaseWeakness()
+        {
+            return Interlocked.Increment(ref _weakness);
+        }
     }
 }

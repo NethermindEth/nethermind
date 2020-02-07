@@ -16,18 +16,28 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Stats;
 
-namespace Nethermind.Blockchain.Test.Synchronization.Mocks
+namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
-    public class FirstFree : IPeerSelectionStrategy
+    public class FastBlocksSelectionStrategy : IPeerSelectionStrategy
     {
-        public string Name => "first free";
+        private readonly long? _minNumber;
+        private readonly bool _priority;
+
+        public FastBlocksSelectionStrategy(long? minNumber, bool priority)
+        {
+            _minNumber = minNumber;
+            _priority = priority;
+        }
+
+        public string Name => "fast blocks";
         public bool CanBeReplaced => false;
         public PeerInfo Select(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
-            return peers.FirstOrDefault() ?? currentPeer;
+            IPeerSelectionStrategy strategy = _priority ? BySpeedSelectionStrategy.Fastest : BySpeedSelectionStrategy.Slowest;
+            peers = _minNumber == null ? peers : peers.Where(p => p.HeadNumber > _minNumber);
+            return strategy.Select(currentPeer, peers, nodeStatsManager, blockTree);
         }
     }
 }

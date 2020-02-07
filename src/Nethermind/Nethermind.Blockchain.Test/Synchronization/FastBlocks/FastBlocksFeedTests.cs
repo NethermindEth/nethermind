@@ -783,7 +783,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                                     syncPeer.BusyUntil = _time + _timeoutTime;
                                 }
 
-                                batch.Allocation = new SyncPeerAllocation(new PeerInfo(syncPeer), "test");
+                                batch.Allocation = new SyncPeerAllocation(new StaticSelectionStrategy(new PeerInfo(syncPeer)));
                                 _pendingResponses.Add(syncPeer, batch);
                                 TestContext.WriteLine($"{_time,6} |SENDING {batch} REQUEST TO {syncPeer.Node:s}");
                                 wasAssigned = true;

@@ -15,19 +15,23 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Stats;
 
-namespace Nethermind.Blockchain.Test.Synchronization.Mocks
+namespace Nethermind.Blockchain.Synchronization
 {
-    public class FirstFree : IPeerSelectionStrategy
+    public class StaticSelectionStrategy : IPeerSelectionStrategy
     {
-        public string Name => "first free";
+        private readonly PeerInfo _peerInfo;
+
+        public StaticSelectionStrategy(PeerInfo peerInfo)
+        {
+            _peerInfo = peerInfo;
+        }
+        public string Name => "static";
         public bool CanBeReplaced => false;
         public PeerInfo Select(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
-            return peers.FirstOrDefault() ?? currentPeer;
+            return _peerInfo;
         }
     }
 }
