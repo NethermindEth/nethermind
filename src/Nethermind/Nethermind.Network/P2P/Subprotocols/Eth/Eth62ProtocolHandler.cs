@@ -51,7 +51,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private ITxPool _txPool;
         private ITimestamper _timestamper;
 
-        private BlockHeadersMessage _eth1920000HeaderMessage;
+        // private BlockHeadersMessage _eth1920000HeaderMessage;
         
         public Eth62ProtocolHandler(
             ISession session,
