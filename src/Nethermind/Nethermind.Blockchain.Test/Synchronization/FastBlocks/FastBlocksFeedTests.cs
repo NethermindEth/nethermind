@@ -108,27 +108,12 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             LatencySyncPeerMock.RemoteIndex = 1;
             _time = 0;
             _syncPeerPool = Substitute.For<IEthSyncPeerPool>();
-            _syncPeerPool.WhenForAnyArgs(p => p.ReportNoSyncProgress(Arg.Any<SyncPeerAllocation>()))
-                .Do(ci =>
-                {
-                    LatencySyncPeerMock mock = ((LatencySyncPeerMock) ci.Arg<SyncPeerAllocation>().Current.SyncPeer);
-                    mock.BusyUntil = _time + 5000;
-                    mock.IsReported = true;
-                });
 
             _syncPeerPool.WhenForAnyArgs(p => p.ReportNoSyncProgress(Arg.Any<PeerInfo>()))
                 .Do(ci =>
                 {
                     LatencySyncPeerMock mock = ((LatencySyncPeerMock) ci.Arg<PeerInfo>().SyncPeer);
                     mock.BusyUntil = _time + 5000;
-                    mock.IsReported = true;
-                });
-
-            _syncPeerPool.WhenForAnyArgs(p => p.ReportInvalid(Arg.Any<SyncPeerAllocation>(), "test"))
-                .Do(ci =>
-                {
-                    LatencySyncPeerMock mock = ((LatencySyncPeerMock) ci.Arg<SyncPeerAllocation>().Current.SyncPeer);
-                    mock.BusyUntil = _time + 30000;
                     mock.IsReported = true;
                 });
 
