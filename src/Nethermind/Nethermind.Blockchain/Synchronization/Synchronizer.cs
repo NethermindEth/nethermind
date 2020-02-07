@@ -234,7 +234,6 @@ namespace Nethermind.Blockchain.Synchronization
                 _syncMode.Update();
                 _syncReport.CurrentSyncMode = _syncMode.Current;
 
-                Console.WriteLine("aasad");
                 if (RequiresBlocksSyncAllocation(_syncMode.Current))
                 {
                     if (_blocksSyncAllocation == null)
