@@ -787,7 +787,7 @@ namespace Nethermind.Blockchain
 
             if (level.BlockInfos.Length != 1)
             {
-                if (_logger.IsError) _logger.Error($"Invalid request for block {blockNumber} ({level.BlockInfos.Length} blocks at the same level).");
+                if (_logger.IsDebug) _logger.Debug($"Invalid request for block {blockNumber} ({level.BlockInfos.Length} blocks at the same level).");
                 throw new InvalidOperationException($"Unexpected request by number for a block {blockNumber} that is not on the main chain and is not the only hash on chain");
             }
 
