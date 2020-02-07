@@ -25,6 +25,8 @@ namespace Nethermind.Blockchain.Test.Synchronization.Mocks
 {
     public class SingleThreadedSyncPeerPoolMock : IEthSyncPeerPool
     {
+        public IPeerSelectionStrategy SelectionStrategy { get; set; } = new FirstFree();
+        
         public bool TryFind(PublicKey nodeId, out PeerInfo peerInfo)
         {
             throw new NotImplementedException();
@@ -32,37 +34,29 @@ namespace Nethermind.Blockchain.Test.Synchronization.Mocks
 
         public Task<SyncPeerAllocation> BorrowAsync(PeerSelectionOptions peerSelectionOptions = PeerSelectionOptions.None, string description = "", long? minNumber = null, int timeoutMilliseconds = 0)
         {
-            throw new NotImplementedException();
+            // TODO: allow for a mocked selection strategy
+            return Task.FromResult(new SyncPeerAllocation(UsefulPeers.FirstOrDefault(p => p.IsAllocated), $"TEST {SelectionStrategy.Name}"));
         }
 
         public void Free(SyncPeerAllocation syncPeerAllocation)
         {
-            throw new NotImplementedException();
+            syncPeerAllocation.Cancel();
         }
-
-        public void ReportNoSyncProgress(SyncPeerAllocation syncPeerAllocation, bool isSevere = true)
-        {
-            throw new NotImplementedException();
-        }
-
+        
         public void ReportNoSyncProgress(PeerInfo peerInfo, bool isSevere = true)
         {
-            throw new NotImplementedException();
-        }
-
-        public void ReportInvalid(SyncPeerAllocation allocation, string details)
-        {
-            throw new NotImplementedException();
+            NoSyncProgressReports.Enqueue(peerInfo);
+            RemovePeer(peerInfo.SyncPeer);
         }
 
         public void ReportInvalid(PeerInfo peerInfo, string details)
         {
-            throw new NotImplementedException();
+            InvalidPeerReports.Enqueue(peerInfo);
+            RemovePeer(peerInfo.SyncPeer);
         }
 
         public IEnumerable<PeerInfo> AllPeers { get; } = new List<PeerInfo>();
         public IEnumerable<PeerInfo> UsefulPeers => AllPeers.Where(p => !p.IsAsleep);
-        public IEnumerable<SyncPeerAllocation> Allocations { get; } = new List<SyncPeerAllocation>();
         public int PeerCount => AllPeers.Count();
         public int UsefulPeerCount => UsefulPeers.Count();
         public int PeerMaxCount { get; } = 25;
@@ -97,8 +91,12 @@ namespace Nethermind.Blockchain.Test.Synchronization.Mocks
 
         public void ReportWeakPeer(SyncPeerAllocation allocation)
         {
-            var peers = AllPeers as List<PeerInfo>;
+            WeakPeerReports.Enqueue(allocation.Current);
         }
+
+        public Queue<PeerInfo> WeakPeerReports { get; set; } = new Queue<PeerInfo>();
+        public Queue<PeerInfo> InvalidPeerReports { get; set; } = new Queue<PeerInfo>();
+        public Queue<PeerInfo> NoSyncProgressReports { get; set; } = new Queue<PeerInfo>();
 
         public void WakeUpAll()
         {
@@ -109,5 +107,9 @@ namespace Nethermind.Blockchain.Test.Synchronization.Mocks
         }
 
         public event EventHandler PeerAdded;
+
+        public void Dispose()
+        {
+        }
     }
 }
