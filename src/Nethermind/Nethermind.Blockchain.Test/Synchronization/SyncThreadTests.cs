@@ -164,7 +164,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 transaction.GasPrice = 20.GWei();
                 transaction.Hash = transaction.CalculateHash();
                 _originPeer.Ecdsa.Sign(TestItem.PrivateKeyA, transaction, i);
-                _originPeer.TxPool.AddTransaction(transaction, i);
+                _originPeer.TxPool.AddTransaction(transaction, i, TxHandlingOptions.None);
                 if (!resetEvent.WaitOne(1000))
                 {
                     throw new Exception($"Failed to produce block {i + 1}");

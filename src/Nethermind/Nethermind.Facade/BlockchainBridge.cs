@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Security;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -121,24 +122,43 @@ namespace Nethermind.Facade
 
         public Transaction[] GetPendingTransactions() => _txPool.GetPendingTransactions();
 
-        public Keccak SendTransaction(Transaction transaction, bool isOwn = false)
+        public Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             _stateProvider.StateRoot = _blockTree.Head.StateRoot;
-
-            transaction.Hash = transaction.CalculateHash();
-            transaction.Timestamp = _timestamper.EpochSeconds;
-
-            var result = _txPool.AddTransaction(transaction, _blockTree.Head.Number, isOwn);
-            if (isOwn && result == AddTxResult.OwnNonceAlreadyUsed)
+            try
             {
-                transaction.Nonce = _txPool.ReserveOwnTransactionNonce(transaction.SenderAddress);
-                Sign(transaction);
-                transaction.Hash = transaction.CalculateHash();
-                _txPool.AddTransaction(transaction, _blockTree.Head.Number, true);
-            }
+                if (tx.Signature == null)
+                {
+                    if (_wallet.IsUnlocked(tx.SenderAddress))
+                    {
+                        Sign(tx);
+                    }
+                    else
+                    {
+                        throw new SecurityException("Your account is locked. Unlock the account via CLI, personal_unlockAccount or use Trusted Signer.");
+                    }
+                }
+                
+                tx.Hash = tx.CalculateHash();
+                tx.Timestamp = _timestamper.EpochSeconds;
 
-            _stateProvider.Reset();
-            return transaction.Hash;
+                AddTxResult result = _txPool.AddTransaction(tx, _blockTree.Head.Number, txHandlingOptions);
+                
+                if (result == AddTxResult.OwnNonceAlreadyUsed && (txHandlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce)
+                {
+                    // below the temporary NDM support - needs some review
+                    tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
+                    Sign(tx);
+                    tx.Hash = tx.CalculateHash();
+                    _txPool.AddTransaction(tx, _blockTree.Head.Number, txHandlingOptions);
+                }
+
+                return tx.Hash;
+            }
+            finally
+            {
+                _stateProvider.Reset();
+            }
         }
 
         public TxReceipt GetReceipt(Keccak txHash)
@@ -193,27 +213,33 @@ namespace Nethermind.Facade
 
 
             _stateProvider.StateRoot = blockHeader.StateRoot;
-            if (transaction.Nonce == 0)
+            try
             {
-                transaction.Nonce = GetNonce(_stateProvider.StateRoot, transaction.SenderAddress);
+                if (transaction.Nonce == 0)
+                {
+                    transaction.Nonce = GetNonce(_stateProvider.StateRoot, transaction.SenderAddress);
+                }
+
+                BlockHeader callHeader = new BlockHeader(
+                    blockHeader.Hash,
+                    Keccak.OfAnEmptySequenceRlp,
+                    Address.Zero,
+                    0,
+                    blockHeader.Number + 1,
+                    blockHeader.GasLimit,
+                    blockHeader.Timestamp,
+                    Bytes.Empty);
+
+                transaction.Hash = transaction.CalculateHash();
+                CallOutputTracer callOutputTracer = new CallOutputTracer();
+                _transactionProcessor.CallAndRestore(transaction, callHeader, callOutputTracer);
+                return callOutputTracer;
             }
-
-            BlockHeader callHeader = new BlockHeader(
-                blockHeader.Hash,
-                Keccak.OfAnEmptySequenceRlp,
-                Address.Zero,
-                0,
-                blockHeader.Number + 1,
-                blockHeader.GasLimit,
-                blockHeader.Timestamp,
-                Bytes.Empty);
-
-            transaction.Hash = transaction.CalculateHash();
-            CallOutputTracer callOutputTracer = new CallOutputTracer();
-            _transactionProcessor.CallAndRestore(transaction, callHeader, callOutputTracer);
-            _stateProvider.Reset();
-            _storageProvider.Reset();
-            return callOutputTracer;
+            finally
+            {
+                _stateProvider.Reset();
+                _storageProvider.Reset();
+            }
         }
 
         public long GetChainId()

@@ -28,9 +28,9 @@ namespace Nethermind.Blockchain.TxPools.Collections
             _distinctDictionary = new Dictionary<TValue, LinkedListNode<KeyValuePair<TKey, TValue>>>(distinctComparer);
         }
 
-        protected override void Add(TKey key, LinkedListNode<KeyValuePair<TKey, TValue>> newNode)
+        protected override void InsertCore(TKey key, LinkedListNode<KeyValuePair<TKey, TValue>> newNode)
         {
-            base.Add(key, newNode);
+            base.InsertCore(key, newNode);
             var value = newNode.Value.Value;
             
             // if there was a node already with same distinct value we need to remove it

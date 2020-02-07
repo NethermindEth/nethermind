@@ -63,7 +63,12 @@ namespace Nethermind.JsonRpc
         /// <summary>
         /// Transaction creation failed
         /// </summary>
-        public const int TransactionRejected = -32003;
+        public const int TransactionRejected = -32010;
+        
+        /// <summary>
+        /// Account locked
+        /// </summary>
+        public const int AccountLocked = -32020;
         
         /// <summary>
         /// Method is not implemented

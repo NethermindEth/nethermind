@@ -17,10 +17,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -242,6 +244,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 string signatureText = string.Format(signatureTemplate, messageText.Length, messageText);
                 sig = _blockchainBridge.Sign(address, Keccak.Compute(signatureText));
             }
+            catch (SecurityException e)
+            {
+                return ResultWrapper<byte[]>.Fail(e.Message, ErrorCodes.AccountLocked);
+            }
             catch (Exception)
             {
                 return ResultWrapper<byte[]>.Fail($"Unable to sign as {addressData}");
@@ -254,21 +260,37 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public Task<ResultWrapper<Keccak>> eth_sendTransaction(TransactionForRpc transactionForRpc)
         {
             Transaction tx = transactionForRpc.ToTransactionWithDefaults();
-            if (tx.Signature == null)
-            {
-                tx.Nonce = _blockchainBridge.GetNonce(tx.SenderAddress);
-                _blockchainBridge.Sign(tx);
-            }
-
-            Keccak txHash = _blockchainBridge.SendTransaction(tx, true);
-            return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
+            return SendTx(tx);
         }
 
-        public Task<ResultWrapper<Keccak>> eth_sendRawTransaction(byte[] transaction)
+        public async Task<ResultWrapper<Keccak>> eth_sendRawTransaction(byte[] transaction)
         {
-            Transaction tx = Rlp.Decode<Transaction>(transaction);
-            Keccak txHash = _blockchainBridge.SendTransaction(tx, true);
-            return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
+            try
+            {
+                Transaction tx = Rlp.Decode<Transaction>(transaction, RlpBehaviors.AllowUnsigned);
+                return await SendTx(tx);
+            }
+            catch (RlpException)
+            {
+                return ResultWrapper<Keccak>.Fail("Invalid RLP.", ErrorCodes.TransactionRejected);
+            }
+        }
+
+        private Task<ResultWrapper<Keccak>> SendTx(Transaction tx)
+        {
+            try
+            {
+                Keccak txHash = _blockchainBridge.SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+                return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
+            }
+            catch (SecurityException e)
+            {
+                return Task.FromResult(ResultWrapper<Keccak>.Fail(e.Message, ErrorCodes.AccountLocked));
+            }
+            catch (Exception e)
+            {
+                return Task.FromResult(ResultWrapper<Keccak>.Fail(e.Message, ErrorCodes.TransactionRejected));
+            }
         }
 
         public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter blockParameter = null)

@@ -96,6 +96,12 @@ namespace Nethermind.Cli.Modules
         {
             return NodeManager.Post<string>("eth_sendRawTransaction", txRlp).Result;
         }
+        
+        [CliFunction("eth", "sendTransaction")]
+        public string SendTransaction(object tx)
+        {
+            return NodeManager.Post<string>("eth_sendTransaction", tx).Result;
+        }
 
         [CliProperty("eth", "blockNumber")]
         public long BlockNumber()

@@ -91,7 +91,7 @@ namespace Nethermind.Blockchain.Test
 
             tx.Hash = tx.CalculateHash();
 
-            _txPool.AddTransaction(tx, 1);
+            _txPool.AddTransaction(tx, 1, TxHandlingOptions.PersistentBroadcast);
             _logger.Debug($"Generated a test transaction for testing ({_count - 1}).");
         }
 

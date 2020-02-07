@@ -367,7 +367,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 Transaction transaction = msg.Transactions[i];
                 transaction.DeliveredBy = Node.Id;
                 transaction.Timestamp = _timestamper.EpochSeconds;
-                AddTxResult result = _txPool.AddTransaction(transaction, SyncServer.Head.Number);
+                AddTxResult result = _txPool.AddTransaction(transaction, SyncServer.Head.Number, TxHandlingOptions.None);
                 if (result != AddTxResult.Added)
                 {
                     _notAcceptedTxsSinceLastCheck++;
