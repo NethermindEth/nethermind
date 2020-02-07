@@ -21,7 +21,6 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Threading;
-using Extensions.Data;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
@@ -263,12 +262,6 @@ namespace Nethermind.Core.Extensions
             return slice;
         }
 
-        public static int GetXxHashCode(this byte[] bytes)
-        {
-            LazyInitializer.EnsureInitialized(ref _xxHash, XXHash32.Create);
-            return MemoryMarshal.Read<int>(_xxHash.ComputeHash(bytes));
-        }
-        
         [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
         public static int GetSimplifiedHashCode(this byte[] bytes)
         {
