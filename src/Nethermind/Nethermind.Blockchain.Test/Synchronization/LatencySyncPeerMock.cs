@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,8 +25,12 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Stats.Model;
 
-namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
+namespace Nethermind.Blockchain.Test.Synchronization
 {
+    /// <summary>
+    /// Mock of a sync peer that allows controlling concurrency issues without spawning tasks.
+    /// By controlling latency parameters we can test various ordering of responses, timeouts and other issues without unpredictable results from tests running on multiple threads.
+    /// </summary>
     public class LatencySyncPeerMock : ISyncPeer
     {
         public IBlockTree Tree { get; }
@@ -40,7 +43,6 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         {
             Latency = latency;
             string localHost = "0.0.0.0";
-
             string remoteHost = $"{RemoteIndex}.{RemoteIndex}.{RemoteIndex}.{RemoteIndex}";
 
             Tree = tree;

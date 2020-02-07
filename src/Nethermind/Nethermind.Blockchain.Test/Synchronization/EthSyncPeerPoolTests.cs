@@ -506,11 +506,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             for (int i = 0; i < 10; i++)
             {
-                _pool.ReportBadPeer(allocation);
+                _pool.ReportWeakPeer(allocation);
                 Assert.AreEqual(0, peers.Count(p => p.DisconnectRequested));
             }
 
-            _pool.ReportBadPeer(allocation);
+            _pool.ReportWeakPeer(allocation);
             Assert.AreEqual(1, peers.Count(p => p.DisconnectRequested));
         }
 
@@ -690,11 +690,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
                     });
                 }
 
-                Console.WriteLine(iterations + " " + failures + " " + _pool.Allocations.Count() + " " + _pendingRequests);
+                Console.WriteLine(iterations + " " + failures + " " + _pool.ReplaceableAllocations.Count() + " " + _pendingRequests);
                 await Task.Delay(10);
             } while (iterations-- > 0 || _pendingRequests > 0);
 
-            Assert.AreEqual(0, _pool.Allocations.Count(), "allocations");
+            Assert.AreEqual(0, _pool.ReplaceableAllocations.Count(), "allocations");
             Assert.AreEqual(0, _pendingRequests, "pending requests");
             Assert.GreaterOrEqual(failures, 0, "pending requests");
         }

@@ -1017,8 +1017,8 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
                 if (headers.Length > 3 && _maliciousByRepetition.Contains(syncPeer))
                 {
-                    headers[headers.Length - 1] = headers[headers.Length - 3];
-                    headers[headers.Length - 2] = headers[headers.Length - 3];
+                    headers[^1] = headers[^3];
+                    headers[^2] = headers[^3];
                     TestContext.WriteLine($"{_time,6} | SYNC PEER {syncPeer.Node:s} WILL SEND A MALICIOUS (REPEATED) MESSAGE");
                 }
 
