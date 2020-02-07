@@ -51,6 +51,8 @@ namespace Nethermind.Core
             _bits = bitArray;
         }
 
+        public Bloom(byte[] bytes) : this(new BitArray(bytes)) { }
+
         public byte[] Bytes => ReferenceEquals(this, Empty) ?  EmptyBloomBytes : _bits.ToBytes();
 
         public void Set(byte[] sequence)
@@ -158,6 +160,11 @@ namespace Nethermind.Core
                     Set(topic.Bytes, blockBloom);
                 }
             }
+        }
+
+        public void Accrue(Bloom bloom)
+        {
+            _bits.Or(bloom._bits);
         }
         
         public bool Matches(LogEntry logEntry)

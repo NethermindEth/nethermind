@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,22 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Db;
-using Nethermind.Db.Config;
-using Nethermind.Logging;
+using System.Collections.Generic;
 
-namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.Databases
+namespace Nethermind.Store
 {
-    public class ConsumerSessionsRocksDb : DbOnTheRocks
+    public interface IColumnDb<TKey>
     {
-        public override string Name { get; } = "ConsumerSessions";
-
-        public ConsumerSessionsRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
-            : base(basePath, "consumerSessions", dbConfig, logManager)
-        {
-        }
-
-        internal override void UpdateReadMetrics() => ConsumerMetrics.ConsumerSessionsDbReads++;
-        internal override void UpdateWriteMetrics() => ConsumerMetrics.ConsumerSessionsDbWrites++;
+        IDictionary<TKey, IDb> ColumnDbs { get; }
     }
 }

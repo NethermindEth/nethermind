@@ -331,7 +331,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                         .Select(t => Build.A.Receipt
                             .WithStatusCode(StatusCode.Success)
                             .WithGasUsed(10)
-                            .WithBloom(Bloom.Empty)
+                            .WithBloom(Core.Bloom.Empty)
                             .WithLogs(Build.A.LogEntry.WithAddress(t.SenderAddress).WithTopics(TestItem.KeccakA).TestObject)
                             .TestObject)
                         .ToArray();

@@ -25,6 +25,6 @@ namespace Nethermind.Blockchain.Filters.Topics
         
         public override bool Accepts(Keccak topic) => true;
 
-        public override bool Matches(Bloom bloom) => true;
+        public override bool Matches(Core.Bloom bloom) => true;
     }
 }

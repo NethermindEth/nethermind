@@ -911,11 +911,17 @@ namespace Nethermind.Blockchain
             return childHash;
         }
 
+        public bool IsMainChain(BlockHeader blockHeader) => LoadLevel(blockHeader.Number).MainChainBlock?.BlockHash.Equals(blockHeader.Hash) == true;
+
         public bool IsMainChain(Keccak blockHash)
         {
-            long number = LoadNumberOnly(blockHash);
-            ChainLevelInfo level = LoadLevel(number);
-            return level.MainChainBlock?.BlockHash.Equals(blockHash) == true;
+            BlockHeader header = FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (header == null)
+            {
+                throw new InvalidOperationException($"Not able to retrieve block number for an unknown block {blockHash}");
+            }
+
+            return IsMainChain(header);
         }
 
         public bool WasProcessed(long number, Keccak blockHash)
@@ -1217,18 +1223,6 @@ namespace Nethermind.Blockchain
             }
 
             return _chainLevelInfoRepository.LoadLevel(number);
-        }
-
-        private long LoadNumberOnly(Keccak blockHash)
-        {
-            BlockHeader header = FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            if (header == null)
-            {
-                throw new InvalidOperationException(
-                    $"Not able to retrieve block number for an unknown block {blockHash}");
-            }
-
-            return header.Number;
         }
 
         /// <summary>

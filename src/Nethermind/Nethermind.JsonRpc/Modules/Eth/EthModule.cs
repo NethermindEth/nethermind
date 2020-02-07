@@ -563,9 +563,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             BlockParameter fromBlock = filter.FromBlock;
             BlockParameter toBlock = filter.ToBlock;
 
-            return ResultWrapper<IEnumerable<FilterLog>>.Success(_blockchainBridge.GetLogs(fromBlock, toBlock,
-                filter.Address,
-                filter.Topics));
+            return ResultWrapper<IEnumerable<FilterLog>>.Success(_blockchainBridge.GetLogs(fromBlock, toBlock, filter.Address, filter.Topics));
         }
 
         public ResultWrapper<IEnumerable<byte[]>> eth_getWork()

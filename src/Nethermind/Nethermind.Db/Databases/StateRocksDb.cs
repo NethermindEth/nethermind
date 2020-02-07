@@ -29,7 +29,7 @@ namespace Nethermind.Db.Databases
         {
         }
 
-        protected override void UpdateReadMetrics() => Metrics.StateDbReads++;
-        protected override void UpdateWriteMetrics() => Metrics.StateDbWrites++;
+        internal override void UpdateReadMetrics() => Metrics.StateDbReads++;
+        internal override void UpdateWriteMetrics() => Metrics.StateDbWrites++;
     }
 }

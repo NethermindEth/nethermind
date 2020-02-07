@@ -95,13 +95,6 @@ namespace Nethermind.Blockchain
         AddBlockResult SuggestHeader(BlockHeader header);
         
         /// <summary>
-        /// Checks if the block is currently in the canonical chain
-        /// </summary>
-        /// <param name="blockHash">Hash of the block to check</param>
-        /// <returns><value>True</value> if part of the canonical chain, otherwise <value>False</value></returns>
-        bool IsMainChain(Keccak blockHash);
-        
-        /// <summary>
         /// Checks if the block was downloaded and the block RLP is in the DB
         /// </summary>
         /// <param name="number">Number of the block to check (needed for faster lookup)</param>
