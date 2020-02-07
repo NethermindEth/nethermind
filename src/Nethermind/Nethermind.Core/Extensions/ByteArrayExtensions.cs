@@ -135,8 +135,6 @@ namespace Nethermind.Core.Extensions
     
     public static class ByteArrayExtensions
     {
-        [ThreadStatic] private static HashAlgorithm _xxHash;
-
         public static byte[] Xor(this byte[] bytes, byte[] otherBytes)
         {
             if (bytes.Length != otherBytes.Length)
