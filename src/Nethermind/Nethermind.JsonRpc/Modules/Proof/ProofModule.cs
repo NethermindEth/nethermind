@@ -80,8 +80,13 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 sourceHeader.GasLimit,
                 sourceHeader.Timestamp,
                 Bytes.Empty);
-            callHeader.TotalDifficulty = sourceHeader.TotalDifficulty + callHeader.Difficulty;
             
+            callHeader.TxRoot = Keccak.EmptyTreeHash;
+            callHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
+            callHeader.Author = Address.SystemUser;
+            callHeader.TotalDifficulty = sourceHeader.TotalDifficulty + callHeader.Difficulty;
+            callHeader.Hash = callHeader.CalculateHash();
+
             Transaction transaction = tx.ToTransaction();
             transaction.SenderAddress ??= Address.SystemUser;
             if (transaction.GasLimit == 0)
