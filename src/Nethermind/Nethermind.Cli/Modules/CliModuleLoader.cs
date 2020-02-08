@@ -25,10 +25,10 @@ using Jint.Native.Object;
 using Jint.Runtime;
 using Jint.Runtime.Descriptors;
 using Jint.Runtime.Interop;
-using Nethermind.Cli.Modules;
+using Nethermind.Cli.Console;
 using Nethermind.JsonRpc.Client;
 
-namespace Nethermind.Cli
+namespace Nethermind.Cli.Modules
 {
     public class CliModuleLoader
     {
@@ -72,7 +72,7 @@ namespace Nethermind.Cli
             return methodInfo.CreateDelegate(Expression.GetDelegateType(types), module);
         }
 
-        public void LoadModule(CliModuleBase module)
+        private void LoadModule(CliModuleBase module)
         {
             var cliModuleAttribute = module.GetType().GetCustomAttribute<CliModuleAttribute>();
             _cliConsole.WriteLine($"module ({cliModuleAttribute.ModuleName})");
