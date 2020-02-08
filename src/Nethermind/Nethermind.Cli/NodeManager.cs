@@ -21,6 +21,7 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using Jint.Native;
 using Jint.Native.Json;
+using Nethermind.Cli.Console;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -69,32 +70,14 @@ namespace Nethermind.Cli
 
         public async Task<JsValue> PostJint(string method, params object[] parameters)
         {
-            try
+            object result = await Post<object>(method, parameters);
+            string resultString = result?.ToString();
+            if (resultString == "0x" || resultString == null)
             {
-                Stopwatch stopwatch = new Stopwatch();
-                stopwatch.Start();
-                object result = await _currentClient.Post<object>(method, parameters);
-                stopwatch.Stop();
-                decimal totalMicroseconds = stopwatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
-                Console.WriteLine($"Request complete in {totalMicroseconds}μs");
-                string resultString = result?.ToString();
-                if (resultString == "0x")
-                {
-                    return JsValue.Null;
-                }
-
-                return resultString == null ? JsValue.Null : _jsonParser.Parse(resultString);
-            }
-            catch (HttpRequestException e)
-            {
-                _cliConsole.WriteErrorLine(e.Message);
-            }
-            catch (Exception e)
-            {
-                _cliConsole.WriteException(e);
+                return JsValue.Null;
             }
 
-            return JsValue.Null;
+            return resultString;
         }
 
         public async Task<string> Post(string method, params object[] parameters)
@@ -111,12 +94,18 @@ namespace Nethermind.Cli
                 T result = await _currentClient.Post<T>(method, parameters);
                 stopwatch.Stop();
                 decimal totalMicroseconds = stopwatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
-                Console.WriteLine($"Request complete in {totalMicroseconds}μs");
+                Colorful.Console.WriteLine($"Request complete in {totalMicroseconds}μs");
                 return result;
             }
             catch (HttpRequestException e)
             {
-                _cliConsole.WriteErrorLine(e.Message);
+                _cliConsole.WriteErrorLine("  " + e.Message);
+                _cliConsole.Write("  Use ");
+                _cliConsole.WriteKeyword("node");
+                _cliConsole.WriteLine(".switch(\"ip:port\") to change the target machine");
+                
+                _cliConsole.WriteLine("  Make sure that JSON RPC is enabled on the target machine (--JsonRpc.Enabled true)");
+                _cliConsole.WriteLine("  Make sure that firewall is open for the JSON RPC port on the target machine");
             }
             catch (Exception e)
             {

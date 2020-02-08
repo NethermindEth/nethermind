@@ -16,6 +16,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Cli.Modules;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
@@ -53,7 +54,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
 
             // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
-            if (_context.Logger.IsDebug) _context.Logger.Debug($"Resolving CLI ({nameof(Cli.CliModuleLoader)})");
+            if (_context.Logger.IsDebug) _context.Logger.Debug($"Resolving CLI ({nameof(CliModuleLoader)})");
 
             IInitConfig initConfig = _context.Config<IInitConfig>();
             INdmConfig ndmConfig = _context.Config<INdmConfig>();

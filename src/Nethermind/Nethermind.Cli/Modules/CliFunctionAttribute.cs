@@ -16,15 +16,18 @@
 
 using System;
 
-namespace Nethermind.Cli
+namespace Nethermind.Cli.Modules
 {
-    public class CliModuleAttribute : Attribute
+    public class CliFunctionAttribute : Attribute
     {
-        public string ModuleName { get; }
+        public string ObjectName { get; }
+        public string FunctionName { get; }
+        public string Description { get; set; }
 
-        public CliModuleAttribute(string moduleName)
+        public CliFunctionAttribute(string objectName, string functionName)
         {
-            ModuleName = moduleName;
+            ObjectName = objectName;
+            FunctionName = functionName;
         }
     }
 }

@@ -16,14 +16,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
-using Console = Colorful.Console;
 
-namespace Nethermind.Cli
+namespace Nethermind.Cli.Console
 {
     public class CliConsole : ICliConsole
     {
@@ -40,36 +38,36 @@ namespace Nethermind.Cli
         public Terminal Init(ColorScheme colorScheme)
         {
             _colorScheme = colorScheme;
-            Console.BackgroundColor = colorScheme.BackgroundColor;
-            Console.ForegroundColor = colorScheme.Text;
+            Colorful.Console.BackgroundColor = colorScheme.BackgroundColor;
+            Colorful.Console.ForegroundColor = colorScheme.Text;
             _terminal = GetTerminal();
             if (_terminal != Terminal.Powershell)
             {
-                Console.ResetColor();
+                Colorful.Console.ResetColor();
             }
 
             if (_terminal != Terminal.Cygwin)
             {
-                Console.Clear();
+                Colorful.Console.Clear();
             }
 
             Assembly assembly = typeof(CliConsole).Assembly;
             AssemblyInformationalVersionAttribute versionAttribute = assembly.GetCustomAttributes(false).OfType<AssemblyInformationalVersionAttribute>().FirstOrDefault();
             string version = versionAttribute?.InformationalVersion;
 
-            Console.WriteLine("**********************************************", _colorScheme.Comment);
-            Console.WriteLine();
-            Console.WriteLine("Nethermind CLI {0}", GetColor(_colorScheme.Good), version);
-            Console.WriteLine("  https://github.com/NethermindEth/nethermind", GetColor(_colorScheme.Interesting));
-            Console.WriteLine("  https://nethermind.readthedocs.io/en/latest/", GetColor( _colorScheme.Interesting));
-            Console.WriteLine();
-            Console.WriteLine("powered by:", _colorScheme.Text);
-            Console.WriteLine("  https://github.com/sebastienros/jint", GetColor( _colorScheme.Interesting));
-            Console.WriteLine("  https://github.com/tomakita/Colorful.Console", GetColor( _colorScheme.Interesting));
-            Console.WriteLine("  https://github.com/tonerdo/readline", GetColor( _colorScheme.Interesting));
-            Console.WriteLine();
-            Console.WriteLine("**********************************************", _colorScheme.Comment);
-            Console.WriteLine();
+            Colorful.Console.WriteLine("**********************************************", _colorScheme.Comment);
+            Colorful.Console.WriteLine();
+            Colorful.Console.WriteLine("Nethermind CLI {0}", GetColor(_colorScheme.Good), version);
+            Colorful.Console.WriteLine("  https://github.com/NethermindEth/nethermind", GetColor(_colorScheme.Interesting));
+            Colorful.Console.WriteLine("  https://nethermind.readthedocs.io/en/latest/", GetColor( _colorScheme.Interesting));
+            Colorful.Console.WriteLine();
+            Colorful.Console.WriteLine("powered by:", _colorScheme.Text);
+            Colorful.Console.WriteLine("  https://github.com/sebastienros/jint", GetColor( _colorScheme.Interesting));
+            Colorful.Console.WriteLine("  https://github.com/tomakita/Colorful.Console", GetColor( _colorScheme.Interesting));
+            Colorful.Console.WriteLine("  https://github.com/tonerdo/readline", GetColor( _colorScheme.Interesting));
+            Colorful.Console.WriteLine();
+            Colorful.Console.WriteLine("**********************************************", _colorScheme.Comment);
+            Colorful.Console.WriteLine();
 
             return _terminal;
         }
@@ -82,7 +80,7 @@ namespace Nethermind.Cli
                     RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? Terminal.MacBash : Terminal.Unknown;
             }
             
-            var title = Console.Title.ToLowerInvariant();
+            var title = Colorful.Console.Title.ToLowerInvariant();
             foreach (var (key, value) in Terminals)
             {
                 if (title.Contains(key))
@@ -101,52 +99,57 @@ namespace Nethermind.Cli
         
         public void WriteException(Exception e)
         {
-            Console.WriteLine(e.ToString(), GetColor(_colorScheme.ErrorColor));
+            Colorful.Console.WriteLine(e.ToString(), GetColor(_colorScheme.ErrorColor));
         }
         
         public void WriteErrorLine(string errorMessage)
         {
-            Console.WriteLine(errorMessage, GetColor(_colorScheme.ErrorColor));
+            Colorful.Console.WriteLine(errorMessage, GetColor(_colorScheme.ErrorColor));
         }
         
         public void WriteLine(object objectToWrite)
         {
-            Console.WriteLine(objectToWrite.ToString(), _colorScheme.Text);
+            Colorful.Console.WriteLine(objectToWrite.ToString(), _colorScheme.Text);
         }
-        
+
+        public void Write(object objectToWrite)
+        {
+            Colorful.Console.Write(objectToWrite.ToString(), _colorScheme.Text);
+        }
+
         public void WriteCommentLine(object objectToWrite)
         {
-            Console.WriteLine(objectToWrite.ToString(), _colorScheme.Comment);
+            Colorful.Console.WriteLine(objectToWrite.ToString(), _colorScheme.Comment);
         }
         
         public void WriteLessImportant(object objectToWrite)
         {
-            Console.Write(objectToWrite.ToString(), GetColor(_colorScheme.LessImportant));
+            Colorful.Console.Write(objectToWrite.ToString(), GetColor(_colorScheme.LessImportant));
         }
         
         public void WriteKeyword(string keyword)
         {
-            Console.Write(keyword, GetColor(_colorScheme.Keyword));
+            Colorful.Console.Write(keyword, GetColor(_colorScheme.Keyword));
         }
         
         public void WriteInteresting(string interesting)
         {
-            Console.WriteLine(interesting, GetColor(_colorScheme.Interesting));
+            Colorful.Console.WriteLine(interesting, GetColor(_colorScheme.Interesting));
         }
 
         public void WriteLine()
         {
-            Console.WriteLine();
+            Colorful.Console.WriteLine();
         }
 
         public void WriteGood(string goodText)
         {
-            Console.WriteLine(goodText, GetColor(_colorScheme.Good));
+            Colorful.Console.WriteLine(goodText, GetColor(_colorScheme.Good));
         }
 
         public void WriteString(object result)
         {
-            Console.WriteLine(result, GetColor(_colorScheme.String));
+            Colorful.Console.WriteLine(result, GetColor(_colorScheme.String));
         }
     }
 }

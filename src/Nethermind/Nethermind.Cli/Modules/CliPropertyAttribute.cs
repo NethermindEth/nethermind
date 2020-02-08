@@ -16,7 +16,7 @@
 
 using System;
 
-namespace Nethermind.Cli
+namespace Nethermind.Cli.Modules
 {
     public class CliPropertyAttribute : Attribute
     {
