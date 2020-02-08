@@ -60,7 +60,7 @@ namespace Nethermind.Store.BeamSync
 
         private int _resolvedKeysCount;
         
-        private ConcurrentQueue<Keccak> _requestedNodes = new ConcurrentQueue<Keccak>();
+        private HashSet<Keccak> _requestedNodes = new HashSet<Keccak>();
 
         public byte[] this[byte[] key]
         {
@@ -90,7 +90,7 @@ namespace Nethermind.Store.BeamSync
                             return null;
                         }
 
-                        _requestedNodes[new Keccak(key)] = null;
+                        _requestedNodes.Add(new Keccak(key));
                         // _logger.Error($"Requested {key.ToHexString()}");
 
                         NeedsData = true;
@@ -141,23 +141,7 @@ namespace Nethermind.Store.BeamSync
         public Keccak[] PrepareRequest()
         {
             NeedsData = false;
-            Keccak[] request = new Keccak[256];
-            int length = 0;
-            for (int i = 0; i < request.Length; i++)
-            {
-                bool success = _requestedNodes.TryDequeue(out Keccak next);
-                if (success)
-                {
-                    request[i] = next;
-                    length++;
-                }
-                else
-                {
-                    break;
-                }
-            }
-            
-            return request.AsSpan().Slice(0, length).ToArray();
+            return _requestedNodes.ToArray();
         }
 
         public int HandleResponse(Keccak[] hashes, byte[][] data)
