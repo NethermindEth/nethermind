@@ -210,7 +210,7 @@ namespace Nethermind.Network.P2P
 
             if (_pongCompletionSource != null)
             {
-                if (Logger.IsWarn) Logger.Warn($"Another ping request in process: {Session.RemoteNodeId}");
+                if (Logger.IsWarn) Logger.Warn($"Another ping request in process: {Session.Node:c}");
                 return true;
             }
 

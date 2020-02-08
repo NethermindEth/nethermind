@@ -60,7 +60,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             message.ChainId = 1;
             
             StatusMessageSerializer serializer = new StatusMessageSerializer();
-            SerializerTester.Test(serializer, message);
             SerializerTester.TestZero(serializer, message);
         }
         

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,11 +14,24 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using DotNetty.Buffers;
+
 namespace Nethermind.Network
 {
-    public interface IMessageSerializer<T> where T : MessageBase
+    public static class ZeroMessageSerializerExtensions
     {
-        byte[] Serialize(T message);
-        T Deserialize(byte[] bytes);
+        public static byte[] Serialize<T>(this IZeroMessageSerializer<T> serializer, T message) where T : MessageBase
+        {
+            IByteBuffer byteBuffer = UnpooledByteBufferAllocator.Default.Buffer(64);
+            serializer.Serialize(byteBuffer, message);
+            return byteBuffer.ReadAllBytes();
+        }
+        
+        public static T Deserialize<T>(this IZeroMessageSerializer<T> serializer, byte[] message) where T : MessageBase
+        {
+            var buffer = UnpooledByteBufferAllocator.Default.Buffer(message.Length);
+            buffer.WriteBytes(message);
+            return serializer.Deserialize(buffer);
+        }
     }
 }

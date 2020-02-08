@@ -20,30 +20,33 @@ using System.Reflection;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Network.P2P;
 
 namespace Nethermind.Network
 {
     public class MessageSerializationService : IMessageSerializationService
     {
         private readonly ConcurrentDictionary<RuntimeTypeHandle, object> _serializers = new ConcurrentDictionary<RuntimeTypeHandle, object>();
+        private readonly ConcurrentDictionary<RuntimeTypeHandle, object> _zeroSerializers = new ConcurrentDictionary<RuntimeTypeHandle, object>();
 
         public T Deserialize<T>(byte[] bytes) where T : MessageBase
         {
-            IMessageSerializer<T> serializer = GetSerializer<T>();
-            return serializer.Deserialize(bytes);
+            if (!TryGetSerializer(out IMessageSerializer<T> messageSerializer))
+            {
+                throw new InvalidOperationException($"No {nameof(IMessageSerializer<T>)} registered for {typeof(T).Name}.");
+            }
+
+            return messageSerializer.Deserialize(bytes);
         }
 
         public T Deserialize<T>(IByteBuffer buffer) where T : MessageBase
         {
-            IMessageSerializer<T> serializer = GetSerializer<T>();
-            IZeroMessageSerializer<T> zeroSerializer = serializer as IZeroMessageSerializer<T>;
-            if (zeroSerializer != null)
+            if (!TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
             {
-                return zeroSerializer.Deserialize(buffer);
+                return Deserialize<T>(buffer.ReadAllBytes());
             }
 
-            // during fast sync this is where 15% of allocations happen and this is entirely unnecessary
-            return serializer.Deserialize(buffer.ReadAllBytes());
+            return zeroMessageSerializer.Deserialize(buffer);
         }
 
         public void Register(Assembly assembly)
@@ -74,6 +77,17 @@ namespace Nethermind.Network
 
                         _serializers[implementedInterface.GenericTypeArguments[0].TypeHandle] = Activator.CreateInstance(type);
                     }
+
+                    if (interfaceGenericDefinition == typeof(IZeroMessageSerializer<>).GetGenericTypeDefinition())
+                    {
+                        ConstructorInfo constructor = type.GetConstructor(Type.EmptyTypes);
+                        if (constructor == null)
+                        {
+                            continue;
+                        }
+
+                        _zeroSerializers[implementedInterface.GenericTypeArguments[0].TypeHandle] = Activator.CreateInstance(type);
+                    }
                 }
             }
         }
@@ -82,46 +96,77 @@ namespace Nethermind.Network
         {
             _serializers[typeof(T).TypeHandle] = messageSerializer;
         }
-
-        [Todo(Improve.Performance, "WIP - will add a zero serializers here")]
-        public void Serialize<T>(T message, IByteBuffer byteBuffer) where T : MessageBase
+        
+        public void Register<T>(IZeroMessageSerializer<T> messageSerializer) where T : MessageBase
         {
-            IMessageSerializer<T> serializer = GetSerializer<T>();
-            IZeroMessageSerializer<T> zeroSerializer = serializer as IZeroMessageSerializer<T>;
-            
-            if (zeroSerializer != null)
+            _zeroSerializers[typeof(T).TypeHandle] = messageSerializer;
+        }
+
+        public IByteBuffer ZeroSerialize<T>(T message) where T : MessageBase
+        {
+            IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(64);
+            if (message is P2PMessage p2PMessage)
             {
-                zeroSerializer.Serialize(byteBuffer, message);
+                byteBuffer.WriteByte(p2PMessage.AdaptivePacketType);
             }
-            else
+
+            if (!TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
             {
-                byte[] serialized = serializer.Serialize(message);
+                byte[] serialized = Serialize(message);
                 byteBuffer.EnsureWritable(serialized.Length, true);
                 byteBuffer.WriteBytes(serialized);
             }
+            else
+            {
+                zeroMessageSerializer.Serialize(byteBuffer, message);
+            }
+            
+            return byteBuffer;
         }
-
         public byte[] Serialize<T>(T messageBase) where T : MessageBase
         {
-            IMessageSerializer<T> serializer = GetSerializer<T>();
-            return serializer.Serialize(messageBase);
+            if (!TryGetSerializer(out IMessageSerializer<T> messageSerializer))
+            {
+                throw new InvalidOperationException($"No {nameof(IMessageSerializer<T>)} registered for {typeof(T).Name}.");
+            }
+
+            return messageSerializer.Serialize(messageBase);
         }
 
-        private IMessageSerializer<T> GetSerializer<T>() where T : MessageBase
+        private bool TryGetZeroSerializer<T>(out IZeroMessageSerializer<T> serializer) where T : MessageBase
+        {
+            RuntimeTypeHandle typeHandle = typeof(T).TypeHandle;
+            if (!_zeroSerializers.TryGetValue(typeHandle, out object serializerObject))
+            {
+                serializer = null;
+                return false;
+            }
+
+            if (!(serializerObject is IZeroMessageSerializer<T> messageSerializer))
+            {
+                throw new InvalidOperationException($"Zero serializer for {nameof(T)} (registered: {serializerObject?.GetType()?.Name}) does not implement required interfaces");
+            }
+
+            serializer = messageSerializer;
+            return true;
+        }
+
+        private bool TryGetSerializer<T>(out IMessageSerializer<T> serializer) where T : MessageBase
         {
             RuntimeTypeHandle typeHandle = typeof(T).TypeHandle;
             if (!_serializers.TryGetValue(typeHandle, out object serializerObject))
             {
-                Type type = typeof(T);
-                throw new InvalidOperationException($"No {nameof(IMessageSerializer<T>)} registered for {type.Name}.");
+                serializer = null;
+                return false;
             }
 
-            if (!(serializerObject is IMessageSerializer<T> serializer))
+            if (!(serializerObject is IMessageSerializer<T> messageSerializer))
             {
-                throw new InvalidOperationException($"Missing matching serializer for {nameof(T)} (registered: {serializerObject?.GetType()?.Name})");
+                throw new InvalidOperationException($"Serializer for {nameof(T)} (registered: {serializerObject?.GetType()?.Name}) does not implement required interfaces");
             }
 
-            return serializer;
+            serializer = messageSerializer;
+            return true;
         }
     }
 }

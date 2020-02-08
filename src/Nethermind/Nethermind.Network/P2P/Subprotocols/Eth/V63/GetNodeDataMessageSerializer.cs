@@ -21,20 +21,8 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
-    public class GetNodeDataMessageSerializer : IMessageSerializer<GetNodeDataMessage>, IZeroMessageSerializer<GetNodeDataMessage>
+    public class GetNodeDataMessageSerializer : IZeroMessageSerializer<GetNodeDataMessage>
     {
-        public byte[] Serialize(GetNodeDataMessage message)
-        {
-            return Rlp.Encode(message.Keys).Bytes;
-        }
-
-        public GetNodeDataMessage Deserialize(byte[] bytes)
-        {
-            RlpStream rlpStream = bytes.AsRlpStream();
-            Keccak[] keys = rlpStream.DecodeArray(itemContext => itemContext.DecodeKeccak());
-            return new GetNodeDataMessage(keys);
-        }
-
         public void Serialize(IByteBuffer byteBuffer, GetNodeDataMessage message)
         {
             int contentLength = 0;

@@ -39,7 +39,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             message.Bodies = new [] {new BlockBody(new [] {tx}, new [] {header})};
             
             var serializer = new BlockBodiesMessageSerializer();
-            SerializerTester.Test(serializer, message);
             SerializerTester.TestZero(serializer, message);
         }
         
@@ -48,7 +47,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
         {
             BlockBodiesMessage message = new BlockBodiesMessage {Bodies = new BlockBody[1] {null}};
             var serializer = new BlockBodiesMessageSerializer();
-            SerializerTester.Test(serializer, message);
             SerializerTester.TestZero(serializer, message);
         }
     }

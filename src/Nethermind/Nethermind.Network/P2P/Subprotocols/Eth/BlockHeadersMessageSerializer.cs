@@ -21,41 +21,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class BlockHeadersMessageSerializer : IMessageSerializer<BlockHeadersMessage>, IZeroMessageSerializer<BlockHeadersMessage>
+    public class BlockHeadersMessageSerializer : IZeroMessageSerializer<BlockHeadersMessage>
     {
         private HeaderDecoder _headerDecoder = new HeaderDecoder();
-        
-        public byte[] Serialize(BlockHeadersMessage message)
-        {
-            int contentLength = 0;
-            for (int i = 0; i < message.BlockHeaders.Length; i++)
-            {
-                contentLength += _headerDecoder.GetLength(message.BlockHeaders[i], RlpBehaviors.None);
-            }
-            
-            int length = Rlp.LengthOfSequence(contentLength);
-            RlpStream rlpStream = new RlpStream(length);
-            rlpStream.StartSequence(contentLength);
-            for (int i = 0; i < message.BlockHeaders.Length; i++)
-            {
-                rlpStream.Encode(message.BlockHeaders[i]);
-            }
-
-            return rlpStream.Data;
-        }
-
-        public BlockHeadersMessage Deserialize(byte[] bytes)
-        {
-            RlpStream rlpStream = bytes.AsRlpStream();
-            return Deserialize(rlpStream);
-        }
-
-        private static BlockHeadersMessage Deserialize(RlpStream rlpStream)
-        {
-            BlockHeadersMessage message = new BlockHeadersMessage();
-            message.BlockHeaders = Rlp.DecodeArray<BlockHeader>(rlpStream);
-            return message;
-        }
 
         public void Serialize(IByteBuffer byteBuffer, BlockHeadersMessage message)
         {
@@ -80,6 +48,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
             return Deserialize(rlpStream);
+        }
+        
+        private static BlockHeadersMessage Deserialize(RlpStream rlpStream)
+        {
+            BlockHeadersMessage message = new BlockHeadersMessage();
+            message.BlockHeaders = Rlp.DecodeArray<BlockHeader>(rlpStream);
+            return message;
         }
     }
 }
