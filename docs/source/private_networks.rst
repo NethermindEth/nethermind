@@ -23,10 +23,10 @@ Clique
 
 Clique is an implementation of the Proof of Authority (PoA) consensus algorithm. The idea behind PoA is to choose a group of nodes within the network with authrity to create (seal) new blocks. In Clique such nodes are called signers and after the initial setup signers can vote to add new signers to the group or to remove any of the existing signers. Clique is currently supported by Geth, Parity, Nethermind and Pantheon and is used to secure the Goerli and Rinkeby testnets. 
 
-Aura
+AuRa
 ^^^^
 
-Aura is another implementation of the Proof of Authority consensus algorithm. It is currently only supported by Nethermind and Parity Ethereum client. Aura is used to secure the Kovan testnet and the POA Network.
+AuRa is another implementation of the Proof of Authority consensus algorithm. It is currently only supported by Nethermind and Parity Ethereum client. Aura is used to secure the Kovan testnet and the POA Network.
 
 NethDev
 ^^^^^^^
