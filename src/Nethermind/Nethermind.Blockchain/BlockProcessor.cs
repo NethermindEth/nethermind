@@ -184,7 +184,6 @@ namespace Nethermind.Blockchain
 
         private Block ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
         {
-            BeamSyncDb.Context = suggestedBlock.Hash;
             Block block;
             if (suggestedBlock.IsGenesis)
             {

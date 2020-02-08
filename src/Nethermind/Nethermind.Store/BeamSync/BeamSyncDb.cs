@@ -15,36 +15,27 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Store.BeamSync
 {
+    public interface IBeamPrefetch
+    {
+        void PrefetchAccount(Address address);
+    }
+    
     public class BeamSyncDb : IDb, INodeDataConsumer
     {
         private readonly string _description;
-        private static DateTime _lastProgressInContext;
-        
-        /// <summary>
-        /// This can be in this hacky way as it will obviously have to be changed
-        /// There must be some BeamSync managing class passed to various processors so this info can be shared
-        /// Also some better design is needed for how to decide that beam sync has to be dropped for given context
-        /// </summary>
-        public static object Context
-        {
-            get => _context;
-            set
-            {
-                _context = value;
-                // Console.WriteLine("Starting new context: " + _context);
-                _lastProgressInContext = DateTime.UtcNow;
-            }
-        }
 
         /// <summary>
         /// This DB should be not in memory, in fact we should write to the underlying rocksDb and only keep a cache in memory
@@ -69,7 +60,7 @@ namespace Nethermind.Store.BeamSync
 
         private int _resolvedKeysCount;
         
-        private HashSet<Keccak> _requestedNodes = new HashSet<Keccak>();
+        private ConcurrentQueue<Keccak> _requestedNodes = new ConcurrentQueue<Keccak>();
 
         public byte[] this[byte[] key]
         {
@@ -99,26 +90,19 @@ namespace Nethermind.Store.BeamSync
                             return null;
                         }
 
-                        _requestedNodes.Add(new Keccak(key));
+                        _requestedNodes[new Keccak(key)] = null;
                         // _logger.Error($"Requested {key.ToHexString()}");
 
                         NeedsData = true;
                         NeedMoreData?.Invoke(this, EventArgs.Empty);
                         _autoReset.WaitOne(1000);
-                        if (DateTime.UtcNow - _lastProgressInContext > TimeSpan.FromSeconds(15))
-                        {
-                            // _logger.Error($"Context failure for {_context}");
-                            // throw new InvalidDataException("Context fail in beam sync");
-                        }
                     }
                     else
                     {
-                        _lastProgressInContext = DateTime.UtcNow;
-
                         if (!wasInDb)
                         {
                             if(_logger.IsInfo) _logger.Info($"{_description} BEAM SYNC Resolved {key.ToHexString()} - resolved keys so far {_resolvedKeysCount}");
-                            _resolvedKeysCount++;
+                            Interlocked.Increment(ref _resolvedKeysCount);
                         }
 
                         return fromMem;
@@ -157,7 +141,23 @@ namespace Nethermind.Store.BeamSync
         public Keccak[] PrepareRequest()
         {
             NeedsData = false;
-            return _requestedNodes.ToArray();
+            Keccak[] request = new Keccak[256];
+            int length = 0;
+            for (int i = 0; i < request.Length; i++)
+            {
+                bool success = _requestedNodes.TryDequeue(out Keccak next);
+                if (success)
+                {
+                    request[i] = next;
+                    length++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            
+            return request.AsSpan().Slice(0, length).ToArray();
         }
 
         public int HandleResponse(Keccak[] hashes, byte[][] data)
@@ -184,7 +184,6 @@ namespace Nethermind.Store.BeamSync
         }
 
         private AutoResetEvent _autoReset = new AutoResetEvent(false);
-        private static object _context;
 
         public bool NeedsData { get; private set; }
     }
