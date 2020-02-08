@@ -26,7 +26,7 @@ namespace Nethermind.Abi
         {
         }
 
-        public static AbiAddress Instance = new AbiAddress();
+        public static AbiAddress Instance { get; } = new AbiAddress();
 
         public override string Name => "address";
 

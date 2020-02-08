@@ -40,6 +40,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
         private (DateTime small, DateTime full) _lastReportTime = (DateTime.MinValue, DateTime.MinValue);
         private long _lastRequestedNodesCount;
         private long _lastSavedNodesCount;
+        private long _lastDataSize;
         private long _lastHandledNodesCount;
         private long _consumedNodesCount;
         private long _savedStorageCount;
@@ -541,12 +542,15 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                     if (sinceLastReport > TimeSpan.FromSeconds(1))
                     {
                         decimal savedNodesPerSecond = 1000m * (_savedNodesCount - _lastSavedNodesCount) / (decimal) sinceLastReport.TotalMilliseconds;
+                        decimal savedKBytesPerSecond = 1000m * ((_dataSize - _lastDataSize) / 1000m) / (decimal) sinceLastReport.TotalMilliseconds;
                         decimal requestedNodesPerSecond = 1000m * (_requestedNodesCount - _lastRequestedNodesCount) / (decimal) sinceLastReport.TotalMilliseconds;
                         decimal handledNodesPerSecond = 1000m * (_handledNodesCount - _lastHandledNodesCount) / (decimal) sinceLastReport.TotalMilliseconds;
+                        _lastDataSize = _dataSize;
                         _lastSavedNodesCount = _savedNodesCount;
                         _lastRequestedNodesCount = _requestedNodesCount;
                         _lastHandledNodesCount = _handledNodesCount;
-                        if (_logger.IsInfo) _logger.Info($"Time {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | {(decimal) _dataSize / 1000 / 1000,6:F2}MB | P: {_pendingRequests.Count} | SNPS: {savedNodesPerSecond,6:F0} | acc {_savedAccounts} | queues {StreamsDescription} | AVTIH {_averageTimeInHandler:f2}");
+                        // if (_logger.IsInfo) _logger.Info($"Time {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | {(decimal) _dataSize / 1000 / 1000,6:F2}MB | kbps: {savedKBytesPerSecond,5:F0} | P: {_pendingRequests.Count} | acc {_savedAccounts} | queues {StreamsDescription} | db {_averageTimeInHandler:f2}ms");
+                        if (_logger.IsInfo) _logger.Info($"Time {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | {(decimal) _dataSize / 1000 / 1000,6:F2}MB | kbps: {savedKBytesPerSecond,5:F0} | P: {_pendingRequests.Count} | acc {_savedAccounts} | nodes {_savedNodesCount} | db_delay {_averageTimeInHandler:f2}ms");
                         if (DateTime.UtcNow - _lastReportTime.full > TimeSpan.FromSeconds(10))
                         {
                             long allChecks = _checkWasInDependencies + _checkWasCached + _stateWasThere + _stateWasNotThere;

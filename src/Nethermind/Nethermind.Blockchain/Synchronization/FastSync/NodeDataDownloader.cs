@@ -18,6 +18,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization.FastBlocks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -88,7 +89,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
                 if (result.Result == NodeDataHandlerResult.BadQuality)
                 {
-                    _syncPeerPool.ReportBadPeer(batch.AssignedPeer);
+                    _syncPeerPool.ReportWeakPeer(batch.AssignedPeer);
                 }
             }
             catch (Exception e)
@@ -130,7 +131,8 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             StateSyncBatch request = PrepareRequest(forAdditionalConsumers);
             if (request.RequestedNodes.Length != 0)
             {
-                request.AssignedPeer = await _syncPeerPool.BorrowAsync(PeerSelectionOptions.DoNotReplace, "node sync", null, 1000);
+                // should be random selection? (we do not know if they support what we need)
+                request.AssignedPeer = await _syncPeerPool.BorrowAsync(BySpeedSelectionStrategy.Fastest, "node sync", 1000);
 
                 Interlocked.Increment(ref _pendingRequests);
                 // if (_logger.IsWarn) _logger.Warn($"Creating new request with {request.RequestedNodes.Length} nodes");

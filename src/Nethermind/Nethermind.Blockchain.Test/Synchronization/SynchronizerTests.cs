@@ -345,12 +345,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             public SyncingContext BestSuggestedHeaderIs(BlockHeader header)
             {
-                _logger.Info($"ASSERTING THAT HEADER IS {header.Number} (WHEN ACTUALLY IS {_blockHeader?.Number})");
-
                 int waitTimeSoFar = 0;
                 _blockHeader = BlockTree.BestSuggestedHeader;
                 while (header != _blockHeader && waitTimeSoFar <= dynamicTimeout)
                 {
+                    _logger.Info($"ASSERTING THAT HEADER IS {header.Number} (WHEN ACTUALLY IS {_blockHeader?.Number})");
                     Thread.Sleep(100);
                     waitTimeSoFar += 100;
                     _blockHeader = BlockTree.BestSuggestedHeader;

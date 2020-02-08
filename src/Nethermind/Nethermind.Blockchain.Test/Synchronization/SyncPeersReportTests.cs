@@ -110,7 +110,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
             syncPeerPool.PeerCount.Returns(peers.Length);
 
             syncPeerPool.AllPeers.Returns(peers);
-            syncPeerPool.Allocations.Returns(peers.Select(p => new SyncPeerAllocation(p, "desc")));
 
             SyncPeersReport report = new SyncPeersReport(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
             report.WriteShortReport();

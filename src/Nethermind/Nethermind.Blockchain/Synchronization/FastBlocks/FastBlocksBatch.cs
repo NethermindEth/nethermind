@@ -29,6 +29,11 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         private long? _handlingStartTime;
         private long? _handlingEndTime;
         
+        /// <summary>
+        /// We want to make sure that we do not let the queues grow too much.
+        /// In order to do that we prioritize batches that are most likely to be added immediately instead of being put to dependencies.
+        /// Prioritized batches get the fastest peer allocated. Other batches get the slowest peer allocated (ensuring that the fastest peers are never stolen away)
+        /// </summary>
         public bool Prioritized { get; set; }
 
         public bool IsResponseEmpty => Bodies?.Response == null && Headers?.Response == null && Receipts?.Response == null;

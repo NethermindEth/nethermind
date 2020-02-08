@@ -230,7 +230,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 FastBlocksBatch request = PrepareRequest();
                 if (request != null)
                 {
-                    request.Allocation = await _syncPeerPool.BorrowAsync(PeerSelectionOptions.DoNotReplace | (request.Prioritized ? PeerSelectionOptions.None : PeerSelectionOptions.LowPriority), "fast blocks", request.MinNumber, 1000);
+                    request.Allocation = await _syncPeerPool.BorrowAsync(new FastBlocksSelectionStrategy(request.MinNumber, request.Prioritized), "fast blocks", 1000);
                     
                     Interlocked.Increment(ref _pendingRequests);
                     Task task = ExecuteRequest(token, request);
