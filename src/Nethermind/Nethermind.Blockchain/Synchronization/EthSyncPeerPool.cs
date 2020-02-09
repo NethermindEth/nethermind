@@ -260,8 +260,6 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Removing sync peer {syncPeer.Node:c}");
-
             if (!_peers.TryRemove(id, out _))
             {
                 // possible if sync failed - we remove peer and eventually initiate disconnect, which calls remove peer again
