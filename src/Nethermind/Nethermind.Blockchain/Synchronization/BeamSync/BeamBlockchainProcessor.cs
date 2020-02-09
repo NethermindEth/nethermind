@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Store;
@@ -94,6 +95,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                 Block processedBlock = null;
                 Task preProcessTask = Task.Run(() =>
                 {
+                    BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty.Value;
                     BeamSyncContext.Description.Value = $"[preProcess of {block.Hash.ToShortString()}]";
                     BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
                     processedBlock = _oneTimeProcessor.Process(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance);
@@ -128,6 +130,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             string description = $"[miner {miner}]";
             Task minerTask = Task.Run(() =>
             {
+                BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty.Value;
                 BeamSyncContext.Description.Value = description;
                 BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
                 _stateReader.GetAccount(stateRoot, miner);
@@ -144,6 +147,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                 string descriptionTx = $"[sender of tx {txIndex} of {block.Hash.ToShortString()}]";
                 Task senderTask = Task.Run(() =>
                 {
+                    BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty.Value;
                     BeamSyncContext.Description.Value = descriptionTx;
                     BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
                     _stateReader.GetAccount(stateRoot, tx.To);
@@ -157,6 +161,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                 {
                     Task codeTask = Task.Run(() =>
                     {
+                        BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty.Value;
                         BeamSyncContext.Description.Value = descriptionCode;
                         BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
                         _stateReader.GetCode(stateRoot, tx.SenderAddress);

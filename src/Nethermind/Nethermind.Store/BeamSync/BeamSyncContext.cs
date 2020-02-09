@@ -16,6 +16,7 @@
 
 using System;
 using System.Threading;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Store.BeamSync
 {
@@ -23,5 +24,6 @@ namespace Nethermind.Store.BeamSync
     {
         public static AsyncLocal<DateTime?> LastFetchUtc = new AsyncLocal<DateTime?>();
         public static AsyncLocal<string> Description = new AsyncLocal<string>();
+        public static AsyncLocal<UInt256> MinimumDifficulty = new AsyncLocal<UInt256>();
     }
 }

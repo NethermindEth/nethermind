@@ -16,11 +16,14 @@
 
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Store
 {
     public interface INodeDataConsumer
     {
+        UInt256 RequiredPeerDifficulty { get; }
+        
         event EventHandler NeedMoreData;
 
         Keccak[] PrepareRequest();

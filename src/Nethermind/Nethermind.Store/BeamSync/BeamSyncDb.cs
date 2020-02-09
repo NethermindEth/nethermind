@@ -24,6 +24,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 
 namespace Nethermind.Store.BeamSync
@@ -31,6 +32,7 @@ namespace Nethermind.Store.BeamSync
     public class BeamSyncDb : IDb, INodeDataConsumer
     {
         private readonly string _description;
+        public UInt256 RequiredPeerDifficulty { get; private set; } = UInt256.Zero;
 
         /// <summary>
         /// This DB should be not in memory, in fact we should write to the underlying rocksDb and only keep a cache in memory
@@ -55,6 +57,8 @@ namespace Nethermind.Store.BeamSync
 
         private int _resolvedKeysCount;
         
+        private object _diffLock = new object();
+        
         private ConcurrentQueue<Keccak> _requestedNodes = new ConcurrentQueue<Keccak>();
 
         private TimeSpan _contextExpiryTimeSpan = TimeSpan.FromSeconds(2);
@@ -63,6 +67,11 @@ namespace Nethermind.Store.BeamSync
         {
             get
             {
+                lock (_diffLock)
+                {
+                    RequiredPeerDifficulty = UInt256.Max(RequiredPeerDifficulty, BeamSyncContext.MinimumDifficulty.Value);
+                }
+
                 // it is not possible for the item to be requested from the DB and missing in the DB unless the DB is corrupted
                 // if it is missing in the MemDb then it must exist somewhere on the web (unless the block is corrupted / invalid)
 

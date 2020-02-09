@@ -17,6 +17,7 @@
 using System;
 using System.Linq;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Store.BeamSync
 {
@@ -38,6 +39,7 @@ namespace Nethermind.Store.BeamSync
             NeedMoreData?.Invoke(this, EventArgs.Empty);
         }
 
+        public UInt256 RequiredPeerDifficulty => _consumers.Max(c => c.RequiredPeerDifficulty);
         public event EventHandler NeedMoreData;
 
         public Keccak[] PrepareRequest()
