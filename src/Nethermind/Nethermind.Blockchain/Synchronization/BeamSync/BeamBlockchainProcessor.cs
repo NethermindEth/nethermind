@@ -86,20 +86,30 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                 Prefetch(block, block.StateRoot);
 
                 if(_logger.IsInfo) _logger.Info($"Now beam processing {block}");
+                Block processedBlock = null;
                 Task preProcessTask = Task.Run(() =>
                 {
                     BeamSyncContext.Description.Value = $"[preProcess of {block.Hash.ToShortString()}]";
                     BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
-                    Block processedBlock = _oneTimeProcessor.Process(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance);
+                    processedBlock = _oneTimeProcessor.Process(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance);
                     if (processedBlock == null)
                     {
                         if (_logger.IsInfo) _logger.Info($"Block {block.ToString(Block.Format.Short)} skipped in beam sync");
                     }
                 }).ContinueWith(t =>
                 {
-                    if(_logger.IsInfo) _logger.Info($"Enqueuing for standard processing {block}");
-                    // at this stage we are sure to have all the state available
-                    _blockchainProcessor.Enqueue(block, options);
+                    if (t.IsFaulted)
+                    {
+                        _logger.Warn($"Failed to beam process {block}");
+                        return;
+                    }
+                    
+                    if (processedBlock != null)
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Enqueuing for standard processing {block}");
+                        // at this stage we are sure to have all the state available
+                        _blockchainProcessor.Enqueue(block, options);
+                    }
                 });
             }
             catch (Exception e)
