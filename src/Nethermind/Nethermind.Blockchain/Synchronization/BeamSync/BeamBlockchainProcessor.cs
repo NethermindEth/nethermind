@@ -167,7 +167,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                         _stateReader.GetCode(stateRoot, tx.SenderAddress);
                     }).ContinueWith(t =>
                     {
-                        _logger.Info(t.IsFaulted ? $"{descriptionCode} prefetch failed {t.Exception.Message}" : $"{descriptionCode} prefetch complete");
+                        _logger.Info(t.IsFaulted ? $"{descriptionCode} prefetch failed {t.Exception.Message}|{t.Exception.InnerException?.Message}" : $"{descriptionCode} prefetch complete");
                     });
                 }   
             }
