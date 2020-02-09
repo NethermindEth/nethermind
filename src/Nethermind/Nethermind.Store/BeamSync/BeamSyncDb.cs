@@ -162,12 +162,7 @@ namespace Nethermind.Store.BeamSync
                         break;
                     }
                 }
-                
-                if (request.Count > 1)
-                {
-                    _logger.Warn($"Sending request of size {request.Count} (already received {_resolvedKeysCount})");
-                }
-                
+
                 return request.ToArray();
             }
         }
