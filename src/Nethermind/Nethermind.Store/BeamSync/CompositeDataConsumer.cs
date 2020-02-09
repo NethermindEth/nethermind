@@ -15,18 +15,22 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Logging;
 
 namespace Nethermind.Store.BeamSync
 {
     public class CompositeDataConsumer : INodeDataConsumer
     {
         private readonly INodeDataConsumer[] _consumers;
+        private ILogger _logger;
 
-        public CompositeDataConsumer(params INodeDataConsumer[] consumers)
+        public CompositeDataConsumer(ILogManager logManager, params INodeDataConsumer[] consumers)
         {
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _consumers = consumers;
             foreach (INodeDataConsumer dataConsumer in _consumers)
             {
@@ -44,15 +48,19 @@ namespace Nethermind.Store.BeamSync
 
         public Keccak[] PrepareRequest()
         {
+            List<Keccak> combined = new List<Keccak>();
             foreach (INodeDataConsumer nodeDataConsumer in _consumers)
             {
-                if (nodeDataConsumer.NeedsData)
-                {
-                    return nodeDataConsumer.PrepareRequest();
-                }
+                Keccak[] request = nodeDataConsumer.PrepareRequest();
+                combined.AddRange(request);
             }
 
-            // throw new InvalidOperationException("No data needed");
+            if (combined.Count > 0)
+            {
+                if (_logger.IsInfo) _logger.Info($"Prepared a combined request of length {combined.Count}");
+                return combined.ToArray();
+            }
+
             return Array.Empty<Keccak>();
         }
 
@@ -66,7 +74,5 @@ namespace Nethermind.Store.BeamSync
 
             return consumed;
         }
-
-        public bool NeedsData => _consumers.Any(c => c.NeedsData);
     }
 }

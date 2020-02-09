@@ -18,7 +18,6 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Synchronization.FastBlocks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -127,6 +126,11 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
         private async Task<int> SyncOnce(CancellationToken token, bool forAdditionalConsumers)
         {
+            if (forAdditionalConsumers)
+            {
+                Thread.Sleep(10);
+            }
+
             int requestSize = 0;
             StateSyncBatch request = PrepareRequest(forAdditionalConsumers);
             if (request.RequestedNodes.Length != 0)
@@ -163,11 +167,6 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
         {
             if (forAdditionalConsumers)
             {
-                if (!_additionalConsumer.NeedsData)
-                {
-                    return StateSyncBatch.Empty;
-                }
-
                 Keccak[] hashes = _additionalConsumer.PrepareRequest();
                 if (hashes.Length == 0)
                 {

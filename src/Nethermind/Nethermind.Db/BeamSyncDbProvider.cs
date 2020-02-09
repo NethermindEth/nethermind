@@ -30,7 +30,7 @@ namespace Nethermind.Db
         {
             BeamSyncDb codeDb = new BeamSyncDb(new CodeRocksDb(basePath, dbConfig, logManager), description, logManager);
             BeamSyncDb stateDb = new BeamSyncDb(new StateRocksDb(basePath, dbConfig, logManager), description, logManager);
-            NodeDataConsumer = new CompositeDataConsumer(codeDb, stateDb);
+            NodeDataConsumer = new CompositeDataConsumer(logManager,codeDb, stateDb);
             BlocksDb = new BlocksRocksDb(basePath, dbConfig, logManager);
             HeadersDb = new HeadersRocksDb(basePath, dbConfig, logManager);
             BlockInfosDb = new BlockInfosRocksDb(basePath, dbConfig, logManager);

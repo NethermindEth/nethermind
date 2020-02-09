@@ -29,7 +29,5 @@ namespace Nethermind.Store
         Keccak[] PrepareRequest();
         
         int HandleResponse(Keccak[] hashes, byte[][] data);
-
-        bool NeedsData { get; }
     }
 }
