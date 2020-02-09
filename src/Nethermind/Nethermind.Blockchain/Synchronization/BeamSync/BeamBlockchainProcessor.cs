@@ -78,10 +78,16 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
         
         private void Process(Block block, ProcessingOptions options)
         {
+            if (block.IsGenesis)
+            {
+                _blockchainProcessor.Enqueue(block, ProcessingOptions.None);
+                return;
+            }
+            
             // we only want to trace the actual block
             try
             {
-                BlockHeader parentHeader = _readOnlyBlockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                BlockHeader parentHeader = _readOnlyBlockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);)
                 Prefetch(block, parentHeader.StateRoot);
                 Prefetch(block, block.StateRoot);
 
