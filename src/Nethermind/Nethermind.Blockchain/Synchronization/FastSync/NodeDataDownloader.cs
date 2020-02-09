@@ -15,11 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Timers;
 using Nethermind.Blockchain.Synchronization.FastBlocks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -45,46 +43,18 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _additionalConsumer.NeedMoreData += AdditionalConsumerOnNeedMoreData;
-            _beamTimer = new System.Timers.Timer(20);
-            _beamTimer.AutoReset = false;
-            _beamTimer.Elapsed += BeamTimerOnElapsed;
-            _beamTimer.Start();
         }
-
-        private void BeamTimerOnElapsed(object sender, ElapsedEventArgs e)
-        {
-            if (_shouldTryBeam)
-            {
-                Task<int> keepSyncing = SyncOnce(CancellationToken.None, true);
-                keepSyncing.ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
-                    {
-                        _logger.Error($"Requesting node data failed: {t.Exception}");
-                    }
-
-                    if (t.Result > 0)
-                    {
-                        _shouldTryBeam = true;
-                    }
-
-                    if (_additionalConsumer.NeedsData)
-                    {
-                        _shouldTryBeam = true;
-                    }
-                });
-            }
-
-            _beamTimer.Enabled = true;
-        }
-
-        private System.Timers.Timer _beamTimer;
-
-        private bool _shouldTryBeam = false;
 
         private void AdditionalConsumerOnNeedMoreData(object sender, EventArgs e)
         {
-            _shouldTryBeam = true;
+            Task keepSyncing = SyncOnce(CancellationToken.None, true);
+            keepSyncing.ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    _logger.Error($"Requesting node data failed: {t.Exception}");
+                }
+            });
         }
 
         private async Task ExecuteRequest(CancellationToken token, StateSyncBatch batch)
@@ -141,14 +111,14 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
         private async Task KeepSyncing(CancellationToken token)
         {
-            int lastRequestSize;
+            int lastRequestSize; 
             do
             {
                 if (token.IsCancellationRequested)
                 {
                     return;
                 }
-
+                
                 lastRequestSize = await SyncOnce(token, false);
             } while (_pendingRequests != 0 || lastRequestSize > 0);
 
@@ -180,7 +150,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                     requestSize = request.RequestedNodes.Length;
                 });
             }
-            else if (!forAdditionalConsumers)
+            else
             {
                 await Task.Delay(50);
                 if (_logger.IsDebug) _logger.Debug($"DIAG: 0 batches created with {_pendingRequests} pending requests, {_feed.TotalNodesPending} pending nodes");
