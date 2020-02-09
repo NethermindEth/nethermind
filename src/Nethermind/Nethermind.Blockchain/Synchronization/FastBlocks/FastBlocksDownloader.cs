@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Validators;
@@ -81,7 +82,14 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                                     }
                                     else
                                     {
-                                        _syncPeerPool.ReportInvalid(batch.Allocation, $"headers -> {t.Exception}");
+                                        if (t.Exception.InnerExceptions.Any(e => e is TimeoutException))
+                                        {
+                                            _syncPeerPool.ReportInvalid(batch.Allocation, $"headers -> timeout");
+                                        }
+                                        else
+                                        {
+                                            _syncPeerPool.ReportInvalid(batch.Allocation, $"headers -> {t.Exception}");
+                                        }
                                     }
                                 }
                             );
@@ -106,7 +114,14 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                                     }
                                     else
                                     {
-                                        _syncPeerPool.ReportInvalid(batch.Allocation, $"bodies -> {t.Exception}");
+                                        if (t.Exception.InnerExceptions.Any(e => e is TimeoutException))
+                                        {
+                                            _syncPeerPool.ReportInvalid(batch.Allocation, $"bodies -> timeout");
+                                        }
+                                        else
+                                        {
+                                            _syncPeerPool.ReportInvalid(batch.Allocation, $"bodies -> {t.Exception}");
+                                        }
                                     }
                                 }
                             );
@@ -131,7 +146,14 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                                     }
                                     else
                                     {
-                                        _syncPeerPool.ReportInvalid(batch.Allocation, $"receipts -> {t.Exception}");
+                                        if (t.Exception.InnerExceptions.Any(e => e is TimeoutException))
+                                        {
+                                            _syncPeerPool.ReportInvalid(batch.Allocation, $"receipts -> timeout");
+                                        }
+                                        else
+                                        {
+                                            _syncPeerPool.ReportInvalid(batch.Allocation, $"receipts -> {t.Exception}");
+                                        }
                                     }
                                 }
                             );
