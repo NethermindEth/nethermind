@@ -225,6 +225,8 @@ namespace Nethermind.Db
 //            return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
         }
 
+        public IDb Innermost => this;
+
         public void StartBatch()
         {
             _currentBatch = new WriteBatch();

@@ -73,6 +73,8 @@ namespace Nethermind.Network
             return _cache.ContainsKey(key);
         }
 
+        public IDb Innermost => this;
+
         public byte[][] GetAll() => _cache.Values.Select(v => v).ToArray();
 
         public void StartBatch()
