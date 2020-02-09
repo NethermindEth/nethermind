@@ -32,7 +32,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
         private readonly IReadOnlyDbProvider _readOnlyDbProvider;
         private readonly IBlockValidator _blockValidator;
         private readonly IBlockDataRecoveryStep _recoveryStep;
-        private readonly IRewardCalculator _rewardCalculator;
+        private readonly IRewardCalculatorSource _rewardCalculatorSource;
         private readonly ILogger _logger;
 
         private IBlockchainProcessor _blockchainProcessor;
@@ -45,27 +45,28 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             ILogManager logManager,
             IBlockValidator blockValidator,
             IBlockDataRecoveryStep recoveryStep,
-            IRewardCalculator rewardCalculator,
+            IRewardCalculatorSource rewardCalculatorSource,
             IBlockchainProcessor blockchainProcessor)
         {
             _readOnlyDbProvider = readOnlyDbProvider ?? throw new ArgumentNullException(nameof(readOnlyDbProvider));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
-            _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
+            _rewardCalculatorSource = rewardCalculatorSource ?? throw new ArgumentNullException(nameof(rewardCalculatorSource));
             _blockchainProcessor = blockchainProcessor ?? throw new ArgumentNullException(nameof(blockchainProcessor));
             ReadOnlyTxProcessingEnv txEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, new ReadOnlyBlockTree(blockTree), specProvider, logManager);
-            ReadOnlyChainProcessingEnv env = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculator, NullReceiptStorage.Instance, _readOnlyDbProvider, specProvider, logManager);
+            ReadOnlyChainProcessingEnv env = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculatorSource.Get(txEnv.TransactionProcessor), NullReceiptStorage.Instance, _readOnlyDbProvider, specProvider, logManager);
             _oneTimeProcessor = env.ChainProcessor;
             _logger = logManager.GetClassLogger();
         }
         
         public void Start()
         {
+            _blockchainProcessor.Start();
         }
 
-        public Task StopAsync(bool processRemainingBlocks = false)
+        public async Task StopAsync(bool processRemainingBlocks = false)
         {
-            return Task.CompletedTask;
+            await _blockchainProcessor.StopAsync();
         }
 
         public Block Process(Block block, ProcessingOptions options, IBlockTracer tracer)

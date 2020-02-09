@@ -14,13 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
@@ -53,6 +52,7 @@ namespace Nethermind.Runner.Ethereum.Steps
          [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
         private Task InitBlockchain()
         {
+            ISyncConfig syncConfig = _context.Config<ISyncConfig>();
             Account.AccountStartNonce = _context.ChainSpec.Parameters.AccountStartNonce;
 
             _context.StateProvider = new StateProvider(
@@ -142,15 +142,29 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             _context.BlockProcessor = CreateBlockProcessor();
 
-            BlockchainProcessor processor = new BlockchainProcessor(
+            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(
                 _context.BlockTree,
                 _context.BlockProcessor,
                 _context.RecoveryStep,
                 _context.LogManager,
-                _context.Config<IInitConfig>().StoreReceipts); 
-            _context.BlockchainProcessor = processor;
-            _context.BlockProcessingQueue = processor;
+                _context.Config<IInitConfig>().StoreReceipts);
+
+            _context.BlockProcessingQueue = blockchainProcessor;
+            _context.BlockchainProcessor = blockchainProcessor;
             
+            if (syncConfig.BeamSyncEnabled)
+            {
+                _context.BlockchainProcessor = new BeamBlockchainProcessor(
+                    new ReadOnlyDbProvider(_context.DbProvider, false),
+                    _context.BlockTree,
+                    _context.SpecProvider,
+                    _context.LogManager,
+                    _context.BlockValidator,
+                    _context.RecoveryStep,
+                    _context.RewardCalculatorSource,
+                    blockchainProcessor);
+            }
+
             return Task.CompletedTask;
         }
 
