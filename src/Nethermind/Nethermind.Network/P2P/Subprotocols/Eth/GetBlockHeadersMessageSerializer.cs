@@ -43,33 +43,50 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             message.Reverse = rlpStream.DecodeByte();
             return message;
         }
+       
+       public byte[] Serialize(GetBlockHeadersMessage message)
+       {
+           return Rlp.Encode(
+               message.StartingBlockHash == null ? Rlp.Encode(message.StartingBlockNumber) : Rlp.Encode(message.StartingBlockHash),
+               Rlp.Encode(message.MaxHeaders),
+               Rlp.Encode(message.Skip),
+               Rlp.Encode(message.Reverse)
+           ).Bytes;
+       }
+        
+       public void Serialize(IByteBuffer byteBuffer, GetBlockHeadersMessage message)
+       {
+           byte[] oldWay = Serialize(message);
+           byteBuffer.EnsureWritable(oldWay.Length, true);
+           byteBuffer.WriteBytes(oldWay);
+       }
 
-        public void Serialize(IByteBuffer byteBuffer, GetBlockHeadersMessage message)
-        {
-            int contentLength = message.StartingBlockHash == null ? Rlp.LengthOf(message.StartingBlockNumber) : Rlp.LengthOf(message.StartingBlockHash);
-            contentLength += Rlp.LengthOf(message.MaxHeaders);
-            contentLength += Rlp.LengthOf(message.Skip);
-            contentLength += Rlp.LengthOf(message.Reverse);
-
-            int totalLength = Rlp.GetSequenceRlpLength(contentLength);
-            
-            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            byteBuffer.EnsureWritable(totalLength, true);
-
-            rlpStream.StartSequence(contentLength);
-            if (message.StartingBlockHash == null)
-            {
-                rlpStream.Encode(message.StartingBlockNumber);
-            }
-            else
-            {
-                rlpStream.Encode(message.StartingBlockHash);
-            }
-            
-            rlpStream.Encode(message.MaxHeaders);
-            rlpStream.Encode(message.Skip);
-            rlpStream.Encode(message.Reverse);
-        }
+        // public void Serialize(IByteBuffer byteBuffer, GetBlockHeadersMessage message)
+        // {
+        //     int contentLength = message.StartingBlockHash == null ? Rlp.LengthOf(message.StartingBlockNumber) : Rlp.LengthOf(message.StartingBlockHash);
+        //     contentLength += Rlp.LengthOf(message.MaxHeaders);
+        //     contentLength += Rlp.LengthOf(message.Skip);
+        //     contentLength += Rlp.LengthOf(message.Reverse);
+        //
+        //     int totalLength = Rlp.GetSequenceRlpLength(contentLength);
+        //     
+        //     RlpStream rlpStream = new NettyRlpStream(byteBuffer);
+        //     byteBuffer.EnsureWritable(totalLength, true);
+        //
+        //     rlpStream.StartSequence(contentLength);
+        //     if (message.StartingBlockHash == null)
+        //     {
+        //         rlpStream.Encode(message.StartingBlockNumber);
+        //     }
+        //     else
+        //     {
+        //         rlpStream.Encode(message.StartingBlockHash);
+        //     }
+        //     
+        //     rlpStream.Encode(message.MaxHeaders);
+        //     rlpStream.Encode(message.Skip);
+        //     rlpStream.Encode(message.Reverse);
+        // }
 
         public GetBlockHeadersMessage Deserialize(IByteBuffer byteBuffer)
         {
