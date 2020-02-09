@@ -14,23 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Config;
+using System;
+using System.Threading;
 
-namespace Nethermind.Blockchain.Synchronization
+namespace Nethermind.Store.BeamSync
 {
-    [ConfigCategory(Description = "Configuration of the synchronization modes.")]
-    public class SyncConfig : ISyncConfig
+    public static class BeamSyncContext
     {
-        public bool SynchronizationEnabled { get; set; } = true;
-        public long? FastSyncCatchUpHeightDelta { get; set; }
-        public bool FastBlocks { get; set; }
-        public bool UseGethLimitsInFastBlocks { get; set; } = true;
-        public bool BeamSync { get; set; }
-        public bool FastSync { get; set; }
-        public bool DownloadBodiesInFastSync { get; set; } = true;
-        public bool DownloadReceiptsInFastSync { get; set; } = true;
-        public string PivotTotalDifficulty { get; set; }
-        public string PivotNumber { get; set;}
-        public string PivotHash { get; set;}
+        public static AsyncLocal<DateTime?> LastFetchUtc = new AsyncLocal<DateTime?>();
+        public static AsyncLocal<string> Description = new AsyncLocal<string>();
     }
 }

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -25,6 +26,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Store;
+using Nethermind.Store.BeamSync;
 
 namespace Nethermind.Blockchain.Synchronization.BeamSync
 {
@@ -86,6 +88,8 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                 _logger.Warn($"Now beam processing {block}");
                 Task preProcessTask = Task.Run(() =>
                 {
+                    BeamSyncContext.Description.Value = $"[preProcess of {block.Hash.ToShortString()}]";
+                    BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
                     Block processedBlock = _oneTimeProcessor.Process(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance);
                     if (processedBlock == null)
                     {
@@ -108,16 +112,22 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
         {
             Task minerTask = Task.Run(() =>
             {
+                BeamSyncContext.Description.Value = $"[miner of {block.Hash.ToShortString()}]";
+                BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
                 _logger.Warn($"Asking for miner of {block.Beneficiary ?? block.Author}");
                 _stateReader.GetAccount(stateRoot, block.Beneficiary ?? block.Author);
             });
 
-            foreach (Transaction tx in block.Transactions)
+            for (int i = 0; i < block.Transactions.Length; i++)
             {
+                Transaction tx = block.Transactions[i];
                 _recoveryStep.RecoverData(block);
                 _logger.Warn($"Preparing to ask for state of {tx.SenderAddress}");
+                int txIndex = i;
                 Task senderTask = Task.Run(() =>
                 {
+                    BeamSyncContext.Description.Value = $"[sender of tx {txIndex} of {block.Hash.ToShortString()}]";
+                    BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
                     _logger.Warn($"Asking for state of {tx.SenderAddress}");
                     _stateReader.GetAccount(stateRoot, tx.To);
                 });
@@ -126,11 +136,12 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                 {
                     Task codeTask = Task.Run(() =>
                     {
+                        BeamSyncContext.Description.Value = $"[code of tx {txIndex} of {block.Hash.ToShortString()}]";
+                        BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
                         _logger.Warn($"Asking for code of {tx.SenderAddress}");
-
                         _stateReader.GetCode(stateRoot, tx.SenderAddress);
                     });
-                }
+                }   
             }
         }
 

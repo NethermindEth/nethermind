@@ -154,12 +154,12 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.RecoveryStep,
                 _context.LogManager,
                 _context.Config<IInitConfig>().StoreReceipts,
-                !syncConfig.BeamSyncEnabled);
+                !syncConfig.BeamSync);
 
             _context.BlockProcessingQueue = blockchainProcessor;
             _context.BlockchainProcessor = blockchainProcessor;
             
-            if (syncConfig.BeamSyncEnabled)
+            if (syncConfig.BeamSync)
             {
                 _ = new BeamBlockchainProcessor(
                     new ReadOnlyDbProvider(_context.DbProvider, false),

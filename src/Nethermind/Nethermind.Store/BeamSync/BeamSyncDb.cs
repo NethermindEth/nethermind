@@ -57,6 +57,8 @@ namespace Nethermind.Store.BeamSync
         
         private ConcurrentDictionary<Keccak, object> _requestedNodes = new ConcurrentDictionary<Keccak, object>();
 
+        private TimeSpan _contextExpiryTimeSpan = TimeSpan.FromSeconds(10);
+        
         public byte[] this[byte[] key]
         {
             get
@@ -77,6 +79,13 @@ namespace Nethermind.Store.BeamSync
                     var fromMem = _db[key];
                     if (fromMem == null)
                     {
+                        if (DateTime.UtcNow - (BeamSyncContext.LastFetchUtc.Value ?? DateTime.UtcNow) > _contextExpiryTimeSpan)
+                        {
+                            string message = $"Beam sync request {BeamSyncContext.Description.Value} with last update on {BeamSyncContext.LastFetchUtc.Value:hh:mm:ss.fff} has expired";
+                            if(_logger.IsWarn) _logger.Warn(message);
+                            throw new StateException(message);
+                        }
+                        
                         wasInDb = false;
                         // _logger.Info($"BEAM SYNC Asking for {key.ToHexString()} - resolved keys so far {_resolvedKeysCount}");
                         // we store sync progress data at Keccak.Zero;
@@ -96,7 +105,8 @@ namespace Nethermind.Store.BeamSync
                     {
                         if (!wasInDb)
                         {
-                            // if(_logger.IsInfo) _logger.Info($"{_description} BEAM SYNC Resolved {key.ToHexString()} - resolved keys so far {_resolvedKeysCount}");
+                            BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
+                            if(_logger.IsInfo) _logger.Info($"{_description} BEAM SYNC Resolved key {key.ToHexString()} of context {BeamSyncContext.Description.Value} - resolved keys so far {_resolvedKeysCount}");
                             Interlocked.Increment(ref _resolvedKeysCount);
                         }
 

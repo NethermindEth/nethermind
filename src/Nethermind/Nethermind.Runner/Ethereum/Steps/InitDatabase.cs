@@ -45,7 +45,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 if (_context.Logger.IsDebug) _context.Logger.Debug($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");
             }
 
-            if (syncConfig.BeamSyncEnabled)
+            if (syncConfig.BeamSync)
             {
                 BeamSyncDbProvider beamSyncProvider = new BeamSyncDbProvider("processor DB", initConfig.BaseDbPath, dbConfig, _context.LogManager, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
                 _context.DbProvider = beamSyncProvider;

@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Synchronization
                     break;
                 }
 
-                if (_syncConfig.BeamSyncEnabled)
+                if (_syncConfig.BeamSync)
                 {
                     bestFullState = bestSuggested.Number;
                     break;
