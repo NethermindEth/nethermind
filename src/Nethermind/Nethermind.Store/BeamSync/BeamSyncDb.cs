@@ -61,7 +61,7 @@ namespace Nethermind.Store.BeamSync
         
         private ConcurrentQueue<Keccak> _requestedNodes = new ConcurrentQueue<Keccak>();
 
-        private TimeSpan _contextExpiryTimeSpan = TimeSpan.FromSeconds(2);
+        private TimeSpan _contextExpiryTimeSpan = TimeSpan.FromSeconds(4);
         
         public byte[] this[byte[] key]
         {

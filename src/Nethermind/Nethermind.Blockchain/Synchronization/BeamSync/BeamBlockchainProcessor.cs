@@ -136,7 +136,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                 _stateReader.GetAccount(stateRoot, miner);
             }).ContinueWith(t =>
             {
-                _logger.Info(t.IsFaulted ? $"{description} prefetch failed" : $"{description} prefetch complete");
+                _logger.Info(t.IsFaulted ? $"{description} prefetch failed {t.Exception.Message}" : $"{description} prefetch complete");
             });
 
             for (int i = 0; i < block.Transactions.Length; i++)
@@ -153,7 +153,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                     _stateReader.GetAccount(stateRoot, tx.To);
                 }).ContinueWith(t =>
                 {
-                    _logger.Info(t.IsFaulted ? $"{descriptionTx} prefetch failed" : $"{descriptionTx} prefetch complete");
+                    _logger.Info(t.IsFaulted ? $"{descriptionTx} prefetch failed {t.Exception.Message}" : $"{descriptionTx} prefetch complete");
                 });
 
                 string descriptionCode = $"[code of tx {txIndex} of {block.Hash.ToShortString()}]";
@@ -167,7 +167,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                         _stateReader.GetCode(stateRoot, tx.SenderAddress);
                     }).ContinueWith(t =>
                     {
-                        _logger.Info(t.IsFaulted ? $"{descriptionCode} prefetch failed" : $"{descriptionCode} prefetch complete");
+                        _logger.Info(t.IsFaulted ? $"{descriptionCode} prefetch failed {t.Exception.Message}" : $"{descriptionCode} prefetch complete");
                     });
                 }   
             }
