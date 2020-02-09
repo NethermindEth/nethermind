@@ -20,8 +20,37 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class StatusMessageSerializer : IZeroMessageSerializer<StatusMessage>
+    public class StatusMessageSerializer : IMessageSerializer<StatusMessage>, IZeroMessageSerializer<StatusMessage>
     {
+        public byte[] Serialize(StatusMessage message)
+        {
+            return Rlp.Encode(
+                Rlp.Encode(message.ProtocolVersion),
+                Rlp.Encode(message.ChainId),
+                Rlp.Encode(message.TotalDifficulty),
+                Rlp.Encode(message.BestHash),
+                Rlp.Encode(message.GenesisHash)
+            ).Bytes;
+        }
+
+        public StatusMessage Deserialize(byte[] bytes)
+        {
+            RlpStream rlpStream = bytes.AsRlpStream();
+            return Deserialize(rlpStream);
+        }
+
+        private static StatusMessage Deserialize(RlpStream rlpStream)
+        {
+            StatusMessage statusMessage = new StatusMessage();
+            rlpStream.ReadSequenceLength();
+            statusMessage.ProtocolVersion = rlpStream.DecodeByte();
+            statusMessage.ChainId = rlpStream.DecodeUInt256();
+            statusMessage.TotalDifficulty = rlpStream.DecodeUInt256();
+            statusMessage.BestHash = rlpStream.DecodeKeccak();
+            statusMessage.GenesisHash = rlpStream.DecodeKeccak();
+            return statusMessage;
+        }
+
         public void Serialize(IByteBuffer byteBuffer, StatusMessage message)
         {
             NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
@@ -46,18 +75,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
             return Deserialize(rlpStream);
-        }
-        
-        private static StatusMessage Deserialize(RlpStream rlpStream)
-        {
-            StatusMessage statusMessage = new StatusMessage();
-            rlpStream.ReadSequenceLength();
-            statusMessage.ProtocolVersion = rlpStream.DecodeByte();
-            statusMessage.ChainId = rlpStream.DecodeUInt256();
-            statusMessage.TotalDifficulty = rlpStream.DecodeUInt256();
-            statusMessage.BestHash = rlpStream.DecodeKeccak();
-            statusMessage.GenesisHash = rlpStream.DecodeKeccak();
-            return statusMessage;
         }
     }
 }
