@@ -46,6 +46,8 @@ namespace Nethermind.Store
             return false;
         }
 
+        public IDb Innermost => this;
+
         public byte[][] GetAll()
         {
             throw new System.NotImplementedException();

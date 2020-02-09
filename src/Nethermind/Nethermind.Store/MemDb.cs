@@ -69,6 +69,8 @@ namespace Nethermind.Store
             return _db.ContainsKey(key);
         }
 
+        public IDb Innermost => this;
+
         public byte[][] GetAll() => Values.Select(v => v).ToArray();
 
         public void StartBatch()

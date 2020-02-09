@@ -141,6 +141,8 @@ namespace Nethermind.Store.BeamSync
             return _db.KeyExists(key);
         }
 
+        public IDb Innermost => _db;
+
         public event EventHandler NeedMoreData;
 
         public Keccak[] PrepareRequest()

@@ -27,6 +27,7 @@ using Nethermind.Logging;
 using Nethermind.Mining;
 using Nethermind.Stats.Model;
 using Nethermind.Store;
+using Nethermind.Store.BeamSync;
 
 namespace Nethermind.Blockchain.Synchronization
 {
@@ -261,7 +262,9 @@ namespace Nethermind.Blockchain.Synchronization
             var values = new byte[keys.Count][];
             for (int i = 0; i < keys.Count; i++)
             {
-                values[i] = _stateDb.Get(keys[i]) ?? _codeDb.Get(keys[i]);
+                IDb stateDb = _stateDb.Innermost;
+                IDb codeDb = _codeDb.Innermost;
+                values[i] = stateDb.Get(keys[i]) ?? codeDb.Get(keys[i]);
             }
 
             return values;
