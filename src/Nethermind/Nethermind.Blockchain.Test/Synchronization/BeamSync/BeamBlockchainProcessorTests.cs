@@ -21,7 +21,6 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Mining;
 using Nethermind.Specs;
@@ -36,13 +35,13 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
     {
         private BlockTree _blockTree;
         private BlockValidator _validator;
-        private IBlockchainProcessor _blockchainProcessor;
+        private IBlockProcessingQueue _blockchainProcessor;
         private BeamBlockchainProcessor _beamBlockchainProcessor;
 
         [SetUp]
         public void SetUp()
         {
-            _blockchainProcessor = Substitute.For<IBlockchainProcessor>();
+            _blockchainProcessor = Substitute.For<IBlockProcessingQueue>();
             _blockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             HeaderValidator headerValidator = new HeaderValidator(_blockTree, NullSealEngine.Instance, MainNetSpecProvider.Instance, LimboLogs.Instance);
             _validator = new BlockValidator(TestTxValidator.AlwaysValid, headerValidator, AlwaysValidOmmersValidator.Instance, MainNetSpecProvider.Instance, LimboLogs.Instance);
@@ -54,9 +53,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
         {
             Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
             _blockTree.SuggestBlock(newBlock);
-            
-            _beamBlockchainProcessor.Process(newBlock, ProcessingOptions.None, NullBlockTracer.Instance);
-            _blockchainProcessor.Received().Process(newBlock, ProcessingOptions.None, NullBlockTracer.Instance);
+            _blockchainProcessor.Received().Enqueue(newBlock, ProcessingOptions.None);
         }
 
         private BeamBlockchainProcessor SetupBeamProcessor()
@@ -80,9 +77,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
             Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
             newBlock.Header.Hash = Keccak.Zero;
             _blockTree.SuggestBlock(newBlock);
-            
-            _beamBlockchainProcessor.Process(newBlock, ProcessingOptions.None, NullBlockTracer.Instance);
-            _blockchainProcessor.DidNotReceiveWithAnyArgs().Process(newBlock, ProcessingOptions.None, NullBlockTracer.Instance);
+            _blockchainProcessor.DidNotReceiveWithAnyArgs().Enqueue(newBlock, ProcessingOptions.None);
         }
         
         [Test]
@@ -91,9 +86,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
             // setting same difficulty as head to make sure the block will be ignored
             Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithTotalDifficulty(_blockTree.Head.TotalDifficulty).TestObject;
             _blockTree.SuggestBlock(newBlock);
-            
-            _beamBlockchainProcessor.Process(newBlock, ProcessingOptions.None, NullBlockTracer.Instance);
-            _blockchainProcessor.DidNotReceiveWithAnyArgs().Process(newBlock, ProcessingOptions.None, NullBlockTracer.Instance);
+            _blockchainProcessor.DidNotReceiveWithAnyArgs().Enqueue(newBlock, ProcessingOptions.None);
         }
     }
 }
