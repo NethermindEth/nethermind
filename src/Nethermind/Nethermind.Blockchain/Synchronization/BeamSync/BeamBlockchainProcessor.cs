@@ -20,6 +20,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -79,33 +80,8 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             try
             {
                 BlockHeader parentHeader = _readOnlyBlockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                Task minerTask = Task.Run(() =>
-                {
-                    _logger.Warn($"Asking for miner of {block.Beneficiary ?? block.Author}");
-                    _stateReader.GetAccount(parentHeader.StateRoot, block.Beneficiary ?? block.Author);
-                });
-                
-                foreach (Transaction tx in block.Transactions)
-                {
-                    _recoveryStep.RecoverData(block);
-                    _logger.Warn($"Preparing to ask for state of {tx.SenderAddress}");
-                    Task senderTask = Task.Run(() =>
-                    {
-                        _logger.Warn($"Asking for state of {tx.SenderAddress}");
-                        if (tx.To != null)
-                        {
-                            _stateReader.GetAccount(parentHeader.StateRoot, tx.To);
-                        }
-
-                        _stateReader.GetCode(parentHeader.StateRoot, tx.SenderAddress);
-                    });
-                    
-                    Task codeTask = Task.Run(() =>
-                    {
-                        _logger.Warn($"Asking for code of {tx.SenderAddress}");
-                        _stateReader.GetCode(parentHeader.StateRoot, tx.SenderAddress);
-                    });
-                }
+                Prefetch(block, parentHeader.StateRoot);
+                Prefetch(block, block.StateRoot);
 
                 _logger.Warn($"Now beam processing {block}");
                 Task preProcessTask = Task.Run(() =>
@@ -125,6 +101,36 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             catch (Exception e)
             {
                 if (_logger.IsError) _logger.Error($"Block {block.ToString(Block.Format.Short)} failed processing and it will be skipped from beam sync", e);
+            }
+        }
+
+        private void Prefetch(Block block, Keccak stateRoot)
+        {
+            Task minerTask = Task.Run(() =>
+            {
+                _logger.Warn($"Asking for miner of {block.Beneficiary ?? block.Author}");
+                _stateReader.GetAccount(stateRoot, block.Beneficiary ?? block.Author);
+            });
+
+            foreach (Transaction tx in block.Transactions)
+            {
+                _recoveryStep.RecoverData(block);
+                _logger.Warn($"Preparing to ask for state of {tx.SenderAddress}");
+                Task senderTask = Task.Run(() =>
+                {
+                    _logger.Warn($"Asking for state of {tx.SenderAddress}");
+                    _stateReader.GetAccount(stateRoot, tx.To);
+                });
+
+                if (tx.To != null)
+                {
+                    Task codeTask = Task.Run(() =>
+                    {
+                        _logger.Warn($"Asking for code of {tx.SenderAddress}");
+
+                        _stateReader.GetCode(stateRoot, tx.SenderAddress);
+                    });
+                }
             }
         }
 
