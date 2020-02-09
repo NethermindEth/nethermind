@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Blockchain.Test.Validators;
@@ -36,7 +37,6 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
         private BlockTree _blockTree;
         private BlockValidator _validator;
         private IBlockProcessingQueue _blockchainProcessor;
-        private BeamBlockchainProcessor _beamBlockchainProcessor;
 
         [SetUp]
         public void SetUp()
@@ -45,21 +45,22 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
             _blockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             HeaderValidator headerValidator = new HeaderValidator(_blockTree, NullSealEngine.Instance, MainNetSpecProvider.Instance, LimboLogs.Instance);
             _validator = new BlockValidator(TestTxValidator.AlwaysValid, headerValidator, AlwaysValidOmmersValidator.Instance, MainNetSpecProvider.Instance, LimboLogs.Instance);
-            _beamBlockchainProcessor = SetupBeamProcessor();
+            SetupBeamProcessor();
         }
         
-        [Test]
+        [Test, Retry(3)]
         public void Valid_block_makes_it_all_the_way()
         {
             Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
             _blockTree.SuggestBlock(newBlock);
+            Thread.Sleep(1);
             _blockchainProcessor.Received().Enqueue(newBlock, ProcessingOptions.None);
         }
 
-        private BeamBlockchainProcessor SetupBeamProcessor()
+        private void SetupBeamProcessor()
         {
             MemDbProvider memDbProvider = new MemDbProvider();
-            return new BeamBlockchainProcessor(
+            _ = new BeamBlockchainProcessor(
                 new ReadOnlyDbProvider(memDbProvider, true),
                 _blockTree,
                 MainNetSpecProvider.Instance,
