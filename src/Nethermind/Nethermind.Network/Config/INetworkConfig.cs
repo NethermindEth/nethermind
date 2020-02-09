@@ -67,5 +67,8 @@ namespace Nethermind.Network.Config
 
         [ConfigItem(DefaultValue = "false", Description = "Enabled very verbose diag network tracing files for DEV purposes (Nethermind specific)")]
         bool DiagTracerEnabled { get; set; }
+
+        [ConfigItem(DefaultValue = "11", Description = "[TECHNICAL] Defines the size of a buffer allocated to each peer - default is 8192 << 11 so 16MB where order is 11.")]
+        int NettyArenaOrder { get; set; }
     }
 }

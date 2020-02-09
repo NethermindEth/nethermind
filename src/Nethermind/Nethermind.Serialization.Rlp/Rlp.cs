@@ -985,12 +985,7 @@ namespace Nethermind.Serialization.Rlp
                     throw new InvalidOperationException("Incorrect bloom RLP");
                 }
 
-                if (bloomBytes.SequenceEqual(Core.Extensions.Bytes.Zero256))
-                {
-                    return Bloom.Empty;
-                }
-
-                return new Bloom(bloomBytes.ToBigEndianBitArray2048());
+                return bloomBytes.SequenceEqual(Bloom.Empty.Bytes) ? Bloom.Empty : new Bloom(bloomBytes.ToArray());
             }
 
             public Span<byte> PeekNextItem()

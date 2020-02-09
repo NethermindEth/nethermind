@@ -18,7 +18,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Crypto
 {
     public static class BlockHeaderExtensions
     {
@@ -32,8 +32,7 @@ namespace Nethermind.Blockchain
 
         public static Keccak CalculateHash(this Block block, RlpBehaviors behaviors = RlpBehaviors.None)
         {
-            Rlp buffer = _headerDecoder.Encode(block.Header, behaviors);
-            return Keccak.Compute(buffer.Bytes);
+            return CalculateHash(block.Header, behaviors);
         }
     }
 }
