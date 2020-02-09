@@ -78,7 +78,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                                         }
                                         
                                         batch.Headers.Response = getHeadersTask.Result;
-                                        ValidateHeaders(token, batch);
                                     }
                                     else
                                     {
@@ -173,50 +172,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 }
             }
         }
-
-        private Guid _sealValidatorUserGuid = Guid.NewGuid();
         
-        private void ValidateHeaders(CancellationToken cancellation, FastBlocksBatch batch)
-        {
-            batch.MarkValidation();
-            try
-            {
-                if (_logger.IsTrace) _logger.Trace("Starting block validation");
-
-                BlockHeader[] headers = batch.Headers.Response;
-                for (int i = 0; i < headers.Length; i++)
-                {
-                    if (cancellation.IsCancellationRequested)
-                    {
-                        if (_logger.IsTrace) _logger.Trace("Returning fom seal validation");
-                        return;
-                    }
-
-                    BlockHeader header = headers[i];
-                    if (header == null)
-                    {
-                        continue;
-                    }
-
-                    bool isHashValid = _blockValidator.ValidateHash(header);
-                    if (!isHashValid)
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"One of the blocks is invalid - invalid hash at {header.Number}");
-                        _syncPeerPool.ReportInvalid(batch.Allocation?.Current, $"invalid hash of block {header.Number}");
-                        batch.Headers.Response = null;
-                    }
-                    
-                    // no need to check seals in fast blocks since we trust the pivot block nonetheless}
-                }
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsError) _logger.Error($"Error when validating headers of {batch}", ex);
-                _syncPeerPool.ReportInvalid(batch.Allocation?.Current, $"validation exception - {ex}");
-                batch.Headers.Response = null;
-            }
-        }
-
         private async Task KeepSyncing(CancellationToken token)
         {
             int finalizeSignalsCount = 0;

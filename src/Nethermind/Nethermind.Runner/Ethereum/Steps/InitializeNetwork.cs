@@ -69,13 +69,17 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private async Task Initialize()
         {
-            if (_context.NetworkConfig.DiagTracerEnabled)
+            INetworkConfig networkConfig = _context.Config<INetworkConfig>();
+            if (networkConfig.DiagTracerEnabled)
             {
                 NetworkDiagTracer.IsEnabled = true;
                 NetworkDiagTracer.Start();
             }
+            
+            // Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", "8192");
+            Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", networkConfig.NettyArenaOrder.ToString());
 
-            int maxPeersCount = _context.NetworkConfig.ActivePeersMaxCount;
+            int maxPeersCount = networkConfig.ActivePeersMaxCount;
             _context.SyncPeerPool = new EthSyncPeerPool(_context.BlockTree, _context.NodeStatsManager, maxPeersCount, _context.LogManager);
             _context.DisposeStack.Push(_context.SyncPeerPool);
             NodeDataFeed feed = new NodeDataFeed(_context.DbProvider.CodeDb, _context.DbProvider.StateDb, _context.LogManager);

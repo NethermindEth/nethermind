@@ -29,7 +29,7 @@ namespace Nethermind.Blockchain.Proofs
         private static ReceiptDecoder _receiptDecoder = new ReceiptDecoder();
         
         public ReceiptTrie(long blockNumber, ISpecProvider specProvider, TxReceipt[] txReceipts, bool allowProofs = false)
-            : base(allowProofs ? (IDb) new MemDb() : NullDb.Instance)
+            : base(allowProofs ? (IDb) new MemDb() : NullDb.Instance, EmptyTreeHash, false, false)
         {
             _allowProofs = allowProofs;
             if (txReceipts.Length == 0)

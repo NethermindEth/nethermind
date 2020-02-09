@@ -434,8 +434,7 @@ namespace Nethermind.Blockchain
             _headerDb.Set(header.Hash, newRlp.Bytes);
 
             BlockInfo blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? 0);
-            ChainLevelInfo chainLevel = new ChainLevelInfo(false, blockInfo);
-            chainLevel.HasBlockOnMainChain = true;
+            ChainLevelInfo chainLevel = new ChainLevelInfo(true, blockInfo);
             _chainLevelInfoRepository.PersistLevel(header.Number, chainLevel);
 
             if (header.Number < (LowestInsertedHeader?.Number ?? long.MaxValue))

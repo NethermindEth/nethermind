@@ -44,7 +44,7 @@ namespace Nethermind.Network.Rlpx
         {
             _cipher = frameCipher ?? throw new ArgumentNullException(nameof(frameCipher));
             _authenticator = frameMacProcessor ?? throw new ArgumentNullException(nameof(frameMacProcessor));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<ZeroFrameDecoder>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         protected override void Decode(IChannelHandlerContext context, IByteBuffer input, List<object> output)

@@ -18,6 +18,7 @@ using System.Linq;
 using System.Numerics;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Test.Builders

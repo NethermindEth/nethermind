@@ -33,7 +33,7 @@ namespace Nethermind.Network.P2P
         public ZeroNettyP2PHandler(ISession session, ILogManager logManager)
         {
             _session = session ?? throw new ArgumentNullException(nameof(session));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<ZeroNettyP2PHandler>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public void Init(IPacketSender packetSender, IChannelHandlerContext context)

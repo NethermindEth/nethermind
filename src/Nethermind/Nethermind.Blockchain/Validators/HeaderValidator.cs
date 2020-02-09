@@ -18,6 +18,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Specs;
 using Nethermind.Logging;
 using Nethermind.Mining;

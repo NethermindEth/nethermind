@@ -26,6 +26,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Specs.Forks;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;

@@ -105,6 +105,13 @@ namespace Nethermind.Core.Extensions
         {
             return (b & (1 << (7 - bitNumber))) != 0;
         }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void SetBit(this ref byte b, int bitNumber)
+        {
+            byte mask = (byte)(1 << bitNumber);
+            b = b |= mask;
+        }
 
         public static int GetHighestSetBitIndex(this byte b)
         {
