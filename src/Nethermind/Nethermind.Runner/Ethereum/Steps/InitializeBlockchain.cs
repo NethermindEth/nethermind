@@ -53,6 +53,12 @@ namespace Nethermind.Runner.Ethereum.Steps
         private Task InitBlockchain()
         {
             ISyncConfig syncConfig = _context.Config<ISyncConfig>();
+            if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
+            {
+                _context.Logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
+                syncConfig.DownloadBodiesInFastSync = true;
+            }
+            
             Account.AccountStartNonce = _context.ChainSpec.Parameters.AccountStartNonce;
 
             _context.StateProvider = new StateProvider(
