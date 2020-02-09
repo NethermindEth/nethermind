@@ -104,7 +104,7 @@ namespace Nethermind.Network
 
         public IByteBuffer ZeroSerialize<T>(T message) where T : MessageBase
         {
-            IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(512);
+            IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(64);
             if (message is P2PMessage p2PMessage)
             {
                 byteBuffer.WriteByte(p2PMessage.AdaptivePacketType);
