@@ -55,7 +55,7 @@ namespace Nethermind.Store.BeamSync
 
         private int _resolvedKeysCount;
         
-        private ConcurrentDictionary<Keccak, object> _requestedNodes = new ConcurrentDictionary<Keccak, object>();
+        private ConcurrentQueue<Keccak> _requestedNodes = new ConcurrentQueue<Keccak>();
 
         private TimeSpan _contextExpiryTimeSpan = TimeSpan.FromSeconds(10);
         
@@ -94,7 +94,7 @@ namespace Nethermind.Store.BeamSync
                             return null;
                         }
 
-                        _requestedNodes[new Keccak(key)] = null;
+                        _requestedNodes.Enqueue(new Keccak(key));
                         // _logger.Error($"Requested {key.ToHexString()}");
 
                         NeedsData = true;
@@ -145,19 +145,29 @@ namespace Nethermind.Store.BeamSync
 
         public Keccak[] PrepareRequest()
         {
-            NeedsData = false;
-            List<Keccak> request = new List<Keccak>();
-            foreach (Keccak key in _requestedNodes.Keys)
+            lock (_requestedNodes)
             {
-                request.Add(key);
+                NeedsData = false;
+                List<Keccak> request = new List<Keccak>();
+                for (int i = 0; i < 256; i++)
+                {
+                    if (_requestedNodes.TryDequeue(out Keccak next))
+                    {
+                        request.Add(next);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+                
+                if (request.Count > 1)
+                {
+                    _logger.Warn($"Sending request of size {request.Count} (already received {_resolvedKeysCount})");
+                }
+                
+                return request.ToArray();
             }
-
-            if (request.Count > 1)
-            {
-                _logger.Warn($"Sending request of size {request.Count} (already received {_resolvedKeysCount})");
-            }
-
-            return request.ToArray();
         }
 
         public int HandleResponse(Keccak[] hashes, byte[][] data)
@@ -172,9 +182,13 @@ namespace Nethermind.Store.BeamSync
                         if (Keccak.Compute(data[i]) == hashes[i])
                         {
                             _db[hashes[i].Bytes] = data[i];
-                            _requestedNodes.Remove(hashes[i], out _);
+                            // _requestedNodes.Remove(hashes[i], out _);
                             consumed++;
                         }
+                    }
+                    else
+                    {
+                        _requestedNodes.Enqueue(hashes[i]);
                     }
                 }
             }
@@ -183,7 +197,7 @@ namespace Nethermind.Store.BeamSync
             return consumed;
         }
 
-        private AutoResetEvent _autoReset = new AutoResetEvent(false);
+        private AutoResetEvent _autoReset = new AutoResetEvent(true);
 
         public bool NeedsData { get; private set; }
     }
