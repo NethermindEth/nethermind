@@ -87,8 +87,8 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             try
             {
                 BlockHeader parentHeader = _readOnlyBlockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                Prefetch(block, parentHeader.StateRoot);
-                Prefetch(block, block.StateRoot);
+                Prefetch(block, parentHeader.StateRoot, parentHeader.Beneficiary ?? parentHeader.Author);
+                Prefetch(block, block.StateRoot, block.Header.Beneficiary ?? block.Header.Author);
 
                 if(_logger.IsInfo) _logger.Info($"Now beam processing {block}");
                 Block processedBlock = null;
@@ -123,13 +123,17 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             }
         }
 
-        private void Prefetch(Block block, Keccak stateRoot)
+        private void Prefetch(Block block, Keccak stateRoot, Address miner)
         {
+            string description = $"[miner of {block.Hash.ToShortString()}]";
             Task minerTask = Task.Run(() =>
             {
-                BeamSyncContext.Description.Value = $"[miner of {block.Hash.ToShortString()}]";
+                BeamSyncContext.Description.Value = description;
                 BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
-                _stateReader.GetAccount(stateRoot, block.Beneficiary ?? block.Author);
+                _stateReader.GetAccount(stateRoot, miner);
+            }).ContinueWith(t =>
+            {
+                _logger.Info(t.IsFaulted ? $"{description} prefetch failed" : $"{description} prefetch complete");
             });
 
             for (int i = 0; i < block.Transactions.Length; i++)
@@ -137,20 +141,28 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                 Transaction tx = block.Transactions[i];
                 _recoveryStep.RecoverData(block);
                 int txIndex = i;
+                string descriptionTx = $"[sender of tx {txIndex} of {block.Hash.ToShortString()}]";
                 Task senderTask = Task.Run(() =>
                 {
-                    BeamSyncContext.Description.Value = $"[sender of tx {txIndex} of {block.Hash.ToShortString()}]";
+                    BeamSyncContext.Description.Value = descriptionTx;
                     BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
                     _stateReader.GetAccount(stateRoot, tx.To);
+                }).ContinueWith(t =>
+                {
+                    _logger.Info(t.IsFaulted ? $"{descriptionTx} prefetch failed" : $"{descriptionTx} prefetch complete");
                 });
 
+                string descriptionCode = $"[code of tx {txIndex} of {block.Hash.ToShortString()}]";
                 if (tx.To != null)
                 {
                     Task codeTask = Task.Run(() =>
                     {
-                        BeamSyncContext.Description.Value = $"[code of tx {txIndex} of {block.Hash.ToShortString()}]";
+                        BeamSyncContext.Description.Value = descriptionCode;
                         BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
                         _stateReader.GetCode(stateRoot, tx.SenderAddress);
+                    }).ContinueWith(t =>
+                    {
+                        _logger.Info(t.IsFaulted ? $"{descriptionCode} prefetch failed" : $"{descriptionCode} prefetch complete");
                     });
                 }   
             }

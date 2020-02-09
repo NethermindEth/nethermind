@@ -57,7 +57,7 @@ namespace Nethermind.Store.BeamSync
         
         private ConcurrentQueue<Keccak> _requestedNodes = new ConcurrentQueue<Keccak>();
 
-        private TimeSpan _contextExpiryTimeSpan = TimeSpan.FromSeconds(10);
+        private TimeSpan _contextExpiryTimeSpan = TimeSpan.FromSeconds(2);
         
         public byte[] this[byte[] key]
         {
@@ -82,7 +82,7 @@ namespace Nethermind.Store.BeamSync
                         if (DateTime.UtcNow - (BeamSyncContext.LastFetchUtc.Value ?? DateTime.UtcNow) > _contextExpiryTimeSpan)
                         {
                             string message = $"Beam sync request {BeamSyncContext.Description.Value} with last update on {BeamSyncContext.LastFetchUtc.Value:hh:mm:ss.fff} has expired";
-                            if(_logger.IsWarn) _logger.Warn(message);
+                            if(_logger.IsDebug) _logger.Debug(message);
                             throw new StateException(message);
                         }
                         
