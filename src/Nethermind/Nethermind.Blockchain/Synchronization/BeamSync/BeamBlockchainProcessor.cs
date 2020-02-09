@@ -125,7 +125,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
 
         private void Prefetch(Block block, Keccak stateRoot, Address miner)
         {
-            string description = $"[miner of {block.Hash.ToShortString()}]";
+            string description = $"[miner {miner}]";
             Task minerTask = Task.Run(() =>
             {
                 BeamSyncContext.Description.Value = description;
