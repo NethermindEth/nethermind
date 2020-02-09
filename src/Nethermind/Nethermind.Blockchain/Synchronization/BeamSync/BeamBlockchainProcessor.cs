@@ -88,8 +88,8 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             try
             {
                 BlockHeader parentHeader = _readOnlyBlockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                Prefetch(block, parentHeader.StateRoot, parentHeader.Beneficiary ?? parentHeader.Author);
-                Prefetch(block, block.StateRoot, block.Header.Beneficiary ?? block.Header.Author);
+                Prefetch(block, parentHeader.StateRoot, parentHeader.Author ?? parentHeader.Beneficiary);
+                Prefetch(block, block.StateRoot, block.Author ?? block.Beneficiary);
 
                 if(_logger.IsInfo) _logger.Info($"Now beam processing {block}");
                 Block processedBlock = null;
