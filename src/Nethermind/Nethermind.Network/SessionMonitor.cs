@@ -40,7 +40,6 @@ namespace Nethermind.Network
         public SessionMonitor(INetworkConfig config, ILogManager logManager)
         {
             
-            Console.WriteLine("SESSION MONITORAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _networkConfig = config ?? throw new ArgumentNullException(nameof(config));
 
