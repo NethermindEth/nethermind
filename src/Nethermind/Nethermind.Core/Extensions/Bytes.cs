@@ -109,7 +109,7 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void SetBit(this ref byte b, int bitNumber)
         {
-            byte mask = (byte)(1 << bitNumber);
+            byte mask = (byte)(1 << (7 - bitNumber));
             b = b |= mask;
         }
 
