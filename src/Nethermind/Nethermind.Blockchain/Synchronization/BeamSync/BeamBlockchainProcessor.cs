@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             // we only want to trace the actual block
             try
             {
-                BlockHeader parentHeader = _readOnlyBlockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);)
+                BlockHeader parentHeader = _readOnlyBlockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 Prefetch(block, parentHeader.StateRoot);
                 Prefetch(block, block.StateRoot);
 
