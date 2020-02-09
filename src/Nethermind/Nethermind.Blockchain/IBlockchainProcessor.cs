@@ -25,6 +25,6 @@ namespace Nethermind.Blockchain
     {
         void Start();
         Task StopAsync(bool processRemainingBlocks = false);
-        Block Process(Block block, ProcessingOptions options, IBlockTracer listener);
+        Block Process(Block block, ProcessingOptions options, IBlockTracer tracer);
     }
 }

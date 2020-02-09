@@ -62,7 +62,6 @@ namespace Nethermind.Blockchain
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _storeReceiptsByDefault = storeReceiptsByDefault;
-
             _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
             _stats = new ProcessingStats(_logger);
         }
@@ -258,7 +257,7 @@ namespace Nethermind.Blockchain
         public bool IsEmpty => _blockQueue.Count == 0 && _recoveryQueue.Count == 0;
 
         [Todo("Introduce priority queue and create a SuggestWithPriority that waits for block execution to return a block, then make this private")]
-        public Block Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
+        public Block Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer)
         {
             if (!RunSimpleChecksAheadOfProcessing(suggestedBlock, options))
             {
@@ -372,7 +371,7 @@ namespace Nethermind.Blockchain
 
                 try
                 {
-                    processedBlocks = _blockProcessor.Process(stateRoot, blocks, options, blockTracer);
+                    processedBlocks = _blockProcessor.Process(stateRoot, blocks, options, tracer);
                 }
                 catch (InvalidBlockException ex)
                 {

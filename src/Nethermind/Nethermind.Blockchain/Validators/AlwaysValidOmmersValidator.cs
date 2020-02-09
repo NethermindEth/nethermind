@@ -21,6 +21,11 @@ namespace Nethermind.Blockchain.Validators
 {
     public class AlwaysValidOmmersValidator : IOmmersValidator
     {
+        private AlwaysValidOmmersValidator()
+        {
+            
+        }
+        
         private static AlwaysValidOmmersValidator _instance;
 
         public static AlwaysValidOmmersValidator Instance

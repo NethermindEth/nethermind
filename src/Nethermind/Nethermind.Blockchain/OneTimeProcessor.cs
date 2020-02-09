@@ -45,11 +45,11 @@ namespace Nethermind.Blockchain
             return _processor.StopAsync(processRemainingBlocks);
         }
 
-        public Block Process(Block block, ProcessingOptions options, IBlockTracer listener)
+        public Block Process(Block block, ProcessingOptions options, IBlockTracer tracer)
         {
             lock (_lock)
             {
-                Block result = _processor.Process(block, options, listener);
+                Block result = _processor.Process(block, options, tracer);
                 _readOnlyDbProvider.ClearTempChanges();
                 return result;
             }

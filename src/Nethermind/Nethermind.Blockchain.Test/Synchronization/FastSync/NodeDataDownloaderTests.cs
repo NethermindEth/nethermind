@@ -20,6 +20,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.VisualStudio.TestPlatform.ObjectModel;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Core;
@@ -446,7 +447,8 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             }
         }
 
-        private static readonly IBlockTree BlockTree = Build.A.BlockTree().OfChainLength(100).TestObject;
+        private static IBlockTree _blockTree;
+        private static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, () => Build.A.BlockTree().OfChainLength(100).TestObject);
 
         private class ExecutorMock : ISyncPeer
         {

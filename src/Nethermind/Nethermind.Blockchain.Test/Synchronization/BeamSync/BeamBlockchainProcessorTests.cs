@@ -1,0 +1,99 @@
+//  Copyright (c) 2018 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+
+using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Synchronization.BeamSync;
+using Nethermind.Blockchain.Test.Validators;
+using Nethermind.Blockchain.Validators;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
+using Nethermind.Mining;
+using Nethermind.Specs;
+using Nethermind.Store;
+using NSubstitute;
+using NUnit.Framework;
+
+namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
+{
+    [TestFixture]
+    public class BeamBlockchainProcessorTests
+    {
+        private BlockTree _blockTree;
+        private BlockValidator _validator;
+        private IBlockchainProcessor _blockchainProcessor;
+        private BeamBlockchainProcessor _beamBlockchainProcessor;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _blockchainProcessor = Substitute.For<IBlockchainProcessor>();
+            _blockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
+            HeaderValidator headerValidator = new HeaderValidator(_blockTree, NullSealEngine.Instance, MainNetSpecProvider.Instance, LimboLogs.Instance);
+            _validator = new BlockValidator(TestTxValidator.AlwaysValid, headerValidator, AlwaysValidOmmersValidator.Instance, MainNetSpecProvider.Instance, LimboLogs.Instance);
+            _beamBlockchainProcessor = SetupBeamProcessor();
+        }
+        
+        [Test]
+        public void Valid_block_makes_it_all_the_way()
+        {
+            Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
+            _blockTree.SuggestBlock(newBlock);
+            
+            _beamBlockchainProcessor.Process(newBlock, ProcessingOptions.None, NullBlockTracer.Instance);
+            _blockchainProcessor.Received().Process(newBlock, ProcessingOptions.None, NullBlockTracer.Instance);
+        }
+
+        private BeamBlockchainProcessor SetupBeamProcessor()
+        {
+            MemDbProvider memDbProvider = new MemDbProvider();
+            return new BeamBlockchainProcessor(
+                new ReadOnlyDbProvider(memDbProvider, true),
+                _blockTree,
+                MainNetSpecProvider.Instance,
+                LimboLogs.Instance,
+                _validator,
+                NullRecoveryStep.Instance,
+                NoBlockRewards.Instance,
+                _blockchainProcessor
+            );
+        }
+
+        [Test]
+        public void Invalid_block_will_never_reach_actual_processor()
+        {
+            Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
+            newBlock.Header.Hash = Keccak.Zero;
+            _blockTree.SuggestBlock(newBlock);
+            
+            _beamBlockchainProcessor.Process(newBlock, ProcessingOptions.None, NullBlockTracer.Instance);
+            _blockchainProcessor.DidNotReceiveWithAnyArgs().Process(newBlock, ProcessingOptions.None, NullBlockTracer.Instance);
+        }
+        
+        [Test]
+        public void Valid_block_that_would_be_skipped_will_never_reach_actual_processor()
+        {
+            // setting same difficulty as head to make sure the block will be ignored
+            Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithTotalDifficulty(_blockTree.Head.TotalDifficulty).TestObject;
+            _blockTree.SuggestBlock(newBlock);
+            
+            _beamBlockchainProcessor.Process(newBlock, ProcessingOptions.None, NullBlockTracer.Instance);
+            _blockchainProcessor.DidNotReceiveWithAnyArgs().Process(newBlock, ProcessingOptions.None, NullBlockTracer.Instance);
+        }
+    }
+}
