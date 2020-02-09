@@ -73,7 +73,7 @@ namespace Nethermind.Store
             return _pendingChanges.ContainsKey(key) || _db.KeyExists(key);
         }
 
-        public IDb Innermost => _db;
+        public IDb Innermost => _db.Innermost;
 
         public void Restore(int snapshot)
         {

@@ -70,7 +70,7 @@ namespace Nethermind.Store
             return _memDb.KeyExists(key) || _wrappedDb.KeyExists(key);
         }
 
-        public IDb Innermost => _wrappedDb;
+        public IDb Innermost => _wrappedDb.Innermost;
 
         public void ClearTempChanges()
         {
