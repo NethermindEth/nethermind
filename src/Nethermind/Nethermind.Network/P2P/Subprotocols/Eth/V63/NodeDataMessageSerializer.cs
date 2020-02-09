@@ -14,40 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Linq;
 using DotNetty.Buffers;
-using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
-    public class NodeDataMessageSerializer : IMessageSerializer<NodeDataMessage>, IZeroMessageSerializer<NodeDataMessage>
+    public class NodeDataMessageSerializer : IZeroMessageSerializer<NodeDataMessage>
     {
-        public byte[] Serialize(NodeDataMessage message)
-        {
-            if (message.Data == null)
-            {
-                return Rlp.OfEmptySequence.Bytes;
-            }
-            
-            return Rlp.Encode(message.Data.Select(b => b == null ? Rlp.OfEmptyByteArray : Rlp.Encode(b)).ToArray()).Bytes;
-        }
-
-        public NodeDataMessage Deserialize(byte[] bytes)
-        {
-            if (bytes.Length == 0 && bytes[0] == Rlp.OfEmptySequence[0])
-            {
-                return new NodeDataMessage(null);
-            }
-            
-            RlpStream rlpStream = bytes.AsRlpStream();
-
-            byte[][] data = rlpStream.DecodeArray(itemContext => itemContext.DecodeByteArray());
-            NodeDataMessage message = new NodeDataMessage(data);
-
-            return message;
-        }
-
         public void Serialize(IByteBuffer byteBuffer, NodeDataMessage message)
         {
             int contentLength = 0;

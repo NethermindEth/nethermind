@@ -17,11 +17,8 @@
 using System;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
@@ -34,11 +31,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
         
-        [Todo(Improve.MissingFunctionality, "When serializing receipts we need either to just get raw receipts from storage that were stored in the bare format or recognize the block number from spec provider")]
         public byte[] Serialize(ReceiptsMessage message)
         {
             if (message.TxReceipts == null) return Rlp.OfEmptySequence.Bytes;
-            return Rlp.Encode(message.TxReceipts.Select(b => b == null ? Rlp.OfEmptySequence : Rlp.Encode(b.Select(n => n == null ? Rlp.OfEmptySequence : Rlp.Encode(n, _specProvider.GetSpec(n.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)).ToArray())).ToArray()).Bytes;
+            return Rlp.Encode(message.TxReceipts.Select(
+                b => b == null
+                    ? Rlp.OfEmptySequence
+                    : Rlp.Encode(
+                        b.Select(
+                            n => n == null
+                                ? Rlp.OfEmptySequence
+                                : Rlp.Encode(n, _specProvider.GetSpec(n.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)).ToArray())).ToArray()).Bytes;
         }
 
         public ReceiptsMessage Deserialize(byte[] bytes)

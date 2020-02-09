@@ -14,7 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.IO;
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -198,6 +198,7 @@ namespace Nethermind.Serialization.Rlp
             
             RlpStream rlpStream = new RlpStream(GetLength(item, rlpBehaviors));
             Encode(rlpStream, item, rlpBehaviors);
+            
             return new Rlp(rlpStream.Data);
         }
 

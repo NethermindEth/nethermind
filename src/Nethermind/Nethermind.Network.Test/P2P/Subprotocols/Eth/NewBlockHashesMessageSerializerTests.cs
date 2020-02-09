@@ -28,7 +28,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
         {
             NewBlockHashesMessage message = new NewBlockHashesMessage((Keccak.Compute("1"), 1), (Keccak.Compute("2"), 2));
             var serializer = new NewBlockHashesMessageSerializer();
-            SerializerTester.Test(serializer, message);
             SerializerTester.TestZero(serializer, message);
         }
     }

@@ -146,7 +146,7 @@ namespace Nethermind.Store.Test
             MemDb memDb = new MemDb();
             memDb[node.Keccak.Bytes] = rlp.Bytes;
 
-            PatriciaTree tree = new PatriciaTree(memDb, node.Keccak, false);
+            PatriciaTree tree = new PatriciaTree(memDb, node.Keccak, false, true);
             return tree;
         }
     }

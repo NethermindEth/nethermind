@@ -42,7 +42,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             Assert.AreEqual(message.BlockHeaders.Length, deserialized.BlockHeaders.Length, "length");
             Assert.AreEqual(message.BlockHeaders[0].Hash, deserialized.BlockHeaders[0].Hash, "hash");
 
-            SerializerTester.Test(serializer, message);
             SerializerTester.TestZero(serializer, message);
         }
         
@@ -60,7 +59,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             Assert.AreEqual(message.BlockHeaders[0].Hash, deserialized.BlockHeaders[0].Hash, "hash");
             Assert.Null(message.BlockHeaders[1]);
 
-            SerializerTester.Test(serializer, message);
             SerializerTester.TestZero(serializer, message);
         }
 

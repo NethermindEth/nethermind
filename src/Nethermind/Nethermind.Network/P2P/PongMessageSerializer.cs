@@ -14,18 +14,19 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using DotNetty.Buffers;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P
 {
-    public class PongMessageSerializer : IMessageSerializer<PongMessage>
+    public class PongMessageSerializer : IZeroMessageSerializer<PongMessage>
     {
-        public byte[] Serialize(PongMessage message)
+        public void Serialize(IByteBuffer byteBuffer, PongMessage message)
         {
-            return Rlp.OfEmptySequence.Bytes;
+            byteBuffer.WriteBytes(Rlp.OfEmptySequence.Bytes);
         }
 
-        public PongMessage Deserialize(byte[] bytes)
+        public PongMessage Deserialize(IByteBuffer byteBuffer)
         {
             return PongMessage.Instance;
         }

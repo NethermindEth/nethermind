@@ -146,13 +146,13 @@ namespace Nethermind.Blockchain.Validators
                 {
                     if(_logger.IsError) _logger.Error($"  state root {processedBlock.Header.StateRoot} != stated state root {suggestedBlock.Header.StateRoot}");
                 }
-            }
-            
-            for (int i = 0; i < processedBlock.Transactions.Length; i++)
-            {
-                if (receipts[i].Error != null && receipts[i].GasUsed == 0 && receipts[i].Error == "invalid")
+                
+                for (int i = 0; i < processedBlock.Transactions.Length; i++)
                 {
-                    if(_logger.IsError) _logger.Error($"  invalid transaction {i}");
+                    if (receipts[i].Error != null && receipts[i].GasUsed == 0 && receipts[i].Error == "invalid")
+                    {
+                        if(_logger.IsError) _logger.Error($"  invalid transaction {i}");
+                    }
                 }
             }
 

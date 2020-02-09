@@ -21,25 +21,8 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class GetBlockBodiesMessageSerializer : IMessageSerializer<GetBlockBodiesMessage>, IZeroMessageSerializer<GetBlockBodiesMessage>
+    public class GetBlockBodiesMessageSerializer : IZeroMessageSerializer<GetBlockBodiesMessage>
     {
-        public byte[] Serialize(GetBlockBodiesMessage message)
-        {
-            return Rlp.Encode(message.BlockHashes).Bytes;
-        }
-
-        public GetBlockBodiesMessage Deserialize(byte[] bytes)
-        {
-            RlpStream rlpStream = bytes.AsRlpStream();
-            return Deserialize(rlpStream);
-        }
-
-        private static GetBlockBodiesMessage Deserialize(RlpStream rlpStream)
-        {
-            Keccak[] hashes = rlpStream.DecodeArray(ctx => rlpStream.DecodeKeccak(), false);
-            return new GetBlockBodiesMessage(hashes);
-        }
-
         public void Serialize(IByteBuffer byteBuffer, GetBlockBodiesMessage message)
         {
             NettyRlpStream nettyRlpStream = new NettyRlpStream(byteBuffer);
@@ -64,6 +47,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
             return Deserialize(rlpStream);
+        }
+        
+        private static GetBlockBodiesMessage Deserialize(RlpStream rlpStream)
+        {
+            Keccak[] hashes = rlpStream.DecodeArray(ctx => rlpStream.DecodeKeccak(), false);
+            return new GetBlockBodiesMessage(hashes);
         }
     }
 }

@@ -41,10 +41,8 @@ namespace Nethermind.Network.P2P
             {
                 return;
             }
-
-            IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(512);
-            buffer.WriteByte(message.AdaptivePacketType);
-            _messageSerializationService.Serialize(message, buffer);
+            
+            IByteBuffer buffer = _messageSerializationService.ZeroSerialize(message);
             _context.WriteAndFlushAsync(buffer).ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -58,30 +56,6 @@ namespace Nethermind.Network.P2P
                 else if (t.IsCompleted)
                 {
 //                    if (_logger.IsTrace) _logger.Trace($"Packet ({packet.Protocol}.{packet.PacketType}) pushed");
-                }
-            });
-        }
-
-        private void Send(Packet packet)
-        {
-            if (!_context.Channel.Active)
-            {
-                return;
-            }
-
-            _context.WriteAndFlushAsync(packet).ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                {
-                    if (_context.Channel != null && !_context.Channel.Active)
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Channel is not active - {t.Exception.Message}");
-                    }
-                    else if (_logger.IsError) _logger.Error("Channel is active", t.Exception);
-                }
-                else if (t.IsCompleted)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Packet ({packet.Protocol}.{packet.PacketType}) pushed");
                 }
             });
         }

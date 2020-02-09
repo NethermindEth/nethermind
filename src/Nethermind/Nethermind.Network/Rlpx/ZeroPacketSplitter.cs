@@ -32,7 +32,7 @@ namespace Nethermind.Network.Rlpx
 
         public ZeroPacketSplitter(ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<ZeroPacketSplitter>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public void DisableFraming()

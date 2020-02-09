@@ -22,36 +22,10 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class NewBlockMessageSerializer : IMessageSerializer<NewBlockMessage>, IZeroMessageSerializer<NewBlockMessage>
+    public class NewBlockMessageSerializer : IZeroMessageSerializer<NewBlockMessage>
     {
         private BlockDecoder _blockDecoder = new BlockDecoder();
-
-        public byte[] Serialize(NewBlockMessage message)
-        {
-            int contentLength = _blockDecoder.GetLength(message.Block, RlpBehaviors.None) + Rlp.LengthOf((UInt256) message.TotalDifficulty);
-            int totalLength = Rlp.LengthOfSequence(contentLength);
-            RlpStream rlpStream = new RlpStream(totalLength);
-            rlpStream.StartSequence(contentLength);
-            rlpStream.Encode(message.Block);
-            rlpStream.Encode(message.TotalDifficulty);
-            return rlpStream.Data;
-        }
-
-        public NewBlockMessage Deserialize(byte[] bytes)
-        {
-            RlpStream rlpStream = bytes.AsRlpStream();
-            return Deserialize(rlpStream);
-        }
-
-        private static NewBlockMessage Deserialize(RlpStream rlpStream)
-        {
-            NewBlockMessage message = new NewBlockMessage();
-            rlpStream.ReadSequenceLength();
-            message.Block = Rlp.Decode<Block>(rlpStream);
-            message.TotalDifficulty = rlpStream.DecodeUInt256();
-            return message;
-        }
-
+        
         public void Serialize(IByteBuffer byteBuffer, NewBlockMessage message)
         {
             int contentLength = _blockDecoder.GetLength(message.Block, RlpBehaviors.None) + Rlp.LengthOf(message.TotalDifficulty);
@@ -69,6 +43,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
             return Deserialize(rlpStream);
+        }
+        
+        private static NewBlockMessage Deserialize(RlpStream rlpStream)
+        {
+            NewBlockMessage message = new NewBlockMessage();
+            rlpStream.ReadSequenceLength();
+            message.Block = Rlp.Decode<Block>(rlpStream);
+            message.TotalDifficulty = rlpStream.DecodeUInt256();
+            return message;
         }
     }
 }

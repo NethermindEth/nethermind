@@ -14,23 +14,24 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
+using DotNetty.Buffers;
 
-namespace Nethermind.Store
+namespace Nethermind.Network
 {
-    public class SecurePatriciaTree : PatriciaTree
+    public static class ZeroMessageSerializerExtensions
     {
-        public SecurePatriciaTree(IDb db)
-            :base(db, Keccak.EmptyTreeHash, false)
+        public static byte[] Serialize<T>(this IZeroMessageSerializer<T> serializer, T message) where T : MessageBase
         {
+            IByteBuffer byteBuffer = UnpooledByteBufferAllocator.Default.Buffer(64);
+            serializer.Serialize(byteBuffer, message);
+            return byteBuffer.ReadAllBytes();
         }
-
-        public override void Set(Nibble[] rawKey, byte[] value)
+        
+        public static T Deserialize<T>(this IZeroMessageSerializer<T> serializer, byte[] message) where T : MessageBase
         {
-            Keccak keccak = Keccak.Compute(rawKey.ToPackedByteArray());
-            base.Set(Nibbles.FromBytes(keccak.Bytes), value);
+            var buffer = UnpooledByteBufferAllocator.Default.Buffer(message.Length);
+            buffer.WriteBytes(message);
+            return serializer.Deserialize(buffer);
         }
     }
 }

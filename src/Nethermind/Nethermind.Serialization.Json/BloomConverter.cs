@@ -38,7 +38,7 @@ namespace Nethermind.Serialization.Json
         public override Bloom ReadJson(JsonReader reader, Type objectType, Bloom existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)
         {
             string s = (string)reader.Value;
-            return s == null ? null : new Bloom(Bytes.FromHexString(s).AsSpan().ToBigEndianBitArray2048());
+            return s == null ? null : new Bloom(Bytes.FromHexString(s));
         }
     }
 }

@@ -47,7 +47,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             ITxPool txPool) : base(session, serializer, nodeStatsManager, syncServer, logManager, txPool)
         {
         }
-        
+
         public override byte ProtocolVersion => 63;
 
         public override int MessageIdSpaceSize => 17; // magic number here following Go
@@ -60,30 +60,30 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             switch (message.PacketType)
             {
                 case Eth63MessageCode.GetReceipts:
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, nameof(GetReceiptsMessage));
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, nameof(GetReceiptsMessage));
                     Interlocked.Increment(ref Counter);
-                    if(Logger.IsTrace) Logger.Trace($"{Counter:D5} GetReceipts from {Node:c}");
+                    if (Logger.IsTrace) Logger.Trace($"{Counter:D5} GetReceipts from {Node:c}");
                     Metrics.Eth63GetReceiptsReceived++;
                     Handle(Deserialize<GetReceiptsMessage>(message.Content));
                     break;
                 case Eth63MessageCode.Receipts:
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, nameof(ReceiptsMessage));
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, nameof(ReceiptsMessage));
                     Interlocked.Increment(ref Counter);
-                    if(Logger.IsTrace) Logger.Trace($"{Counter:D5} Receipts from {Node:c}");
+                    if (Logger.IsTrace) Logger.Trace($"{Counter:D5} Receipts from {Node:c}");
                     Metrics.Eth63ReceiptsReceived++;
                     Handle(Deserialize<ReceiptsMessage>(message.Content), size);
                     break;
                 case Eth63MessageCode.GetNodeData:
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, nameof(GetNodeDataMessage));
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, nameof(GetNodeDataMessage));
                     Interlocked.Increment(ref Counter);
-                    if(Logger.IsTrace) Logger.Trace($"{Counter:D5} GetNodeData from {Node:c}");
+                    if (Logger.IsTrace) Logger.Trace($"{Counter:D5} GetNodeData from {Node:c}");
                     Metrics.Eth63GetNodeDataReceived++;
                     Handle(Deserialize<GetNodeDataMessage>(message.Content));
                     break;
                 case Eth63MessageCode.NodeData:
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, nameof(NodeDataMessage));
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, nameof(NodeDataMessage));
                     Interlocked.Increment(ref Counter);
-                    if(Logger.IsTrace) Logger.Trace($"{Counter:D5} NodeData from {Node:c}");
+                    if (Logger.IsTrace) Logger.Trace($"{Counter:D5} NodeData from {Node:c}");
                     Metrics.Eth63NodeDataReceived++;
                     Handle(Deserialize<NodeDataMessage>(message.Content), size);
                     break;
@@ -91,15 +91,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         }
 
         public override string Name => "eth63";
-        
+
         private void Handle(GetReceiptsMessage msg)
         {
+            if (msg.BlockHashes.Count > 512)
+            {
+                throw new EthSynchronizationException("Incoming receipts request for more than 512 blocks");
+            }
+            
             Stopwatch stopwatch = Stopwatch.StartNew();
             TxReceipt[][] txReceipts = SyncServer.GetReceipts(msg.BlockHashes);
             Interlocked.Increment(ref Counter);
             Send(new ReceiptsMessage(txReceipts));
             stopwatch.Stop();
-            if(Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} Receipts to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} Receipts to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
 
         private void Handle(ReceiptsMessage msg, long size)
@@ -114,12 +119,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         private void Handle(GetNodeDataMessage msg)
         {
+            if (msg.Keys.Count > 4096)
+            {
+                throw new EthSynchronizationException("Incoming node data request for more than 4096 nodes");
+            }
+
             Stopwatch stopwatch = Stopwatch.StartNew();
             byte[][] nodeData = SyncServer.GetNodeData(msg.Keys);
             Interlocked.Increment(ref Counter);
             Send(new NodeDataMessage(nodeData));
             stopwatch.Stop();
-            if(Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NodeData to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NodeData to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
 
         private void Handle(NodeDataMessage msg, int size)
@@ -138,24 +148,24 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             {
                 return Array.Empty<byte[]>();
             }
-            
+
             GetNodeDataMessage msg = new GetNodeDataMessage(keys);
             byte[][] receipts = await SendRequest(msg, token);
             return receipts;
         }
-        
+
         public override async Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHashes, CancellationToken token)
         {
             if (blockHashes.Count == 0)
             {
                 return Array.Empty<TxReceipt[]>();
             }
-            
+
             // Logger.Info($"Sending receipts request ({blockHashes.Count}) to {this}");
-            
+
             GetReceiptsMessage msg = new GetReceiptsMessage(blockHashes);
             TxReceipt[][] txReceipts = await SendRequest(msg, token);
-            
+
             // Logger.Info($"Sent receipts request ({blockHashes.Count}) to {this} - received {txReceipts.Length}");
             return txReceipts;
         }
@@ -175,7 +185,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
             Send(request.Message);
             Task<byte[][]> task = request.CompletionSource.Task;
-            
+
             using CancellationTokenSource delayCancellation = new CancellationTokenSource();
             using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
             Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
@@ -189,16 +199,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 delayCancellation.Cancel();
                 long elapsed = request.FinishMeasuringTime();
                 long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / Math.Max(1, elapsed));
-                if(Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
+                if (Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
                 StatsManager.ReportTransferSpeedEvent(Session.Node, bytesPerMillisecond);
 
                 return task.Result;
             }
-            
+
             StatsManager.ReportTransferSpeedEvent(Session.Node, 0L);
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetNodeDataMessage)}");
         }
-        
+
         [Todo(Improve.Refactor, "Generic approach to requests")]
         private async Task<TxReceipt[][]> SendRequest(GetReceiptsMessage message, CancellationToken token)
         {
@@ -228,17 +238,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 delayCancellation.Cancel();
                 long elapsed = request.FinishMeasuringTime();
                 long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / Math.Max(1, elapsed));
-                if(Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
+                if (Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
                 StatsManager.ReportTransferSpeedEvent(Session.Node, bytesPerMillisecond);
 
                 return task.Result;
             }
-            
+
             StatsManager.ReportTransferSpeedEvent(Session.Node, 0L);
 
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetReceiptsMessage)}");
         }
-        
+
         [Todo(Improve.MissingFunctionality, "Need to compare response")]
         private bool IsRequestMatched(
             Request<GetNodeDataMessage, byte[][]> request,

@@ -379,6 +379,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private void Handle(GetBlockBodiesMessage request)
         {
+            if (request.BlockHashes.Count > 512)
+            {
+                throw new EthSynchronizationException("Incoming bodies request for more than 512 bodies");
+            }
+            
             if (Logger.IsTrace)
             {
                 Logger.Trace($"Received bodies request of length {request.BlockHashes.Count} from {Session.Node:c}:");
@@ -428,6 +433,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             //     return;
             // }
 
+            if (getBlockHeadersMessage.MaxHeaders > 1024)
+            {
+                throw new EthSynchronizationException("Incoming headers request for more than 1024 headers");
+            }
+            
             Keccak startingHash = getBlockHeadersMessage.StartingBlockHash;
             if (startingHash == null)
             {

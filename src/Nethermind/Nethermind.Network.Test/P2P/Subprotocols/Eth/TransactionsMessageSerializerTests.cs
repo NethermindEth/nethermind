@@ -62,7 +62,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             Assert.AreEqual(message.Transactions[0].To, deserialized.Transactions[0].To, $"{nameof(Transaction.To)}");
             Assert.AreEqual(message.Transactions[0].Value, deserialized.Transactions[0].Value, $"{nameof(Transaction.Value)}");
             
-            SerializerTester.Test(serializer, message);
             SerializerTester.TestZero(serializer, message);
         }
 
@@ -72,7 +71,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             TransactionsMessageSerializer serializer = new TransactionsMessageSerializer();
             TransactionsMessage message = new TransactionsMessage();
             
-            SerializerTester.Test(serializer, message);
             SerializerTester.TestZero(serializer, message);
         }
     }

@@ -154,7 +154,7 @@ namespace Nethermind.Network.P2P
             RemoteClientId = hello.ClientId;
             Session.Node.ClientId = hello.ClientId;
 
-            Logger.Trace(!_sentHello
+            if(Logger.IsTrace) Logger.Trace(!_sentHello
                 ? $"{Session.RemoteNodeId} P2P initiating inbound {hello.Protocol}.{hello.P2PVersion} on {hello.ListenPort} ({hello.ClientId})"
                 : $"{Session.RemoteNodeId} P2P initiating outbound {hello.Protocol}.{hello.P2PVersion} on {hello.ListenPort} ({hello.ClientId})");
 
@@ -210,7 +210,7 @@ namespace Nethermind.Network.P2P
 
             if (_pongCompletionSource != null)
             {
-                if (Logger.IsWarn) Logger.Warn($"Another ping request in process: {Session.RemoteNodeId}");
+                if (Logger.IsWarn) Logger.Warn($"Another ping request in process: {Session.Node:c}");
                 return true;
             }
 

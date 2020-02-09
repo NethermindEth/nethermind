@@ -549,8 +549,8 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                         _lastSavedNodesCount = _savedNodesCount;
                         _lastRequestedNodesCount = _requestedNodesCount;
                         _lastHandledNodesCount = _handledNodesCount;
-                        // if (_logger.IsInfo) _logger.Info($"Time {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | {(decimal) _dataSize / 1000 / 1000,6:F2}MB | kbps: {savedKBytesPerSecond,5:F0} | P: {_pendingRequests.Count} | acc {_savedAccounts} | queues {StreamsDescription} | db {_averageTimeInHandler:f2}ms");
-                        if (_logger.IsInfo) _logger.Info($"Time {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | {(decimal) _dataSize / 1000 / 1000,6:F2}MB | kbps: {savedKBytesPerSecond,5:F0} | P: {_pendingRequests.Count} | acc {_savedAccounts} | nodes {_savedNodesCount} | db_delay {_averageTimeInHandler:f2}ms");
+                        // if (_logger.IsInfo) _logger.Info($"Time {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | {(decimal) _dataSize / 1000 / 1000,6:F2}MB | kBps: {savedKBytesPerSecond,5:F0} | P: {_pendingRequests.Count} | acc {_savedAccounts} | queues {StreamsDescription} | db {_averageTimeInHandler:f2}ms");
+                        if (_logger.IsInfo) _logger.Info($"Time {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | {(decimal) _dataSize / 1000 / 1000,6:F2}MB | kB/s: {savedKBytesPerSecond,5:F0} | P: {_pendingRequests.Count} | acc {_savedAccounts} | nodes {_savedNodesCount} | db_delay {_averageTimeInHandler:f2}ms");
                         if (DateTime.UtcNow - _lastReportTime.full > TimeSpan.FromSeconds(10))
                         {
                             long allChecks = _checkWasInDependencies + _checkWasCached + _stateWasThere + _stateWasNotThere;

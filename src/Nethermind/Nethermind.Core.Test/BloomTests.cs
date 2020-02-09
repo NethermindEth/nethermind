@@ -36,8 +36,7 @@ namespace Nethermind.Core.Test
             Bloom bloom = new Bloom();
             bloom.Set(Keccak.OfAnEmptyString.Bytes);
             byte[] bytes = bloom.Bytes;
-            BitArray bits = bytes.AsSpan().ToBigEndianBitArray2048();
-            Bloom bloom2 = new Bloom(bits);
+            Bloom bloom2 = new Bloom(bytes);
             Assert.AreEqual(bloom.ToString(), bloom2.ToString());
         }
 
