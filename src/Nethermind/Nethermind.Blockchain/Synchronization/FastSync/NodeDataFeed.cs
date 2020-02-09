@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
         private ConcurrentStack<StateSyncItem> Stream1 => _nodes[5];
         private ConcurrentStack<StateSyncItem> Stream2 => _nodes[6];
 
-        public int TotalNodesPending => _nodes.Sum(n => n.Count);
+        public int TotalNodesPending => _nodes.Sum(n => n?.Count ?? 0);
         private ConcurrentDictionary<StateSyncBatch, object> _pendingRequests = new ConcurrentDictionary<StateSyncBatch, object>();
         private Dictionary<Keccak, HashSet<DependentItem>> _dependencies = new Dictionary<Keccak, HashSet<DependentItem>>();
         private LruCache<Keccak, object> _alreadySaved = new LruCache<Keccak, object>(1024 * 64);
