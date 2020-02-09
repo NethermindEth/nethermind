@@ -69,7 +69,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
                 LimboLogs.Instance,
                 _validator,
                 NullRecoveryStep.Instance,
-                NoBlockRewards.Instance,
+                new InstanceRewardCalculatorSource(NoBlockRewards.Instance), 
                 _blockchainProcessor
             );
         }

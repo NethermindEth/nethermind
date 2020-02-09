@@ -49,20 +49,34 @@ namespace Nethermind.Blockchain
         public int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
         private const int MaxProcessingQueueSize = 2000; // adjust based on tx or gas
 
-        [Todo(Improve.Refactor, "Store receipts by default should be configurable")]
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="blockTree"></param>
+        /// <param name="blockProcessor"></param>
+        /// <param name="recoveryStep"></param>
+        /// <param name="logManager"></param>
+        /// <param name="storeReceiptsByDefault"></param>
+        /// <param name="autoProcess">Registers for OnNewHeadBlock events at block tree.</param>
         public BlockchainProcessor(
             IBlockTree blockTree,
             IBlockProcessor blockProcessor,
             IBlockDataRecoveryStep recoveryStep,
             ILogManager logManager,
-            bool storeReceiptsByDefault)
+            bool storeReceiptsByDefault,
+            bool autoProcess = true)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _storeReceiptsByDefault = storeReceiptsByDefault;
-            _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
+
+            if (autoProcess)
+            {
+                _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
+            }
+
             _stats = new ProcessingStats(_logger);
         }
 
@@ -74,10 +88,10 @@ namespace Nethermind.Blockchain
                 options |= ProcessingOptions.StoreReceipts;
             }
 
-            SuggestBlock(blockEventArgs.Block, options);
+            Enqueue(blockEventArgs.Block, options);
         }
 
-        public void SuggestBlock(Block block, ProcessingOptions processingOptions)
+        public void Enqueue(Block block, ProcessingOptions processingOptions)
         {
             if (_logger.IsTrace) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
 

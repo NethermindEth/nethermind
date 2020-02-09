@@ -1045,7 +1045,7 @@ namespace Nethermind.Blockchain
             if (hashOfThePreviousMainBlock != null && hashOfThePreviousMainBlock != block.Hash)
             {
                 Block previous = FindBlock(hashOfThePreviousMainBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                for (int i = 0; i < previous.Transactions.Length; i++)
+                for (int i = 0; i < previous?.Transactions.Length; i++)
                 {
                     Transaction tx = previous.Transactions[i];
                     _txPool.AddTransaction(tx, previous.Number, TxHandlingOptions.None);

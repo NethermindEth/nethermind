@@ -27,7 +27,7 @@ using Nethermind.Store;
 
 namespace Nethermind.Blockchain.Synchronization.BeamSync
 {
-    public class BeamBlockchainProcessor : IBlockchainProcessor
+    public class BeamBlockchainProcessor : IDisposable
     {
         private readonly IReadOnlyDbProvider _readOnlyDbProvider;
         private readonly IBlockValidator _blockValidator;
@@ -35,8 +35,11 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
         private readonly IRewardCalculatorSource _rewardCalculatorSource;
         private readonly ILogger _logger;
 
-        private IBlockchainProcessor _blockchainProcessor;
+        private IBlockProcessingQueue _blockchainProcessor;
         private IBlockchainProcessor _oneTimeProcessor;
+        private IStateReader _stateReader;
+        private ReadOnlyBlockTree _readOnlyBlockTree;
+        private IBlockTree _blockTree;
 
         public BeamBlockchainProcessor(
             IReadOnlyDbProvider readOnlyDbProvider,
@@ -46,59 +49,88 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             IBlockValidator blockValidator,
             IBlockDataRecoveryStep recoveryStep,
             IRewardCalculatorSource rewardCalculatorSource,
-            IBlockchainProcessor blockchainProcessor)
+            IBlockProcessingQueue blockchainProcessor)
         {
             _readOnlyDbProvider = readOnlyDbProvider ?? throw new ArgumentNullException(nameof(readOnlyDbProvider));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _rewardCalculatorSource = rewardCalculatorSource ?? throw new ArgumentNullException(nameof(rewardCalculatorSource));
             _blockchainProcessor = blockchainProcessor ?? throw new ArgumentNullException(nameof(blockchainProcessor));
-            ReadOnlyTxProcessingEnv txEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, new ReadOnlyBlockTree(blockTree), specProvider, logManager);
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _blockTree.NewBestSuggestedBlock += OnNewBlock;
+            _readOnlyBlockTree = new ReadOnlyBlockTree(_blockTree);
+
+            ReadOnlyTxProcessingEnv txEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, _readOnlyBlockTree, specProvider, logManager);
+            _stateReader = txEnv.StateReader;
+
             ReadOnlyChainProcessingEnv env = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculatorSource.Get(txEnv.TransactionProcessor), NullReceiptStorage.Instance, _readOnlyDbProvider, specProvider, logManager);
             _oneTimeProcessor = env.ChainProcessor;
             _logger = logManager.GetClassLogger();
         }
+
+        private void OnNewBlock(object sender, BlockEventArgs e)
+        {
+            Process(e.Block, ProcessingOptions.None);
+        }
         
-        public void Start()
-        {
-            _blockchainProcessor.Start();
-        }
-
-        public async Task StopAsync(bool processRemainingBlocks = false)
-        {
-            await _blockchainProcessor.StopAsync();
-        }
-
-        public Block Process(Block block, ProcessingOptions options, IBlockTracer tracer)
+        private void Process(Block block, ProcessingOptions options)
         {
             // we only want to trace the actual block
             try
             {
-                Block processedBlock = _oneTimeProcessor.Process(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance);
-                if (processedBlock == null)
+                BlockHeader parentHeader = _readOnlyBlockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                Task minerTask = Task.Run(() =>
                 {
-                    return null;
+                    _logger.Warn($"Asking for miner of {block.Beneficiary ?? block.Author}");
+                    _stateReader.GetAccount(parentHeader.StateRoot, block.Beneficiary ?? block.Author);
+                });
+                
+                foreach (Transaction tx in block.Transactions)
+                {
+                    _recoveryStep.RecoverData(block);
+                    _logger.Warn($"Preparing to ask for state of {tx.SenderAddress}");
+                    Task senderTask = Task.Run(() =>
+                    {
+                        _logger.Warn($"Asking for state of {tx.SenderAddress}");
+                        if (tx.To != null)
+                        {
+                            _stateReader.GetAccount(parentHeader.StateRoot, tx.To);
+                        }
+
+                        _stateReader.GetCode(parentHeader.StateRoot, tx.SenderAddress);
+                    });
+                    
+                    Task codeTask = Task.Run(() =>
+                    {
+                        _logger.Warn($"Asking for code of {tx.SenderAddress}");
+                        _stateReader.GetCode(parentHeader.StateRoot, tx.SenderAddress);
+                    });
                 }
+
+                _logger.Warn($"Now beam processing {block}");
+                Task preProcessTask = Task.Run(() =>
+                {
+                    Block processedBlock = _oneTimeProcessor.Process(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance);
+                    if (processedBlock == null)
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Block {block.ToString(Block.Format.Short)} skipped in beam sync");
+                    }
+                }).ContinueWith(t =>
+                {
+                    _logger.Warn($"Enqueuing for standard processing {block}");
+                    // at this stage we are sure to have all the state available
+                    _blockchainProcessor.Enqueue(block, options);
+                });
             }
             catch (Exception e)
             {
-                _logger.Error($"Block {block.ToString(Block.Format.Short)} coudl not be processed", e);
-                return null;
+                if (_logger.IsError) _logger.Error($"Block {block.ToString(Block.Format.Short)} failed processing and it will be skipped from beam sync", e);
             }
+        }
 
-            
-            // at this stage we are sure to have all the state available
-            return _blockchainProcessor.Process(block, options, tracer);
-            
-            // process the block on the one time chain processor
-            // if task is timing out shelve it and try next/
-            // listen to incoming blocks with higher difficulty so that Tasks can be cancelled
-            // ensure not leaving corrupted state
-            // wrap the standard processor that will process actual blocks normally (when all the witness is collected
-            
-            // use prefetcher in the tx pool
-            // use the same prefetcher here potentially?
-            // prefetch code!
+        public void Dispose()
+        {
+            _blockTree.NewBestSuggestedBlock -= OnNewBlock;
         }
     }
 }
