@@ -106,7 +106,7 @@ namespace Nethermind.Store.BeamSync
                         if (!wasInDb)
                         {
                             BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
-                            if(_logger.IsInfo) _logger.Info($"{_description} BEAM SYNC Resolved key {key.ToHexString()} of context {BeamSyncContext.Description.Value} - resolved keys so far {_resolvedKeysCount}");
+                            if(_logger.IsInfo) _logger.Info($"{_description} Resolved key {key.ToHexString()} of context {BeamSyncContext.Description.Value} - resolved: {_resolvedKeysCount} | pending: {_requestedNodes.Count}");
                             Interlocked.Increment(ref _resolvedKeysCount);
                         }
 
