@@ -23,11 +23,24 @@ using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Store;
+using Nethermind.Store.BeamSync;
 
 namespace Nethermind.Blockchain.Synchronization.BeamSync
 {
+    public static class DataConsumer
+    {
+        private static int _dataConsumerId;
+
+        public static int AssignConsumerId()
+        {
+            return Interlocked.Increment(ref _dataConsumerId);
+        }
+    }
+
     public class BeamSyncDb : IDb, INodeDataConsumer
     {
+        private int _consumerId = DataConsumer.AssignConsumerId();
+
         private readonly string _description;
         public UInt256 RequiredPeerDifficulty { get; private set; } = UInt256.Zero;
 
@@ -46,7 +59,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
         }
 
         private bool _isDisposed = false;
-        
+
         public void Dispose()
         {
             _isDisposed = true;
@@ -90,7 +103,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                     {
                         throw new ObjectDisposedException("Beam Sync DB disposed");
                     }
-                    
+
                     // shall I leave test logic forever?
                     if (BeamSyncContext.LoopIterationsToFailInTest.Value != null)
                     {
@@ -135,10 +148,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
 
                         // _logger.Error($"Requested {key.ToHexString()}");
 
-                        if (count > 2)
-                        {
-                            NeedMoreData?.Invoke(this, EventArgs.Empty);
-                        }
+                        NeedMoreData?.Invoke(this, EventArgs.Empty);
 
                         _autoReset.WaitOne(50);
                     }
@@ -187,31 +197,34 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
 
         public event EventHandler NeedMoreData;
 
-        public Keccak[] PrepareRequest()
+        public DataConsumerRequest[] PrepareRequests()
         {
-            Keccak[] request;
+            DataConsumerRequest[] request;
             lock (_requestedNodes)
             {
                 if (_requestedNodes.Count == 0)
                 {
-                    return Array.Empty<Keccak>();
+                    return Array.Empty<DataConsumerRequest>();
                 }
+
+                request = new DataConsumerRequest[1];
+                request[0] = new DataConsumerRequest(_consumerId, Array.Empty<Keccak>());
 
                 if (_requestedNodes.Count < 256)
                 {
-                    request = _requestedNodes.ToArray();
+                    request[0].Keys = _requestedNodes.ToArray();
                     _requestedNodes.Clear();
                 }
                 else
                 {
                     Keccak[] source = _requestedNodes.ToArray();
-                    request = new Keccak[256];
+                    request[0].Keys = new Keccak[256];
                     _requestedNodes.Clear();
                     for (int i = 0; i < source.Length; i++)
                     {
                         if (i < 256)
                         {
-                            request[i] = source[i];
+                            request[0].Keys[i] = source[i];
                         }
                         else
                         {
@@ -224,29 +237,35 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             return request;
         }
 
-        public int HandleResponse(Keccak[] hashes, byte[][] data)
+        public int HandleResponse(DataConsumerRequest request, byte[][] data)
         {
+            if (request.ConsumerId != _consumerId)
+            {
+                return 0;
+            }
+            
             int consumed = 0;
             if (data != null)
             {
-                for (int i = 0; i < hashes.Length; i++)
+                for (int i = 0; i < request.Keys.Length; i++)
                 {
+                    Keccak key = request.Keys[i];
                     if (data.Length > i && data[i] != null)
                     {
-                        if (Keccak.Compute(data[i]) == hashes[i])
+                        if (Keccak.Compute(data[i]) == key)
                         {
-                            _db[hashes[i].Bytes] = data[i];
+                            _db[key.Bytes] = data[i];
                             // _requestedNodes.Remove(hashes[i], out _);
                             consumed++;
                         }
                     }
                     else
                     {
-                        if (_db[hashes[i].Bytes] == null)
+                        if (_db[key.Bytes] == null)
                         {
                             lock (_requestedNodes)
                             {
-                                _requestedNodes.Add(hashes[i]);
+                                _requestedNodes.Add(key);
                             }
                         }
                     }

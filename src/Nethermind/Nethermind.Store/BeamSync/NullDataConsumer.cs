@@ -39,12 +39,12 @@ namespace Nethermind.Store.BeamSync
             remove { }
         }
 
-        public Keccak[] PrepareRequest()
+        public DataConsumerRequest[] PrepareRequests()
         {
-            return Array.Empty<Keccak>();
+            return Array.Empty<DataConsumerRequest>();
         }
 
-        public int HandleResponse(Keccak[] hashes, byte[][] data)
+        public int HandleResponse(DataConsumerRequest request, byte[][] data)
         {
             throw new InvalidOperationException("Should never receive response here");
         }

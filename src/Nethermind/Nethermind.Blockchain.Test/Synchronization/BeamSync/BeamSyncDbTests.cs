@@ -19,10 +19,10 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization.BeamSync;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Store;
+using Nethermind.Store.BeamSync;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
@@ -76,7 +76,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
             Setup(scenario);
 
             RunRounds(1);
-            _stateBeamLocal.PrepareRequest();
+            _stateBeamLocal.PrepareRequests();
             RunRounds(3);
 
             Assert.AreEqual(4, _needMoreDataInvocations);
@@ -89,8 +89,8 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
             Setup(scenario);
 
             RunRounds(1);
-            Keccak[] request = _stateBeamLocal.PrepareRequest();
-            _stateBeamLocal.HandleResponse(request, new byte[request.Length][]);
+            DataConsumerRequest[] request = _stateBeamLocal.PrepareRequests();
+            _stateBeamLocal.HandleResponse(request[0], new byte[request[0].Keys.Length][]);
             RunRounds(3);
 
             Assert.AreEqual(4, _needMoreDataInvocations);
@@ -102,7 +102,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
             (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
             
-            Keccak[] request = _stateBeamLocal.PrepareRequest();
+            DataConsumerRequest[] request = _stateBeamLocal.PrepareRequests();
             Assert.AreEqual(0, request.Length);
         }
 
@@ -113,8 +113,8 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
             Setup(scenario);
 
             RunRounds(1);
-            Keccak[] request = _stateBeamLocal.PrepareRequest();
-            _stateBeamLocal.HandleResponse(request, new byte[][] {_remoteState.Get(request[0])});
+            DataConsumerRequest[] request = _stateBeamLocal.PrepareRequests();
+            _stateBeamLocal.HandleResponse(request[0], new byte[][] {_remoteState.Get(request[0].Keys[0])});
             RunRounds(3);
 
             Assert.AreEqual(1, _needMoreDataInvocations);
@@ -127,18 +127,18 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
             Setup(scenario);
 
             Task.Run(() => RunRounds(100));
-            Keccak[] request = new Keccak[0];
+            DataConsumerRequest[] request = new DataConsumerRequest[0];
             for (int i = 0; i < 1000; i++)
             {
                 Thread.Sleep(1);
-                request = _stateBeamLocal.PrepareRequest();
+                request = _stateBeamLocal.PrepareRequests();
                 if (request.Length > 0)
                 {
                     break;
                 }
             }
 
-            _stateBeamLocal.HandleResponse(request, new byte[][] {_remoteState.Get(request[0])});
+            _stateBeamLocal.HandleResponse(request[0], new byte[][] {_remoteState.Get(request[0].Keys[0])});
 
             Assert.Less(_needMoreDataInvocations, 1000);
         }
@@ -150,8 +150,8 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
             Setup(scenario);
 
             RunRounds(1);
-            Keccak[] request = _stateBeamLocal.PrepareRequest();
-            _stateBeamLocal.HandleResponse(request, new byte[][] {_remoteState.Get(request[0])});
+            DataConsumerRequest[] request = _stateBeamLocal.PrepareRequests();
+            _stateBeamLocal.HandleResponse(request[0], new byte[][] {_remoteState.Get(request[0].Keys[0])});
             PatriciaTree.NodeCache.Clear();
             RunRounds(1);
 
@@ -176,8 +176,8 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
             Setup(scenario);
 
             RunRounds(1);
-            Keccak[] request = _stateBeamLocal.PrepareRequest();
-            _stateBeamLocal.HandleResponse(request, new byte[][] {new byte[] {1, 2, 3}});
+            DataConsumerRequest[] request = _stateBeamLocal.PrepareRequests();
+            _stateBeamLocal.HandleResponse(request[0], new byte[][] {new byte[] {1, 2, 3}});
             RunRounds(3);
 
             Assert.AreEqual(4, _needMoreDataInvocations);

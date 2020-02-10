@@ -17,6 +17,7 @@
 using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Store.BeamSync;
 
 namespace Nethermind.Store
 {
@@ -26,8 +27,8 @@ namespace Nethermind.Store
         
         event EventHandler NeedMoreData;
 
-        Keccak[] PrepareRequest();
+        DataConsumerRequest[] PrepareRequests();
         
-        int HandleResponse(Keccak[] hashes, byte[][] data);
+        int HandleResponse(DataConsumerRequest request, byte[][] data);
     }
 }

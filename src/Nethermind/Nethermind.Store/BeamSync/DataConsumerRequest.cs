@@ -14,27 +14,19 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.Diagnostics;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.Synchronization.FastSync
+namespace Nethermind.Store.BeamSync
 {
-    [DebuggerDisplay("Requested Nodes: {RequestedNodes?.Length ?? 0}, Responses: {Responses?.Length ?? 0}, Assigned: {AssignedPeer?.Current}")]
-    public class StateSyncBatch
+    public class DataConsumerRequest
     {
-        public static StateSyncBatch Empty = new StateSyncBatch{RequestedNodes = Array.Empty<StateSyncItem>()};
+        public DataConsumerRequest(int consumerId, Keccak[] keys)
+        {
+            ConsumerId = consumerId;
+            Keys = keys;
+        }
         
-        public StateSyncItem[] RequestedNodes { get; set; }
-        
-        public byte[][] Responses { get; set; }
-        
-        public SyncPeerAllocation AssignedPeer { get; set; }
-
-        public bool IsAdditionalDataConsumer { get; set; }
-        
-        public UInt256 RequiredPeerDifficulty { get; set; }
-
         public int ConsumerId { get; set; }
+        public Keccak[] Keys { get; set; }
     }
 }

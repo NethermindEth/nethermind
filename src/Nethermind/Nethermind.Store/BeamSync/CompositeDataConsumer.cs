@@ -46,13 +46,13 @@ namespace Nethermind.Store.BeamSync
         public UInt256 RequiredPeerDifficulty => _consumers.Max(c => c.RequiredPeerDifficulty);
         public event EventHandler NeedMoreData;
 
-        public Keccak[] PrepareRequest()
+        public DataConsumerRequest[] PrepareRequests()
         {
-            List<Keccak> combined = new List<Keccak>();
+            List<DataConsumerRequest> combined = new List<DataConsumerRequest>();
             foreach (INodeDataConsumer nodeDataConsumer in _consumers)
             {
-                Keccak[] request = nodeDataConsumer.PrepareRequest();
-                combined.AddRange(request);
+                DataConsumerRequest[] requests = nodeDataConsumer.PrepareRequests();
+                combined.AddRange(requests);
             }
 
             if (combined.Count > 0)
@@ -61,15 +61,15 @@ namespace Nethermind.Store.BeamSync
                 return combined.ToArray();
             }
 
-            return Array.Empty<Keccak>();
+            return Array.Empty<DataConsumerRequest>();
         }
 
-        public int HandleResponse(Keccak[] hashes, byte[][] data)
+        public int HandleResponse(DataConsumerRequest request, byte[][] data)
         {
             int consumed = 0;
             foreach (INodeDataConsumer nodeDataConsumer in _consumers)
             {
-                consumed += nodeDataConsumer.HandleResponse(hashes, data);
+                consumed += nodeDataConsumer.HandleResponse(request, data);
             }
 
             return consumed;
