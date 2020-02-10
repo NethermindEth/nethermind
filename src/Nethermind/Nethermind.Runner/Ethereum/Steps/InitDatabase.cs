@@ -46,26 +46,22 @@ namespace Nethermind.Runner.Ethereum.Steps
                 if (_context.Logger.IsDebug) _context.Logger.Debug($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");
             }
 
-            if (syncConfig.BeamSync)
+            if (initConfig.UseMemDb)
             {
-                BeamSyncDbProvider beamSyncProvider = new BeamSyncDbProvider("processor DB", initConfig.BaseDbPath, dbConfig, _context.LogManager, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
-                _context.DbProvider = beamSyncProvider;
-                _context.NodeDataConsumer = beamSyncProvider.NodeDataConsumer;
-
-
+                _context.DbProvider = new MemDbProvider();
             }
             else
             {
-                if (initConfig.UseMemDb)
-                {
-                    _context.DbProvider = new MemDbProvider();
-                }
-                else
-                {
-                    RocksDbProvider rocksDbProvider = new RocksDbProvider(_context.LogManager);
-                    await rocksDbProvider.Init(initConfig.BaseDbPath, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
-                    _context.DbProvider = rocksDbProvider;
-                }
+                RocksDbProvider rocksDbProvider = new RocksDbProvider(_context.LogManager);
+                await rocksDbProvider.Init(initConfig.BaseDbPath, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
+                _context.DbProvider = rocksDbProvider;
+            }
+
+            if (syncConfig.BeamSync)
+            {
+                BeamSyncDbProvider beamSyncProvider = new BeamSyncDbProvider(_context.DbProvider, "processor DB", _context.LogManager);
+                _context.DbProvider = beamSyncProvider;
+                _context.NodeDataConsumer = beamSyncProvider.NodeDataConsumer;
             }
 
             _context.DisposeStack.Push(_context.DbProvider);
