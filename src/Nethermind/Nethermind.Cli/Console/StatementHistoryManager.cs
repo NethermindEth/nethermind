@@ -54,7 +54,7 @@ namespace Nethermind.Cli.Console
             if (!SecuredCommands.Any(statement.Contains))
             {
                 List<string> history = ReadLine.GetHistory();
-                if (history.Any() && history.Last() != statement)
+                if (history.LastOrDefault() != statement)
                 {
                     ReadLine.AddHistory(statement);
                     _historyCloned.Insert(0, statement);

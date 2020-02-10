@@ -70,14 +70,38 @@ namespace Nethermind.Cli
 
         public async Task<JsValue> PostJint(string method, params object[] parameters)
         {
-            object result = await Post<object>(method, parameters);
-            string resultString = result?.ToString();
-            if (resultString == "0x" || resultString == null)
+            try
             {
-                return JsValue.Null;
+                Stopwatch stopwatch = new Stopwatch();
+                stopwatch.Start();
+                object result = await _currentClient.Post<object>(method, parameters);
+                stopwatch.Stop();
+                decimal totalMicroseconds = stopwatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
+                Colorful.Console.WriteLine($"Request complete in {totalMicroseconds}μs");
+                string resultString = result?.ToString();
+                if (resultString == "0x")
+                {
+                    return JsValue.Null;
+                }
+
+                return resultString == null ? JsValue.Null : _jsonParser.Parse(resultString);
+            }
+            catch (HttpRequestException e)
+            {
+                _cliConsole.WriteErrorLine("  " + e.Message);
+                _cliConsole.Write("  Use ");
+                _cliConsole.WriteKeyword("node");
+                _cliConsole.WriteLine(".switch(\"ip:port\") to change the target machine");
+                
+                _cliConsole.WriteLine("  Make sure that JSON RPC is enabled on the target machine (--JsonRpc.Enabled true)");
+                _cliConsole.WriteLine("  Make sure that firewall is open for the JSON RPC port on the target machine");
+            }
+            catch (Exception e)
+            {
+                _cliConsole.WriteException(e);
             }
 
-            return resultString;
+            return JsValue.Null;
         }
 
         public async Task<string> Post(string method, params object[] parameters)
