@@ -126,11 +126,6 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
         private async Task<int> SyncOnce(CancellationToken token, bool forAdditionalConsumers)
         {
-            if (forAdditionalConsumers)
-            {
-                Thread.Sleep(10);
-            }
-
             int requestSize = 0;
             StateSyncBatch request = PrepareRequest(forAdditionalConsumers);
             if (request.RequestedNodes.Length != 0)

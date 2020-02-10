@@ -43,7 +43,6 @@ namespace Nethermind.Store.BeamSync
 
         public BeamSyncDb(IDb db, string description, ILogManager logManager)
         {
-            Console.WriteLine("BEAM BEAM BEAM");
             _description = description;
             _logger = logManager.GetClassLogger<BeamSyncDb>();
             _db = db ?? throw new ArgumentNullException(nameof(db));
@@ -65,6 +64,7 @@ namespace Nethermind.Store.BeamSync
         private HashSet<Keccak> _sentNotSaved = new HashSet<Keccak>();
 
         private TimeSpan _contextExpiryTimeSpan = TimeSpan.FromSeconds(4);
+        private TimeSpan _preProcessExpiryTimeSpan = TimeSpan.FromSeconds(15);
 
         public byte[] this[byte[] key]
         {
@@ -91,7 +91,19 @@ namespace Nethermind.Store.BeamSync
                     var fromMem = _db[key];
                     if (fromMem == null)
                     {
-                        if (DateTime.UtcNow - (BeamSyncContext.LastFetchUtc.Value ?? DateTime.UtcNow) > _contextExpiryTimeSpan)
+                        if (Bytes.AreEqual(key, Keccak.Zero.Bytes))
+                        {
+                            // we store sync progress data at Keccak.Zero;
+                            return null;
+                        }
+                        
+                        TimeSpan expiry = _contextExpiryTimeSpan;
+                        if (BeamSyncContext.Description.Value?.Contains("preProcess") ?? false)
+                        {
+                            expiry = _preProcessExpiryTimeSpan;
+                        }
+                        
+                        if (DateTime.UtcNow - (BeamSyncContext.LastFetchUtc.Value ?? DateTime.UtcNow) > expiry)
                         {
                             string message = $"Beam sync request {BeamSyncContext.Description.Value} with last update on {BeamSyncContext.LastFetchUtc.Value:hh:mm:ss.fff} has expired";
                             if (_logger.IsDebug) _logger.Debug(message);
@@ -99,15 +111,15 @@ namespace Nethermind.Store.BeamSync
                         }
 
                         wasInDb = false;
-                        if (!_sentNotSaved.Contains(new Keccak(key)))
+                        bool wasSent = false;
+                        lock (_sentNotSaved)
+                        {
+                            wasSent = _sentNotSaved.Contains(new Keccak(key));
+                        }
+                        
+                        if (!wasSent)
                         {
                             // _logger.Info($"BEAM SYNC Asking for {key.ToHexString()} - resolved keys so far {_resolvedKeysCount}");
-
-                            if (Bytes.AreEqual(key, Keccak.Zero.Bytes))
-                            {
-                                // we store sync progress data at Keccak.Zero;
-                                return null;
-                            }
 
                             lock (_requestedNodes)
                             {
@@ -119,7 +131,7 @@ namespace Nethermind.Store.BeamSync
                             NeedMoreData?.Invoke(this, EventArgs.Empty);
                         }
 
-                        _autoReset.WaitOne(500);
+                        _autoReset.WaitOne(50);
                     }
                     else
                     {
@@ -200,9 +212,12 @@ namespace Nethermind.Store.BeamSync
             }
 
             // if (_logger.IsInfo) _logger.Info($"Sending request for {request.Length} | resolved: {_resolvedKeysCount} | pending: {_requestedNodes.Count} | not_yet {_sentNotSaved.Count()}");
-            for (int i = 0; i < request.Length; i++)
+            lock (_sentNotSaved)
             {
-                _sentNotSaved.Add(request[i]);
+                for (int i = 0; i < request.Length; i++)
+                {
+                    _sentNotSaved.Add(request[i]);
+                }
             }
 
             return request;
@@ -220,16 +235,23 @@ namespace Nethermind.Store.BeamSync
                         if (Keccak.Compute(data[i]) == hashes[i])
                         {
                             _db[hashes[i].Bytes] = data[i];
-                            _sentNotSaved.Remove(hashes[i]);
+                            lock (_sentNotSaved)
+                            {
+                                _sentNotSaved.Remove(hashes[i]);
+                            }
+
                             // _requestedNodes.Remove(hashes[i], out _);
                             consumed++;
                         }
                     }
                     else
                     {
-                        lock (_requestedNodes)
+                        if (_db[hashes[i].Bytes] == null)
                         {
-                            _requestedNodes.Add(hashes[i]);
+                            lock (_requestedNodes)
+                            {
+                                _requestedNodes.Add(hashes[i]);
+                            }
                         }
                     }
                 }

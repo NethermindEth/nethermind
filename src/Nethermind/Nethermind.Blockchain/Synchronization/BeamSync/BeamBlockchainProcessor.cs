@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -89,7 +90,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             {
                 BlockHeader parentHeader = _readOnlyBlockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 Prefetch(block, parentHeader.StateRoot, parentHeader.Author ?? parentHeader.Beneficiary);
-                Prefetch(block, block.StateRoot, block.Author ?? block.Beneficiary);
+                // Prefetch(block, block.StateRoot, block.Author ?? block.Beneficiary);
 
                 if(_logger.IsInfo) _logger.Info($"Now beam processing {block}");
                 Block processedBlock = null;
@@ -167,7 +168,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                         _stateReader.GetCode(stateRoot, tx.SenderAddress);
                     }).ContinueWith(t =>
                     {
-                        _logger.Info(t.IsFaulted ? $"{descriptionCode} prefetch failed {t.Exception.Message}|{t.Exception.InnerException?.Message}" : $"{descriptionCode} prefetch complete");
+                        _logger.Info(t.IsFaulted ? $"{descriptionCode} prefetch failed {t.Exception.Message}|{t.Exception.InnerExceptions.LastOrDefault()?.Message}" : $"{descriptionCode} prefetch complete");
                     });
                 }   
             }
