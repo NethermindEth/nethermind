@@ -45,6 +45,7 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly ISyncConfig _syncConfig;
         private object _dummyValue = new object();
         private LruCache<Keccak, object> _recentlySuggested = new LruCache<Keccak, object>(8);
+        private long _pivotNumber;
 
         public SyncServer(ISnapshotableDb stateDb, ISnapshotableDb codeDb, IBlockTree blockTree, IReceiptStorage receiptStorage, IBlockValidator blockValidator, ISealValidator sealValidator, IEthSyncPeerPool pool, ISynchronizer synchronizer, ISyncConfig syncConfig, ILogManager logManager)
         {
@@ -58,6 +59,7 @@ namespace Nethermind.Blockchain.Synchronization
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _pivotNumber = _syncConfig.PivotNumberParsed;
 
             _blockTree.NewHeadBlock += OnNewHeadBlock;
             _pivotHash = new Keccak(_syncConfig.PivotHash ?? Keccak.Zero.ToString());
@@ -101,6 +103,11 @@ namespace Nethermind.Blockchain.Synchronization
         
         public void AddNewBlock(Block block, Node nodeWhoSentTheBlock)
         {
+            if (block.Number < _pivotNumber)
+            {
+                return;
+            }
+            
             if (block.TotalDifficulty == null) throw new InvalidOperationException("Cannot add a block with unknown total difficulty");
 
             _pool.TryFind(nodeWhoSentTheBlock.Id, out PeerInfo peerInfo);

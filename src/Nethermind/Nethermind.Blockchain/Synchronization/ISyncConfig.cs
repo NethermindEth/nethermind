@@ -16,6 +16,9 @@
 
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Synchronization
 {
@@ -53,5 +56,9 @@ namespace Nethermind.Blockchain.Synchronization
         
         [ConfigItem(Description = "Hash of the pivot block for the Fast Blocks sync.", DefaultValue = "null")]
         string PivotHash { get; }
+
+        long PivotNumberParsed => LongConverter.FromString(PivotNumber ?? "0");
+        
+        Keccak PivotHashParsed => new Keccak(Bytes.FromHexString(PivotHash));
     }
 }
