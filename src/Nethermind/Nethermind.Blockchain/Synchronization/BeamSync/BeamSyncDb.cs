@@ -45,8 +45,11 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             _db = db ?? throw new ArgumentNullException(nameof(db));
         }
 
+        private bool _isDisposed = false;
+        
         public void Dispose()
         {
+            _isDisposed = true;
             _db.Dispose();
         }
 
@@ -83,6 +86,11 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                 bool wasInDb = true;
                 while (true)
                 {
+                    if (_isDisposed)
+                    {
+                        throw new ObjectDisposedException("Beam Sync DB disposed");
+                    }
+                    
                     // shall I leave test logic forever?
                     if (BeamSyncContext.LoopIterationsToFailInTest.Value != null)
                     {
@@ -118,14 +126,19 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                         wasInDb = false;
                         // _logger.Info($"BEAM SYNC Asking for {key.ToHexString()} - resolved keys so far {_resolvedKeysCount}");
 
+                        int count;
                         lock (_requestedNodes)
                         {
                             _requestedNodes.Add(new Keccak(key));
+                            count = _requestedNodes.Count;
                         }
 
                         // _logger.Error($"Requested {key.ToHexString()}");
 
-                        NeedMoreData?.Invoke(this, EventArgs.Empty);
+                        if (count > 2)
+                        {
+                            NeedMoreData?.Invoke(this, EventArgs.Empty);
+                        }
 
                         _autoReset.WaitOne(50);
                     }
@@ -133,8 +146,9 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                     {
                         if (!wasInDb)
                         {
-                            if (_logger.IsInfo) _logger.Info($"{_description} Resolved key {key.ToHexString()} of context {BeamSyncContext.Description.Value} - resolved: {_resolvedKeysCount} | pending: {_requestedNodes.Count}");
+                            BeamSyncContext.ResolvedInContext.Value++;
                             Interlocked.Increment(ref _resolvedKeysCount);
+                            // if (_logger.IsInfo) _logger.Info($"{_description} Resolved key {key.ToHexString()} of context {BeamSyncContext.Description.Value} - resolved ctx {BeamSyncContext.ResolvedInContext.Value} | total {_resolvedKeysCount}");
                         }
 
                         BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;

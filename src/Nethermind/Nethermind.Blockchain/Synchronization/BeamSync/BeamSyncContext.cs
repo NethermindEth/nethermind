@@ -26,5 +26,6 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
         public static AsyncLocal<string> Description = new AsyncLocal<string>();
         public static AsyncLocal<UInt256> MinimumDifficulty = new AsyncLocal<UInt256>();
         public static AsyncLocal<int?> LoopIterationsToFailInTest = new AsyncLocal<int?>();
+        public static AsyncLocal<int> ResolvedInContext = new AsyncLocal<int>();
     }
 }

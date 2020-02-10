@@ -162,6 +162,8 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
         {
             if (forAdditionalConsumers)
             {
+                Thread.Sleep(20);
+                
                 Keccak[] hashes = _additionalConsumer.PrepareRequest();
                 if (hashes.Length == 0)
                 {

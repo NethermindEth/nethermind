@@ -57,7 +57,7 @@ namespace Nethermind.Store.BeamSync
 
             if (combined.Count > 0)
             {
-                if (_logger.IsInfo) _logger.Info($"Prepared a combined request of length {combined.Count}");
+                // if (_logger.IsInfo) _logger.Info($"Prepared a combined request of length {combined.Count}");
                 return combined.ToArray();
             }
 
