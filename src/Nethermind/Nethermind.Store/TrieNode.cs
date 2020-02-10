@@ -49,11 +49,11 @@ namespace Nethermind.Store
                                 MemorySizes.SmallObjectOverhead
                                 /* _isDirty + NodeType aligned to 4 (is it 8?) and end up in object overhead*/
                                 + (Key?.MemorySize ?? 0);
-                
+
                 return MemorySizes.Align(unaligned);
             }
         }
-        
+
         public TrieNode(NodeType nodeType)
         {
             NodeType = nodeType;
@@ -187,65 +187,58 @@ namespace Nethermind.Store
 
         internal void ResolveNode(PatriciaTree tree, bool allowCaching)
         {
-            try
+            if (NodeType == NodeType.Unknown)
             {
-                if (NodeType == NodeType.Unknown)
+                if (FullRlp == null)
                 {
-                    if (FullRlp == null)
+                    if (Keccak == null)
                     {
-                        if (Keccak == null)
-                        {
-                            throw new TrieException($"Unable to resolve node without Keccak");
-                        }
-
-                        FullRlp = tree.GetNode(Keccak, allowCaching);
-                        if (FullRlp?.Bytes == null)
-                        {
-                            throw new TrieException($"Trie returned a malformed RLP for node {Keccak}");
-                        }
-
-                        _rlpStream = FullRlp.Bytes.AsRlpStream();
+                        throw new TrieException($"Unable to resolve node without Keccak");
                     }
-                }
-                else
-                {
-                    return;
-                }
 
-                Metrics.TreeNodeRlpDecodings++;
-                _rlpStream.ReadSequenceLength();
-
-                // micro optimization to prevent searches beyond 3 items for branches (search up to three)
-                int numberOfItems = _rlpStream.ReadNumberOfItemsRemaining(null, 3);
-
-                if (numberOfItems > 2)
-                {
-                    NodeType = NodeType.Branch;
-                }
-                else if (numberOfItems == 2)
-                {
-                    HexPrefix key = HexPrefix.FromBytes(_rlpStream.DecodeByteArraySpan());
-                    bool isExtension = key.IsExtension;
-                    if (isExtension)
+                    FullRlp = tree.GetNode(Keccak, allowCaching);
+                    if (FullRlp?.Bytes == null)
                     {
-                        NodeType = NodeType.Extension;
-                        Key = key;
+                        throw new TrieException($"Trie returned a malformed RLP for node {Keccak}");
                     }
-                    else
-                    {
-                        NodeType = NodeType.Leaf;
-                        Key = key;
-                        Value = _rlpStream.DecodeByteArray();
-                    }
-                }
-                else
-                {
-                    throw new TrieException($"Unexpected number of items = {numberOfItems} when decoding a node");
+
+                    _rlpStream = FullRlp.Bytes.AsRlpStream();
                 }
             }
-            catch (Exception e)
+            else
             {
-                throw new TrieException($"Trie exception when working with node {Keccak}", e);
+                return;
+            }
+
+            Metrics.TreeNodeRlpDecodings++;
+            _rlpStream.ReadSequenceLength();
+
+            // micro optimization to prevent searches beyond 3 items for branches (search up to three)
+            int numberOfItems = _rlpStream.ReadNumberOfItemsRemaining(null, 3);
+
+            if (numberOfItems > 2)
+            {
+                NodeType = NodeType.Branch;
+            }
+            else if (numberOfItems == 2)
+            {
+                HexPrefix key = HexPrefix.FromBytes(_rlpStream.DecodeByteArraySpan());
+                bool isExtension = key.IsExtension;
+                if (isExtension)
+                {
+                    NodeType = NodeType.Extension;
+                    Key = key;
+                }
+                else
+                {
+                    NodeType = NodeType.Leaf;
+                    Key = key;
+                    Value = _rlpStream.DecodeByteArray();
+                }
+            }
+            else
+            {
+                throw new TrieException($"Unexpected number of items = {numberOfItems} when decoding a node");
             }
         }
 

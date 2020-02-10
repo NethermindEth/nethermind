@@ -15,19 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.Store;
 
-namespace Nethermind.Store.BeamSync
+namespace Nethermind.Blockchain.Synchronization.BeamSync
 {
     public class BeamSyncDb : IDb, INodeDataConsumer
     {
@@ -61,8 +58,6 @@ namespace Nethermind.Store.BeamSync
 
         private HashSet<Keccak> _requestedNodes = new HashSet<Keccak>();
 
-        private HashSet<Keccak> _sentNotSaved = new HashSet<Keccak>();
-
         private TimeSpan _contextExpiryTimeSpan = TimeSpan.FromSeconds(4);
         private TimeSpan _preProcessExpiryTimeSpan = TimeSpan.FromSeconds(15);
 
@@ -88,6 +83,16 @@ namespace Nethermind.Store.BeamSync
                 bool wasInDb = true;
                 while (true)
                 {
+                    // shall I leave test logic forever?
+                    if (BeamSyncContext.LoopIterationsToFailInTest.Value != null)
+                    {
+                        int? currentValue = BeamSyncContext.LoopIterationsToFailInTest.Value--;
+                        if (currentValue == 0)
+                        {
+                            throw new Exception();
+                        }
+                    }
+
                     var fromMem = _db[key];
                     if (fromMem == null)
                     {
@@ -96,13 +101,13 @@ namespace Nethermind.Store.BeamSync
                             // we store sync progress data at Keccak.Zero;
                             return null;
                         }
-                        
+
                         TimeSpan expiry = _contextExpiryTimeSpan;
                         if (BeamSyncContext.Description.Value?.Contains("preProcess") ?? false)
                         {
                             expiry = _preProcessExpiryTimeSpan;
                         }
-                        
+
                         if (DateTime.UtcNow - (BeamSyncContext.LastFetchUtc.Value ?? DateTime.UtcNow) > expiry)
                         {
                             string message = $"Beam sync request {BeamSyncContext.Description.Value} with last update on {BeamSyncContext.LastFetchUtc.Value:hh:mm:ss.fff} has expired";
@@ -111,25 +116,16 @@ namespace Nethermind.Store.BeamSync
                         }
 
                         wasInDb = false;
-                        bool wasSent = false;
-                        lock (_sentNotSaved)
+                        // _logger.Info($"BEAM SYNC Asking for {key.ToHexString()} - resolved keys so far {_resolvedKeysCount}");
+
+                        lock (_requestedNodes)
                         {
-                            wasSent = _sentNotSaved.Contains(new Keccak(key));
+                            _requestedNodes.Add(new Keccak(key));
                         }
-                        
-                        if (!wasSent)
-                        {
-                            // _logger.Info($"BEAM SYNC Asking for {key.ToHexString()} - resolved keys so far {_resolvedKeysCount}");
 
-                            lock (_requestedNodes)
-                            {
-                                _requestedNodes.Add(new Keccak(key));
-                            }
+                        // _logger.Error($"Requested {key.ToHexString()}");
 
-                            // _logger.Error($"Requested {key.ToHexString()}");
-
-                            NeedMoreData?.Invoke(this, EventArgs.Empty);
-                        }
+                        NeedMoreData?.Invoke(this, EventArgs.Empty);
 
                         _autoReset.WaitOne(50);
                     }
@@ -186,7 +182,7 @@ namespace Nethermind.Store.BeamSync
                 {
                     return Array.Empty<Keccak>();
                 }
-                
+
                 if (_requestedNodes.Count < 256)
                 {
                     request = _requestedNodes.ToArray();
@@ -211,15 +207,6 @@ namespace Nethermind.Store.BeamSync
                 }
             }
 
-            // if (_logger.IsInfo) _logger.Info($"Sending request for {request.Length} | resolved: {_resolvedKeysCount} | pending: {_requestedNodes.Count} | not_yet {_sentNotSaved.Count()}");
-            lock (_sentNotSaved)
-            {
-                for (int i = 0; i < request.Length; i++)
-                {
-                    _sentNotSaved.Add(request[i]);
-                }
-            }
-
             return request;
         }
 
@@ -235,11 +222,6 @@ namespace Nethermind.Store.BeamSync
                         if (Keccak.Compute(data[i]) == hashes[i])
                         {
                             _db[hashes[i].Bytes] = data[i];
-                            lock (_sentNotSaved)
-                            {
-                                _sentNotSaved.Remove(hashes[i]);
-                            }
-
                             // _requestedNodes.Remove(hashes[i], out _);
                             consumed++;
                         }

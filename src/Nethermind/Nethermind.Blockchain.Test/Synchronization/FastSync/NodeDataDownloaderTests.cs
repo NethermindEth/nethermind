@@ -587,6 +587,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             remoteStorageTree.Commit();
 
             dbContext.RemoteStateTree.Set(TestItem.AddressD, TrieScenarios.AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash));
+            dbContext.RemoteStateTree.Set(TestItem.AddressD, TrieScenarios.AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash));
             dbContext.RemoteStateTree.Commit();
 
             dbContext.CompareTrees("BEGIN");

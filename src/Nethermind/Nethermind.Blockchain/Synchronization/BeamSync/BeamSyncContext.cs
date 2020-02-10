@@ -18,12 +18,13 @@ using System;
 using System.Threading;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Store.BeamSync
+namespace Nethermind.Blockchain.Synchronization.BeamSync
 {
     public static class BeamSyncContext
     {
         public static AsyncLocal<DateTime?> LastFetchUtc = new AsyncLocal<DateTime?>();
         public static AsyncLocal<string> Description = new AsyncLocal<string>();
         public static AsyncLocal<UInt256> MinimumDifficulty = new AsyncLocal<UInt256>();
+        public static AsyncLocal<int?> LoopIterationsToFailInTest = new AsyncLocal<int?>();
     }
 }
