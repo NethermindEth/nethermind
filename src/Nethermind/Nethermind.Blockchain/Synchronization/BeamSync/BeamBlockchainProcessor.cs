@@ -90,6 +90,14 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
         private void OnNewBlock(object sender, BlockEventArgs e)
         {
             Process(e.Block, ProcessingOptions.None);
+            long number = e.Block.Number;
+            for (int i = 64; i > 6; i--)
+            {
+                if (_tokens.TryGetValue(number - i, out CancellationTokenSource token))
+                {
+                    token.Cancel();
+                }
+            }
         }
 
         private ConcurrentDictionary<long, CancellationTokenSource> _tokens = new ConcurrentDictionary<long, CancellationTokenSource>();
