@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -63,6 +65,19 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             _blockTree.NewBestSuggestedBlock += OnNewBlock;
             _readOnlyBlockTree = new ReadOnlyBlockTree(_blockTree);
             _logger = logManager.GetClassLogger();
+            _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
+        }
+
+        private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
+        {
+            long number = e.Block.Number;
+            for (int i = 64; i > 0; i--)
+            {
+                if (_tokens.TryGetValue(number - i, out CancellationTokenSource token))
+                {
+                    token.Cancel();
+                }
+            }
         }
 
         private (IBlockchainProcessor, IStateReader) CreateProcessor(IReadOnlyDbProvider readOnlyDbProvider, ISpecProvider specProvider, ILogManager logManager)
@@ -77,8 +92,12 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             Process(e.Block, ProcessingOptions.None);
         }
 
+        private ConcurrentDictionary<long, CancellationTokenSource> _tokens = new ConcurrentDictionary<long, CancellationTokenSource>();
+        
         private void Process(Block block, ProcessingOptions options)
         {
+            CancellationTokenSource cancellationToken = _tokens.GetOrAdd(block.Number, t => new CancellationTokenSource());
+            
             if (block.IsGenesis)
             {
                 _blockchainProcessor.Enqueue(block, ProcessingOptions.None);
@@ -107,6 +126,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                     BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty.Value;
                     BeamSyncContext.Description.Value = $"[preProcess of {block.Hash.ToShortString()}]";
                     BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
+                    BeamSyncContext.Cancelled.Value = cancellationToken.Token;
                     processedBlock = processor.Process(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance);
                     if (processedBlock == null)
                     {
@@ -136,6 +156,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
 
         private void PrefetchNew(IStateReader stateReader, Block block, Keccak stateRoot, Address miner)
         {
+            CancellationTokenSource cancellationToken = _tokens.GetOrAdd(block.Number, t => new CancellationTokenSource());
             string description = $"[miner {miner}]";
             Task minerTask = Task.Run(() =>
             {
@@ -143,7 +164,8 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                 BeamSyncContext.Description.Value = description;
                 BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
                 stateReader.GetAccount(stateRoot, miner);
-            }).ContinueWith(t => { _logger.Info(t.IsFaulted ? $"{description} prefetch failed {t.Exception}" : $"{description} prefetch complete - resolved {BeamSyncContext.ResolvedInContext.Value}"); });
+                BeamSyncContext.Cancelled.Value = cancellationToken.Token;
+            }).ContinueWith(t => { _logger.Info(t.IsFaulted ? $"{description} prefetch failed {t.Exception.Message}" : $"{description} prefetch complete - resolved {BeamSyncContext.ResolvedInContext.Value}"); });
 
             Task senderTask = Task.Run(() =>
             {
@@ -153,10 +175,11 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                     Transaction tx = block.Transactions[i];
                     BeamSyncContext.Description.Value = $"[tx prefetch {i}]";
                     BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
-                    _logger.Info($"Resolved sender of {block.Number}.{i}");
+                    BeamSyncContext.Cancelled.Value = cancellationToken.Token;
+                    // _logger.Info($"Resolved sender of {block.Number}.{i}");
                     stateReader.GetAccount(stateRoot, tx.To);
                 }
-            }).ContinueWith(t => { _logger.Info(t.IsFaulted ? $"tx prefetch failed {t.Exception}" : $"tx prefetch complete - resolved {BeamSyncContext.ResolvedInContext.Value}"); });
+            }).ContinueWith(t => { _logger.Info(t.IsFaulted ? $"tx prefetch failed {t.Exception.Message}" : $"tx prefetch complete - resolved {BeamSyncContext.ResolvedInContext.Value}"); });
             
             Task storageTask = Task.Run(() =>
             {
@@ -167,12 +190,13 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                     if (tx.To != null)
                     {
                         BeamSyncContext.Description.Value = $"[storage prefetch {i}]";
-                        _logger.Info($"Resolved storage of target of {block.Number}.{i}");
+                        // _logger.Info($"Resolved storage of target of {block.Number}.{i}");
                         BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
+                        BeamSyncContext.Cancelled.Value = cancellationToken.Token;
                         stateReader.GetStorageRoot(stateRoot, tx.To);
                     }
                 }
-            }).ContinueWith(t => { _logger.Info(t.IsFaulted ? $"storage prefetch failed {t.Exception}" : $"storage prefetch complete - resolved {BeamSyncContext.ResolvedInContext.Value}"); });
+            }).ContinueWith(t => { _logger.Info(t.IsFaulted ? $"storage prefetch failed {t.Exception.Message}" : $"storage prefetch complete - resolved {BeamSyncContext.ResolvedInContext.Value}"); });
             
             
             Task codeTask = Task.Run(() =>
@@ -184,12 +208,16 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                     if (tx.To != null)
                     {
                         BeamSyncContext.Description.Value = $"[code prefetch {i}]";
-                        _logger.Info($"Resolved code of target of {block.Number}.{i}");
+                        // _logger.Info($"Resolved code of target of {block.Number}.{i}");
                         BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
+                        BeamSyncContext.Cancelled.Value = cancellationToken.Token;
                         stateReader.GetCode(stateRoot, tx.SenderAddress);
                     }
                 }
-            }).ContinueWith(t => { _logger.Info(t.IsFaulted ? $"code prefetch failed {t.Exception}" : $"code prefetch complete - resolved {BeamSyncContext.ResolvedInContext.Value}"); });
+            }).ContinueWith(t =>
+            {
+                _logger.Info(t.IsFaulted ? $"code prefetch failed {t.Exception.Message}" : $"code prefetch complete - resolved {BeamSyncContext.ResolvedInContext.Value}");
+            });
         }
         
         public void Dispose()

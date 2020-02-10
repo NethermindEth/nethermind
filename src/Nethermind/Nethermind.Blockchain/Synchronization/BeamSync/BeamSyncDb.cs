@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
@@ -99,6 +100,11 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                 bool wasInDb = true;
                 while (true)
                 {
+                    if (BeamSyncContext.Cancelled.Value.IsCancellationRequested)
+                    {
+                        throw new TaskCanceledException("Beam Sync task cancelled by a new block.");
+                    }
+                    
                     if (_isDisposed)
                     {
                         throw new ObjectDisposedException("Beam Sync DB disposed");

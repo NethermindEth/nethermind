@@ -310,11 +310,11 @@ namespace Nethermind.Blockchain
                         break; //failure here
                     }
                     
-                    // for beam sync
-                    if((_blockTree.Head?.Number ?? 0) == 0)
-                    {
+                    // // for beam sync
+                    // if((_blockTree.Head?.Number ?? 0) == 0)
+                    // {
                         break;
-                    }
+                    // }
                     
                     bool isFastSyncTransition = _blockTree.Head == _blockTree.Genesis && toBeProcessed.Number > 1; 
                     if (!isFastSyncTransition)
