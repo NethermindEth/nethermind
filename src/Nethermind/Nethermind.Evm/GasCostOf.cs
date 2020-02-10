@@ -32,7 +32,7 @@ namespace Nethermind.Evm
         public const long BalanceEip1884 = 700;
         public const long SLoad = 50;
         public const long SLoadEip150 = 200;
-        public const long SLoadEip1884 = 800;
+        public const long SLoadEip1884And2200 = 800;
         public const long JumpDest = 1;
         public const long SStoreNetMeteredEip1283 = 200;
         public const long SStoreNetMeteredEip2200 = 800;

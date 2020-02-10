@@ -1576,8 +1576,8 @@ namespace Nethermind.Evm
                     case Instruction.SLOAD:
                     {
                         Metrics.SloadOpcode++;
-                        var gasCost = spec.IsEip1884Enabled
-                            ? GasCostOf.SLoadEip1884
+                        var gasCost = spec.IsEip1884Enabled || spec.IsEip2200Enabled
+                            ? GasCostOf.SLoadEip1884And2200
                             : spec.IsEip150Enabled
                                 ? GasCostOf.SLoadEip150
                                 : GasCostOf.SLoad;

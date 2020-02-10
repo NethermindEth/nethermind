@@ -106,7 +106,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             var result = Execute(code);
-            AssertGas(result, 21000 + 2 * GasCostOf.VeryLow + GasCostOf.SLoadEip1884);
+            AssertGas(result, 21000 + 2 * GasCostOf.VeryLow + GasCostOf.SLoadEip1884And2200);
         }
         
         [Test]
