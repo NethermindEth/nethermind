@@ -54,5 +54,11 @@ namespace Nethermind.Blockchain
                 return result;
             }
         }
+
+        public void Dispose()
+        {
+            _processor?.Dispose();
+            _readOnlyDbProvider?.Dispose();
+        }
     }
 }

@@ -482,5 +482,15 @@ namespace Nethermind.Blockchain
             public Block Block { get; set; }
             public ProcessingOptions ProcessingOptions { get; }
         }
+
+        public void Dispose()
+        {
+            _recoveryQueue?.Dispose();
+            _blockQueue?.Dispose();
+            _loopCancellationSource?.Dispose();
+            _recoveryTask?.Dispose();
+            _processorTask?.Dispose();
+            _blockTree.NewBestSuggestedBlock -= OnNewBestBlock;
+        }
     }
 }

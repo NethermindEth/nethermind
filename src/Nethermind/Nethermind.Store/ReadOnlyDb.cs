@@ -18,7 +18,7 @@ using System;
 
 namespace Nethermind.Store
 {
-    public class ReadOnlyDb : IDb
+    public class ReadOnlyDb : ISnapshotableDb
     {
         private MemDb _memDb = new MemDb();
 
@@ -75,6 +75,27 @@ namespace Nethermind.Store
         public void ClearTempChanges()
         {
             _memDb.Clear();
+        }
+
+        public void Restore(int snapshot)
+        {
+            if (snapshot != -1)
+            {
+                // if this is causing trouble hen you can revert to the version from before 10/02/2020    
+                throw new NotSupportedException();
+            }
+
+            ClearTempChanges();
+        }
+
+        public void Commit()
+        {
+            throw new NotSupportedException();
+        }
+
+        public int TakeSnapshot()
+        {
+            return -1;
         }
     }
 }

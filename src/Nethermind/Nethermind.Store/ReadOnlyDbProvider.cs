@@ -27,10 +27,12 @@ namespace Nethermind.Store
                 throw new ArgumentNullException(nameof(wrappedProvider));
             }
 
-            NestedStateDb = new ReadOnlyDb(wrappedProvider.StateDb, createInMemoryWriteStore);
-            StateDb = new StateDb(NestedStateDb);
-            NestedCodeDb = new ReadOnlyDb(wrappedProvider.CodeDb, createInMemoryWriteStore);
-            CodeDb = new StateDb(NestedCodeDb);
+            // NestedStateDb = new ReadOnlyDb(wrappedProvider.StateDb, createInMemoryWriteStore);
+            // StateDb = new StateDb(NestedStateDb);
+            // NestedCodeDb = new ReadOnlyDb(wrappedProvider.CodeDb, createInMemoryWriteStore);
+            // CodeDb = new StateDb(NestedCodeDb);
+            StateDb = new ReadOnlyDb(wrappedProvider.StateDb, createInMemoryWriteStore);
+            CodeDb = new ReadOnlyDb(wrappedProvider.CodeDb, createInMemoryWriteStore);
             NestedReceiptsDb = new ReadOnlyDb(wrappedProvider.ReceiptsDb, createInMemoryWriteStore);
             NestedBlockInfosDb = new ReadOnlyDb(wrappedProvider.BlockInfosDb, createInMemoryWriteStore);
             NestedBlocksDb = new ReadOnlyDb(wrappedProvider.BlocksDb, createInMemoryWriteStore);
@@ -44,8 +46,6 @@ namespace Nethermind.Store
         {
         }
 
-        private ReadOnlyDb NestedStateDb { get; }
-        private ReadOnlyDb NestedCodeDb { get; }
         public ISnapshotableDb StateDb { get; }
         public ISnapshotableDb CodeDb { get; }
         public IDb ReceiptsDb => NestedReceiptsDb;
@@ -67,14 +67,12 @@ namespace Nethermind.Store
         {
             StateDb.Restore(-1);
             CodeDb.Restore(-1);
-            NestedStateDb.ClearTempChanges();
-            NestedCodeDb.ClearTempChanges();
-            NestedReceiptsDb.ClearTempChanges();
-            NestedBlocksDb.ClearTempChanges();
-            NestedHeadersDb.ClearTempChanges();
-            NestedBlockInfosDb.ClearTempChanges();
-            NestedConfigsDb.ClearTempChanges();
-            NestedEthRequestsDb.ClearTempChanges();
+            NestedReceiptsDb.Restore(-1);
+            NestedBlocksDb.Restore(-1);
+            NestedHeadersDb.Restore(-1);
+            NestedBlockInfosDb.Restore(-1);
+            NestedConfigsDb.Restore(-1);
+            NestedEthRequestsDb.Restore(-1);
         }
     }
 }

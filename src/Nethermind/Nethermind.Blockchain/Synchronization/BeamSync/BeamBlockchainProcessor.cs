@@ -79,7 +79,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                 }
             }
         }
-
+        
         private (IBlockchainProcessor, IStateReader) CreateProcessor(IReadOnlyDbProvider readOnlyDbProvider, ISpecProvider specProvider, ILogManager logManager)
         {
             ReadOnlyTxProcessingEnv txEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, _readOnlyBlockTree, specProvider, logManager);
@@ -89,7 +89,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
 
         private void OnNewBlock(object sender, BlockEventArgs e)
         {
-            Process(e.Block, ProcessingOptions.None);
+            BeamProcess(e.Block);
             long number = e.Block.Number;
             for (int i = 64; i > 6; i--)
             {
@@ -102,7 +102,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
 
         private ConcurrentDictionary<long, CancellationTokenSource> _tokens = new ConcurrentDictionary<long, CancellationTokenSource>();
         
-        private void Process(Block block, ProcessingOptions options)
+        private void BeamProcess(Block block)
         {
             CancellationTokenSource cancellationToken = _tokens.GetOrAdd(block.Number, t => new CancellationTokenSource());
             
@@ -116,7 +116,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             try
             {
                 _recoveryStep.RecoverData(block);
-                (var processor, var stateReader) = CreateProcessor(_readOnlyDbProvider, _specProvider, _logManager);
+                (IBlockchainProcessor processor, IStateReader stateReader) = CreateProcessor(new ReadOnlyDbProvider(_readOnlyDbProvider, true), _specProvider, _logManager);
 
                 BlockHeader parentHeader = _readOnlyBlockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (parentHeader != null)
@@ -152,8 +152,10 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                     {
                         if (_logger.IsInfo) _logger.Info($"Enqueuing for standard processing {block}");
                         // at this stage we are sure to have all the state available
-                        _blockchainProcessor.Enqueue(block, options);
+                        _blockchainProcessor.Enqueue(block, ProcessingOptions.None);
                     }
+
+                    processor.Dispose();
                 });
             }
             catch (Exception e)

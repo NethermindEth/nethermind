@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
         {
             MemDbProvider memDbProvider = new MemDbProvider();
             _ = new BeamBlockchainProcessor(
-                new ReadOnlyDbProvider(memDbProvider, true),
+                new ReadOnlyDbProvider(memDbProvider, false),
                 _blockTree,
                 MainNetSpecProvider.Instance,
                 LimboLogs.Instance,
