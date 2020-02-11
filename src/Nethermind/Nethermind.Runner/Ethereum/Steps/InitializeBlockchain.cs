@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -29,6 +30,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Mining;
 using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Specs;
 using Nethermind.Store;
 using Nethermind.Store.Repositories;
 
@@ -57,6 +59,16 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 _context.Logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
                 syncConfig.DownloadBodiesInFastSync = true;
+            }
+
+            if (syncConfig.BeamSync && _context.SpecProvider.ChainId != ChainId.Goerli)
+            {
+                throw new InvalidDataException("In the current version Beam Sync is only allowed on Goerli");
+            }
+
+            if (syncConfig.BeamSync)
+            {
+                _context.Logger.Warn("Welcome to the alpha version of Goerli Beam Sync. I will start by downloading a pivot block header and then will continue to download all the headers from pivot upwards. After that I will be beam synchronizing the new blocks.");
             }
             
             Account.AccountStartNonce = _context.ChainSpec.Parameters.AccountStartNonce;
@@ -146,11 +158,11 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             _context.TxPoolInfoProvider = new TxPoolInfoProvider(_context.StateProvider, _context.TxPool);
 
-            _context.BlockProcessor = CreateBlockProcessor();
+            _context.MainBlockProcessor = CreateBlockProcessor();
 
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(
                 _context.BlockTree,
-                _context.BlockProcessor,
+                _context.MainBlockProcessor,
                 _context.RecoveryStep,
                 _context.LogManager,
                 _context.Config<IInitConfig>().StoreReceipts,

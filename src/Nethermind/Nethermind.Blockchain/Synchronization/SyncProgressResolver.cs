@@ -67,7 +67,7 @@ namespace Nethermind.Blockchain.Synchronization
                     bestFullState = bestSuggested.Number;
                     break;
                 }
-                
+
                 if (_nodeDataDownloader.IsFullySynced(bestSuggested))
                 {
                     bestFullState = bestSuggested.Number;
@@ -84,11 +84,18 @@ namespace Nethermind.Blockchain.Synchronization
 
         public long FindBestFullBlock() => Math.Min(FindBestHeader(), _blockTree.BestSuggestedBody?.Number ?? 0); // avoiding any potential concurrency issue
 
-        public bool IsFastBlocksFinished() =>
-            !_syncConfig.FastBlocks
-            || (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1
-            && (!_syncConfig.DownloadReceiptsInFastSync || (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) <= 1)
-            && (!_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1);
+        public bool IsFastBlocksFinished()
+        {
+            bool isFastBlocks = _syncConfig.FastBlocks || _syncConfig.BeamSync;
+            bool isBeamSync = _syncConfig.BeamSync;
+            bool anyHeaderDownloaded = (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= _syncConfig.PivotNumberParsed;
+            bool allHeadersDownloaded = (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1;
+            bool allReceiptsDownloaded = !_syncConfig.DownloadReceiptsInFastSync || (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) <= 1;
+            bool allBodiesDownloaded = !_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1;
+
+            return isFastBlocks && allBodiesDownloaded && allHeadersDownloaded && allReceiptsDownloaded
+                   || isBeamSync && anyHeaderDownloaded;
+        }
 
         public long FindBestProcessedBlock() => _blockTree.Head?.Number ?? -1;
     }

@@ -223,7 +223,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 {
                     finalizeSignalsCount++;
                     await Task.Delay(10);
-                    if (_logger.IsInfo) _logger.Info($"DIAG: 0 batches created with {_pendingRequests} pending requests.");
+                    if (_logger.IsDebug) _logger.Debug($"0 batches created with {_pendingRequests} pending requests.");
                 }
             } while (_pendingRequests != 0 || finalizeSignalsCount < 3 || !_fastBlocksFeed.IsFinished);
 

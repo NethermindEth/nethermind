@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -57,8 +58,21 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "Hash of the pivot block for the Fast Blocks sync.", DefaultValue = "null")]
         string PivotHash { get; }
 
-        long PivotNumberParsed => LongConverter.FromString(PivotNumber ?? "0");
+        private static long _pivotNumberParsed = -1;
         
+        long PivotNumberParsed
+        {
+            get
+            {
+                if (_pivotNumberParsed == -1)
+                {
+                    _pivotNumberParsed = LongConverter.FromString(PivotNumber ?? "0");
+                }
+
+                return _pivotNumberParsed;
+            }
+        }
+
         Keccak PivotHashParsed => new Keccak(Bytes.FromHexString(PivotHash));
     }
 }

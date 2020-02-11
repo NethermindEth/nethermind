@@ -300,7 +300,7 @@ namespace Nethermind.Network.Discovery
         private void InitializeDiscoveryTimer()
         {
             if(_logger.IsDebug) _logger.Debug("Starting discovery timer");
-            _discoveryTimer = new Timer(1000) {AutoReset = false};
+            _discoveryTimer = new Timer(10) {AutoReset = false};
             _discoveryTimer.Elapsed += (sender, e) =>
             {
                 try

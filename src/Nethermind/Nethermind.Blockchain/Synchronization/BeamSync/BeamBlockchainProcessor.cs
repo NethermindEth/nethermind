@@ -62,9 +62,9 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _blockTree.NewBestSuggestedBlock += OnNewBlock;
             _readOnlyBlockTree = new ReadOnlyBlockTree(_blockTree);
             _logger = logManager.GetClassLogger();
+            _blockTree.NewBestSuggestedBlock += OnNewBlock;
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
         }
 
@@ -149,7 +149,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                 {
                     if (t.IsFaulted)
                     {
-                        _logger.Warn($"Failed to beam process {block}");
+                        _logger.Warn($"Failed to beam process {block} | {t.Exception}");
                         return;
                     }
 

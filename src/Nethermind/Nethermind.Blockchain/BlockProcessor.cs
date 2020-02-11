@@ -148,7 +148,6 @@ namespace Nethermind.Blockchain
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                if (_logger.IsWarn) _logger.Warn($"Processing transaction {i} out of {block.Transactions.Length} for {block.Number}");
                 Transaction currentTx = block.Transactions[i];
                 _receiptsTracer.StartNewTxTrace(currentTx.Hash);
                 _transactionProcessor.Execute(currentTx, block.Header, _receiptsTracer);
