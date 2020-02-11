@@ -16,6 +16,7 @@
 
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
@@ -54,6 +55,6 @@ namespace Nethermind.DataMarketplace.Initializers
             IProtocolValidator protocolValidator, IMessageSerializationService messageSerializationService,
             bool enableUnsecuredDevWallet, IWebSocketsManager webSocketsManager, ILogManager logManager,
             IBlockProcessor blockProcessor, IJsonRpcClientProxy jsonRpcClientProxy,
-            IEthJsonRpcClientProxy ethJsonRpcClientProxy, IHttpClient httpClient, IMonitoringService monitoringService);
+            IEthJsonRpcClientProxy ethJsonRpcClientProxy, IHttpClient httpClient, IMonitoringService monitoringService, IBloomStorage bloomStorage);
     }
 }

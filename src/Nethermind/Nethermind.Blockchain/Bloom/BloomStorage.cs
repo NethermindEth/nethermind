@@ -32,13 +32,13 @@ namespace Nethermind.Blockchain.Bloom
         private static readonly Keccak MaxBlockNumberKey = Keccak.Compute(nameof(MaxBlockNumber));
         
         private readonly BloomStorageLevel[] _storageLevels;
-        private readonly IColumnDb<byte> _bloomDb;
+        private readonly IColumnsDb<byte> _bloomDb;
         
         public long MinBlockNumber { get; private set; }
 
         public long MaxBlockNumber { get; private set; }
 
-        public BloomStorage(IColumnDb<byte> bloomDb)
+        public BloomStorage(IColumnsDb<byte> bloomDb)
         {
             long Get(Keccak key, long defaultValue)
             {

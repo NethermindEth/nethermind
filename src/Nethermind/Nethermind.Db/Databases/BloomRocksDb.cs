@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,22 +14,23 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Globalization;
 using Nethermind.Db.Config;
 using Nethermind.Logging;
 using Nethermind.Store;
 
 namespace Nethermind.Db.Databases
 {
-    public class StateRocksDb : DbOnTheRocks
+    public class BloomRocksDb : ColumnsDb<byte>
     {
-        public override string Name { get; } = "State";
-
-        public StateRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
-            : base(basePath, "state", dbConfig, logManager)
+        public override string Name { get; } = CultureInfo.CurrentUICulture.TextInfo.ToTitleCase(DbNames.Bloom);
+        
+        public BloomRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
+            : base(basePath, DbNames.Bloom, dbConfig, logManager)
         {
         }
-
-        protected internal override void UpdateReadMetrics() => Metrics.StateDbReads++;
-        protected internal override void UpdateWriteMetrics() => Metrics.StateDbWrites++;
+        
+        protected internal override void UpdateReadMetrics() => Metrics.BloomDbReads++;
+        protected internal override void UpdateWriteMetrics() => Metrics.BloomDbWrites++;
     }
 }

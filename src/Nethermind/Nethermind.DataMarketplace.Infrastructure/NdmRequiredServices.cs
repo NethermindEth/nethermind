@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
@@ -76,17 +77,42 @@ namespace Nethermind.DataMarketplace.Infrastructure
         public IEthJsonRpcClientProxy EthJsonRpcClientProxy { get; }
         public IHttpClient HttpClient { get; }
         public IMonitoringService MonitoringService { get; }
+        public IBloomStorage BloomStorage { get; }
 
-        public NdmRequiredServices(IConfigProvider configProvider, IConfigManager configManager, INdmConfig ndmConfig,
-            string baseDbPath, IDbProvider rocksProvider, IMongoProvider mongoProvider, ILogManager logManager,
-            IBlockTree blockTree, ITxPool transactionPool, ISpecProvider specProvider, IReceiptStorage receiptStorage,
-            IFilterStore filterStore, IFilterManager filterManager, IWallet wallet, ITimestamper timestamper,
-            IEthereumEcdsa ecdsa, IKeyStore keyStore, IRpcModuleProvider rpcModuleProvider,
-            IJsonSerializer jsonSerializer, ICryptoRandom cryptoRandom, IEnode enode,
-            INdmConsumerChannelManager ndmConsumerChannelManager, INdmDataPublisher ndmDataPublisher,
-            IGrpcServer grpcServer, IEthRequestService ethRequestService, INdmNotifier notifier,
-            bool enableUnsecuredDevWallet, IBlockProcessor blockProcessor, IJsonRpcClientProxy jsonRpcClientProxy,
-            IEthJsonRpcClientProxy ethJsonRpcClientProxy, IHttpClient httpClient, IMonitoringService monitoringService)
+        public NdmRequiredServices(
+            IConfigProvider configProvider, 
+            IConfigManager configManager, 
+            INdmConfig ndmConfig,
+            string baseDbPath, 
+            IDbProvider rocksProvider,
+            IMongoProvider mongoProvider, 
+            ILogManager logManager,
+            IBlockTree blockTree, 
+            ITxPool transactionPool, 
+            ISpecProvider specProvider, 
+            IReceiptStorage receiptStorage,
+            IFilterStore filterStore, 
+            IFilterManager filterManager, 
+            IWallet wallet, 
+            ITimestamper timestamper,
+            IEthereumEcdsa ecdsa, 
+            IKeyStore keyStore, 
+            IRpcModuleProvider rpcModuleProvider,
+            IJsonSerializer jsonSerializer, 
+            ICryptoRandom cryptoRandom, 
+            IEnode enode,
+            INdmConsumerChannelManager ndmConsumerChannelManager, 
+            INdmDataPublisher ndmDataPublisher,
+            IGrpcServer grpcServer, 
+            IEthRequestService ethRequestService, 
+            INdmNotifier notifier,
+            bool enableUnsecuredDevWallet,
+            IBlockProcessor blockProcessor, 
+            IJsonRpcClientProxy jsonRpcClientProxy,
+            IEthJsonRpcClientProxy ethJsonRpcClientProxy, 
+            IHttpClient httpClient, 
+            IMonitoringService monitoringService, 
+            IBloomStorage bloomStorage)
         {
             ConfigProvider = configProvider;
             ConfigManager = configManager;
@@ -120,6 +146,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             EthJsonRpcClientProxy = ethJsonRpcClientProxy;
             HttpClient = httpClient;
             MonitoringService = monitoringService;
+            BloomStorage = bloomStorage;
         }
     }
 }

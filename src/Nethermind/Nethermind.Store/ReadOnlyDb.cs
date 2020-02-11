@@ -20,7 +20,7 @@ namespace Nethermind.Store
 {
     public class ReadOnlyDb : IDb
     {
-        private MemDb _memDb = new MemDb();
+        private readonly MemDb _memDb = new MemDb();
 
         private readonly IDb _wrappedDb;
         private readonly bool _createInMemWriteStore;
@@ -33,6 +33,7 @@ namespace Nethermind.Store
 
         public void Dispose()
         {
+            _memDb.Dispose();
         }
 
         public string Name { get; } = "ReadOnlyDb";
@@ -70,7 +71,7 @@ namespace Nethermind.Store
             return _memDb.KeyExists(key) || _wrappedDb.KeyExists(key);
         }
 
-        public void ClearTempChanges()
+        public virtual void ClearTempChanges()
         {
             _memDb.Clear();
         }

@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections;
-using System.Collections.Generic;
 using Nethermind.Db.Config;
 using Nethermind.Logging;
 using Nethermind.Store;
@@ -32,32 +31,7 @@ namespace Nethermind.Db.Databases
         {
         }
 
-        internal override void UpdateReadMetrics() => Metrics.ReceiptsDbReads++;
-        internal override void UpdateWriteMetrics() => Metrics.ReceiptsDbWrites++;
-    }
-    
-    public class BloomRocksDb : DbOnTheRocks, IColumnDb<byte>
-    {
-        public override string Name { get; } = "Bloom";
-        
-        private readonly IDictionary<byte, IDb> _columnDbs = new Dictionary<byte, IDb>();
-
-        public BloomRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
-            : base(basePath, "bloom", dbConfig, logManager)
-        {
-        }
-        
-        public IDb GetColumnDb(byte key)
-        {
-            if (!_columnDbs.TryGetValue(key, out var db))
-            {
-                _columnDbs[key] = db = new ColumnDb(Db, this, key.ToString());
-            }
-
-            return db;
-        }
-
-        internal override void UpdateReadMetrics() => Metrics.BloomDbReads++;
-        internal override void UpdateWriteMetrics() => Metrics.BloomDbWrites++;
+        protected internal override void UpdateReadMetrics() => Metrics.ReceiptsDbReads++;
+        protected internal override void UpdateWriteMetrics() => Metrics.ReceiptsDbWrites++;
     }
 }

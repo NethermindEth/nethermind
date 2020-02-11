@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,22 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Db.Config;
-using Nethermind.Logging;
-using Nethermind.Store;
+using System.Collections.Generic;
 
-namespace Nethermind.Db.Databases
+namespace Nethermind.Store
 {
-    public class StateRocksDb : DbOnTheRocks
+    public interface IColumnsDb<in TKey> : IDb
     {
-        public override string Name { get; } = "State";
-
-        public StateRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
-            : base(basePath, "state", dbConfig, logManager)
-        {
-        }
-
-        protected internal override void UpdateReadMetrics() => Metrics.StateDbReads++;
-        protected internal override void UpdateWriteMetrics() => Metrics.StateDbWrites++;
+        IDb GetColumnDb(TKey key);
     }
 }

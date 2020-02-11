@@ -29,7 +29,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
         {
         }
 
-        internal override void UpdateReadMetrics() => ConsumerMetrics.ConsumerSessionsDbReads++;
-        internal override void UpdateWriteMetrics() => ConsumerMetrics.ConsumerSessionsDbWrites++;
+        protected override void UpdateReadMetrics() => ConsumerMetrics.ConsumerSessionsDbReads++;
+        protected override void UpdateWriteMetrics() => ConsumerMetrics.ConsumerSessionsDbWrites++;
     }
 }

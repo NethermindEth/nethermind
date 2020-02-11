@@ -15,11 +15,28 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using Nethermind.Db.Config;
+using Nethermind.Logging;
+using Nethermind.Store;
 
-namespace Nethermind.Store
+namespace Nethermind.Db.Databases
 {
-    public interface IColumnDb<in TKey> : IDb
+    public abstract class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T>
     {
-        IDb GetColumnDb(TKey key);
+        private readonly IDictionary<T, IDb> _columnDbs = new Dictionary<T, IDb>();
+        
+        protected ColumnsDb(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager = null) : base(basePath, dbPath, dbConfig, logManager)
+        {
+        }
+        
+        public IDb GetColumnDb(T key)
+        {
+            if (!_columnDbs.TryGetValue(key, out var db))
+            {
+                _columnDbs[key] = db = new ColumnDb(Db, this, key.ToString());
+            }
+
+            return db;
+        }
     }
 }

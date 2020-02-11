@@ -16,6 +16,7 @@
 
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -90,6 +91,8 @@ namespace Nethermind.JsonRpc.Benchmark
 
             blockchainProcessor.Process(genesisBlock, ProcessingOptions.None, NullBlockTracer.Instance);
             blockchainProcessor.Process(block1, ProcessingOptions.None, NullBlockTracer.Instance);
+            
+            IBloomStorage bloomStorage = new BloomStorage(new MemColumnsDb<byte>());
 
             BlockchainBridge bridge = new BlockchainBridge(
                 stateReader,
@@ -102,7 +105,8 @@ namespace Nethermind.JsonRpc.Benchmark
                 NullFilterManager.Instance, 
                 new DevWallet(new WalletConfig(), LimboLogs.Instance), 
                 transactionProcessor, 
-                new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance));
+                new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance),
+                bloomStorage);
             
             _ethModule = new EthModule(new JsonRpcConfig(), LimboLogs.Instance, bridge);
         }

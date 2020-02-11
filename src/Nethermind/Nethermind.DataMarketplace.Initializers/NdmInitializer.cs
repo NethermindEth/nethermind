@@ -19,6 +19,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
@@ -84,14 +85,15 @@ namespace Nethermind.DataMarketplace.Initializers
             IProtocolValidator protocolValidator, IMessageSerializationService messageSerializationService,
             bool enableUnsecuredDevWallet, IWebSocketsManager webSocketsManager, ILogManager logManager,
             IBlockProcessor blockProcessor, IJsonRpcClientProxy jsonRpcClientProxy,
-            IEthJsonRpcClientProxy ethJsonRpcClientProxy, IHttpClient httpClient, IMonitoringService monitoringService)
+            IEthJsonRpcClientProxy ethJsonRpcClientProxy, IHttpClient httpClient, IMonitoringService monitoringService, 
+            IBloomStorage bloomStorage)
         {
             var (config, services, faucet, ethRequestService, accountService, consumerService, consumerAddress,
                 providerAddress) = await PreInitAsync(configProvider, dbProvider, baseDbPath, blockTree, txPool,
                 specProvider, receiptStorage, wallet, filterStore, filterManager, timestamper, ecdsa, rpcModuleProvider,
                 keyStore, jsonSerializer, cryptoRandom, enode, consumerChannelManager, dataPublisher, grpcServer,
                 enableUnsecuredDevWallet, webSocketsManager, logManager, blockProcessor, jsonRpcClientProxy,
-                ethJsonRpcClientProxy, httpClient, monitoringService);
+                ethJsonRpcClientProxy, httpClient, monitoringService, bloomStorage);
             if (!config.Enabled)
             {
                 return default;
@@ -108,19 +110,17 @@ namespace Nethermind.DataMarketplace.Initializers
             return capabilityConnector;
         }
 
-        protected async Task<(NdmConfig config, INdmServices services, INdmFaucet faucet,
-                IEthRequestService ethRequestService, IAccountService accountService,
-                IConsumerService consumerService, Address consumerAddress, Address providerAddress)>
-            PreInitAsync(IConfigProvider configProvider, IDbProvider dbProvider, string baseDbPath,
-                IBlockTree blockTree, ITxPool txPool, ISpecProvider specProvider,
-                IReceiptStorage receiptStorage, IWallet wallet, IFilterStore filterStore, IFilterManager filterManager,
-                ITimestamper timestamper, IEthereumEcdsa ecdsa, IRpcModuleProvider rpcModuleProvider,
-                IKeyStore keyStore, IJsonSerializer jsonSerializer, ICryptoRandom cryptoRandom, IEnode enode,
-                INdmConsumerChannelManager consumerChannelManager, INdmDataPublisher dataPublisher,
-                IGrpcServer grpcServer, bool enableUnsecuredDevWallet, IWebSocketsManager webSocketsManager,
-                ILogManager logManager, IBlockProcessor blockProcessor, IJsonRpcClientProxy jsonRpcClientProxy,
-                IEthJsonRpcClientProxy ethJsonRpcClientProxy, IHttpClient httpClient,
-                IMonitoringService monitoringService)
+        protected async Task<(NdmConfig config, INdmServices services, INdmFaucet faucet, IEthRequestService ethRequestService, IAccountService accountService, IConsumerService consumerService, Address consumerAddress, Address
+            providerAddress)> PreInitAsync(IConfigProvider configProvider, IDbProvider dbProvider, string baseDbPath,
+            IBlockTree blockTree, ITxPool txPool, ISpecProvider specProvider,
+            IReceiptStorage receiptStorage, IWallet wallet, IFilterStore filterStore, IFilterManager filterManager,
+            ITimestamper timestamper, IEthereumEcdsa ecdsa, IRpcModuleProvider rpcModuleProvider,
+            IKeyStore keyStore, IJsonSerializer jsonSerializer, ICryptoRandom cryptoRandom, IEnode enode,
+            INdmConsumerChannelManager consumerChannelManager, INdmDataPublisher dataPublisher,
+            IGrpcServer grpcServer, bool enableUnsecuredDevWallet, IWebSocketsManager webSocketsManager,
+            ILogManager logManager, IBlockProcessor blockProcessor, IJsonRpcClientProxy jsonRpcClientProxy,
+            IEthJsonRpcClientProxy ethJsonRpcClientProxy, IHttpClient httpClient,
+            IMonitoringService monitoringService, IBloomStorage bloomStorage)
         {
             if (!(configProvider.GetConfig<INdmConfig>() is NdmConfig defaultConfig))
             {
@@ -175,7 +175,7 @@ namespace Nethermind.DataMarketplace.Initializers
                 filterStore, filterManager, wallet, timestamper, ecdsa, keyStore, rpcModuleProvider, jsonSerializer,
                 cryptoRandom, enode, consumerChannelManager, dataPublisher, grpcServer, ethRequestService, notifier,
                 enableUnsecuredDevWallet, blockProcessor, jsonRpcClientProxy, ethJsonRpcClientProxy, httpClient,
-                monitoringService));
+                monitoringService, bloomStorage));
 
             var faucetAddress = string.IsNullOrWhiteSpace(ndmConfig.FaucetAddress)
                 ? null

@@ -61,6 +61,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 wallet,
                 readOnlyTxProcessingEnv.TransactionProcessor,
                 services.Ecdsa,
+                services.BloomStorage,
                 jsonRpcConfig.FindLogBlockDepthLimit);
             var dataAssetRlpDecoder = new DataAssetDecoder();
             var encoder = new AbiEncoder();

@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,22 +14,20 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Db.Config;
+using Nethermind.Core.Attributes;
+using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
-using Nethermind.Store;
+using Nethermind.Serialization.Json;
 
-namespace Nethermind.Db.Databases
+namespace Nethermind.Store.Rpc
 {
-    public class StateRocksDb : DbOnTheRocks
+    public class RpcColumnsDb : RpcDb, IColumnsDb<byte>
     {
-        public override string Name { get; } = "State";
-
-        public StateRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
-            : base(basePath, "state", dbConfig, logManager)
+        public RpcColumnsDb(string dbName, IJsonSerializer jsonSerializer, IJsonRpcClient rpcClient, ILogManager logManager, IDb recordDb) : base(dbName, jsonSerializer, rpcClient, logManager, recordDb)
         {
         }
 
-        protected internal override void UpdateReadMetrics() => Metrics.StateDbReads++;
-        protected internal override void UpdateWriteMetrics() => Metrics.StateDbWrites++;
+        [Todo(Improve.MissingFunctionality, "Need to implement RPC method for column DB's")]
+        public IDb GetColumnDb(byte key) => this;
     }
 }

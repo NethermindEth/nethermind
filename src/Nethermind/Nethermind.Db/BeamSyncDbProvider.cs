@@ -48,6 +48,8 @@ namespace Nethermind.Db
             {
                 ReceiptsDb = new ReadOnlyDb(new MemDb(), false);
             }
+            
+            BloomDb = new BloomRocksDb(basePath, dbConfig, logManager);
         }
         
         public ISnapshotableDb StateDb { get; }
@@ -59,6 +61,7 @@ namespace Nethermind.Db
         public IDb PendingTxsDb { get; }
         public IDb ConfigsDb { get; }
         public IDb EthRequestsDb { get; }
+        public IColumnsDb<byte> BloomDb { get; }
 
         public void Dispose()
         {
@@ -71,6 +74,7 @@ namespace Nethermind.Db
             PendingTxsDb?.Dispose();
             ConfigsDb?.Dispose();
             EthRequestsDb?.Dispose();
+            BloomDb?.Dispose();
         }
     }
 }

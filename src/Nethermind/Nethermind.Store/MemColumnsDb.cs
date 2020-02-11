@@ -18,9 +18,9 @@ using System.Collections.Generic;
 
 namespace Nethermind.Store
 {
-    public class MemColumnDb<TKey> : MemDb, IColumnDb<TKey>
+    public class MemColumnsDb<TKey> : MemDb, IColumnsDb<TKey>
     {
-        private readonly IDictionary<TKey, IDb> _columnDbs = new Dictionary<TKey,IDb>();
+        private readonly IDictionary<TKey, IDb> _columnDbs = new Dictionary<TKey, IDb>();
         
         public IDb GetColumnDb(TKey key) => !_columnDbs.TryGetValue(key, out var db) ? _columnDbs[key] = new MemDb() : db;
     }

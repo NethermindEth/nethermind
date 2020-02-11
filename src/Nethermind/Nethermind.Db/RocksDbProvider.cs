@@ -43,6 +43,7 @@ namespace Nethermind.Db
             allInitializers.Add(Task.Run(() => PendingTxsDb = new PendingTxsRocksDb(basePath, dbConfig, _logManager)));
             allInitializers.Add(Task.Run(() => ConfigsDb = new ConfigsRocksDb(basePath, dbConfig, _logManager)));
             allInitializers.Add(Task.Run(() => EthRequestsDb = new EthRequestsRocksDb(basePath, dbConfig, _logManager)));
+            allInitializers.Add(Task.Run(() => BloomDb = new BloomRocksDb(basePath, dbConfig, _logManager)));
 
             allInitializers.Add(Task.Run(() =>
             {
@@ -68,6 +69,7 @@ namespace Nethermind.Db
         public IDb PendingTxsDb { get; private set; }
         public IDb ConfigsDb { get; private set; }
         public IDb EthRequestsDb { get; private set; }
+        public IColumnsDb<byte> BloomDb { get; private set; }
 
         public void Dispose()
         {
@@ -80,6 +82,7 @@ namespace Nethermind.Db
             PendingTxsDb?.Dispose();
             ConfigsDb?.Dispose();
             EthRequestsDb?.Dispose();
+            BloomDb?.Dispose();
         }
     }
 }
