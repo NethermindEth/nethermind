@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -26,33 +27,36 @@ namespace Nethermind.Blockchain.Bloom
 {
     public class BloomStorage : IBloomStorage
     {
-        private const int LevelMultiplier = 16;
-        private const int Levels = 3;
-        private static readonly Keccak MinBlockNumberKey = Keccak.Compute(nameof(MinBlockNumber));
-        private static readonly Keccak MaxBlockNumberKey = Keccak.Compute(nameof(MaxBlockNumber));
+        public int LevelMultiplier { get; }
+        public int Levels { get; }
+        internal static readonly Keccak MinBlockNumberKey = Keccak.Compute(nameof(MinBlockNumber));
+        internal static readonly Keccak MaxBlockNumberKey = Keccak.Compute(nameof(MaxBlockNumber));
         
         private readonly BloomStorageLevel[] _storageLevels;
         private readonly IColumnsDb<byte> _bloomDb;
         
-        public long MinBlockNumber { get; private set; }
+        private long MinBlockNumber { get; set; }
 
-        public long MaxBlockNumber { get; private set; }
+        private long MaxBlockNumber { get; set; }
 
-        public BloomStorage(IColumnsDb<byte> bloomDb)
+        public BloomStorage(IColumnsDb<byte> bloomDb, int levels = 3, int levelMultiplier = 16)
         {
-            long Get(Keccak key, long defaultValue)
-            {
-                var bytes = _bloomDb.Get(key);
-                return bytes?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
-            }
+            Levels = levels;
+            LevelMultiplier = levelMultiplier;
             
-            _bloomDb = bloomDb;
-            _storageLevels = Enumerable.Range(0, Levels).Cast<byte>().Select(level => CreateLevel(_bloomDb.GetColumnDb(level), level, Levels)).ToArray();
+            long Get(Keccak key, long defaultValue) => _bloomDb.Get(key)?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
+
+            _bloomDb = bloomDb ?? throw new ArgumentNullException(nameof(bloomDb));
+            _storageLevels = Enumerable.Range(0, Levels).Select(level => CreateLevel(_bloomDb.GetColumnDb((byte) level), (byte) level, Levels)).ToArray();
             MinBlockNumber = Get(MinBlockNumberKey, long.MaxValue);
             MaxBlockNumber = Get(MaxBlockNumberKey, -1);
         }
 
-        private BloomStorageLevel CreateLevel(IDb db, byte level, in int levelCount) => new BloomStorageLevel(db, level, (int) Math.Pow(LevelMultiplier, levelCount - level + 1));
+        private BloomStorageLevel CreateLevel(IDb db, byte level, in int levelCount) => new BloomStorageLevel(db, level, (int) Math.Pow(LevelMultiplier, levelCount - level), LevelMultiplier);
+
+        private bool Contains(long blockNumber) => blockNumber >= MinBlockNumber && blockNumber <= MaxBlockNumber;
+        
+        public bool ContainsRange(in long fromBlockNumber, in long toBlockNumber) => Contains(fromBlockNumber) && Contains(toBlockNumber);
 
         public void Store(long blockNumber, Core.Bloom bloom)
         {
@@ -79,20 +83,21 @@ namespace Nethermind.Blockchain.Bloom
             }
         }
 
-        public IBloomEnumerator GetBlooms(long fromBlock, long toBlock) => new BloomEnumerator(_storageLevels, Math.Max(fromBlock, MinBlockNumber), Math.Min(toBlock, MaxBlockNumber));
+        public IBloomEnumeration GetBlooms(long fromBlock, long toBlock) => new BloomEnumeration(_storageLevels, Math.Max(fromBlock, MinBlockNumber), Math.Min(toBlock, MaxBlockNumber));
 
         private class BloomStorageLevel
         {
             private readonly IDb _db;
             private readonly byte _level;
             public readonly int LevelElementSize;
-            private readonly LruCache<long, Core.Bloom> _cache = new LruCache<long, Core.Bloom>(LevelMultiplier);
+            private readonly LruCache<long, Core.Bloom> _cache;
 
-            public BloomStorageLevel(IDb db, in byte level, int levelElementSize)
+            public BloomStorageLevel(IDb db, in byte level, in int levelElementSize, in int levelMultiplier)
             {
                 _db = db;
                 _level = level;
                 LevelElementSize = levelElementSize;
+                _cache = new LruCache<long, Core.Bloom>(levelMultiplier);
             }
 
             public void Store(in long blockNumber, Core.Bloom bloom)
@@ -134,15 +139,48 @@ namespace Nethermind.Blockchain.Bloom
             }
         }
         
-        private class BloomEnumerator : IBloomEnumerator
+        private class BloomEnumeration : IBloomEnumeration
+        {
+            private readonly BloomStorageLevel[] _storageLevels;
+            private readonly long _fromBlock;
+            private readonly long _toBlock;
+            private BloomEnumerator current;
+
+            public BloomEnumeration(BloomStorageLevel[] storageLevels, long fromBlock, long toBlock)
+            {
+                _storageLevels = storageLevels;
+                _fromBlock = fromBlock;
+                _toBlock = toBlock;
+            }
+            
+            public IEnumerator<Core.Bloom> GetEnumerator() => current = new BloomEnumerator(_storageLevels, _fromBlock, _toBlock);
+
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+            public bool TryGetBlockRange(out Range<long> blockRange) => current.TryGetBlockRange(out blockRange);
+        }
+        
+        private class BloomEnumerator : IEnumerator<Core.Bloom>
         {
             private readonly BloomStorageLevel[] _storageLevels;
             private readonly long _fromBlock;
             private readonly long _toBlock;
             private readonly int _maxLevel;
             private long _currentPosition;
+
+            private byte CurrentLevel
+            {
+                get => _currentLevel;
+                set
+                {
+                    _currentLevel = value;
+                    _currentLevelRead = false;
+                }
+            }
+
+            private bool _currentLevelRead;
             private byte _currentLevel;
-            
+
             public BloomEnumerator(BloomStorageLevel[] storageLevels, in long fromBlock, in long toBlock)
             {
                 _storageLevels = storageLevels;
@@ -154,32 +192,41 @@ namespace Nethermind.Blockchain.Bloom
 
             public bool MoveNext()
             {
-                _currentPosition += _storageLevels[_currentLevel].LevelElementSize;
-                if (_currentLevel != 0 && _currentPosition % _storageLevels[_currentLevel - 1].LevelElementSize == 0)
+                if (_currentLevelRead)
                 {
-                    _currentLevel--;
+                    _currentPosition += _storageLevels[CurrentLevel].LevelElementSize;
+                    while (CurrentLevel > 0 && _currentPosition % _storageLevels[CurrentLevel - 1].LevelElementSize == 0)
+                    {
+                        CurrentLevel--;
+                    }
                 }
+                else
+                {
+                    _currentLevelRead = true;
+                }
+
                 return _currentPosition <= _toBlock;
             }
 
             public void Reset()
             {
-                _currentPosition = _fromBlock / _storageLevels[0].LevelElementSize - _storageLevels[0].LevelElementSize;
+                _currentPosition = 0;
+                CurrentLevel = 0;
             }
 
             public Core.Bloom Current => _currentPosition < _fromBlock || _currentPosition > _toBlock 
                 ? null 
-                : _storageLevels[_currentLevel].Get(_currentPosition);
+                : _storageLevels[CurrentLevel].Get(_currentPosition);
 
             public bool TryGetBlockRange(out Range<long> blockRange)
             {
-                if (_currentLevel == _maxLevel)
+                if (CurrentLevel == _maxLevel)
                 {
-                    blockRange = new Range<long>(Math.Max(_currentPosition, _fromBlock), Math.Min(_currentPosition + _storageLevels[_currentLevel].LevelElementSize, _toBlock));
+                    blockRange = new Range<long>(Math.Max(_currentPosition, _fromBlock), Math.Min(_currentPosition + _storageLevels[CurrentLevel].LevelElementSize - 1, _toBlock));
                     return true;
                 }
 
-                _currentLevel++;
+                CurrentLevel++;
                 blockRange = default;
                 return false;
             }

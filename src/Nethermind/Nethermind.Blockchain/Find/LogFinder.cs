@@ -58,26 +58,23 @@ namespace Nethermind.Blockchain.Find
 
         private IEnumerable<FilterLog> FilterLogsWithBloomsIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
         {
-            using var bloomEnumerator = _bloomStorage.GetBlooms(fromBlock.Number, toBlock.Number);
-            while (bloomEnumerator.MoveNext())
+            var enumeration = _bloomStorage.GetBlooms(fromBlock.Number, toBlock.Number);
+            foreach (var bloom in enumeration)
             {
-                if (filter.Matches(bloomEnumerator.Current))
+                if (filter.Matches(bloom) && enumeration.TryGetBlockRange(out var blockRange))
                 {
-                    if (bloomEnumerator.TryGetBlockRange(out var blockRange))
+                    for (long blockNumber = blockRange.Start; blockNumber < blockRange.End; blockNumber++)
                     {
-                        for (long blockNumber = blockRange.Start; blockNumber < blockRange.End; blockNumber++)
+                        foreach (var filterLog in FindLogsInBlock(filter, _blockFinder.FindHeader(blockNumber)))
                         {
-                            foreach (var filterLog in FindLogsInBlock(filter, _blockFinder.FindHeader(blockNumber)))
-                            {
-                                yield return filterLog;
-                            }
+                            yield return filterLog;
                         }
                     }
                 }
             }
         }
 
-        private bool CanUseBloomDatabase(BlockHeader toBlock, BlockHeader fromBlock) => _blockFinder.IsMainChain(toBlock) && _blockFinder.IsMainChain(fromBlock);
+        private bool CanUseBloomDatabase(BlockHeader toBlock, BlockHeader fromBlock) => _bloomStorage.ContainsRange(fromBlock.Number, toBlock.Number) && _blockFinder.IsMainChain(toBlock) && _blockFinder.IsMainChain(fromBlock);
 
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
         {

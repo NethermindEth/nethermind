@@ -15,39 +15,40 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace Nethermind.Blockchain.Bloom
 {
     public class NullBloomStorage : IBloomStorage
     {
         public static NullBloomStorage Instance { get; } = new NullBloomStorage();
-        
-        public long MinBlockNumber => -1;
-        public long MaxBlockNumber => -1;
+
+        public int LevelMultiplier => 1;
+        public int Levels => 1;
         public void Store(long blockNumber, Core.Bloom bloom) { }
 
-        public IBloomEnumerator GetBlooms(long fromBlock, long toBlock)
+        public IBloomEnumeration GetBlooms(long fromBlock, long toBlock)
         {
             return new NullBloomEnumerator();
         }
 
-        private class NullBloomEnumerator : IBloomEnumerator
+        public bool ContainsRange(in long fromBlockNumber, in long toBlockNumber) => false;
+
+        private class NullBloomEnumerator : IBloomEnumeration
         {
-            public bool MoveNext() => false;
+            public IEnumerator<Core.Bloom> GetEnumerator() => Enumerable.Empty<Core.Bloom>().GetEnumerator();
 
-            public void Reset() { }
-
-            public Core.Bloom Current => null;
-            
             public bool TryGetBlockRange(out Range<long> blockRange)
             {
                 blockRange = default;
                 return false;
             }
 
-            object IEnumerator.Current => Current;
-
-            public void Dispose() { }
+            IEnumerator IEnumerable.GetEnumerator()
+            {
+                return GetEnumerator();
+            }
         }
     }
 }

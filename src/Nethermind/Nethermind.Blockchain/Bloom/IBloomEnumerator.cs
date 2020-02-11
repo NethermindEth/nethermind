@@ -18,7 +18,7 @@ using System.Collections.Generic;
 
 namespace Nethermind.Blockchain.Bloom
 {
-    public interface IBloomEnumerator : IEnumerator<Core.Bloom>
+    public interface IBloomEnumeration : IEnumerable<Core.Bloom>
     {
         bool TryGetBlockRange(out Range<long> blockRange);
     }
