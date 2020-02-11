@@ -19,9 +19,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -32,7 +30,7 @@ namespace Nethermind.Store
     [DebuggerDisplay("{RootHash}")]
     public class PatriciaTree
     {
-        private static readonly LruCache<Keccak, Rlp> NodeCache = new LruCache<Keccak, Rlp>(256 * 1024);
+        public static readonly LruCache<Keccak, Rlp> NodeCache = new LruCache<Keccak, Rlp>(256 * 1024);
 
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
@@ -234,6 +232,7 @@ namespace Nethermind.Store
             Run(input, input.Length, value, true);
         }
 
+        [DebuggerStepThrough]
         public byte[] Get(Span<byte> rawKey, Keccak rootHash = null)
         {
 //            byte[] value = ValueCache.Get(rawKey);
@@ -429,7 +428,7 @@ namespace Nethermind.Store
                             }
                             else
                             {
-                                throw new InvalidOperationException($"Unknown node type {childNode?.NodeType}");
+                                throw new InvalidOperationException($"Unknown node type {childNode.NodeType}");
                             }
                         }
                     }

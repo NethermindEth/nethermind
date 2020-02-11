@@ -58,7 +58,7 @@ namespace Nethermind.Blockchain.Synchronization
             // if we are not in fast sync then it means we are in full sync and we just want to have two modes:
             //   * NOT_STARTED
             //   * FULL
-            if (!_syncConfig.FastSync && !_syncConfig.BeamSyncEnabled)
+            if (!_syncConfig.FastSync && !_syncConfig.BeamSync)
             {
                 if (Current == SyncMode.NotStarted)
                 {
@@ -110,7 +110,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 newSyncMode = SyncMode.FastBlocks;
             }
-            else if (_syncConfig.BeamSyncEnabled)
+            else if (_syncConfig.BeamSync)
             {
                 if (Current == SyncMode.Beam)
                 {

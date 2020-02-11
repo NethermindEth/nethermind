@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.TxPools;
@@ -25,9 +26,10 @@ using Nethermind.Store;
 
 namespace Nethermind.Blockchain
 {
-    public class ReadOnlyChainProcessingEnv
+    public class ReadOnlyChainProcessingEnv : IDisposable
     {
         private readonly ReadOnlyTxProcessingEnv _txEnv;
+        private BlockchainProcessor _blockProcessingQueue;
         public IBlockProcessor BlockProcessor { get; }
         public IBlockchainProcessor ChainProcessor { get; }
         public IBlockProcessingQueue BlockProcessingQueue { get; }
@@ -45,9 +47,14 @@ namespace Nethermind.Blockchain
         {
             _txEnv = txEnv;
             BlockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, _txEnv.TransactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, StateProvider, _txEnv.StorageProvider, NullTxPool.Instance, receiptStorage, logManager);
-            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(_txEnv.BlockTree, BlockProcessor, recoveryStep, logManager, false);
-            BlockProcessingQueue = blockchainProcessor;
-            ChainProcessor = new OneTimeChainProcessor(dbProvider, blockchainProcessor);
+            _blockProcessingQueue = new BlockchainProcessor(_txEnv.BlockTree, BlockProcessor, recoveryStep, logManager, false);
+            BlockProcessingQueue = _blockProcessingQueue;
+            ChainProcessor = new OneTimeChainProcessor(dbProvider, _blockProcessingQueue);
+        }
+
+        public void Dispose()
+        {
+            _blockProcessingQueue?.Dispose();
         }
     }
 }

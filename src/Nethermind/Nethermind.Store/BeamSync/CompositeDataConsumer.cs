@@ -15,17 +15,22 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
+using Nethermind.Logging;
 
 namespace Nethermind.Store.BeamSync
 {
     public class CompositeDataConsumer : INodeDataConsumer
     {
         private readonly INodeDataConsumer[] _consumers;
+        private ILogger _logger;
 
-        public CompositeDataConsumer(params INodeDataConsumer[] consumers)
+        public CompositeDataConsumer(ILogManager logManager, params INodeDataConsumer[] consumers)
         {
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _consumers = consumers;
             foreach (INodeDataConsumer dataConsumer in _consumers)
             {
@@ -38,33 +43,36 @@ namespace Nethermind.Store.BeamSync
             NeedMoreData?.Invoke(this, EventArgs.Empty);
         }
 
+        public UInt256 RequiredPeerDifficulty => _consumers.Max(c => c.RequiredPeerDifficulty);
         public event EventHandler NeedMoreData;
 
-        public Keccak[] PrepareRequest()
+        public DataConsumerRequest[] PrepareRequests()
         {
+            List<DataConsumerRequest> combined = new List<DataConsumerRequest>();
             foreach (INodeDataConsumer nodeDataConsumer in _consumers)
             {
-                if (nodeDataConsumer.NeedsData)
-                {
-                    return nodeDataConsumer.PrepareRequest();
-                }
+                DataConsumerRequest[] requests = nodeDataConsumer.PrepareRequests();
+                combined.AddRange(requests);
             }
 
-            // throw new InvalidOperationException("No data needed");
-            return Array.Empty<Keccak>();
+            if (combined.Count > 0)
+            {
+                // if (_logger.IsInfo) _logger.Info($"Prepared a combined request of length {combined.Count}");
+                return combined.ToArray();
+            }
+
+            return Array.Empty<DataConsumerRequest>();
         }
 
-        public int HandleResponse(Keccak[] hashes, byte[][] data)
+        public int HandleResponse(DataConsumerRequest request, byte[][] data)
         {
             int consumed = 0;
             foreach (INodeDataConsumer nodeDataConsumer in _consumers)
             {
-                consumed += nodeDataConsumer.HandleResponse(hashes, data);
+                consumed += nodeDataConsumer.HandleResponse(request, data);
             }
 
             return consumed;
         }
-
-        public bool NeedsData => _consumers.Any(c => c.NeedsData);
     }
 }

@@ -17,6 +17,7 @@
 using System;
 using System.Threading;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Store.BeamSync
 {
@@ -27,8 +28,10 @@ namespace Nethermind.Store.BeamSync
         private NullDataConsumer()
         {
         }
-        
+
         public static NullDataConsumer Instance => LazyInitializer.EnsureInitialized(ref _instance);
+
+        public UInt256 RequiredPeerDifficulty => UInt256.Zero;
 
         public event EventHandler NeedMoreData
         {
@@ -36,12 +39,12 @@ namespace Nethermind.Store.BeamSync
             remove { }
         }
 
-        public Keccak[] PrepareRequest()
+        public DataConsumerRequest[] PrepareRequests()
         {
-            return Array.Empty<Keccak>();
+            return Array.Empty<DataConsumerRequest>();
         }
 
-        public int HandleResponse(Keccak[] hashes, byte[][] data)
+        public int HandleResponse(DataConsumerRequest request, byte[][] data)
         {
             throw new InvalidOperationException("Should never receive response here");
         }

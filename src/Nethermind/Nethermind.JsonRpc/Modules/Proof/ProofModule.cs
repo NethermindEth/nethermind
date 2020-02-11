@@ -76,6 +76,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 sourceHeader.Hash,
                 Keccak.OfAnEmptySequenceRlp,
                 Address.Zero,
+                
                 0,
                 sourceHeader.Number + 1,
                 sourceHeader.GasLimit,

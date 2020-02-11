@@ -20,6 +20,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.JsonRpc.Data;
@@ -160,6 +161,7 @@ namespace Nethermind.JsonRpc
             IModule module = _rpcModuleProvider.Rent(methodName, method.ReadOnly);
             try
             {
+                BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
                 object invocationResult = method.Info.Invoke(module, parameters);
                 switch (invocationResult)
                 {
@@ -175,6 +177,10 @@ namespace Nethermind.JsonRpc
             catch (TargetParameterCountException e)
             {
                 return GetErrorResponse(ErrorCodes.InvalidParams, e.Message, request.Id, methodName);
+            }
+            catch (TargetInvocationException invocationException) when (invocationException.InnerException is BeamSyncException beamSyncException) 
+            {
+                return GetErrorResponse(ErrorCodes.ResourceUnavailable, beamSyncException.Message, request.Id, methodName);
             }
             finally
             {

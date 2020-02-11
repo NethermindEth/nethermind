@@ -329,6 +329,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void Can_retrieve_node_values()
         {
             _stateDb.Set(TestItem.KeccakA, TestItem.RandomDataA);
+            _stateDb.Commit();
             byte[][] values = _syncServer.GetNodeData(new[] {TestItem.KeccakA, TestItem.KeccakB});
             Assert.AreEqual(2, values.Length, "data.Length");
             Assert.AreEqual(TestItem.RandomDataA, values[0], "data[0]");

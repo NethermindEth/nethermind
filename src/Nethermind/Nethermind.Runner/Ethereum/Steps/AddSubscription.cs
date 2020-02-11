@@ -34,7 +34,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         public Task Execute()
         {
             ISubscription subscription = _context.Producers.Any() 
-                ? new Subscription(_context.Producers, _context.BlockProcessor, _context.LogManager) 
+                ? new Subscription(_context.Producers, _context.MainBlockProcessor, _context.LogManager) 
                 : (ISubscription) new EmptySubscription();
 
             _context.DisposeStack.Push(subscription);

@@ -68,7 +68,7 @@ namespace Nethermind.Runner.Test
             ISyncConfig config = configProvider.GetConfig<ISyncConfig>();
             Assert.AreEqual(fastSyncEnabled, config.FastSync, "fast sync");
             Assert.AreEqual(fastBlocksEnabled, config.FastBlocks, "fast blocks");
-            Assert.AreEqual(false, config.BeamSyncEnabled);
+            Assert.AreEqual(false, config.BeamSync);
         }
         
         [TestCase("ropsten_archive.cfg", true)]

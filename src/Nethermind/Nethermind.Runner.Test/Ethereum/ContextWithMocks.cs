@@ -48,7 +48,7 @@ namespace Nethermind.Runner.Test.Ethereum
             context.PeerManager = Substitute.For<IPeerManager>();
             context.SpecProvider = Substitute.For<ISpecProvider>();
             context.EthereumEcdsa = Substitute.For<IEthereumEcdsa>();
-            context.BlockProcessor = Substitute.For<IBlockProcessor>();
+            context.MainBlockProcessor = Substitute.For<IBlockProcessor>();
             context.ReceiptStorage = Substitute.For<IReceiptStorage>();
             context.BlockValidator = Substitute.For<IBlockValidator>();
             context.RewardCalculatorSource = Substitute.For<IRewardCalculatorSource>();

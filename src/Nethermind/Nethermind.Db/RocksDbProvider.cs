@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Db.Config;
 using Nethermind.Db.Databases;
@@ -26,6 +27,10 @@ namespace Nethermind.Db
     public class RocksDbProvider : IDbProvider
     {
         private readonly ILogManager _logManager;
+        private IDb _configsDb;
+        private IDb _ethRequestsDb;
+        private string _basePath;
+        private IDbConfig _dbConfig;
 
         public RocksDbProvider(ILogManager logManager)
         {
@@ -34,6 +39,9 @@ namespace Nethermind.Db
 
         public async Task Init(string basePath, IDbConfig dbConfig, bool useReceiptsDb)
         {
+            _dbConfig = dbConfig;
+            _basePath = basePath;
+            
             HashSet<Task> allInitializers = new HashSet<Task>();
             allInitializers.Add(Task.Run(() => BlocksDb = new BlocksRocksDb(basePath, dbConfig, _logManager)));
             allInitializers.Add(Task.Run(() => HeadersDb = new HeadersRocksDb(basePath, dbConfig, _logManager)));
@@ -41,8 +49,6 @@ namespace Nethermind.Db
             allInitializers.Add(Task.Run(() => StateDb = new StateDb(new StateRocksDb(basePath, dbConfig, _logManager))));
             allInitializers.Add(Task.Run(() => CodeDb = new StateDb(new CodeRocksDb(basePath, dbConfig, _logManager))));
             allInitializers.Add(Task.Run(() => PendingTxsDb = new PendingTxsRocksDb(basePath, dbConfig, _logManager)));
-            allInitializers.Add(Task.Run(() => ConfigsDb = new ConfigsRocksDb(basePath, dbConfig, _logManager)));
-            allInitializers.Add(Task.Run(() => EthRequestsDb = new EthRequestsRocksDb(basePath, dbConfig, _logManager)));
 
             allInitializers.Add(Task.Run(() =>
             {
@@ -66,8 +72,32 @@ namespace Nethermind.Db
         public IDb HeadersDb { get; private set; }
         public IDb BlockInfosDb { get; private set; }
         public IDb PendingTxsDb { get; private set; }
-        public IDb ConfigsDb { get; private set; }
-        public IDb EthRequestsDb { get; private set; }
+
+        public IDb ConfigsDb
+        {
+            get
+            {
+                if (_configsDb == null)
+                {
+                    LazyInitializer.EnsureInitialized(ref _configsDb, () => new ConfigsRocksDb(_basePath, _dbConfig, _logManager));
+                }
+
+                return _configsDb;
+            }
+        }
+
+        public IDb EthRequestsDb
+        {
+            get
+            {
+                if (_ethRequestsDb == null)
+                {
+                    LazyInitializer.EnsureInitialized(ref _ethRequestsDb, () => new ConfigsRocksDb(_basePath, _dbConfig, _logManager));
+                }
+
+                return _ethRequestsDb;
+            }
+        }
 
         public void Dispose()
         {

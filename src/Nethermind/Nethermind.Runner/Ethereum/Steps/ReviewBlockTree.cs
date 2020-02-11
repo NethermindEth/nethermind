@@ -54,7 +54,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 return;
             }
 
-            if (!syncConfig.FastSync && !syncConfig.BeamSyncEnabled)
+            if (!syncConfig.FastSync && !syncConfig.BeamSync)
             {
                 await _context.BlockTree.LoadBlocksFromDb(_context.RunnerCancellation.Token, null).ContinueWith(t =>
                 {
@@ -68,7 +68,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     }
                 });
             }
-            else if(!syncConfig.BeamSyncEnabled)
+            else if(!syncConfig.BeamSync)
             {
                 await _context.BlockTree.FixFastSyncGaps(_context.RunnerCancellation.Token).ContinueWith(t =>
                 {

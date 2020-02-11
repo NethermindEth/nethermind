@@ -82,8 +82,6 @@ namespace Nethermind.Blockchain
 
         public Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
         {
-            if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlocks[0].Number} from state root: {branchStateRoot}");
-            
             if (suggestedBlocks.Length == 0) return Array.Empty<Block>();
 
             int stateSnapshot = _stateDb.TakeSnapshot();
@@ -150,7 +148,6 @@ namespace Nethermind.Blockchain
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                if (_logger.IsTrace) _logger.Trace($"Processing transaction {i} out of {block.Transactions.Length}");
                 Transaction currentTx = block.Transactions[i];
                 _receiptsTracer.StartNewTxTrace(currentTx.Hash);
                 _transactionProcessor.Execute(currentTx, block.Header, _receiptsTracer);
@@ -185,7 +182,6 @@ namespace Nethermind.Blockchain
 
         private Block ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
         {
-            BeamSyncDb.Context = suggestedBlock.Hash;
             Block block;
             if (suggestedBlock.IsGenesis)
             {

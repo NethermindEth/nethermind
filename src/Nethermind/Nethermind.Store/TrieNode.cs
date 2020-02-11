@@ -49,11 +49,11 @@ namespace Nethermind.Store
                                 MemorySizes.SmallObjectOverhead
                                 /* _isDirty + NodeType aligned to 4 (is it 8?) and end up in object overhead*/
                                 + (Key?.MemorySize ?? 0);
-                
+
                 return MemorySizes.Align(unaligned);
             }
         }
-        
+
         public TrieNode(NodeType nodeType)
         {
             NodeType = nodeType;
@@ -189,6 +189,7 @@ namespace Nethermind.Store
         {
             try
             {
+
                 if (NodeType == NodeType.Unknown)
                 {
                     if (FullRlp == null)
@@ -243,9 +244,9 @@ namespace Nethermind.Store
                     throw new TrieException($"Unexpected number of items = {numberOfItems} when decoding a node");
                 }
             }
-            catch (Exception e)
+            catch (RlpException rlpException)
             {
-                throw new TrieException($"Trie exception when working with node {Keccak}", e);
+                throw new TrieException($"Error when decoding node {Keccak}", rlpException);
             }
         }
 

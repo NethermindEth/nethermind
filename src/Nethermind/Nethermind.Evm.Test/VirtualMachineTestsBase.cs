@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Numerics;
+using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -65,8 +66,8 @@ namespace Nethermind.Evm.Test
         {
             ILogManager logger = LimboLogs.Instance;
             
-            ISnapshotableDb beamSyncDb = new StateDb(new BeamSyncDb(new MemDb(), "test", LimboLogs.Instance));
-            IDb beamSyncCodeDb = new BeamSyncDb(new MemDb(), "test", LimboLogs.Instance);
+            ISnapshotableDb beamSyncDb = new StateDb(new BeamSyncDb(new MemDb(), LimboLogs.Instance));
+            IDb beamSyncCodeDb = new BeamSyncDb(new MemDb(), LimboLogs.Instance);
             IDb codeDb = UseBeamSync ? beamSyncCodeDb : new StateDb();
             _stateDb = UseBeamSync ? beamSyncDb : new StateDb();
             TestState = new StateProvider(_stateDb, codeDb, logger);

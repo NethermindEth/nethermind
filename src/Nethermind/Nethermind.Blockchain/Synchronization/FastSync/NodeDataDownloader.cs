@@ -18,11 +18,11 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Synchronization.FastBlocks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Store;
+using Nethermind.Store.BeamSync;
 
 namespace Nethermind.Blockchain.Synchronization.FastSync
 {
@@ -47,14 +47,18 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
         private void AdditionalConsumerOnNeedMoreData(object sender, EventArgs e)
         {
-            Task keepSyncing = SyncOnce(CancellationToken.None, true);
-            keepSyncing.ContinueWith(t =>
+            StateSyncBatch[] requests = PrepareDataConsumerRequests();
+            foreach (StateSyncBatch stateSyncBatch in requests)
             {
-                if (t.IsFaulted)
+                Task keepSyncing = SyncOnce(CancellationToken.None, stateSyncBatch);
+                keepSyncing.ContinueWith(t =>
                 {
-                    _logger.Error($"Requesting node data failed: {t.Exception}");
-                }
-            });
+                    if (t.IsFaulted)
+                    {
+                        _logger.Error($"Requesting node data failed: {t.Exception}");
+                    }
+                });
+            }
         }
 
         private async Task ExecuteRequest(CancellationToken token, StateSyncBatch batch)
@@ -80,7 +84,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             {
                 if (batch.IsAdditionalDataConsumer)
                 {
-                    result = (NodeDataHandlerResult.OK, _additionalConsumer.HandleResponse(batch.RequestedNodes.Select(r => r.Hash).ToArray(), batch.Responses));
+                    result = (NodeDataHandlerResult.OK, _additionalConsumer.HandleResponse(new DataConsumerRequest(batch.ConsumerId, batch.RequestedNodes.Select(r => r.Hash).ToArray()), batch.Responses));
                 }
                 else
                 {
@@ -111,7 +115,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
         private async Task KeepSyncing(CancellationToken token)
         {
-            int lastRequestSize; 
+            int lastRequestSize;
             do
             {
                 if (token.IsCancellationRequested)
@@ -119,20 +123,20 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                     return;
                 }
                 
-                lastRequestSize = await SyncOnce(token, false);
+                StateSyncBatch stateSyncBatch = PrepareRequest();
+                lastRequestSize = await SyncOnce(token, stateSyncBatch);
             } while (_pendingRequests != 0 || lastRequestSize > 0);
 
             if (_logger.IsInfo) _logger.Info($"Finished with {_pendingRequests} pending requests and {_syncPeerPool.UsefulPeerCount} useful peers.");
         }
 
-        private async Task<int> SyncOnce(CancellationToken token, bool forAdditionalConsumers)
+        private async Task<int> SyncOnce(CancellationToken token, StateSyncBatch request)
         {
             int requestSize = 0;
-            StateSyncBatch request = PrepareRequest(forAdditionalConsumers);
             if (request.RequestedNodes.Length != 0)
             {
                 // should be random selection? (we do not know if they support what we need)
-                request.AssignedPeer = await _syncPeerPool.BorrowAsync(BySpeedSelectionStrategy.Fastest, "node sync", 1000);
+                request.AssignedPeer = await _syncPeerPool.BorrowAsync(new TotalDiffFilter(BySpeedSelectionStrategy.Fastest, request.RequiredPeerDifficulty), "node sync", 1000);
 
                 Interlocked.Increment(ref _pendingRequests);
                 // if (_logger.IsWarn) _logger.Warn($"Creating new request with {request.RequestedNodes.Length} nodes");
@@ -159,28 +163,33 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             return requestSize;
         }
 
-        private StateSyncBatch PrepareRequest(bool forAdditionalConsumers)
+        private StateSyncBatch[] PrepareDataConsumerRequests()
         {
-            if (forAdditionalConsumers)
+            Thread.Sleep(20);
+
+            DataConsumerRequest[] requests = _additionalConsumer.PrepareRequests();
+            if (requests.Length == 0)
             {
-                if (!_additionalConsumer.NeedsData)
-                {
-                    return StateSyncBatch.Empty;
-                }
-
-                Keccak[] hashes = _additionalConsumer.PrepareRequest();
-                if (hashes.Length == 0)
-                {
-                    return StateSyncBatch.Empty;
-                }
-
-                StateSyncBatch priorityBatch = new StateSyncBatch();
-                priorityBatch.RequestedNodes = hashes.Select(h => new StateSyncItem(h, NodeDataType.Code, 0, 0)).ToArray();
-                // if (_logger.IsWarn) _logger.Warn($"!!! Priority batch {priorityBatch.RequestedNodes.Length}");
-                priorityBatch.IsAdditionalDataConsumer = true;
-                return priorityBatch;
+                return Array.Empty<StateSyncBatch>();
             }
 
+            StateSyncBatch[] stateSync = new StateSyncBatch[requests.Length];
+            for (int i = 0; i < stateSync.Length; i++)
+            {
+                StateSyncBatch priorityBatch = new StateSyncBatch();
+                priorityBatch.RequestedNodes = requests[i].Keys.Select(h => new StateSyncItem(h, NodeDataType.Code, 0, 0)).ToArray();
+                // if (_logger.IsWarn) _logger.Warn($"!!! Priority batch {priorityBatch.RequestedNodes.Length}");
+                priorityBatch.IsAdditionalDataConsumer = true;
+                priorityBatch.RequiredPeerDifficulty = _additionalConsumer.RequiredPeerDifficulty;
+                priorityBatch.ConsumerId = requests[i].ConsumerId;
+                stateSync[i] = priorityBatch;
+            }
+
+            return stateSync;
+        }
+
+        private StateSyncBatch PrepareRequest()
+        {
             if (_logger.IsTrace) _logger.Trace($"Pending requests {_pendingRequests}");
             StateSyncBatch standardBatch = _feed.PrepareRequest();
             // if (_logger.IsWarn) _logger.Warn($"!!! Standard batch {standardBatch.RequestedNodes.Length}");

@@ -14,40 +14,30 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Db.Config;
-using Nethermind.Db.Databases;
 using Nethermind.Logging;
 using Nethermind.Store;
 using Nethermind.Store.BeamSync;
 
-namespace Nethermind.Db
+namespace Nethermind.Blockchain.Synchronization.BeamSync
 {
     public class BeamSyncDbProvider : IDbProvider
     {
         public INodeDataConsumer NodeDataConsumer { get; }
         
-        public BeamSyncDbProvider(string description, string basePath, IDbConfig dbConfig, ILogManager logManager, bool useReceiptsDb)
+        public BeamSyncDbProvider(IDbProvider otherProvider, string description, ILogManager logManager)
         {
-            BeamSyncDb codeDb = new BeamSyncDb(new CodeRocksDb(basePath, dbConfig, logManager), description, logManager);
-            BeamSyncDb stateDb = new BeamSyncDb(new StateRocksDb(basePath, dbConfig, logManager), description, logManager);
-            NodeDataConsumer = new CompositeDataConsumer(codeDb, stateDb);
-            BlocksDb = new BlocksRocksDb(basePath, dbConfig, logManager);
-            HeadersDb = new HeadersRocksDb(basePath, dbConfig, logManager);
-            BlockInfosDb = new BlockInfosRocksDb(basePath, dbConfig, logManager);
+            BeamSyncDb codeDb = new BeamSyncDb(otherProvider.CodeDb.Innermost, logManager);
+            BeamSyncDb stateDb = new BeamSyncDb(otherProvider.StateDb.Innermost, logManager);
+            NodeDataConsumer = new CompositeDataConsumer(logManager,codeDb, stateDb);
+            BlocksDb = otherProvider.BlocksDb;
+            HeadersDb = otherProvider.HeadersDb;
+            BlockInfosDb = otherProvider.BlockInfosDb;
             StateDb = new StateDb(stateDb);
             CodeDb = new StateDb(codeDb);
-            PendingTxsDb = new PendingTxsRocksDb(basePath, dbConfig, logManager);
-            ConfigsDb = new ConfigsRocksDb(basePath, dbConfig, logManager);
-            EthRequestsDb = new EthRequestsRocksDb(basePath, dbConfig, logManager);
-            
-            if (useReceiptsDb)
-            {
-                ReceiptsDb = new ReceiptsRocksDb(basePath, dbConfig, logManager);
-            }
-            else
-            {
-                ReceiptsDb = new ReadOnlyDb(new MemDb(), false);
-            }
+            PendingTxsDb = otherProvider.PendingTxsDb;
+            ConfigsDb = otherProvider.ConfigsDb;
+            EthRequestsDb = otherProvider.EthRequestsDb;
+            ReceiptsDb = otherProvider.ReceiptsDb;
         }
         
         public ISnapshotableDb StateDb { get; }
