@@ -310,11 +310,12 @@ namespace Nethermind.Blockchain
                         break; //failure here
                     }
                     
-                    // // for beam sync
-                    // if((_blockTree.Head?.Number ?? 0) == 0)
-                    // {
+                    // for beam sync we do not expect previous blocks to necessarily be there and we
+                    // do not need them since we can requests state from outside
+                    if((options & ProcessingOptions.IgnoreParentNotOnMainChain) != 0)
+                    {
                         break;
-                    // }
+                    }
                     
                     bool isFastSyncTransition = _blockTree.Head == _blockTree.Genesis && toBeProcessed.Number > 1; 
                     if (!isFastSyncTransition)

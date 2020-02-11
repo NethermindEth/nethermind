@@ -26,7 +26,8 @@ namespace Nethermind.Blockchain
         ForceProcessing = 2,
         StoreReceipts = 4,
         NoValidation = 8,
-        All = 15,
+        IgnoreParentNotOnMainChain = 16,
+        All = 31,
         ProducingBlock = NoValidation | ReadOnlyChain,
     }
 

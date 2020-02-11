@@ -108,7 +108,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             
             if (block.IsGenesis)
             {
-                _blockchainProcessor.Enqueue(block, ProcessingOptions.None);
+                _blockchainProcessor.Enqueue(block, ProcessingOptions.IgnoreParentNotOnMainChain);
                 return;
             }
 
@@ -152,7 +152,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                     {
                         if (_logger.IsInfo) _logger.Info($"Enqueuing for standard processing {block}");
                         // at this stage we are sure to have all the state available
-                        _blockchainProcessor.Enqueue(block, ProcessingOptions.None);
+                        _blockchainProcessor.Enqueue(block, ProcessingOptions.IgnoreParentNotOnMainChain);
                     }
 
                     processor.Dispose();
