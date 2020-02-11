@@ -80,10 +80,15 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             }
         }
         
-        private (IBlockchainProcessor, IStateReader) CreateProcessor(IReadOnlyDbProvider readOnlyDbProvider, ISpecProvider specProvider, ILogManager logManager)
+        private (IBlockchainProcessor, IStateReader) CreateProcessor(Block block, IReadOnlyDbProvider readOnlyDbProvider, ISpecProvider specProvider, ILogManager logManager)
         {
             ReadOnlyTxProcessingEnv txEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, _readOnlyBlockTree, specProvider, logManager);
             ReadOnlyChainProcessingEnv env = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculatorSource.Get(txEnv.TransactionProcessor), NullReceiptStorage.Instance, _readOnlyDbProvider, specProvider, logManager);
+            env.BlockProcessor.TransactionProcessed += (sender, args) =>
+            {
+                if(_logger.IsInfo) _logger.Info($"Processed tx {args.Index}/{block.Transactions.Length} of {block.Number}");
+            };
+            
             return (env.ChainProcessor, txEnv.StateReader);
         }
 
@@ -116,7 +121,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             try
             {
                 _recoveryStep.RecoverData(block);
-                (IBlockchainProcessor processor, IStateReader stateReader) = CreateProcessor(new ReadOnlyDbProvider(_readOnlyDbProvider, true), _specProvider, _logManager);
+                (IBlockchainProcessor processor, IStateReader stateReader) = CreateProcessor(block, new ReadOnlyDbProvider(_readOnlyDbProvider, true), _specProvider, _logManager);
 
                 BlockHeader parentHeader = _readOnlyBlockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (parentHeader != null)
