@@ -28,21 +28,10 @@ using Nethermind.Store.BeamSync;
 
 namespace Nethermind.Blockchain.Synchronization.BeamSync
 {
-    public static class DataConsumer
-    {
-        private static int _dataConsumerId;
-
-        public static int AssignConsumerId()
-        {
-            return Interlocked.Increment(ref _dataConsumerId);
-        }
-    }
-
     public class BeamSyncDb : IDb, INodeDataConsumer
     {
-        private int _consumerId = DataConsumer.AssignConsumerId();
+        private int _consumerId = DataConsumerIdProvider.AssignConsumerId();
 
-        private readonly string _description;
         public UInt256 RequiredPeerDifficulty { get; private set; } = UInt256.Zero;
 
         /// <summary>
@@ -52,9 +41,8 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
 
         private ILogger _logger;
 
-        public BeamSyncDb(IDb db, string description, ILogManager logManager)
+        public BeamSyncDb(IDb db, ILogManager logManager)
         {
-            _description = description;
             _logger = logManager.GetClassLogger<BeamSyncDb>();
             _db = db ?? throw new ArgumentNullException(nameof(db));
         }
@@ -139,7 +127,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                         {
                             string message = $"Beam sync request {BeamSyncContext.Description.Value} with last update on {BeamSyncContext.LastFetchUtc.Value:hh:mm:ss.fff} has expired";
                             if (_logger.IsDebug) _logger.Debug(message);
-                            throw new StateException(message);
+                            throw new BeamSyncException(message);
                         }
 
                         wasInDb = false;
@@ -263,6 +251,10 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                             _db[key.Bytes] = data[i];
                             // _requestedNodes.Remove(hashes[i], out _);
                             consumed++;
+                        }
+                        else
+                        {
+                            if(_logger.IsWarn) _logger.Warn("Received a node data which does not match hash.");
                         }
                     }
                     else

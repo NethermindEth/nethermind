@@ -35,11 +35,6 @@ namespace Nethermind.Runner
 {
     public class Startup
     {
-        private static readonly JsonSerializerSettings JsonSettings = new JsonSerializerSettings
-        {
-            ContractResolver = new CamelCasePropertyNamesContractResolver()
-        };
-        
         private IJsonSerializer _jsonSerializer = CreateJsonSerializer();
 
         private static EthereumJsonSerializer CreateJsonSerializer() => new EthereumJsonSerializer();
@@ -48,7 +43,7 @@ namespace Nethermind.Runner
         {
             services.Configure<KestrelServerOptions>(options => { options.AllowSynchronousIO = true; });
             Bootstrap.Instance.RegisterJsonRpcServices(services);
-            var corsOrigins = Environment.GetEnvironmentVariable("NETHERMIND_CORS_ORIGINS") ?? "*";
+            string? corsOrigins = Environment.GetEnvironmentVariable("NETHERMIND_CORS_ORIGINS") ?? "*";
             services.AddCors(c => c.AddPolicy("Cors",
                 p => p.AllowAnyMethod().AllowAnyHeader().WithOrigins(corsOrigins)));
         }
@@ -69,9 +64,9 @@ namespace Nethermind.Runner
 
             app.UseCors("Cors");
 
-            var configProvider = app.ApplicationServices.GetService<IConfigProvider>();
-            var initConfig = configProvider.GetConfig<IInitConfig>();
-            var jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
+            IConfigProvider configProvider = app.ApplicationServices.GetService<IConfigProvider>();
+            IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+            IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
             if (initConfig.WebSocketsEnabled)
             {
                 app.UseWebSockets();
@@ -88,9 +83,9 @@ namespace Nethermind.Runner
                 }
                 else if (ctx.Connection.LocalPort == jsonRpcConfig.Port && ctx.Request.Method == "POST")
                 {
-                    using var reader = new StreamReader(ctx.Request.Body, Encoding.UTF8);
-                    var request = await reader.ReadToEndAsync();
-                    var result = await jsonRpcProcessor.ProcessAsync(request);
+                    using StreamReader reader = new StreamReader(ctx.Request.Body, Encoding.UTF8);
+                    string request = await reader.ReadToEndAsync();
+                    JsonRpcResult result = await jsonRpcProcessor.ProcessAsync(request);
 
                     if (result.IsCollection)
                     {

@@ -140,7 +140,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                     BeamSyncContext.Description.Value = $"[preProcess of {block.Hash.ToShortString()}]";
                     BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
                     BeamSyncContext.Cancelled.Value = cancellationToken.Token;
-                    processedBlock = processor.Process(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance);
+                    processedBlock = processor.Process(block, ProcessingOptions.ReadOnlyChain | ProcessingOptions.IgnoreParentNotOnMainChain, NullBlockTracer.Instance);
                     if (processedBlock == null)
                     {
                         if (_logger.IsInfo) _logger.Info($"Block {block.ToString(Block.Format.Short)} skipped in beam sync");

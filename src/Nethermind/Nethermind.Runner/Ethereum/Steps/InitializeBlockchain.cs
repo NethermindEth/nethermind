@@ -68,7 +68,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (syncConfig.BeamSync)
             {
-                _context.Logger.Warn("Welcome to the alpha version of Goerli Beam Sync. I will start by downloading a pivot block header and then will continue to download all the headers from pivot upwards. After that I will be beam synchronizing the new blocks.");
+                _context.Logger.Warn("Welcome to the alpha version of the Nethermind Goerli Beam Sync. I will start by downloading the pivot block header and then will continue to download all the headers from the pivot upwards. After that I will be beam synchronizing the new blocks. Many things can fail - appreciated if you report issues via GitHub or Gitter.");
             }
             
             Account.AccountStartNonce = _context.ChainSpec.Parameters.AccountStartNonce;

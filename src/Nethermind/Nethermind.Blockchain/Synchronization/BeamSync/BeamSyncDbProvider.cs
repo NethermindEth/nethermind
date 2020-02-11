@@ -26,8 +26,8 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
         
         public BeamSyncDbProvider(IDbProvider otherProvider, string description, ILogManager logManager)
         {
-            BeamSyncDb codeDb = new BeamSyncDb(otherProvider.CodeDb.Innermost, description, logManager);
-            BeamSyncDb stateDb = new BeamSyncDb(otherProvider.StateDb.Innermost, description, logManager);
+            BeamSyncDb codeDb = new BeamSyncDb(otherProvider.CodeDb.Innermost, logManager);
+            BeamSyncDb stateDb = new BeamSyncDb(otherProvider.StateDb.Innermost, logManager);
             NodeDataConsumer = new CompositeDataConsumer(logManager,codeDb, stateDb);
             BlocksDb = otherProvider.BlocksDb;
             HeadersDb = otherProvider.HeadersDb;

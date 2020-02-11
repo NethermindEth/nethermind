@@ -205,8 +205,8 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
             scenario.SetupTree(_remoteStateTrie, _remoteState, _remoteCode);
             _remoteStateTrie.UpdateRootHash();
 
-            _stateBeamLocal = new BeamSyncDb(new MemDb(), "state", LimboLogs.Instance);
-            _codeBeamLocal = new BeamSyncDb(new MemDb(), "code", LimboLogs.Instance);
+            _stateBeamLocal = new BeamSyncDb(new MemDb(), LimboLogs.Instance);
+            _codeBeamLocal = new BeamSyncDb(new MemDb(), LimboLogs.Instance);
             _stateLocal = new StateDb(_stateBeamLocal);
             _codeLocal = new StateDb(_codeBeamLocal);
 
