@@ -19,9 +19,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -430,7 +428,7 @@ namespace Nethermind.Store
                             }
                             else
                             {
-                                throw new InvalidOperationException($"Unknown node type {childNode?.NodeType}");
+                                throw new InvalidOperationException($"Unknown node type {childNode.NodeType}");
                             }
                         }
                     }
