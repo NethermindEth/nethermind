@@ -20,6 +20,9 @@ namespace Nethermind.Store
 {
     public class ReadOnlyDbProvider : IReadOnlyDbProvider
     {
+        public ReadOnlyDb NestedStateDb { get; }
+        public ReadOnlyDb NestedCodeDb { get; }
+        
         public ReadOnlyDbProvider(IDbProvider wrappedProvider, bool createInMemoryWriteStore)
         {
             if (wrappedProvider == null)
@@ -27,12 +30,12 @@ namespace Nethermind.Store
                 throw new ArgumentNullException(nameof(wrappedProvider));
             }
 
-            // NestedStateDb = new ReadOnlyDb(wrappedProvider.StateDb, createInMemoryWriteStore);
-            // StateDb = new StateDb(NestedStateDb);
-            // NestedCodeDb = new ReadOnlyDb(wrappedProvider.CodeDb, createInMemoryWriteStore);
-            // CodeDb = new StateDb(NestedCodeDb);
-            StateDb = new ReadOnlyDb(wrappedProvider.StateDb, createInMemoryWriteStore);
-            CodeDb = new ReadOnlyDb(wrappedProvider.CodeDb, createInMemoryWriteStore);
+            NestedStateDb = new ReadOnlyDb(wrappedProvider.StateDb, createInMemoryWriteStore);
+            StateDb = new StateDb(NestedStateDb);
+            NestedCodeDb = new ReadOnlyDb(wrappedProvider.CodeDb, createInMemoryWriteStore);
+            CodeDb = new StateDb(NestedCodeDb);
+            // StateDb = new ReadOnlyDb(wrappedProvider.StateDb, createInMemoryWriteStore);
+            // CodeDb = new ReadOnlyDb(wrappedProvider.CodeDb, createInMemoryWriteStore);
             NestedReceiptsDb = new ReadOnlyDb(wrappedProvider.ReceiptsDb, createInMemoryWriteStore);
             NestedBlockInfosDb = new ReadOnlyDb(wrappedProvider.BlockInfosDb, createInMemoryWriteStore);
             NestedBlocksDb = new ReadOnlyDb(wrappedProvider.BlocksDb, createInMemoryWriteStore);
