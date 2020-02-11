@@ -62,10 +62,10 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public void Throws_rlp_exception_on_unexpected_format()
+        public void Throws_trie_exception_on_unexpected_format()
         {
             TrieNode trieNode = new TrieNode(NodeType.Unknown, new Rlp(new byte[42]));
-            Assert.Throws<RlpException>(() => trieNode.ResolveNode(new PatriciaTree()));
+            Assert.Throws<TrieException>(() => trieNode.ResolveNode(new PatriciaTree()));
         }
 
         [Test]
