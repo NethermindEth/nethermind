@@ -99,7 +99,7 @@ namespace Nethermind.Network
                 _txPool.RemovePeer(syncPeer.Node.Id);
                 if (session.BestStateReached == SessionState.Initialized)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"{session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason} {e.Details}");
+                    if (_logger.IsDebug) _logger.Debug($"{session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason} {e.Details}");
                 }
 
                 _syncPeers.TryRemove(session.SessionId, out _);

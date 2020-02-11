@@ -93,7 +93,8 @@ namespace Nethermind.Blockchain.Synchronization
             bool allReceiptsDownloaded = !_syncConfig.DownloadReceiptsInFastSync || (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) <= 1;
             bool allBodiesDownloaded = !_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1;
 
-            return isFastBlocks && allBodiesDownloaded && allHeadersDownloaded && allReceiptsDownloaded
+            return !isFastBlocks
+                   || allBodiesDownloaded && allHeadersDownloaded && allReceiptsDownloaded
                    || isBeamSync && anyHeaderDownloaded;
         }
 
