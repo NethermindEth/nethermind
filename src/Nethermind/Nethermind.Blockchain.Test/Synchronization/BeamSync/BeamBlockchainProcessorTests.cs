@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
             Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
             _blockTree.SuggestBlock(newBlock);
             Thread.Sleep(1000);
-            _blockchainProcessor.Received().Enqueue(newBlock, ProcessingOptions.None);
+            _blockchainProcessor.Received().Enqueue(newBlock, ProcessingOptions.IgnoreParentNotOnMainChain);
         }
 
         private void SetupBeamProcessor()
