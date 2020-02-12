@@ -210,7 +210,7 @@ namespace Nethermind.Blockchain.Bloom
 
             public void Reset()
             {
-                _currentPosition = 0;
+                _currentPosition = _fromBlock;
                 CurrentLevel = 0;
             }
 

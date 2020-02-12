@@ -563,7 +563,19 @@ namespace Nethermind.JsonRpc.Modules.Eth
             BlockParameter fromBlock = filter.FromBlock;
             BlockParameter toBlock = filter.ToBlock;
 
-            return ResultWrapper<IEnumerable<FilterLog>>.Success(_blockchainBridge.GetLogs(fromBlock, toBlock, filter.Address, filter.Topics));
+            try
+            {
+                return ResultWrapper<IEnumerable<FilterLog>>.Success(_blockchainBridge.GetLogs(fromBlock, toBlock, filter.Address, filter.Topics));
+            }
+            catch (ArgumentException e)
+            {
+                switch (e.Message)
+                {
+                    case "Block not found.": return ResultWrapper<IEnumerable<FilterLog>>.Fail(e.Message, ErrorCodes.ResourceNotFound);
+                    default:
+                        return ResultWrapper<IEnumerable<FilterLog>>.Fail(e.Message, ErrorCodes.InvalidParams);
+                }
+            }
         }
 
         public ResultWrapper<IEnumerable<byte[]>> eth_getWork()

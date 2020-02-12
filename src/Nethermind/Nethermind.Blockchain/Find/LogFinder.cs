@@ -43,14 +43,16 @@ namespace Nethermind.Blockchain.Find
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter)
         {
-            var toBlock = _blockFinder.FindHeader(filter.ToBlock);
-            if (toBlock is null)
+            BlockHeader FindHeader(BlockParameter blockParameter, string name) => _blockFinder.FindHeader(blockParameter) ?? throw new ArgumentException("Block not found.", name);
+
+            var toBlock = FindHeader(filter.ToBlock, nameof(filter.ToBlock));
+            var fromBlock = FindHeader(filter.FromBlock, nameof(filter.FromBlock));
+
+            if (fromBlock.Number > toBlock.Number && toBlock.Number != 0)
             {
-                return Enumerable.Empty<FilterLog>();
+                throw new ArgumentException("'From' block is later than 'to' block.");
             }
             
-            var fromBlock = _blockFinder.FindHeader(filter.FromBlock);
-
             return CanUseBloomDatabase(toBlock, fromBlock) 
                 ? FilterLogsWithBloomsIndex(filter, fromBlock, toBlock) 
                 : FilterLogsIteratively(filter, fromBlock, toBlock);
@@ -63,7 +65,7 @@ namespace Nethermind.Blockchain.Find
             {
                 if (filter.Matches(bloom) && enumeration.TryGetBlockRange(out var blockRange))
                 {
-                    for (long blockNumber = blockRange.Start; blockNumber < blockRange.End; blockNumber++)
+                    for (long blockNumber = blockRange.Start; blockNumber <= blockRange.End; blockNumber++)
                     {
                         foreach (var filterLog in FindLogsInBlock(filter, _blockFinder.FindHeader(blockNumber)))
                         {
