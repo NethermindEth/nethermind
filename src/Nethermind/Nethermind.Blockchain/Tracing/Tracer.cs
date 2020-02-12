@@ -41,7 +41,16 @@ namespace Nethermind.Blockchain.Tracing
                We also want to make it read only so the state is not modified persistently in any way. */
 
             blockTracer.StartNewBlockTrace(block);
-            _blockProcessor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain, blockTracer);
+
+            try
+            {
+                _blockProcessor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain, blockTracer);
+            }
+            catch (Exception)
+            {
+                _stateProvider.Reset();
+                throw;
+            }
 
             return _stateProvider.StateRoot;
         }

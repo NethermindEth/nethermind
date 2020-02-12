@@ -86,15 +86,25 @@ namespace Nethermind.Blockchain.Synchronization
 
         public bool IsFastBlocksFinished()
         {
-            bool isFastBlocks = _syncConfig.FastBlocks || _syncConfig.BeamSync;
+            bool isFastBlocks = _syncConfig.FastBlocks;
             bool isBeamSync = _syncConfig.BeamSync;
+            
+            if (!isFastBlocks)
+            {
+                return true;
+            }
+            
+            if (_syncConfig.PivotNumberParsed == 0L)
+            {
+                return true;
+            }
+            
             bool anyHeaderDownloaded = (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= _syncConfig.PivotNumberParsed;
             bool allHeadersDownloaded = (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1;
             bool allReceiptsDownloaded = !_syncConfig.DownloadReceiptsInFastSync || (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) <= 1;
             bool allBodiesDownloaded = !_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1;
-
-            return !isFastBlocks
-                   || allBodiesDownloaded && allHeadersDownloaded && allReceiptsDownloaded
+            
+            return allBodiesDownloaded && allHeadersDownloaded && allReceiptsDownloaded
                    || isBeamSync && anyHeaderDownloaded;
         }
 
