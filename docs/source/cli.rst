@@ -159,6 +159,9 @@ eth
  eth.sendRawTransaction(txRlp)
   <check JSON RPC docs>
 
+ eth.sendTransaction(tx)
+  <check JSON RPC docs>
+
  eth.sendWei(from, to, amountInWei)
   <check JSON RPC docs>
 

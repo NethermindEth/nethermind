@@ -385,6 +385,10 @@ NetworkConfig
    
    default value: 2000
 
+ NettyArenaOrder
+   [TECHNICAL] Defines the size of a buffer allocated to each peer - default is 8192 << 11 so 16MB where order is 11.
+   default value: 11
+
  P2PPingInterval
    
    default value: 10000
@@ -416,7 +420,7 @@ NetworkConfig
 SyncConfig
 ^^^^^^^^^^
 
- BeamSyncEnabled
+ BeamSync
    Beam Sync - only for DEBUG / DEV - not working in prod yet.
    default value: false
 
@@ -628,6 +632,7 @@ Sample configuration (mainnet)
               "LocalIp" : null,
               "MaxCandidatePeerCount" : 10000,
               "MaxPersistedPeerCount" : 2000,
+              "NettyArenaOrder" : 11,
               "P2PPingInterval" : 10000,
               "P2PPort" : 30303,
               "PeersPersistenceInterval" : 5000,
@@ -637,7 +642,7 @@ Sample configuration (mainnet)
               "TrustedPeers" : null
         },
         "Sync": {
-              "BeamSyncEnabled" : false,
+              "BeamSync" : false,
               "DownloadBodiesInFastSync" : true,
               "DownloadReceiptsInFastSync" : true,
               "FastBlocks" : false,
