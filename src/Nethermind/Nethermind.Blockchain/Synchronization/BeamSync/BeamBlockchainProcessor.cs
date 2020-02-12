@@ -237,6 +237,8 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                         return BeamSyncContext.ResolvedInContext.Value;
                     }
                 }
+                
+                return BeamSyncContext.ResolvedInContext.Value;
             }).ContinueWith(t =>
             {
                 _logger.Info(t.IsFaulted ? $"code prefetch failed {t.Exception.Message}" : $"code prefetch complete - resolved {t.Result}");
