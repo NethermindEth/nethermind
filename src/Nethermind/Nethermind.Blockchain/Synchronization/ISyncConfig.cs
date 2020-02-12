@@ -57,8 +57,9 @@ namespace Nethermind.Blockchain.Synchronization
         
         [ConfigItem(Description = "Hash of the pivot block for the Fast Blocks sync.", DefaultValue = "null")]
         string PivotHash { get; }
-        long PivotNumberParsed => LongConverter.FromString(PivotNumber ?? "0");
 
+        long PivotNumberParsed => LongConverter.FromString(PivotNumber ?? "0");
+        
         Keccak PivotHashParsed => new Keccak(Bytes.FromHexString(PivotHash));
     }
 }

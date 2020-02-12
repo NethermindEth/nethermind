@@ -163,6 +163,7 @@ namespace Nethermind.JsonRpc
             {
                 BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
                 BeamSyncContext.Description.Value = $"[JSON RPC {methodName}]";
+
                 object invocationResult = method.Info.Invoke(module, parameters);
                 switch (invocationResult)
                 {

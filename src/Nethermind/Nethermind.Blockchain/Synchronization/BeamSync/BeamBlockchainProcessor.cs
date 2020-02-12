@@ -151,6 +151,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                     {
                         if(_logger.IsWarn) _logger.Warn($"Stopped / failed to beam process block {block} | {t.Exception.Message}");
                         if(_logger.IsDebug) _logger.Debug($"Details of beam sync failure {block} | {t.Exception}");
+
                         return;
                     }
 
