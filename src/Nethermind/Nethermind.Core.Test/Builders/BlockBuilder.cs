@@ -160,5 +160,17 @@ namespace Nethermind.Core.Test.Builders
             base.BeforeReturn();
             TestObjectInternal.Header.Hash = TestObjectInternal.Header.CalculateHash();
         }
+
+        public BlockBuilder WithReceiptsRoot(Keccak keccak)
+        {
+            TestObjectInternal.Header.ReceiptsRoot = keccak;
+            return this;
+        }
+
+        public BlockBuilder WithGasUsed(long gasUsed)
+        {
+            TestObjectInternal.Header.GasUsed = gasUsed;
+            return this;
+        }
     }
 }

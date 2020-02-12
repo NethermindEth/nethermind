@@ -21,7 +21,9 @@ using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Mining;
 using Nethermind.Specs;
@@ -47,11 +49,21 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
             _validator = new BlockValidator(TestTxValidator.AlwaysValid, headerValidator, AlwaysValidOmmersValidator.Instance, MainNetSpecProvider.Instance, LimboLogs.Instance);
             SetupBeamProcessor();
         }
-        
+
         [Test, Retry(3)]
         public void Valid_block_makes_it_all_the_way()
         {
             Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
+            _blockTree.SuggestBlock(newBlock);
+            Thread.Sleep(1000);
+            _blockchainProcessor.Received().Enqueue(newBlock, ProcessingOptions.IgnoreParentNotOnMainChain);
+        }
+
+        [Test, Retry(3)]
+        public void Valid_block_with_transactions_makes_it_all_the_way()
+        {
+            EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance);
+            Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA, 10000000).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB, 10000000).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
             _blockTree.SuggestBlock(newBlock);
             Thread.Sleep(1000);
             _blockchainProcessor.Received().Enqueue(newBlock, ProcessingOptions.IgnoreParentNotOnMainChain);
@@ -67,7 +79,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
                 LimboLogs.Instance,
                 _validator,
                 NullRecoveryStep.Instance,
-                new InstanceRewardCalculatorSource(NoBlockRewards.Instance), 
+                new InstanceRewardCalculatorSource(NoBlockRewards.Instance),
                 _blockchainProcessor
             );
         }
@@ -80,7 +92,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
             _blockTree.SuggestBlock(newBlock);
             _blockchainProcessor.DidNotReceiveWithAnyArgs().Enqueue(newBlock, ProcessingOptions.None);
         }
-        
+
         [Test]
         public void Valid_block_that_would_be_skipped_will_never_reach_actual_processor()
         {
