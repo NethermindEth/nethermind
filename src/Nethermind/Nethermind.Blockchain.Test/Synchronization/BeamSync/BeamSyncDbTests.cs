@@ -49,6 +49,15 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
             BeamSyncContext.LastFetchUtc.Value = DateTime.MaxValue;
         }
 
+        [Test]
+        public void Beam_db_provider_smoke_test()
+        {
+            BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(new MemDbProvider(), "description", LimboLogs.Instance);
+            // has to be state DB on the outside
+            Assert.IsInstanceOf(typeof(StateDb), dbProvider.StateDb);
+            Assert.IsInstanceOf(typeof(StateDb), dbProvider.CodeDb);
+        }
+        
         [TestCase("leaf_read")]
         public void Propagates_exception(string name)
         {
