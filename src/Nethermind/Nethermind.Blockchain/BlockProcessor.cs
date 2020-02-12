@@ -88,9 +88,9 @@ namespace Nethermind.Blockchain
             int codeSnapshot = _codeDb.TakeSnapshot();
             if (stateSnapshot != -1 || codeSnapshot != -1)
             {
-                if(_logger.IsError) _logger.Error($"Uncommitted state ({stateSnapshot}, {codeSnapshot}) when processing from a branch root {branchStateRoot} starting with block {suggestedBlocks[0].ToString(Block.Format.Short)}");
+                if (_logger.IsError) _logger.Error($"Uncommitted state ({stateSnapshot}, {codeSnapshot}) when processing from a branch root {branchStateRoot} starting with block {suggestedBlocks[0].ToString(Block.Format.Short)}");
             }
-            
+
             Keccak snapshotStateRoot = _stateProvider.StateRoot;
 
             if (branchStateRoot != null && _stateProvider.StateRoot != branchStateRoot)
@@ -112,13 +112,13 @@ namespace Nethermind.Blockchain
                     if (_logger.IsTrace) _logger.Trace($"Committing trees - state root {_stateProvider.StateRoot}");
                     _stateProvider.CommitTree();
                     _storageProvider.CommitTrees();
-                    
+
                     if (!readOnly)
                     {
                         BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlocks[i]));
                     }
                 }
-                
+
                 if (readOnly)
                 {
                     _receiptsTracer.BeforeRestore(_stateProvider);
@@ -140,11 +140,11 @@ namespace Nethermind.Blockchain
         }
 
         private BlockReceiptsTracer _receiptsTracer;
-        
+
         private TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer)
         {
             _receiptsTracer.SetOtherTracer(blockTracer);
-            _receiptsTracer.StartNewBlockTrace(block);   
+            _receiptsTracer.StartNewBlockTrace(block);
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
@@ -152,12 +152,8 @@ namespace Nethermind.Blockchain
                 _receiptsTracer.StartNewTxTrace(currentTx.Hash);
                 _transactionProcessor.Execute(currentTx, block.Header, _receiptsTracer);
                 _receiptsTracer.EndTxTrace();
-
-                if ((processingOptions & ProcessingOptions.ReadOnlyChain) == 0)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Processed transaction {i} out of {block.Transactions.Length}");
-                    TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(_receiptsTracer.TxReceipts[i]));
-                }
+                
+                TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(i, currentTx, _receiptsTracer.TxReceipts[i]));
             }
 
             return _receiptsTracer.TxReceipts;
@@ -230,7 +226,7 @@ namespace Nethermind.Blockchain
 
                 return receipts;
             }
-            
+
             if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Short)}");
             return Array.Empty<TxReceipt>();
         }
@@ -244,7 +240,7 @@ namespace Nethermind.Blockchain
                 _txPool.RemoveTransaction(txReceipts[i].TxHash, block.Number);
             }
         }
-        
+
         private Block PrepareBlockForProcessing(Block suggestedBlock)
         {
             if (_logger.IsTrace) _logger.Trace($"{suggestedBlock.Header.ToString(BlockHeader.Format.Full)}");
@@ -268,9 +264,10 @@ namespace Nethermind.Blockchain
                 TxRoot = bh.TxRoot,
                 TotalDifficulty = bh.TotalDifficulty,
                 AuRaStep = bh.AuRaStep,
-                AuRaSignature = bh.AuRaSignature                
+                AuRaSignature = bh.AuRaSignature
             };
-            return new Block(header, suggestedBlock.Transactions, suggestedBlock.Ommers);;
+            return new Block(header, suggestedBlock.Transactions, suggestedBlock.Ommers);
+            ;
         }
 
         private void ApplyMinerRewards(Block block, IBlockTracer tracer)
@@ -288,7 +285,7 @@ namespace Nethermind.Blockchain
                 }
 
                 ApplyMinerReward(block, reward, tracer.IsTracingRewards ? tracer : NullBlockTracer.Instance);
-                
+
                 if (tracer.IsTracingRewards)
                 {
                     tracer.EndTxTrace();
