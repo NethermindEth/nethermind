@@ -23,9 +23,8 @@ namespace Nethermind.Blockchain.Bloom
     public class NullBloomStorage : IBloomStorage
     {
         public static NullBloomStorage Instance { get; } = new NullBloomStorage();
-
-        public int LevelMultiplier => 1;
-        public int Levels => 1;
+        public long MinBlockNumber { get; } = 0;
+        public long MaxBlockNumber { get; } = 0;
         public void Store(long blockNumber, Core.Bloom bloom) { }
 
         public IBloomEnumeration GetBlooms(long fromBlock, long toBlock)

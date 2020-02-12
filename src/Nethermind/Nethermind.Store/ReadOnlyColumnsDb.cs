@@ -32,6 +32,8 @@ namespace Nethermind.Store
         }
 
         public IDb GetColumnDb(T key) => _columnDbs.TryGetValue(key, out var db) ? db : _columnDbs[key] = new ReadOnlyDb(_wrappedDb.GetColumnDb(key), _createInMemWriteStore);
+        
+        public IEnumerable<T> ColumnKeys => _wrappedDb.ColumnKeys;
 
         public override void ClearTempChanges()
         {

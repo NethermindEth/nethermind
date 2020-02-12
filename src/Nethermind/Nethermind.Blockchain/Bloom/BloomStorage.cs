@@ -34,20 +34,20 @@ namespace Nethermind.Blockchain.Bloom
         
         private readonly BloomStorageLevel[] _storageLevels;
         private readonly IColumnsDb<byte> _bloomDb;
-        
-        private long MinBlockNumber { get; set; }
+
+        public long MinBlockNumber { get; private set; }
 
         private long MaxBlockNumber { get; set; }
 
-        public BloomStorage(IColumnsDb<byte> bloomDb, int levels = 3, int levelMultiplier = 16)
+        public BloomStorage(IColumnsDb<byte> bloomDb, int levelMultiplier = 16)
         {
-            Levels = levels;
+            long Get(Keccak key, long defaultValue) => _bloomDb.Get(key)?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
+            
+            _bloomDb = bloomDb ?? throw new ArgumentNullException(nameof(bloomDb));
+            Levels = _bloomDb.ColumnKeys.Count();
             LevelMultiplier = levelMultiplier;
             
-            long Get(Keccak key, long defaultValue) => _bloomDb.Get(key)?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
-
-            _bloomDb = bloomDb ?? throw new ArgumentNullException(nameof(bloomDb));
-            _storageLevels = Enumerable.Range(0, Levels).Select(level => CreateLevel(_bloomDb.GetColumnDb((byte) level), (byte) level, Levels)).ToArray();
+            _storageLevels = _bloomDb.ColumnKeys.Select(level => CreateLevel(_bloomDb.GetColumnDb(level), level, Levels)).ToArray();
             MinBlockNumber = Get(MinBlockNumberKey, long.MaxValue);
             MaxBlockNumber = Get(MaxBlockNumberKey, -1);
         }

@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Collections.Generic;
 using Nethermind.Core.Attributes;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
@@ -29,5 +31,8 @@ namespace Nethermind.Store.Rpc
 
         [Todo(Improve.MissingFunctionality, "Need to implement RPC method for column DB's")]
         public IDb GetColumnDb(byte key) => this;
+
+        [Todo(Improve.MissingFunctionality, "Need to implement RPC method for column DB's")]
+        public IEnumerable<byte> ColumnKeys { get; } = Array.Empty<byte>();
     }
 }

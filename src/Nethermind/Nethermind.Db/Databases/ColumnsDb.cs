@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using Nethermind.Db.Config;
 using Nethermind.Logging;
 using Nethermind.Store;
+using RocksDbSharp;
 
 namespace Nethermind.Db.Databases
 {
@@ -25,18 +26,26 @@ namespace Nethermind.Db.Databases
     {
         private readonly IDictionary<T, IDb> _columnDbs = new Dictionary<T, IDb>();
         
-        protected ColumnsDb(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager = null) : base(basePath, dbPath, dbConfig, logManager)
+        protected ColumnsDb(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager, params T[] keys) : base(basePath, dbPath, dbConfig, logManager, GetColumnFamilies(keys))
         {
-        }
-        
-        public IDb GetColumnDb(T key)
-        {
-            if (!_columnDbs.TryGetValue(key, out var db))
+            foreach (var key in keys)
             {
-                _columnDbs[key] = db = new ColumnDb(Db, this, key.ToString());
+                _columnDbs[key] = new ColumnDb(Db, this, key.ToString()); 
             }
-
-            return db;
         }
+
+        private static ColumnFamilies GetColumnFamilies(T[] keys)
+        {
+            var result = new ColumnFamilies();
+            foreach (var key in keys)
+            {
+                result.Add(key.ToString(), new ColumnFamilyOptions());
+            }
+            return result;
+        }
+
+        public IDb GetColumnDb(T key) => _columnDbs[key];
+
+        public IEnumerable<T> ColumnKeys => _columnDbs.Keys;
     }
 }

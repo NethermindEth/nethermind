@@ -26,7 +26,7 @@ namespace Nethermind.Db.Databases
         public override string Name { get; } = CultureInfo.CurrentUICulture.TextInfo.ToTitleCase(DbNames.Bloom);
         
         public BloomRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
-            : base(basePath, DbNames.Bloom, dbConfig, logManager)
+            : base(basePath, DbNames.Bloom, dbConfig, logManager, 0, 1, 2)
         {
         }
         

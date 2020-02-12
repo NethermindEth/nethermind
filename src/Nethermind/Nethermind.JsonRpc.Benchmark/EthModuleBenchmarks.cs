@@ -92,7 +92,7 @@ namespace Nethermind.JsonRpc.Benchmark
             blockchainProcessor.Process(genesisBlock, ProcessingOptions.None, NullBlockTracer.Instance);
             blockchainProcessor.Process(block1, ProcessingOptions.None, NullBlockTracer.Instance);
             
-            IBloomStorage bloomStorage = new BloomStorage(new MemColumnsDb<byte>());
+            IBloomStorage bloomStorage = new BloomStorage(new MemColumnsDb<byte>(1, 2, 3));
 
             BlockchainBridge bridge = new BlockchainBridge(
                 stateReader,

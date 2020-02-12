@@ -21,7 +21,16 @@ namespace Nethermind.Store
     public class MemColumnsDb<TKey> : MemDb, IColumnsDb<TKey>
     {
         private readonly IDictionary<TKey, IDb> _columnDbs = new Dictionary<TKey, IDb>();
+
+        public MemColumnsDb(params TKey[] keys)
+        {
+            foreach (var key in keys)
+            {
+                GetColumnDb(key);
+            }
+        }
         
         public IDb GetColumnDb(TKey key) => !_columnDbs.TryGetValue(key, out var db) ? _columnDbs[key] = new MemDb() : db;
+        public IEnumerable<TKey> ColumnKeys => _columnDbs.Keys;
     }
 }

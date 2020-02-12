@@ -30,7 +30,7 @@ namespace Nethermind.Db.Databases
         {
             _rocksDb = rocksDb;
             _mainDb = mainDb;
-            _columnFamily = _rocksDb.CreateColumnFamily(new ColumnFamilyOptions(), name);
+            _columnFamily = _rocksDb.GetColumnFamily(name);
             Name = name;
         }
         

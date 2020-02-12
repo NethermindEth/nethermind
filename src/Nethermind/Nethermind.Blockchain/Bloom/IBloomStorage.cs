@@ -18,14 +18,14 @@ namespace Nethermind.Blockchain.Bloom
 {
     public interface IBloomStorage
     {
-        int LevelMultiplier { get; }
-        
-        int Levels { get; }
-        
+        long MinBlockNumber { get; }
+
         void Store(long blockNumber, Core.Bloom bloom);
 
         IBloomEnumeration GetBlooms(long fromBlock, long toBlock);
         
         bool ContainsRange(in long fromBlockNumber, in long toBlockNumber);
+
+        public bool NeedsMigration => MinBlockNumber != 0;
     }
 }

@@ -41,8 +41,21 @@ namespace Nethermind.Db
         
         private long _maxThisDbSize;
 
-        public DbOnTheRocks(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager = null) // TODO: check column families
+        public DbOnTheRocks(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null)
         {
+            RocksDb Open(DbOptions options, string path, ColumnFamilies families)
+            {
+                if (families == null)
+                {
+                    return RocksDb.Open(options, path);
+                }
+                else
+                {
+                    options.SetCreateMissingColumnFamilies();
+                    return RocksDb.Open(options, path, families);
+                }
+            }
+
             string fullPath = dbPath.GetApplicationResourcePath(basePath);
             _logger = logManager?.GetClassLogger() ?? NullLogger.Instance;
             if (!Directory.Exists(fullPath))
@@ -58,7 +71,7 @@ namespace Nethermind.Db
                 
                 // ReSharper disable once VirtualMemberCallInConstructor
                 if (_logger.IsInfo) _logger.Info($"Loading {Name.PadRight(16)} from {fullPath} with max memory footprint of {_maxThisDbSize / 1024 / 1024}MB");
-                Db = DbsByPath.GetOrAdd(fullPath, path => RocksDb.Open(options, path));
+                Db = DbsByPath.GetOrAdd(fullPath, path => Open(options, path, columnFamilies));
             }
             catch (DllNotFoundException e) when (e.Message.Contains("libdl"))
             {
@@ -76,8 +89,7 @@ namespace Nethermind.Db
                 propertyName);
             try
             {
-                return (T) dbConfig.GetType().GetProperty(prefixed, BindingFlags.Public | BindingFlags.Instance)
-                    .GetValue(dbConfig);
+                return (T) dbConfig.GetType().GetProperty(prefixed, BindingFlags.Public | BindingFlags.Instance).GetValue(dbConfig);
             }
             catch (Exception e)
             {

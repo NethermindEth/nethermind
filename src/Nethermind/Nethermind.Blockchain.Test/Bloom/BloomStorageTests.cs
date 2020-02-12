@@ -34,10 +34,12 @@ namespace Nethermind.Blockchain.Test.Bloom
         [TestCase(10, 12)]
         public void Empty_storage_does_not_contain_blocks(long from, long to)
         {
-            var storage = new BloomStorage(new MemColumnsDb<byte>());
+            var storage = new BloomStorage(BloomDb);
             storage.ContainsRange(from, to).Should().BeFalse();
         }
-        
+
+        private static MemColumnsDb<byte> BloomDb => new MemColumnsDb<byte>(1, 2, 3);
+
         [TestCase(0, 0, ExpectedResult = false)]
         [TestCase(1, 1, ExpectedResult = true)]
         [TestCase(0, 10, ExpectedResult = false)]
@@ -45,7 +47,7 @@ namespace Nethermind.Blockchain.Test.Bloom
         [TestCase(10, 12, ExpectedResult = false)]
         public bool Initialized_storage_contain_blocks_as_db(long from, long to)
         {
-            var memColumnsDb = new MemColumnsDb<byte>();
+            var memColumnsDb = BloomDb;
             memColumnsDb.Set(BloomStorage.MinBlockNumberKey, 1L.ToBigEndianByteArrayWithoutLeadingZeros());
             memColumnsDb.Set(BloomStorage.MaxBlockNumberKey, 11L.ToBigEndianByteArrayWithoutLeadingZeros());
             var storage = new BloomStorage(memColumnsDb);
@@ -59,7 +61,7 @@ namespace Nethermind.Blockchain.Test.Bloom
         [TestCase(10, 12, ExpectedResult = false)]
         public bool Contain_blocks_after_store(long from, long to)
         {
-            var storage = new BloomStorage(new MemColumnsDb<byte>());
+            var storage = new BloomStorage(BloomDb);
 
             for (long i = 1; i < 11; i++)
             {
@@ -112,7 +114,7 @@ namespace Nethermind.Blockchain.Test.Bloom
 
         private static BloomStorage CreateBloomStorage()
         {
-            var storage = new BloomStorage(new MemColumnsDb<byte>(), Levels, LevelMultiplier);
+            var storage = new BloomStorage(BloomDb, LevelMultiplier);
             var bucketItems = GetBucketItems(storage.Levels, storage.LevelMultiplier) * Buckets;
             
             for (long i = 0; i < bucketItems; i++)

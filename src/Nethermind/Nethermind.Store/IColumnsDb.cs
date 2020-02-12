@@ -18,8 +18,9 @@ using System.Collections.Generic;
 
 namespace Nethermind.Store
 {
-    public interface IColumnsDb<in TKey> : IDb
+    public interface IColumnsDb<TKey> : IDb
     {
         IDb GetColumnDb(TKey key);
+        IEnumerable<TKey> ColumnKeys { get; }
     }
 }
