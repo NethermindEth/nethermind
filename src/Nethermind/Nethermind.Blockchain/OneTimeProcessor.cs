@@ -49,8 +49,16 @@ namespace Nethermind.Blockchain
         {
             lock (_lock)
             {
-                Block result = _processor.Process(block, options, tracer);
-                _readOnlyDbProvider.ClearTempChanges();
+                Block result;
+                try
+                {
+                    result = _processor.Process(block, options, tracer);
+                }
+                finally
+                {
+                    _readOnlyDbProvider.ClearTempChanges();
+                }
+
                 return result;
             }
         }
