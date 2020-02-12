@@ -175,16 +175,17 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
         {
             CancellationTokenSource cancellationToken = _tokens.GetOrAdd(block.Number, t => new CancellationTokenSource());
             string description = $"[miner {miner}]";
-            Task minerTask = Task.Run(() =>
+            Task minerTask = Task<int>.Run(() =>
             {
                 BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty ?? 0;
                 BeamSyncContext.Description.Value = description;
                 BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
                 stateReader.GetAccount(stateRoot, miner);
                 BeamSyncContext.Cancelled.Value = cancellationToken.Token;
-            }).ContinueWith(t => { _logger.Info(t.IsFaulted ? $"{description} prefetch failed {t.Exception.Message}" : $"{description} prefetch complete - resolved {BeamSyncContext.ResolvedInContext.Value}"); });
+                return BeamSyncContext.ResolvedInContext.Value;
+            }).ContinueWith(t => { _logger.Info(t.IsFaulted ? $"{description} prefetch failed {t.Exception.Message}" : $"{description} prefetch complete - resolved {t.Result}"); });
 
-            Task senderTask = Task.Run(() =>
+            Task senderTask = Task<int>.Run(() =>
             {
                 BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty ?? 0;
                 for (int i = 0; i < block.Transactions.Length; i++)
@@ -196,9 +197,11 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                     // _logger.Info($"Resolved sender of {block.Number}.{i}");
                     stateReader.GetAccount(stateRoot, tx.To);
                 }
-            }).ContinueWith(t => { _logger.Info(t.IsFaulted ? $"tx prefetch failed {t.Exception.Message}" : $"tx prefetch complete - resolved {BeamSyncContext.ResolvedInContext.Value}"); });
+                
+                return BeamSyncContext.ResolvedInContext.Value;
+            }).ContinueWith(t => { _logger.Info(t.IsFaulted ? $"tx prefetch failed {t.Exception.Message}" : $"tx prefetch complete - resolved {t.Result}"); });
             
-            Task storageTask = Task.Run(() =>
+            Task storageTask = Task<int>.Run(() =>
             {
                 BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty ?? 0;
                 for (int i = 0; i < block.Transactions.Length; i++)
@@ -213,10 +216,12 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                         stateReader.GetStorageRoot(stateRoot, tx.To);
                     }
                 }
-            }).ContinueWith(t => { _logger.Info(t.IsFaulted ? $"storage prefetch failed {t.Exception.Message}" : $"storage prefetch complete - resolved {BeamSyncContext.ResolvedInContext.Value}"); });
+                
+                return BeamSyncContext.ResolvedInContext.Value;
+            }).ContinueWith(t => { _logger.Info(t.IsFaulted ? $"storage prefetch failed {t.Exception.Message}" : $"storage prefetch complete - resolved {t.Result}"); });
             
             
-            Task codeTask = Task.Run(() =>
+            Task codeTask = Task<int>.Run(() =>
             {
                 BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty.Value;
                 for (int i = 0; i < block.Transactions.Length; i++)
@@ -229,11 +234,12 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                         BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
                         BeamSyncContext.Cancelled.Value = cancellationToken.Token;
                         stateReader.GetCode(stateRoot, tx.SenderAddress);
+                        return BeamSyncContext.ResolvedInContext.Value;
                     }
                 }
             }).ContinueWith(t =>
             {
-                _logger.Info(t.IsFaulted ? $"code prefetch failed {t.Exception.Message}" : $"code prefetch complete - resolved {BeamSyncContext.ResolvedInContext.Value}");
+                _logger.Info(t.IsFaulted ? $"code prefetch failed {t.Exception.Message}" : $"code prefetch complete - resolved {t.Result}");
             });
         }
         
