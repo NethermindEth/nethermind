@@ -58,6 +58,13 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
             Assert.IsInstanceOf(typeof(StateDb), dbProvider.CodeDb);
         }
         
+        [Test]
+        public void Beam_db_provider_can_dispose()
+        {
+            BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(new MemDbProvider(), "description", LimboLogs.Instance);
+            dbProvider.Dispose();
+        }
+        
         [TestCase("leaf_read")]
         public void Propagates_exception(string name)
         {
