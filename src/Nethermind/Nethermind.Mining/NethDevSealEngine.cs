@@ -19,6 +19,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 
 namespace Nethermind.Mining
 {
@@ -32,7 +33,8 @@ namespace Nethermind.Mining
 
         public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
         {
-            block.Header.MixHash = Keccak.Zero;
+            block.Header.MixHash = Keccak.OfAnEmptyString;
+            block.Header.Hash = block.CalculateHash();
             return Task.FromResult(block);
         }
 
