@@ -43,6 +43,8 @@ namespace Nethermind.Core
             ExtraData = extraData;
         }
 
+        public BlockHeader MaybeParent { get; set; }
+
         public bool IsGenesis => Number == 0;
         public Keccak ParentHash { get; internal set; }
         public Keccak OmmersHash { get; set; }

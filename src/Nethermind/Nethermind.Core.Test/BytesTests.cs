@@ -87,8 +87,8 @@ namespace Nethermind.Core.Test
         public void Can_slice_with_zero_padding(string inputHex, int startIndex, int length, string expectedResultHex)
         {
             byte[] input = Bytes.FromHexString(inputHex);
-            byte[] result = input.SliceWithZeroPadding(startIndex, length);
-            Assert.AreEqual(expectedResultHex, result.ToHexString(true));
+            ZeroPaddedSpan result = input.SliceWithZeroPadding(startIndex, length);
+            Assert.AreEqual(expectedResultHex, result.ToArray().ToHexString(true));
         }
 
         [TestCase("0x", "0x", true)]

@@ -67,6 +67,28 @@ namespace Nethermind.Evm
                 throw new EvmStackOverflowException();
             }
         }
+        
+        public void PushBytes(in ZeroPaddedSpan value)
+        {
+            if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(value.ToArray().AsSpan());
+
+            Span<byte> word = _bytes.Slice(Head * 32, 32);
+            if (value.Span.Length != 32)
+            {
+                word.Clear();
+                value.Span.CopyTo(word.Slice(0, value.Span.Length));
+            }
+            else
+            {
+                value.Span.CopyTo(word);
+            }
+
+            if (++Head >= MaxStackSize)
+            {
+                Metrics.EvmExceptions++;
+                throw new EvmStackOverflowException();
+            }
+        }
 
         public void PushByte(byte value)
         {

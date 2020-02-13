@@ -168,7 +168,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             return headersSynced;
         }
-        
+
         public async Task<long> DownloadBlocks(PeerInfo bestPeer, int numberOfLatestBlocksToBeIgnored, CancellationToken cancellation, BlockDownloaderOptions options = BlockDownloaderOptions.Process)
         {
             if (bestPeer == null)
@@ -260,7 +260,7 @@ namespace Nethermind.Blockchain.Synchronization
                     {
                         throw new EthSynchronizationException($"{bestPeer} sent an invalid block {currentBlock.ToString(Block.Format.Short)}.");
                     }
-                    
+
                     if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, _blockTree.SuggestBlock(currentBlock, shouldProcess)))
                     {
                         if (downloadReceipts)
@@ -338,7 +338,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             BlockHeader[] headers = headersRequest.Result;
             ValidateSeals(cancellation, headers);
-            ValidateBatchConsistency(peer, headers);
+            ValidateBatchConsistencyAndSetParents(peer, headers);
             return headers;
         }
 
@@ -379,16 +379,20 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        private void ValidateBatchConsistency(PeerInfo bestPeer, BlockHeader[] headers)
+        private void ValidateBatchConsistencyAndSetParents(PeerInfo bestPeer, BlockHeader[] headers)
         {
             // in the past (version 1.11) and possibly now too Parity was sending non canonical blocks in responses
             // so we need to confirm that the blocks form a valid subchain
-            for (int i = 0; i < headers.Length; i++)
+            for (int i = 1; i < headers.Length; i++)
             {
-                if (i != 0 && headers[i] != null && headers[i]?.ParentHash != headers[i - 1]?.Hash)
+                if (headers[i] != null && headers[i]?.ParentHash != headers[i - 1]?.Hash)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Inconsistent block list from peer {bestPeer}");
                     throw new EthSynchronizationException("Peer sent an inconsistent block list");
+                }
+                else if (i != 1) // because we will never set TotalDifficulty on the first block?
+                {
+                    headers[i].MaybeParent = headers[i - 1];
                 }
             }
         }
@@ -436,7 +440,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-       private bool HandleAddResult(PeerInfo peerInfo, BlockHeader block, bool isFirstInBatch, AddBlockResult addResult)
+        private bool HandleAddResult(PeerInfo peerInfo, BlockHeader block, bool isFirstInBatch, AddBlockResult addResult)
         {
             static void UpdatePeerInfo(PeerInfo peerInfo, BlockHeader header)
             {
@@ -447,7 +451,7 @@ namespace Nethermind.Blockchain.Synchronization
                     peerInfo.TotalDifficulty = header.TotalDifficulty.Value;
                 }
             }
-            
+
             switch (addResult)
             {
                 // this generally should not happen as there is a consistency check before

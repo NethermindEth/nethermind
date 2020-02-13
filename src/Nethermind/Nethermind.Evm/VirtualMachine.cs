@@ -271,7 +271,7 @@ namespace Nethermind.Evm
                         {
                             _returnDataBuffer = callResult.Output;
                             previousCallResult = callResult.PrecompileSuccess.HasValue ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes) : StatusCode.SuccessBytes;
-                            previousCallOutput = callResult.Output.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int) previousState.OutputLength));
+                            previousCallOutput = callResult.Output.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int) previousState.OutputLength)).ToArray();
                             previousCallOutputDestination = (ulong) previousState.OutputDestination;
                             if (previousState.IsPrecompile)
                             {
@@ -310,7 +310,7 @@ namespace Nethermind.Evm
                         _storage.Restore(previousState.StorageSnapshot);
                         _returnDataBuffer = callResult.Output;
                         previousCallResult = StatusCode.FailureBytes;
-                        previousCallOutput = callResult.Output.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int) previousState.OutputLength));
+                        previousCallOutput = callResult.Output.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int) previousState.OutputLength)).ToArray();
                         previousCallOutputDestination = (ulong) previousState.OutputDestination;
 
 
@@ -1268,9 +1268,9 @@ namespace Nethermind.Evm
 
                         UpdateMemoryCost(ref dest, length);
 
-                        byte[] callDataSlice = env.InputData.SliceWithZeroPadding(src, (int) length);
+                        ZeroPaddedSpan callDataSlice = env.InputData.SliceWithZeroPadding(src, (int) length);
                         evmState.Memory.Save(ref dest, callDataSlice);
-                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long) dest, callDataSlice);
+                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long) dest, callDataSlice.ToArray());
                         break;
                     }
                     case Instruction.CODESIZE:
@@ -1297,9 +1297,9 @@ namespace Nethermind.Evm
                         }
 
                         UpdateMemoryCost(ref dest, length);
-                        Span<byte> codeSlice = code.SliceWithZeroPadding(src, (int) length);
+                        ZeroPaddedSpan codeSlice = code.SliceWithZeroPadding(src, (int) length);
                         evmState.Memory.Save(ref dest, codeSlice);
-                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long) dest, codeSlice);
+                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long) dest, codeSlice.ToArray());
                         break;
                     }
                     case Instruction.GASPRICE:
@@ -1343,9 +1343,9 @@ namespace Nethermind.Evm
 
                         UpdateMemoryCost(ref dest, length);
                         byte[] externalCode = GetCachedCodeInfo(address)?.MachineCode;
-                        byte[] callDataSlice = externalCode.SliceWithZeroPadding(src, (int) length);
+                        ZeroPaddedSpan callDataSlice = externalCode.SliceWithZeroPadding(src, (int) length);
                         evmState.Memory.Save(ref dest, callDataSlice);
-                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long) dest, callDataSlice);
+                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long) dest, callDataSlice.ToArray());
                         break;
                     }
                     case Instruction.RETURNDATASIZE:
@@ -1390,9 +1390,9 @@ namespace Nethermind.Evm
                             return CallResult.AccessViolationException;
                         }
 
-                        byte[] returnDataSlice = _returnDataBuffer.SliceWithZeroPadding(src, (int) length);
+                        ZeroPaddedSpan returnDataSlice = _returnDataBuffer.SliceWithZeroPadding(src, (int) length);
                         evmState.Memory.Save(ref dest, returnDataSlice);
-                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long) dest, returnDataSlice);
+                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long) dest, returnDataSlice.ToArray());
                         break;
                     }
                     case Instruction.BLOCKHASH:

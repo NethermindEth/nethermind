@@ -23,7 +23,7 @@ namespace Nethermind.Blockchain.Validators
     {
         public static BlockHeader FindParentHeader(this IBlockTree tree, BlockHeader header, BlockTreeLookupOptions options)
         {
-            return tree.FindHeader(header.ParentHash, options);
+            return header.MaybeParent ?? tree.FindHeader(header.ParentHash, options);
         }
 
         public static Block FindParent(this IBlockTree tree, Block block, BlockTreeLookupOptions options)
