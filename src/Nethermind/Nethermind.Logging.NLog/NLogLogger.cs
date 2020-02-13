@@ -18,6 +18,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using NLog;
 using NLog.Targets;
 using NLog.Filters;
 
@@ -46,9 +47,10 @@ namespace Nethermind.Logging.NLog
                 Directory.CreateDirectory(logsDir);
             }
 
-            if (global::NLog.LogManager.Configuration?.AllTargets.SingleOrDefault(t => t.Name == "file") is FileTarget target)
+            foreach (FileTarget target in global::NLog.LogManager.Configuration?.AllTargets.OfType<FileTarget>())
             {
-                target.FileName = !Path.IsPathFullyQualified(fileName) ? Path.Combine(logsDir, fileName) : fileName;
+                string fileNameToUse = (target.Name == "file") ? fileName : target.FileName.Render(LogEventInfo.CreateNullEvent());
+                target.FileName = !Path.IsPathFullyQualified(fileNameToUse) ? Path.Combine(logsDir, fileNameToUse) : fileNameToUse;
             }
 
             /* NOTE: minor perf gain - not planning to switch logging levels while app is running */

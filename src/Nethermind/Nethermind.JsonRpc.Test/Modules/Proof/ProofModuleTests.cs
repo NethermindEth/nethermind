@@ -759,7 +759,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 {
                     account = new AccountDecoder().Decode(new RlpStream(VerifyProof(accountProof.Proof, block.StateRoot)));
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     // ignored
                 }

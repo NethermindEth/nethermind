@@ -14,9 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Dynamic;
 using Jint.Native;
+using Nethermind.Cli.Console;
 using Nethermind.Cli.Modules;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -66,7 +66,7 @@ namespace Nethermind.Cli.Test
                 .Returns(_serializer.Serialize(response));
 
             JsValue value = _engine.Execute($"proof.getTransactionByHash(\"{txHash}\", {(includeHeader ? "true" : "false")})");
-            Console.WriteLine(_serializer.Serialize(value.ToObject(), true));
+            Colorful.Console.WriteLine(_serializer.Serialize(value.ToObject(), true));
             Assert.AreNotEqual(JsValue.Null, value);
         }
 
@@ -86,7 +86,7 @@ namespace Nethermind.Cli.Test
                 .Returns(_serializer.Serialize(response));
 
             JsValue value = _engine.Execute($"proof.getTransactionReceipt(\"{txHash}\", {(includeHeader ? "true" : "false")})");
-            Console.WriteLine(_serializer.Serialize(value.ToObject(), true));
+            Colorful.Console.WriteLine(_serializer.Serialize(value.ToObject(), true));
             Assert.AreNotEqual(JsValue.Null, value);
         }
 
@@ -111,7 +111,7 @@ namespace Nethermind.Cli.Test
                 .Returns(_serializer.Serialize(response));
 
             JsValue value = _engine.Execute($"proof.call({_serializer.Serialize(tx)}, \"{blockHash}\")");
-            Console.WriteLine(_serializer.Serialize(value.ToObject(), true));
+            Colorful.Console.WriteLine(_serializer.Serialize(value.ToObject(), true));
             Assert.AreNotEqual(JsValue.Null, value);
         }
     }

@@ -323,6 +323,15 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         private FastBlocksBatchType ResolveBatchType()
         {
+            if (_syncConfig.BeamSync && _blockTree.LowestInsertedHeader != null)
+            {
+                // we just need a pivot header and can go up then
+                _syncReport.FastBlocksHeaders.Update(_pivotNumber);
+                _syncReport.FastBlocksHeaders.MarkEnd();
+                _headerDependencies.Clear();
+                return FastBlocksBatchType.None;
+            }
+            
             bool headersDownloaded = (_blockTree.LowestInsertedHeader?.Number ?? 0) == 1;
             bool bodiesDownloaded = (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
             bool receiptsDownloaded = _receiptStorage.LowestInsertedReceiptBlock == 1;

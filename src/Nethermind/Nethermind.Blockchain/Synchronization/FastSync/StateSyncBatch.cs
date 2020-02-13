@@ -16,6 +16,7 @@
 
 using System;
 using System.Diagnostics;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Synchronization.FastSync
 {
@@ -31,5 +32,9 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
         public SyncPeerAllocation AssignedPeer { get; set; }
 
         public bool IsAdditionalDataConsumer { get; set; }
+        
+        public UInt256 RequiredPeerDifficulty { get; set; }
+
+        public int ConsumerId { get; set; }
     }
 }

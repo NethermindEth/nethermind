@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using DotNetty.Buffers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
@@ -60,9 +61,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             
             var statusMsg = new StatusMessage();
             statusMsg.GenesisHash = genesisBlock.Hash;
+
+            IByteBuffer statusPacket = svc.ZeroSerialize(statusMsg);
+            statusPacket.ReadByte();
+
+            IByteBuffer getBlockHeadersPacket = svc.ZeroSerialize(msg);
+            getBlockHeadersPacket.ReadByte();
             
-            handler.HandleMessage(new Packet(Protocol.Eth, statusMsg.PacketType, svc.Serialize(statusMsg)));
-            handler.HandleMessage(new Packet(Protocol.Eth, msg.PacketType, svc.Serialize(msg)));
+            handler.HandleMessage(new ZeroPacket(statusPacket){PacketType = 0});
+            handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket){PacketType = Eth62MessageCode.GetBlockHeaders});
             syncManager.Received().FindHeaders(TestItem.KeccakA, 3, 1, true);
         }
         
@@ -103,8 +110,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             var statusMsg = new StatusMessage();
             statusMsg.GenesisHash = genesisBlock.Hash;
             
-            handler.HandleMessage(new Packet(Protocol.Eth, statusMsg.PacketType, svc.Serialize(statusMsg)));
-            handler.HandleMessage(new Packet(Protocol.Eth, msg.PacketType, svc.Serialize(msg)));
+            IByteBuffer statusPacket = svc.ZeroSerialize(statusMsg);
+            statusPacket.ReadByte();
+
+            IByteBuffer getBlockHeadersPacket = svc.ZeroSerialize(msg);
+            getBlockHeadersPacket.ReadByte();
+            
+            handler.HandleMessage(new ZeroPacket(statusPacket){PacketType = 0});
+            handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket){PacketType = Eth62MessageCode.GetBlockHeaders});
+            
             session.Received().DeliverMessage(Arg.Is<BlockHeadersMessage>(bhm => bhm.BlockHeaders.Length == 3));
             syncManager.Received().FindHash(100);
         }
@@ -187,8 +201,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             var statusMsg = new StatusMessage();
             statusMsg.GenesisHash = genesisBlock.Hash;
             
-            handler.HandleMessage(new Packet(Protocol.Eth, statusMsg.PacketType, svc.Serialize(statusMsg)));
-            handler.HandleMessage(new Packet(Protocol.Eth, msg.PacketType, svc.Serialize(msg)));
+            IByteBuffer statusPacket = svc.ZeroSerialize(statusMsg);
+            statusPacket.ReadByte();
+
+            IByteBuffer getBlockHeadersPacket = svc.ZeroSerialize(msg);
+            getBlockHeadersPacket.ReadByte();
+            
+            handler.HandleMessage(new ZeroPacket(statusPacket){PacketType = 0});
+            handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket){PacketType = Eth62MessageCode.GetBlockHeaders});
+            
             session.Received().DeliverMessage(Arg.Is<BlockHeadersMessage>(bhm => bhm.BlockHeaders.Length == 5));
             syncManager.Received().FindHash(100);
         }

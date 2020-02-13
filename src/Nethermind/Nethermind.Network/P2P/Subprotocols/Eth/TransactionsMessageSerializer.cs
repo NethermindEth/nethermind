@@ -21,25 +21,8 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class TransactionsMessageSerializer : IMessageSerializer<TransactionsMessage>, IZeroMessageSerializer<TransactionsMessage>
+    public class TransactionsMessageSerializer : IZeroMessageSerializer<TransactionsMessage>
     {
-        public byte[] Serialize(TransactionsMessage message)
-        {
-            return Rlp.Encode(message.Transactions).Bytes;
-        }
-
-        public TransactionsMessage Deserialize(byte[] bytes)
-        {
-            RlpStream rlpStream = bytes.AsRlpStream();
-            return Deserialize(rlpStream);
-        }
-
-        private static TransactionsMessage Deserialize(RlpStream rlpStream)
-        {
-            Transaction[] txs = Rlp.DecodeArray<Transaction>(rlpStream);
-            return new TransactionsMessage(txs);
-        }
-
         private TransactionDecoder _decoder = new TransactionDecoder();
         
         public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message)
@@ -66,6 +49,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
             return Deserialize(rlpStream);
+        }
+        
+        private static TransactionsMessage Deserialize(RlpStream rlpStream)
+        {
+            Transaction[] txs = Rlp.DecodeArray<Transaction>(rlpStream);
+            return new TransactionsMessage(txs);
         }
     }
 }

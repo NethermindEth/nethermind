@@ -66,7 +66,7 @@ namespace Nethermind.Store
 
         public Keccak GetStorageRoot(Keccak rootHash, Address address)
         {
-            return GetState(rootHash, address).StorageRoot;
+            return GetState(rootHash, address)?.StorageRoot;
         }
 
         public UInt256 GetBalance(Keccak rootHash, Address address)

@@ -29,6 +29,12 @@ namespace Nethermind.Core.Caching
         private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
         private readonly LinkedList<LruCacheItem> _lruList;
 
+        public void Clear()
+        {
+            _cacheMap?.Clear();
+            _lruList?.Clear();
+        }
+        
         public LruCache(int capacity)
         {
             _capacity = capacity;

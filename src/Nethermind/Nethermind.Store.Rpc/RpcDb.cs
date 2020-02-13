@@ -66,6 +66,8 @@ namespace Nethermind.Store.Rpc
             return GetThroughRpc(key) != null;
         }
 
+        public IDb Innermost => this; // record db is just a helper DB here
+
         public byte[][] GetAll() => _recordDb.GetAll();
 
         public void StartBatch()

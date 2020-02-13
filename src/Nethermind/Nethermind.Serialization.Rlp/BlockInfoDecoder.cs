@@ -28,6 +28,7 @@ namespace Nethermind.Serialization.Rlp
             _chainWithFinalization = chainWithFinalization;
         }
 
+        // ReSharper disable once UnusedMember.Global this is needed for auto-registration
         public BlockInfoDecoder() : this(false) { }
         
         public BlockInfo Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -78,11 +79,6 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return Rlp.Encode(elements);
-        }
-
-        public void Encode(MemoryStream stream, BlockInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            stream.Write(Encode(item, rlpBehaviors).Bytes);
         }
 
         public int GetLength(BlockInfo item, RlpBehaviors rlpBehaviors)

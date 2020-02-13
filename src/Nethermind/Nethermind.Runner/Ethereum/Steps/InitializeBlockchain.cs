@@ -14,14 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.Collections.Generic;
+using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
@@ -31,6 +31,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Mining;
 using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Specs;
 using Nethermind.Store;
 using Nethermind.Store.Repositories;
 
@@ -54,6 +55,18 @@ namespace Nethermind.Runner.Ethereum.Steps
          [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
         private Task InitBlockchain()
         {
+            ISyncConfig syncConfig = _context.Config<ISyncConfig>();
+            if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
+            {
+                _context.Logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
+                syncConfig.DownloadBodiesInFastSync = true;
+            }
+
+            if (syncConfig.BeamSync)
+            {
+                _context.Logger.Warn("Welcome to the alpha version of the Nethermind Goerli Beam Sync. I will start by downloading the pivot block header and then will continue to download all the headers from the pivot upwards. After that I will be beam synchronizing the new blocks. Many things can fail - appreciated if you report issues via GitHub or Gitter.");
+            }
+            
             Account.AccountStartNonce = _context.ChainSpec.Parameters.AccountStartNonce;
 
             _context.StateProvider = new StateProvider(
@@ -142,17 +155,32 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             _context.TxPoolInfoProvider = new TxPoolInfoProvider(_context.StateProvider, _context.TxPool);
 
-            _context.BlockProcessor = CreateBlockProcessor();
+            _context.MainBlockProcessor = CreateBlockProcessor();
 
-            BlockchainProcessor processor = new BlockchainProcessor(
+            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(
                 _context.BlockTree,
-                _context.BlockProcessor,
+                _context.MainBlockProcessor,
                 _context.RecoveryStep,
                 _context.LogManager,
-                _context.Config<IInitConfig>().StoreReceipts); 
-            _context.BlockchainProcessor = processor;
-            _context.BlockProcessingQueue = processor;
+                _context.Config<IInitConfig>().StoreReceipts,
+                !syncConfig.BeamSync);
+
+            _context.BlockProcessingQueue = blockchainProcessor;
+            _context.BlockchainProcessor = blockchainProcessor;
             
+            if (syncConfig.BeamSync)
+            {
+                _ = new BeamBlockchainProcessor(
+                    new ReadOnlyDbProvider(_context.DbProvider, false),
+                    _context.BlockTree,
+                    _context.SpecProvider,
+                    _context.LogManager,
+                    _context.BlockValidator,
+                    _context.RecoveryStep,
+                    _context.RewardCalculatorSource,
+                    _context.BlockProcessingQueue);
+            }
+
             return Task.CompletedTask;
         }
 

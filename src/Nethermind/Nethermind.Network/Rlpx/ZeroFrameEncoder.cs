@@ -39,7 +39,7 @@ namespace Nethermind.Network.Rlpx
         {
             _frameCipher = frameCipher ?? throw new ArgumentNullException(nameof(frameCipher));
             _frameMacProcessor = frameMacProcessor ?? throw new ArgumentNullException(nameof(frameMacProcessor));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<ZeroFrameEncoder>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)

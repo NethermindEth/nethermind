@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
@@ -220,12 +221,18 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _hasFinishedExecution[discoveredStep] = true;
                 }
             }
-
+            
             if (startedThisRound == 0 && _allPending.All(t => t.IsCompleted))
             {
-                if (_logger.IsWarn) _logger.Warn($"Didn't start any initialization steps during initialization round and all previous steps are already completed.");
+                Interlocked.Increment(ref _foreverLoop);
+                if (_foreverLoop > 100)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Didn't start any initialization steps during initialization round and all previous steps are already completed.");
+                }
             }
         }
+        
+        private int _foreverLoop;
 
         private void SubsystemStateAwareOnSubsystemStateChanged(object sender, SubsystemStateEventArgs e)
         {

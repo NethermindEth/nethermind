@@ -27,6 +27,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.Proofs;
 using Nethermind.JsonRpc.Data;
@@ -75,13 +76,19 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 sourceHeader.Hash,
                 Keccak.OfAnEmptySequenceRlp,
                 Address.Zero,
+                
                 0,
                 sourceHeader.Number + 1,
                 sourceHeader.GasLimit,
                 sourceHeader.Timestamp,
                 Bytes.Empty);
-            callHeader.TotalDifficulty = sourceHeader.TotalDifficulty + callHeader.Difficulty;
             
+            callHeader.TxRoot = Keccak.EmptyTreeHash;
+            callHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
+            callHeader.Author = Address.SystemUser;
+            callHeader.TotalDifficulty = sourceHeader.TotalDifficulty + callHeader.Difficulty;
+            callHeader.Hash = callHeader.CalculateHash();
+
             Transaction transaction = tx.ToTransaction();
             transaction.SenderAddress ??= Address.SystemUser;
             if (transaction.GasLimit == 0)

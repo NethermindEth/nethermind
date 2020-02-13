@@ -41,7 +41,7 @@ namespace Nethermind.Db
         
         private long _maxThisDbSize;
 
-        public DbOnTheRocks(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null)
+        public DbOnTheRocks(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
         {
             RocksDb Open(DbOptions options, string path, ColumnFamilies families)
             {
@@ -61,6 +61,17 @@ namespace Nethermind.Db
             if (!Directory.Exists(fullPath))
             {
                 Directory.CreateDirectory(fullPath);
+            }
+            else if(deleteOnStart)
+            {
+                try
+                {
+                    Directory.Delete(fullPath, true);
+                }
+                catch (Exception e)
+                {
+                    if(_logger.IsWarn) _logger.Warn($"This is not a problem but I could not delete the pending tx database on startup. {e.Message}");
+                }
             }
 
             try
@@ -235,6 +246,8 @@ namespace Nethermind.Db
             return Db.Get(key) != null;
 //            return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
         }
+
+        public IDb Innermost => this;
 
         public void StartBatch()
         {

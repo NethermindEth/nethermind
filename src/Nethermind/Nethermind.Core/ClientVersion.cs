@@ -31,7 +31,7 @@ namespace Nethermind.Core
                 int indexOfHash = osDescription.IndexOf('#');
                 osDescription = osDescription.Substring(0, Math.Max(0, indexOfHash - 1));
             }
-            string date = DateTime.Now.ToString("yyyyMMdd");
+            string date = DateTime.UtcNow.ToString("yyyyMMdd");
             string gitTag = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "git-hash")) ? File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "git-hash")).Trim().Replace("g", "") : string.Empty;
 
             Description = $"Nethermind/v{gitTag}-{date}/{RuntimeInformation.OSArchitecture}-{osDescription}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";

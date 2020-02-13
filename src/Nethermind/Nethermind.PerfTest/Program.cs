@@ -83,7 +83,6 @@ namespace Nethermind.PerfTest
                 _blockTree = blockTree;
                 _blockTree.NewHeadBlock += (sender, args) => NewHeadBlock?.Invoke(sender, args);
                 _blockTree.NewBestSuggestedBlock += (sender, args) => NewBestSuggestedBlock?.Invoke(sender, args);
-                _blockTree.BlockAddedToMain += (sender, args) => BlockAddedToMain?.Invoke(sender, args);
             }
 
             public int ChainId => _blockTree.ChainId;

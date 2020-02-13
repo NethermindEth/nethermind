@@ -18,6 +18,7 @@ using System.Linq;
 using System.Numerics;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Test.Builders
@@ -77,8 +78,8 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.TotalDifficulty = (ulong)difficulty;
             return this;
         }
-        
-        public BlockBuilder WithTotalDifficulty(UInt256 difficulty)
+
+        public BlockBuilder WithTotalDifficulty(UInt256? difficulty)
         {
             TestObjectInternal.Header.TotalDifficulty = difficulty;
             return this;
@@ -158,6 +159,18 @@ namespace Nethermind.Core.Test.Builders
         {
             base.BeforeReturn();
             TestObjectInternal.Header.Hash = TestObjectInternal.Header.CalculateHash();
+        }
+
+        public BlockBuilder WithReceiptsRoot(Keccak keccak)
+        {
+            TestObjectInternal.Header.ReceiptsRoot = keccak;
+            return this;
+        }
+
+        public BlockBuilder WithGasUsed(long gasUsed)
+        {
+            TestObjectInternal.Header.GasUsed = gasUsed;
+            return this;
         }
     }
 }

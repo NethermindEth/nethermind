@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain.Proofs
         private static TransactionDecoder _txDecoder = new TransactionDecoder();
 
         public TxTrie(Transaction[] txs, bool allowProofs = false)
-            : base(allowProofs ? (IDb) new MemDb() : NullDb.Instance)
+            : base(allowProofs ? (IDb) new MemDb() : NullDb.Instance, EmptyTreeHash, false, false)
         {
             _allowProofs = allowProofs;
             if (txs.Length == 0)

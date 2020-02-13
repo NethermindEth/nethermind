@@ -101,7 +101,7 @@ namespace Nethermind.Runner.Ethereum.Context
         public IBlockValidator BlockValidator { get; set; }
         public IHeaderValidator HeaderValidator { get; set; }
         public IBlockDataRecoveryStep RecoveryStep { get; set; }
-        public IBlockProcessor BlockProcessor { get; set; }
+        public IBlockProcessor MainBlockProcessor { get; set; }
         public IRewardCalculatorSource RewardCalculatorSource { get; set; }
         public ISpecProvider SpecProvider { get; set; }
         public IStateProvider StateProvider { get; set; }

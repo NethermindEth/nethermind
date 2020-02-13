@@ -25,7 +25,7 @@ namespace Nethermind.Db.Databases
         public override string Name { get; } = "PendingTxs";
 
         public PendingTxsRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
-            : base(basePath, "pendingtxs", dbConfig, logManager)
+            : base(basePath, "pendingtxs", dbConfig, logManager, deleteOnStart: true)
         {
         }
 

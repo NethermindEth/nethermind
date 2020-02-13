@@ -21,7 +21,6 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Threading;
-using Extensions.Data;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
@@ -136,8 +135,6 @@ namespace Nethermind.Core.Extensions
     
     public static class ByteArrayExtensions
     {
-        [ThreadStatic] private static HashAlgorithm _xxHash;
-
         public static byte[] Xor(this byte[] bytes, byte[] otherBytes)
         {
             if (bytes.Length != otherBytes.Length)
@@ -263,12 +260,6 @@ namespace Nethermind.Core.Extensions
             return slice;
         }
 
-        public static int GetXxHashCode(this byte[] bytes)
-        {
-            LazyInitializer.EnsureInitialized(ref _xxHash, XXHash32.Create);
-            return MemoryMarshal.Read<int>(_xxHash.ComputeHash(bytes));
-        }
-        
         [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
         public static int GetSimplifiedHashCode(this byte[] bytes)
         {
@@ -279,7 +270,7 @@ namespace Nethermind.Core.Extensions
                 return 0;
             }
 
-            return (fnvPrime * (((fnvPrime * (bytes[0] + 7)) ^ (bytes[^1] + 23)) + 11)) ^ (bytes[(bytes.Length - 1) / 2] + 53);
+            return (fnvPrime * bytes.Length * (((fnvPrime * (bytes[0] + 7)) ^ (bytes[^1] + 23)) + 11)) ^ (bytes[(bytes.Length - 1) / 2] + 53);
         }
     }
 }

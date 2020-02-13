@@ -18,8 +18,10 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http.Headers;
 using System.Numerics;
+using FluentAssertions;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
@@ -297,6 +299,42 @@ namespace Nethermind.Core.Test
             byte[] input = Bytes.FromHexString(hex);
             Bytes.ReverseInPlace(input);
             Assert.AreEqual(input, Bytes.FromHexString(expectedResult));
+        }
+
+        public static IEnumerable OrTests
+        {
+            get
+            {
+                byte[] GenerateRandom(int length)
+                {
+                    var bytes = new byte[length];
+                    TestContext.CurrentContext.Random.NextBytes(bytes);
+                    return bytes;
+                }
+
+                TestCaseData GenerateTest(int length)
+                {
+                    var thisArray = GenerateRandom(length);
+                    var valueArray = GenerateRandom(length);
+                    var resultArray = thisArray.Zip(valueArray, (b1, b2) => b1 | b2).Select(b => (byte) b).ToArray();
+                    return new TestCaseData(thisArray, valueArray, resultArray);
+                }
+                
+                yield return GenerateTest(1);
+                yield return GenerateTest(10);
+                yield return GenerateTest(32);
+                yield return GenerateTest(33);
+                yield return GenerateTest(48);
+                yield return GenerateTest(128);
+                yield return GenerateTest(200);
+            }
+        }
+        
+        [TestCaseSource(nameof(OrTests))]
+        public void Or(byte[] first, byte[] second, byte[] expected)
+        {
+            first.AsSpan().Or(second);
+            first.Should().Equal(expected);
         }
     }
 }

@@ -92,7 +92,7 @@ namespace Nethermind.Blockchain.Find
                 BlockParameterType.Pending => FindPendingBlock(),
                 BlockParameterType.Latest => FindLatestBlock(),
                 BlockParameterType.Earliest => FindEarliestBlock(),
-                BlockParameterType.BlockNumber => FindBlock(blockParameter.BlockNumber.Value),
+                BlockParameterType.BlockNumber => FindBlock(blockParameter.BlockNumber.Value, blockParameter.RequireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None),
                 BlockParameterType.BlockHash => FindBlock(blockParameter.BlockHash, blockParameter.RequireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None),
                 _ => throw new ArgumentException($"{nameof(BlockParameterType)} not supported: {blockParameter.Type}")
             };
@@ -110,7 +110,7 @@ namespace Nethermind.Blockchain.Find
                 BlockParameterType.Pending => FindPendingHeader(),
                 BlockParameterType.Latest => FindLatestHeader(),
                 BlockParameterType.Earliest => FindEarliestHeader(),
-                BlockParameterType.BlockNumber => FindHeader(blockParameter.BlockNumber.Value),
+                BlockParameterType.BlockNumber => FindHeader(blockParameter.BlockNumber.Value, blockParameter.RequireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None),
                 BlockParameterType.BlockHash => FindHeader(blockParameter.BlockHash, blockParameter.RequireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None),
                 _ => throw new ArgumentException($"{nameof(BlockParameterType)} not supported: {blockParameter.Type}")
             };

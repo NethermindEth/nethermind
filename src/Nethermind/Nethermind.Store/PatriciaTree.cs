@@ -19,9 +19,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -32,7 +30,7 @@ namespace Nethermind.Store
     [DebuggerDisplay("{RootHash}")]
     public class PatriciaTree
     {
-        private static readonly LruCache<Keccak, Rlp> NodeCache = new LruCache<Keccak, Rlp>(256 * 1024);
+        public static readonly LruCache<Keccak, Rlp> NodeCache = new LruCache<Keccak, Rlp>(256 * 1024);
 
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
@@ -44,30 +42,40 @@ namespace Nethermind.Store
         /// </summary>
         private readonly Stack<StackedNode> _nodeStack = new Stack<StackedNode>();
 
-        private readonly ConcurrentQueue<Exception> CommitExceptions = new ConcurrentQueue<Exception>();
+        private readonly ConcurrentQueue<Exception> _commitExceptions;
+        
+        private readonly ConcurrentQueue<TrieNode> _currentCommit;
 
         private readonly IDb _db;
         private readonly bool _parallelBranches;
+        private readonly bool _allowCommits;
 
         private Keccak _rootHash = Keccak.EmptyTreeHash;
 
         internal TrieNode RootRef;
 
         public PatriciaTree()
-            : this(NullDb.Instance, EmptyTreeHash, false)
+            : this(NullDb.Instance, EmptyTreeHash, false, true)
         {
         }
         
         public PatriciaTree(IDb db)
-            : this(db, EmptyTreeHash, false)
+            : this(db, EmptyTreeHash, false, true)
         {
         }
 
-        public PatriciaTree(IDb db, Keccak rootHash, bool parallelBranches)
+        public PatriciaTree(IDb db, Keccak rootHash, bool parallelBranches, bool allowCommits)
         {
             _db = db;
             _parallelBranches = parallelBranches;
+            _allowCommits = allowCommits;
             RootHash = rootHash;
+
+            if (_allowCommits)
+            {
+                _currentCommit = new ConcurrentQueue<TrieNode>();
+                _commitExceptions = new ConcurrentQueue<Exception>();
+            }
         }
 
         /// <summary>
@@ -90,6 +98,11 @@ namespace Nethermind.Store
 
         public void Commit()
         {
+            if (!_allowCommits)
+            {
+                throw new TrieException("Commits are not allowed on this trie.");
+            }
+            
             if (RootRef == null)
             {
                 return;
@@ -98,11 +111,11 @@ namespace Nethermind.Store
             if (RootRef.IsDirty)
             {
                 Commit(RootRef, true);
-                while (!CurrentCommit.IsEmpty)
+                while (!_currentCommit.IsEmpty)
                 {
-                    if (!CurrentCommit.TryDequeue(out TrieNode node))
+                    if (!_currentCommit.TryDequeue(out TrieNode node))
                     {
-                        throw new ArgumentNullException($"Threading issue at {nameof(CurrentCommit)} - should not happen unless we use static objects somewhere here.");
+                        throw new ArgumentNullException($"Threading issue at {nameof(_currentCommit)} - should not happen unless we use static objects somewhere here.");
                     }
 
                     _db.Set(node.Keccak, node.FullRlp.Bytes);
@@ -113,8 +126,6 @@ namespace Nethermind.Store
                 SetRootHash(RootRef.Keccak, true);
             }
         }
-
-        private readonly ConcurrentQueue<TrieNode> CurrentCommit = new ConcurrentQueue<TrieNode>();
 
         private void Commit(TrieNode node, bool isRoot)
         {
@@ -144,7 +155,7 @@ namespace Nethermind.Store
 
                     if (nodesToCommit.Count >= 4)
                     {
-                        CommitExceptions.Clear();
+                        _commitExceptions.Clear();
                         Parallel.For(0, nodesToCommit.Count, i =>
                         {
                             try
@@ -153,13 +164,13 @@ namespace Nethermind.Store
                             }
                             catch (Exception e)
                             {
-                                CommitExceptions.Enqueue(e);
+                                _commitExceptions.Enqueue(e);
                             }
                         });
 
-                        if (CommitExceptions.Count > 0)
+                        if (_commitExceptions.Count > 0)
                         {
-                            throw new AggregateException(CommitExceptions);
+                            throw new AggregateException(_commitExceptions);
                         }
                     }
                     else
@@ -185,7 +196,7 @@ namespace Nethermind.Store
             if (node.FullRlp != null && node.FullRlp.Length >= 32)
             {
                 NodeCache.Set(node.Keccak, node.FullRlp);
-                CurrentCommit.Enqueue(node);
+                _currentCommit.Enqueue(node);
             }
         }
 
@@ -221,6 +232,7 @@ namespace Nethermind.Store
             Run(input, input.Length, value, true);
         }
 
+        [DebuggerStepThrough]
         public byte[] Get(Span<byte> rawKey, Keccak rootHash = null)
         {
 //            byte[] value = ValueCache.Get(rawKey);
@@ -416,7 +428,7 @@ namespace Nethermind.Store
                             }
                             else
                             {
-                                throw new InvalidOperationException($"Unknown node type {childNode?.NodeType}");
+                                throw new InvalidOperationException($"Unknown node type {childNode.NodeType}");
                             }
                         }
                     }

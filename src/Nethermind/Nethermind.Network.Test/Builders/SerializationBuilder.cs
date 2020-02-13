@@ -46,6 +46,12 @@ namespace Nethermind.Network.Test.Builders
             return this;
         }
 
+        public SerializationBuilder With<T>(IZeroMessageSerializer<T> serializer) where T : MessageBase
+        {
+            TestObject.Register(serializer);
+            return this;
+        }
+
         public SerializationBuilder WithEncryptionHandshake()
         {
             return With(new AuthMessageSerializer())
@@ -53,7 +59,7 @@ namespace Nethermind.Network.Test.Builders
                 .With(new AckMessageSerializer())
                 .With(new AckEip8MessageSerializer(new Eip8MessagePad(new CryptoRandom())));
         }
-            
+
         public SerializationBuilder WithP2P()
         {
             return With(new Network.P2P.PingMessageSerializer())

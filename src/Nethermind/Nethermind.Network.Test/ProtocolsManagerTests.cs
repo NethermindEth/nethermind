@@ -17,6 +17,7 @@
 using System.Collections.Generic;
 using System.Numerics;
 using System.Threading;
+using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -191,8 +192,16 @@ namespace Nethermind.Network.Test
                 msg.ChainId = 1;
                 msg.GenesisHash = _blockTree.Genesis.Hash;
                 msg.ProtocolVersion = 63;
+                
+                return ReceiveStatus(msg);
+            }
 
-                _currentSession.ReceiveMessage(new Packet("eth", Eth62MessageCode.Status + 16, _serializer.Serialize(msg)));
+            private Context ReceiveStatus(StatusMessage msg)
+            {
+                IByteBuffer statusPacket = _serializer.ZeroSerialize(msg);
+                statusPacket.ReadByte();
+
+                _currentSession.ReceiveMessage(new ZeroPacket(statusPacket) {PacketType = Eth62MessageCode.Status + 16});
                 return this;
             }
 
@@ -257,8 +266,7 @@ namespace Nethermind.Network.Test
                 msg.GenesisHash = TestItem.KeccakA;
                 msg.ProtocolVersion = 63;
 
-                _currentSession.ReceiveMessage(new Packet("eth", Eth62MessageCode.Status + 16, _serializer.Serialize(msg)));
-                return this;
+                return ReceiveStatus(msg);
             }
 
             public Context ReceiveStatusWrongGenesis()
@@ -269,8 +277,7 @@ namespace Nethermind.Network.Test
                 msg.GenesisHash = TestItem.KeccakB;
                 msg.ProtocolVersion = 63;
 
-                _currentSession.ReceiveMessage(new Packet("eth", Eth62MessageCode.Status + 16, _serializer.Serialize(msg)));
-                return this;
+                return ReceiveStatus(msg);
             }
 
             public Context VerifyNotAddedToDiscovery()

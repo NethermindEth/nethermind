@@ -36,7 +36,7 @@ namespace Nethermind.Network.Rlpx
 
         public ZeroFrameMerger(ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<ZeroFrameMerger>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         protected override void Decode(IChannelHandlerContext context, IByteBuffer input, List<object> output)

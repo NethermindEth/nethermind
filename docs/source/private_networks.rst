@@ -8,9 +8,10 @@ Consensus Algorithms
 
 Nethermind supports the following consensus algorithms:
 
-* PoW (ethash)
-* PoA (Clique)
-* None (NethDev)
+* ethash (PoW)
+* AuRa (PoA)
+* Clique (PoA)
+* NethDev (debug / dev)
 
 PoW
 ^^^
@@ -22,10 +23,10 @@ Clique
 
 Clique is an implementation of the Proof of Authority (PoA) consensus algorithm. The idea behind PoA is to choose a group of nodes within the network with authrity to create (seal) new blocks. In Clique such nodes are called signers and after the initial setup signers can vote to add new signers to the group or to remove any of the existing signers. Clique is currently supported by Geth, Parity, Nethermind and Pantheon and is used to secure the Goerli and Rinkeby testnets. 
 
-Aura
+AuRa
 ^^^^
 
-Aura is another implementation of the Proof of Authority consensus algorithm. It is currently only supported by the Parity Ethereum client. Aura is used to secure the Kovan testnet and the POA network.
+AuRa is another implementation of the Proof of Authority consensus algorithm. It is currently only supported by Nethermind and Parity Ethereum client. Aura is used to secure the Kovan testnet and the POA Network.
 
 NethDev
 ^^^^^^^
@@ -35,10 +36,11 @@ NethDev is a very simple consensus algorithm (or to better describe it - lack of
 Configuration
 =============
 
-Nethermind uses the same format chainspec files that can be used for setting up private networks in Parity. Only some of the elements of the chainspec files are supported by Nethermind:
+Nethermind uses the same format chainspec files that can be used for setting up private networks in Parity. Most of the elements of the chainspec files are supported by Nethermind:
 
-* engine (to choose between Ethash, Clique or NethDev)
+* consensus engine and its parameters (to choose between Ethash, Clique, AuRa or NethDev)
 * genesis block spec
+* EIP transitions
 * initial account allocations
 * bootnodes
 
@@ -47,7 +49,7 @@ The following elements are NOT supported at the moment:
 * hardcoded sync block hashes
 * precompile definitions and precompile activation blocks
 
-You can find below links to some of the chainspec files used to define arious Ethereum networks:
+You can find below links to some of the chainspec files used to define various Ethereum networks:
 
 * `foundation <https://github.com/NethermindEth/nethermind/blob/09389fc28b37605acc5eaed764d3e973969fe319/src/Nethermind/Chains/foundation.json>`_ - the public Ethereum mainnet
 * `rinkeby <https://github.com/NethermindEth/nethermind/blob/09389fc28b37605acc5eaed764d3e973969fe319/src/Nethermind/Chains/rinkeby.json>`_ - the original Clique based testnet

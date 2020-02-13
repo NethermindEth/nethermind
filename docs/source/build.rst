@@ -97,5 +97,3 @@ Potential Issues
 ^^^^^^^^^^^^^^^^
 
 If you have some previous pre-release versions of .NET Core installed they may cause conflicts. Your case might be quite unique so best to search for help online.
-
-If application crashes saying that rocksdb-sharp / rocksdb is failing then most likely your processor is not supporting AVX instructions. This would require you to build RocksDb on your machine. We will add a tutorial for this later - for now reach out to us on gitter if you need to run it on a non-AVX CPU.

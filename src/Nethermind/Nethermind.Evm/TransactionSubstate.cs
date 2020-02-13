@@ -61,7 +61,7 @@ namespace Nethermind.Evm
                         BigInteger length = Output.Slice((int) start + 4, 32).ToUnsignedBigInteger();
                         Error = "revert: " + Encoding.ASCII.GetString(Output.Slice((int) start + 32 + 4, (int) length));
                     }
-                    catch (Exception e)
+                    catch (Exception)
                     {
                         // ignored
                     }

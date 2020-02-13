@@ -16,17 +16,19 @@
 
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
+using Nethermind.Store.BeamSync;
 
 namespace Nethermind.Store
 {
     public interface INodeDataConsumer
     {
+        UInt256 RequiredPeerDifficulty { get; }
+        
         event EventHandler NeedMoreData;
 
-        Keccak[] PrepareRequest();
+        DataConsumerRequest[] PrepareRequests();
         
-        int HandleResponse(Keccak[] hashes, byte[][] data);
-
-        bool NeedsData { get; }
+        int HandleResponse(DataConsumerRequest request, byte[][] data);
     }
 }

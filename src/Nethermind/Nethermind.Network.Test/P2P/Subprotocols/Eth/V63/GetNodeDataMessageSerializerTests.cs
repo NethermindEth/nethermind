@@ -29,7 +29,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             GetNodeDataMessage message = new GetNodeDataMessage(keys);
             GetNodeDataMessageSerializer serializer = new GetNodeDataMessageSerializer();
             
-            SerializerTester.Test(serializer, message);
             SerializerTester.TestZero(serializer, message);
         }
 

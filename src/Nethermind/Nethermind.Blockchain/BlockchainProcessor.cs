@@ -49,13 +49,22 @@ namespace Nethermind.Blockchain
         public int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
         private const int MaxProcessingQueueSize = 2000; // adjust based on tx or gas
 
-        [Todo(Improve.Refactor, "Store receipts by default should be configurable")]
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="blockTree"></param>
+        /// <param name="blockProcessor"></param>
+        /// <param name="recoveryStep"></param>
+        /// <param name="logManager"></param>
+        /// <param name="storeReceiptsByDefault"></param>
+        /// <param name="autoProcess">Registers for OnNewHeadBlock events at block tree.</param>
         public BlockchainProcessor(
             IBlockTree blockTree,
             IBlockProcessor blockProcessor,
             IBlockDataRecoveryStep recoveryStep,
             ILogManager logManager,
-            bool storeReceiptsByDefault)
+            bool storeReceiptsByDefault,
+            bool autoProcess = true)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -63,7 +72,11 @@ namespace Nethermind.Blockchain
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _storeReceiptsByDefault = storeReceiptsByDefault;
 
-            _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
+            if (autoProcess)
+            {
+                _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
+            }
+
             _stats = new ProcessingStats(_logger);
         }
 
@@ -75,10 +88,10 @@ namespace Nethermind.Blockchain
                 options |= ProcessingOptions.StoreReceipts;
             }
 
-            SuggestBlock(blockEventArgs.Block, options);
+            Enqueue(blockEventArgs.Block, options);
         }
 
-        public void SuggestBlock(Block block, ProcessingOptions processingOptions)
+        public void Enqueue(Block block, ProcessingOptions processingOptions)
         {
             if (_logger.IsTrace) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
 
@@ -258,7 +271,7 @@ namespace Nethermind.Blockchain
         public bool IsEmpty => _blockQueue.Count == 0 && _recoveryQueue.Count == 0;
 
         [Todo("Introduce priority queue and create a SuggestWithPriority that waits for block execution to return a block, then make this private")]
-        public Block Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
+        public Block Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer)
         {
             if (!RunSimpleChecksAheadOfProcessing(suggestedBlock, options))
             {
@@ -297,8 +310,9 @@ namespace Nethermind.Blockchain
                         break; //failure here
                     }
                     
-                    // for beam sync
-                    if((_blockTree.Head?.Number ?? 0) == 0)
+                    // for beam sync we do not expect previous blocks to necessarily be there and we
+                    // do not need them since we can requests state from outside
+                    if((options & ProcessingOptions.IgnoreParentNotOnMainChain) != 0)
                     {
                         break;
                     }
@@ -372,7 +386,7 @@ namespace Nethermind.Blockchain
 
                 try
                 {
-                    processedBlocks = _blockProcessor.Process(stateRoot, blocks, options, blockTracer);
+                    processedBlocks = _blockProcessor.Process(stateRoot, blocks, options, tracer);
                 }
                 catch (InvalidBlockException ex)
                 {
@@ -468,6 +482,16 @@ namespace Nethermind.Blockchain
             public Keccak BlockHash { get; set; }
             public Block Block { get; set; }
             public ProcessingOptions ProcessingOptions { get; }
+        }
+
+        public void Dispose()
+        {
+            _recoveryQueue?.Dispose();
+            _blockQueue?.Dispose();
+            _loopCancellationSource?.Dispose();
+            _recoveryTask?.Dispose();
+            _processorTask?.Dispose();
+            _blockTree.NewBestSuggestedBlock -= OnNewBestBlock;
         }
     }
 }

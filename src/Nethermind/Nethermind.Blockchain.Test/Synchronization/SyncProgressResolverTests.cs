@@ -36,6 +36,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
             INodeDataDownloader nodeDataDownloader = Substitute.For<INodeDataDownloader>();
             SyncConfig syncConfig = new SyncConfig();
+            syncConfig.PivotNumber = "1";
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, nodeDataDownloader, syncConfig, LimboLogs.Instance);
             blockTree.BestSuggestedHeader.Returns((BlockHeader) null);
@@ -49,6 +50,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
             INodeDataDownloader nodeDataDownloader = Substitute.For<INodeDataDownloader>();
             SyncConfig syncConfig = new SyncConfig();
+            syncConfig.PivotNumber = "1";
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, nodeDataDownloader, syncConfig, LimboLogs.Instance);
             blockTree.BestSuggestedBody.Returns((Block) null);
@@ -62,6 +64,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
             INodeDataDownloader nodeDataDownloader = Substitute.For<INodeDataDownloader>();
             SyncConfig syncConfig = new SyncConfig();
+            syncConfig.PivotNumber = "1";
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, nodeDataDownloader, syncConfig, LimboLogs.Instance);
             var head = Build.A.BlockHeader.WithNumber(5).TestObject;
@@ -77,6 +80,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
             INodeDataDownloader nodeDataDownloader = Substitute.For<INodeDataDownloader>();
             SyncConfig syncConfig = new SyncConfig();
+            syncConfig.PivotNumber = "1";
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, nodeDataDownloader, syncConfig, LimboLogs.Instance);
             var head = Build.A.BlockHeader.WithNumber(5).TestObject;
@@ -96,6 +100,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
             INodeDataDownloader nodeDataDownloader = Substitute.For<INodeDataDownloader>();
             SyncConfig syncConfig = new SyncConfig();
+            syncConfig.PivotNumber = "1";
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, nodeDataDownloader, syncConfig, LimboLogs.Instance);
             var head = Build.A.BlockHeader.WithNumber(5).TestObject;
@@ -116,6 +121,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             INodeDataDownloader nodeDataDownloader = Substitute.For<INodeDataDownloader>();
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.FastBlocks = false;
+            syncConfig.PivotNumber = "1";
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, nodeDataDownloader, syncConfig, LimboLogs.Instance);
             Assert.True(syncProgressResolver.IsFastBlocksFinished());
@@ -131,6 +137,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             syncConfig.FastBlocks = true;
             syncConfig.DownloadBodiesInFastSync = true;
             syncConfig.DownloadReceiptsInFastSync = true;
+            syncConfig.PivotNumber = "1";
 
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(2).TestObject);
 
@@ -148,6 +155,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             syncConfig.FastBlocks = true;
             syncConfig.DownloadBodiesInFastSync = true;
             syncConfig.DownloadReceiptsInFastSync = true;
+            syncConfig.PivotNumber = "1";
 
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).TestObject);
             blockTree.LowestInsertedBody.Returns(Build.A.Block.WithNumber(2).TestObject);
@@ -166,6 +174,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             syncConfig.FastBlocks = true;
             syncConfig.DownloadBodiesInFastSync = true;
             syncConfig.DownloadReceiptsInFastSync = true;
+            syncConfig.PivotNumber = "1";
 
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).TestObject);
             blockTree.LowestInsertedBody.Returns(Build.A.Block.WithNumber(1).TestObject);
@@ -185,6 +194,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             syncConfig.FastBlocks = true;
             syncConfig.DownloadBodiesInFastSync = false;
             syncConfig.DownloadReceiptsInFastSync = true;
+            syncConfig.PivotNumber = "1";
 
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).TestObject);
             blockTree.LowestInsertedBody.Returns(Build.A.Block.WithNumber(2).TestObject);
@@ -204,6 +214,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             syncConfig.FastBlocks = true;
             syncConfig.DownloadBodiesInFastSync = true;
             syncConfig.DownloadReceiptsInFastSync = false;
+            syncConfig.PivotNumber = "1";
 
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).TestObject);
             blockTree.LowestInsertedBody.Returns(Build.A.Block.WithNumber(1).TestObject);

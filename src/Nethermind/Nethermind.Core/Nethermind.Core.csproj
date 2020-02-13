@@ -19,7 +19,4 @@
     <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
     <ProjectReference Include="..\Nethermind.Secp256k1\Nethermind.Secp256k1.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <PackageReference Include="Extensions.Data.xxHash.core20" Version="1.0.2.1" />
-  </ItemGroup>
 </Project>

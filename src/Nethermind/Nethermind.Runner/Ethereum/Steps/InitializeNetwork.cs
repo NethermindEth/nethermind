@@ -69,14 +69,19 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private async Task Initialize()
         {
-            if (_context.NetworkConfig.DiagTracerEnabled)
+            INetworkConfig networkConfig = _context.Config<INetworkConfig>();
+            if (networkConfig.DiagTracerEnabled)
             {
                 NetworkDiagTracer.IsEnabled = true;
                 NetworkDiagTracer.Start();
             }
+            
+            // Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", "8192");
+            Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", networkConfig.NettyArenaOrder.ToString());
 
-            int maxPeersCount = _context.NetworkConfig.ActivePeersMaxCount;
+            int maxPeersCount = networkConfig.ActivePeersMaxCount;
             _context.SyncPeerPool = new EthSyncPeerPool(_context.BlockTree, _context.NodeStatsManager, maxPeersCount, _context.LogManager);
+            _context.DisposeStack.Push(_context.SyncPeerPool);
             NodeDataFeed feed = new NodeDataFeed(_context.DbProvider.CodeDb, _context.DbProvider.StateDb, _context.LogManager);
             NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_context.SyncPeerPool, feed, _context.NodeDataConsumer, _context.LogManager);
             _context.Synchronizer = new Synchronizer(_context.SpecProvider, _context.BlockTree, _context.ReceiptStorage, _context.BlockValidator, _context.SealValidator, _context.SyncPeerPool, _context.Config<ISyncConfig>(), nodeDataDownloader, _context.NodeStatsManager, _context.LogManager);
@@ -296,13 +301,13 @@ namespace Nethermind.Runner.Ethereum.Steps
                 }
 
                 FilterStore filterStore = new FilterStore();
-                FilterManager filterManager = new FilterManager(filterStore, _context.BlockProcessor, _context.TxPool, _context.LogManager);
+                FilterManager filterManager = new FilterManager(filterStore, _context.MainBlockProcessor, _context.TxPool, _context.LogManager);
                 INdmCapabilityConnector capabilityConnector = await _context.NdmInitializer.InitAsync(_context.ConfigProvider, _context.DbProvider,
                     initConfig.BaseDbPath, _context.BlockTree, _context.TxPool, _context.SpecProvider, _context.ReceiptStorage, _context.Wallet, filterStore,
                     filterManager, _context.Timestamper, _context.EthereumEcdsa, _context.RpcModuleProvider, _context.KeyStore, _context.EthereumJsonSerializer,
                     _context.CryptoRandom, _context.Enode, _context.NdmConsumerChannelManager, _context.NdmDataPublisher, _context.GrpcServer,
                     _context.NodeStatsManager, _context.ProtocolsManager, protocolValidator, _context._messageSerializationService,
-                    initConfig.EnableUnsecuredDevWallet, _context.WebSocketsManager, _context.LogManager, _context.BlockProcessor,
+                    initConfig.EnableUnsecuredDevWallet, _context.WebSocketsManager, _context.LogManager, _context.MainBlockProcessor,
                     _context.JsonRpcClientProxy, _context.EthJsonRpcClientProxy, _context.HttpClient, _context.MonitoringService, _context.BloomStorage);
                 capabilityConnector.Init();
                 if (_context.Logger.IsInfo) _context.Logger.Info($"NDM initialized.");

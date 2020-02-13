@@ -295,7 +295,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 To = receipt.To,
                 TransactionHash = receipt.TransactionHash,
                 TransactionIndex = (long)receipt.TransactionIndex,
-                LogsBloom = receipt.LogsBloom is null ? null : new Bloom(new BitArray(receipt.LogsBloom))
+                LogsBloom = receipt.LogsBloom is null ? null : new Bloom(receipt.LogsBloom)
             };
         }
 

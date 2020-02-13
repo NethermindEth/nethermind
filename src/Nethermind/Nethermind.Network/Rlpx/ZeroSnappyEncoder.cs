@@ -29,7 +29,7 @@ namespace Nethermind.Network.Rlpx
 
         public ZeroSnappyEncoder(ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<ZeroSnappyEncoder>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)

@@ -27,6 +27,11 @@ namespace Nethermind.Store
         void CommitBatch();
         void Remove(byte[] key);
         bool KeyExists(byte[] key);
+
+        /// <summary>
+        /// For nested DB structures returns the innermost one
+        /// </summary>
+        public IDb Innermost { get; }
     }
 
     public interface IDbWithSpan : IDisposable

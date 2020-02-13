@@ -15,11 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Core;
 
 namespace Nethermind.Blockchain
 {
     public interface IBlockProcessingQueue
     {
+        void Enqueue(Block block, ProcessingOptions processingOptions);
+        
         event EventHandler ProcessingQueueEmpty;
         
         bool IsEmpty { get; }

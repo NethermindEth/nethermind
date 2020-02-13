@@ -14,16 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class BlockBodiesMessageSerializer : IMessageSerializer<BlockBodiesMessage>, IZeroMessageSerializer<BlockBodiesMessage>
+    public class BlockBodiesMessageSerializer : IZeroMessageSerializer<BlockBodiesMessage>
     {
         public byte[] Serialize(BlockBodiesMessage message)
         {
@@ -34,12 +32,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     Rlp.Encode(b.Ommers))).ToArray()).Bytes;
         }
 
-        public BlockBodiesMessage Deserialize(byte[] bytes)
+        public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message)
         {
-            RlpStream rlpStream = bytes.AsRlpStream();
-            return Deserialize(rlpStream);
+            byte[] oldWay = Serialize(message);
+            byteBuffer.EnsureWritable(oldWay.Length, true);
+            byteBuffer.WriteBytes(oldWay);
         }
 
+        public BlockBodiesMessage Deserialize(IByteBuffer byteBuffer)
+        {
+            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            return Deserialize(rlpStream);
+        }
+        
         private static BlockBodiesMessage Deserialize(RlpStream rlpStream)
         {
             BlockBodiesMessage message = new BlockBodiesMessage();
@@ -57,19 +62,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }, false);
 
             return message;
-        }
-
-        public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message)
-        {
-            byte[] oldWay = Serialize(message);
-            byteBuffer.EnsureWritable(oldWay.Length, true);
-            byteBuffer.WriteBytes(oldWay);
-        }
-
-        public BlockBodiesMessage Deserialize(IByteBuffer byteBuffer)
-        {
-            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            return Deserialize(rlpStream);
         }
     }
 }

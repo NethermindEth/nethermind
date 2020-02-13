@@ -48,7 +48,12 @@ namespace Nethermind.Cli.Modules
             }
             catch (Exception)
             {
-                throw new CliArgumentParserException($"Invalid address format \"{addressHex}\". Expected format: \"0x000102030405060708090a0b0c0d0e0f10111213\"");
+                if (!addressHex.Contains("0x"))
+                {
+                    throw new CliArgumentParserException($"Invalid address format \"{addressHex}\". Have you remembered to add '\"\"'? Expected format: \"0x000102030405060708090a0b0c0d0e0f10111213\".");
+                }
+
+                throw new CliArgumentParserException($"Invalid address format \"{addressHex}\". Expected format: \"0x000102030405060708090a0b0c0d0e0f10111213\".");
             }
         }
 
@@ -61,6 +66,11 @@ namespace Nethermind.Cli.Modules
             }
             catch (Exception)
             {
+                if (!hashHex.Contains("0x"))
+                {
+                    throw new CliArgumentParserException($"Invalid hash format \"{hashHex}\". Have you remembered to add '\"\"'? Expected format: \"0x000102030405060708090a0b0c0d00e0f101112131415161718191a1b1c1d1e1f\".");
+                }
+                
                 throw new CliArgumentParserException($"Invalid hash format \"{hashHex}\". Expected format: \"0x000102030405060708090a0b0c0d00e0f101112131415161718191a1b1c1d1e1f\"");
             }
         }

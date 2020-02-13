@@ -434,8 +434,7 @@ namespace Nethermind.Blockchain
             _headerDb.Set(header.Hash, newRlp.Bytes);
 
             BlockInfo blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? 0);
-            ChainLevelInfo chainLevel = new ChainLevelInfo(false, blockInfo);
-            chainLevel.HasBlockOnMainChain = true;
+            ChainLevelInfo chainLevel = new ChainLevelInfo(true, blockInfo);
             _chainLevelInfoRepository.PersistLevel(header.Number, chainLevel);
 
             if (header.Number < (LowestInsertedHeader?.Number ?? long.MaxValue))
@@ -787,7 +786,7 @@ namespace Nethermind.Blockchain
 
             if (level.BlockInfos.Length != 1)
             {
-                if (_logger.IsError) _logger.Error($"Invalid request for block {blockNumber} ({level.BlockInfos.Length} blocks at the same level).");
+                if (_logger.IsDebug) _logger.Debug($"Invalid request for block {blockNumber} ({level.BlockInfos.Length} blocks at the same level).");
                 throw new InvalidOperationException($"Unexpected request by number for a block {blockNumber} that is not on the main chain and is not the only hash on chain");
             }
 
@@ -1052,7 +1051,7 @@ namespace Nethermind.Blockchain
             if (hashOfThePreviousMainBlock != null && hashOfThePreviousMainBlock != block.Hash)
             {
                 Block previous = FindBlock(hashOfThePreviousMainBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                for (int i = 0; i < previous.Transactions.Length; i++)
+                for (int i = 0; i < previous?.Transactions.Length; i++)
                 {
                     Transaction tx = previous.Transactions[i];
                     _txPool.AddTransaction(tx, previous.Number, TxHandlingOptions.None);

@@ -39,11 +39,14 @@ namespace Nethermind.Blockchain
         private long _lastSelfDestructs;
         private long _maxMemory;
         private long _totalBlocks;
-        private bool _isDebugMode;
+        private bool _isDebugMode = false;
 
         public ProcessingStats(ILogger logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            
+            // the line below just to avoid compilation errors
+            if(_logger.IsTrace) _logger.Trace($"Processing Stats in debug mode?: {_isDebugMode}");
 #if DEBUG	
             _isDebugMode = true;	
 #endif

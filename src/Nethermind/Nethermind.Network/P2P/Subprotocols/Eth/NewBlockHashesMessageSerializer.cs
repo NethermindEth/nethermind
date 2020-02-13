@@ -14,43 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class NewBlockHashesMessageSerializer : IMessageSerializer<NewBlockHashesMessage>, IZeroMessageSerializer<NewBlockHashesMessage>
+    public class NewBlockHashesMessageSerializer : IZeroMessageSerializer<NewBlockHashesMessage>
     {
-        public byte[] Serialize(NewBlockHashesMessage message)
-        {
-            return Rlp.Encode(
-                message.BlockHashes.Select(bh =>
-                    Rlp.Encode(
-                        Rlp.Encode(bh.Item1),
-                        Rlp.Encode(bh.Item2))).ToArray()
-            ).Bytes;
-        }
-
-        public NewBlockHashesMessage Deserialize(byte[] bytes)
-        {
-            RlpStream rlpStream = bytes.AsRlpStream();
-            return Deserialize(rlpStream);
-        }
-
-        private static NewBlockHashesMessage Deserialize(RlpStream rlpStream)
-        {
-            (Keccak, long)[] blockHashes = rlpStream.DecodeArray(ctx =>
-            {
-                ctx.ReadSequenceLength();
-                return (ctx.DecodeKeccak(), (long) ctx.DecodeUInt256());
-            }, false);
-
-            return new NewBlockHashesMessage(blockHashes);
-        }
-
         public void Serialize(IByteBuffer byteBuffer, NewBlockHashesMessage message)
         {
             NettyRlpStream nettyRlpStream = new NettyRlpStream(byteBuffer);
@@ -81,6 +52,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
             return Deserialize(rlpStream);
+        }
+        
+        private static NewBlockHashesMessage Deserialize(RlpStream rlpStream)
+        {
+            (Keccak, long)[] blockHashes = rlpStream.DecodeArray(ctx =>
+            {
+                ctx.ReadSequenceLength();
+                return (ctx.DecodeKeccak(), (long) ctx.DecodeUInt256());
+            }, false);
+
+            return new NewBlockHashesMessage(blockHashes);
         }
     }
 }

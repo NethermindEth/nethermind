@@ -106,6 +106,8 @@ namespace Nethermind.Db.Databases
 
         public bool KeyExists(byte[] key) => _rocksDb.Get(key, _columnFamily) != null;
         
+        public IDb Innermost => _mainDb.Innermost;
+
         private void UpdateWriteMetrics() => _mainDb.UpdateWriteMetrics();
 
         private void UpdateReadMetrics() => _mainDb.UpdateReadMetrics();

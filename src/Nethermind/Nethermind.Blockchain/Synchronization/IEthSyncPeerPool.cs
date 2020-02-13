@@ -21,48 +21,85 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public interface IEthSyncPeerPool
+    public interface IEthSyncPeerPool : IDisposable
     {
         bool TryFind(PublicKey nodeId, out PeerInfo peerInfo);
-        
-        Task<SyncPeerAllocation> BorrowAsync(PeerSelectionOptions peerSelectionOptions = PeerSelectionOptions.None, string description = "", long? minNumber = null, int timeoutMilliseconds = 0);
-        
+
+        Task<SyncPeerAllocation> BorrowAsync(IPeerSelectionStrategy peerSelectionStrategy, string description = "", int timeoutMilliseconds = 0);
+
         void Free(SyncPeerAllocation syncPeerAllocation);
-        
-        void ReportNoSyncProgress(SyncPeerAllocation syncPeerAllocation, bool isSevere = true);
-        
+
         void ReportNoSyncProgress(PeerInfo peerInfo, bool isSevere = true);
-        
-        void ReportInvalid(SyncPeerAllocation allocation, string details);
-        
+
         void ReportInvalid(PeerInfo peerInfo, string details);
         
-        IEnumerable<PeerInfo> AllPeers { get; }
+        void ReportWeakPeer(SyncPeerAllocation allocation);
         
-        IEnumerable<PeerInfo> UsefulPeers { get; }
-        
-        IEnumerable<SyncPeerAllocation> Allocations { get; }
-        
-        int PeerCount { get; }
-        
-        int UsefulPeerCount { get; }
-        
-        int PeerMaxCount { get; }
-        
-        void RefreshTotalDifficulty(PeerInfo peerInfo, Keccak hash);
-        
-        void RemovePeer(ISyncPeer syncPeer);
-        
-        void AddPeer(ISyncPeer syncPeer);
-        
-        void Start();
-        
-        Task StopAsync();
-        
-        void ReportBadPeer(SyncPeerAllocation batchAssignedPeer);
-        
+        /// <summary>
+        /// Wakes up all the sleeping peers.
+        /// </summary>
         void WakeUpAll();
 
+        /// <summary>
+        /// All peers maintained by the pool
+        /// </summary>
+        IEnumerable<PeerInfo> AllPeers { get; }
+
+        /// <summary>
+        /// All the useful peers available for allocation.
+        /// These peers may not be useful for everyone but they are not asleep.
+        /// </summary>
+        IEnumerable<PeerInfo> UsefulPeers { get; }
+
+        /// <summary>
+        /// Number of all sync peers
+        /// </summary>
+        int PeerCount { get; }
+
+        /// <summary>
+        /// Number of peers that are not sleeping
+        /// </summary>
+        int UsefulPeerCount { get; }
+
+        /// <summary>
+        /// Max number of peers
+        /// </summary>
+        int PeerMaxCount { get; }
+
+        /// <summary>
+        /// Invoked when a new connection is established and ETH subprotocol handshake is finished - this node is ready to sync.
+        /// </summary>
+        /// <param name="syncPeer"></param>
+        void AddPeer(ISyncPeer syncPeer);
+        
+        /// <summary>
+        /// Invoked after a session / connection is closed.
+        /// </summary>
+        /// <param name="syncPeer"></param>
+        void RemovePeer(ISyncPeer syncPeer);
+        
+        /// <summary>
+        /// It is hard to track total difficulty so occasionally we send a total difficulty request to update node information.
+        /// Specifically when nodes send HintBlock message they do not attach total difficulty information.
+        /// </summary>
+        /// <param name="peerInfo"></param>
+        /// <param name="hash">Hash of a block that we know might be the head block of the peer</param>
+        void RefreshTotalDifficulty(PeerInfo peerInfo, Keccak hash);
+
+        /// <summary>
+        /// Starts the pool loops.
+        /// </summary>
+        void Start();
+
+        /// <summary>
+        /// Stops the pool loops
+        /// </summary>
+        /// <returns></returns>
+        Task StopAsync();
+
+        /// <summary>
+        /// Whenever a new sync peer is added
+        /// </summary>
         event EventHandler PeerAdded;
     }
 }

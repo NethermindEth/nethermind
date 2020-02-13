@@ -135,7 +135,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             bool changedInvoked = false;
 
-            SyncModeSelector selector = BuildSelector(new SyncConfig(){BeamSyncEnabled = true}, bestRemote, bestHeader, bestBlock, bestLocalState);
+            SyncModeSelector selector = BuildSelector(new SyncConfig(){BeamSync = true}, bestRemote, bestHeader, bestBlock, bestLocalState);
             selector.Changed += (s, e) => changedInvoked = true;
 
             SyncMode beforeUpdate = selector.Current;

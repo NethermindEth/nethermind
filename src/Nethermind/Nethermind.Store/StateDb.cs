@@ -73,6 +73,8 @@ namespace Nethermind.Store
             return _pendingChanges.ContainsKey(key) || _db.KeyExists(key);
         }
 
+        public IDb Innermost => _db.Innermost;
+
         public void Restore(int snapshot)
         {
             if (snapshot > _currentPosition) throw new InvalidOperationException($"Trying to restore snapshot beyond current positions at {nameof(StateDb)}");

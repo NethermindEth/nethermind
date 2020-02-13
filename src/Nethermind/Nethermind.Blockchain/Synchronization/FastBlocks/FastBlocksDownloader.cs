@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Validators;
@@ -78,11 +79,17 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                                         }
                                         
                                         batch.Headers.Response = getHeadersTask.Result;
-                                        ValidateHeaders(token, batch);
                                     }
                                     else
                                     {
-                                        _syncPeerPool.ReportInvalid(batch.Allocation, $"headers -> {t.Exception}");
+                                        if (t.Exception.InnerExceptions.Any(e => e is TimeoutException))
+                                        {
+                                            _syncPeerPool.ReportInvalid(batch.Allocation, $"headers -> timeout");
+                                        }
+                                        else
+                                        {
+                                            _syncPeerPool.ReportInvalid(batch.Allocation, $"headers -> {t.Exception}");
+                                        }
                                     }
                                 }
                             );
@@ -107,7 +114,14 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                                     }
                                     else
                                     {
-                                        _syncPeerPool.ReportInvalid(batch.Allocation, $"bodies -> {t.Exception}");
+                                        if (t.Exception.InnerExceptions.Any(e => e is TimeoutException))
+                                        {
+                                            _syncPeerPool.ReportInvalid(batch.Allocation, $"bodies -> timeout");
+                                        }
+                                        else
+                                        {
+                                            _syncPeerPool.ReportInvalid(batch.Allocation, $"bodies -> {t.Exception}");
+                                        }
                                     }
                                 }
                             );
@@ -132,7 +146,14 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                                     }
                                     else
                                     {
-                                        _syncPeerPool.ReportInvalid(batch.Allocation, $"receipts -> {t.Exception}");
+                                        if (t.Exception.InnerExceptions.Any(e => e is TimeoutException))
+                                        {
+                                            _syncPeerPool.ReportInvalid(batch.Allocation, $"receipts -> timeout");
+                                        }
+                                        else
+                                        {
+                                            _syncPeerPool.ReportInvalid(batch.Allocation, $"receipts -> {t.Exception}");
+                                        }
                                     }
                                 }
                             );
@@ -173,50 +194,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 }
             }
         }
-
-        private Guid _sealValidatorUserGuid = Guid.NewGuid();
         
-        private void ValidateHeaders(CancellationToken cancellation, FastBlocksBatch batch)
-        {
-            batch.MarkValidation();
-            try
-            {
-                if (_logger.IsTrace) _logger.Trace("Starting block validation");
-
-                BlockHeader[] headers = batch.Headers.Response;
-                for (int i = 0; i < headers.Length; i++)
-                {
-                    if (cancellation.IsCancellationRequested)
-                    {
-                        if (_logger.IsTrace) _logger.Trace("Returning fom seal validation");
-                        return;
-                    }
-
-                    BlockHeader header = headers[i];
-                    if (header == null)
-                    {
-                        continue;
-                    }
-
-                    bool isHashValid = _blockValidator.ValidateHash(header);
-                    if (!isHashValid)
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"One of the blocks is invalid - invalid hash at {header.Number}");
-                        _syncPeerPool.ReportInvalid(batch.Allocation?.Current, $"invalid hash of block {header.Number}");
-                        batch.Headers.Response = null;
-                    }
-                    
-                    // no need to check seals in fast blocks since we trust the pivot block nonetheless}
-                }
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsError) _logger.Error($"Error when validating headers of {batch}", ex);
-                _syncPeerPool.ReportInvalid(batch.Allocation?.Current, $"validation exception - {ex}");
-                batch.Headers.Response = null;
-            }
-        }
-
         private async Task KeepSyncing(CancellationToken token)
         {
             int finalizeSignalsCount = 0;
@@ -230,7 +208,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 FastBlocksBatch request = PrepareRequest();
                 if (request != null)
                 {
-                    request.Allocation = await _syncPeerPool.BorrowAsync(PeerSelectionOptions.DoNotReplace | (request.Prioritized ? PeerSelectionOptions.None : PeerSelectionOptions.LowPriority), "fast blocks", request.MinNumber, 1000);
+                    request.Allocation = await _syncPeerPool.BorrowAsync(new FastBlocksSelectionStrategy(request.MinNumber, request.Prioritized), "fast blocks", 1000);
                     
                     Interlocked.Increment(ref _pendingRequests);
                     Task task = ExecuteRequest(token, request);
@@ -245,7 +223,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 {
                     finalizeSignalsCount++;
                     await Task.Delay(10);
-                    if (_logger.IsInfo) _logger.Info($"DIAG: 0 batches created with {_pendingRequests} pending requests.");
+                    if (_logger.IsDebug) _logger.Debug($"0 batches created with {_pendingRequests} pending requests.");
                 }
             } while (_pendingRequests != 0 || finalizeSignalsCount < 3 || !_fastBlocksFeed.IsFinished);
 
