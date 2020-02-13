@@ -390,9 +390,10 @@ namespace Nethermind.Blockchain.Synchronization
                     if (_logger.IsTrace) _logger.Trace($"Inconsistent block list from peer {bestPeer}");
                     throw new EthSynchronizationException("Peer sent an inconsistent block list");
                 }
-                else if (i != 1) // because we will never set TotalDifficulty on the first block?
+                
+                if (i != 1) // because we will never set TotalDifficulty on the first block?
                 {
-                    headers[i].MaybeParent = headers[i - 1];
+                    headers[i].MaybeParent = new WeakReference<BlockHeader>(headers[i - 1]);
                 }
             }
         }
