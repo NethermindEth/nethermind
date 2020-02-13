@@ -20,6 +20,8 @@ namespace Nethermind.Core.Extensions
 {
     public ref struct ZeroPaddedSpan
     {
+        public static ZeroPaddedSpan Empty => new ZeroPaddedSpan(Span<byte>.Empty, 0);
+        
         public ZeroPaddedSpan(Span<byte> span, int paddingLength)
         {
             Span = span;
