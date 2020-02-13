@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Validators
@@ -23,14 +24,35 @@ namespace Nethermind.Blockchain.Validators
     {
         public static BlockHeader FindParentHeader(this IBlockTree tree, BlockHeader header, BlockTreeLookupOptions options)
         {
-            return tree.FindHeader(header.ParentHash, options);
+            if (header.MaybeParent == null)
+            {
+                BlockHeader parent = tree.FindHeader(header.ParentHash, options);
+                header.MaybeParent = new WeakReference<BlockHeader>(parent);
+                return parent;
+            }
+
+            header.MaybeParent.TryGetTarget(out BlockHeader maybeParent);
+            if (maybeParent == null)
+            {
+                BlockHeader parent = tree.FindHeader(header.ParentHash, options);
+                header.MaybeParent.SetTarget(parent);
+                return parent;
+            }
+
+            if (maybeParent.TotalDifficulty == null && (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) == 0)
+            {
+                BlockHeader fromDb = tree.FindHeader(header.ParentHash, options);
+                maybeParent.TotalDifficulty = fromDb.TotalDifficulty;
+            }
+            
+            return maybeParent; 
         }
 
         public static Block FindParent(this IBlockTree tree, Block block, BlockTreeLookupOptions options)
         {
             return tree.FindBlock(block.Header.ParentHash, options);
         }
-        
+
         public static Block FindParent(this IBlockTree tree, BlockHeader blockHeader, BlockTreeLookupOptions options)
         {
             return tree.FindBlock(blockHeader.ParentHash, options);

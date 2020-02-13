@@ -152,7 +152,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 return ResultWrapper<byte[]>.Success(Bytes.Empty);
             }
-            
+
             return ResultWrapper<byte[]>.Success(_blockchainBridge.GetStorage(address, positionIndex, header.StateRoot));
         }
 
@@ -176,7 +176,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 return ResultWrapper<UInt256?>.Fail(searchResult);
             }
-            
+
             return ResultWrapper<UInt256?>.Success((UInt256) searchResult.Object.Transactions.Length);
         }
 
@@ -188,7 +188,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<UInt256?>.Fail(searchResult);
             }
 
-            return ResultWrapper<UInt256?>.Success((UInt256) searchResult.Object.Transactions.Length); 
+            return ResultWrapper<UInt256?>.Success((UInt256) searchResult.Object.Transactions.Length);
         }
 
         public ResultWrapper<UInt256?> eth_getUncleCountByBlockHash(Keccak blockHash)
@@ -198,7 +198,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 return ResultWrapper<UInt256?>.Fail(searchResult);
             }
-            
+
             return ResultWrapper<UInt256?>.Success((UInt256) searchResult.Object.Ommers.Length);
         }
 
@@ -209,7 +209,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 return ResultWrapper<UInt256?>.Fail(searchResult);
             }
-            
+
             return ResultWrapper<UInt256?>.Success((UInt256) searchResult.Object.Ommers.Length);
         }
 
@@ -345,33 +345,19 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private ResultWrapper<BlockForRpc> GetBlock(BlockParameter blockParameter, bool returnFullTransactionObjects)
         {
-            if (returnFullTransactionObjects)
+            SearchResult<Block> searchResult = _blockchainBridge.SearchForBlock(blockParameter, true);
+            if (searchResult.IsError)
             {
-                SearchResult<Block> searchResult = _blockchainBridge.SearchForBlock(blockParameter, true);
-                if (searchResult.IsError)
-                {
-                    return ResultWrapper<BlockForRpc>.Fail(searchResult);
-                }
-
-                Block block = searchResult.Object;
-                if (block != null)
-                {
-                    _blockchainBridge.RecoverTxSenders(block);
-                }
-
-                return ResultWrapper<BlockForRpc>.Success(block == null ? null : new BlockForRpc(block, true));   
+                return ResultWrapper<BlockForRpc>.Fail(searchResult);
             }
-            else
+
+            Block block = searchResult.Object;
+            if (block != null)
             {
-                SearchResult<BlockHeader> searchResult = _blockchainBridge.SearchForHeader(blockParameter, true);
-                if (searchResult.IsError)
-                {
-                    return ResultWrapper<BlockForRpc>.Fail(searchResult);
-                }
-
-                BlockHeader header = searchResult.Object;
-                return ResultWrapper<BlockForRpc>.Success(header == null ? null : new BlockForRpc(new Block(header), false));
+                _blockchainBridge.RecoverTxSenders(block);
             }
+
+            return ResultWrapper<BlockForRpc>.Success(block == null ? null : new BlockForRpc(block, returnFullTransactionObjects));
         }
 
         public ResultWrapper<TransactionForRpc> eth_getTransactionByHash(Keccak transactionHash)
@@ -395,9 +381,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
             for (int i = 0; i < transactions.Length; i++)
             {
                 var transaction = transactions[i];
-                RecoverTxSenderIfNeeded(transaction, null);                
+                RecoverTxSenderIfNeeded(transaction, null);
                 transactionsModels[i] = new TransactionForRpc(transaction);
             }
+
             if (_logger.IsTrace) _logger.Trace($"eth_pendingTransactions request, result: {transactionsModels.Length}");
             return ResultWrapper<TransactionForRpc[]>.Success(transactionsModels);
         }
@@ -605,7 +592,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             return ResultWrapper<AccountProof>.Success(accountProofCollector.BuildResult());
         }
-        
+
         public ResultWrapper<long> eth_chainId()
         {
             try

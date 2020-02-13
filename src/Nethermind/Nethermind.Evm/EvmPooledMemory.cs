@@ -91,6 +91,21 @@ namespace Nethermind.Evm
 
             Array.Copy(value, 0, _memory, (long)location, value.Length);
         }
+        
+        public void Save(ref UInt256 location, ZeroPaddedSpan value)
+        {
+            if (value.Length == 0)
+            {
+                return;
+            }
+            
+            CheckMemoryAccessViolation(ref location, (UInt256)value.Length);
+            UpdateSize(ref location, (UInt256)value.Length);
+
+            int intLocation = (int) location;
+            value.Span.CopyTo(_memory.AsSpan().Slice(intLocation, value.Span.Length));
+            _memory.AsSpan().Slice(intLocation + value.Span.Length, value.PaddingLength).Clear();
+        }
 
         public Span<byte> LoadSpan(ref UInt256 location)
         {

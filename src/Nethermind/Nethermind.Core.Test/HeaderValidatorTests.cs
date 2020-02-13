@@ -140,6 +140,7 @@ namespace Nethermind.Core.Test
             _block.Header.ParentHash = Keccak.Zero;
             _block.Header.SealEngineType = SealEngineType.None;
             _block.Header.Hash = _block.CalculateHash();
+            _block.Header.MaybeParent = null;
             
             bool result = _validator.Validate(_block.Header);
             Assert.False(result);
