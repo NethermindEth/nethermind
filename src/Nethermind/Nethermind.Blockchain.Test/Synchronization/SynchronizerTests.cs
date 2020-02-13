@@ -20,6 +20,7 @@ using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
@@ -290,7 +291,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 ISnapshotableDb stateDb = new StateDb();
                 ISnapshotableDb codeDb = new StateDb();
                 MemDb blockInfoDb = new MemDb();
-                BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullTxPool.Instance, _logManager);
+                BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullTxPool.Instance, NullBloomStorage.Instance, _logManager);
                 NodeStatsManager stats = new NodeStatsManager(new StatsConfig(), _logManager);
                 SyncPeerPool = new EthSyncPeerPool(BlockTree, stats, 25, _logManager);
 

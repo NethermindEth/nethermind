@@ -43,7 +43,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public Task Execute()
         {
-            StartBloomMigration();
+            // StartBloomMigration();
             return Task.CompletedTask;
         }
 
@@ -54,15 +54,16 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 _toMigrate = MinBlockNumber;
                 _stopwatch = Stopwatch.StartNew();
-                Task.Run(RunBloomMigration)
-                    .ContinueWith(x =>
-                    {
-                        if (x.IsFaulted && _logger.IsError)
-                        {
-                            _stopwatch.Stop();
-                            _logger.Error(GetLogMessage("failed", $"Error: {x.Exception}"), x.Exception);
-                        }
-                    });
+                // RunBloomMigration();
+                // Task.Run(RunBloomMigration)
+                //     .ContinueWith(x =>
+                //     {
+                //         if (x.IsFaulted && _logger.IsError)
+                //         {
+                //             _stopwatch.Stop();
+                //             _logger.Error(GetLogMessage("failed", $"Error: {x.Exception}"), x.Exception);
+                //         }
+                //     });
             }
         }
 
@@ -72,19 +73,30 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private void RunBloomMigration()
         {
-            using var timer = new Timer() {Interval = 1000};
-            timer.Elapsed += (ElapsedEventHandler)((o, e) =>
-            {
-                if (_logger.IsInfo) _logger.Info(GetLogMessage("in progress"));
-            });
+            if (_logger.IsInfo) _logger.Info(GetLogMessage("started"));
+            
+            // using var timer = new Timer() {Interval = 1000};
+            // timer.Elapsed += (ElapsedEventHandler)((o, e) =>
+            // {
+            //     if (_logger.IsInfo) _logger.Info(GetLogMessage("in progress"));
+            // });
 
             var storage = _context.BloomStorage;
             var blockTree = _context.BlockTree;
-            for (long i = MinBlockNumber; i >= 0; i++)
+            for (long i = MinBlockNumber; i >= 0; i--)
             {
                 var header = blockTree.FindHeader(i);
-                storage.Store(i, header.Bloom);
+                if (header != null)
+                {
+                    storage.Store(i, header.Bloom);
+                }
+
                 _migrated++;
+
+                if (i % 1000 == 0)
+                {
+                    if (_logger.IsInfo) _logger.Info(GetLogMessage("in progress"));
+                }
             }
 
             _stopwatch.Stop();

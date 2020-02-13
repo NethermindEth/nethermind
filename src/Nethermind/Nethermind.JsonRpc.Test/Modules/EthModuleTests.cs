@@ -91,7 +91,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
             IDb blockInfoDb = new MemDb();
-            IBlockTree blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockDb), specProvider, txPool, LimboLogs.Instance);
+            IBlockTree blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockDb), specProvider, txPool, NullBloomStorage.Instance, LimboLogs.Instance);
 
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
             VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, new BlockhashProvider(blockTree, LimboLogs.Instance), specProvider, LimboLogs.Instance);

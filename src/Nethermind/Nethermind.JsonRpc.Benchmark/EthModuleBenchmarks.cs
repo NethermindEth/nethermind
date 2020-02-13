@@ -66,7 +66,7 @@ namespace Nethermind.JsonRpc.Benchmark
             StateReader stateReader = new StateReader(stateDb, codeDb, LimboLogs.Instance);
             
             ChainLevelInfoRepository chainLevelInfoRepository = new ChainLevelInfoRepository(blockInfoDb);
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, chainLevelInfoRepository, specProvider, NullTxPool.Instance, LimboLogs.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, chainLevelInfoRepository, specProvider, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
             _blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
             _virtualMachine = new VirtualMachine(stateProvider, storageProvider, _blockhashProvider, specProvider, LimboLogs.Instance);
 

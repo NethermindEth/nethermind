@@ -96,6 +96,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.ChainLevelInfoRepository,
                 _context.SpecProvider,
                 _context.TxPool,
+                _context.BloomStorage,
                 _context.Config<ISyncConfig>(),
                 _context.LogManager);
 

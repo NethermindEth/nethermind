@@ -17,6 +17,7 @@
 using System.Collections;
 using System.Threading;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.TxPools.Storages;
@@ -54,7 +55,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
             IDb blockInfoDb = new MemDb();
-            IBlockTree blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, txPool, LimboLogs.Instance);
+            IBlockTree blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, txPool, NullBloomStorage.Instance, LimboLogs.Instance);
             
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
             _parityModule = new ParityModule(new EthereumEcdsa(specProvider,logger), txPool, blockTree, receiptStorage, logger);

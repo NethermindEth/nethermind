@@ -21,6 +21,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.TxPools;
@@ -103,7 +104,7 @@ namespace Nethermind.Clique.Test
                 TxPool txPool = new TxPool(new InMemoryTxStorage(), _timestamper, _ethereumEcdsa, GoerliSpecProvider.Instance, new TxPoolConfig(), stateProvider, _logManager);
                 _pools[privateKey] = txPool;
 
-                BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), GoerliSpecProvider.Instance, txPool, nodeLogManager);
+                BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), GoerliSpecProvider.Instance, txPool, NullBloomStorage.Instance,  nodeLogManager);
                 blockTree.NewHeadBlock += (sender, args) => { _blockEvents[privateKey].Set(); };
 
                 BlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);

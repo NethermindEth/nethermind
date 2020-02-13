@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Proofs;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
@@ -57,7 +58,7 @@ namespace Nethermind.Core.Test.Builders
             _genesisBlock = genesisBlock;
             var blockInfoDb = new MemDb();
             ChainLevelInfoRepository = new ChainLevelInfoRepository(blockInfoDb);
-            TestObjectInternal = new BlockTree(blocksDb, headersDb, blockInfoDb, ChainLevelInfoRepository, RopstenSpecProvider.Instance, Substitute.For<ITxPool>(), NullLogManager.Instance);
+            TestObjectInternal = new BlockTree(blocksDb, headersDb, blockInfoDb, ChainLevelInfoRepository, RopstenSpecProvider.Instance, Substitute.For<ITxPool>(), Substitute.For<IBloomStorage>(), NullLogManager.Instance);
         }
 
         public ChainLevelInfoRepository ChainLevelInfoRepository { get; private set; }
