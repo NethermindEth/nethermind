@@ -100,7 +100,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall);
         
         [JsonRpcMethod(IsImplemented = true, Description = "Retrieves a block by hash", IsReadOnly = true)]
-        ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects);
+        ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects = false);
         
         [JsonRpcMethod(IsImplemented = true, Description = "Retrieves a block by number", IsReadOnly = true)]
         ResultWrapper<BlockForRpc> eth_getBlockByNumber(BlockParameter blockParameter, bool returnFullTransactionObjects = false);

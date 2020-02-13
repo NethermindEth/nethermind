@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Buffers.Binary;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Extensions
