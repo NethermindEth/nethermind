@@ -14,13 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using System.Timers;
+using Microsoft.Extensions.Logging;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Bloom;
-using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
+using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -43,7 +45,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public Task Execute()
         {
-            // StartBloomMigration();
+            StartBloomMigration();
             return Task.CompletedTask;
         }
 
@@ -52,18 +54,21 @@ namespace Nethermind.Runner.Ethereum.Steps
             var storage = _context.BloomStorage;
             if (storage.NeedsMigration)
             {
-                _toMigrate = MinBlockNumber;
+                _toMigrate = MinBlockNumber + 2;
                 _stopwatch = Stopwatch.StartNew();
-                // RunBloomMigration();
-                // Task.Run(RunBloomMigration)
-                //     .ContinueWith(x =>
-                //     {
-                //         if (x.IsFaulted && _logger.IsError)
-                //         {
-                //             _stopwatch.Stop();
-                //             _logger.Error(GetLogMessage("failed", $"Error: {x.Exception}"), x.Exception);
-                //         }
-                //     });
+                Task.Run(RunBloomMigration)
+                    .ContinueWith(x =>
+                    {
+                        if (x.IsFaulted && _logger.IsError)
+                        {
+                            _stopwatch.Stop();
+                            _logger.Error(GetLogMessage("failed", $"Error: {x.Exception}"), x.Exception);
+                        }
+                    });
+            }
+            else
+            {
+                if (_logger.IsDebug) _logger.Debug("Skipping BloomDb migration.");
             }
         }
 
@@ -74,30 +79,37 @@ namespace Nethermind.Runner.Ethereum.Steps
         private void RunBloomMigration()
         {
             if (_logger.IsInfo) _logger.Info(GetLogMessage("started"));
-            
-            // using var timer = new Timer() {Interval = 1000};
-            // timer.Elapsed += (ElapsedEventHandler)((o, e) =>
-            // {
-            //     if (_logger.IsInfo) _logger.Info(GetLogMessage("in progress"));
-            // });
+
+            using var timer = new Timer(1000) {Enabled = true};
+            timer.Elapsed += (ElapsedEventHandler)((o, e) =>
+            {
+                if (_logger.IsInfo) _logger.Info(GetLogMessage("in progress"));
+            });
 
             var storage = _context.BloomStorage;
+            var concurrentStorage = storage as IConcurrentStorage<long>;
             var blockTree = _context.BlockTree;
-            for (long i = MinBlockNumber; i >= 0; i--)
+            var minBlockNumber = MinBlockNumber;
+            
+            concurrentStorage?.StartConcurrent(minBlockNumber);
+            try
             {
-                var header = blockTree.FindHeader(i);
-                if (header != null)
+                for (long i = minBlockNumber; i >= 0; i--)
                 {
-                    storage.Store(i, header.Bloom);
-                }
+                    var header = blockTree.FindHeader(i);
+                    if (header != null)
+                    {
+                        storage.Store(i, header.Bloom);
+                    }
 
-                _migrated++;
-
-                if (i % 1000 == 0)
-                {
-                    if (_logger.IsInfo) _logger.Info(GetLogMessage("in progress"));
+                    _migrated++;
                 }
             }
+            finally
+            {
+                concurrentStorage?.EndConcurrent(minBlockNumber);
+            }
+
 
             _stopwatch.Stop();
             if (_logger.IsInfo) _logger.Info(GetLogMessage("finished"));

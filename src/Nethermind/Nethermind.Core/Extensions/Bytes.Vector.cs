@@ -71,7 +71,7 @@ namespace Nethermind.Core.Extensions
             {
                 if (Avx2.IsSupported)
                 {
-                    for (; i < length - (Vector256<int>.Count - 1); i += Vector256<int>.Count)
+                    for (; i < length - (Vector256<byte>.Count - 1); i += Vector256<byte>.Count)
                     {
                         Vector256<byte> b1 = Avx2.LoadVector256(thisPtr + i);
                         Vector256<byte> b2 = Avx2.LoadVector256(valuePtr + i);

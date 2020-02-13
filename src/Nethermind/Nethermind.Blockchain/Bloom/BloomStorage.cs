@@ -29,6 +29,7 @@ namespace Nethermind.Blockchain.Bloom
     {
         public int LevelMultiplier { get; }
         public int Levels { get; }
+        
         internal static readonly Keccak MinBlockNumberKey = Keccak.Compute(nameof(MinBlockNumber));
         internal static readonly Keccak MaxBlockNumberKey = Keccak.Compute(nameof(MaxBlockNumber));
         

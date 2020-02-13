@@ -137,7 +137,6 @@ namespace Nethermind.Blockchain
                 {
                     BlockHeader genesisHeader = FindHeader(genesisLevel.BlockInfos[0].BlockHash, BlockTreeLookupOptions.None);
                     Genesis = genesisHeader;
-                    _bloomStorage.Store(0, Genesis.Bloom);
                     LoadHeadBlockAtStart();
                 }
             }

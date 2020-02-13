@@ -85,7 +85,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.LogManager);
 
             _context.ReceiptStorage = new PersistentReceiptStorage(_context.DbProvider.ReceiptsDb, _context.SpecProvider, _context.LogManager);
-            _context.BloomStorage = new BloomStorage(_context.DbProvider.BloomDb);
+            _context.BloomStorage = new ConcurrentBloomStorage(new BloomStorage(_context.DbProvider.BloomDb));
 
             _context.ChainLevelInfoRepository = new ChainLevelInfoRepository(_context.DbProvider.BlockInfosDb);
 
