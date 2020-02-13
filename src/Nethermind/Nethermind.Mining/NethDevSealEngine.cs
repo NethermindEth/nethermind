@@ -33,7 +33,7 @@ namespace Nethermind.Mining
 
         public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
         {
-            block.Header.MixHash = Keccak.OfAnEmptyString;
+            block.Header.MixHash = Keccak.Zero;
             block.Header.Hash = block.CalculateHash();
             return Task.FromResult(block);
         }

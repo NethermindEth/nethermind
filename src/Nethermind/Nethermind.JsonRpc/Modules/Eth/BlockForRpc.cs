@@ -82,7 +82,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public Address Miner { get; set; }
         public Keccak MixHash { get; set; }
         
-        public bool ShouldSerializeMixHash() => !_isAuRaBlock && MixHash != null && MixHash != Keccak.Zero;
+        public bool ShouldSerializeMixHash() => !_isAuRaBlock && MixHash != null;
         
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public byte[] Nonce { get; set; }
