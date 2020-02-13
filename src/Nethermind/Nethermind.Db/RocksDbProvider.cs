@@ -111,9 +111,9 @@ namespace Nethermind.Db
             HeadersDb?.Dispose();
             BlockInfosDb?.Dispose();
             PendingTxsDb?.Dispose();
-            ConfigsDb?.Dispose();
-            EthRequestsDb?.Dispose();
             BloomDb?.Dispose();
+            _configsDb?.Dispose();
+            _ethRequestsDb?.Dispose();
         }
     }
 }

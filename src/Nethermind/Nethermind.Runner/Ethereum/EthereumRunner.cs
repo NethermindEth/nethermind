@@ -89,7 +89,7 @@ namespace Nethermind.Runner.Ethereum
             if (_context.Logger.IsInfo) _context.Logger.Info("Shutting down...");
             _context.RunnerCancellation.Cancel();
 
-            if (_context.Logger.IsInfo) _context.Logger.Info("Stopping sesison monitor...");
+            if (_context.Logger.IsInfo) _context.Logger.Info("Stopping session monitor...");
             _context.SessionMonitor?.Stop();
 
             if (_context.Logger.IsInfo) _context.Logger.Info("Stopping discovery app...");
@@ -115,16 +115,17 @@ namespace Nethermind.Runner.Ethereum
             Task rlpxPeerTask = _context.RlpxPeer?.Shutdown() ?? Task.CompletedTask;
 
             await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, synchronizerTask, peerPoolTask, blockchainProcessorTask, blockProducerTask);
-
+            
+            while (_context.DisposeStack.Count != 0)
+            {
+                IAsyncDisposable disposable = _context.DisposeStack.Pop();
+                if (_context.Logger.IsDebug) _context.Logger.Debug($"Disposing {disposable.GetType().Name}");
+                await disposable.DisposeAsync();
+            }
+            
             if (_context.Logger.IsInfo) _context.Logger.Info("Closing DBs...");
             _context.DbProvider.Dispose();
             if (_context.Logger.IsInfo) _context.Logger.Info("All DBs closed.");
-
-            while (_context.DisposeStack.Count != 0)
-            {
-                IDisposable disposable = _context.DisposeStack.Pop();
-                if (_context.Logger.IsDebug) _context.Logger.Debug($"Disposing {disposable.GetType().Name}");
-            }
 
             if (_context.Logger.IsInfo) _context.Logger.Info("Ethereum shutdown complete... please wait for all components to close");
         }

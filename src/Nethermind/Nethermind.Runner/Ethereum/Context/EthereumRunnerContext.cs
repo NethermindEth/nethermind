@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.AuRa.Validators;
@@ -65,7 +64,7 @@ namespace Nethermind.Runner.Ethereum.Context
             return ConfigProvider.GetConfig<T>();
         }
         
-        public Stack<IDisposable> DisposeStack { get; }= new Stack<IDisposable>();
+        public DisposableStack DisposeStack { get; } = new DisposableStack();
 
         public List<IProducer> Producers { get; }= new List<IProducer>();
         public IGrpcServer GrpcServer { get; set; }

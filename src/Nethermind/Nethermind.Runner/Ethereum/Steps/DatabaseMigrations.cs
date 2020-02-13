@@ -16,24 +16,30 @@
 
 using System;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
+using System.Threading.Tasks.Sources;
 using System.Timers;
 using Microsoft.Extensions.Logging;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Bloom;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Runner.Ethereum.Context;
 using ILogger = Nethermind.Logging.ILogger;
+using Timer = System.Timers.Timer;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(InitializeBlockchain))]
-    public class DatabaseMigrations : IStep
+    public class DatabaseMigrations : IStep, IAsyncDisposable
     {
         private readonly EthereumRunnerContext _context;
         private readonly ILogger _logger;
         private Stopwatch _stopwatch;
-        private long _migrated = 0;
+        private readonly MeasuredProgress _progress = new MeasuredProgress(); 
         private long _toMigrate;
+        private CancellationTokenSource _cancellationTokenSource;
+        private Task _bloomDbMigrationTask;
 
         public DatabaseMigrations(EthereumRunnerContext context)
         {
@@ -54,9 +60,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             var storage = _context.BloomStorage;
             if (storage.NeedsMigration)
             {
-                _toMigrate = MinBlockNumber + 2;
+                _cancellationTokenSource = new CancellationTokenSource();
+                _context.DisposeStack.Push(this);
                 _stopwatch = Stopwatch.StartNew();
-                Task.Run(RunBloomMigration)
+                _bloomDbMigrationTask = Task.Run(() => RunBloomMigration(_cancellationTokenSource.Token))
                     .ContinueWith(x =>
                     {
                         if (x.IsFaulted && _logger.IsError)
@@ -75,46 +82,71 @@ namespace Nethermind.Runner.Ethereum.Steps
         private long MinBlockNumber => _context.BloomStorage.MinBlockNumber == long.MaxValue
             ? _context.BlockTree.BestKnownNumber
             : _context.BloomStorage.MinBlockNumber;
-        
-        private void RunBloomMigration()
+
+        private void RunBloomMigration(CancellationToken token)
         {
+            var minBlockNumber = MinBlockNumber;
+            _toMigrate = MinBlockNumber + 1;
+            
             if (_logger.IsInfo) _logger.Info(GetLogMessage("started"));
 
-            using var timer = new Timer(1000) {Enabled = true};
-            timer.Elapsed += (ElapsedEventHandler)((o, e) =>
+            using (var timer = new Timer(1000) {Enabled = true})
             {
-                if (_logger.IsInfo) _logger.Info(GetLogMessage("in progress"));
-            });
-
-            var storage = _context.BloomStorage;
-            var concurrentStorage = storage as IConcurrentStorage<long>;
-            var blockTree = _context.BlockTree;
-            var minBlockNumber = MinBlockNumber;
-            
-            concurrentStorage?.StartConcurrent(minBlockNumber);
-            try
-            {
-                for (long i = minBlockNumber; i >= 0; i--)
+                timer.Elapsed += (ElapsedEventHandler) ((o, e) =>
                 {
-                    var header = blockTree.FindHeader(i);
-                    if (header != null)
+                    if (_logger.IsInfo) _logger.Info(GetLogMessage("in progress"));
+                });
+
+                var storage = _context.BloomStorage;
+                var concurrentStorage = storage as IConcurrentStorage<long>;
+                var blockTree = _context.BlockTree;
+
+                concurrentStorage?.StartConcurrent(minBlockNumber);
+                long synced = 0;
+                try
+                {
+                    for (long i = minBlockNumber; i >= 0; i--)
                     {
-                        storage.Store(i, header.Bloom);
+                        if (token.IsCancellationRequested)
+                        {
+                            timer.Stop();
+                            if (_logger.IsInfo) _logger.Info(GetLogMessage("cancelled"));
+                            return;
+                        }
+
+                        var header = blockTree.FindHeader(i);
+                        if (header != null)
+                        {
+                            storage.Store(i, header.Bloom);
+                        }
+
+                        _progress.Update(++synced);
                     }
 
-                    _migrated++;
+                    _progress.MarkEnd();
+                }
+                finally
+                {
+                    concurrentStorage?.EndConcurrent(minBlockNumber);
+                    _stopwatch.Stop();
                 }
             }
-            finally
-            {
-                concurrentStorage?.EndConcurrent(minBlockNumber);
-            }
 
-
-            _stopwatch.Stop();
             if (_logger.IsInfo) _logger.Info(GetLogMessage("finished"));
         }
 
-        private string GetLogMessage(string status, string suffix = null) => $"{_stopwatch.Elapsed:g} | BloomDb migration {status}. {_migrated} / {_toMigrate} blocks migrated. {suffix}";
+        private string GetLogMessage(string status, string suffix = null)
+        {
+            var message = $"BloomDb migration {status} | {_stopwatch.Elapsed:d\\:hh\\:mm\\:ss} | {_progress.CurrentValue.ToString().PadLeft(_toMigrate.ToString().Length)} / {_toMigrate} blocks migrated. | current {_progress.CurrentPerSecond:F2}bps | total {_progress.TotalPerSecond:F2}bps. {suffix}";
+            _progress.SetMeasuringPoint();
+            return message;
+
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            _cancellationTokenSource.Cancel();
+            await _bloomDbMigrationTask;
+        }
     }
 }
