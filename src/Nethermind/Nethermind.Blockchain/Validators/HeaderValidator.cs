@@ -158,7 +158,7 @@ namespace Nethermind.Blockchain.Validators
         /// <returns><value>True</value> if <paramref name="header"/> is valid, otherwise <value>False</value></returns>
         public bool Validate(BlockHeader header, bool isOmmer = false)
         {
-            BlockHeader parent = _blockTree.FindHeader(header.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            BlockHeader parent = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             return Validate(header, parent, isOmmer);
         }
 

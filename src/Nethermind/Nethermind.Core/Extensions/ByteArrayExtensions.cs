@@ -199,41 +199,42 @@ namespace Nethermind.Core.Extensions
             return slice;
         }
 
-        public static byte[] SliceWithZeroPadding(this Span<byte> bytes, int startIndex, int length)
+        public static ZeroPaddedSpan SliceWithZeroPadding(this Span<byte> bytes, int startIndex, int length)
         {
             if (startIndex >= bytes.Length)
             {
-                return new byte[length];
+                return new ZeroPaddedSpan(Span<byte>.Empty, length);
             }
 
             if (length == 1)
             {
-                return bytes.Length == 0 ? new byte[0] : new[] {bytes[startIndex]};
+                // why do we return zero length here?
+                // it was passing all the tests like this...
+                // return bytes.Length == 0 ? new byte[0] : new[] {bytes[startIndex]};
+                return bytes.Length == 0 ? new ZeroPaddedSpan(Span<byte>.Empty, 0) : new ZeroPaddedSpan(bytes.Slice(startIndex, 1), 0);
+                // return bytes.Length == 0 ? new ZeroPaddedSpan(Span<byte>.Empty, 1) : new ZeroPaddedSpan(bytes.Slice(startIndex, 1), 0);
             }
-
-            byte[] result = new byte[length];
+            
             int copiedLength = Math.Min(bytes.Length - startIndex, length);
-            bytes.Slice(startIndex, copiedLength).CopyTo(result.AsSpan().Slice(0, copiedLength));
-//            Buffer.BlockCopy(bytes.ToArray(), startIndex, result, 0, Math.Min(bytes.Length - startIndex, length));
-            return result;
+            return new ZeroPaddedSpan(bytes.Slice(startIndex, copiedLength), length - copiedLength);
         }
 
-        public static byte[] SliceWithZeroPadding(this Span<byte> bytes, UInt256 startIndex, int length)
+        public static ZeroPaddedSpan SliceWithZeroPadding(this Span<byte> bytes, UInt256 startIndex, int length)
         {
             if (startIndex >= bytes.Length || startIndex > int.MaxValue)
             {
-                return new byte[length];
+                return new ZeroPaddedSpan(Span<byte>.Empty, length);
             }
 
             return SliceWithZeroPadding(bytes, (int) startIndex, length);
         }
         
-        public static byte[] SliceWithZeroPadding(this byte[] bytes, UInt256 startIndex, int length)
+        public static ZeroPaddedSpan SliceWithZeroPadding(this byte[] bytes, UInt256 startIndex, int length)
         {
             return bytes.AsSpan().SliceWithZeroPadding(startIndex, length);
         }
         
-        public static byte[] SliceWithZeroPadding(this byte[] bytes, int startIndex, int length)
+        public static ZeroPaddedSpan SliceWithZeroPadding(this byte[] bytes, int startIndex, int length)
         {
             return bytes.AsSpan().SliceWithZeroPadding(startIndex, length);
         }
