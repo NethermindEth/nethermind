@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain.Producers
             ITxPool txPool,
             ITimestamper timestamper,
             ILogManager logManager) 
-            : base(pendingTxSelector, processor, NullSealEngine.Instance, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager)
+            : base(pendingTxSelector, processor, NethDevSealEngine.Instance, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
         }
