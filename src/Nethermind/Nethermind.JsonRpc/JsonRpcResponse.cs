@@ -53,7 +53,7 @@ namespace Nethermind.JsonRpc
         public Error Error { get; set; }
         
         [JsonConverter(typeof(IdConverter))]
-        [JsonProperty(PropertyName = "id", Order = 0)]
+        [JsonProperty(PropertyName = "id", Order = 0, NullValueHandling = NullValueHandling.Include)]
         public object Id { get; set; }
     }
 }
