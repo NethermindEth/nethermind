@@ -43,22 +43,7 @@ namespace Nethermind.Evm.Tracing
 
         public long ExcessiveGas
         {
-            get
-            {
-                long excess = 0;
-                long minLeft = _gasOnEnd.Min();
-                for (int i = -64; i < 64; i++)
-                {
-                    excess = minLeft * 64 / 63 + i;
-                    if (excess * 63 / 64 > minLeft)
-                    {
-                        excess--;
-                        break;
-                    }
-                }
-
-                return excess;
-            }
+            get { return _gasOnEnd.Min(g => g.Excess); }
         }
 
         public string Error { get; set; }
@@ -159,25 +144,79 @@ namespace Nethermind.Evm.Tracing
         {
             throw new NotSupportedException();
         }
-        
-        private List<long> _gasOnEnd = new List<long>();
+
+        private struct GasLeftAndNestingLevel
+        {
+            public GasLeftAndNestingLevel(long gasLeft, int nestingLevel)
+            {
+                GasLeft = gasLeft;
+                NestingLevel = nestingLevel;
+            }
+
+            public long GasLeft { get; set; }
+            public int NestingLevel { get; set; }
+
+            public long Excess
+            {
+                get
+                {
+                    long excess = GasLeft;
+                    for (int i = 0; i < NestingLevel; i++)
+                    {
+                        excess = (long) Math.Ceiling(excess * 64m / 63);    
+                    }
+
+                    return excess;
+                           
+                }
+            }
+        }
+
+        private List<GasLeftAndNestingLevel> _gasOnEnd = new List<GasLeftAndNestingLevel>();
+
+        private int _currentNestingLevel = -1;
+
+        private bool _isInPrecompile = false;
 
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
         {
+            if (!isPrecompileCall)
+            {
+                _currentNestingLevel++;
+            }
+            else
+            {
+                _isInPrecompile = true;
+            }
         }
 
         public void ReportActionEnd(long gas, byte[] output)
         {
-            _gasOnEnd.Add(gas);
+            if (!_isInPrecompile)
+            {
+                _gasOnEnd.Add(new GasLeftAndNestingLevel(gas, _currentNestingLevel--));
+            }
+            else
+            {
+                _isInPrecompile = false;
+            }
         }
 
         public void ReportActionError(EvmExceptionType exceptionType)
         {
+            _currentNestingLevel--;
         }
 
         public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
         {
-            _gasOnEnd.Add(gas);
+            if (!_isInPrecompile)
+            {
+                _gasOnEnd.Add(new GasLeftAndNestingLevel(gas, _currentNestingLevel--));
+            }
+            else
+            {
+                _isInPrecompile = false;
+            }
         }
 
         public void ReportBlockHash(Keccak blockHash)
