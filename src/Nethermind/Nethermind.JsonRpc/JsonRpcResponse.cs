@@ -22,22 +22,22 @@ namespace Nethermind.JsonRpc
     public class JsonRpcResponse
     {
         [JsonProperty(PropertyName = "jsonrpc", Order = 1)]
-        public string JsonRpc { get; set; }
+        public readonly string JsonRpc = "2.0";
 
-        [JsonProperty(PropertyName = "result", NullValueHandling = NullValueHandling.Include, Order = 2)]
-        public object Result { get; set; }
-        
         [JsonConverter(typeof(IdConverter))]
         [JsonProperty(PropertyName = "id", Order = 0)]
         public object Id { get; set; }
     }
-    
+
+    public class JsonRpcSuccessResponse : JsonRpcResponse
+    {
+        [JsonProperty(PropertyName = "result", NullValueHandling = NullValueHandling.Include, Order = 2)]
+        public object Result { get; set; }
+    }
+
     public class JsonRpcErrorResponse : JsonRpcResponse
     {
-        [JsonProperty(PropertyName = "result", NullValueHandling = NullValueHandling.Ignore, Order = 2)]
-        public new object Result { get; set; }
-        
-        [JsonProperty(PropertyName = "error", NullValueHandling = NullValueHandling.Ignore, Order = 3)]
+        [JsonProperty(PropertyName = "error", NullValueHandling = NullValueHandling.Ignore, Order = 2)]
         public Error Error { get; set; }
     }
 
@@ -51,7 +51,7 @@ namespace Nethermind.JsonRpc
 
         [JsonProperty(PropertyName = "error", NullValueHandling = NullValueHandling.Ignore, Order = 3)]
         public Error Error { get; set; }
-        
+
         [JsonConverter(typeof(IdConverter))]
         [JsonProperty(PropertyName = "id", Order = 0, NullValueHandling = NullValueHandling.Include)]
         public object Id { get; set; }

@@ -43,10 +43,9 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             IConfigProvider configProvider = Substitute.For<IConfigProvider>();
             DebugModule module = new DebugModule(NullLogManager.Instance, debugBridge);
-            JsonRpcResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getFromDb", "STATE", key.ToHexString(true));
+            JsonRpcSuccessResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getFromDb", "STATE", key.ToHexString(true)) as JsonRpcSuccessResponse;
 
             byte[] result = response.Result as byte[];
-            Assert.AreEqual(value, result, (response as JsonRpcErrorResponse)?.Error?.Message);
         }
 
         [Test]
@@ -58,10 +57,9 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             IConfigProvider configProvider = Substitute.For<IConfigProvider>();
             DebugModule module = new DebugModule(NullLogManager.Instance, debugBridge);
-            JsonRpcResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getFromDb", "STATE", key.ToHexString(true));
+            JsonRpcSuccessResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getFromDb", "STATE", key.ToHexString(true)) as JsonRpcSuccessResponse;
 
-            Assert.IsNotInstanceOf<JsonRpcErrorResponse>(response);
-            Assert.IsNull(response.Result, "result");
+            Assert.NotNull(response);
         }
 
         [TestCase("1")]
@@ -79,10 +77,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 }));
 
             DebugModule module = new DebugModule(NullLogManager.Instance, debugBridge);
-            JsonRpcResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getChainLevel", parameter);
-            JsonRpcErrorResponse errorResponse = response as JsonRpcErrorResponse;
-            Assert.Null(errorResponse, errorResponse?.Error.Message);
-            ChainLevelForRpc chainLevel = response.Result as ChainLevelForRpc;
+            JsonRpcSuccessResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getChainLevel", parameter) as JsonRpcSuccessResponse;
+            ChainLevelForRpc chainLevel = response?.Result as ChainLevelForRpc;
             Assert.NotNull(chainLevel);
             Assert.AreEqual(true, chainLevel.HasBlockOnMainChain);
             Assert.AreEqual(2, chainLevel.BlockInfos.Length);
@@ -97,10 +93,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             debugBridge.GetBlockRlp(Keccak.Zero).Returns(rlp.Bytes);
 
             DebugModule module = new DebugModule(NullLogManager.Instance, debugBridge);
-            JsonRpcResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getBlockRlpByHash", $"{Keccak.Zero.Bytes.ToHexString()}");
-
-            Assert.IsNotInstanceOf<JsonRpcErrorResponse>(response);
-            Assert.AreEqual(rlp.Bytes, (byte[]) response.Result);
+            JsonRpcSuccessResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getBlockRlpByHash", $"{Keccak.Zero.Bytes.ToHexString()}") as JsonRpcSuccessResponse;
+            Assert.AreEqual(rlp.Bytes, (byte[]) response?.Result);
         }
 
         [Test]
@@ -112,10 +106,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             debugBridge.GetBlockRlp(1).Returns(rlp.Bytes);
 
             DebugModule module = new DebugModule(NullLogManager.Instance, debugBridge);
-            JsonRpcResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getBlockRlp", "1");
+            JsonRpcSuccessResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getBlockRlp", "1") as JsonRpcSuccessResponse;
 
-            Assert.IsNotInstanceOf<JsonRpcErrorResponse>(response);
-            Assert.AreEqual(rlp.Bytes, (byte[]) response.Result);
+            Assert.AreEqual(rlp.Bytes, (byte[]) response?.Result);
         }
 
         [Test]
@@ -127,7 +120,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             DebugModule module = new DebugModule(NullLogManager.Instance, debugBridge);
             JsonRpcErrorResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getBlockRlp", "1") as JsonRpcErrorResponse;
 
-            Assert.AreEqual(-32001, response.Error.Code);
+            Assert.AreEqual(-32001, response?.Error.Code);
         }
 
         [Test]

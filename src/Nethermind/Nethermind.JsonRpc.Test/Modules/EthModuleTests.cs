@@ -220,7 +220,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_get_balance_incorrect_parameters()
         {
             string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_getBalance", TestItem.KeccakA.Bytes.ToHexString(true), "0x01");
-            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Incorrect parameters\"}}", serialized);
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"}}", serialized);
         }
 
         [Test]
@@ -419,7 +419,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             transaction.Data = new byte[] {1, 2, 3};
 
             string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_call", _ethSerializer.Serialize(transaction), "latest");
-            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"Error\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\"}}", serialized);
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"Error\"}}", serialized);
         }
 
         [Test]
@@ -444,7 +444,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_get_block_by_number_with_number_bad_number()
         {
             string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_getBlockByNumber", "'0x1234567890123456789012345678901234567890123456789012345678901234567890'", "true");
-            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Incorrect parameters\"}}", serialized);
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"}}", serialized);
         }
 
         [Test]

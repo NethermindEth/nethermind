@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -24,10 +25,10 @@ using Nethermind.Store;
 
 namespace Nethermind.Evm.Tracing
 {
-    public class CallOutputTracer : ITxTracer
+    public class EstimateGasTracer : ITxTracer
     {
         public bool IsTracingReceipt => true;
-        public bool IsTracingActions => false;
+        public bool IsTracingActions => true;
         public bool IsTracingOpLevelStorage => false;
         public bool IsTracingMemory => false;
         public bool IsTracingInstructions => false;
@@ -39,6 +40,26 @@ namespace Nethermind.Evm.Tracing
         public byte[] ReturnValue { get; set; }
 
         public long GasSpent { get; set; }
+
+        public long ExcessiveGas
+        {
+            get
+            {
+                long excess = 0;
+                long minLeft = _gasOnEnd.Min();
+                for (int i = -64; i < 64; i++)
+                {
+                    excess = minLeft * 64 / 63 + i;
+                    if (excess * 63 / 64 > minLeft)
+                    {
+                        excess--;
+                        break;
+                    }
+                }
+
+                return excess;
+            }
+        }
 
         public string Error { get; set; }
 
@@ -138,25 +159,25 @@ namespace Nethermind.Evm.Tracing
         {
             throw new NotSupportedException();
         }
+        
+        private List<long> _gasOnEnd = new List<long>();
 
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
         {
-            throw new NotSupportedException();
         }
 
         public void ReportActionEnd(long gas, byte[] output)
         {
-            throw new NotSupportedException();
+            _gasOnEnd.Add(gas);
         }
 
         public void ReportActionError(EvmExceptionType exceptionType)
         {
-            throw new NotSupportedException();
         }
 
         public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
         {
-            throw new NotSupportedException();
+            _gasOnEnd.Add(gas);
         }
 
         public void ReportBlockHash(Keccak blockHash)

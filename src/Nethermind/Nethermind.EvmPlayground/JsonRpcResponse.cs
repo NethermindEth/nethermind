@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Numerics;
 using Nethermind.Dirichlet.Numerics;
 using Newtonsoft.Json;
 
@@ -23,7 +22,7 @@ namespace Nethermind.EvmPlayground
     public class JsonRpcResponse
     {
         [JsonProperty(PropertyName = "jsonrpc", Order = 1)]
-        public string Jsonrpc { get; set; }
+        public const string JsonRpc = "2.0";
 
         [JsonProperty(PropertyName = "result", Order = 2)]
         public string Result { get; set; }
@@ -38,11 +37,14 @@ namespace Nethermind.EvmPlayground
     public class JsonRpcResponse<T>
     {
         [JsonProperty(PropertyName = "jsonrpc", Order = 1)]
-        public string Jsonrpc { get; set; }
+        public const string JsonRpc = "2.0";
+        
         [JsonProperty(PropertyName = "result", Order = 2)]
         public T Result { get; set; }
+        
         [JsonProperty(PropertyName = "error", NullValueHandling = NullValueHandling.Ignore, Order = 3)]
         public string Error { get; set; }
+        
         [JsonProperty(PropertyName = "id", Order = 0)]
         public UInt256 Id { get; set; }
     }

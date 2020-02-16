@@ -20,11 +20,13 @@ namespace Nethermind.JsonRpc
 {
     public class Error
     {
-        [JsonProperty(PropertyName = "code")]
+        [JsonProperty(PropertyName = "code", Order = 0)]
         public int Code { get; set; }
-        [JsonProperty(PropertyName = "message")]
+        
+        [JsonProperty(PropertyName = "message", Order = 1)]
         public string Message { get; set; }
-        [JsonProperty(PropertyName = "data")]
-        public string Data { get; set; }
+        
+        [JsonProperty(PropertyName = "data", Order = 2)]
+        public object Data { get; set; }
     }
 }

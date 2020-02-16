@@ -30,7 +30,7 @@ namespace Nethermind.JsonRpc.Test
         public void Initialize()
         {
             IJsonRpcService service = Substitute.For<IJsonRpcService>();
-            service.SendRequestAsync(Arg.Any<JsonRpcRequest>()).Returns(ci => new JsonRpcResponse {Id = ci.Arg<JsonRpcRequest>().Id, Result = null, JsonRpc = ci.Arg<JsonRpcRequest>().JsonRpc});
+            service.SendRequestAsync(Arg.Any<JsonRpcRequest>()).Returns(ci => new JsonRpcSuccessResponse {Id = ci.Arg<JsonRpcRequest>().Id, Result = null});
             _jsonRpcProcessor = new JsonRpcProcessor(service, new EthereumJsonSerializer(), new JsonRpcConfig(), LimboLogs.Instance);
         }
 

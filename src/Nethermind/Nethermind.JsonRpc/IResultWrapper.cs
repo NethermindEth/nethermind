@@ -21,6 +21,7 @@ namespace Nethermind.JsonRpc
     public interface IResultWrapper
     {
         Result GetResult();
+        
         object GetData();
         
         int GetErrorCode();
