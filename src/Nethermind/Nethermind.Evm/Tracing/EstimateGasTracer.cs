@@ -43,7 +43,15 @@ namespace Nethermind.Evm.Tracing
 
         public long ExcessiveGas
         {
-            get { return _gasOnEnd.Min(g => g.Excess); }
+            get
+            {
+                if (_gasOnEnd.Count == 0)
+                {
+                    return 0;
+                }
+                
+                return _gasOnEnd.Min(g => g.Excess);
+            }
         }
 
         public string Error { get; set; }

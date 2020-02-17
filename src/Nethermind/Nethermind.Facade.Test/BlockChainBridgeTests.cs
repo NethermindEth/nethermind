@@ -25,6 +25,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Store;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -121,6 +122,22 @@ namespace Nethermind.Facade.Test
             var transactions = Enumerable.Range(0, 10).Select(i => Build.A.Transaction.WithNonce((UInt256) i).TestObject).ToArray();
             _txPool.GetPendingTransactions().Returns(transactions);
             _blockchainBridge.GetPendingTransactions().Should().BeEquivalentTo(transactions);
+        }
+        
+        [Test]
+        public void Estimate_gas_returns_the_estimate_from_the_tracer()
+        {
+            BlockHeader header = Build.A.BlockHeader.WithNumber(10).TestObject;
+            Transaction tx = new Transaction();
+            tx.GasLimit = 1000;
+            
+            long gas = _blockchainBridge.EstimateGas(header, tx);
+            gas.Should().Be(1000);
+            
+            _transactionProcessor.Received().CallAndRestore(
+                tx,
+                Arg.Is<BlockHeader>(bh => bh.Number == 11),
+                Arg.Any<EstimateGasTracer>());
         }
     }
 }
