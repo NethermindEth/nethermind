@@ -47,7 +47,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
         public Task<ConsumerSession> GetPreviousAsync(ConsumerSession session)
         {
             var sessions = Filter(session.DepositId);
-            switch (sessions.Count)
+            switch (sessions.Length)
             {
                 case 0:
                     return Task.FromResult<ConsumerSession>(null);
@@ -71,7 +71,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             => Task.FromResult(Filter(query.DepositId, query.DataAssetId, query.ConsumerNodeId, query.ConsumerAddress,
                 query.ProviderNodeId, query.ProviderAddress).Paginate(query));
 
-        private IReadOnlyList<ConsumerSession> Filter(Keccak depositId = null, Keccak dataAssetId = null,
+        private ConsumerSession[] Filter(Keccak depositId = null, Keccak dataAssetId = null,
             PublicKey consumerNodeId = null, Address consumerAddress = null, PublicKey providerNodeId = null,
             Address providerAddress = null)
         {

@@ -61,7 +61,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.InMemo
 
         public Task<PagedResult<ConsumerSession>> BrowseAsync(GetConsumerSessions query)
             => Task.FromResult(Filter(query.DepositId, query.DataAssetId, query.ConsumerNodeId, query.ConsumerAddress,
-                query.ProviderNodeId, query.ProviderAddress).Paginate(query));
+                query.ProviderNodeId, query.ProviderAddress).ToArray().Paginate(query));
 
         private IReadOnlyList<ConsumerSession> Filter(Keccak depositId = null, Keccak dataAssetId = null,
             PublicKey consumerNodeId = null, Address consumerAddress = null, PublicKey providerNodeId = null,

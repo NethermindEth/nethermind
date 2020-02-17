@@ -23,7 +23,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
         public FaucetRequestStatus Status { get; }
         public FaucetRequestDetails LatestRequest { get; }
 
-        public FaucetResponse(FaucetRequestStatus status, FaucetRequestDetails latestRequest = null)
+        public FaucetResponse(FaucetRequestStatus status, FaucetRequestDetails? latestRequest = null)
         {
             Status = status;
             LatestRequest = latestRequest ?? FaucetRequestDetails.Empty;
@@ -61,7 +61,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
             return Status == other.Status && Equals(LatestRequest, other.LatestRequest);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

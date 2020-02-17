@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.IO;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -68,6 +69,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             INdmBlockchainBridge ndmBlockchainBridge;
             if (config.ProxyEnabled)
             {
+                if (config.JsonRpcUrlProxies == null || services.EthJsonRpcClientProxy == null)
+                {
+                    throw new InvalidDataException("JSON RPC proxy is enabled but the proxies were not initialized properly.");
+                }
+                
                 services.JsonRpcClientProxy.SetUrls(config.JsonRpcUrlProxies);
                 ndmBlockchainBridge = new NdmBlockchainBridgeProxy(services.EthJsonRpcClientProxy);
             }

@@ -46,20 +46,27 @@ namespace Nethermind.DataMarketplace.Core.Services
         private readonly ILogger _logger;
         private bool _initialized;
 
-        public NdmFaucet(INdmBlockchainBridge blockchainBridge, IEthRequestRepository requestRepository,
-            Address faucetAddress, UInt256 maxValue, UInt256 dailyRequestsTotalValueEth, bool enabled,
-            ITimestamper timestamper, IWallet wallet, ILogManager logManager)
+        public NdmFaucet(
+            INdmBlockchainBridge blockchainBridge,
+            IEthRequestRepository requestRepository,
+            Address faucetAddress,
+            UInt256 maxValue,
+            UInt256 dailyRequestsTotalValueEth,
+            bool enabled,
+            ITimestamper timestamper,
+            IWallet wallet,
+            ILogManager logManager)
         {
-            _blockchainBridge = blockchainBridge;
-            _requestRepository = requestRepository;
+            _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
+            _requestRepository = requestRepository ?? throw new ArgumentNullException(nameof(requestRepository));
             _faucetAddress = faucetAddress;
             _maxValue = maxValue;
             _dailyRequestsTotalValueWei = dailyRequestsTotalValueEth * 1_000_000_000_000_000_000;
             _enabled = enabled;
-            _timestamper = timestamper;
-            _wallet = wallet;
+            _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+            _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _today = _timestamper.UtcNow;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             if (!_enabled || _faucetAddress is null)
             {
                 return;
@@ -182,10 +189,15 @@ namespace Nethermind.DataMarketplace.Core.Services
                     Nonce = nonce
                 };
                 _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
-                var transactionHash = await _blockchainBridge.SendOwnTransactionAsync(transaction);
+                Keccak? transactionHash = await _blockchainBridge.SendOwnTransactionAsync(transaction);
+                if (transactionHash == null)
+                {
+                    return FaucetResponse.ProcessingRequestError;
+                }
+                
                 if (latestRequest is null)
                 {
-                    var requestId = Keccak.Compute(Rlp.Encode(Rlp.Encode(node)).Bytes);
+                    Keccak requestId = Keccak.Compute(Rlp.Encode(Rlp.Encode(node)).Bytes);
                     latestRequest = new EthRequest(requestId, node, address, value, requestedAt, transactionHash);
                     await _requestRepository.AddAsync(latestRequest);
                 }

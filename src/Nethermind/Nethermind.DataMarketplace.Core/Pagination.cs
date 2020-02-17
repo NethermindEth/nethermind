@@ -23,10 +23,10 @@ namespace Nethermind.DataMarketplace.Core
 {
     public static class Pagination
     {
-        public static PagedResult<T> Paginate<T>(this IEnumerable<T> values, PagedQueryBase query)
+        public static PagedResult<T> Paginate<T>(this T[] values, PagedQueryBase query)
             => Paginate(values, query.Page, query.Results);
 
-        public static PagedResult<T> Paginate<T>(this IEnumerable<T> values, int page = 1, int results = 10)
+        public static PagedResult<T> Paginate<T>(this T[] values, int page = 1, int results = 10)
         {
             var totalResults = values.Count();
             if (totalResults == 0)

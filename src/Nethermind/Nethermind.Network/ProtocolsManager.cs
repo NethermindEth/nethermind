@@ -52,7 +52,8 @@ namespace Nethermind.Network
         private readonly IList<Capability> _capabilities = new List<Capability>();
         public event EventHandler<ProtocolInitializedEventArgs> P2PProtocolInitialized;
 
-        public ProtocolsManager(IEthSyncPeerPool ethSyncPeerPool,
+        public ProtocolsManager(
+            IEthSyncPeerPool ethSyncPeerPool,
             ISyncServer syncServer,
             ITxPool txPool,
             IDiscoveryApp discoveryApp,
@@ -73,7 +74,7 @@ namespace Nethermind.Network
             _protocolValidator = protocolValidator ?? throw new ArgumentNullException(nameof(protocolValidator));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _logger = _logManager.GetClassLogger();
+            _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _protocolFactories = GetProtocolFactories();
             localPeer.SessionCreated += SessionCreated;

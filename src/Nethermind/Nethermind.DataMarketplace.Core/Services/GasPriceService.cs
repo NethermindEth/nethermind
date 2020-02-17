@@ -21,6 +21,7 @@ using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade.Proxy;
@@ -28,6 +29,7 @@ using Nethermind.Logging;
 using Newtonsoft.Json;
 
 [assembly: InternalsVisibleTo("Nethermind.DataMarketplace.Test")]
+
 namespace Nethermind.DataMarketplace.Core.Services
 {
     public class GasPriceService : IGasPriceService
@@ -41,8 +43,8 @@ namespace Nethermind.DataMarketplace.Core.Services
         private readonly ITimestamper _timestamper;
         private readonly ILogger _logger;
         private ulong _updatedAt;
-        
-        public GasPriceTypes Types { get; private set; }
+
+        public GasPriceTypes? Types { get; private set; }
 
         public GasPriceService(IHttpClient client, IConfigManager configManager, string configId,
             ITimestamper timestamper, ILogManager logManager)
@@ -56,23 +58,22 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public async Task<UInt256> GetCurrentAsync()
         {
-            var config = await _configManager.GetAsync(_configId);
-
-            return config.GasPrice;
+            NdmConfig? config = await _configManager.GetAsync(_configId);
+            return config?.GasPrice ?? 20.GWei();
         }
 
         public async Task SetAsync(string gasPriceOrType)
         {
             string type;
-            var isHex = gasPriceOrType.StartsWith("0x");
+            bool isHex = gasPriceOrType.StartsWith("0x");
             if (isHex && gasPriceOrType.Length == 2)
             {
                 throw new ArgumentException($"Invalid gas price: {gasPriceOrType}");
             }
-            
-            var numberStyle = isHex ? NumberStyles.HexNumber : NumberStyles.Integer;
-            var value = isHex ? gasPriceOrType.Substring(2) : gasPriceOrType;
-            if (UInt256.TryParse(value, numberStyle, CultureInfo.InvariantCulture, out var gasPriceValue))
+
+            NumberStyles numberStyle = isHex ? NumberStyles.HexNumber : NumberStyles.Integer;
+            string value = isHex ? gasPriceOrType.Substring(2) : gasPriceOrType;
+            if (UInt256.TryParse(value, numberStyle, CultureInfo.InvariantCulture, out UInt256 gasPriceValue))
             {
                 type = CustomType;
             }
@@ -86,17 +87,31 @@ namespace Nethermind.DataMarketplace.Core.Services
                 }
             }
 
-            var config = await _configManager.GetAsync(_configId);
-            config.GasPrice = gasPriceValue;
-            config.GasPriceType = type;
-            await _configManager.UpdateAsync(config);
-            if (_logger.IsInfo) _logger.Info($"Updated gas price: {config.GasPrice} wei.");
+            NdmConfig? config = await _configManager.GetAsync(_configId);
+            if (config == null)
+            {
+                if (_logger.IsError) _logger.Error($"Failed to retrieve config {_configId} to update gas price.");
+                throw new InvalidOperationException($"Failed to retrieve config {_configId} to update gas price.");
+            }
+            else
+            {
+                config.GasPrice = gasPriceValue;
+                config.GasPriceType = type;
+                await _configManager.UpdateAsync(config);
+                if (_logger.IsInfo) _logger.Info($"Updated gas price: {config.GasPrice} wei.");
+            }
         }
 
         public async Task UpdateAsync()
         {
-            var config = await _configManager.GetAsync(_configId);
-            var result = await _client.GetAsync<Result>(Url);
+            NdmConfig? config = await _configManager.GetAsync(_configId);
+            if (config == null)
+            {
+                if (_logger.IsWarn) _logger.Warn("Cannot update gas price because of missing config.");
+                return;
+            }
+
+            Result result = await _client.GetAsync<Result>(Url);
             if (result is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"There was an error when fetching the data from ETH Gas Station - using the latest gas price: {config.GasPrice} wei, type: {config.GasPriceType} as {CustomType}.");
@@ -106,8 +121,8 @@ namespace Nethermind.DataMarketplace.Core.Services
                 return;
             }
 
-            var type = config.GasPriceType;
-            var custom = type.Equals("custom", StringComparison.InvariantCultureIgnoreCase)
+            string type = config.GasPriceType;
+            GasPriceDetails custom = type.Equals("custom", StringComparison.InvariantCultureIgnoreCase)
                 ? new GasPriceDetails(config.GasPrice, 0)
                 : GasPriceDetails.Empty;
 
@@ -117,9 +132,9 @@ namespace Nethermind.DataMarketplace.Core.Services
                 new GasPriceDetails(GetGasPriceGwei(result.Fast), result.FastWait),
                 new GasPriceDetails(GetGasPriceGwei(result.Fastest), result.FastestWait),
                 custom, type, _updatedAt);
-            
+
             if (_logger.IsInfo) _logger.Info($"Updated gas price, safeLow: {Types.SafeLow.Price} wei, average: {Types.Average.Price} wei, fast: {Types.Fast.Price} wei, fastest: {Types.Fastest.Price} wei, updated at: {_updatedAt}.");
-            
+
             // ETH Gas Station returns 10xGwei value.
             UInt256 GetGasPriceGwei(decimal gasPrice) => ((int) Math.Ceiling(gasPrice / 10)).GWei();
         }
@@ -156,18 +171,25 @@ namespace Nethermind.DataMarketplace.Core.Services
         {
             [JsonProperty("fast")]
             public decimal Fast { get; set; }
+
             [JsonProperty("fastest")]
             public decimal Fastest { get; set; }
+
             [JsonProperty("safeLow")]
             public decimal SafeLow { get; set; }
+
             [JsonProperty("average")]
             public decimal Average { get; set; }
+
             [JsonProperty("safeLowWait")]
             public double SafeLowWait { get; set; }
+
             [JsonProperty("avgWait")]
             public double AvgWait { get; set; }
+
             [JsonProperty("fastWait")]
             public double FastWait { get; set; }
+
             [JsonProperty("fastestWait")]
             public double FastestWait { get; set; }
         }

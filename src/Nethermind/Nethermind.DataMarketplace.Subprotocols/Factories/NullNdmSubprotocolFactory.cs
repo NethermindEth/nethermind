@@ -21,9 +21,9 @@ namespace Nethermind.DataMarketplace.Subprotocols.Factories
 {
     public class NullNdmSubprotocolFactory : INdmSubprotocolFactory
     {
-        public INdmSubprotocol Create(ISession p2PSession)
+        public IProtocolHandler Create(ISession p2PSession)
         {
-            return null;
+            return NullProtocolHandler.Instance;
         }
 
         public void ChangeConsumerAddress(Address address)

@@ -16,6 +16,7 @@
 
 using System.IO;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
@@ -39,13 +40,8 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
         public DataAssetRule Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = rlpStream.ReadSequenceLength();
-            if (sequenceLength == 0)
-            {
-                return null;
-            }
-
-            var value = rlpStream.DecodeUInt256();
+            rlpStream.ReadSequenceLength();
+            UInt256 value = rlpStream.DecodeUInt256();
 
             return new DataAssetRule(value);
         }
@@ -59,11 +55,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
             return Serialization.Rlp.Rlp.Encode(
                 Serialization.Rlp.Rlp.Encode(item.Value));
-        }
-
-        public void Encode(MemoryStream stream, DataAssetRule item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new System.NotImplementedException();
         }
 
         public int GetLength(DataAssetRule item, RlpBehaviors rlpBehaviors)

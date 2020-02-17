@@ -14,7 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.IO;
+using System;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Serialization.Rlp;
 
@@ -27,28 +27,25 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             // here to register with RLP in static constructor
         }
 
-        public UnitsRangeDecoder()
-        {
-        }
-
         static UnitsRangeDecoder()
         {
             Serialization.Rlp.Rlp.Decoders[typeof(UnitsRange)] = new UnitsRangeDecoder();
         }
 
-        public UnitsRange Decode(RlpStream rlpStream,
-            RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public UnitsRange Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = rlpStream.ReadSequenceLength();
-            if (sequenceLength == 0)
+            rlpStream.ReadSequenceLength();
+            try
             {
-                return null;
+                uint from = rlpStream.DecodeUInt();
+                uint to = rlpStream.DecodeUInt();
+
+                return new UnitsRange(from, to);
             }
-
-            var from = rlpStream.DecodeUInt();
-            var to = rlpStream.DecodeUInt();
-
-            return new UnitsRange(from, to);
+            catch (Exception e)
+            {
+                throw new RlpException($"{nameof(UnitsRange)} could not be decoded", e);
+            }
         }
 
         public Serialization.Rlp.Rlp Encode(UnitsRange item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -61,11 +58,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             return Serialization.Rlp.Rlp.Encode(
                 Serialization.Rlp.Rlp.Encode(item.From),
                 Serialization.Rlp.Rlp.Encode(item.To));
-        }
-
-        public void Encode(MemoryStream stream, UnitsRange item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new System.NotImplementedException();
         }
 
         public int GetLength(UnitsRange item, RlpBehaviors rlpBehaviors)

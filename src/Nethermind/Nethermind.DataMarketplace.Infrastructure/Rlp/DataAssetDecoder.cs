@@ -14,8 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.IO;
+using System;
+using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
@@ -32,33 +34,34 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             Serialization.Rlp.Rlp.Decoders[typeof(DataAsset)] = new DataAssetDecoder();
         }
 
-        public DataAsset Decode(RlpStream rlpStream,
-            RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public DataAsset Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = rlpStream.ReadSequenceLength();
-            if (sequenceLength == 0)
+            try
             {
-                return null;
+                rlpStream.ReadSequenceLength();
+                Keccak id = rlpStream.DecodeKeccak();
+                string name = rlpStream.DecodeString();
+                string description = rlpStream.DecodeString();
+                UInt256 unitPrice = rlpStream.DecodeUInt256();
+                DataAssetUnitType unitType = (DataAssetUnitType) rlpStream.DecodeInt();
+                uint minUnits = rlpStream.DecodeUInt();
+                uint maxUnits = rlpStream.DecodeUInt();
+                DataAssetRules rules = Serialization.Rlp.Rlp.Decode<DataAssetRules>(rlpStream);
+                DataAssetProvider provider = Serialization.Rlp.Rlp.Decode<DataAssetProvider>(rlpStream);
+                string file = rlpStream.DecodeString();
+                QueryType queryType = (QueryType) rlpStream.DecodeInt();
+                DataAssetState state = (DataAssetState) rlpStream.DecodeInt();
+                string termsAndConditions = rlpStream.DecodeString();
+                bool kycRequired = rlpStream.DecodeBool();
+                string plugin = rlpStream.DecodeString();
+
+                return new DataAsset(id, name, description, unitPrice, unitType, minUnits, maxUnits,
+                    rules, provider, file, queryType, state, termsAndConditions, kycRequired, plugin);
             }
-
-            var id = rlpStream.DecodeKeccak();
-            var name = rlpStream.DecodeString();
-            var description = rlpStream.DecodeString();
-            var unitPrice = rlpStream.DecodeUInt256();
-            var unitType = (DataAssetUnitType) rlpStream.DecodeInt();
-            var minUnits = rlpStream.DecodeUInt();
-            var maxUnits = rlpStream.DecodeUInt();
-            var rules = Serialization.Rlp.Rlp.Decode<DataAssetRules>(rlpStream);
-            var provider = Serialization.Rlp.Rlp.Decode<DataAssetProvider>(rlpStream);
-            var file = rlpStream.DecodeString();
-            var queryType = (QueryType) rlpStream.DecodeInt();
-            var state = (DataAssetState) rlpStream.DecodeInt();
-            var termsAndConditions = rlpStream.DecodeString();
-            var kycRequired = rlpStream.DecodeBool();
-            var plugin = rlpStream.DecodeString();
-
-            return new DataAsset(id, name, description, unitPrice, unitType, minUnits, maxUnits,
-                rules, provider, file, queryType, state, termsAndConditions, kycRequired, plugin);
+            catch (Exception e)
+            {
+                throw new RlpException($"{nameof(DataAsset)} could not be deserialized", e);
+            }
         }
 
         public Serialization.Rlp.Rlp Encode(DataAsset item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -84,11 +87,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Serialization.Rlp.Rlp.Encode(item.TermsAndConditions),
                 Serialization.Rlp.Rlp.Encode(item.KycRequired),
                 Serialization.Rlp.Rlp.Encode(item.Plugin));
-        }
-
-        public void Encode(MemoryStream stream, DataAsset item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new System.NotImplementedException();
         }
 
         public int GetLength(DataAsset item, RlpBehaviors rlpBehaviors)

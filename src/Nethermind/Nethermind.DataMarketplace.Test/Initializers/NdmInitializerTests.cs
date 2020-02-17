@@ -127,7 +127,7 @@ namespace Nethermind.DataMarketplace.Test.Initializers
             _enableUnsecuredDevWallet = false;
             _ndmConfig = new NdmConfig {Enabled = true, StoreConfigInDatabase = false};
             _configProvider.GetConfig<INdmConfig>().Returns(_ndmConfig);
-            _ndmInitializer = new NdmInitializer(_ndmModule, _ndmConsumersModule);
+            _ndmInitializer = new NdmInitializer(_ndmModule, _ndmConsumersModule, _logManager);
         }
 
         [Test]

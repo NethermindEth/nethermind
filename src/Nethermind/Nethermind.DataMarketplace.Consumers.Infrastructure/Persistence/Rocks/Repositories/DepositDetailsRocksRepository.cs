@@ -92,7 +92,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
                                                                 query.CurrentBlockTimestamp >= d.Deposit.ExpiryTime));
             }
 
-            return Task.FromResult(filteredDeposits.OrderByDescending(d => d.Timestamp).Paginate(query));
+            return Task.FromResult(filteredDeposits.OrderByDescending(d => d.Timestamp).ToArray().Paginate(query));
         }
 
         public Task AddAsync(DepositDetails deposit) => AddOrUpdateAsync(deposit);

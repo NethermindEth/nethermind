@@ -101,12 +101,20 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         }
 
         [Test]
-        public void given_null_personal_bridge_list_accounts_should_not_return_accounts()
+        public void given_null_personal_bridge_list_accounts_should_return_no_accounts()
         {
-            _personalBridge = null;
-            _rpc = new NdmRpcConsumerModule(_consumerService, _depositReportService, _jsonRpcNdmConsumerChannel,
-                _ethRequestService, _ethPriceService, _gasPriceService, _consumerTransactionsService, _gasLimitsService,
-                _personalBridge, _timestamper);
+            _personalBridge = NullPersonalBridge.Instance;
+            _rpc = new NdmRpcConsumerModule(
+                _consumerService,
+                _depositReportService,
+                _jsonRpcNdmConsumerChannel,
+                _ethRequestService,
+                _ethPriceService,
+                _gasPriceService,
+                _consumerTransactionsService,
+                _gasLimitsService,
+                _personalBridge,
+                _timestamper);
             var result = _rpc.ndm_listAccounts();
             result.Data.Should().BeEmpty();
         }

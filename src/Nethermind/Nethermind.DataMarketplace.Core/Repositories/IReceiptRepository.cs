@@ -25,8 +25,7 @@ namespace Nethermind.DataMarketplace.Core.Repositories
     {
         Task<DataDeliveryReceiptDetails> GetAsync(Keccak id);
 
-        Task<IReadOnlyList<DataDeliveryReceiptDetails>> BrowseAsync(Keccak depositId = null, Keccak dataAssetId = null,
-            Keccak sessionId = null);
+        Task<IReadOnlyList<DataDeliveryReceiptDetails>> BrowseAsync(Keccak? depositId = null, Keccak? dataAssetId = null, Keccak? sessionId = null);
 
         Task AddAsync(DataDeliveryReceiptDetails receipt);
         Task UpdateAsync(DataDeliveryReceiptDetails receipt);

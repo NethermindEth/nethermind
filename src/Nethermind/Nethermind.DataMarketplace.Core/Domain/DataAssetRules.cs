@@ -21,10 +21,9 @@ namespace Nethermind.DataMarketplace.Core.Domain
     public class DataAssetRules
     {
         public DataAssetRule Expiry { get; }
-        public DataAssetRule UpfrontPayment { get; }
+        public DataAssetRule? UpfrontPayment { get; }
 
-        public DataAssetRules(DataAssetRule expiry,
-            DataAssetRule upfrontPayment = null)
+        public DataAssetRules(DataAssetRule expiry, DataAssetRule? upfrontPayment = null)
         {
             if (expiry is null || expiry.Value == 0)
             {

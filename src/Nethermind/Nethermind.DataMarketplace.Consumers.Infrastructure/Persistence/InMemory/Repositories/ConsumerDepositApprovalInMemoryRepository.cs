@@ -62,7 +62,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.InMemo
                 filteredDepositApprovals = filteredDepositApprovals.Where(a => a.State == DepositApprovalState.Pending);
             }
 
-            return Task.FromResult(filteredDepositApprovals.OrderByDescending(a => a.Timestamp).Paginate(query));
+            return Task.FromResult(filteredDepositApprovals.OrderByDescending(a => a.Timestamp).ToArray().Paginate(query));
         }
         
         public Task AddAsync(DepositApproval depositApproval)

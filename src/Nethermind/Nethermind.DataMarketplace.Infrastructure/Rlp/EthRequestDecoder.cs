@@ -16,7 +16,10 @@
 
 using System;
 using System.IO;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
@@ -28,31 +31,29 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             // here to register with RLP in static constructor
         }
 
-        public EthRequestDecoder()
-        {
-        }
-
         static EthRequestDecoder()
         {
             Serialization.Rlp.Rlp.Decoders[typeof(EthRequest)] = new EthRequestDecoder();
         }
-        
+
         public EthRequest Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = rlpStream.ReadSequenceLength();
-            if (sequenceLength == 0)
+            try
             {
-                return null;
+                rlpStream.ReadSequenceLength();
+                Keccak id = rlpStream.DecodeKeccak();
+                string host = rlpStream.DecodeString();
+                Address address = rlpStream.DecodeAddress();
+                UInt256 value = rlpStream.DecodeUInt256();
+                DateTime requestedAt = DateTimeOffset.FromUnixTimeSeconds(rlpStream.DecodeLong()).UtcDateTime;
+                Keccak transactionHash = rlpStream.DecodeKeccak();
+
+                return new EthRequest(id, host, address, value, requestedAt, transactionHash);
             }
-
-            var id = rlpStream.DecodeKeccak();
-            var host = rlpStream.DecodeString();
-            var address = rlpStream.DecodeAddress();
-            var value = rlpStream.DecodeUInt256();
-            var requestedAt = DateTimeOffset.FromUnixTimeSeconds(rlpStream.DecodeLong()).UtcDateTime;
-            var transactionHash = rlpStream.DecodeKeccak();
-
-            return new EthRequest(id, host, address, value, requestedAt, transactionHash);
+            catch (Exception e)
+            {
+                throw new RlpException($"{nameof(EthRequest)} cannot be deserialized from", e);
+            }
         }
 
         public Serialization.Rlp.Rlp Encode(EthRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -69,11 +70,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Serialization.Rlp.Rlp.Encode(item.Value),
                 Serialization.Rlp.Rlp.Encode(new DateTimeOffset(item.RequestedAt).ToUnixTimeSeconds()),
                 Serialization.Rlp.Rlp.Encode(item.TransactionHash));
-        }
-
-        public void Encode(MemoryStream stream, EthRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new System.NotImplementedException();
         }
 
         public int GetLength(EthRequest item, RlpBehaviors rlpBehaviors)

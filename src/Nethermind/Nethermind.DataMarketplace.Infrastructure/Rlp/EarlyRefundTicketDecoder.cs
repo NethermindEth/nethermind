@@ -16,6 +16,7 @@
 
 using System.IO;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Serialization.Rlp;
@@ -41,15 +42,10 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
         public EarlyRefundTicket Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = rlpStream.ReadSequenceLength();
-            if (sequenceLength == 0)
-            {
-                return null;
-            }
-
-            var depositId = rlpStream.DecodeKeccak();
-            var claimableAfter = rlpStream.DecodeUInt();
-            var signature = SignatureDecoder.DecodeSignature(rlpStream);
+            rlpStream.ReadSequenceLength();
+            Keccak depositId = rlpStream.DecodeKeccak();
+            uint claimableAfter = rlpStream.DecodeUInt();
+            Signature signature = SignatureDecoder.DecodeSignature(rlpStream);
 
             return new EarlyRefundTicket(depositId, claimableAfter, signature);
         }
@@ -68,11 +64,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Serialization.Rlp.Rlp.Encode(item.Signature.V),
                 Serialization.Rlp.Rlp.Encode(item.Signature.R.WithoutLeadingZeros()),
                 Serialization.Rlp.Rlp.Encode(item.Signature.S.WithoutLeadingZeros()));
-        }
-
-        public void Encode(MemoryStream stream, EarlyRefundTicket item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new System.NotImplementedException();
         }
 
         public int GetLength(EarlyRefundTicket item, RlpBehaviors rlpBehaviors)

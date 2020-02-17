@@ -20,6 +20,6 @@ namespace Nethermind.DataMarketplace.Subprotocols
 {
     public interface INdmSubprotocolFactory
     {
-        INdmSubprotocol Create(ISession p2PSession);
+        IProtocolHandler Create(ISession p2PSession);
     }
 }

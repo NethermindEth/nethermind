@@ -34,7 +34,7 @@ namespace Nethermind.DataMarketplace.WebSockets
         private readonly INdmConsumerChannelManager _consumerChannelManager;
         private readonly INdmDataPublisher _dataPublisher;
         private readonly IJsonSerializer _jsonSerializer;
-        private NdmWebSocketsConsumerChannel _channel;
+        private NdmWebSocketsConsumerChannel? _channel;
 
         public string Name { get; } = "ndm";
 

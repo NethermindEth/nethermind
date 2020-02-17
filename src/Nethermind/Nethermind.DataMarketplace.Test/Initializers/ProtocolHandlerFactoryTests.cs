@@ -50,7 +50,7 @@ namespace Nethermind.DataMarketplace.Test.Initializers
         [Test]
         public void create_should_return_protocol_handler()
         {
-            var protocolHandler = Substitute.For<INdmSubprotocol>();
+            var protocolHandler = Substitute.For<IProtocolHandler>();
             var session = Substitute.For<ISession>();
             _subprotocolFactory.Create(session).Returns(protocolHandler);
             var handler = _factory.Create(session);
@@ -61,7 +61,7 @@ namespace Nethermind.DataMarketplace.Test.Initializers
         [Test]
         public void protocol_initialized_event_should_be_handled()
         {
-            var protocolHandler = Substitute.For<INdmSubprotocol>();
+            var protocolHandler = Substitute.For<IProtocolHandler>();
             var session = Substitute.For<ISession>();
             var node = new Node("127.0.0.1", 8545);
             session.Node.Returns(node);
@@ -78,7 +78,7 @@ namespace Nethermind.DataMarketplace.Test.Initializers
         [Test]
         public void protocol_initialized_event_should_be_and_set_to_faucet_if_host_address_doest_match()
         {
-            var protocolHandler = Substitute.For<INdmSubprotocol>();
+            var protocolHandler = Substitute.For<IProtocolHandler>();
             const string host = "127.0.0.1";
             var node = new Node(host, 8545);
             var session = new Session(8545, LimboLogs.Instance, Substitute.For<IChannel>(), node);

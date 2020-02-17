@@ -62,10 +62,10 @@ namespace Nethermind.DataMarketplace.Core.Configs
         uint BlockConfirmations { get; }
         [ConfigItem(Description = "If 'true' then it enables the faucet capability", DefaultValue = "false")]
         bool FaucetEnabled { get; }
-        [ConfigItem(Description = "An account address that will be used to transfer the funds from if faucet capability is enabled", DefaultValue = "")]
-        string FaucetAddress { get; }
-        [ConfigItem(Description = "IP address of the faucet to connect to in order to request ETH", DefaultValue = "")]
-        string FaucetHost { get; }
+        [ConfigItem(Description = "An account address that will be used to transfer the funds from if faucet capability is enabled", DefaultValue = null)]
+        string? FaucetAddress { get; }
+        [ConfigItem(Description = "IP address of the faucet to connect to in order to request ETH", DefaultValue = null)]
+        string? FaucetHost { get; }
         [ConfigItem(Description = "Maximal value (Wei) of a single ETH request to the faucet", DefaultValue = "1000000000000000000")]
         UInt256 FaucetWeiRequestMaxValue { get; }
         [ConfigItem(Description = "Maximal value (ETH) of a total ETH requests (per day) to the faucet", DefaultValue = "500")]

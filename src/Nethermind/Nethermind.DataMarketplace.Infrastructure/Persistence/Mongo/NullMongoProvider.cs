@@ -14,23 +14,22 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.DataMarketplace.Core.Domain;
+using System;
+using MongoDB.Driver;
 
-namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
+namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo
 {
-    public class DataAssetRulesForRpc
+    public class NullMongoProvider : IMongoProvider
     {
-        public DataAssetRuleForRpc? Expiry { get; set; }
-        public DataAssetRuleForRpc? UpfrontPayment { get; set; }
-
-        public DataAssetRulesForRpc()
+        private NullMongoProvider()
         {
         }
 
-        public DataAssetRulesForRpc(DataAssetRules rules)
+        public static IMongoProvider Instance { get; } = new NullMongoProvider();
+
+        public IMongoDatabase GetDatabase()
         {
-            Expiry = new DataAssetRuleForRpc(rules.Expiry);
-            UpfrontPayment = rules.UpfrontPayment is null ? null : new DataAssetRuleForRpc(rules.UpfrontPayment);
+            throw new NotSupportedException("Mongo provider is null");
         }
     }
 }

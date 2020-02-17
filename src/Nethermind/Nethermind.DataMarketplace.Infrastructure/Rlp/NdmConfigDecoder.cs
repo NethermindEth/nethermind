@@ -14,18 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.IO;
+using System;
 using Nethermind.DataMarketplace.Core.Configs;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
     public class NdmConfigDecoder : IRlpDecoder<NdmConfig>
     {
-        public NdmConfigDecoder()
-        {
-        }
-
         static NdmConfigDecoder()
         {
             Serialization.Rlp.Rlp.Decoders[typeof(NdmConfig)] = new NdmConfigDecoder();
@@ -33,76 +30,78 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
         public NdmConfig Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = rlpStream.ReadSequenceLength();
-            if (sequenceLength == 0)
+            try
             {
-                return null;
+                rlpStream.ReadSequenceLength();
+                bool enabled = rlpStream.DecodeBool();
+                string id = rlpStream.DecodeString();
+                string initializerName = rlpStream.DecodeString();
+                bool storeConfigInDatabase = rlpStream.DecodeBool();
+                bool verifyP2PSignature = rlpStream.DecodeBool();
+                string persistence = rlpStream.DecodeString();
+                bool faucetEnabled = rlpStream.DecodeBool();
+                string faucetAddress = rlpStream.DecodeString();
+                string faucetHost = rlpStream.DecodeString();
+                UInt256 faucetWeiRequestMaxValue = rlpStream.DecodeUInt256();
+                UInt256 faucetEthDailyRequestsTotalValue = rlpStream.DecodeUInt256();
+                string consumerAddress = rlpStream.DecodeString();
+                string contractAddress = rlpStream.DecodeString();
+                string providerName = rlpStream.DecodeString();
+                string providerAddress = rlpStream.DecodeString();
+                string providerColdWalletAddress = rlpStream.DecodeString();
+                UInt256 receiptRequestThreshold = rlpStream.DecodeUInt256();
+                UInt256 receiptsMergeThreshold = rlpStream.DecodeUInt256();
+                UInt256 paymentClaimThreshold = rlpStream.DecodeUInt256();
+                uint blockConfirmations = rlpStream.DecodeUInt();
+                string filesPath = rlpStream.DecodeString();
+                ulong fileMaxSize = rlpStream.DecodeUlong();
+                string pluginsPath = rlpStream.DecodeString();
+                string databasePath = rlpStream.DecodeString();
+                bool proxyEnabled = rlpStream.DecodeBool();
+                var jsonRpcUrlProxies = rlpStream.DecodeArray(c => c.DecodeString());
+                string gasPriceType = rlpStream.DecodeString();
+                UInt256 gasPrice = rlpStream.DecodeUInt256();
+                uint cancelTransactionGasPricePercentageMultiplier = rlpStream.DecodeUInt();
+                bool jsonRpcDataChannelEnabled = rlpStream.DecodeBool();
+
+                return new NdmConfig
+                {
+                    Enabled = enabled,
+                    Id = id,
+                    InitializerName = initializerName,
+                    StoreConfigInDatabase = storeConfigInDatabase,
+                    VerifyP2PSignature = verifyP2PSignature,
+                    Persistence = persistence,
+                    FaucetEnabled = faucetEnabled,
+                    FaucetAddress = faucetAddress,
+                    FaucetHost = faucetHost,
+                    FaucetWeiRequestMaxValue = faucetWeiRequestMaxValue,
+                    FaucetEthDailyRequestsTotalValue = faucetEthDailyRequestsTotalValue,
+                    ConsumerAddress = consumerAddress,
+                    ContractAddress = contractAddress,
+                    ProviderName = providerName,
+                    ProviderAddress = providerAddress,
+                    ProviderColdWalletAddress = providerColdWalletAddress,
+                    ReceiptRequestThreshold = receiptRequestThreshold,
+                    ReceiptsMergeThreshold = receiptsMergeThreshold,
+                    PaymentClaimThreshold = paymentClaimThreshold,
+                    BlockConfirmations = blockConfirmations,
+                    FilesPath = filesPath,
+                    FileMaxSize = fileMaxSize,
+                    PluginsPath = pluginsPath,
+                    DatabasePath = databasePath,
+                    ProxyEnabled = proxyEnabled,
+                    JsonRpcUrlProxies = jsonRpcUrlProxies,
+                    GasPriceType = gasPriceType,
+                    GasPrice = gasPrice,
+                    CancelTransactionGasPricePercentageMultiplier = cancelTransactionGasPricePercentageMultiplier,
+                    JsonRpcDataChannelEnabled = jsonRpcDataChannelEnabled
+                };
             }
-
-            var enabled = rlpStream.DecodeBool();
-            var id = rlpStream.DecodeString();
-            var initializerName = rlpStream.DecodeString();
-            var storeConfigInDatabase = rlpStream.DecodeBool();
-            var verifyP2PSignature = rlpStream.DecodeBool();
-            var persistence = rlpStream.DecodeString();
-            var faucetEnabled = rlpStream.DecodeBool();
-            var faucetAddress = rlpStream.DecodeString();
-            var faucetHost = rlpStream.DecodeString();
-            var faucetWeiRequestMaxValue = rlpStream.DecodeUInt256();
-            var faucetEthDailyRequestsTotalValue = rlpStream.DecodeUInt256();
-            var consumerAddress = rlpStream.DecodeString();
-            var contractAddress = rlpStream.DecodeString();
-            var providerName = rlpStream.DecodeString();
-            var providerAddress = rlpStream.DecodeString();
-            var providerColdWalletAddress = rlpStream.DecodeString();
-            var receiptRequestThreshold = rlpStream.DecodeUInt256();
-            var receiptsMergeThreshold = rlpStream.DecodeUInt256();
-            var paymentClaimThreshold = rlpStream.DecodeUInt256();
-            var blockConfirmations = rlpStream.DecodeUInt();
-            var filesPath = rlpStream.DecodeString();
-            var fileMaxSize = rlpStream.DecodeUlong();
-            var pluginsPath = rlpStream.DecodeString();
-            var databasePath = rlpStream.DecodeString();
-            var proxyEnabled = rlpStream.DecodeBool();
-            var jsonRpcUrlProxies = rlpStream.DecodeArray(c => c.DecodeString());
-            var gasPriceType = rlpStream.DecodeString();
-            var gasPrice = rlpStream.DecodeUInt256();
-            var cancelTransactionGasPricePercentageMultiplier = rlpStream.DecodeUInt();
-            var jsonRpcDataChannelEnabled = rlpStream.DecodeBool();
-
-            return new NdmConfig
+            catch (Exception e)
             {
-                Enabled = enabled,
-                Id = id,
-                InitializerName = initializerName,
-                StoreConfigInDatabase = storeConfigInDatabase,
-                VerifyP2PSignature = verifyP2PSignature,
-                Persistence = persistence,
-                FaucetEnabled = faucetEnabled,
-                FaucetAddress = faucetAddress,
-                FaucetHost = faucetHost,
-                FaucetWeiRequestMaxValue = faucetWeiRequestMaxValue,
-                FaucetEthDailyRequestsTotalValue = faucetEthDailyRequestsTotalValue,
-                ConsumerAddress = consumerAddress,
-                ContractAddress = contractAddress,
-                ProviderName = providerName,
-                ProviderAddress = providerAddress,
-                ProviderColdWalletAddress = providerColdWalletAddress,
-                ReceiptRequestThreshold = receiptRequestThreshold,
-                ReceiptsMergeThreshold = receiptsMergeThreshold,
-                PaymentClaimThreshold = paymentClaimThreshold,
-                BlockConfirmations = blockConfirmations,
-                FilesPath = filesPath,
-                FileMaxSize = fileMaxSize,
-                PluginsPath = pluginsPath,
-                DatabasePath = databasePath,
-                ProxyEnabled = proxyEnabled,
-                JsonRpcUrlProxies = jsonRpcUrlProxies,
-                GasPriceType = gasPriceType,
-                GasPrice = gasPrice,
-                CancelTransactionGasPricePercentageMultiplier = cancelTransactionGasPricePercentageMultiplier,
-                JsonRpcDataChannelEnabled = jsonRpcDataChannelEnabled
-            };
+                throw new RlpException($"{nameof(NdmConfig)} cannot be deserialized from", e);
+            }
         }
 
         public Serialization.Rlp.Rlp Encode(NdmConfig item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -143,11 +142,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Serialization.Rlp.Rlp.Encode(item.GasPrice),
                 Serialization.Rlp.Rlp.Encode(item.CancelTransactionGasPricePercentageMultiplier),
                 Serialization.Rlp.Rlp.Encode(item.JsonRpcDataChannelEnabled));
-        }
-
-        public void Encode(MemoryStream stream, NdmConfig item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new System.NotImplementedException();
         }
 
         public int GetLength(NdmConfig item, RlpBehaviors rlpBehaviors)

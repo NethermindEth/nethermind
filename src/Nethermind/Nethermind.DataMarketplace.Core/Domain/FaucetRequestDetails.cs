@@ -23,11 +23,11 @@ namespace Nethermind.DataMarketplace.Core.Domain
 {
     public class FaucetRequestDetails : IEquatable<FaucetRequestDetails>
     {
-        public string Host { get; }
-        public Address Address { get; }
-        public UInt256 Value { get; }
-        public DateTime Date { get; }
-        public Keccak TransactionHash { get; }
+        public string? Host { get; }
+        public Address? Address { get; }
+        public UInt256? Value { get; }
+        public DateTime? Date { get; }
+        public Keccak? TransactionHash { get; }
 
         public FaucetRequestDetails()
         {
@@ -57,7 +57,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
                    Date.Equals(other.Date) && Equals(TransactionHash, other.TransactionHash);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

@@ -24,7 +24,7 @@ namespace Nethermind.DataMarketplace.Core.Services
 {
     public class EthRequestService : IEthRequestService
     {
-        private INdmPeer _faucetPeer;
+        private INdmPeer? _faucetPeer;
         private readonly ILogger _logger;
 
         public string FaucetHost { get; }

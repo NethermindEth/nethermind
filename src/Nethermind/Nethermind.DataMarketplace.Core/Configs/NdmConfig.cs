@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.DataMarketplace.Core.Configs
@@ -39,8 +40,8 @@ namespace Nethermind.DataMarketplace.Core.Configs
         public UInt256 PaymentClaimThreshold { get; set; } = 1000000000000000000;
         public uint BlockConfirmations { get; set; } = 0;
         public bool FaucetEnabled { get; set; } = false;
-        public string FaucetAddress { get; set; }
-        public string FaucetHost { get; set; }
+        public string? FaucetAddress { get; set; }
+        public string? FaucetHost { get; set; }
         public UInt256 FaucetWeiRequestMaxValue { get; set; } = 1000000000000000000;
         public UInt256 FaucetEthDailyRequestsTotalValue { get; set; } = 500;
         public string PluginsPath { get; set; } = "ndm/plugins";

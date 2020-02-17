@@ -14,10 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.IO;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
@@ -41,20 +42,15 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
         public DataRequest Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = rlpStream.ReadSequenceLength();
-            if (sequenceLength == 0)
-            {
-                return null;
-            }
-
-            var assetId = rlpStream.DecodeKeccak();
-            var units = rlpStream.DecodeUInt();
-            var value = rlpStream.DecodeUInt256();
-            var expiryTime = rlpStream.DecodeUInt();
+            rlpStream.ReadSequenceLength();
+            Keccak assetId = rlpStream.DecodeKeccak();
+            uint units = rlpStream.DecodeUInt();
+            UInt256 value = rlpStream.DecodeUInt256();
+            uint expiryTime = rlpStream.DecodeUInt();
             var salt = rlpStream.DecodeByteArray();
-            var provider = rlpStream.DecodeAddress();
-            var consumer = rlpStream.DecodeAddress();
-            var signature = SignatureDecoder.DecodeSignature(rlpStream);
+            Address provider = rlpStream.DecodeAddress();
+            Address consumer = rlpStream.DecodeAddress();
+            Signature signature = SignatureDecoder.DecodeSignature(rlpStream);
 
             return new DataRequest(assetId, units, value, expiryTime, salt, provider, consumer, signature);
         }
@@ -77,11 +73,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Serialization.Rlp.Rlp.Encode(item.Signature.V),
                 Serialization.Rlp.Rlp.Encode(item.Signature.R.WithoutLeadingZeros()),
                 Serialization.Rlp.Rlp.Encode(item.Signature.S.WithoutLeadingZeros()));
-        }
-
-        public void Encode(MemoryStream stream, DataRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new System.NotImplementedException();
         }
 
         public int GetLength(DataRequest item, RlpBehaviors rlpBehaviors)

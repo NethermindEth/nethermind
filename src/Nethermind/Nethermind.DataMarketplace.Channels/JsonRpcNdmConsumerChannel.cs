@@ -60,7 +60,7 @@ namespace Nethermind.DataMarketplace.Channels
             return Task.CompletedTask;
         }
 
-        public string Pull(Keccak depositId)
+        public string? Pull(Keccak depositId)
         {
             if (!_data.TryGetValue(depositId, out var queue))
             {

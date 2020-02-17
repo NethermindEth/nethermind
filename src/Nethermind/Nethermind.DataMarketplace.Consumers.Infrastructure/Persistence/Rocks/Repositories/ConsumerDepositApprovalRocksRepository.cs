@@ -75,7 +75,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
                 filteredDepositApprovals = filteredDepositApprovals.Where(a => a.State == DepositApprovalState.Pending);
             }
 
-            return Task.FromResult(filteredDepositApprovals.OrderByDescending(a => a.Timestamp).Paginate(query));
+            return Task.FromResult(filteredDepositApprovals.OrderByDescending(a => a.Timestamp).ToArray().Paginate(query));
         }
 
         public Task AddAsync(DepositApproval depositApproval) => AddOrUpdateAsync(depositApproval);

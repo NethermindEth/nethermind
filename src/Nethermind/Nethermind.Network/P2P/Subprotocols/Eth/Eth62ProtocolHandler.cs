@@ -98,26 +98,27 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
         }
 
-        public virtual byte ProtocolVersion => 62;
-        public string ProtocolCode => "eth";
-        public virtual int MessageIdSpaceSize => 8;
+        public override byte ProtocolVersion { get; protected set; } = 62;
+
+        public override string ProtocolCode => "eth";
+        public override int MessageIdSpaceSize => 8;
         public Node Node => Session.Node;
         public string ClientId { get; set; }
         public UInt256 TotalDifficultyOnSessionStart { get; private set; }
 
-        public bool HasAvailableCapability(Capability capability) => false;
-        public bool HasAgreedCapability(Capability capability) => false;
-        public void AddSupportedCapability(Capability capability) { }
+        public override bool HasAvailableCapability(Capability capability) => false;
+        public override bool HasAgreedCapability(Capability capability) => false;
+        public override void AddSupportedCapability(Capability capability) { }
 
-        public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
+        public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
 
-        event EventHandler<ProtocolEventArgs> IProtocolHandler.SubprotocolRequested
+        public override event EventHandler<ProtocolEventArgs> SubprotocolRequested
         {
             add { }
             remove { }
         }
 
-        public void Init()
+        public override void Init()
         {
             if (Logger.IsTrace) Logger.Trace($"{ProtocolCode} v{ProtocolVersion} subprotocol initializing with {Session.Node:c}");
             if (SyncServer.Head == null)
@@ -238,14 +239,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
         }
 
-        public virtual void HandleMessage(Packet message)
+        public override void HandleMessage(Packet message)
         {
             ZeroPacket zeroPacket = new ZeroPacket(message);
             HandleMessage(zeroPacket);
             zeroPacket.Release();
         }
 
-        public void InitiateDisconnect(DisconnectReason disconnectReason, string details)
+        public override void InitiateDisconnect(DisconnectReason disconnectReason, string details)
         {
             try
             {
@@ -731,7 +732,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private bool _isDisposed;
 
-        public void Dispose()
+        public override void Dispose()
         {
             if (_isDisposed)
             {
@@ -755,7 +756,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             catch (ObjectDisposedException)
             {
             }
-
+            
             _isDisposed = true;
         }
 

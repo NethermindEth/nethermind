@@ -21,8 +21,8 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
 {
     public class UpdatedTransactionInfoForRpc
     {
-        public string Status { get; set; }
-        public Keccak Hash { get; set; }
+        public string? Status { get; set; }
+        public Keccak? Hash { get; set; }
 
         public UpdatedTransactionInfoForRpc()
         {
@@ -33,7 +33,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
         {
         }
 
-        public UpdatedTransactionInfoForRpc(string status, Keccak hash)
+        public UpdatedTransactionInfoForRpc(string status, Keccak? hash)
         {
             Status = status;
             Hash = hash;

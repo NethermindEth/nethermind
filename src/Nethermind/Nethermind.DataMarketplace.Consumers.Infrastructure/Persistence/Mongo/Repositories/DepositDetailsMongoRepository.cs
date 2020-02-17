@@ -80,7 +80,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.
                                                                    ));
                 }
 
-                return filteredDeposits.OrderByDescending(d => d.Timestamp).Paginate(query);
+                return filteredDeposits.OrderByDescending(d => d.Timestamp).ToArray().Paginate(query);
             }
 
             return await deposits.OrderByDescending(d => d.Timestamp).PaginateAsync(query);
