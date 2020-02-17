@@ -26,7 +26,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.InMemo
         private readonly ConcurrentDictionary<Keccak, DepositDetails> _db =
             new ConcurrentDictionary<Keccak, DepositDetails>();
 
-        public DepositDetails Get(Keccak id) => _db.TryGetValue(id, out var deposit) ? deposit : null;
+        public DepositDetails Get(Keccak id) => _db.TryGetValue(id, out DepositDetails deposit) ? deposit : null;
         public ICollection<DepositDetails> GetAll() => _db.Values;
         public void Add(DepositDetails deposit) => _db.TryAdd(deposit.Id, deposit);
     }

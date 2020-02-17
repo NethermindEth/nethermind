@@ -40,7 +40,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             _logger = logManager.GetClassLogger();
         }
 
-        public async Task<DepositDetails> GetAsync(Keccak depositId)
+        public async Task<DepositDetails?> GetAsync(Keccak depositId)
         {
             if (_deposits.TryGetValue(depositId, out var deposit))
             {
@@ -59,15 +59,15 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             return deposit;
         }
 
-        private async Task<DepositDetails> FetchAsync(Keccak depositId)
+        private async Task<DepositDetails?> FetchAsync(Keccak depositId)
         {
-            var deposit = await _depositRepository.GetAsync(depositId);
+            DepositDetails deposit = await _depositRepository.GetAsync(depositId);
             if (deposit is null)
             {
                 return null;
             }
 
-            var consumedUnits = await _depositUnitsCalculator.GetConsumedAsync(deposit);
+            uint consumedUnits = await _depositUnitsCalculator.GetConsumedAsync(deposit);
             deposit.SetConsumedUnits(consumedUnits);
 
             return deposit;

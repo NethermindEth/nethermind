@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Consumers.Sessions.Domain;
 using Nethermind.DataMarketplace.Core.Domain;
@@ -37,30 +38,30 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
         public ConsumerSession Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = rlpStream.ReadSequenceLength();
+            int sequenceLength = rlpStream.ReadSequenceLength();
             if (sequenceLength == 0)
             {
                 return null;
             }
 
-            var id = rlpStream.DecodeKeccak();
-            var depositId = rlpStream.DecodeKeccak();
-            var dataAssetId = rlpStream.DecodeKeccak();
-            var consumerAddress = rlpStream.DecodeAddress();
-            var consumerNodeId = new PublicKey(rlpStream.DecodeByteArray());
-            var providerAddress = rlpStream.DecodeAddress();
-            var providerNodeId = new PublicKey(rlpStream.DecodeByteArray());
-            var state = (SessionState) rlpStream.DecodeInt();
-            var startUnitsFromProvider = rlpStream.DecodeUInt();
-            var startUnitsFromConsumer = rlpStream.DecodeUInt();
-            var startTimestamp = rlpStream.DecodeUlong();
-            var finishTimestamp = rlpStream.DecodeUlong();
-            var consumedUnits = rlpStream.DecodeUInt();
-            var unpaidUnits = rlpStream.DecodeUInt();
-            var paidUnits = rlpStream.DecodeUInt();
-            var settledUnits = rlpStream.DecodeUInt();
-            var consumedUnitsFromProvider = rlpStream.DecodeUInt();
-            var dataAvailability = (DataAvailability) rlpStream.DecodeInt();
+            Keccak id = rlpStream.DecodeKeccak();
+            Keccak depositId = rlpStream.DecodeKeccak();
+            Keccak dataAssetId = rlpStream.DecodeKeccak();
+            Address consumerAddress = rlpStream.DecodeAddress();
+            PublicKey consumerNodeId = new PublicKey(rlpStream.DecodeByteArray());
+            Address providerAddress = rlpStream.DecodeAddress();
+            PublicKey providerNodeId = new PublicKey(rlpStream.DecodeByteArray());
+            SessionState state = (SessionState) rlpStream.DecodeInt();
+            uint startUnitsFromProvider = rlpStream.DecodeUInt();
+            uint startUnitsFromConsumer = rlpStream.DecodeUInt();
+            ulong startTimestamp = rlpStream.DecodeUlong();
+            ulong finishTimestamp = rlpStream.DecodeUlong();
+            uint consumedUnits = rlpStream.DecodeUInt();
+            uint unpaidUnits = rlpStream.DecodeUInt();
+            uint paidUnits = rlpStream.DecodeUInt();
+            uint settledUnits = rlpStream.DecodeUInt();
+            uint consumedUnitsFromProvider = rlpStream.DecodeUInt();
+            DataAvailability dataAvailability = (DataAvailability) rlpStream.DecodeInt();
 
             return new ConsumerSession(id, depositId, dataAssetId, consumerAddress, consumerNodeId, providerAddress,
                 providerNodeId, state, startUnitsFromProvider, startUnitsFromConsumer, startTimestamp, finishTimestamp,

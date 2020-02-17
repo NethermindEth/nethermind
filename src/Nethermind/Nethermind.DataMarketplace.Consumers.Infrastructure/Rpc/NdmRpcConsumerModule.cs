@@ -125,7 +125,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
             => ResultWrapper<ConsumerSessionForRpc[]>.Success(_consumerService.GetActiveSessions()
                 .Select(s => new ConsumerSessionForRpc(s)).ToArray());
 
-        public async Task<ResultWrapper<PagedResult<DepositDetailsForRpc>>> ndm_getDeposits(GetDeposits query)
+        public async Task<ResultWrapper<PagedResult<DepositDetailsForRpc>>> ndm_getDeposits(GetDeposits? query)
         {
             uint timestamp = (uint) _timestamper.EpochSeconds;
             PagedResult<DepositDetails> deposits = await _consumerService.GetDepositsAsync(query ?? new GetDeposits
@@ -185,7 +185,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
                 ? ResultWrapper<Keccak>.Fail($"Couldn't disable data streams for deposit: '{depositId}'.")
                 : ResultWrapper<Keccak>.Success(depositId);
 
-        public async Task<ResultWrapper<DepositsReportForRpc>> ndm_getDepositsReport(GetDepositsReport query = null)
+        public async Task<ResultWrapper<DepositsReportForRpc>> ndm_getDepositsReport(GetDepositsReport? query = null)
         {
             DepositsReport report = await _depositReportService.GetAsync(query ?? new GetDepositsReport());
 
@@ -193,7 +193,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         }
 
         public async Task<ResultWrapper<PagedResult<DepositApprovalForRpc>>> ndm_getConsumerDepositApprovals(
-            GetConsumerDepositApprovals query = null)
+            GetConsumerDepositApprovals? query = null)
         {
             PagedResult<DepositApproval> depositApprovals = await _consumerService.GetDepositApprovalsAsync(
                 query ?? new GetConsumerDepositApprovals

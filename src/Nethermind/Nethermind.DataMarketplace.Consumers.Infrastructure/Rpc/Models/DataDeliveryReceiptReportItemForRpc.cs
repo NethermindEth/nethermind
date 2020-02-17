@@ -22,12 +22,12 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
 {
     public class DataDeliveryReceiptReportItemForRpc
     {
-        public Keccak Id { get; set; }
+        public Keccak? Id { get; set; }
         public uint Number { get; set; }
-        public Keccak SessionId { get; set; }
-        public PublicKey NodeId { get; set; }
-        public DataDeliveryReceiptRequestForRpc Request { get; set; }
-        public DataDeliveryReceiptForRpc Receipt { get; set; }
+        public Keccak? SessionId { get; set; }
+        public PublicKey? NodeId { get; set; }
+        public DataDeliveryReceiptRequestForRpc? Request { get; set; }
+        public DataDeliveryReceiptForRpc? Receipt { get; set; }
         public ulong Timestamp { get; set; }
         public bool IsMerged { get; set; }
         public bool IsClaimed { get; set; }

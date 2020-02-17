@@ -37,7 +37,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
         public uint Timestamp { get; set; }
         public uint ExpiryTime { get; }
         public bool Expired { get; }
-        public Keccak TransactionHash { get; }
+        public Keccak? TransactionHash { get; }
         public uint ConfirmationTimestamp { get; }
         public uint Confirmations { get; }
         public uint RequiredConfirmations { get; }
@@ -80,7 +80,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
             ClaimedRefundTransactionHash = claimedRefundTransactionHash;
             RefundClaimed = refundClaimed;
             ConsumedUnits = consumedUnits;
-            Receipts = receipts ?? Enumerable.Empty<DataDeliveryReceiptReportItem>();
+            Receipts = receipts;
             if (Receipts.Any())
             {
                 ClaimedUnits = 1 + Receipts.Max(r => r.Request.UnitsRange.To) -

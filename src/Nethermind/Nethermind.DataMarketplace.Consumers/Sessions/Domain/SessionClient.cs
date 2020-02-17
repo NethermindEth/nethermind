@@ -37,13 +37,13 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Domain
             private set => _args = value;
         }
 
-        public SessionClient(string id, bool streamEnabled = false, string[] args = null)
+        public SessionClient(string id, bool streamEnabled = false, string[]? args = null)
         {
             Id = string.IsNullOrWhiteSpace(id) ? throw new ArgumentException("Invalid session client id.") : id;
             _args = args ?? Array.Empty<string>();
             if (streamEnabled)
             {
-                EnableStream(args);
+                EnableStream(_args);
             }
         }
 
@@ -65,7 +65,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Domain
             return Id == other.Id;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

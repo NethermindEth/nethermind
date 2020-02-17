@@ -20,7 +20,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services.Models
 {
     public class RefundClaimStatus
     {
-        public Keccak TransactionHash { get; }
+        public Keccak? TransactionHash { get; }
         public bool IsConfirmed { get; }
 
         private RefundClaimStatus()
@@ -33,7 +33,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services.Models
             IsConfirmed = confirmed;
         }
 
-        public static RefundClaimStatus Empty => new RefundClaimStatus();
+        public static RefundClaimStatus Empty = new RefundClaimStatus();
 
         public static RefundClaimStatus Confirmed(Keccak transactionHash)
             => new RefundClaimStatus(transactionHash, true);

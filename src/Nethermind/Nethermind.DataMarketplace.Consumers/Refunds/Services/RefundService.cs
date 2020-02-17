@@ -64,7 +64,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             if (_logger.IsInfo) _logger.Info($"Early refund claim for deposit: '{ticket.DepositId}', reason: '{reason}'.");
         }
 
-        public async Task<Keccak> ClaimRefundAsync(Address onBehalfOf, RefundClaim refundClaim, UInt256 gasPrice)
+        public async Task<Keccak?> ClaimRefundAsync(Address onBehalfOf, RefundClaim refundClaim, UInt256 gasPrice)
         {
             byte[] txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.ClaimRefundSig, refundClaim.AssetId.Bytes, refundClaim.Units, refundClaim.Value, refundClaim.ExpiryTime, refundClaim.Pepper, refundClaim.Provider, onBehalfOf);
             Transaction transaction = new Transaction();
@@ -85,7 +85,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             return await _blockchainBridge.SendOwnTransactionAsync(transaction);
         }
 
-        public async Task<Keccak> ClaimEarlyRefundAsync(Address onBehalfOf, EarlyRefundClaim earlyRefundClaim,
+        public async Task<Keccak?> ClaimEarlyRefundAsync(Address onBehalfOf, EarlyRefundClaim earlyRefundClaim,
             UInt256 gasPrice)
         {
             byte[] txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.ClaimEarlyRefundSig, earlyRefundClaim.AssetId.Bytes, earlyRefundClaim.Units, earlyRefundClaim.Value, earlyRefundClaim.ExpiryTime, earlyRefundClaim.Pepper, earlyRefundClaim.Provider, earlyRefundClaim.ClaimableAfter, earlyRefundClaim.Signature.V, earlyRefundClaim.Signature.R, earlyRefundClaim.Signature.S, onBehalfOf);

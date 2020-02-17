@@ -45,7 +45,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
         public bool Confirmed => ConfirmationTimestamp > 0 && Confirmations >= RequiredConfirmations;
         public bool Rejected { get; private set; }
         public bool Cancelled { get; private set; }
-        public EarlyRefundTicket EarlyRefundTicket { get; private set; }
+        public EarlyRefundTicket? EarlyRefundTicket { get; private set; }
 
         public IEnumerable<TransactionInfo> ClaimedRefundTransactions
         {
@@ -57,15 +57,27 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
         public bool RefundCancelled { get; private set; }
         public bool RefundClaimed { get; private set; }
         public uint ConsumedUnits { get; private set; }
-        public string Kyc { get; private set; }
+        public string? Kyc { get; private set; }
         public uint Confirmations { get; private set; }
         public uint RequiredConfirmations { get; private set; }
 
-        public DepositDetails(Deposit deposit, DataAsset dataAsset, Address consumer, byte[] pepper, uint timestamp,
-            IEnumerable<TransactionInfo> transactions, uint confirmationTimestamp = 0, bool rejected = false,
-            bool cancelled = false, EarlyRefundTicket earlyRefundTicket = null,
-            IEnumerable<TransactionInfo> claimedRefundTransactions = null, bool refundClaimed = false,
-            bool refundCancelled = false, string kyc = null, uint confirmations = 0, uint requiredConfirmations = 0)
+        public DepositDetails(
+            Deposit deposit,
+            DataAsset dataAsset,
+            Address consumer,
+            byte[] pepper,
+            uint timestamp,
+            IEnumerable<TransactionInfo> transactions,
+            uint confirmationTimestamp = 0,
+            bool rejected = false,
+            bool cancelled = false,
+            EarlyRefundTicket? earlyRefundTicket = null,
+            IEnumerable<TransactionInfo>? claimedRefundTransactions = null,
+            bool refundClaimed = false,
+            bool refundCancelled = false,
+            string? kyc = null,
+            uint confirmations = 0,
+            uint requiredConfirmations = 0)
         {
             Id = deposit.Id;
             Deposit = deposit;
@@ -73,7 +85,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
             Consumer = consumer;
             Pepper = pepper;
             Timestamp = timestamp;
-            Transactions = transactions ?? Enumerable.Empty<TransactionInfo>();
+            Transactions = transactions;
             ConfirmationTimestamp = confirmationTimestamp;
             Rejected = rejected;
             Cancelled = cancelled;
@@ -203,7 +215,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
             return ReferenceEquals(this, other) || Equals(Id, other.Id);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

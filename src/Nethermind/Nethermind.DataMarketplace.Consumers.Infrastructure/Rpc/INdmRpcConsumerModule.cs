@@ -40,7 +40,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         Task<ResultWrapper<ProviderInfoForRpc[]>> ndm_getKnownProviders();
         ResultWrapper<Address[]> ndm_getConnectedProviders();
         ResultWrapper<ConsumerSessionForRpc[]> ndm_getActiveConsumerSessions();
-        Task<ResultWrapper<PagedResult<DepositDetailsForRpc>>> ndm_getDeposits(GetDeposits query = null);
+        Task<ResultWrapper<PagedResult<DepositDetailsForRpc>>> ndm_getDeposits(GetDeposits? query = null);
         Task<ResultWrapper<DepositDetailsForRpc>> ndm_getDeposit(Keccak depositId);
         Task<ResultWrapper<Keccak>> ndm_makeDeposit(MakeDepositForRpc deposit, UInt256? gasPrice = null);
         Task<ResultWrapper<string>> ndm_sendDataRequest(Keccak depositId);
@@ -49,10 +49,10 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         Task<ResultWrapper<Keccak>> ndm_disableDataStream(Keccak depositId, string client);
         Task<ResultWrapper<Keccak>> ndm_disableDataStreams(Keccak depositId);
         ResultWrapper<string> ndm_pullData(Keccak depositId);
-        Task<ResultWrapper<DepositsReportForRpc>> ndm_getDepositsReport(GetDepositsReport query = null);
+        Task<ResultWrapper<DepositsReportForRpc>> ndm_getDepositsReport(GetDepositsReport? query = null);
 
         Task<ResultWrapper<PagedResult<DepositApprovalForRpc>>> ndm_getConsumerDepositApprovals(
-            GetConsumerDepositApprovals query = null);
+            GetConsumerDepositApprovals? query = null);
 
         Task<ResultWrapper<Keccak>> ndm_requestDepositApproval(Keccak assetId, string kyc);
         Task<ResultWrapper<FaucetResponseForRpc>> ndm_requestEth(Address address);

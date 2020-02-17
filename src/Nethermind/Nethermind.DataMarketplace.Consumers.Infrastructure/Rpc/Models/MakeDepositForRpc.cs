@@ -21,7 +21,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
 {
     public class MakeDepositForRpc
     {
-        public Keccak DataAssetId { get; set; }
+        public Keccak? DataAssetId { get; set; }
         public uint Units { get; set; }
         public UInt256 Value { get; set; }
     }

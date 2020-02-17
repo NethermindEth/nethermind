@@ -22,6 +22,8 @@ using Nethermind.DataMarketplace.Consumers.DataStreams;
 using Nethermind.DataMarketplace.Consumers.Notifiers;
 using Nethermind.DataMarketplace.Consumers.Providers;
 using Nethermind.DataMarketplace.Consumers.Sessions;
+using Nethermind.DataMarketplace.Core.Configs;
+using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Events;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.Logging;
@@ -41,9 +43,16 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
         private Address _consumerAddress;
         private readonly ILogger _logger;
 
-        public AccountService(IConfigManager configManager, IDataStreamService dataStreamService,
-            IProviderService providerService, ISessionService sessionService, IConsumerNotifier consumerNotifier,
-            IWallet wallet, string configId, Address consumerAddress, ILogManager logManager)
+        public AccountService(
+            IConfigManager configManager,
+            IDataStreamService dataStreamService,
+            IProviderService providerService,
+            ISessionService sessionService,
+            IConsumerNotifier consumerNotifier,
+            IWallet wallet,
+            string configId,
+            Address consumerAddress,
+            ILogManager logManager)
         {
             _configManager = configManager;
             _dataStreamService = dataStreamService;
@@ -68,15 +77,15 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                 return;
             }
 
-            var previousAddress = _consumerAddress;
+            Address previousAddress = _consumerAddress;
             if (_logger.IsInfo) _logger.Info($"Changing consumer address: '{previousAddress}' -> '{address}'...");
             _consumerAddress = address;
             AddressChanged?.Invoke(this, new AddressChangedEventArgs(previousAddress, _consumerAddress));
-            var config = await _configManager.GetAsync(_configId);
+            NdmConfig? config = await _configManager.GetAsync(_configId);
             config.ConsumerAddress = _consumerAddress.ToString();
             await _configManager.UpdateAsync(config);
             
-            foreach (var provider in _providerService.GetPeers())
+            foreach (INdmPeer provider in _providerService.GetPeers())
             {
                 provider.ChangeHostConsumerAddress(_consumerAddress);
                 provider.SendConsumerAddressChanged(_consumerAddress);

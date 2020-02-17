@@ -71,9 +71,13 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             => Task.FromResult(Filter(query.DepositId, query.DataAssetId, query.ConsumerNodeId, query.ConsumerAddress,
                 query.ProviderNodeId, query.ProviderAddress).Paginate(query));
 
-        private ConsumerSession[] Filter(Keccak depositId = null, Keccak dataAssetId = null,
-            PublicKey consumerNodeId = null, Address consumerAddress = null, PublicKey providerNodeId = null,
-            Address providerAddress = null)
+        private ConsumerSession[] Filter(
+            Keccak? depositId = null,
+            Keccak? dataAssetId = null,
+            PublicKey? consumerNodeId = null,
+            Address? consumerAddress = null,
+            PublicKey? providerNodeId = null,
+            Address? providerAddress = null)
         {
             var sessionsBytes = _database.GetAll();
             if (sessionsBytes.Length == 0)

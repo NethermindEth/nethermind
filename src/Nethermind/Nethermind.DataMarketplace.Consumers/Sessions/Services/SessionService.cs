@@ -22,6 +22,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Consumers.DataAssets;
 using Nethermind.DataMarketplace.Consumers.Deposits;
+using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Notifiers;
 using Nethermind.DataMarketplace.Consumers.Providers;
 using Nethermind.DataMarketplace.Consumers.Sessions.Domain;
@@ -59,9 +60,9 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
             _logger = logManager.GetClassLogger();
         }
 
-        public ConsumerSession GetActive(Keccak depositId)
+        public ConsumerSession? GetActive(Keccak depositId)
         {
-            if (_sessions.TryGetValue(depositId, out var session))
+            if (_sessions.TryGetValue(depositId, out ConsumerSession? session))
             {
                 return session;
             }
@@ -84,7 +85,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
 //                return;
 //            }
 
-            var deposit = await _depositProvider.GetAsync(session.DepositId);
+            DepositDetails? deposit = await _depositProvider.GetAsync(session.DepositId);
             if (deposit is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Cannot start the session: '{session.Id}', deposit: '{session.DepositId}' was not found.");
@@ -92,8 +93,8 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
                 return;
             }
 
-            var dataAssetId = deposit.DataAsset.Id;
-            var dataAsset = _dataAssetService.GetDiscovered(dataAssetId);
+            Keccak dataAssetId = deposit.DataAsset.Id;
+            DataAsset? dataAsset = _dataAssetService.GetDiscovered(dataAssetId);
             if (dataAsset is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Available data asset: '{dataAssetId}' was not found.");
@@ -120,19 +121,19 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
                 DepositId = session.DepositId,
                 Results = int.MaxValue
             });
-            var consumedUnits = sessions.Items.Any() ? (uint) sessions.Items.Sum(s => s.ConsumedUnits) : 0;
+            uint consumedUnits = sessions.Items.Any() ? (uint) sessions.Items.Sum(s => s.ConsumedUnits) : 0;
             if (_logger.IsInfo) _logger.Info($"Starting the session: '{session.Id}' for deposit: '{session.DepositId}'. Settings consumed units - provider: {session.StartUnitsFromProvider}, consumer: {consumedUnits}.");
-            var consumerSession = ConsumerSession.From(session);
+            ConsumerSession consumerSession = ConsumerSession.From(session);
             consumerSession.Start(session.StartTimestamp);
-            var previousSession = await _sessionRepository.GetPreviousAsync(consumerSession);
-            var upfrontUnits = (uint) (deposit.DataAsset.Rules.UpfrontPayment?.Value ?? 0);
+            ConsumerSession? previousSession = await _sessionRepository.GetPreviousAsync(consumerSession);
+            uint upfrontUnits = (uint) (deposit.DataAsset.Rules.UpfrontPayment?.Value ?? 0);
             if (upfrontUnits > 0 && previousSession is null)
             {
                 consumerSession.AddUnpaidUnits(upfrontUnits);
                 if (_logger.IsInfo) _logger.Info($"Unpaid units: {upfrontUnits} for session: '{session.Id}' based on upfront payment.");
             }
 
-            var unpaidUnits = previousSession?.UnpaidUnits ?? 0;
+            uint unpaidUnits = previousSession?.UnpaidUnits ?? 0;
             if (unpaidUnits > 0 && !(previousSession is null))
             {
                 consumerSession.AddUnpaidUnits(unpaidUnits);
@@ -141,7 +142,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
             
             if (deposit.DataAsset.UnitType == DataAssetUnitType.Time)
             {
-                var unpaidTimeUnits = (uint) consumerSession.StartTimestamp - deposit.ConfirmationTimestamp;
+                uint unpaidTimeUnits = (uint) consumerSession.StartTimestamp - deposit.ConfirmationTimestamp;
                 consumerSession.AddUnpaidUnits(unpaidTimeUnits);
                 if (_logger.IsInfo) _logger.Info($"Unpaid units: '{unpaidTimeUnits}' for deposit: '{session.DepositId}' based on time.");
             }
@@ -165,15 +166,15 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
                 return;
             }
             
-            var depositId = session.DepositId;
-            var consumerSession = GetActive(depositId);
+            Keccak depositId = session.DepositId;
+            ConsumerSession? consumerSession = GetActive(depositId);
             if (consumerSession is null)
             {
                 return;
             }
             
             _sessions.TryRemove(session.DepositId, out _);
-            var timestamp = session.FinishTimestamp;
+            ulong timestamp = session.FinishTimestamp;
             consumerSession.Finish(session.State, timestamp);
             await _sessionRepository.UpdateAsync(consumerSession);
             await _consumerNotifier.SendSessionFinishedAsync(session.DepositId, session.Id);
@@ -194,8 +195,8 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
                 return;
             }
 
-            var timestamp = _timestamper.EpochSeconds;
-            foreach (var (_, session) in _sessions)
+            ulong timestamp = _timestamper.EpochSeconds;
+            foreach ((Keccak _, ConsumerSession session) in _sessions)
             {
                 if (!provider.ProviderAddress.Equals(session.ProviderAddress))
                 {
@@ -204,7 +205,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
                     continue;
                 }
 
-                var depositId = session.DepositId;
+                Keccak depositId = session.DepositId;
                 if (_logger.IsInfo) _logger.Info($"Finishing a session: '{session.Id}' for deposit: '{depositId}'.");
                 _sessions.TryRemove(session.DepositId, out _);
                 session.Finish(SessionState.ProviderDisconnected, timestamp);
@@ -214,9 +215,9 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
             }
         }
 
-        public async Task<Keccak> SendFinishSessionAsync(Keccak depositId)
+        public async Task<Keccak?> SendFinishSessionAsync(Keccak depositId)
         {
-            var deposit = await _depositProvider.GetAsync(depositId);
+            DepositDetails? deposit = await _depositProvider.GetAsync(depositId);
             if (deposit is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Deposit with id: '{depositId}' was not found.'");
@@ -224,13 +225,13 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
                 return null;
             }
 
-            var session = GetActive(depositId);
+            ConsumerSession? session = GetActive(depositId);
             if (session is null)
             {
                 return null;
             }
 
-            var provider = _providerService.GetPeer(session.ProviderAddress);
+            INdmPeer? provider = _providerService.GetPeer(session.ProviderAddress);
             if (provider is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Provider node: '{session.ProviderNodeId}' was not found.");

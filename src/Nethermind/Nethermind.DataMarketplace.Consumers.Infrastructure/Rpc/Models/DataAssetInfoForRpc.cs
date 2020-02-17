@@ -21,9 +21,9 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
 {
     public class DataAssetInfoForRpc
     {
-        public Keccak Id { get; set; }
-        public string Name { get; set; }
-        public string Description { get; set; }
+        public Keccak? Id { get; set; }
+        public string? Name { get; set; }
+        public string? Description { get; set; }
 
 
         public DataAssetInfoForRpc()
