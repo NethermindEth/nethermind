@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -24,10 +25,10 @@ using Nethermind.Store;
 
 namespace Nethermind.Evm.Tracing
 {
-    public class CallOutputTracer : ITxTracer
+    public class EstimateGasTracer : ITxTracer
     {
         public bool IsTracingReceipt => true;
-        public bool IsTracingActions => false;
+        public bool IsTracingActions => true;
         public bool IsTracingOpLevelStorage => false;
         public bool IsTracingMemory => false;
         public bool IsTracingInstructions => false;
@@ -39,6 +40,19 @@ namespace Nethermind.Evm.Tracing
         public byte[] ReturnValue { get; set; }
 
         public long GasSpent { get; set; }
+
+        public long ExcessiveGas
+        {
+            get
+            {
+                if (_gasOnEnd.Count == 0)
+                {
+                    return 0;
+                }
+                
+                return _gasOnEnd.Min(g => g.Excess);
+            }
+        }
 
         public string Error { get; set; }
 
@@ -139,24 +153,78 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
+        private struct GasLeftAndNestingLevel
+        {
+            public GasLeftAndNestingLevel(long gasLeft, int nestingLevel)
+            {
+                GasLeft = gasLeft;
+                NestingLevel = nestingLevel;
+            }
+
+            public long GasLeft { get; set; }
+            public int NestingLevel { get; set; }
+
+            public long Excess
+            {
+                get
+                {
+                    long excess = GasLeft;
+                    for (int i = 0; i < NestingLevel; i++)
+                    {
+                        excess = (long) Math.Ceiling(excess * 64m / 63);    
+                    }
+
+                    return excess;
+                           
+                }
+            }
+        }
+
+        private List<GasLeftAndNestingLevel> _gasOnEnd = new List<GasLeftAndNestingLevel>();
+
+        private int _currentNestingLevel = -1;
+
+        private bool _isInPrecompile = false;
+
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
         {
-            throw new NotSupportedException();
+            if (!isPrecompileCall)
+            {
+                _currentNestingLevel++;
+            }
+            else
+            {
+                _isInPrecompile = true;
+            }
         }
 
         public void ReportActionEnd(long gas, byte[] output)
         {
-            throw new NotSupportedException();
+            if (!_isInPrecompile)
+            {
+                _gasOnEnd.Add(new GasLeftAndNestingLevel(gas, _currentNestingLevel--));
+            }
+            else
+            {
+                _isInPrecompile = false;
+            }
         }
 
         public void ReportActionError(EvmExceptionType exceptionType)
         {
-            throw new NotSupportedException();
+            _currentNestingLevel--;
         }
 
         public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
         {
-            throw new NotSupportedException();
+            if (!_isInPrecompile)
+            {
+                _gasOnEnd.Add(new GasLeftAndNestingLevel(gas, _currentNestingLevel--));
+            }
+            else
+            {
+                _isInPrecompile = false;
+            }
         }
 
         public void ReportBlockHash(Keccak blockHash)

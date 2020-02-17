@@ -194,23 +194,24 @@ namespace Nethermind.Facade
 
         public CallOutput Call(BlockHeader blockHeader, Transaction transaction)
         {
-            CallOutputTracer callOutputTracer = CallAndRestore(blockHeader, transaction);
+            CallOutputTracer callOutputTracer = new CallOutputTracer();
+            CallAndRestore(blockHeader, transaction, callOutputTracer);
             return new CallOutput {Error = callOutputTracer.Error, GasSpent = callOutputTracer.GasSpent, OutputData = callOutputTracer.ReturnValue};
         }
 
         public long EstimateGas(BlockHeader header, Transaction transaction)
         {
-            CallOutputTracer callOutputTracer = CallAndRestore(header, transaction);
-            return callOutputTracer.GasSpent;
+            EstimateGasTracer estimateGasTracer = new EstimateGasTracer();
+            CallAndRestore(header, transaction, estimateGasTracer);
+            return transaction.GasLimit - estimateGasTracer.ExcessiveGas;
         }
 
-        private CallOutputTracer CallAndRestore(BlockHeader blockHeader, Transaction transaction)
+        private void CallAndRestore(BlockHeader blockHeader, Transaction transaction, ITxTracer tracer)
         {
             if (transaction.SenderAddress == null)
             {
                 transaction.SenderAddress = Address.SystemUser;
             }
-
 
             _stateProvider.StateRoot = blockHeader.StateRoot;
             try
@@ -231,9 +232,7 @@ namespace Nethermind.Facade
                     Bytes.Empty);
 
                 transaction.Hash = transaction.CalculateHash();
-                CallOutputTracer callOutputTracer = new CallOutputTracer();
-                _transactionProcessor.CallAndRestore(transaction, callHeader, callOutputTracer);
-                return callOutputTracer;
+                _transactionProcessor.CallAndRestore(transaction, callHeader, tracer);
             }
             finally
             {

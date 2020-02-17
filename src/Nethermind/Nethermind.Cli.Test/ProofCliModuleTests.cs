@@ -55,10 +55,9 @@ namespace Nethermind.Cli.Test
         public void Get_transaction_by_hash(bool includeHeader)
         {
             Keccak txHash = TestItem.KeccakA;
-            JsonRpcResponse response = new JsonRpcResponse
+            JsonRpcSuccessResponse response = new JsonRpcSuccessResponse
             {
                 Id = "id1",
-                JsonRpc = "2",
                 Result = "result"
             };
 
@@ -75,10 +74,9 @@ namespace Nethermind.Cli.Test
         public void Get_transaction_receipt(bool includeHeader)
         {
             Keccak txHash = TestItem.KeccakA;
-            JsonRpcResponse response = new JsonRpcResponse
+            JsonRpcSuccessResponse response = new JsonRpcSuccessResponse
             {
                 Id = "id1",
-                JsonRpc = "2",
                 Result = "result",
             };
 
@@ -100,10 +98,9 @@ namespace Nethermind.Cli.Test
                 To = TestItem.AddressB
             };
 
-            JsonRpcResponse response = new JsonRpcResponse
+            JsonRpcSuccessResponse response = new JsonRpcSuccessResponse
             {
                 Id = "id1",
-                JsonRpc = "2",
                 Result = "result",
             };
 
