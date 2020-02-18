@@ -37,7 +37,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo.Repositori
 
         public Task<DataDeliveryReceiptDetails?> GetAsync(Keccak id)
         {
-            return Receipts.Find(c => c.Id == id).FirstOrDefaultAsync();
+            return Receipts.Find(c => c.Id == id).FirstOrDefaultAsync<DataDeliveryReceiptDetails?>();
         }
             
         public async Task<IReadOnlyList<DataDeliveryReceiptDetails>> BrowseAsync(Keccak? depositId = null, Keccak? dataAssetId = null, Keccak? sessionId = null)

@@ -162,8 +162,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             ITimestamper timestamper = services.RequiredServices.Timestamper;
             IWallet wallet = services.RequiredServices.Wallet;
             IHttpClient httpClient = services.RequiredServices.HttpClient;
-            IJsonRpcClientProxy jsonRpcClientProxy = services.RequiredServices.JsonRpcClientProxy;
-            IEthJsonRpcClientProxy ethJsonRpcClientProxy = services.RequiredServices.EthJsonRpcClientProxy;
+            IJsonRpcClientProxy? jsonRpcClientProxy = services.RequiredServices.JsonRpcClientProxy;
+            IEthJsonRpcClientProxy? ethJsonRpcClientProxy = services.RequiredServices.EthJsonRpcClientProxy;
             TransactionService transactionService = services.CreatedServices.TransactionService;
             IMonitoringService monitoringService = services.RequiredServices.MonitoringService;
             monitoringService?.RegisterMetrics(typeof(Metrics));

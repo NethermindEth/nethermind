@@ -45,7 +45,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
         public Task<ConsumerSession?> GetAsync(Keccak id)
         {
             byte[] fromDatabase = _database.Get(id);
-            return fromDatabase == null ? null : Task.FromResult(Decode(fromDatabase));
+            return fromDatabase == null ? Task.FromResult<ConsumerSession?>(null) : Task.FromResult<ConsumerSession?>(Decode(fromDatabase));
         }
 
         public Task<ConsumerSession?> GetPreviousAsync(ConsumerSession session)
@@ -54,15 +54,15 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             switch (sessions.Length)
             {
                 case 0:
-                    return Task.FromResult<ConsumerSession>(null);
+                    return Task.FromResult<ConsumerSession?>(null);
                 case 1:
-                    return Task.FromResult(GetUniqueSession(session, sessions[0]));
+                    return Task.FromResult<ConsumerSession?>(GetUniqueSession(session, sessions[0]));
                 default:
                 {
                     var previousSessions = sessions.Take(2).ToArray();
 
-                    return Task.FromResult(GetUniqueSession(session, previousSessions[1]) ??
-                                           GetUniqueSession(session, previousSessions[0]));
+                    return Task.FromResult<ConsumerSession?>(GetUniqueSession(session, previousSessions[1]) ??
+                                                             GetUniqueSession(session, previousSessions[0]));
                 }
             }
         }

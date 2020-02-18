@@ -27,12 +27,12 @@ namespace Nethermind.DataMarketplace.Core.Services
 {
     public class ProxyService : IProxyService
     {
-        private readonly IJsonRpcClientProxy _jsonRpcClientProxy;
+        private readonly IJsonRpcClientProxy? _jsonRpcClientProxy;
         private readonly IConfigManager _configManager;
         private readonly string _configId;
         private readonly ILogger _logger;
 
-        public ProxyService(IJsonRpcClientProxy jsonRpcClientProxy, IConfigManager configManager, string configId,
+        public ProxyService(IJsonRpcClientProxy? jsonRpcClientProxy, IConfigManager configManager, string configId,
             ILogManager logManager)
         {
             _jsonRpcClientProxy = jsonRpcClientProxy;

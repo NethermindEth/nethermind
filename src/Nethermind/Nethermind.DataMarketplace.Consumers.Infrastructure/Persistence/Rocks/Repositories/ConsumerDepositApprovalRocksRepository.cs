@@ -41,7 +41,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
         public Task<DepositApproval?> GetAsync(Keccak id)
         {
             byte[]? fromDatabase = _database.Get(id);
-            return fromDatabase == null ? null : Task.FromResult<DepositApproval?>(Decode(fromDatabase));
+            return fromDatabase == null ? Task.FromResult<DepositApproval?>(null) : Task.FromResult<DepositApproval?>(Decode(fromDatabase));
         }
 
         public Task<PagedResult<DepositApproval>> BrowseAsync(GetConsumerDepositApprovals query)
@@ -94,8 +94,6 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
         }
 
         private DepositApproval Decode(byte[] bytes)
-            => bytes is null
-                ? null
-                : _rlpDecoder.Decode(bytes.AsRlpStream());
+            => _rlpDecoder.Decode(bytes.AsRlpStream());
     }
 }

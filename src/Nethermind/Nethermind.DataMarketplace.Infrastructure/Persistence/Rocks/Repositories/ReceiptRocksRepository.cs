@@ -41,7 +41,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositori
         public Task<DataDeliveryReceiptDetails?> GetAsync(Keccak id)
         {
             byte[] bytes = _database.Get(id);
-            return bytes == null ? null : Task.FromResult(Decode(bytes));
+            return bytes == null ? Task.FromResult<DataDeliveryReceiptDetails?>(null) : Task.FromResult<DataDeliveryReceiptDetails?>(Decode(bytes));
         }
             
 

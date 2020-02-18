@@ -229,12 +229,12 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         public ResultWrapper<string?> ndm_pullData(Keccak depositId)
         {
             string? data = _jsonRpcNdmConsumerChannel.Pull(depositId);
-            return ResultWrapper<string>.Success(data);
+            return ResultWrapper<string?>.Success(data);
         }
 
         public async Task<ResultWrapper<NdmProxyResponseForRpc>> ndm_getProxy()
         {
-            NdmProxy proxy = await _consumerService.GetProxyAsync();
+            NdmProxy? proxy = await _consumerService.GetProxyAsync();
             if (proxy == null)
             {
                 return ResultWrapper<NdmProxyResponseForRpc>.Success(new NdmProxyResponseForRpc

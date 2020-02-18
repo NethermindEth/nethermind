@@ -23,7 +23,7 @@ namespace Nethermind.DataMarketplace.Core.Services
 {
     public interface IEthRequestService
     {
-        string FaucetHost { get; }
+        string? FaucetHost { get; }
         void UpdateFaucet(INdmPeer peer);
         Task<FaucetResponse> TryRequestEthAsync(Address address, UInt256 value);
     }
