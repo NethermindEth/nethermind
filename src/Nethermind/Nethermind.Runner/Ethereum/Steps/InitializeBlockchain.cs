@@ -28,6 +28,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Logging;
 using Nethermind.Mining;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Specs;
@@ -54,16 +55,17 @@ namespace Nethermind.Runner.Ethereum.Steps
          [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
         private Task InitBlockchain()
         {
+            ILogger logger = _context.LogManager.GetClassLogger();
             ISyncConfig syncConfig = _context.Config<ISyncConfig>();
             if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
             {
-                _context.Logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
+                logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
                 syncConfig.DownloadBodiesInFastSync = true;
             }
 
             if (syncConfig.BeamSync)
             {
-                _context.Logger.Warn("Welcome to the alpha version of the Nethermind Goerli Beam Sync. I will start by downloading the pivot block header and then will continue to download all the headers from the pivot upwards. After that I will be beam synchronizing the new blocks. Many things can fail - appreciated if you report issues via GitHub or Gitter.");
+                logger.Warn("Welcome to the alpha version of the Nethermind Goerli Beam Sync. I will start by downloading the pivot block header and then will continue to download all the headers from the pivot upwards. After that I will be beam synchronizing the new blocks. Many things can fail - appreciated if you report issues via GitHub or Gitter.");
             }
             
             Account.AccountStartNonce = _context.ChainSpec.Parameters.AccountStartNonce;

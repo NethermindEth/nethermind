@@ -37,7 +37,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             bool hiveEnabled = Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true";
             if (hiveEnabled)
             {
-                HiveRunner hiveRunner = new HiveRunner(_context.BlockTree as BlockTree, _context.Wallet, _context.EthereumJsonSerializer, _context.ConfigProvider, _context.Logger);
+                if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
+                if (_context.Wallet == null) throw new StepDependencyException(nameof(_context.Wallet));
+                if (_context.EthereumJsonSerializer == null) throw new StepDependencyException(nameof(_context.EthereumJsonSerializer));
+                HiveRunner hiveRunner = new HiveRunner(_context.BlockTree, _context.Wallet, _context.EthereumJsonSerializer, _context.ConfigProvider, _context.LogManager.GetClassLogger());
                 await hiveRunner.Start();
             }
         }

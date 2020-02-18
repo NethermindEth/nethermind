@@ -32,7 +32,8 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public override Task Execute()
         {
-            var result = base.Execute();
+            Task result = base.Execute();
+            if (_context.SnapshotManager == null) throw new StepDependencyException(nameof(_context.SnapshotManager));
             CliqueModule cliqueModule = new CliqueModule(_context.LogManager, new CliqueBridge(_context.BlockProducer as ICliqueBlockProducer, _context.SnapshotManager, _context.BlockTree));
             _context.RpcModuleProvider.Register(new SingletonModulePool<ICliqueModule>(cliqueModule, true));
             return result;

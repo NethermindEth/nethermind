@@ -24,6 +24,8 @@ using Nethermind.EthStats;
 using Nethermind.EthStats.Clients;
 using Nethermind.EthStats.Integrations;
 using Nethermind.EthStats.Senders;
+using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Subsystems;
 
@@ -33,11 +35,13 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class StartEthStatsClient : IStep, ISubsystemStateAware
     {
         private readonly EthereumRunnerContext _context;
+        private ILogger _logger;
 
         public StartEthStatsClient(EthereumRunnerContext context)
         {
             _context = context;
-            
+            _logger = _context.LogManager.GetClassLogger();
+
             EthereumSubsystemState newState = context.Config<IEthStatsConfig>().Enabled
                 ? EthereumSubsystemState.AwaitingInitialization
                 : EthereumSubsystemState.Disabled;
@@ -55,17 +59,18 @@ namespace Nethermind.Runner.Ethereum.Steps
                 return;
             }
             
+            INetworkConfig networkConfig = _context.Config<INetworkConfig>();
             SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Initializing));
 
             string instanceId = $"{ethStatsConfig.Name}-{Keccak.Compute(_context.Enode.Info)}";
-            if (_context.Logger.IsInfo) _context.Logger.Info($"Initializing ETH Stats for the instance: {instanceId}, server: {ethStatsConfig.Server}");
+            if (_logger.IsInfo) _logger.Info($"Initializing ETH Stats for the instance: {instanceId}, server: {ethStatsConfig.Server}");
             MessageSender sender = new MessageSender(instanceId, _context.LogManager);
             const int reconnectionInterval = 5000;
             const string api = "no";
             const string client = "0.1.1";
             const bool canUpdateHistory = false;
             string node = ClientVersion.Description;
-            int port = _context.NetworkConfig.P2PPort;
+            int port = networkConfig.P2PPort;
             string network = _context.SpecProvider.ChainId.ToString();
             string protocol = _context.Config<ISyncConfig>().FastSync ? "eth/63" : "eth/62";
             
@@ -99,7 +104,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Running));
         }
 
-        public event EventHandler<SubsystemStateEventArgs> SubsystemStateChanged;
+        public event EventHandler<SubsystemStateEventArgs>? SubsystemStateChanged;
         
         public EthereumSubsystem MonitoredSubsystem => EthereumSubsystem.EthStats;
     }

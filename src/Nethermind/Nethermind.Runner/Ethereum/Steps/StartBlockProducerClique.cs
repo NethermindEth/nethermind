@@ -16,6 +16,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Clique;
+using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -31,7 +32,8 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected override void BuildProducer()
         {
-            if (_context.Logger.IsWarn) _context.Logger.Warn("Starting Clique block producer & sealer");
+            ILogger logger = _context.LogManager.GetClassLogger();
+            if (logger.IsWarn) logger.Warn("Starting Clique block producer & sealer");
             BlockProducerContext producerChain = GetProducerChain();
             CliqueConfig cliqueConfig = new CliqueConfig {BlockPeriod = _context.ChainSpec.Clique.Period, Epoch = _context.ChainSpec.Clique.Epoch};
             _context.BlockProducer = new CliqueBlockProducer(

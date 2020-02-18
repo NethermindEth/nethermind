@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,10 +14,31 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Runner.Data
+using System;
+using System.Threading.Tasks;
+
+namespace Nethermind.Monitoring
 {
-    public class TestAccount
+    public class NullMonitoringService : IMonitoringService
     {
-        public string Balance { get; set; }
+        private NullMonitoringService()
+        {
+        }
+
+        public static IMonitoringService Instance { get; } = new NullMonitoringService();
+
+        public void RegisterMetrics(Type type)
+        {
+        }
+
+        public Task StartAsync()
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task StopAsync()
+        {
+            return Task.CompletedTask;
+        }
     }
 }

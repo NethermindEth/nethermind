@@ -23,17 +23,17 @@ namespace Nethermind.Runner
 {
     public class Bootstrap
     {
-        private static Bootstrap _instance;
+        private static Bootstrap? _instance;
 
         private Bootstrap()
         {
         }
 
-        public static Bootstrap Instance => _instance ?? (_instance = new Bootstrap());
+        public static Bootstrap Instance => _instance ??= new Bootstrap();
 
-        public IJsonRpcService JsonRpcService { private get; set; }
-        public ILogManager LogManager { private get; set; }
-        public IJsonSerializer JsonSerializer { private get; set; }
+        public IJsonRpcService? JsonRpcService { private get; set; }
+        public ILogManager? LogManager { private get; set; }
+        public IJsonSerializer? JsonSerializer { private get; set; }
 
         public void RegisterJsonRpcServices(IServiceCollection services)
         {

@@ -28,11 +28,11 @@ namespace Nethermind.Clique
     {
         private const string CannotVoteOnNonValidatorMessage = "Not a signer node - cannot vote";
         
-        private readonly ICliqueBlockProducer _cliqueBlockProducer;
+        private readonly ICliqueBlockProducer? _cliqueBlockProducer;
         private readonly ISnapshotManager _snapshotManager;
         private readonly IBlockTree _blockTree;
 
-        public CliqueBridge(ICliqueBlockProducer cliqueBlockProducer, ISnapshotManager snapshotManager, IBlockTree blockTree)
+        public CliqueBridge(ICliqueBlockProducer? cliqueBlockProducer, ISnapshotManager snapshotManager, IBlockTree blockTree)
         {
             _cliqueBlockProducer = cliqueBlockProducer;
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));

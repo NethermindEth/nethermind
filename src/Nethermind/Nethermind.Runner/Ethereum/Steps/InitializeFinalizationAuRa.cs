@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.AuRa;
 using Nethermind.AuRa.Validators;
@@ -31,13 +32,18 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             _context = context;
         }
-        
+
         public Task Execute()
         {
+            if (_context.AuRaBlockProcessorExtension == null)
+            {
+                throw new StepDependencyException($"{nameof(AuRaEthereumRunnerContext.AuRaBlockProcessorExtension)} not ready to start {nameof(InitializeFinalizationAuRa)}");
+            }
+
             _context.FinalizationManager = InitFinalizationManager(_context.AuRaBlockProcessorExtension);
             return Task.CompletedTask;
         }
-        
+
         private IBlockFinalizationManager InitFinalizationManager(IAuRaBlockProcessorExtension auRaBlockProcessorExtension)
         {
             AuRaBlockFinalizationManager finalizationManager = new AuRaBlockFinalizationManager(_context.BlockTree, _context.ChainLevelInfoRepository, _context.MainBlockProcessor, _context.ValidatorStore, new ValidSealerStrategy(), _context.LogManager);

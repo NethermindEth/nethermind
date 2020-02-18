@@ -18,6 +18,7 @@ using Nethermind.Config;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Proof;
+using Nethermind.Logging;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Steps;
@@ -61,7 +62,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
             IRpcModuleProvider rpcModuleProvider = Substitute.For<IRpcModuleProvider>();
 
-            EthereumRunnerContext context = new EthereumRunnerContext();
+            EthereumRunnerContext context = new EthereumRunnerContext(configProvider, LimboLogs.Instance);
             context.ConfigProvider = configProvider;
 
             RegisterRpcModules registerRpcModules = new RegisterRpcModules(context);

@@ -46,6 +46,7 @@ using Nethermind.Logging.NLog;
 using Nethermind.Monitoring.Config;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Steps;
 using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
 using Newtonsoft.Json;
@@ -57,27 +58,27 @@ namespace Nethermind.Runner
 {
     public abstract class RunnerAppBase
     {
-        private ILogger _logger;
+        private ILogger? _logger;
         private IRunner _jsonRpcRunner = NullRunner.Instance;
         private IRunner _ethereumRunner = NullRunner.Instance;
         private IRunner _grpcRunner = NullRunner.Instance;
-        private TaskCompletionSource<object> _cancelKeySource;
-        private IMonitoringService _monitoringService;
-        
+        private TaskCompletionSource<object?>? _cancelKeySource;
+        private IMonitoringService _monitoringService = NullMonitoringService.Instance;
+
         protected RunnerAppBase()
         {
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
         }
 
-        private void CurrentDomainOnProcessExit(object sender, EventArgs e)
+        private void CurrentDomainOnProcessExit(object? sender, EventArgs e)
         {
         }
 
         private void LogMemoryConfiguration()
         {
-            if (_logger.IsDebug) _logger.Debug($"Server GC           : {System.Runtime.GCSettings.IsServerGC}");
-            if (_logger.IsDebug) _logger.Debug($"GC latency mode     : {System.Runtime.GCSettings.LatencyMode}");
-            if (_logger.IsDebug) _logger.Debug($"LOH compaction mode : {System.Runtime.GCSettings.LargeObjectHeapCompactionMode}");
+            if (_logger?.IsDebug ?? false) _logger!.Debug($"Server GC           : {System.Runtime.GCSettings.IsServerGC}");
+            if (_logger?.IsDebug ?? false) _logger!.Debug($"GC latency mode     : {System.Runtime.GCSettings.LatencyMode}");
+            if (_logger?.IsDebug ?? false) _logger!.Debug($"LOH compaction mode : {System.Runtime.GCSettings.LargeObjectHeapCompactionMode}");
         }
 
         public void Run(string[] args)
@@ -93,12 +94,12 @@ namespace Nethermind.Runner
                 if (_logger.IsInfo) _logger.Info($"Nethermind version: {ClientVersion.Description}");
                 LogMemoryConfiguration();
 
-                string pathDbPath = getDbBasePath();
+                string? pathDbPath = getDbBasePath();
                 if (!string.IsNullOrWhiteSpace(pathDbPath))
                 {
                     string newDbPath = Path.Combine(pathDbPath, initConfig.BaseDbPath);
                     if (_logger.IsDebug) _logger.Debug($"Adding prefix to baseDbPath, new value: {newDbPath}, old value: {initConfig.BaseDbPath}");
-                    initConfig.BaseDbPath = newDbPath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "db");
+                    initConfig.BaseDbPath = newDbPath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory ?? "", "db");
                 }
 
                 Console.Title = initConfig.LogFileName;
@@ -107,7 +108,7 @@ namespace Nethermind.Runner
                 EthereumJsonSerializer serializer = new EthereumJsonSerializer();
                 if (_logger.IsInfo) _logger.Info($"Nethermind config:\n{serializer.Serialize(initConfig, true)}\n");
 
-                _cancelKeySource = new TaskCompletionSource<object>();
+                _cancelKeySource = new TaskCompletionSource<object?>();
 
                 await StartRunners(configProvider);
                 await _cancelKeySource.Task;
@@ -142,7 +143,7 @@ namespace Nethermind.Runner
                 : (IRpcModuleProvider) NullModuleProvider.Instance;
             EthereumJsonSerializer jsonSerializer = new EthereumJsonSerializer();
             WebSocketsManager webSocketsManager = new WebSocketsManager();
-            
+
             if (metricOptions.Enabled)
             {
                 int intervalSeconds = metricOptions.IntervalSeconds;
@@ -165,9 +166,21 @@ namespace Nethermind.Runner
                 if (_logger.IsInfo) _logger.Info("Grafana / Prometheus metrics are disabled in configuration");
             }
 
-            INdmDataPublisher ndmDataPublisher = null;
-            INdmConsumerChannelManager ndmConsumerChannelManager = null;
-            INdmInitializer ndmInitializer = null;
+            IGrpcConfig grpcConfig = configProvider.GetConfig<IGrpcConfig>();
+            GrpcServer? grpcServer = null;
+            if (grpcConfig.Enabled)
+            {
+                grpcServer = new GrpcServer(jsonSerializer, logManager);
+                _grpcRunner = new GrpcRunner(grpcServer, grpcConfig, logManager);
+                await _grpcRunner.Start().ContinueWith(x =>
+                {
+                    if (x.IsFaulted && _logger.IsError) _logger.Error("Error during GRPC runner start", x.Exception);
+                });
+            }
+
+            INdmDataPublisher? ndmDataPublisher = null;
+            INdmConsumerChannelManager? ndmConsumerChannelManager = null;
+            INdmInitializer? ndmInitializer = null;
             INdmConfig ndmConfig = configProvider.GetConfig<INdmConfig>();
             bool ndmEnabled = ndmConfig.Enabled;
             if (ndmEnabled)
@@ -182,39 +195,24 @@ namespace Nethermind.Runner
                         t.GetCustomAttribute<NdmInitializerAttribute>()?.Name == initializerName);
                 NdmModule ndmModule = new NdmModule();
                 NdmConsumersModule ndmConsumersModule = new NdmConsumersModule();
-                ndmInitializer = new NdmInitializerFactory(ndmInitializerType, ndmModule, ndmConsumersModule,
-                    logManager).CreateOrFail();
+                ndmInitializer = new NdmInitializerFactory(ndmInitializerType, ndmModule, ndmConsumersModule, logManager).CreateOrFail();
+
+                ndmConsumerChannelManager.Add(new GrpcNdmConsumerChannel(grpcServer));
+                webSocketsManager.AddModule(new NdmWebSocketsModule(ndmConsumerChannelManager, ndmDataPublisher, jsonSerializer));
             }
 
-            IGrpcConfig grpcConfig = configProvider.GetConfig<IGrpcConfig>();
-            GrpcServer grpcServer = null;
-            if (grpcConfig.Enabled)
-            {
-                grpcServer = new GrpcServer(jsonSerializer, logManager);
-                if (ndmEnabled)
-                {
-                    ndmConsumerChannelManager.Add(new GrpcNdmConsumerChannel(grpcServer));
-                }
-                
-                _grpcRunner = new GrpcRunner(grpcServer, grpcConfig, logManager);
-                await _grpcRunner.Start().ContinueWith(x =>
-                {
-                    if (x.IsFaulted && _logger.IsError) _logger.Error("Error during GRPC runner start", x.Exception);
-                });
-            }
-            
-            if (initConfig.WebSocketsEnabled)
-            {
-                if (ndmEnabled)
-                {
-                    webSocketsManager.AddModule(new NdmWebSocketsModule(ndmConsumerChannelManager, ndmDataPublisher, jsonSerializer));
-                }
-            }
-
-            _ethereumRunner = new EthereumRunner(rpcModuleProvider, configProvider, logManager, grpcServer,
-                ndmConsumerChannelManager, ndmDataPublisher, ndmInitializer, webSocketsManager, jsonSerializer,
+            _ethereumRunner = new EthereumRunner(
+                rpcModuleProvider,
+                configProvider,
+                logManager,
+                grpcServer,
+                ndmConsumerChannelManager,
+                ndmDataPublisher,
+                ndmInitializer,
+                webSocketsManager,
+                jsonSerializer,
                 _monitoringService);
-            
+
             await _ethereumRunner.Start().ContinueWith(x =>
             {
                 if (x.IsFaulted && _logger.IsError) _logger.Error("Error during ethereum runner start", x.Exception);
@@ -229,7 +227,7 @@ namespace Nethermind.Runner
                 {
                     webSocketsManager.AddModule(new JsonRpcWebSocketsModule(jsonRpcProcessor, jsonSerializer), true);
                 }
-                
+
                 Bootstrap.Instance.JsonRpcService = jsonRpcService;
                 Bootstrap.Instance.LogManager = logManager;
                 Bootstrap.Instance.JsonSerializer = jsonSerializer;
@@ -245,7 +243,7 @@ namespace Nethermind.Runner
             }
         }
 
-        protected abstract (CommandLineApplication, Func<IConfigProvider>, Func<string>) BuildCommandLineApp();
+        protected abstract (CommandLineApplication, Func<IConfigProvider>, Func<string?>) BuildCommandLineApp();
 
         protected async Task StopAsync()
         {

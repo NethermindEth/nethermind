@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,21 +14,19 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.AuRa;
-using Nethermind.Blockchain;
-using Nethermind.Config;
-using Nethermind.Logging;
+using System;
 
-namespace Nethermind.Runner.Ethereum.Context
+namespace Nethermind.Runner.Ethereum.Steps
 {
-    public class AuRaEthereumRunnerContext : EthereumRunnerContext
+    public class StepDependencyException : Exception
     {
-        public AuRaEthereumRunnerContext(IConfigProvider configProvider, ILogManager logManager)
-            : base(configProvider, logManager)
+        public StepDependencyException()
         {
         }
-        
-        public IAuRaBlockProcessorExtension? AuRaBlockProcessorExtension { get; set; }
-        public IBlockFinalizationManager? FinalizationManager { get; set; }
+
+        public StepDependencyException(string message)
+            : base(message)
+        {
+        }
     }
 }

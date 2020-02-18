@@ -18,6 +18,7 @@ using Nethermind.Abi;
 using Nethermind.AuRa;
 using Nethermind.AuRa.Config;
 using Nethermind.Blockchain;
+using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Store;
 
@@ -35,7 +36,8 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected override void BuildProducer()
         {
-            if (_context.Logger.IsWarn) _context.Logger.Warn("Starting AuRa block producer & sealer");
+            ILogger logger = _context.LogManager.GetClassLogger();
+            if (logger.IsWarn) logger.Warn("Starting AuRa block producer & sealer");
             
             IAuRaStepCalculator stepCalculator = new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper);
             BlockProducerContext producerContext = GetProducerChain();

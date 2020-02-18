@@ -47,7 +47,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             Type GetStepType(Type[] typesInGroup)
             {
-                Type GetStepTypeRecursive(Type contextType)
+                Type? GetStepTypeRecursive(Type contextType)
                 {
                     bool HasConstructorWithParameter(Type type, Type parameterType) => type.GetConstructors().Any(
                         c => c.GetParameters().Select(p => p.ParameterType).SequenceEqual(new[] {parameterType}));
@@ -57,7 +57,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                         return null;
                     }
 
-                    var stepTypeForContext = typesInGroup.Where(t => !t.IsAbstract)
+                    Type stepTypeForContext = typesInGroup.Where(t => !t.IsAbstract)
                         .FirstOrDefault(t => HasConstructorWithParameter(t, contextType));
 
                     return stepTypeForContext != null
@@ -70,7 +70,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             foreach (IGrouping<Type, Type> typeGroup in types)
             {
-                var type = GetStepType(typeGroup.ToArray());
+                Type type = GetStepType(typeGroup.ToArray());
                 if (type != null)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Discovered Ethereum step: {type.Name}");
@@ -86,7 +86,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private readonly ConcurrentDictionary<Type, bool> _discoveredSteps = new ConcurrentDictionary<Type, bool>();
 
-        private bool IsStepType(Type t) => typeof(IStep).IsAssignableFrom(t);
+        private static bool IsStepType(Type t) => typeof(IStep).IsAssignableFrom(t);
 
         private Type GetStepBaseType(Type type) => IsStepType(type.BaseType) ? GetStepBaseType(type.BaseType) : type;
 
@@ -103,7 +103,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     if (!allDependenciesInitialized)
                     {
-                        RunnerStepDependenciesAttribute dependenciesAttribute = type.GetCustomAttribute<RunnerStepDependenciesAttribute>();
+                        RunnerStepDependenciesAttribute? dependenciesAttribute = type.GetCustomAttribute<RunnerStepDependenciesAttribute>();
                         bool allDependenciesFinished = true;
                         if (dependenciesAttribute != null)
                         {
@@ -156,7 +156,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     continue;
                 }
 
-                var stepBaseType = GetStepBaseType(discoveredStep);
+                Type stepBaseType = GetStepBaseType(discoveredStep);
 
                 if (_hasFinishedExecution[stepBaseType])
                 {
@@ -168,7 +168,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     continue;
                 }
 
-                IStep step;
+                IStep? step;
                 try
                 {
                     step = Activator.CreateInstance(discoveredStep, _context) as IStep;
@@ -234,10 +234,9 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private int _foreverLoop;
 
-        private void SubsystemStateAwareOnSubsystemStateChanged(object sender, SubsystemStateEventArgs e)
+        private void SubsystemStateAwareOnSubsystemStateChanged(object? sender, SubsystemStateEventArgs e)
         {
-            ISubsystemStateAware subsystemStateAware = sender as ISubsystemStateAware;
-            if (subsystemStateAware is null)
+            if (!(sender is ISubsystemStateAware subsystemStateAware))
             {
                 if (_logger.IsError) _logger.Error($"Received a subsystem state event from an unexpected type of {sender.GetType()}");
                 return;

@@ -65,12 +65,12 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected BlockProducerContext GetProducerChain()
         {
-            var readOnlyDbProvider = new ReadOnlyDbProvider(_context.DbProvider, false);
-            var readOnlyBlockTree = new ReadOnlyBlockTree(_context.BlockTree);
-            var readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyBlockTree, _context.SpecProvider, _context.LogManager);
-            var blockProcessor = CreateBlockProcessor(readOnlyTxProcessingEnv, readOnlyDbProvider);
-            var chainProcessor = new OneTimeChainProcessor(readOnlyDbProvider, new BlockchainProcessor(readOnlyBlockTree, blockProcessor, _context.RecoveryStep, _context.LogManager, false));
-            var pendingTxSelector = new PendingTxSelector(_context.TxPool, readOnlyTxProcessingEnv.StateProvider, _context.LogManager);
+            ReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_context.DbProvider, false);
+            ReadOnlyBlockTree readOnlyBlockTree = new ReadOnlyBlockTree(_context.BlockTree);
+            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyBlockTree, _context.SpecProvider, _context.LogManager);
+            BlockProcessor blockProcessor = CreateBlockProcessor(readOnlyTxProcessingEnv, readOnlyDbProvider);
+            OneTimeChainProcessor chainProcessor = new OneTimeChainProcessor(readOnlyDbProvider, new BlockchainProcessor(readOnlyBlockTree, blockProcessor, _context.RecoveryStep, _context.LogManager, false));
+            PendingTxSelector pendingTxSelector = new PendingTxSelector(_context.TxPool, readOnlyTxProcessingEnv.StateProvider, _context.LogManager);
 
             return new BlockProducerContext
             {
@@ -94,7 +94,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.ReceiptStorage,
                 _context.LogManager);
 
-        public event EventHandler<SubsystemStateEventArgs> SubsystemStateChanged;
+        public event EventHandler<SubsystemStateEventArgs>? SubsystemStateChanged;
 
         public EthereumSubsystem MonitoredSubsystem => EthereumSubsystem.Mining;
     }
