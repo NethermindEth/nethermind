@@ -32,13 +32,39 @@ namespace Nethermind.Store.Test.Proofs
         public void Non_existing_account_is_valid()
         {
             StateTree tree = new StateTree();
-            AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA);
+            AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA, new UInt256[] {1, 2, 3});
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual(TestItem.AddressA, proof.Address);
             Assert.AreEqual(Keccak.OfAnEmptyString, proof.CodeHash);
             Assert.AreEqual(Keccak.OfAnEmptySequenceRlp, proof.StorageRoot);
             Assert.AreEqual(UInt256.Zero, proof.Balance);
+            Assert.AreEqual(null, proof.StorageProofs[0].Value);
+            Assert.AreEqual(null, proof.StorageProofs[1].Value);
+            Assert.AreEqual(null, proof.StorageProofs[2].Value);
+        }
+        
+        [Test]
+        public void Non_existing_account_is_valid_on_non_empty_tree()
+        {
+            StateTree tree = new StateTree();
+
+            Account account1 = Build.An.Account.WithBalance(1).TestObject;
+            Account account2 = Build.An.Account.WithBalance(2).TestObject;
+            tree.Set(TestItem.AddressA, account1);
+            tree.Set(TestItem.AddressB, account2);
+            tree.Commit();
+            
+            AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressC, new UInt256[] {1, 2, 3});
+            tree.Accept(accountProofCollector, tree.RootHash);
+            AccountProof proof = accountProofCollector.BuildResult();
+            Assert.AreEqual(TestItem.AddressC, proof.Address);
+            Assert.AreEqual(Keccak.OfAnEmptyString, proof.CodeHash);
+            Assert.AreEqual(Keccak.OfAnEmptySequenceRlp, proof.StorageRoot);
+            Assert.AreEqual(UInt256.Zero, proof.Balance);
+            Assert.AreEqual(null, proof.StorageProofs[0].Value);
+            Assert.AreEqual(null, proof.StorageProofs[1].Value);
+            Assert.AreEqual(null, proof.StorageProofs[2].Value);
         }
 
         [Test]
