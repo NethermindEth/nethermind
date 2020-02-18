@@ -29,6 +29,19 @@ namespace Nethermind.Store.Test.Proofs
     public class AccountProofCollectorTests
     {
         [Test]
+        public void Non_existing_account_is_valid()
+        {
+            StateTree tree = new StateTree();
+            AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA);
+            tree.Accept(accountProofCollector, tree.RootHash);
+            AccountProof proof = accountProofCollector.BuildResult();
+            Assert.AreEqual(TestItem.AddressA, proof.Address);
+            Assert.AreEqual(Keccak.OfAnEmptyString, proof.CodeHash);
+            Assert.AreEqual(Keccak.OfAnEmptySequenceRlp, proof.StorageRoot);
+            Assert.AreEqual(UInt256.Zero, proof.Balance);
+        }
+
+        [Test]
         public void Addresses_are_correct()
         {
             StateTree tree = new StateTree();
@@ -49,7 +62,7 @@ namespace Nethermind.Store.Test.Proofs
             AccountProof proof2 = accountProofCollector2.BuildResult();
             Assert.AreEqual(TestItem.AddressB, proof2.Address);
         }
-        
+
         [Test]
         public void Balance_is_correct()
         {
