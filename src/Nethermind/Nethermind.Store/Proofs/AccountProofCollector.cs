@@ -59,14 +59,11 @@ namespace Nethermind.Store.Proofs
             return Keccak.Compute(index);
         }
 
-        private static Keccak ToKey(UInt256 index)
+        private static byte[] ToKey(UInt256 index)
         {
-            return new Keccak(StorageTree.GetKey(index).ToArray());
-        }
-
-        public AccountProofCollector(Address address)
-            : this(address, Array.Empty<Keccak>())
-        {
+            byte[] bytes = new byte[32];
+            index.ToBigEndian(bytes);
+            return bytes;
         }
 
         public AccountProofCollector(Address address, UInt256[] storageKeys)
@@ -74,15 +71,11 @@ namespace Nethermind.Store.Proofs
         {
         }
 
-        public AccountProofCollector(Address address, byte[][] storageKeys)
-            : this(address, storageKeys.Select(ToKey).ToArray())
+        public AccountProofCollector(Address address, params byte[][] storageKeys)
         {
-        }
-
-        public AccountProofCollector(Address address, Keccak[] storageKeys)
-        {
+            storageKeys ??= new byte[0][];
             _address = address ?? throw new ArgumentNullException(nameof(address));
-            Keccak[] localStorageKeys = storageKeys ?? new Keccak[0];
+            Keccak[] localStorageKeys = storageKeys.Select(ToKey).ToArray();
 
             _accountProof = new AccountProof();
             _accountProof.StorageProofs = new StorageProof[localStorageKeys.Length];
@@ -100,7 +93,7 @@ namespace Nethermind.Store.Proofs
                 _storagePrefixes[i] = Nibbles.FromBytes(localStorageKeys[i].Bytes);
 
                 _accountProof.StorageProofs[i] = new StorageProof();
-                _accountProof.StorageProofs[i].Key = localStorageKeys[i];
+                _accountProof.StorageProofs[i].Key = storageKeys[i];
             }
         }
 
@@ -241,8 +234,11 @@ namespace Nethermind.Store.Proofs
                 //                Console.WriteLine($"Visiting LEAF {node.Keccak} at {_pathIndex} - node value is {node.Value.ToHexString()}");
                 foreach (int storageIndex in _nodeInfos[node.Keccak].StorageIndices)
                 {
-                    //                    Console.WriteLine($"Setting LEAF value for {storageIndex} {node.Keccak} at {_pathIndex} - node value is {node.Value.ToHexString()}");
-                    _accountProof.StorageProofs[storageIndex].Value = new RlpStream(node.Value).DecodeByteArray();
+                    if ((byte) _storagePrefixes[storageIndex][_pathIndex] == node.Path[0])
+                    {
+                        //                    Console.WriteLine($"Setting LEAF value for {storageIndex} {node.Keccak} at {_pathIndex} - node value is {node.Value.ToHexString()}");
+                        _accountProof.StorageProofs[storageIndex].Value = new RlpStream(node.Value).DecodeByteArray();
+                    }
                 }
             }
             else
