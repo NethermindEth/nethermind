@@ -158,12 +158,12 @@ namespace Nethermind.Runner
 
                 await _monitoringService.StartAsync().ContinueWith(x =>
                 {
-                    if (x.IsFaulted && _logger.IsError) _logger.Error("Error during starting a monitoring.", x.Exception);
+                    if (x.IsFaulted && (_logger?.IsError ?? false)) _logger!.Error("Error during starting a monitoring.", x.Exception);
                 });
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info("Grafana / Prometheus metrics are disabled in configuration");
+                if (_logger?.IsInfo ?? false) _logger!.Info("Grafana / Prometheus metrics are disabled in configuration");
             }
 
             IGrpcConfig grpcConfig = configProvider.GetConfig<IGrpcConfig>();
@@ -174,7 +174,7 @@ namespace Nethermind.Runner
                 _grpcRunner = new GrpcRunner(grpcServer, grpcConfig, logManager);
                 await _grpcRunner.Start().ContinueWith(x =>
                 {
-                    if (x.IsFaulted && _logger.IsError) _logger.Error("Error during GRPC runner start", x.Exception);
+                    if (x.IsFaulted && (_logger?.IsError ?? false)) _logger!.Error("Error during GRPC runner start", x.Exception);
                 });
             }
 
@@ -188,7 +188,7 @@ namespace Nethermind.Runner
                 ndmDataPublisher = new NdmDataPublisher();
                 ndmConsumerChannelManager = new NdmConsumerChannelManager();
                 string initializerName = ndmConfig.InitializerName;
-                if (_logger.IsInfo) _logger.Info($"NDM initializer: {initializerName}");
+                if (_logger?.IsInfo ?? false) _logger!.Info($"NDM initializer: {initializerName}");
                 Type ndmInitializerType = AppDomain.CurrentDomain.GetAssemblies()
                     .SelectMany(a => a.GetTypes())
                     .FirstOrDefault(t =>
@@ -197,7 +197,11 @@ namespace Nethermind.Runner
                 NdmConsumersModule ndmConsumersModule = new NdmConsumersModule();
                 ndmInitializer = new NdmInitializerFactory(ndmInitializerType, ndmModule, ndmConsumersModule, logManager).CreateOrFail();
 
-                ndmConsumerChannelManager.Add(new GrpcNdmConsumerChannel(grpcServer));
+                if (grpcServer != null)
+                {
+                    ndmConsumerChannelManager.Add(new GrpcNdmConsumerChannel(grpcServer));
+                }
+
                 webSocketsManager.AddModule(new NdmWebSocketsModule(ndmConsumerChannelManager, ndmDataPublisher, jsonSerializer));
             }
 
@@ -215,7 +219,7 @@ namespace Nethermind.Runner
 
             await _ethereumRunner.Start().ContinueWith(x =>
             {
-                if (x.IsFaulted && _logger.IsError) _logger.Error("Error during ethereum runner start", x.Exception);
+                if (x.IsFaulted && (_logger?.IsError ?? false)) _logger!.Error("Error during ethereum runner start", x.Exception);
             });
 
             if (jsonRpcConfig.Enabled)
@@ -234,12 +238,12 @@ namespace Nethermind.Runner
                 _jsonRpcRunner = new JsonRpcRunner(configProvider, rpcModuleProvider, logManager, jsonRpcProcessor, webSocketsManager);
                 await _jsonRpcRunner.Start().ContinueWith(x =>
                 {
-                    if (x.IsFaulted && _logger.IsError) _logger.Error("Error during jsonRpc runner start", x.Exception);
+                    if (x.IsFaulted && (_logger?.IsError ?? false)) _logger!.Error("Error during jsonRpc runner start", x.Exception);
                 });
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info("Json RPC is disabled");
+                if (_logger?.IsInfo ?? false) _logger!.Info("Json RPC is disabled");
             }
         }
 

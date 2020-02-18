@@ -14,11 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Blockchain;
-using Nethermind.Core;
-using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Evm;
-
 namespace Nethermind.AuRa.Validators
 {
     public interface IAuRaValidatorProcessorExtension : IAuRaValidator, IAuRaBlockProcessorExtension

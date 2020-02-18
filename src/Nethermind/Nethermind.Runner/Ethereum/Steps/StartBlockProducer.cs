@@ -49,6 +49,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (initConfig.IsMining)
             {
                 BuildProducer();
+                if (_context.BlockProducer == null) throw new StepDependencyException(nameof(_context.BlockProducer));
 
                 _context.BlockProducer.Start();
 
@@ -60,6 +61,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected virtual void BuildProducer()
         {
+            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             throw new NotSupportedException($"Mining in {_context.ChainSpec.SealEngineType} mode is not supported");
         }
 
@@ -80,8 +82,15 @@ namespace Nethermind.Runner.Ethereum.Steps
             };
         }
 
-        protected virtual BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, IReadOnlyDbProvider readOnlyDbProvider) => 
-            new BlockProcessor(
+        protected virtual BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, IReadOnlyDbProvider readOnlyDbProvider)
+        {
+            if (_context.SpecProvider == null) throw new StepDependencyException(nameof(_context.SpecProvider));
+            if (_context.BlockValidator == null) throw new StepDependencyException(nameof(_context.BlockValidator));
+            if (_context.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_context.RewardCalculatorSource));
+            if (_context.ReceiptStorage == null) throw new StepDependencyException(nameof(_context.ReceiptStorage));
+            if (_context.TxPool == null) throw new StepDependencyException(nameof(_context.TxPool));
+
+            return new BlockProcessor(
                 _context.SpecProvider,
                 _context.BlockValidator,
                 _context.RewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
@@ -93,6 +102,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.TxPool,
                 _context.ReceiptStorage,
                 _context.LogManager);
+        }
 
         public event EventHandler<SubsystemStateEventArgs>? SubsystemStateChanged;
 

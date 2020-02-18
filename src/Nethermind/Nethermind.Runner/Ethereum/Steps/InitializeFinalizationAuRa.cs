@@ -35,12 +35,8 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public Task Execute()
         {
-            if (_context.AuRaBlockProcessorExtension == null)
-            {
-                throw new StepDependencyException($"{nameof(AuRaEthereumRunnerContext.AuRaBlockProcessorExtension)} not ready to start {nameof(InitializeFinalizationAuRa)}");
-            }
-
             _context.FinalizationManager = InitFinalizationManager(_context.AuRaBlockProcessorExtension);
+            if (_context.AuRaBlockProcessorExtension == null) throw new StepDependencyException($"{nameof(AuRaEthereumRunnerContext.AuRaBlockProcessorExtension)} not ready to start {nameof(InitializeFinalizationAuRa)}");
             return Task.CompletedTask;
         }
 

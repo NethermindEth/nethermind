@@ -55,6 +55,10 @@ namespace Nethermind.Runner.Ethereum.Steps
          [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
         private Task InitBlockchain()
         {
+            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
+            if (_context.DbProvider == null) throw new StepDependencyException(nameof(_context.DbProvider));
+            if (_context.SpecProvider == null) throw new StepDependencyException(nameof(_context.SpecProvider));
+            
             ILogger logger = _context.LogManager.GetClassLogger();
             ISyncConfig syncConfig = _context.Config<ISyncConfig>();
             if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
@@ -131,6 +135,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.LogManager);
 
             InitSealEngine();
+            if (_context.SealValidator == null) throw new StepDependencyException(nameof(_context.SealValidator));
 
             /* validation */
             _context.HeaderValidator = new HeaderValidator(
@@ -184,8 +189,12 @@ namespace Nethermind.Runner.Ethereum.Steps
             return Task.CompletedTask;
         }
 
-        protected virtual BlockProcessor CreateBlockProcessor() =>
-            new BlockProcessor(
+        protected virtual BlockProcessor CreateBlockProcessor()
+        {
+            if (_context.DbProvider == null) throw new StepDependencyException(nameof(_context.DbProvider));
+            if (_context.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_context.RewardCalculatorSource));
+            
+            return new BlockProcessor(
                 _context.SpecProvider,
                 _context.BlockValidator,
                 _context.RewardCalculatorSource.Get(_context.TransactionProcessor),
@@ -197,6 +206,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.TxPool,
                 _context.ReceiptStorage,
                 _context.LogManager);
+        }
 
         protected virtual void InitSealEngine()
         {

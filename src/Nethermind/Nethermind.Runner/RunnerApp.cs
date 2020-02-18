@@ -82,11 +82,11 @@ namespace Nethermind.Runner
                 
                 foreach (PropertyInfo propertyInfo in configType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
                 {
-                    Type interfaceType = configType.GetInterface("I" + configType.Name);
+                    Type? interfaceType = configType.GetInterface("I" + configType.Name);
                     PropertyInfo? interfaceProperty = interfaceType?.GetProperty(propertyInfo.Name);
 
-                    ConfigItemAttribute configItemAttribute = interfaceProperty?.GetCustomAttribute<ConfigItemAttribute>();
-                    app.Option($"--{configType.Name.Replace("Config", String.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute == null ? "<missing documentation>" : configItemAttribute?.Description ?? "<missing documentation>")}", CommandOptionType.SingleValue);
+                    ConfigItemAttribute? configItemAttribute = interfaceProperty?.GetCustomAttribute<ConfigItemAttribute>();
+                    app.Option($"--{configType.Name.Replace("Config", String.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute == null ? "<missing documentation>" : configItemAttribute.Description ?? "<missing documentation>")}", CommandOptionType.SingleValue);
                 }
             }
 
@@ -201,8 +201,8 @@ namespace Nethermind.Runner
                 if (!File.Exists(configFilePath))
                 {
                     string configName = Path.GetFileName(configFilePath);
-                    string configDirectory = Path.GetDirectoryName(configFilePath);
-                    string redirectedConfigPath = Path.Combine(configDirectory, configDir, configName);
+                    string? configDirectory = Path.GetDirectoryName(configFilePath);
+                    string redirectedConfigPath = Path.Combine(configDirectory ?? string.Empty, configDir, configName);
                     configFilePath = redirectedConfigPath;
                     if (!File.Exists(configFilePath))
                     {

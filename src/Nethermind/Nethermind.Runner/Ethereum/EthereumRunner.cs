@@ -55,7 +55,7 @@ namespace Nethermind.Runner.Ethereum
             IMonitoringService monitoringService)
         {
             _logger = logManager.GetClassLogger();
-            _context = new EthereumRunnerContextCreator(configurationProvider, ethereumJsonSerializer, logManager).Context;
+            _context = new EthereumRunnerContextFactory(configurationProvider, ethereumJsonSerializer, logManager).Context;
             _context.LogManager = logManager;
             _context.GrpcServer = grpcServer;
             _context.NdmConsumerChannelManager = ndmConsumerChannelManager;

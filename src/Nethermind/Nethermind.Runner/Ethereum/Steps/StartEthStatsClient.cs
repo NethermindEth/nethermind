@@ -61,6 +61,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             INetworkConfig networkConfig = _context.Config<INetworkConfig>();
             SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Initializing));
+            
+            if (_context.Enode == null) throw new StepDependencyException(nameof(_context.Enode));
+            if (_context.SpecProvider == null) throw new StepDependencyException(nameof(_context.SpecProvider));
 
             string instanceId = $"{ethStatsConfig.Name}-{Keccak.Compute(_context.Enode.Info)}";
             if (_logger.IsInfo) _logger.Info($"Initializing ETH Stats for the instance: {instanceId}, server: {ethStatsConfig.Server}");
@@ -69,7 +72,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             const string api = "no";
             const string client = "0.1.1";
             const bool canUpdateHistory = false;
-            string node = ClientVersion.Description;
+            string node = ClientVersion.Description ?? string.Empty;
             int port = networkConfig.P2PPort;
             string network = _context.SpecProvider.ChainId.ToString();
             string protocol = _context.Config<ISyncConfig>().FastSync ? "eth/63" : "eth/62";

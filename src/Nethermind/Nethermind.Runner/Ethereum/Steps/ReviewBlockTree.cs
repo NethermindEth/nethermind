@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
@@ -55,11 +56,13 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 return;
             }
-
+            
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
+
+            
             if (!syncConfig.FastSync && !syncConfig.BeamSync)
             {
-                await _context.BlockTree.LoadBlocksFromDb(_context.RunnerCancellation.Token, null).ContinueWith(t =>
+                await _context.BlockTree.LoadBlocksFromDb(_context.RunnerCancellation?.Token ?? CancellationToken.None, null).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
@@ -73,7 +76,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             else if (!syncConfig.BeamSync)
             {
-                await _context.BlockTree.FixFastSyncGaps(_context.RunnerCancellation.Token).ContinueWith(t =>
+                await _context.BlockTree.FixFastSyncGaps(_context.RunnerCancellation?.Token ?? CancellationToken.None).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {

@@ -32,6 +32,12 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected override void BuildProducer()
         {
+            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
+            if (_context.SnapshotManager == null) throw new StepDependencyException(nameof(_context.SnapshotManager));
+            if (_context.NodeKey == null) throw new StepDependencyException(nameof(_context.NodeKey));
+            if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
+            if (_context.Sealer == null) throw new StepDependencyException(nameof(_context.Sealer));
+
             ILogger logger = _context.LogManager.GetClassLogger();
             if (logger.IsWarn) logger.Warn("Starting Clique block producer & sealer");
             BlockProducerContext producerChain = GetProducerChain();

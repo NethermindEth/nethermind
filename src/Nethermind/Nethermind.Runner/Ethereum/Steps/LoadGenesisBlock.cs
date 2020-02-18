@@ -67,6 +67,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_context.StateProvider == null) throw new StepDependencyException(nameof(_context.StateProvider));
             if (_context.StorageProvider == null) throw new StepDependencyException(nameof(_context.StorageProvider));
             if (_context.SpecProvider == null) throw new StepDependencyException(nameof(_context.SpecProvider));
+            if (_context.DbProvider == null) throw new StepDependencyException(nameof(_context.DbProvider));
+            if (_context.TransactionProcessor == null) throw new StepDependencyException(nameof(_context.TransactionProcessor));
 
             Block genesis = _context.ChainSpec.Genesis;
             foreach ((Address address, ChainSpecAllocation allocation) in _context.ChainSpec.Allocations)
@@ -129,6 +131,9 @@ namespace Nethermind.Runner.Ethereum.Steps
         /// <param name="expectedGenesisHash"></param>
         private void ValidateGenesisHash(Keccak? expectedGenesisHash)
         {
+            if (_context.StateProvider == null) throw new StepDependencyException(nameof(_context.StateProvider));
+            if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
+            
             if (expectedGenesisHash != null && _context.BlockTree.Genesis.Hash != expectedGenesisHash)
             {
                 if (_logger.IsWarn) _logger.Warn(_context.StateProvider.DumpState());

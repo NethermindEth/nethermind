@@ -36,8 +36,17 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected override BlockProcessor CreateBlockProcessor()
         {
-            
-            
+            if (_context.SpecProvider == null) throw new StepDependencyException(nameof(_context.SpecProvider));
+            if (_context.BlockValidator == null) throw new StepDependencyException(nameof(_context.BlockValidator));
+            if (_context.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_context.RewardCalculatorSource));
+            if (_context.TransactionProcessor == null) throw new StepDependencyException(nameof(_context.TransactionProcessor));
+            if (_context.DbProvider == null) throw new StepDependencyException(nameof(_context.DbProvider));
+            if (_context.StateProvider == null) throw new StepDependencyException(nameof(_context.StateProvider));
+            if (_context.StorageProvider == null) throw new StepDependencyException(nameof(_context.StorageProvider));
+            if (_context.TxPool == null) throw new StepDependencyException(nameof(_context.TxPool));
+            if (_context.ReceiptStorage == null) throw new StepDependencyException(nameof(_context.ReceiptStorage));
+            if (_context.AuRaBlockProcessorExtension == null) throw new StepDependencyException(nameof(_context.AuRaBlockProcessorExtension));
+
             return new AuRaBlockProcessor(
                 _context.SpecProvider,
                 _context.BlockValidator,
@@ -57,6 +66,8 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             if (_context.DbProvider == null) throw new StepDependencyException(nameof(_context.DbProvider));
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
+            if (_context.EthereumEcdsa == null) throw new StepDependencyException(nameof(_context.EthereumEcdsa));
+            if (_context.NodeKey == null) throw new StepDependencyException(nameof(_context.NodeKey));
 
             AbiEncoder abiEncoder = new AbiEncoder();
             _context.ValidatorStore = new ValidatorStore(_context.DbProvider.BlockInfosDb);

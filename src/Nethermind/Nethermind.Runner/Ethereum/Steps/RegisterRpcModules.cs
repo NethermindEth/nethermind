@@ -48,6 +48,8 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public virtual Task Execute()
         { 
+            if (_context.RpcModuleProvider == null) throw new StepDependencyException(nameof(_context.RpcModuleProvider));
+            
             ILogger logger = _context.LogManager.GetClassLogger();
             IJsonRpcConfig jsonRpcConfig = _context.Config<IJsonRpcConfig>();
             if (!jsonRpcConfig.Enabled)

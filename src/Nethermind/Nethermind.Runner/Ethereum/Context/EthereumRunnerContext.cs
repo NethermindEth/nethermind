@@ -69,17 +69,13 @@ namespace Nethermind.Runner.Ethereum.Context
             LogManager = logManager;
         }
         
+        public IConfigProvider ConfigProvider { get; set; }
+        public ILogManager LogManager{ get; set; }
         public Stack<IDisposable> DisposeStack { get; }= new Stack<IDisposable>();
-
         public List<IProducer> Producers { get; }= new List<IProducer>();
         public IGrpcServer? GrpcServer { get; set; }
-        public ILogManager LogManager{ get; set; }
-        public INdmConsumerChannelManager? NdmConsumerChannelManager { get; set; }
-        public INdmDataPublisher? NdmDataPublisher { get; set; }
-        public INdmInitializer? NdmInitializer { get; set; }
         public INodeDataConsumer NodeDataConsumer { get; set; } = NullDataConsumer.Instance;
         public IRpcModuleProvider? RpcModuleProvider { get; set; }
-        public IConfigProvider ConfigProvider { get; set; }
         public IIpResolver? IpResolver { get; set; }
         public PrivateKey? NodeKey { get; set; }
         public ChainSpec? ChainSpec { get; set; }
@@ -122,17 +118,14 @@ namespace Nethermind.Runner.Ethereum.Context
         public IChainLevelInfoRepository? ChainLevelInfoRepository { get; set; }
         public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
         public IValidatorStore? ValidatorStore { get; set; }
-        
         public IRlpxPeer? RlpxPeer;
-        
         public IWebSocketsManager? WebSocketsManager;
-        
         public IJsonRpcClientProxy? JsonRpcClientProxy;
-        
         public IEthJsonRpcClientProxy? EthJsonRpcClientProxy;
-        
         public IHttpClient? HttpClient;
-        
         public IMonitoringService MonitoringService = NullMonitoringService.Instance;
+        public INdmConsumerChannelManager? NdmConsumerChannelManager { get; set; }
+        public INdmDataPublisher? NdmDataPublisher { get; set; }
+        public INdmInitializer? NdmInitializer { get; set; }
     }
 }

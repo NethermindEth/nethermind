@@ -37,6 +37,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             if (_context.EthereumEcdsa == null) throw new StepDependencyException(nameof(_context.EthereumEcdsa));
+            if (_context.DbProvider == null) throw new StepDependencyException(nameof(_context.DbProvider));
+            if (_context.NodeKey == null) throw new StepDependencyException(nameof(_context.NodeKey));
         
             _context.RewardCalculatorSource = NoBlockRewards.Source;
             CliqueConfig cliqueConfig = new CliqueConfig {BlockPeriod = _context.ChainSpec.Clique.Period, Epoch = _context.ChainSpec.Clique.Epoch};

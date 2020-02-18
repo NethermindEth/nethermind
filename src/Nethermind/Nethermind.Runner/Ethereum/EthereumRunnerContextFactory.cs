@@ -15,8 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Linq;
-using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Logging;
@@ -26,12 +24,12 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Runner.Ethereum
 {
-    public class EthereumRunnerContextCreator
+    public class EthereumRunnerContextFactory
     {
         private readonly IConfigProvider _configProvider;
         private readonly ILogManager _logManager;
 
-        public EthereumRunnerContextCreator(IConfigProvider configProvider, IJsonSerializer ethereumJsonSerializer, ILogManager logManager)
+        public EthereumRunnerContextFactory(IConfigProvider configProvider, IJsonSerializer ethereumJsonSerializer, ILogManager logManager)
         {
             _configProvider = configProvider;
             _logManager = logManager;
@@ -42,12 +40,12 @@ namespace Nethermind.Runner.Ethereum
             IChainSpecLoader loader = new ChainSpecLoader(ethereumJsonSerializer);
             ChainSpec chainSpec = loader.LoadFromFile(initConfig.ChainSpecPath);
 
-            Context = CreateEthereumRunnerContext(chainSpec.SealEngineType);
+            Context = Create(chainSpec.SealEngineType);
             Context.ChainSpec = chainSpec;
             Context.SpecProvider = new ChainSpecBasedSpecProvider(Context.ChainSpec);
         }
 
-        private EthereumRunnerContext CreateEthereumRunnerContext(SealEngineType engine)
+        private EthereumRunnerContext Create(SealEngineType engine)
         {
             switch (engine)
             {

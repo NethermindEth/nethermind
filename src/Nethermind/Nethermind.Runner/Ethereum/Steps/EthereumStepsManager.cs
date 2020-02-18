@@ -45,12 +45,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                 .Where(t => !t.IsInterface && IsStepType(t))
                 .GroupBy(GetStepBaseType);
 
-            Type GetStepType(Type[] typesInGroup)
+            Type? GetStepType(Type[] typesInGroup)
             {
-                Type? GetStepTypeRecursive(Type contextType)
+                Type? GetStepTypeRecursive(Type? contextType)
                 {
-                    bool HasConstructorWithParameter(Type type, Type parameterType) => type.GetConstructors().Any(
-                        c => c.GetParameters().Select(p => p.ParameterType).SequenceEqual(new[] {parameterType}));
+                    bool HasConstructorWithParameter(Type? type, Type? parameterType) =>
+                        type?.GetConstructors()
+                            .Any(c => c.GetParameters().Select(p => p.ParameterType).SequenceEqual(new[] {parameterType}))
+                        ?? false;
 
                     if (contextType == typeof(object))
                     {
@@ -62,20 +64,25 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                     return stepTypeForContext != null
                         ? stepTypeForContext
-                        : GetStepTypeRecursive(contextType.BaseType);
+                        : GetStepTypeRecursive(contextType?.BaseType);
                 }
 
                 return typesInGroup.Length == 0 ? typesInGroup[0] : GetStepTypeRecursive(_context.GetType());
             }
 
-            foreach (IGrouping<Type, Type> typeGroup in types)
+            foreach (IGrouping<Type?, Type> typeGroup in types.Where(t => t != null))
             {
-                Type type = GetStepType(typeGroup.ToArray());
+                Type? type = GetStepType(typeGroup.ToArray());
                 if (type != null)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Discovered Ethereum step: {type.Name}");
                     _discoveredSteps[type] = false;
-                    _hasFinishedExecution[GetStepBaseType(type)] = false;
+
+                    Type? baseType = GetStepBaseType(type);
+                    if (baseType != null)
+                    {
+                        _hasFinishedExecution[baseType] = false;
+                    }
                 }
             }
 
@@ -86,9 +93,9 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private readonly ConcurrentDictionary<Type, bool> _discoveredSteps = new ConcurrentDictionary<Type, bool>();
 
-        private static bool IsStepType(Type t) => typeof(IStep).IsAssignableFrom(t);
+        private static bool IsStepType(Type? t) => t != null && typeof(IStep).IsAssignableFrom(t);
 
-        private Type GetStepBaseType(Type type) => IsStepType(type.BaseType) ? GetStepBaseType(type.BaseType) : type;
+        private Type? GetStepBaseType(Type? type) => IsStepType(type?.BaseType) ? GetStepBaseType(type?.BaseType) : type;
 
         private void ReviewDependencies()
         {
@@ -156,7 +163,11 @@ namespace Nethermind.Runner.Ethereum.Steps
                     continue;
                 }
 
-                Type stepBaseType = GetStepBaseType(discoveredStep);
+                Type? stepBaseType = GetStepBaseType(discoveredStep);
+                if (stepBaseType == null)
+                {
+                    throw new StepDependencyException($"Discovered step is not of step type {discoveredStep}");
+                }
 
                 if (_hasFinishedExecution[stepBaseType])
                 {
@@ -221,7 +232,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _hasFinishedExecution[discoveredStep] = true;
                 }
             }
-            
+
             if (startedThisRound == 0 && _allPending.All(t => t.IsCompleted))
             {
                 Interlocked.Increment(ref _foreverLoop);
@@ -231,14 +242,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                 }
             }
         }
-        
+
         private int _foreverLoop;
 
         private void SubsystemStateAwareOnSubsystemStateChanged(object? sender, SubsystemStateEventArgs e)
         {
             if (!(sender is ISubsystemStateAware subsystemStateAware))
             {
-                if (_logger.IsError) _logger.Error($"Received a subsystem state event from an unexpected type of {sender.GetType()}");
+                if (_logger.IsError) _logger.Error($"Received a subsystem state event from an unexpected type of {sender?.GetType()}");
                 return;
             }
 
