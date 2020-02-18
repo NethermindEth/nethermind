@@ -14,18 +14,27 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Collections.Generic;
+
 namespace Nethermind.Blockchain.Bloom
 {
-    public interface IBloomStorage
+    public interface IBloomStorage : IDisposable
     {
         long MinBlockNumber { get; }
 
         void Store(long blockNumber, Core.Bloom bloom);
-
+        
+        void StoreMigration(long blockNumber, Span<Core.Bloom> bloom);
+        
         IBloomEnumeration GetBlooms(long fromBlock, long toBlock);
         
         bool ContainsRange(in long fromBlockNumber, in long toBlockNumber);
 
         public bool NeedsMigration => MinBlockNumber != 0;
+        
+        IEnumerable<Average> Averages { get; }
+        
+        long MigratedBlockNumber { get; }
     }
 }

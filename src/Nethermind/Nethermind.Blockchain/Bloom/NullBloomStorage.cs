@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -25,22 +26,24 @@ namespace Nethermind.Blockchain.Bloom
         public static NullBloomStorage Instance { get; } = new NullBloomStorage();
         public long MinBlockNumber { get; } = 0;
         public long MaxBlockNumber { get; } = 0;
+        public long MigratedBlockNumber { get; } = 0;
         public void Store(long blockNumber, Core.Bloom bloom) { }
+        public void StoreMigration(long blockNumber, Span<Core.Bloom> bloom) { }
 
-        public IBloomEnumeration GetBlooms(long fromBlock, long toBlock)
-        {
-            return new NullBloomEnumerator();
-        }
+        public IBloomEnumeration GetBlooms(long fromBlock, long toBlock) => new NullBloomEnumerator();
 
         public bool ContainsRange(in long fromBlockNumber, in long toBlockNumber) => false;
+
+        public IEnumerable<Average> Averages { get; } = Array.Empty<Average>();
+        
 
         private class NullBloomEnumerator : IBloomEnumeration
         {
             public IEnumerator<Core.Bloom> GetEnumerator() => Enumerable.Empty<Core.Bloom>().GetEnumerator();
-
-            public bool TryGetBlockRange(out Range<long> blockRange)
+            
+            public bool TryGetBlockNumber(out long blockNumber)
             {
-                blockRange = default;
+                blockNumber = default;
                 return false;
             }
 
@@ -49,5 +52,7 @@ namespace Nethermind.Blockchain.Bloom
                 return GetEnumerator();
             }
         }
+
+        public void Dispose() { }
     }
 }

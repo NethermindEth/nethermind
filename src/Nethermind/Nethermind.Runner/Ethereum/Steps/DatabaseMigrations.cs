@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿﻿﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,15 +15,20 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Sources;
 using System.Timers;
+using Avro.File;
 using Microsoft.Extensions.Logging;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 using Nethermind.Runner.Ethereum.Context;
 using ILogger = Nethermind.Logging.ILogger;
 using Timer = System.Timers.Timer;
@@ -36,10 +41,13 @@ namespace Nethermind.Runner.Ethereum.Steps
         private readonly EthereumRunnerContext _context;
         private readonly ILogger _logger;
         private Stopwatch _stopwatch;
-        private readonly MeasuredProgress _progress = new MeasuredProgress(); 
-        private long _toMigrate;
+        private readonly MeasuredProgress _progress = new MeasuredProgress();
+        private long _migrateCount;
         private CancellationTokenSource _cancellationTokenSource;
         private Task _bloomDbMigrationTask;
+        private Average[] _averages;
+        private readonly StringBuilder _builder = new StringBuilder();
+        private IBloomConfig _bloomConfig;
 
         public DatabaseMigrations(EthereumRunnerContext context)
         {
@@ -47,47 +55,62 @@ namespace Nethermind.Runner.Ethereum.Steps
             _logger = context.LogManager.GetClassLogger();
         }
 
-        public bool MustInitialize => false;
-
         public Task Execute()
         {
-            StartBloomMigration();
+            DoBloomMigration();
             return Task.CompletedTask;
         }
 
-        private void StartBloomMigration()
+        private void DoBloomMigration()
         {
+            _bloomConfig = _context.Config<IBloomConfig>();
             var storage = _context.BloomStorage;
             if (storage.NeedsMigration)
             {
-                _cancellationTokenSource = new CancellationTokenSource();
-                _context.DisposeStack.Push(this);
-                _stopwatch = Stopwatch.StartNew();
-                _bloomDbMigrationTask = Task.Run(() => RunBloomMigration(_cancellationTokenSource.Token))
-                    .ContinueWith(x =>
-                    {
-                        if (x.IsFaulted && _logger.IsError)
+                if (_bloomConfig.Migration)
+                {
+                    _cancellationTokenSource = new CancellationTokenSource();
+                    _context.DisposeStack.Push(this);
+                    _stopwatch = Stopwatch.StartNew();
+                    _bloomDbMigrationTask = Task.Run(() => RunBloomMigration(_cancellationTokenSource.Token))
+                        .ContinueWith(x =>
                         {
-                            _stopwatch.Stop();
-                            _logger.Error(GetLogMessage("failed", $"Error: {x.Exception}"), x.Exception);
-                        }
-                    });
+                            if (x.IsFaulted && _logger.IsError)
+                            {
+                                _stopwatch.Stop();
+                                _logger.Error(GetLogMessage("failed", $"Error: {x.Exception}"), x.Exception);
+                            }
+                        });
+                }
+                else
+                {
+                    if (_logger.IsInfo) _logger.Info($"BloomDb migration disabled. Finding logs in first {MinBlockNumber} blocks might be slow.");    
+                }
             }
             else
             {
-                if (_logger.IsDebug) _logger.Debug("Skipping BloomDb migration.");
+                if (_logger.IsDebug) _logger.Debug("BloomDb migration not needed.");
             }
         }
 
+
         private long MinBlockNumber => _context.BloomStorage.MinBlockNumber == long.MaxValue
             ? _context.BlockTree.BestKnownNumber
-            : _context.BloomStorage.MinBlockNumber;
+            : _context.BloomStorage.MinBlockNumber - 1;
 
         private void RunBloomMigration(CancellationToken token)
         {
-            var minBlockNumber = MinBlockNumber;
-            _toMigrate = MinBlockNumber + 1;
+            var storage = _context.BloomStorage;
+            var blockTree = _context.BlockTree;
+            var to = MinBlockNumber;
+            var from = storage.MigratedBlockNumber + 1;
+            var maxLevelBucketLength = _bloomConfig.IndexLevelBucketSizes.Aggregate(1, (i, l) => i * l);
+            _migrateCount = to + 1;
+            _averages = _context.BloomStorage.Averages.ToArray();
+            Bloom[] blooms = new Bloom[maxLevelBucketLength];
             
+            _progress.Update(from);
+
             if (_logger.IsInfo) _logger.Info(GetLogMessage("started"));
 
             using (var timer = new Timer(1000) {Enabled = true})
@@ -97,15 +120,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                     if (_logger.IsInfo) _logger.Info(GetLogMessage("in progress"));
                 });
 
-                var storage = _context.BloomStorage;
-                var concurrentStorage = storage as IConcurrentStorage<long>;
-                var blockTree = _context.BlockTree;
-
-                concurrentStorage?.StartConcurrent(minBlockNumber);
                 long synced = 0;
                 try
                 {
-                    for (long i = minBlockNumber; i >= 0; i--)
+                    for (long i = from; i <= to; i += maxLevelBucketLength)
                     {
                         if (token.IsCancellationRequested)
                         {
@@ -114,20 +132,28 @@ namespace Nethermind.Runner.Ethereum.Steps
                             return;
                         }
 
-                        var header = blockTree.FindHeader(i);
-                        if (header != null)
+                        int j;
+                        for (j = 0; j < maxLevelBucketLength; j++)
                         {
-                            storage.Store(i, header.Bloom);
+                            if (j + i > to)
+                            {
+                                break;
+                            }
+                            else
+                            {
+                                var header = blockTree.FindHeader(i + j);
+                                blooms[j] = header?.Bloom ?? Bloom.Empty;
+                            }
                         }
-
-                        _progress.Update(++synced);
+                        
+                        storage.StoreMigration(i, blooms.AsSpan(0, j));
+                        synced += j;
+                        _progress.Update(synced);
                     }
-
-                    _progress.MarkEnd();
                 }
                 finally
                 {
-                    concurrentStorage?.EndConcurrent(minBlockNumber);
+                    _progress.MarkEnd();
                     _stopwatch.Stop();
                 }
             }
@@ -137,10 +163,29 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private string GetLogMessage(string status, string suffix = null)
         {
-            var message = $"BloomDb migration {status} | {_stopwatch.Elapsed:d\\:hh\\:mm\\:ss} | {_progress.CurrentValue.ToString().PadLeft(_toMigrate.ToString().Length)} / {_toMigrate} blocks migrated. | current {_progress.CurrentPerSecond:F2}bps | total {_progress.TotalPerSecond:F2}bps. {suffix}";
+            var message = $"BloomDb migration {status} | {_stopwatch.Elapsed:d\\:hh\\:mm\\:ss} | {_progress.CurrentValue.ToString().PadLeft(_migrateCount.ToString().Length)} / {_migrateCount} blocks migrated. | current {_progress.CurrentPerSecond:F2}bps | total {_progress.TotalPerSecond:F2}bps. {GeAveragesMessage()} {suffix}";
             _progress.SetMeasuringPoint();
             return message;
 
+        }
+
+        private string GeAveragesMessage()
+        {
+            if (_bloomConfig.Statistics)
+            {
+                _builder.Clear();
+                _builder.Append("Average bloom saturation: ");
+                for (var index = 0; index < _averages.Length; index++)
+                {
+                    var average = _averages[index];
+                    _builder.Append((average.Value / Bloom.BitLength).ToString("P1"));
+                    _builder.Append('|');
+                }
+
+                return _builder.ToString();
+            }
+            
+            return String.Empty;
         }
 
         public async ValueTask DisposeAsync()

@@ -31,7 +31,7 @@ namespace Nethermind.Db
     public abstract class DbOnTheRocks : IDb, IDbWithSpan
     {
         private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath = new ConcurrentDictionary<string, RocksDb>();
-        internal  readonly RocksDb Db;
+        internal readonly RocksDb Db;
         internal WriteBatch CurrentBatch;
         internal WriteOptions WriteOptions;
 
@@ -45,15 +45,7 @@ namespace Nethermind.Db
         {
             RocksDb Open(DbOptions options, string path, ColumnFamilies families)
             {
-                if (families == null)
-                {
-                    return RocksDb.Open(options, path);
-                }
-                else
-                {
-                    options.SetCreateMissingColumnFamilies();
-                    return RocksDb.Open(options, path, families);
-                }
+                return families == null ? RocksDb.Open(options, path) : RocksDb.Open(options, path, families);
             }
 
             string fullPath = dbPath.GetApplicationResourcePath(basePath);
@@ -96,8 +88,7 @@ namespace Nethermind.Db
 
         private T ReadConfig<T>(IDbConfig dbConfig, string propertyName)
         {
-            string prefixed = string.Concat(Name == "State" ? string.Empty : string.Concat(Name, "Db"),
-                propertyName);
+            string prefixed = string.Concat(Name == "State" ? string.Empty : string.Concat(Name, "Db"), propertyName);
             try
             {
                 return (T) dbConfig.GetType().GetProperty(prefixed, BindingFlags.Public | BindingFlags.Instance).GetValue(dbConfig);
@@ -108,7 +99,7 @@ namespace Nethermind.Db
             }
         }
 
-        private DbOptions BuildOptions(IDbConfig dbConfig)
+        protected virtual DbOptions BuildOptions(IDbConfig dbConfig)
         {
             _maxThisDbSize = 0;
             BlockBasedTableOptions tableOptions = new BlockBasedTableOptions();
@@ -175,7 +166,6 @@ namespace Nethermind.Db
         {
             get
             {
-                UpdateReadMetrics();
                 return Db.Get(key);
             }
             set
@@ -206,6 +196,8 @@ namespace Nethermind.Db
             }
         }
 
+        public KeyValuePair<byte[],byte[]>[] this[byte[][] keys] => Db.MultiGet(keys);
+
         public Span<byte> GetSpan(byte[] key)
         {
             UpdateReadMetrics();
@@ -222,20 +214,20 @@ namespace Nethermind.Db
             Db.Remove(key, null, WriteOptions);
         }
 
-        public byte[][] GetAll()
+        public IEnumerable<byte[]> GetAll()
         {
-            Iterator iterator = Db.NewIterator();
-            iterator = iterator.SeekToFirst();
-            var values = new List<byte[]>();
+            using Iterator iterator = Db.NewIterator();
+            return GetAllCore(iterator);
+        }
+
+        internal IEnumerable<byte[]> GetAllCore(Iterator iterator)
+        {
+            iterator.SeekToFirst();
             while (iterator.Valid())
             {
-                values.Add(iterator.Value());
-                iterator = iterator.Next();
+                yield return iterator.Value();
+                iterator.Next();
             }
-
-            iterator.Dispose();
-
-            return values.ToArray();
         }
 
         private ILogger _logger;
@@ -265,6 +257,32 @@ namespace Nethermind.Db
         {
             Db?.Dispose();
             CurrentBatch?.Dispose();
+        }
+
+        public void Flush()
+        {
+            Native.Instance.rocksdb_flush(Db.Handle, FlushOptions.DefaultFlushOptions.Handle);
+        }
+
+        private class FlushOptions
+        {
+            internal static FlushOptions DefaultFlushOptions { get; } = new FlushOptions();
+            
+            public FlushOptions()
+            {
+                Handle = Native.Instance.rocksdb_flushoptions_create();
+            }
+            
+            public IntPtr Handle { get; protected set; }
+
+            ~FlushOptions()
+            {
+                if (Handle != IntPtr.Zero)
+                {
+                    Native.Instance.rocksdb_flushoptions_destroy(Handle);
+                    Handle = IntPtr.Zero;
+                }
+            }
         }
     }
 }

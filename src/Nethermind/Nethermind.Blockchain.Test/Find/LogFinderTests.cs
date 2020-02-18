@@ -24,6 +24,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Test.Bloom;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -49,7 +50,7 @@ namespace Nethermind.Blockchain.Test.Find
             specProvider.GetSpec(Arg.Any<long>()).IsEip155Enabled.Returns(true);
             _receiptStorage = new InMemoryReceiptStorage();
             _blockTree = Build.A.BlockTree().WithTransactions(_receiptStorage, specProvider, LogsForBlockBuilder).OfChainLength(5).TestObject;
-            _bloomStorage = new BloomStorage(new MemColumnsDb<byte>(1, 2, 3));
+            _bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new DictionaryFileStoreFactory());
             _logFinder = new LogFinder(_blockTree, _receiptStorage, _bloomStorage);
         }
 

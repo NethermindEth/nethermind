@@ -32,7 +32,7 @@ namespace Nethermind.Store
         private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
 
-        private ResettableDictionary<byte[], int> _pendingChanges = new ResettableDictionary<byte[], int>(Bytes.EqualityComparer, StartCapacity);
+        private readonly ResettableDictionary<byte[], int> _pendingChanges = new ResettableDictionary<byte[], int>(Bytes.EqualityComparer, StartCapacity);
         
         public string Name { get; } = "State";
 
@@ -52,7 +52,25 @@ namespace Nethermind.Store
             set => Set(key, value);
         }
 
-        public byte[][] GetAll() => _db.GetAll();
+        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys]
+        {
+            get
+            {
+                var result = _db[keys];
+                for (int i = 0; i < keys.Length; i++)
+                {
+                    var key = keys[i];
+                    if (_pendingChanges.TryGetValue(key, out var index))
+                    {
+                        result[i] = new KeyValuePair<byte[], byte[]>(key, _changes[index].Value);
+                    }
+                }
+
+                return result;
+            }
+        }
+
+        public IEnumerable<byte[]> GetAll() => _db.GetAll();
 
         public void StartBatch()
         {
@@ -74,6 +92,10 @@ namespace Nethermind.Store
         }
 
         public IDb Innermost => _db.Innermost;
+        public void Flush()
+        {
+            _db.Flush();
+        }
 
         public void Restore(int snapshot)
         {

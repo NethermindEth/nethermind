@@ -9,7 +9,7 @@
     },
     "MainNet": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\mainnet.cfg --baseDbPath D:\\mainnet_fast --Sync.FastSync true",
+      "commandLineArgs": "--config configs\\mainnet.cfg --Sync.FastSync true",
       "environmentVariables": {
         " ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -23,7 +23,7 @@
     },
     "Goerli": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\goerli_archive.cfg --baseDbPath C:\\ --JsonRpc.Enabled true"
+      "commandLineArgs": "--config configs\\goerli.cfg --baseDbPath C:\\ --JsonRpc.Enabled true"
     },
     "Sokol": {
       "commandName": "Project",

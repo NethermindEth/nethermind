@@ -55,6 +55,7 @@ namespace Nethermind.Runner.Ethereum.Steps
          [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
         private Task InitBlockchain()
         {
+            IInitConfig initConfig = _context.Config<IInitConfig>();
             ISyncConfig syncConfig = _context.Config<ISyncConfig>();
             if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
             {
@@ -85,8 +86,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.LogManager);
 
             _context.ReceiptStorage = new PersistentReceiptStorage(_context.DbProvider.ReceiptsDb, _context.SpecProvider, _context.LogManager);
-            _context.BloomStorage = new ConcurrentBloomStorage(new BloomStorage(_context.DbProvider.BloomDb));
 
+            var bloomConfig = _context.Config<IBloomConfig>();
+            _context.BloomStorage = bloomConfig.Index 
+                ? new BloomStorage(bloomConfig, _context.DbProvider.BloomDb, new FixedSizeFileStoreFactory(Path.Combine(initConfig.BaseDbPath, DbNames.Bloom), DbNames.Bloom, Bloom.ByteLength)) 
+                : (IBloomStorage) NullBloomStorage.Instance;
+            
+            _context.DisposeStack.Push(_context.BloomStorage);
+            
             _context.ChainLevelInfoRepository = new ChainLevelInfoRepository(_context.DbProvider.BlockInfosDb);
 
             _context.BlockTree = new BlockTree(
@@ -157,13 +164,13 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.TxPoolInfoProvider = new TxPoolInfoProvider(_context.StateProvider, _context.TxPool);
 
             _context.MainBlockProcessor = CreateBlockProcessor();
-
+            
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(
                 _context.BlockTree,
                 _context.MainBlockProcessor,
                 _context.RecoveryStep,
                 _context.LogManager,
-                _context.Config<IInitConfig>().StoreReceipts,
+                initConfig.StoreReceipts,
                 !syncConfig.BeamSync);
 
             _context.BlockProcessingQueue = blockchainProcessor;

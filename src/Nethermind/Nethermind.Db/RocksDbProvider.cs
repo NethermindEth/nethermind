@@ -99,8 +99,8 @@ namespace Nethermind.Db
                 return _ethRequestsDb;
             }
         }
-		
-        public IColumnsDb<byte> BloomDb { get; private set; }		
+
+        public IDb BloomDb { get; private set; }
 
         public void Dispose()
         {
@@ -111,7 +111,6 @@ namespace Nethermind.Db
             HeadersDb?.Dispose();
             BlockInfosDb?.Dispose();
             PendingTxsDb?.Dispose();
-            BloomDb?.Dispose();
             _configsDb?.Dispose();
             _ethRequestsDb?.Dispose();
         }

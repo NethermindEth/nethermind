@@ -44,6 +44,13 @@ namespace Nethermind.Db.Databases
             return result;
         }
 
+        protected override DbOptions BuildOptions(IDbConfig dbConfig)
+        {
+            var options = base.BuildOptions(dbConfig);
+            options.SetCreateMissingColumnFamilies();
+            return options;
+        }
+
         public IDb GetColumnDb(T key) => _columnDbs[key];
 
         public IEnumerable<T> ColumnKeys => _columnDbs.Keys;

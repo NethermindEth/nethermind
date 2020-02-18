@@ -16,9 +16,8 @@
 
 namespace Nethermind.Blockchain.Bloom
 {
-    public interface IConcurrentStorage<T>
+    public interface IFileStoreFactory
     {
-        void StartConcurrent(T context);
-        void EndConcurrent(T context);
+        IFileStore Create(string name);
     }
 }

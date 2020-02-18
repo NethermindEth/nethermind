@@ -14,25 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading.Tasks;
-using Nethermind.Runner.Ethereum.Context;
-
-namespace Nethermind.Runner.Ethereum.Steps
+namespace Nethermind.Core.Extensions
 {
-    [RunnerStepDependencies(typeof(InitializeBlockchain), typeof(DatabaseMigrations))]
-    public class StartBlockProcessor : IStep
+    public static class StringExtensions
     {
-        private readonly EthereumRunnerContext _context;
+        public static string RemoveStart(this string thisString, char removeChar) => thisString.StartsWith(removeChar) ? thisString.Substring(1, thisString.Length - 1) : thisString;
 
-        public StartBlockProcessor(EthereumRunnerContext context)
-        {
-            _context = context;
-        }
-        
-        public Task Execute()
-        {
-            _context.BlockchainProcessor.Start();
-            return Task.CompletedTask;
-        }
+        public static string  RemoveEnd(this string thisString, char removeChar) => thisString.EndsWith(removeChar) ? thisString.Substring(0, thisString.Length - 1) : thisString;
     }
 }

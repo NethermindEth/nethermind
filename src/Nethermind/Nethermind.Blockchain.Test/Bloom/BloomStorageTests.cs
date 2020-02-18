@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -28,17 +27,28 @@ namespace Nethermind.Blockchain.Test.Bloom
 {
     public class BloomStorageTests
     {
+        private IBloomConfig _config;
+        private MemDb _bloomDb;
+        private DictionaryFileStoreFactory _fileStoreFactory;
+
+
+        [SetUp]
+        public void SetUp()
+        {
+            _config = new BloomConfig();
+            _bloomDb = new MemDb();
+            _fileStoreFactory = new DictionaryFileStoreFactory();
+        }
+        
         [TestCase(0, 0)]
         [TestCase(1, 1)]
         [TestCase(0, 10)]
         [TestCase(10, 12)]
         public void Empty_storage_does_not_contain_blocks(long from, long to)
         {
-            var storage = new BloomStorage(BloomDb);
+            var storage = new BloomStorage(_config, _bloomDb, _fileStoreFactory);
             storage.ContainsRange(from, to).Should().BeFalse();
         }
-
-        private static MemColumnsDb<byte> BloomDb => new MemColumnsDb<byte>(1, 2, 3);
 
         [TestCase(0, 0, ExpectedResult = false)]
         [TestCase(1, 1, ExpectedResult = true)]
@@ -47,10 +57,10 @@ namespace Nethermind.Blockchain.Test.Bloom
         [TestCase(10, 12, ExpectedResult = false)]
         public bool Initialized_storage_contain_blocks_as_db(long from, long to)
         {
-            var memColumnsDb = BloomDb;
+            var memColumnsDb = _bloomDb;
             memColumnsDb.Set(BloomStorage.MinBlockNumberKey, 1L.ToBigEndianByteArrayWithoutLeadingZeros());
             memColumnsDb.Set(BloomStorage.MaxBlockNumberKey, 11L.ToBigEndianByteArrayWithoutLeadingZeros());
-            var storage = new BloomStorage(memColumnsDb);
+            var storage = new BloomStorage(_config, memColumnsDb, _fileStoreFactory);
             return storage.ContainsRange(from, to);
         }
 
@@ -61,7 +71,7 @@ namespace Nethermind.Blockchain.Test.Bloom
         [TestCase(10, 12, ExpectedResult = false)]
         public bool Contain_blocks_after_store(long from, long to)
         {
-            var storage = new BloomStorage(BloomDb);
+            var storage = new BloomStorage(_config, _bloomDb, _fileStoreFactory);
 
             for (long i = 1; i < 11; i++)
             {
@@ -75,36 +85,37 @@ namespace Nethermind.Blockchain.Test.Bloom
         {
             get
             {
-                IEnumerable<Range<long>> CalcRanges(long expectedFound) => Enumerable.Range(0, (int) (expectedFound / LevelMultiplier)).Select(i => new Range<long>(i * LevelMultiplier, (i + 1) * LevelMultiplier - 1));
+                IEnumerable<long> GetRange(long expectedFound, int offset = 0) => Enumerable.Range(offset, (int) expectedFound).Select(i => (long) i);
+                var searchesPerBucket = 1 + LevelMultiplier + LevelMultiplier*LevelMultiplier + LevelMultiplier*LevelMultiplier*LevelMultiplier;
                 
-                var bucketItems = GetBucketItems(Levels, LevelMultiplier);
+                var bucketItems = new BloomStorage(new BloomConfig() {IndexLevelBucketSizes = new byte[]{LevelMultiplier, LevelMultiplier, LevelMultiplier}}, new MemDb(), new DictionaryFileStoreFactory()).MaxBucketSize;
                 var count = bucketItems*Buckets;
                 var maxIndex = count - 1;
-                yield return new TestCaseData(0, maxIndex, false, Enumerable.Empty<Range<long>>(), Buckets);
-                yield return new TestCaseData(0, maxIndex, true, CalcRanges(count), Buckets * (1 + LevelMultiplier + LevelMultiplier*LevelMultiplier));
-                yield return new TestCaseData(5, 10, true, new[] {new Range<long>(5, 10)}, 1 + 1 + 1);
-                yield return new TestCaseData(0, LevelMultiplier*LevelMultiplier*LevelMultiplier - 1, true, CalcRanges(LevelMultiplier*LevelMultiplier*LevelMultiplier), 1 + LevelMultiplier + LevelMultiplier*LevelMultiplier);
+                yield return new TestCaseData(0, maxIndex, false, Enumerable.Empty<long>(), Buckets);
+                yield return new TestCaseData(0, maxIndex, true, GetRange(count), Buckets * searchesPerBucket);
+                yield return new TestCaseData(5, 49, true, GetRange(45, 5), 1 + 1 + 4 + 45);
+                yield return new TestCaseData(0, LevelMultiplier*LevelMultiplier*LevelMultiplier - 1, true, GetRange(LevelMultiplier*LevelMultiplier*LevelMultiplier), searchesPerBucket);
             }
         }
 
         [TestCaseSource(nameof(GetBloomsTestCases))]
-        public void Returns_proper_blooms_after_store(long from, long to, bool isMatch, IEnumerable<Range<long>> expectedRanges, long expectedBloomsChecked)
+        public void Returns_proper_blooms_after_store(long from, long to, bool isMatch, IEnumerable<long> expectedBlocks, long expectedBloomsChecked)
         {
-            var storage = CreateBloomStorage();
+            var storage = CreateBloomStorage(new BloomConfig() {IndexLevelBucketSizes = new byte[]{LevelMultiplier, LevelMultiplier, LevelMultiplier}});
             long bloomsChecked = 0; 
             
             var bloomEnumeration = storage.GetBlooms(from, to);
-            IList<Range<long>> ranges = new List<Range<long>>();
+            IList<long> ranges = new List<long>();
             foreach (var bloom in bloomEnumeration)
             {
                 bloomsChecked++;
-                if (isMatch && bloomEnumeration.TryGetBlockRange(out var range))
+                if (isMatch && bloomEnumeration.TryGetBlockNumber(out var blockNumber))
                 {
-                    ranges.Add(range);
+                    ranges.Add(blockNumber);
                 }
             }
 
-            ranges.Should().BeEquivalentTo(expectedRanges);
+            ranges.Should().BeEquivalentTo(expectedBlocks);
             bloomsChecked.Should().Be(expectedBloomsChecked);
         }
 
@@ -112,10 +123,10 @@ namespace Nethermind.Blockchain.Test.Bloom
         private const int Levels = 3;
         private const int LevelMultiplier = 16;
 
-        private static BloomStorage CreateBloomStorage()
+        private static BloomStorage CreateBloomStorage(BloomConfig bloomConfig = null)
         {
-            var storage = new BloomStorage(BloomDb, LevelMultiplier);
-            var bucketItems = GetBucketItems(storage.Levels, storage.LevelMultiplier) * Buckets;
+            var storage = new BloomStorage(bloomConfig ?? new BloomConfig(), new MemDb(), new DictionaryFileStoreFactory());
+            var bucketItems = storage.MaxBucketSize * Buckets;
             
             for (long i = 0; i < bucketItems; i++)
             {
@@ -124,7 +135,5 @@ namespace Nethermind.Blockchain.Test.Bloom
 
             return storage;
         }
-
-        private static long GetBucketItems(int levels, int levelMultiplier) => (long) Math.Pow(levelMultiplier, levels);
     }
 }

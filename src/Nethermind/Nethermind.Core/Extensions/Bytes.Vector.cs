@@ -15,7 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Buffers;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 
@@ -77,7 +79,6 @@ namespace Nethermind.Core.Extensions
                         Vector256<byte> b2 = Avx2.LoadVector256(valuePtr + i);
                         Avx2.Store(thisPtr + i, Avx2.Or(b1, b2));
                     }
-                    
                 }
                 else if (Sse2.IsSupported)
                 {
@@ -94,6 +95,35 @@ namespace Nethermind.Core.Extensions
             {
                 thisSpam[i] |= valueSpam[i];
             }
+        }
+
+        public static ulong CountBits(this Span<byte> thisSpam)
+        {
+            ulong result = 0;
+            if (Popcnt.IsSupported)
+            {
+                Span<uint> uintSpam = MemoryMarshal.Cast<byte, uint>(thisSpam);
+                fixed (byte* thisPtr = thisSpam)
+                {
+                    for (int i = 0; i < uintSpam.Length; i++)
+                    {
+                        result += Popcnt.PopCount(uintSpam[i]);
+                    }
+                }
+            }
+            else
+            {
+                for (int i = 0; i < thisSpam.Length; i++)
+                {
+                    int n = thisSpam[i];
+                    while (n > 0) { 
+                        n &= n - 1; 
+                        result++; 
+                    }
+                }
+            }
+
+            return result;
         }
     }
 }

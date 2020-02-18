@@ -14,25 +14,25 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading.Tasks;
-using Nethermind.Runner.Ethereum.Context;
+using System.IO;
+using Nethermind.Logging;
 
-namespace Nethermind.Runner.Ethereum.Steps
+namespace Nethermind.Blockchain.Bloom
 {
-    [RunnerStepDependencies(typeof(InitializeBlockchain), typeof(DatabaseMigrations))]
-    public class StartBlockProcessor : IStep
+    public class FixedSizeFileStoreFactory : IFileStoreFactory
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly string _basePath;
+        private readonly string _extension;
+        private readonly int _elementSize;
 
-        public StartBlockProcessor(EthereumRunnerContext context)
+        public FixedSizeFileStoreFactory(string basePath, string extension, int elementSize)
         {
-            _context = context;
+            _basePath = string.Empty.GetApplicationResourcePath(basePath);
+            _extension = extension;
+            _elementSize = elementSize;
+            Directory.CreateDirectory(_basePath);
         }
-        
-        public Task Execute()
-        {
-            _context.BlockchainProcessor.Start();
-            return Task.CompletedTask;
-        }
+
+        public IFileStore Create(string name) => new FixedSizeFileStore(Path.Combine(_basePath, name + "." + _extension), _elementSize);
     }
 }

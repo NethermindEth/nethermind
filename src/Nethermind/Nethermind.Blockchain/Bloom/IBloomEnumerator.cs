@@ -20,6 +20,6 @@ namespace Nethermind.Blockchain.Bloom
 {
     public interface IBloomEnumeration : IEnumerable<Core.Bloom>
     {
-        bool TryGetBlockRange(out Range<long> blockRange);
+        bool TryGetBlockNumber(out long blockNumber);
     }
 }

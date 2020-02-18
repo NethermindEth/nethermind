@@ -164,7 +164,9 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             set => _db[key] = value;
         }
 
-        public byte[][] GetAll()
+        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, this[k])).ToArray();
+
+        public IEnumerable<byte[]> GetAll()
         {
             throw new NotSupportedException();
         }
@@ -188,6 +190,11 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
         }
 
         public IDb Innermost => _db.Innermost;
+        
+        public void Flush()
+        {
+            _db.Flush();
+        }
 
         public event EventHandler NeedMoreData;
 

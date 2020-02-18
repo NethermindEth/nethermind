@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
         public IDb PendingTxsDb { get; }
         public IDb ConfigsDb { get; }
         public IDb EthRequestsDb { get; }
-        public IColumnsDb<byte> BloomDb { get; }
+        public IDb BloomDb { get; }
 
         public void Dispose()
         {

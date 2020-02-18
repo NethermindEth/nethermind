@@ -36,7 +36,7 @@ namespace Nethermind.Store.Rpc
             PendingTxsDb = new ReadOnlyDb(new RpcDb(DbNames.PendingTxs, serializer, client, logManager, recordDbProvider?.ReceiptsDb), true);
             ConfigsDb = new ReadOnlyDb(new RpcDb(DbNames.Configs, serializer, client, logManager, recordDbProvider?.ConfigsDb), true);
             EthRequestsDb = new ReadOnlyDb(new RpcDb(DbNames.EthRequests, serializer, client, logManager, recordDbProvider?.EthRequestsDb), true);
-            BloomDb = new ReadOnlyColumnsDb<byte>(new RpcColumnsDb(DbNames.Bloom, serializer, client, logManager, recordDbProvider?.BloomDb), true); 
+            BloomDb = new ReadOnlyDb(new RpcDb(DbNames.EthRequests, serializer, client, logManager, recordDbProvider?.BloomDb), true);
         }
         
         public ISnapshotableDb StateDb { get; }
@@ -48,7 +48,7 @@ namespace Nethermind.Store.Rpc
         public IDb PendingTxsDb { get; }
         public IDb ConfigsDb { get; }
         public IDb EthRequestsDb { get; }
-        public IColumnsDb<byte> BloomDb { get; }
+        public IDb BloomDb { get; }
 
         public void Dispose()
         {
@@ -62,7 +62,6 @@ namespace Nethermind.Store.Rpc
             ConfigsDb?.Dispose();
             EthRequestsDb?.Dispose();
             _recordDbProvider?.Dispose();
-            BloomDb?.Dispose();
         }
     }
 }

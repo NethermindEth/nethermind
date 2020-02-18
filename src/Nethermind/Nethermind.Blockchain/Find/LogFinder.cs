@@ -63,14 +63,11 @@ namespace Nethermind.Blockchain.Find
             var enumeration = _bloomStorage.GetBlooms(fromBlock.Number, toBlock.Number);
             foreach (var bloom in enumeration)
             {
-                if (filter.Matches(bloom) && enumeration.TryGetBlockRange(out var blockRange))
+                if (filter.Matches(bloom) && enumeration.TryGetBlockNumber(out var blockNumber))
                 {
-                    for (long blockNumber = blockRange.Start; blockNumber <= blockRange.End; blockNumber++)
+                    foreach (var filterLog in FindLogsInBlock(filter, _blockFinder.FindBlock(blockNumber)))
                     {
-                        foreach (var filterLog in FindLogsInBlock(filter, _blockFinder.FindHeader(blockNumber)))
-                        {
-                            yield return filterLog;
-                        }
+                        yield return filterLog;
                     }
                 }
             }

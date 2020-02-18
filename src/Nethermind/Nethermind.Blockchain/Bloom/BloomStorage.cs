@@ -18,6 +18,8 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.Intrinsics.X86;
+using System.Threading.Tasks;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -27,45 +29,78 @@ namespace Nethermind.Blockchain.Bloom
 {
     public class BloomStorage : IBloomStorage
     {
-        public int LevelMultiplier { get; }
-        public int Levels { get; }
-        
+        public byte Levels { get; private set; }
+        public int MaxBucketSize => _storageLevels.FirstOrDefault()?.LevelElementSize ?? 1;
+
         internal static readonly Keccak MinBlockNumberKey = Keccak.Compute(nameof(MinBlockNumber));
         internal static readonly Keccak MaxBlockNumberKey = Keccak.Compute(nameof(MaxBlockNumber));
+        internal static readonly Keccak MigrationNumberKey = Keccak.Compute(nameof(MigratedBlockNumber));
         
         private readonly BloomStorageLevel[] _storageLevels;
-        private readonly IColumnsDb<byte> _bloomDb;
-
+        private readonly IBloomConfig _config;
+        private readonly IDb _bloomInfoDb;
+        private readonly IFileStoreFactory _fileStoreFactory;
+        
         public long MinBlockNumber { get; private set; }
-
         private long MaxBlockNumber { get; set; }
+        public long MigratedBlockNumber { get; private set; } = -1;
 
-        public BloomStorage(IColumnsDb<byte> bloomDb, int levelMultiplier = 16)
+        public BloomStorage(IBloomConfig config, IDb bloomDb, IFileStoreFactory fileStoreFactory)
         {
-            long Get(Keccak key, long defaultValue) => _bloomDb.Get(key)?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
+            long Get(Keccak key, long defaultValue) => bloomDb.Get(key)?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
             
-            _bloomDb = bloomDb ?? throw new ArgumentNullException(nameof(bloomDb));
-            Levels = _bloomDb.ColumnKeys.Count();
-            LevelMultiplier = levelMultiplier;
-            
-            _storageLevels = _bloomDb.ColumnKeys.Select(level => CreateLevel(_bloomDb.GetColumnDb(level), level, Levels)).ToArray();
+            _config = config ?? throw new ArgumentNullException(nameof(config));
+            _bloomInfoDb = bloomDb ?? throw new ArgumentNullException(nameof(_bloomInfoDb));
+            _fileStoreFactory = fileStoreFactory;
+            SetLevels(config);
+            _storageLevels = CreateStorageLevels(config);
             MinBlockNumber = Get(MinBlockNumberKey, long.MaxValue);
             MaxBlockNumber = Get(MaxBlockNumberKey, -1);
         }
 
-        private BloomStorageLevel CreateLevel(IDb db, byte level, in int levelCount) => new BloomStorageLevel(db, level, (int) Math.Pow(LevelMultiplier, levelCount - level), LevelMultiplier);
+        private BloomStorageLevel[] CreateStorageLevels(IBloomConfig config)
+        {
+            var lastLevelSize = 1;
 
+            var configIndexLevelBucketSizes = config.IndexLevelBucketSizes.ToList();
+            if (configIndexLevelBucketSizes.FirstOrDefault() != 1)
+            { 
+                configIndexLevelBucketSizes.Insert(0, 1);
+                Levels++;
+            }
+
+            var maxElementSize = configIndexLevelBucketSizes.Aggregate(1, (i, b) => i * b);
+
+            return configIndexLevelBucketSizes
+                .Select((size, i) =>
+                {
+                    byte level = (byte) (Levels - i - 1);
+                    var levelElementSize = lastLevelSize * size;
+                    lastLevelSize = levelElementSize;
+                    return new BloomStorageLevel(_fileStoreFactory.Create(level.ToString()), level, levelElementSize, size, _config.Statistics);
+                })
+                .Reverse()
+                .ToArray();
+        }
+
+        private void SetLevels(IBloomConfig config)
+        {
+            Levels = (byte) config.IndexLevelBucketSizes.Length;
+
+            if (Levels == 0)
+            {
+                throw new ArgumentException($"Can not create bloom index when there are no {nameof(config.IndexLevelBucketSizes)} provided.");
+            }
+        }
+        
         private bool Contains(long blockNumber) => blockNumber >= MinBlockNumber && blockNumber <= MaxBlockNumber;
         
         public bool ContainsRange(in long fromBlockNumber, in long toBlockNumber) => Contains(fromBlockNumber) && Contains(toBlockNumber);
 
+        public IEnumerable<Average> Averages => _storageLevels.Select(l => l.Average);
+
         public void Store(long blockNumber, Core.Bloom bloom)
         {
-            void Set(Keccak key, long value)
-            {
-                _bloomDb.Set(key, value.ToBigEndianByteArrayWithoutLeadingZeros());
-            }
-            
             for (int i = 0; i < _storageLevels.Length; i++)
             {
                 _storageLevels[i].Store(blockNumber, bloom);
@@ -84,59 +119,193 @@ namespace Nethermind.Blockchain.Bloom
             }
         }
 
+        public void StoreMigration(long blockNumber, Span<Core.Bloom> bloom)
+        {
+            MigratedBlockNumber = blockNumber + bloom.Length - 1;
+            
+            for (int i = _storageLevels.Length - 1; i >= 0; i--)
+            {
+                bloom = _storageLevels[i].StoreMigration(blockNumber, bloom);
+            }
+            
+            Set(MigrationNumberKey, MigratedBlockNumber);
+            
+            if (MigratedBlockNumber == MinBlockNumber + 1)
+            {
+                MinBlockNumber = 0;
+                Set(MigrationNumberKey, MinBlockNumber);
+            }
+        }
+
+        private void Set(Keccak key, long value)
+        {
+            _bloomInfoDb.Set(key, value.ToBigEndianByteArrayWithoutLeadingZeros());
+        }
+
+        public void Dispose()
+        {
+            for (int i = 0; i < _storageLevels.Length; i++)
+            {
+                _storageLevels[i].Dispose();
+            }
+        }
+
         public IBloomEnumeration GetBlooms(long fromBlock, long toBlock) => new BloomEnumeration(_storageLevels, Math.Max(fromBlock, MinBlockNumber), Math.Min(toBlock, MaxBlockNumber));
 
-        private class BloomStorageLevel
+        private class BloomStorageLevel : IDisposable
         {
-            private readonly IDb _db;
-            private readonly byte _level;
+            public readonly byte Level;
             public readonly int LevelElementSize;
+            public readonly Average Average = new Average();
+            
+            private readonly IFileStore _fileStore;
+            private readonly bool _countStatistics;
             private readonly LruCache<long, Core.Bloom> _cache;
-
-            public BloomStorageLevel(IDb db, in byte level, in int levelElementSize, in int levelMultiplier)
+            private readonly byte[] _bytes = new byte[Core.Bloom.ByteLength];
+            private long _minBucket = long.MaxValue;
+            private long _maxBucket = 0;
+            private Core.Bloom[] _migrationBuffer;
+            
+            public BloomStorageLevel(IFileStore fileStore, in byte level, in int levelElementSize, in int levelMultiplier, bool countStatistics)
             {
-                _db = db;
-                _level = level;
+                _fileStore = fileStore;
+                Level = level;
                 LevelElementSize = levelElementSize;
+                _countStatistics = countStatistics;
                 _cache = new LruCache<long, Core.Bloom>(levelMultiplier);
             }
 
-            public void Store(in long blockNumber, Core.Bloom bloom)
+            public void Store(long blockNumber, Core.Bloom bloom)
             {
                 long bucket = GetBucket(blockNumber);
                 
                 var existingBloom = _cache.Get(bucket);
                 if (existingBloom == null)
                 {
-                    var bytes = _db.Get(bucket);
-                    existingBloom = bytes == null ? Core.Bloom.Empty : new Core.Bloom(bytes);
+                    var bytesRead = _fileStore.Read(bucket, _bytes);
+                    var bloomRead = bytesRead == Core.Bloom.ByteLength;
+                    existingBloom = bloomRead ? new Core.Bloom(_bytes) : new Core.Bloom();
                 }
-                
-                existingBloom.Accrue(bloom);
-                
-                _db.Set(bucket, existingBloom.Bytes);;
+
+                if (_countStatistics)
+                {
+                    bool newBucket = false;
+                    
+                    if (bucket < _minBucket)
+                    {
+                        _minBucket = bucket;
+                        newBucket = true;
+                    }
+                    else if (bucket > _maxBucket)
+                    {
+                        _maxBucket = bucket;
+                        newBucket = true;
+                    }
+                    
+                    CountAverage(bloom, newBucket, existingBloom);
+                }
+                else
+                {
+                    existingBloom.Accrue(bloom);
+                }
+
+                _fileStore.Write(bucket, existingBloom.Bytes);;
                 _cache.Set(bucket, existingBloom);
             }
 
-            private long GetBucket(long blockNumber) => blockNumber / LevelElementSize;
-
-            public Core.Bloom Get(in long blockNumber)
+            private void CountAverage(Core.Bloom bloom, bool newBucket, Core.Bloom existingBloom)
             {
-                long bucket = GetBucket(blockNumber);
-                var bloom = _cache.Get(bucket);
-                if (bloom == null)
+                uint oldValue = 0;
+                if (!newBucket)
                 {
-                    var bytes = _db.Get(bucket);
-                    if (bytes == null)
-                    {
-                        return null;
-                    }
-
-                    bloom = new Core.Bloom(bytes);
-                    _cache.Set(bucket, bloom);
+                    oldValue = CountBits(existingBloom);
                 }
 
-                return bloom;
+                existingBloom.Accrue(bloom);
+
+                var value = CountBits(existingBloom);
+                if (newBucket)
+                {
+                    Average.Add(value);
+                }
+                else
+                {
+                    Average.Replace(value, oldValue);
+                }
+            }
+
+            private static uint CountBits(Core.Bloom bloom) => (uint) bloom.Bytes.AsSpan().CountBits();
+
+            private long GetBucket(long blockNumber) => blockNumber / LevelElementSize;
+
+            public IFileReader GetReader() => _fileStore.GetFileReader();
+
+            public Span<Core.Bloom> StoreMigration(in long blockNumber, in Span<Core.Bloom> bloom)
+            {
+                if (LevelElementSize == 1)
+                {
+                    for (int i = 0; i < bloom.Length; i++)
+                    {
+                        Core.Bloom currentBloom = bloom[i];
+                        if (_countStatistics)
+                        {
+                            Average.Add(CountBits(currentBloom));
+                        }
+                        
+                        _fileStore.Write(GetBucket(blockNumber + i), currentBloom.Bytes);
+                    }
+
+                    return bloom;
+                }
+                else
+                {
+                    ResizeMigrationBuffer(bloom.Length);
+                    
+                    int j = 0;
+                    Core.Bloom currentBloom = _migrationBuffer[j++] = new Core.Bloom();
+                    for (int i = 0; i < bloom.Length; i++)
+                    {
+                        if (i % LevelElementSize == 0 && i != 0)
+                        {
+                            if (_countStatistics)
+                            {
+                                Average.Add(CountBits(currentBloom));
+                            }
+                            _fileStore.Write(GetBucket(blockNumber + i), currentBloom.Bytes);
+                            currentBloom = _migrationBuffer[j++] = new Core.Bloom();
+                        }
+
+                        var bloomToAdd = bloom[i];
+                        currentBloom.Accrue(bloomToAdd);
+                    }
+
+                    if (_countStatistics)
+                    {
+                        Average.Add(CountBits(currentBloom));
+                    }
+                
+                    _fileStore.Write(GetBucket(blockNumber + bloom.Length - 1), currentBloom.Bytes);
+                    return _migrationBuffer.AsSpan(0, j);
+                }
+            }
+
+            private void ResizeMigrationBuffer(in int bloomLength)
+            {
+                int neededLength = bloomLength / LevelElementSize + (bloomLength % LevelElementSize == 0 ? 0 : 1);
+                
+                if (_migrationBuffer == null)
+                {
+                    _migrationBuffer = new Core.Bloom[bloomLength];
+                }
+                else if (_migrationBuffer.Length < neededLength)
+                {
+                    Array.Resize(ref _migrationBuffer, neededLength);
+                }
+            }
+
+            public void Dispose()
+            {
+                _fileStore?.Dispose();
             }
         }
         
@@ -145,7 +314,7 @@ namespace Nethermind.Blockchain.Bloom
             private readonly BloomStorageLevel[] _storageLevels;
             private readonly long _fromBlock;
             private readonly long _toBlock;
-            private BloomEnumerator current;
+            private BloomEnumerator _current;
 
             public BloomEnumeration(BloomStorageLevel[] storageLevels, long fromBlock, long toBlock)
             {
@@ -154,21 +323,22 @@ namespace Nethermind.Blockchain.Bloom
                 _toBlock = toBlock;
             }
             
-            public IEnumerator<Core.Bloom> GetEnumerator() => current = new BloomEnumerator(_storageLevels, _fromBlock, _toBlock);
+            public IEnumerator<Core.Bloom> GetEnumerator() => _current = new BloomEnumerator(_storageLevels, _fromBlock, _toBlock);
 
             IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-            public bool TryGetBlockRange(out Range<long> blockRange) => current.TryGetBlockRange(out blockRange);
+            public bool TryGetBlockNumber(out long blockNumber) => _current.TryGetBlockNumber(out blockNumber);
         }
         
-        private class BloomEnumerator : IEnumerator<Core.Bloom>
+        private class BloomEnumerator : IEnumerator<Core.Bloom>, IDisposable
         {
-            private readonly BloomStorageLevel[] _storageLevels;
+            private readonly (BloomStorageLevel Storage, IFileReader Reader)[] _storageLevels;
             private readonly long _fromBlock;
             private readonly long _toBlock;
             private readonly int _maxLevel;
             private long _currentPosition;
-
+            private readonly byte[] _bytes = new byte[Core.Bloom.ByteLength];
+            
             private byte CurrentLevel
             {
                 get => _currentLevel;
@@ -184,19 +354,27 @@ namespace Nethermind.Blockchain.Bloom
 
             public BloomEnumerator(BloomStorageLevel[] storageLevels, in long fromBlock, in long toBlock)
             {
-                _storageLevels = storageLevels;
+                _storageLevels = storageLevels.Select(l => (l, l.GetReader())).ToArray();
                 _fromBlock = fromBlock;
                 _toBlock = toBlock;
                 _maxLevel = storageLevels.Length - 1;
                 Reset();
             }
 
+            public void Reset()
+            {
+                _currentPosition = _fromBlock;
+                CurrentLevel = 0;
+            }
+
+            object? IEnumerator.Current => Current;
+
             public bool MoveNext()
             {
                 if (_currentLevelRead)
                 {
-                    _currentPosition += _storageLevels[CurrentLevel].LevelElementSize;
-                    while (CurrentLevel > 0 && _currentPosition % _storageLevels[CurrentLevel - 1].LevelElementSize == 0)
+                    _currentPosition += _storageLevels[CurrentLevel].Storage.LevelElementSize;
+                    while (CurrentLevel > 0 && _currentPosition % _storageLevels[CurrentLevel - 1].Storage.LevelElementSize == 0)
                     {
                         CurrentLevel--;
                     }
@@ -209,32 +387,42 @@ namespace Nethermind.Blockchain.Bloom
                 return _currentPosition <= _toBlock;
             }
 
-            public void Reset()
+            public Core.Bloom Current
             {
-                _currentPosition = _fromBlock;
-                CurrentLevel = 0;
+                get
+                {
+                    if (_currentPosition < _fromBlock || _currentPosition > _toBlock)
+                    {
+                        return null;
+                    }
+                    else
+                    {
+                        _storageLevels[CurrentLevel].Reader.Read(_currentPosition, _bytes);
+                        return new Core.Bloom(_bytes);
+                    }
+                }
             }
 
-            public Core.Bloom Current => _currentPosition < _fromBlock || _currentPosition > _toBlock 
-                ? null 
-                : _storageLevels[CurrentLevel].Get(_currentPosition);
-
-            public bool TryGetBlockRange(out Range<long> blockRange)
+            public bool TryGetBlockNumber(out long blockNumber)
             {
                 if (CurrentLevel == _maxLevel)
                 {
-                    blockRange = new Range<long>(Math.Max(_currentPosition, _fromBlock), Math.Min(_currentPosition + _storageLevels[CurrentLevel].LevelElementSize - 1, _toBlock));
+                    blockNumber = _currentPosition;
                     return true;
                 }
 
                 CurrentLevel++;
-                blockRange = default;
+                blockNumber = default;
                 return false;
             }
-
-            object IEnumerator.Current => Current;
-
-            public void Dispose() { }
+            
+            public void Dispose()
+            { 
+                foreach (var storageLevel in _storageLevels)
+                {
+                    storageLevel.Reader.Dispose();
+                }  
+            }
         }
     }
 }

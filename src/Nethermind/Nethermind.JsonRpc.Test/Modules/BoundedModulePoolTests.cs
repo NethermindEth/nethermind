@@ -20,6 +20,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Test.Bloom;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -47,7 +48,17 @@ namespace Nethermind.JsonRpc.Test.Modules
             ITxPool txPool = NullTxPool.Instance;
             MemDbProvider dbProvider = new MemDbProvider();
 
-            BlockTree blockTree = new BlockTree(dbProvider.BlocksDb, dbProvider.HeadersDb, dbProvider.BlockInfosDb, new ChainLevelInfoRepository(dbProvider.BlockInfosDb), specProvider, txPool, new BloomStorage(dbProvider.BloomDb), new SyncConfig(), LimboLogs.Instance);
+            BlockTree blockTree = new BlockTree(
+                dbProvider.BlocksDb,
+                dbProvider.HeadersDb,
+                dbProvider.BlockInfosDb,
+                new ChainLevelInfoRepository(dbProvider.BlockInfosDb),
+                specProvider,
+                txPool,
+                new BloomStorage(new BloomConfig(), dbProvider.HeadersDb, new DictionaryFileStoreFactory()),
+                new SyncConfig(),
+                LimboLogs.Instance);
+            
             _modulePool = new BoundedModulePool<IEthModule>(
                 1, 
                 new EthModuleFactory(

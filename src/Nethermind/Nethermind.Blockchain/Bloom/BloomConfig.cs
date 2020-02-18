@@ -14,25 +14,33 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading.Tasks;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Config;
+using Nethermind.Core.Attributes;
 
-namespace Nethermind.Runner.Ethereum.Steps
+namespace Nethermind.Blockchain.Bloom
 {
-    [RunnerStepDependencies(typeof(InitializeBlockchain), typeof(DatabaseMigrations))]
-    public class StartBlockProcessor : IStep
+    public class BloomConfig : IBloomConfig
     {
-        private readonly EthereumRunnerContext _context;
-
-        public StartBlockProcessor(EthereumRunnerContext context)
-        {
-            _context = context;
-        }
+        public bool Index { get; set; } = true;
+        public byte[] IndexLevelBucketSizes { get; set; } = {4};
         
-        public Task Execute()
-        {
-            _context.BlockchainProcessor.Start();
-            return Task.CompletedTask;
-        }
+        [Todo("false")]
+        public bool Statistics { get; set; } = true;
+        
+        [Todo("false")]
+        public bool Migration { get; set; } = true;
+
+        public string Directory { get; set; } = "bloom";
+    }
+
+    public interface IBloomConfig : IConfig
+    {
+        bool Index { get; set; }
+        
+        byte[] IndexLevelBucketSizes { get; set; }
+        
+        bool Statistics { get; set; }
+        
+        bool Migration { get; set; }
     }
 }

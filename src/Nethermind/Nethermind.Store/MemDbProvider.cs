@@ -27,7 +27,7 @@ namespace Nethermind.Store
         public IDb PendingTxsDb { get; } = new MemDb();
         public IDb ConfigsDb { get; } = new MemDb();
         public IDb EthRequestsDb { get; } = new MemDb();
-        public IColumnsDb<byte> BloomDb { get; } = new MemColumnsDb<byte>(0, 1, 2);
+        public IDb BloomDb { get; } = new MemDb();
 
         public void Dispose()
         {

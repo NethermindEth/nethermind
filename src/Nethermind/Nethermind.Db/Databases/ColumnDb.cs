@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Store;
 using RocksDbSharp;
 
@@ -73,20 +74,12 @@ namespace Nethermind.Db.Databases
             }
         }
 
-        public byte[][] GetAll()
+        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => _rocksDb.MultiGet(keys, keys.Select(k => _columnFamily).ToArray());
+
+        public IEnumerable<byte[]> GetAll()
         {
-            Iterator iterator = _rocksDb.NewIterator(_columnFamily);
-            iterator = iterator.SeekToFirst();
-            var values = new List<byte[]>();
-            while (iterator.Valid())
-            {
-                values.Add(iterator.Value());
-                iterator = iterator.Next();
-            }
-
-            iterator.Dispose();
-
-            return values.ToArray();
+            using Iterator iterator = _rocksDb.NewIterator(_columnFamily);
+            return _mainDb.GetAllCore(iterator);
         }
 
         public void StartBatch()
@@ -107,6 +100,10 @@ namespace Nethermind.Db.Databases
         public bool KeyExists(byte[] key) => _rocksDb.Get(key, _columnFamily) != null;
         
         public IDb Innermost => _mainDb.Innermost;
+        public void Flush()
+        {
+            _mainDb.Flush();
+        }
 
         private void UpdateWriteMetrics() => _mainDb.UpdateWriteMetrics();
 

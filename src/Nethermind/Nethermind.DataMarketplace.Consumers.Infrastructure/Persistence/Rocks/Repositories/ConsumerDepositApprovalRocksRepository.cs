@@ -47,7 +47,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
                 return Task.FromResult(PagedResult<DepositApproval>.Empty);
             }
 
-            var depositApprovalsBytes = _database.GetAll();
+            var depositApprovalsBytes = _database.GetAll().ToArray();
             if (depositApprovalsBytes.Length == 0)
             {
                 return Task.FromResult(PagedResult<DepositApproval>.Empty);

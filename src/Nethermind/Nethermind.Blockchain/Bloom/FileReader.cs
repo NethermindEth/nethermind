@@ -14,25 +14,39 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading.Tasks;
-using Nethermind.Runner.Ethereum.Context;
+using System.IO;
 
-namespace Nethermind.Runner.Ethereum.Steps
+namespace Nethermind.Blockchain.Bloom
 {
-    [RunnerStepDependencies(typeof(InitializeBlockchain), typeof(DatabaseMigrations))]
-    public class StartBlockProcessor : IStep
+    public class FileReader : IFileReader
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly int _elementSize;
+        private readonly FileStream _file;
 
-        public StartBlockProcessor(EthereumRunnerContext context)
+        public FileReader(string filePath, int elementSize)
         {
-            _context = context;
+            _elementSize = elementSize;
+            _file = File.Open(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         }
         
-        public Task Execute()
+        public int Read(long index, byte[] element)
         {
-            _context.BlockchainProcessor.Start();
-            return Task.CompletedTask;
+            SeekIndex(index);
+            return _file.Read(element, 0, _elementSize);
+        }
+        
+        private void SeekIndex(long index)
+        {
+            long seekPosition = index * _elementSize;
+            if (_file.Position != seekPosition)
+            {
+                _file.Position = seekPosition;
+            }
+        }
+
+        public void Dispose()
+        {
+            _file.Dispose();
         }
     }
 }
