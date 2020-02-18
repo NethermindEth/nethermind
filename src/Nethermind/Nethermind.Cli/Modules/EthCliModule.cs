@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Linq;
 using System.Numerics;
 using Jint.Native;
 using Nethermind.Core;
@@ -21,6 +22,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.Data;
+using Nethermind.Store.Proofs;
 
 namespace Nethermind.Cli.Modules
 {
@@ -43,6 +45,12 @@ namespace Nethermind.Cli.Modules
             return keccak.Bytes.ToHexString();
         }
 
+        [CliFunction("eth", "getProof")]
+        public JsValue Call(string address, string[] storageKeys, string blockParameter = null)
+        {
+            return NodeManager.PostJint("eth_getProof", CliParseAddress(address), storageKeys.Select(CliParseHash), blockParameter ?? "latest").Result;
+        }
+        
         [CliFunction("eth", "call")]
         public string Call(object tx, string blockParameter = null)
         {
