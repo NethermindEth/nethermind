@@ -82,7 +82,7 @@ namespace Nethermind.Abi
 
         private readonly BigInteger _denominator;
 
-        public override byte[] Encode(object arg, bool packed)
+        public override byte[] Encode(object? arg, bool packed)
         {
             if (arg is BigRational input)
             {

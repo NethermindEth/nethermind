@@ -50,7 +50,7 @@ namespace Nethermind.Abi
 
         public abstract (object, int) Decode(byte[] data, int position, bool packed);
 
-        public abstract byte[] Encode(object arg, bool packed);
+        public abstract byte[] Encode(object? arg, bool packed);
 
         public override string ToString()
         {
@@ -62,9 +62,9 @@ namespace Nethermind.Abi
             return Name.GetHashCode();
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
-            AbiType type = obj as AbiType;
+            AbiType? type = obj as AbiType;
             return type != null &&
                    Name == type.Name;
         }

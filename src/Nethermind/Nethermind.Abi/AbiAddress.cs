@@ -30,7 +30,7 @@ namespace Nethermind.Abi
 
         public override string Name => "address";
 
-        public override byte[] Encode(object arg, bool packed)
+        public override byte[] Encode(object? arg, bool packed)
         {
             while (true)
             {
