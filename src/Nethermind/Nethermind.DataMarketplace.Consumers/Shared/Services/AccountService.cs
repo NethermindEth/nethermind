@@ -67,7 +67,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             _wallet.AccountUnlocked += OnAccountUnlocked;
         }
         
-        public event EventHandler<AddressChangedEventArgs> AddressChanged;
+        public event EventHandler<AddressChangedEventArgs>? AddressChanged;
 
         public Address GetAddress() => _consumerAddress;
         public async Task ChangeAddressAsync(Address address)
@@ -82,6 +82,12 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             _consumerAddress = address;
             AddressChanged?.Invoke(this, new AddressChangedEventArgs(previousAddress, _consumerAddress));
             NdmConfig? config = await _configManager.GetAsync(_configId);
+            if (config == null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Failed to change consumer address: '{previousAddress}' -> '{address}'...");
+                return;
+            }
+            
             config.ConsumerAddress = _consumerAddress.ToString();
             await _configManager.UpdateAsync(config);
             
@@ -96,7 +102,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             if (_logger.IsInfo) _logger.Info($"Changed consumer address: '{previousAddress}' -> '{address}'.");
         }
         
-        private void OnAccountUnlocked(object sender, AccountUnlockedEventArgs e)
+        private void OnAccountUnlocked(object? sender, AccountUnlockedEventArgs e)
         {
             if (e.Address != _consumerAddress)
             {
@@ -106,7 +112,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             if (_logger.IsInfo) _logger.Info($"Unlocked a consumer account: '{e.Address}', data streams can be enabled.");
         }
 
-        private void OnAccountLocked(object sender, AccountLockedEventArgs e)
+        private void OnAccountLocked(object? sender, AccountLockedEventArgs e)
         {
             if (e.Address != _consumerAddress)
             {

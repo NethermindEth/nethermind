@@ -61,7 +61,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
 
         private async Task<DepositDetails?> FetchAsync(Keccak depositId)
         {
-            DepositDetails deposit = await _depositRepository.GetAsync(depositId);
+            DepositDetails? deposit = await _depositRepository.GetAsync(depositId);
             if (deposit is null)
             {
                 return null;

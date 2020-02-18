@@ -83,7 +83,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
 
         public async Task<DepositDetails?> GetAsync(Keccak depositId)
         {
-            DepositDetails deposit = await _depositRepository.GetAsync(depositId);
+            DepositDetails? deposit = await _depositRepository.GetAsync(depositId);
             if (deposit is null)
             {
                 return null;
@@ -176,7 +176,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 : gasPrice.Value;
             await _depositRepository.AddAsync(depositDetails);
 
-            Keccak transactionHash = Keccak.Zero;
+            Keccak? transactionHash = null;
             if (_logger.IsInfo) _logger.Info($"Created a deposit with id: '{depositId}', for data asset: '{assetId}', address: '{address}'.");
             if (_disableSendingDepositTransaction)
             {

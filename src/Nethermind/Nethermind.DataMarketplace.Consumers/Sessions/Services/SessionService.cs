@@ -72,8 +72,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
             return null;
         }
 
-        public IReadOnlyList<ConsumerSession> GetAllActive()
-            => _sessions.Values.ToArray();
+        public IReadOnlyList<ConsumerSession> GetAllActive() => _sessions.Values.ToArray();
 
         public async Task StartSessionAsync(Session session, INdmPeer provider)
         {
@@ -89,7 +88,6 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
             if (deposit is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Cannot start the session: '{session.Id}', deposit: '{session.DepositId}' was not found.");
-
                 return;
             }
 
@@ -98,29 +96,33 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
             if (dataAsset is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Available data asset: '{dataAssetId}' was not found.");
-
                 return;
             }
 
             if (!_dataAssetService.IsAvailable(dataAsset))
             {
                 if (_logger.IsWarn) _logger.Warn($"Data asset: '{dataAssetId}' is unavailable, state: {dataAsset.State}.");
-
+                return;
+            }
+            
+            if (session.ProviderAddress == null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Session: '{session.Id}' for '{session.DepositId}' cannot be started because of the unknown provider address.");
                 return;
             }
 
-            if (!provider.ProviderAddress.Equals(deposit.DataAsset.Provider.Address))
+            if (!provider.ProviderAddress!.Equals(deposit.DataAsset.Provider.Address))
             {
                 if (_logger.IsWarn) _logger.Warn($"Cannot start the session: '{session.Id}' for deposit: '{session.DepositId}', provider address (peer): '{provider.ProviderAddress}' doesn't equal the address from data asset: '{deposit.DataAsset.Provider.Address}'.");
-
                 return;
             }
 
-            var sessions = await _sessionRepository.BrowseAsync(new GetConsumerSessions
+            PagedResult<ConsumerSession> sessions = await _sessionRepository.BrowseAsync(new GetConsumerSessions
             {
                 DepositId = session.DepositId,
                 Results = int.MaxValue
             });
+            
             uint consumedUnits = sessions.Items.Any() ? (uint) sessions.Items.Sum(s => s.ConsumedUnits) : 0;
             if (_logger.IsInfo) _logger.Info($"Starting the session: '{session.Id}' for deposit: '{session.DepositId}'. Settings consumed units - provider: {session.StartUnitsFromProvider}, consumer: {consumedUnits}.");
             ConsumerSession consumerSession = ConsumerSession.From(session);

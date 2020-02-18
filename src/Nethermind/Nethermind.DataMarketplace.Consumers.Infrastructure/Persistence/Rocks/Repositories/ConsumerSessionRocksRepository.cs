@@ -42,9 +42,13 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             _rlpDecoder = rlpDecoder;
         }
 
-        public Task<ConsumerSession> GetAsync(Keccak id) => Task.FromResult(Decode(_database.Get(id)));
+        public Task<ConsumerSession?> GetAsync(Keccak id)
+        {
+            byte[] fromDatabase = _database.Get(id);
+            return fromDatabase == null ? null : Task.FromResult(Decode(fromDatabase));
+        }
 
-        public Task<ConsumerSession> GetPreviousAsync(ConsumerSession session)
+        public Task<ConsumerSession?> GetPreviousAsync(ConsumerSession session)
         {
             var sessions = Filter(session.DepositId);
             switch (sessions.Length)
@@ -63,7 +67,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             }
         }
 
-        private static ConsumerSession GetUniqueSession(ConsumerSession current, ConsumerSession previous)
+        private static ConsumerSession? GetUniqueSession(ConsumerSession current, ConsumerSession previous)
             => current.Equals(previous) ? null : previous;
 
 
@@ -137,15 +141,13 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
 
         private Task AddOrUpdateAsync(ConsumerSession session)
         {
-            var rlp = _rlpDecoder.Encode(session);
+            Serialization.Rlp.Rlp rlp = _rlpDecoder.Encode(session);
             _database.Set(session.Id, rlp.Bytes);
 
             return Task.CompletedTask;
         }
 
         private ConsumerSession Decode(byte[] bytes)
-            => bytes is null
-                ? null
-                : _rlpDecoder.Decode(bytes.AsRlpStream());
+            => _rlpDecoder.Decode(bytes.AsRlpStream());
     }
 }

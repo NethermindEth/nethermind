@@ -25,7 +25,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
         public GasPriceDetailsForRpc? Fast { get; set; }
         public GasPriceDetailsForRpc? Fastest { get; set; }
         public GasPriceDetailsForRpc? Custom { get; set; }
-        public string Type { get; set; }
+        public string? Type { get; set; }
         public ulong UpdatedAt { get; set; }
 
         public GasPriceTypesForRpc()

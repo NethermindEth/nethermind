@@ -32,8 +32,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.InMemo
         private readonly ConcurrentDictionary<Keccak, DataDeliveryReceiptDetails> _db =
             new ConcurrentDictionary<Keccak, DataDeliveryReceiptDetails>();
 
-        public Task<DataDeliveryReceiptDetails> GetAsync(Keccak id)
-            => Task.FromResult(_db.TryGetValue(id, out DataDeliveryReceiptDetails receipt) ? receipt : null);
+        public Task<DataDeliveryReceiptDetails?> GetAsync(Keccak id)
+            => Task.FromResult(_db.TryGetValue(id, out DataDeliveryReceiptDetails? receipt) ? receipt : null);
 
         public async Task<IReadOnlyList<DataDeliveryReceiptDetails>> BrowseAsync(
             Keccak? depositId = null,

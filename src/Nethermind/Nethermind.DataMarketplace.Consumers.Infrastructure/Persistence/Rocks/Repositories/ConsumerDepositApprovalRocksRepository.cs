@@ -38,7 +38,11 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             _rlpDecoder = rlpDecoder;
         }
 
-        public Task<DepositApproval> GetAsync(Keccak id) => Task.FromResult(Decode(_database.Get(id)));
+        public Task<DepositApproval?> GetAsync(Keccak id)
+        {
+            byte[]? fromDatabase = _database.Get(id);
+            return fromDatabase == null ? null : Task.FromResult<DepositApproval?>(Decode(fromDatabase));
+        }
 
         public Task<PagedResult<DepositApproval>> BrowseAsync(GetConsumerDepositApprovals query)
         {
@@ -83,7 +87,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
 
         private Task AddOrUpdateAsync(DepositApproval depositApproval)
         {
-            var rlp = _rlpDecoder.Encode(depositApproval);
+            Serialization.Rlp.Rlp rlp = _rlpDecoder.Encode(depositApproval);
             _database.Set(depositApproval.Id, rlp.Bytes);
 
             return Task.CompletedTask;

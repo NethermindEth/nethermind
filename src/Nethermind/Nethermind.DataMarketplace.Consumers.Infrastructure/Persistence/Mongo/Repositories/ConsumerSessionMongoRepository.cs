@@ -36,7 +36,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.
             _database = database;
         }
 
-        public Task<ConsumerSession> GetAsync(Keccak id)
+        public Task<ConsumerSession?> GetAsync(Keccak id)
             => Sessions.Find(s => s.Id == id).FirstOrDefaultAsync();
 
         public async Task<ConsumerSession?> GetPreviousAsync(ConsumerSession session)

@@ -140,7 +140,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         public async Task<ResultWrapper<DepositDetailsForRpc>> ndm_getDeposit(Keccak depositId)
         {
             uint timestamp = (uint) _timestamper.EpochSeconds;
-            DepositDetails deposit = await _consumerService.GetDepositAsync(depositId);
+            DepositDetails? deposit = await _consumerService.GetDepositAsync(depositId);
 
             return deposit == null
                 ? ResultWrapper<DepositDetailsForRpc>.Fail($"Deposit: '{depositId}' was not found.")
@@ -149,7 +149,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
         public async Task<ResultWrapper<Keccak>> ndm_makeDeposit(MakeDepositForRpc deposit, UInt256? gasPrice = null)
         {
-            Keccak depositId = await _consumerService.MakeDepositAsync(deposit.DataAssetId, deposit.Units, deposit.Value,
+            Keccak? depositId = await _consumerService.MakeDepositAsync(deposit.DataAssetId, deposit.Units, deposit.Value,
                 gasPrice);
 
             return depositId is null
@@ -207,7 +207,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
         public async Task<ResultWrapper<Keccak>> ndm_requestDepositApproval(Keccak assetId, string kyc)
         {
-            Keccak id = await _consumerService.RequestDepositApprovalAsync(assetId, kyc);
+            Keccak? id = await _consumerService.RequestDepositApprovalAsync(assetId, kyc);
 
             return id is null
                 ? ResultWrapper<Keccak>.Fail($"Deposit approval for data asset: '{assetId} couldn't be requested.")
@@ -221,16 +221,23 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
             return ResultWrapper<FaucetResponseForRpc>.Success(new FaucetResponseForRpc(response));
         }
 
-        public ResultWrapper<string> ndm_pullData(Keccak depositId)
+        public ResultWrapper<string?> ndm_pullData(Keccak depositId)
         {
-            string data = _jsonRpcNdmConsumerChannel.Pull(depositId);
-
+            string? data = _jsonRpcNdmConsumerChannel.Pull(depositId);
             return ResultWrapper<string>.Success(data);
         }
 
         public async Task<ResultWrapper<NdmProxyResponseForRpc>> ndm_getProxy()
         {
             NdmProxy proxy = await _consumerService.GetProxyAsync();
+            if (proxy == null)
+            {
+                return ResultWrapper<NdmProxyResponseForRpc>.Success(new NdmProxyResponseForRpc
+                {
+                    Enabled = false,
+                    Urls = Array.Empty<string>()
+                });
+            }
 
             return ResultWrapper<NdmProxyResponseForRpc>.Success(new NdmProxyResponseForRpc
             {

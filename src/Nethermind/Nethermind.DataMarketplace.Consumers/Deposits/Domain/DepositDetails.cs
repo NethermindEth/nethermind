@@ -40,7 +40,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
             private set => _transactions = new HashSet<TransactionInfo>(value);
         }
 
-        public TransactionInfo Transaction { get; private set; }
+        public TransactionInfo? Transaction { get; private set; }
         public uint ConfirmationTimestamp { get; private set; }
         public bool Confirmed => ConfirmationTimestamp > 0 && Confirmations >= RequiredConfirmations;
         public bool Rejected { get; private set; }
@@ -53,7 +53,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
             private set => _claimedRefundTransactions = new HashSet<TransactionInfo>(value);
         }
         
-        public TransactionInfo ClaimedRefundTransaction { get; private set; }
+        public TransactionInfo? ClaimedRefundTransaction { get; private set; }
         public bool RefundCancelled { get; private set; }
         public bool RefundClaimed { get; private set; }
         public uint ConsumedUnits { get; private set; }

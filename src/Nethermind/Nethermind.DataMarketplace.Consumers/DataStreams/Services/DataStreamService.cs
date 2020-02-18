@@ -162,7 +162,7 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
                 }
             }
 
-            provider.SendEnableDataStream(depositId, client, args);
+            provider.SendEnableDataStream(depositId, client, args ?? Array.Empty<string>());
 
             return depositId;
         }

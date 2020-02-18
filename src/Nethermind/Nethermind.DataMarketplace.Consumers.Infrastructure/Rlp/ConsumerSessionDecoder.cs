@@ -38,12 +38,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
         public ConsumerSession Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            int sequenceLength = rlpStream.ReadSequenceLength();
-            if (sequenceLength == 0)
-            {
-                return null;
-            }
-
+            rlpStream.ReadSequenceLength();
             Keccak id = rlpStream.DecodeKeccak();
             Keccak depositId = rlpStream.DecodeKeccak();
             Keccak dataAssetId = rlpStream.DecodeKeccak();
@@ -70,11 +65,6 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
 
         public Serialization.Rlp.Rlp Encode(ConsumerSession item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
-            {
-                return Serialization.Rlp.Rlp.OfEmptySequence;
-            }
-
             return Serialization.Rlp.Rlp.Encode(
                 Serialization.Rlp.Rlp.Encode(item.Id),
                 Serialization.Rlp.Rlp.Encode(item.DepositId),

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -177,7 +178,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
         #region Providers
 
         public IReadOnlyList<Address> GetConnectedProviders()
-            => _providerService.GetPeers().Select(p => p.ProviderAddress).ToArray();
+            => _providerService.GetPeers().Select(p => p.ProviderAddress ?? throw new InvalidDataException("Connected provider peer has no provider address set")).ToArray();
             
         public Task<IReadOnlyList<ProviderInfo>> GetKnownProvidersAsync()
             => _providerService.GetKnownAsync();

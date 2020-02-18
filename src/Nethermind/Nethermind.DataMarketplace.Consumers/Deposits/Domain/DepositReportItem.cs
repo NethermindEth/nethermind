@@ -43,7 +43,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
         public uint RequiredConfirmations { get; }
         public bool Confirmed { get; }
         public bool Rejected { get; }
-        public Keccak ClaimedRefundTransactionHash { get; }
+        public Keccak? ClaimedRefundTransactionHash { get; }
         public bool RefundClaimed { get; }
         public uint ConsumedUnits { get; }
         public uint ClaimedUnits { get; }
@@ -54,10 +54,27 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
         public UInt256 RemainingValue { get; }
         public IEnumerable<DataDeliveryReceiptReportItem> Receipts { get; }
 
-        public DepositReportItem(Keccak id, Keccak assetId, string assetName, Address provider, string providerName,
-            UInt256 value, uint units, Address consumer, uint timestamp, uint expiryTime, bool expired,
-            Keccak transactionHash, uint confirmationTimestamp, uint confirmations, uint requiredConfirmations,
-            bool confirmed, bool rejected, Keccak claimedRefundTransactionHash, bool refundClaimed, uint consumedUnits,
+        public DepositReportItem(
+            Keccak id,
+            Keccak assetId,
+            string assetName,
+            Address provider,
+            string providerName,
+            UInt256 value,
+            uint units,
+            Address consumer,
+            uint timestamp,
+            uint expiryTime,
+            bool expired,
+            Keccak? transactionHash,
+            uint confirmationTimestamp,
+            uint confirmations,
+            uint requiredConfirmations,
+            bool confirmed,
+            bool rejected,
+            Keccak? claimedRefundTransactionHash,
+            bool refundClaimed,
+            uint consumedUnits,
             IEnumerable<DataDeliveryReceiptReportItem> receipts)
         {
             Id = id;

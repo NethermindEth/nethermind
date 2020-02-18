@@ -61,13 +61,32 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
 
         public async Task<DepositsReport> GetAsync(GetDepositsReport query)
         {
-            PagedResult<DepositDetails> deposits = query.DepositId is null
-                ? await _depositRepository.BrowseAsync(new GetDeposits
+            PagedResult<DepositDetails> deposits;
+            if (query.DepositId == null)
+            {
+                deposits =
+                    await _depositRepository.BrowseAsync(new GetDeposits
+                    {
+                        Results = int.MaxValue
+                    });
+            }
+            else
+            {
+                DepositDetails? detailsOfOne = await _depositRepository.GetAsync(query.DepositId);
+                if (detailsOfOne is null)
                 {
-                    Results = int.MaxValue
-                })
-                : PagedResult<DepositDetails>.Create(new[] {await _depositRepository.GetAsync(query.DepositId)},
+                    return DepositsReport.Empty;    
+                }
+                
+                deposits = PagedResult<DepositDetails>.Create(new[] {detailsOfOne},
                     1, 1, 1, 1);
+            }
+
+            if (deposits.Items.Count == 0)
+            {
+                return DepositsReport.Empty;
+            }
+
             if (!deposits.Items.Any() || deposits.Items.Any(d => d is null))
             {
                 return DepositsReport.Empty;

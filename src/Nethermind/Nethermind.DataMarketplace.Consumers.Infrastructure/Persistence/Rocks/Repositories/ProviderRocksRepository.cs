@@ -66,8 +66,6 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
         }
 
         private DepositDetails Decode(byte[] bytes)
-            => bytes is null
-                ? null
-                : _rlpDecoder.Decode(bytes.AsRlpStream());
+            => _rlpDecoder.Decode(bytes.AsRlpStream());
     }
 }

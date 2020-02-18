@@ -41,7 +41,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public async Task<NdmProxy> GetAsync()
+        public async Task<NdmProxy?> GetAsync()
         {
             NdmConfig? config = await _configManager.GetAsync(_configId);
             return new NdmProxy(config?.ProxyEnabled ?? false, config?.JsonRpcUrlProxies ?? Enumerable.Empty<string>());

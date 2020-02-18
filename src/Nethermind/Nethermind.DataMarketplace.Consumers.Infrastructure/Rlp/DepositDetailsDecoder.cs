@@ -36,17 +36,11 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
             Serialization.Rlp.Rlp.Decoders[typeof(DepositDetails)] = new DepositDetailsDecoder();
         }
 
-        public DepositDetails Decode(RlpStream rlpStream,
-            RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public DepositDetails Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             try
             {
-                int sequenceLength = rlpStream.ReadSequenceLength();
-                if (sequenceLength == 0)
-                {
-                    return null;
-                }
-
+                rlpStream.ReadSequenceLength();
                 Deposit deposit = Serialization.Rlp.Rlp.Decode<Deposit>(rlpStream);
                 DataAsset dataAsset = Serialization.Rlp.Rlp.Decode<DataAsset>(rlpStream);
                 Address consumer = rlpStream.DecodeAddress();
@@ -101,11 +95,6 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
 
         public Serialization.Rlp.Rlp Encode(DepositDetails item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
-            {
-                return Serialization.Rlp.Rlp.OfEmptySequence;
-            }
-
             return Serialization.Rlp.Rlp.Encode(
                 Serialization.Rlp.Rlp.Encode(item.Deposit),
                 Serialization.Rlp.Rlp.Encode(item.DataAsset),
@@ -124,12 +113,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
                 Serialization.Rlp.Rlp.Encode(item.Confirmations),
                 Serialization.Rlp.Rlp.Encode(item.RequiredConfirmations));
         }
-
-        public void Encode(MemoryStream stream, DepositDetails item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new System.NotImplementedException();
-        }
-
+        
         public int GetLength(DepositDetails item, RlpBehaviors rlpBehaviors)
         {
             throw new System.NotImplementedException();

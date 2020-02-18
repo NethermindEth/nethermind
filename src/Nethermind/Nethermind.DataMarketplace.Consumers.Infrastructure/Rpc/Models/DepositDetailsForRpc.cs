@@ -42,7 +42,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
         public TransactionInfoForRpc? ClaimedRefundTransaction { get; set; }
         public IEnumerable<TransactionInfoForRpc>? ClaimedRefundTransactions { get; set; }
         public uint ConsumedUnits { get; set; }
-        public string Kyc { get; set; }
+        public string? Kyc { get; set; }
         public uint Confirmations { get; set; }
         public uint RequiredConfirmations { get; set; }
 

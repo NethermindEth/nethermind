@@ -24,7 +24,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Repositories
 {
     public interface IConsumerSessionRepository
     {
-        Task<ConsumerSession> GetAsync(Keccak id);
+        Task<ConsumerSession?> GetAsync(Keccak id);
         Task<ConsumerSession?> GetPreviousAsync(ConsumerSession session);
         Task<PagedResult<ConsumerSession>> BrowseAsync(GetConsumerSessions query);
         Task AddAsync(ConsumerSession session);

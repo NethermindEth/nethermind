@@ -39,7 +39,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared
         #endregion
         
         #region DataAssets
-        IReadOnlyList<DataAsset?> GetDiscoveredDataAssets();
+        IReadOnlyList<DataAsset> GetDiscoveredDataAssets();
         Task<IReadOnlyList<DataAssetInfo>> GetKnownDataAssetsAsync();
         void AddDiscoveredDataAsset(DataAsset dataAssets, INdmPeer peer);
         void AddDiscoveredDataAssets(DataAsset[] dataAssets, INdmPeer peer);

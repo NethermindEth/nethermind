@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.ComponentModel;
+using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -58,7 +60,17 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             }
             
             if (_logger.IsWarn) _logger.Warn($"NDM instantly verifying deposit with id: '{depositId}'...");
-            DepositDetails deposit = await _depositDetailsRepository.GetAsync(depositId);
+            DepositDetails? deposit = await _depositDetailsRepository.GetAsync(depositId);
+            if (deposit is null)
+            {
+                throw new InvalidDataException($"Deposit details are null just after creating deposit with id '{depositId}'");
+            }
+            
+            if (deposit.Transaction == null)
+            {
+                throw new InvalidDataException($"Retrieved a deposit {depositId} without Transaction set.");
+            }
+            
             deposit.Transaction.SetIncluded();
             deposit.SetConfirmations(_requiredBlockConfirmations);
             deposit.SetConfirmationTimestamp((uint) _timestamper.EpochSeconds);

@@ -123,11 +123,12 @@ namespace Nethermind.DataMarketplace.Consumers.Providers.Services
                 return;
             }
             
-            Address? previousAddress = peer.ProviderAddress;
-            if (previousAddress == null)
+            if (peer.ProviderAddress == null)
             {
                 throw new InvalidOperationException($"While changing {nameof(INdmPeer.ProviderAddress)} to {address} found that the previous address has been null.");
             }
+            
+            Address previousAddress = peer.ProviderAddress;
             
             if (_logger.IsInfo) _logger.Info($"Changing provider address: '{previousAddress}' -> '{address}' for peer: '{peer.NodeId}'.");
             _providersWithCommonAddress.TryRemove(peer.ProviderAddress, out _);

@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -82,21 +83,26 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             {
                 return new UpdatedTransactionInfo(status);
             }
-            
-            if (deposit.Confirmed)
+
+            if (deposit!.Transaction == null)
             {
-                if (_logger.IsError) _logger.Error($"Deposit with id: '{depositId}' was confirmed, transaction hash: '{deposit.Transaction.Hash}'.");
-                return new UpdatedTransactionInfo(UpdatedTransactionStatus.ResourceConfirmed);
+                throw new InvalidDataException($"Managed to retrieve deposit with id: '{depositId}' with a null Transaction");
             }
             
-            Keccak currentHash = deposit.Transaction.Hash;
-            ulong gasLimit = deposit.Transaction.GasLimit;
+            if (deposit!.Confirmed)
+            {
+                if (_logger.IsError) _logger.Error($"Deposit with id: '{depositId}' was confirmed, transaction hash: '{deposit!.Transaction.Hash}'.");
+                return new UpdatedTransactionInfo(UpdatedTransactionStatus.ResourceConfirmed);
+            }
+
+            Keccak currentHash = deposit!.Transaction.Hash;
+            ulong gasLimit = deposit!.Transaction.GasLimit;
             if (_logger.IsInfo) _logger.Info($"Updating gas price for deposit with id: '{depositId}', current transaction hash: '{currentHash}'.");
             Keccak transactionHash = await _transactionService.UpdateGasPriceAsync(currentHash, gasPrice);
             if (_logger.IsInfo) _logger.Info($"Received transaction hash: '{transactionHash}' for deposit with id: '{depositId}' after updating gas price.");
-            deposit.AddTransaction(TransactionInfo.SpeedUp(transactionHash, deposit.Deposit.Value, gasPrice, gasLimit,
+            deposit!.AddTransaction(TransactionInfo.SpeedUp(transactionHash, deposit!.Deposit.Value, gasPrice, gasLimit,
                 _timestamper.EpochSeconds));
-            await _depositRepository.UpdateAsync(deposit);
+            await _depositRepository.UpdateAsync(deposit!);
             if (_logger.IsInfo) _logger.Info($"Updated gas price for deposit with id: '{depositId}', transaction hash: '{transactionHash}'.");
 
             return new UpdatedTransactionInfo(UpdatedTransactionStatus.Ok, transactionHash);
@@ -115,21 +121,26 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             {
                 return new UpdatedTransactionInfo(status);
             }
+
+            if (deposit!.Transaction == null)
+            {
+                throw new InvalidDataException($"Managed to retrieve deposit {depositId} without Transaction set");
+            }
             
-            if (deposit.ClaimedRefundTransaction is null)
+            if (deposit!.ClaimedRefundTransaction is null)
             {
                 if (_logger.IsError) _logger.Error($"Deposit with id: '{depositId}' has no transaction for refund claim.");
                 return new UpdatedTransactionInfo(UpdatedTransactionStatus.MissingTransaction);
             }
 
-            Keccak currentHash = deposit.ClaimedRefundTransaction.Hash;
-            if (deposit.RefundClaimed)
+            Keccak currentHash = deposit!.ClaimedRefundTransaction.Hash;
+            if (deposit!.RefundClaimed)
             {
                 if (_logger.IsError) _logger.Error($"Deposit with id: '{depositId}' has already claimed refund (transaction hash: '{currentHash}').");
                 return new UpdatedTransactionInfo(UpdatedTransactionStatus.ResourceConfirmed);
             }
             
-            ulong gasLimit = deposit.Transaction.GasLimit;
+            ulong gasLimit = deposit!.Transaction.GasLimit;
             if (_logger.IsInfo) _logger.Info($"Updating gas price for refund claim for deposit with id: '{depositId}', current transaction hash: '{currentHash}'.");
             Keccak transactionHash = await _transactionService.UpdateGasPriceAsync(currentHash, gasPrice);
             if (_logger.IsInfo) _logger.Info($"Received transaction hash: '{transactionHash}' for deposit with id: '{depositId}' after updating gas price for refund claim.");
@@ -150,12 +161,17 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                 return new UpdatedTransactionInfo(status);
             }
 
-            if (deposit!.Confirmed)
+            if (deposit!.Transaction == null)
             {
-                if (_logger.IsError) _logger.Error($"Deposit with id: '{depositId}' was confirmed, transaction hash: '{deposit.Transaction.Hash}'.");
-                return new UpdatedTransactionInfo(UpdatedTransactionStatus.ResourceConfirmed);
+                throw new InvalidDataException($"Maneged to retrieve deposit with id: '{depositId}' which has no Transaction set.");
             }
             
+            if (deposit!.Confirmed)
+            {
+                if (_logger.IsError) _logger.Error($"Deposit with id: '{depositId}' was confirmed, transaction hash: '{deposit!.Transaction.Hash}'.");
+                return new UpdatedTransactionInfo(UpdatedTransactionStatus.ResourceConfirmed);
+            }
+
             if (deposit!.Transaction.State != TransactionState.Pending)
             {
                 if (_logger.IsError) _logger.Error($"Cannot cancel transaction with hash: '{deposit!.Transaction.Hash}' for deposit with id: '{depositId}' (state: '{deposit.Transaction.State}').");
@@ -181,22 +197,22 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                 return new UpdatedTransactionInfo(status);
             }
             
-            if (deposit.ClaimedRefundTransaction is null)
+            if (deposit!.ClaimedRefundTransaction is null)
             {
                 if (_logger.IsError) _logger.Error($"Deposit with id: '{depositId}' has no transaction for refund claim.");
                 return new UpdatedTransactionInfo(UpdatedTransactionStatus.MissingTransaction);
             }
             
-            Keccak currentHash = deposit.ClaimedRefundTransaction.Hash;
-            if (deposit.RefundClaimed)
+            Keccak currentHash = deposit!.ClaimedRefundTransaction.Hash;
+            if (deposit!.RefundClaimed)
             {
                 if (_logger.IsError) _logger.Error($"Deposit with id: '{depositId}' has already claimed refund (transaction hash: '{currentHash}').");
                 return new UpdatedTransactionInfo(UpdatedTransactionStatus.ResourceConfirmed);
             }
             
-            if (deposit.ClaimedRefundTransaction.State != TransactionState.Pending)
+            if (deposit!.ClaimedRefundTransaction.State != TransactionState.Pending)
             {
-                if (_logger.IsError) _logger.Error($"Cannot cancel transaction with hash: '{deposit.ClaimedRefundTransaction.Hash}' for refund for deposit with id: '{depositId}' (state: '{deposit.ClaimedRefundTransaction.State}').");
+                if (_logger.IsError) _logger.Error($"Cannot cancel transaction with hash: '{deposit!.ClaimedRefundTransaction.Hash}' for refund for deposit with id: '{depositId}' (state: '{deposit.ClaimedRefundTransaction.State}').");
                 return new UpdatedTransactionInfo(UpdatedTransactionStatus.AlreadyIncluded);
             }
             
@@ -212,7 +228,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
 
         private async Task<(UpdatedTransactionStatus status, DepositDetails? deposit)> TryGetDepositAsync(Keccak depositId)
         {
-            DepositDetails deposit = await _depositRepository.GetAsync(depositId);
+            DepositDetails? deposit = await _depositRepository.GetAsync(depositId);
             if (deposit is null)
             {
                 if (_logger.IsError) _logger.Error($"Deposit with id: '{depositId}' was not found.");

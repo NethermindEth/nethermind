@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -60,6 +62,11 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             }
             
             Block? latestBlock = await _blockchainBridge.GetLatestBlockAsync();
+            if (latestBlock == null)
+            {
+                return RefundClaimStatus.Empty;
+            }
+            
             now = (ulong) latestBlock.Timestamp;
             if (!deposit.CanClaimRefund(now))
             {
@@ -119,6 +126,11 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             if (transactionHash is null)
             {
                 Address provider = deposit.DataAsset.Provider.Address;
+                if (deposit.EarlyRefundTicket == null)
+                {
+                    throw new InvalidDataException($"Early refund ticket is null on a claimable deposit {depositId}");
+                }
+                
                 EarlyRefundTicket ticket = deposit.EarlyRefundTicket;
                 EarlyRefundClaim earlyRefundClaim = new EarlyRefundClaim(ticket.DepositId, deposit.DataAsset.Id,
                     deposit.Deposit.Units, deposit.Deposit.Value, deposit.Deposit.ExpiryTime, deposit.Pepper, provider,

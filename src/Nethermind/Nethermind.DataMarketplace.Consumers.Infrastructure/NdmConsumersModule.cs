@@ -110,7 +110,12 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             switch (ndmConfig.Persistence?.ToLowerInvariant())
             {
                 case "mongo":
-                    IMongoDatabase database = services.RequiredServices.MongoProvider.GetDatabase();
+                    IMongoDatabase? database = services.RequiredServices.MongoProvider.GetDatabase();
+                    if (database == null)
+                    {
+                        throw new ApplicationException("Failed to initialize Mongo DB.");
+                    }
+                    
                     depositRepository = new DepositDetailsMongoRepository(database);
                     depositApprovalRepository = new ConsumerDepositApprovalMongoRepository(database);
                     providerRepository = new ProviderMongoRepository(database);

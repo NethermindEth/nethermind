@@ -108,7 +108,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             }
             
             long headNumber = await _blockchainBridge.GetLatestBlockNumberAsync();
-            (uint confirmations, bool rejected) = await VerifyDepositConfirmationsAsync(deposit, transactionDetails, headNumber);
+            (uint confirmations, bool rejected) = await VerifyDepositConfirmationsAsync(deposit, transactionDetails!, headNumber);
             if (rejected)
             {
                 deposit.Reject();
@@ -142,7 +142,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 return (0, false);
             }
             
-            Keccak transactionHash = deposit.Transaction.Hash;
+            Keccak? transactionHash = deposit.Transaction?.Hash;
             uint confirmations = 0u;
             Block? block = await _blockchainBridge.FindBlockAsync(headNumber);
             do

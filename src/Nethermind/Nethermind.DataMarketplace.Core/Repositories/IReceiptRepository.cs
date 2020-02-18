@@ -23,7 +23,7 @@ namespace Nethermind.DataMarketplace.Core.Repositories
 {
     public interface IReceiptRepository
     {
-        Task<DataDeliveryReceiptDetails> GetAsync(Keccak id);
+        Task<DataDeliveryReceiptDetails?> GetAsync(Keccak id);
 
         Task<IReadOnlyList<DataDeliveryReceiptDetails>> BrowseAsync(Keccak? depositId = null, Keccak? dataAssetId = null, Keccak? sessionId = null);
 

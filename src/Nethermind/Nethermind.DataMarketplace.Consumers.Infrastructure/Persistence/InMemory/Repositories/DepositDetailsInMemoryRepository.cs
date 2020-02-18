@@ -35,7 +35,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.InMemo
             _db = db;
         }
 
-        public Task<DepositDetails> GetAsync(Keccak id) => Task.FromResult(_db.Get(id));
+        public Task<DepositDetails?> GetAsync(Keccak id) => Task.FromResult(_db.Get(id));
 
         public Task<PagedResult<DepositDetails>> BrowseAsync(GetDeposits query)
         {

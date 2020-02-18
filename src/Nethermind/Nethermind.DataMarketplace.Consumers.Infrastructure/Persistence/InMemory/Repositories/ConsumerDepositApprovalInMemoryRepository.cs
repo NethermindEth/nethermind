@@ -30,7 +30,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.InMemo
         private readonly ConcurrentDictionary<Keccak, DepositApproval> _db =
             new ConcurrentDictionary<Keccak, DepositApproval>();
 
-        public Task<DepositApproval> GetAsync(Keccak id)
+        public Task<DepositApproval?> GetAsync(Keccak id)
             => Task.FromResult(_db.TryGetValue(id, out var depositApproval) ? depositApproval : null);
 
         public Task<PagedResult<DepositApproval>> BrowseAsync(GetConsumerDepositApprovals query)
