@@ -24,7 +24,7 @@ namespace Nethermind.Store.Proofs
     public class StorageProof
     {
         public byte[][] Proof { get; set; }
-        public Keccak Key { get; set; }
+        public byte[] Key { get; set; }
         public byte[] Value { get; set; }
     }
 }
