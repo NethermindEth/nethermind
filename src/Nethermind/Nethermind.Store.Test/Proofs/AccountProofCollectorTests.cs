@@ -29,6 +29,45 @@ namespace Nethermind.Store.Test.Proofs
     public class AccountProofCollectorTests
     {
         [Test]
+        public void Non_existing_account_is_valid()
+        {
+            StateTree tree = new StateTree();
+            AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA, new UInt256[] {1, 2, 3});
+            tree.Accept(accountProofCollector, tree.RootHash);
+            AccountProof proof = accountProofCollector.BuildResult();
+            Assert.AreEqual(TestItem.AddressA, proof.Address);
+            Assert.AreEqual(Keccak.OfAnEmptyString, proof.CodeHash);
+            Assert.AreEqual(Keccak.OfAnEmptySequenceRlp, proof.StorageRoot);
+            Assert.AreEqual(UInt256.Zero, proof.Balance);
+            Assert.AreEqual(null, proof.StorageProofs[0].Value);
+            Assert.AreEqual(null, proof.StorageProofs[1].Value);
+            Assert.AreEqual(null, proof.StorageProofs[2].Value);
+        }
+        
+        [Test]
+        public void Non_existing_account_is_valid_on_non_empty_tree()
+        {
+            StateTree tree = new StateTree();
+
+            Account account1 = Build.An.Account.WithBalance(1).TestObject;
+            Account account2 = Build.An.Account.WithBalance(2).TestObject;
+            tree.Set(TestItem.AddressA, account1);
+            tree.Set(TestItem.AddressB, account2);
+            tree.Commit();
+            
+            AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressC, new UInt256[] {1, 2, 3});
+            tree.Accept(accountProofCollector, tree.RootHash);
+            AccountProof proof = accountProofCollector.BuildResult();
+            Assert.AreEqual(TestItem.AddressC, proof.Address);
+            Assert.AreEqual(Keccak.OfAnEmptyString, proof.CodeHash);
+            Assert.AreEqual(Keccak.OfAnEmptySequenceRlp, proof.StorageRoot);
+            Assert.AreEqual(UInt256.Zero, proof.Balance);
+            Assert.AreEqual(null, proof.StorageProofs[0].Value);
+            Assert.AreEqual(null, proof.StorageProofs[1].Value);
+            Assert.AreEqual(null, proof.StorageProofs[2].Value);
+        }
+
+        [Test]
         public void Addresses_are_correct()
         {
             StateTree tree = new StateTree();
@@ -49,7 +88,7 @@ namespace Nethermind.Store.Test.Proofs
             AccountProof proof2 = accountProofCollector2.BuildResult();
             Assert.AreEqual(TestItem.AddressB, proof2.Address);
         }
-        
+
         [Test]
         public void Balance_is_correct()
         {
@@ -221,23 +260,23 @@ namespace Nethermind.Store.Test.Proofs
             AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA, new[] {Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000"), Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000001")});
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
-            Assert.AreEqual("0x290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563", proof.StorageProofs[0].Key.Bytes.ToHexString(true));
-            Assert.AreEqual("0xb10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6", proof.StorageProofs[1].Key.Bytes.ToHexString(true));
+            Assert.AreEqual("0x0000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[0].Key.ToHexString(true));
+            Assert.AreEqual("0x0000000000000000000000000000000000000000000000000000000000000001", proof.StorageProofs[1].Key.ToHexString(true));
         }
 
         [Test]
         public void Storage_proofs_have_values_set_complex_setup()
         {
-            Keccak a = new Keccak("0x000000000000000000000000000000000000000000aaaaaaaaaaaaaaaaaaaaaa");
-            Keccak b = new Keccak("0x0000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
-            Keccak c = new Keccak("0x0000000000cccccccccccccccccccccccccccccccccccccccccccccccccccccc");
+            byte[] a = Bytes.FromHexString("0x000000000000000000000000000000000000000000aaaaaaaaaaaaaaaaaaaaaa");
+            byte[] b = Bytes.FromHexString("0x0000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+            byte[] c = Bytes.FromHexString("0x0000000000cccccccccccccccccccccccccccccccccccccccccccccccccccccc");
 
             IDb memDb = new MemDb();
             StateTree tree = new StateTree(memDb);
             StorageTree storageTree = new StorageTree(memDb);
-            storageTree.Set(a.Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(b.Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(c.Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Commit();
 
             byte[] code = new byte[] {1, 2, 3};
@@ -251,7 +290,7 @@ namespace Nethermind.Store.Test.Proofs
             tree.Accept(dumper, tree.RootHash);
             Console.WriteLine(dumper.ToString());
 
-            AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA, new Keccak[] {a, b, c});
+            AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA, new byte[][] {a, b, c});
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[0].Value.ToHexString(true));
@@ -262,20 +301,20 @@ namespace Nethermind.Store.Test.Proofs
         [Test]
         public void Storage_proofs_have_values_set_complex_2_setup()
         {
-            Keccak a = new Keccak("0x000000000000000000000000000000000000000000aaaaaaaaaaaaaaaaaaaaaa");
-            Keccak b = new Keccak("0x0000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
-            Keccak c = new Keccak("0x0000000000cccccccccccccccccccccccccccccccccccccccccccccccccccccc");
-            Keccak d = new Keccak("0x0000000000dddddddddddddddddddddddddddddddddddddddddddddddddddddd");
-            Keccak e = new Keccak("0x0000000000eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
+            byte[] a = Bytes.FromHexString("0x000000000000000000000000000000000000000000aaaaaaaaaaaaaaaaaaaaaa");
+            byte[] b = Bytes.FromHexString("0x0000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+            byte[] c = Bytes.FromHexString("0x0000000000cccccccccccccccccccccccccccccccccccccccccccccccccccccc");
+            byte[] d = Bytes.FromHexString("0x0000000000dddddddddddddddddddddddddddddddddddddddddddddddddddddd");
+            byte[] e = Bytes.FromHexString("0x0000000000eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
 
             IDb memDb = new MemDb();
             StateTree tree = new StateTree(memDb);
             StorageTree storageTree = new StorageTree(memDb);
-            storageTree.Set(a.Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(b.Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(c.Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(d.Bytes, Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(e.Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(d).Bytes, Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Commit();
 
             byte[] code = new byte[] {1, 2, 3};
@@ -289,7 +328,7 @@ namespace Nethermind.Store.Test.Proofs
             tree.Accept(dumper, tree.RootHash);
             Console.WriteLine(dumper.ToString());
 
-            AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA, new Keccak[] {a, b, c, d, e});
+            AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA, new byte[][] {a, b, c, d, e});
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[0].Value.ToHexString(true));
@@ -302,20 +341,20 @@ namespace Nethermind.Store.Test.Proofs
         [Test]
         public void Storage_proofs_have_values_set_complex_3_setup()
         {
-            Keccak a = new Keccak("0x000000000000000000000000000000000000000000aaaaaaaaaaaaaaaaaaaaaa");
-            Keccak b = new Keccak("0x0000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
-            Keccak c = new Keccak("0x00000000001ccccccccccccccccccccccccccccccccccccccccccccccccccccc");
-            Keccak d = new Keccak("0x00000000001ddddddddddddddddddddddddddddddddddddddddddddddddddddd");
-            Keccak e = new Keccak("0x00000000001eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
+            byte[] a = Bytes.FromHexString("0x000000000000000000000000000000000000000000aaaaaaaaaaaaaaaaaaaaaa");
+            byte[] b = Bytes.FromHexString("0x0000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+            byte[] c = Bytes.FromHexString("0x00000000001ccccccccccccccccccccccccccccccccccccccccccccccccccccc");
+            byte[] d = Bytes.FromHexString("0x00000000001ddddddddddddddddddddddddddddddddddddddddddddddddddddd");
+            byte[] e = Bytes.FromHexString("0x00000000001eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
 
             IDb memDb = new MemDb();
             StateTree tree = new StateTree(memDb);
             StorageTree storageTree = new StorageTree(memDb);
-            storageTree.Set(a.Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(b.Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(c.Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(d.Bytes, Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(e.Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(d).Bytes, Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Commit();
 
             byte[] code = new byte[] {1, 2, 3};
@@ -329,7 +368,7 @@ namespace Nethermind.Store.Test.Proofs
             tree.Accept(dumper, tree.RootHash);
             Console.WriteLine(dumper.ToString());
 
-            AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA, new Keccak[] {a, b, c, d, e});
+            AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA, new byte[][] {a, b, c, d, e});
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[0].Value.ToHexString(true));
@@ -342,18 +381,18 @@ namespace Nethermind.Store.Test.Proofs
         [Test]
         public void Storage_proofs_when_values_are_missing_setup()
         {
-            Keccak a = new Keccak("0x000000000000000000000000000000000000000000aaaaaaaaaaaaaaaaaaaaaa");
-            Keccak b = new Keccak("0x0000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
-            Keccak c = new Keccak("0x00000000001ccccccccccccccccccccccccccccccccccccccccccccccccccccc");
-            Keccak d = new Keccak("0x00000000001ddddddddddddddddddddddddddddddddddddddddddddddddddddd");
-            Keccak e = new Keccak("0x00000000001eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
+            byte[] a = Bytes.FromHexString("0x000000000000000000000000000000000000000000aaaaaaaaaaaaaaaaaaaaaa");
+            byte[] b = Bytes.FromHexString("0x0000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+            byte[] c = Bytes.FromHexString("0x00000000001ccccccccccccccccccccccccccccccccccccccccccccccccccccc");
+            byte[] d = Bytes.FromHexString("0x00000000001ddddddddddddddddddddddddddddddddddddddddddddddddddddd");
+            byte[] e = Bytes.FromHexString("0x00000000001eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
 
             IDb memDb = new MemDb();
             StateTree tree = new StateTree(memDb);
             StorageTree storageTree = new StorageTree(memDb);
-            storageTree.Set(a.Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(c.Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(e.Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Commit();
 
             byte[] code = new byte[] {1, 2, 3};
@@ -367,11 +406,11 @@ namespace Nethermind.Store.Test.Proofs
             tree.Accept(dumper, tree.RootHash);
             Console.WriteLine(dumper.ToString());
 
-            AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA, new Keccak[] {a, b, c, d, e});
+            AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA, new byte[][] {a, b, c, d, e});
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[0].Value?.ToHexString(true) ?? "0x");
-            Assert.AreEqual("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[1].Value?.ToHexString(true) ?? "0x");
+            Assert.AreEqual("0x", proof.StorageProofs[1].Value?.ToHexString(true) ?? "0x");
             Assert.AreEqual("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[2].Value?.ToHexString(true) ?? "0x");
             Assert.AreEqual("0x", proof.StorageProofs[3].Value?.ToHexString(true) ?? "0x");
             Assert.AreEqual("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[4].Value?.ToHexString(true) ?? "0x");
@@ -404,20 +443,20 @@ namespace Nethermind.Store.Test.Proofs
         [Test]
         public void Storage_proofs_have_values_set_selective_setup()
         {
-            Keccak a = new Keccak("0x000000000000000000000000000000000000000000aaaaaaaaaaaaaaaaaaaaaa");
-            Keccak b = new Keccak("0x0000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
-            Keccak c = new Keccak("0x00000000001ccccccccccccccccccccccccccccccccccccccccccccccccccccc");
-            Keccak d = new Keccak("0x00000000001ddddddddddddddddddddddddddddddddddddddddddddddddddddd");
-            Keccak e = new Keccak("0x00000000001eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
+            byte[] a = Bytes.FromHexString("0x000000000000000000000000000000000000000000aaaaaaaaaaaaaaaaaaaaaa");
+            byte[] b = Bytes.FromHexString("0x0000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+            byte[] c = Bytes.FromHexString("0x00000000001ccccccccccccccccccccccccccccccccccccccccccccccccccccc");
+            byte[] d = Bytes.FromHexString("0x00000000001ddddddddddddddddddddddddddddddddddddddddddddddddddddd");
+            byte[] e = Bytes.FromHexString("0x00000000001eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
 
             IDb memDb = new MemDb();
             StateTree tree = new StateTree(memDb);
             StorageTree storageTree = new StorageTree(memDb);
-            storageTree.Set(a.Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(b.Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(c.Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(d.Bytes, Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(e.Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(d).Bytes, Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Commit();
 
             byte[] code = new byte[] {1, 2, 3};
@@ -431,7 +470,7 @@ namespace Nethermind.Store.Test.Proofs
             tree.Accept(dumper, tree.RootHash);
             Console.WriteLine(dumper.ToString());
 
-            AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA, new Keccak[] {a, c, e});
+            AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA, new byte[][] {a, c, e});
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[0].Value.ToHexString(true));

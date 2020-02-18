@@ -31,11 +31,11 @@ namespace Nethermind.Store.Proofs
 
         public UInt256 Balance { get; set; }
 
-        public Keccak CodeHash { get; set; }
+        public Keccak CodeHash { get; set; } = Keccak.OfAnEmptyString;
 
         public UInt256 Nonce { get; set; }
 
-        public Keccak StorageRoot { get; set; }
+        public Keccak StorageRoot { get; set; } = Keccak.OfAnEmptySequenceRlp;
 
         public StorageProof[] StorageProofs { get; set; }
     }
