@@ -56,7 +56,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.
             }
         }
 
-        private static ConsumerSession GetUniqueSession(ConsumerSession current, ConsumerSession previous)
+        private static ConsumerSession? GetUniqueSession(ConsumerSession current, ConsumerSession previous)
             => current.Equals(previous) ? null : previous;
 
         public async Task<PagedResult<ConsumerSession>> BrowseAsync(GetConsumerSessions query)

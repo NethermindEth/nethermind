@@ -30,7 +30,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo.Repositori
             _database = database;
         }
 
-        public Task<NdmConfig> GetAsync(string id) => Configs.FindSync(c => c.Id == id).FirstOrDefaultAsync();
+        public Task<NdmConfig?> GetAsync(string id) => Configs.FindSync(c => c.Id == id).FirstOrDefaultAsync();
 
         public Task AddAsync(NdmConfig config) => Configs.InsertOneAsync(config);
 

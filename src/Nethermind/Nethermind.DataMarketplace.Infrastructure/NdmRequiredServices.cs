@@ -138,10 +138,10 @@ namespace Nethermind.DataMarketplace.Infrastructure
             Notifier = notifier ?? throw new ArgumentNullException(nameof(notifier));
             EnableUnsecuredDevWallet = enableUnsecuredDevWallet;
             BlockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
-            JsonRpcClientProxy = jsonRpcClientProxy ?? throw new ArgumentNullException(nameof(jsonRpcClientProxy));
-            EthJsonRpcClientProxy = ethJsonRpcClientProxy ?? throw new ArgumentNullException(nameof(ethJsonRpcClientProxy));
             HttpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
             MonitoringService = monitoringService ?? throw new ArgumentNullException(nameof(monitoringService));
+            JsonRpcClientProxy = jsonRpcClientProxy;
+            EthJsonRpcClientProxy = ethJsonRpcClientProxy;
         }
     }
 }

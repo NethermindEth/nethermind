@@ -40,11 +40,17 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             _rlpDecoder = rlpDecoder;
         }
 
-        public async Task<DepositDetails> GetAsync(Keccak id)
+        public async Task<DepositDetails?> GetAsync(Keccak id)
         {
             await Task.CompletedTask;
 
-            return Decode(_database.Get(id));
+            byte[] bytes = _database.Get(id);
+            if (bytes == null)
+            {
+                return null;
+            }
+            
+            return Decode(bytes);
         }
 
         public Task<PagedResult<DepositDetails>> BrowseAsync(GetDeposits query)

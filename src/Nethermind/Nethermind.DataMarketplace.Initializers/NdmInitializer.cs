@@ -153,6 +153,12 @@ namespace Nethermind.DataMarketplace.Initializers
                 enode.PublicKey, providerAddress, consumerAddress, config.VerifyP2PSignature);
             ProtocolHandlerFactory protocolHandlerFactory = new ProtocolHandlerFactory(subprotocolFactory, protocolValidator,
                 ethRequestService, logManager);
+
+            if (ndmConfig.ProviderAddress == null)
+            {
+                return NullNdmCapabilityConnector.Instance; 
+            }
+            
             NdmCapabilityConnector capabilityConnector = new NdmCapabilityConnector(
                 protocolsManager,
                 protocolHandlerFactory,

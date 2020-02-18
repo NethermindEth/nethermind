@@ -38,8 +38,12 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositori
             _rlpDecoder = rlpDecoder;
         }
 
-        public Task<DataDeliveryReceiptDetails> GetAsync(Keccak id)
-            => Task.FromResult(Decode(_database.Get(id)));
+        public Task<DataDeliveryReceiptDetails?> GetAsync(Keccak id)
+        {
+            byte[] bytes = _database.Get(id);
+            return bytes == null ? null : Task.FromResult(Decode(bytes));
+        }
+            
 
         public async Task<IReadOnlyList<DataDeliveryReceiptDetails>> BrowseAsync(Keccak? depositId = null, Keccak? dataAssetId = null, Keccak? sessionId = null)
         {

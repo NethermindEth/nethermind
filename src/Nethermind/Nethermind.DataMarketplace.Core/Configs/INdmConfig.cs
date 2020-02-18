@@ -42,15 +42,15 @@ namespace Nethermind.DataMarketplace.Core.Configs
         [ConfigItem(Description = "If 'false' then signature verification will be skipped during NDM capability P2P handshake", DefaultValue = "true")]
         bool VerifyP2PSignature { get; }
         [ConfigItem(Description = "An account address (hot wallet) of the data provider", DefaultValue = "")]
-        string ProviderAddress { get; }
+        string? ProviderAddress { get; }
         [ConfigItem(Description = "An account address (cold wallet) of the data provider", DefaultValue = "")]
-        string ProviderColdWalletAddress { get; }
+        string? ProviderColdWalletAddress { get; }
         [ConfigItem(Description = "An account address (hot wallet) of the data consumer", DefaultValue = "")]
-        string ConsumerAddress { get; }
+        string? ConsumerAddress { get; }
 
         [DoNotUseInSecuredContext("Hardcode so cannot be overwritten to redirect to another contract")]
         [ConfigItem(Description = "An address of the smart contract used by NDM", DefaultValue = "0x82c839fa4a41e158f613ec8a1a84be3c816d370f")]
-        string ContractAddress { get; }
+        string? ContractAddress { get; }
 
         [ConfigItem(Description = "Data provider's threshold (Wei) that once reached will send a receipt request to the data consumer", DefaultValue = "10000000000000000")]
         UInt256 ReceiptRequestThreshold { get; }

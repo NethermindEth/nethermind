@@ -78,7 +78,7 @@ namespace Nethermind.DataMarketplace.Test.Initializers
         [Test]
         public void protocol_initialized_event_should_be_and_set_to_faucet_if_host_address_doest_match()
         {
-            var protocolHandler = Substitute.For<IProtocolHandler>();
+            var protocolHandler = Substitute.For<IProtocolHandler, INdmPeer>();
             const string host = "127.0.0.1";
             var node = new Node(host, 8545);
             var session = new Session(8545, LimboLogs.Instance, Substitute.For<IChannel>(), node);

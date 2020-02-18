@@ -37,7 +37,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
         public IEnumerable<TransactionInfo> Transactions
         {
             get => _transactions;
-            private set => _transactions = new HashSet<TransactionInfo>(value);
+            private set => _transactions = new HashSet<TransactionInfo>(value ?? new List<TransactionInfo>());
         }
 
         public TransactionInfo? Transaction { get; private set; }

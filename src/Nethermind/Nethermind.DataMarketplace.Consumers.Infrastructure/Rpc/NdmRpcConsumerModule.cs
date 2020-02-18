@@ -142,13 +142,18 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
             uint timestamp = (uint) _timestamper.EpochSeconds;
             DepositDetails? deposit = await _consumerService.GetDepositAsync(depositId);
 
-            return deposit == null
+            return deposit is null
                 ? ResultWrapper<DepositDetailsForRpc>.Fail($"Deposit: '{depositId}' was not found.")
                 : ResultWrapper<DepositDetailsForRpc>.Success(new DepositDetailsForRpc(deposit, timestamp));
         }
 
         public async Task<ResultWrapper<Keccak>> ndm_makeDeposit(MakeDepositForRpc deposit, UInt256? gasPrice = null)
         {
+            if(deposit.DataAssetId == null)
+            {
+                return ResultWrapper<Keccak>.Fail("Deposit couldn't be made - asset ID unknown.");
+            }
+            
             Keccak? depositId = await _consumerService.MakeDepositAsync(deposit.DataAssetId, deposit.Units, deposit.Value,
                 gasPrice);
 

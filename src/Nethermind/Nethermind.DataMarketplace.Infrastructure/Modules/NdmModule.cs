@@ -74,7 +74,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                     throw new InvalidDataException("JSON RPC proxy is enabled but the proxies were not initialized properly.");
                 }
                 
-                services.JsonRpcClientProxy.SetUrls(config.JsonRpcUrlProxies);
+                services.JsonRpcClientProxy.SetUrls(config.JsonRpcUrlProxies!);
                 ndmBlockchainBridge = new NdmBlockchainBridgeProxy(services.EthJsonRpcClientProxy);
             }
             else
