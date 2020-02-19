@@ -30,14 +30,16 @@ namespace Nethermind.Blockchain.Find
     {
         private readonly IReceiptStorage _receiptStorage;
         private readonly IBloomStorage _bloomStorage;
+        private readonly IReceiptsRecovery _receiptsRecovery;
         private readonly int _maxBlockDepth;
         private readonly IBlockFinder _blockFinder;
         
-        public LogFinder(IBlockFinder blockFinder, IReceiptStorage receiptStorage, IBloomStorage bloomStorage, int maxBlockDepth = 1000)
+        public LogFinder(IBlockFinder blockFinder, IReceiptStorage receiptStorage, IBloomStorage bloomStorage, IReceiptsRecovery receiptsRecovery, int maxBlockDepth = 1000)
         {
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
+            _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
             _maxBlockDepth = maxBlockDepth;
         }
 
@@ -102,7 +104,7 @@ namespace Nethermind.Blockchain.Find
 
         private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Block block)
         {
-            var receipts = _receiptStorage.FindForBlock(block);
+            var receipts = _receiptStorage.FindForBlock(block, _receiptsRecovery);
             long logIndexInBlock = 0;
             foreach (var receipt in receipts)
             {

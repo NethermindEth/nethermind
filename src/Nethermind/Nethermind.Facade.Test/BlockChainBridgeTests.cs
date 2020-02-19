@@ -48,6 +48,7 @@ namespace Nethermind.Facade.Test
         private ITransactionProcessor _transactionProcessor;
         private IEthereumEcdsa _ethereumEcdsa;
         private IBloomStorage _bloomStorage;
+        private IReceiptsRecovery _receiptsRecovery;
 
         [SetUp]
         public void SetUp()
@@ -64,6 +65,7 @@ namespace Nethermind.Facade.Test
             _transactionProcessor = Substitute.For<ITransactionProcessor>();
             _ethereumEcdsa = Substitute.For<IEthereumEcdsa>();
             _bloomStorage = Substitute.For<IBloomStorage>();
+            _receiptsRecovery = Substitute.For<IReceiptsRecovery>();
             _blockchainBridge = new BlockchainBridge(
                 _stateReader, 
                 _stateProvider,
@@ -76,7 +78,8 @@ namespace Nethermind.Facade.Test
                 _wallet,
                 _transactionProcessor,
                 _ethereumEcdsa,
-                _bloomStorage);
+                _bloomStorage,
+                _receiptsRecovery);
         }
 
         [Test]

@@ -52,7 +52,7 @@ namespace Nethermind.Facade
         private readonly IStorageProvider _storageProvider;
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly ILogFinder _logFinder;
-        private Timestamper _timestamper = new Timestamper();
+        private readonly Timestamper _timestamper = new Timestamper();
 
         public BlockchainBridge(
             IStateReader stateReader,
@@ -66,7 +66,8 @@ namespace Nethermind.Facade
             IWallet wallet,
             ITransactionProcessor transactionProcessor,
             IEthereumEcdsa ecdsa,
-            IBloomStorage bloomStorage,
+            IBloomStorage bloomStorage, 
+            IReceiptsRecovery receiptsRecovery,
             int findLogBlockDepthLimit = 1000)
         {
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
@@ -80,7 +81,7 @@ namespace Nethermind.Facade
             _wallet = wallet ?? throw new ArgumentException(nameof(wallet));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentException(nameof(transactionProcessor));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-            _logFinder = new LogFinder(_blockTree, _receiptStorage, bloomStorage, findLogBlockDepthLimit);
+            _logFinder = new LogFinder(_blockTree, _receiptStorage, bloomStorage, receiptsRecovery, findLogBlockDepthLimit);
         }
 
         public IReadOnlyCollection<Address> GetWalletAccounts()

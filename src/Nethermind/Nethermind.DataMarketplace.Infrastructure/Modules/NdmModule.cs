@@ -16,6 +16,7 @@
 
 using Nethermind.Abi;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core.Services;
@@ -62,6 +63,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 readOnlyTxProcessingEnv.TransactionProcessor,
                 services.Ecdsa,
                 services.BloomStorage,
+                new ReceiptsRecovery(),
                 jsonRpcConfig.FindLogBlockDepthLimit);
             var dataAssetRlpDecoder = new DataAssetDecoder();
             var encoder = new AbiEncoder();
