@@ -22,7 +22,7 @@ namespace Nethermind.Blockchain.Bloom
     {
         public bool Index { get; set; } = true;
         
-        public int[] IndexLevelBucketSizes { get; set; } = {4};
+        public int[] IndexLevelBucketSizes { get; set; } = {4, 8, 8};
         
         public bool MigrationStatistics { get; set; } = false;
         
