@@ -141,7 +141,7 @@ namespace Nethermind.Core
             }
         }
 
-        public void Accrue(Bloom bloom)
+        public void Accumulate(Bloom bloom)
         {
             Bytes.AsSpan().Or(bloom.Bytes);
         }

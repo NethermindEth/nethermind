@@ -133,16 +133,16 @@ namespace Nethermind.Blockchain.Bloom
                 i++;
 
                 var blockHeaderBloom = blockHeader.Bloom ?? Core.Bloom.Empty;
-                lastLevel.StoreMigration(blockHeader.Number, blockHeaderBloom);
+                lastLevel.Migrate(blockHeader.Number, blockHeaderBloom);
                 
                 for (var index = 0; index < levelBlooms.Length; index++)
                 {
                     var levelBloom = levelBlooms[index];
-                    levelBloom.Bloom.Accrue(blockHeaderBloom);
+                    levelBloom.Bloom.Accumulate(blockHeaderBloom);
                     
                     if (i % levelBloom.Level.LevelElementSize == 0)
                     {
-                        levelBloom.Level.StoreMigration(blockHeader.Number, levelBloom.Bloom);
+                        levelBloom.Level.Migrate(blockHeader.Number, levelBloom.Bloom);
                         levelBlooms[index] = (levelBloom.Level, new Core.Bloom());
 
                         if (levelBloom.Level.LevelElementSize == batchSize)
@@ -222,7 +222,7 @@ namespace Nethermind.Blockchain.Bloom
                     existingBloom = bloomRead ? new Core.Bloom(_bytes) : new Core.Bloom();
                 }
 
-                existingBloom.Accrue(bloom);
+                existingBloom.Accumulate(bloom);
 
                 _fileStore.Write(bucket, existingBloom.Bytes);
                 _cache.Set(bucket, existingBloom);
@@ -235,7 +235,7 @@ namespace Nethermind.Blockchain.Bloom
 
             public IFileReader GetReader() => _fileStore.GetFileReader();
 
-            public void StoreMigration(in long blockNumber, Core.Bloom bloom)
+            public void Migrate(in long blockNumber, Core.Bloom bloom)
             {
                 if (_migrationStatistics)
                 {

@@ -1367,6 +1367,30 @@ namespace Nethermind.Blockchain.Test
 
             tree.Insert(blocks);
         }
+        
+        [Test]
+        public void Inserts_blooms()
+        {
+            MemDb blocksDb = new MemDb();
+            MemDb blockInfosDb = new MemDb();
+            MemDb headersDb = new MemDb();
+
+            long pivotNumber = 5L;
+
+            SyncConfig syncConfig = new SyncConfig();
+            syncConfig.PivotNumber = pivotNumber.ToString();
+
+            var bloomStorage = Substitute.For<IBloomStorage>();
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainNetSpecProvider.Instance, NullTxPool.Instance, bloomStorage, syncConfig, LimboLogs.Instance);
+            tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
+            
+            for (long i = 5; i > 0; i--)
+            {
+                Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(1L).TestObject;
+                tree.Insert(block.Header);
+                bloomStorage.Received().Store(block.Header.Number, block.Bloom);
+            }
+        }
 
         [Test]
         public void Block_loading_is_lazy()
@@ -1446,6 +1470,33 @@ namespace Nethermind.Blockchain.Test
 
             txPoolMock.Received().AddTransaction(t1, 1, TxHandlingOptions.None);
         }
+        
+        [Test]
+        public void When_block_is_moved_to_main_blooms_are_storred()
+        {
+            MemDb blocksDb = new MemDb();
+            MemDb headersDb = new MemDb();
+            MemDb blockInfosDb = new MemDb();
+
+            Transaction t1 = Build.A.Transaction.TestObject;
+            Transaction t2 = Build.A.Transaction.TestObject;
+
+            ITxPool txPoolMock = Substitute.For<ITxPool>();
+            var bloomStorage = Substitute.For<IBloomStorage>();
+            BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, txPoolMock, bloomStorage, LimboLogs.Instance);
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1A = Build.A.Block.WithNumber(1).WithDifficulty(2).WithTransactions(t1).WithParent(block0).TestObject;
+            Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(3).WithTransactions(t2).WithParent(block0).TestObject;
+
+            AddToMain(blockTree, block0);
+
+            blockTree.SuggestBlock(block1B);
+            blockTree.SuggestBlock(block1A);
+            blockTree.UpdateMainChain(block1A);
+            
+            bloomStorage.Received().Store(block1A.Number, block1A.Bloom);
+        }
+        
         
         [Test]
         public void Can_find_genesis_level()
