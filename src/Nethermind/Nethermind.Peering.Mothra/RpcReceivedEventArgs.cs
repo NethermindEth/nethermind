@@ -18,7 +18,22 @@ using System;
 
 namespace Nethermind.Peering.Mothra
 {
-    public abstract class RpcReceivedEventArgs : EventArgs
+    public class RpcReceivedEventArgs : EventArgs
     {
+        public RpcReceivedEventArgs(string method, bool isResponse, string peer, byte[] data)
+        {
+            Method = method;
+            IsResponse = isResponse;
+            Peer = peer;
+            Data = data;
+        }
+
+        public byte[] Data { get; }
+
+        public bool IsResponse { get; }
+        
+        public string Method { get; }
+
+        public string Peer { get; }
     }
 }

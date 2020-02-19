@@ -14,4 +14,10 @@
       <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="3.0.1" />
     </ItemGroup>
 
+    <ItemGroup>
+      <None Update="runtimes\linux-x64\native\libmothra.so">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
+    </ItemGroup>
+
 </Project>

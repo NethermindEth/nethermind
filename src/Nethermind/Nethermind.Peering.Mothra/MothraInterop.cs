@@ -26,29 +26,30 @@ namespace Nethermind.Peering.Mothra
         //public static extern unsafe void RegisterHandlers(IntPtr discoveredPeer, IntPtr receiveGossip, IntPtr receiveRpc);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public unsafe delegate void DiscoveredPeer(byte* peerUtf8, int peerLength);
+        public unsafe delegate void DiscoveredPeer(byte* peerUtf8Ptr, int peerLength);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public unsafe delegate void ReceiveGossip(byte* topicUtf8, int topicLength, byte* data, int dataLength);
+        public unsafe delegate void ReceiveGossip(byte* topicUtf8Ptr, int topicLength, byte* dataPtr, int dataLength);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public unsafe delegate void ReceiveRpc(byte* methodUtf8, int methodLength, int requestResponseFlag,
-            byte* peerUtf8, int peerLength, byte* data, int dataLength);
+        public unsafe delegate void ReceiveRpc(byte* methodUtf8Ptr, int methodLength, int requestResponseFlag,
+            byte* peerUtf8Ptr, int peerLength, byte* dataPtr, int dataLength);
 
         [DllImport(DllName, EntryPoint = "libp2p_register_handlers", CallingConvention = CallingConvention.Cdecl)]
         public static extern unsafe void RegisterHandlers(DiscoveredPeer discoveredPeer, ReceiveGossip receiveGossip,
             ReceiveRpc receiveRpc);
 
         [DllImport(DllName, EntryPoint = "libp2p_send_gossip", CallingConvention = CallingConvention.Cdecl)]
-        public static extern unsafe void SendGossip(byte* topicUtf8, int topicLength, byte* data, int dataLength);
+        public static extern unsafe void SendGossip(byte* topicUtf8Ptr, int topicLength, byte* dataPtr, int dataLength);
 
         [DllImport(DllName, EntryPoint = "libp2p_send_rpc_request", CallingConvention = CallingConvention.Cdecl)]
-        public static extern unsafe void SendRequest(byte* methodUtf8, int methodLength, byte* peerUtf8, int peerLength,
+        public static extern unsafe void SendRequest(byte* methodUtf8Ptr, int methodLength, byte* peerUtf8Ptr,
+            int peerLength,
             byte* data, int dataLength);
 
         [DllImport(DllName, EntryPoint = "libp2p_send_rpc_response", CallingConvention = CallingConvention.Cdecl)]
-        public static extern unsafe void SendResponse(byte* methodUtf8, int methodLength, byte* peerUtf8,
-            int peerLength, byte* data, int dataLength);
+        public static extern unsafe void SendResponse(byte* methodUtf8Ptr, int methodLength, byte* peerUtf8Ptr,
+            int peerLength, byte* dataPtr, int dataLength);
 
         [DllImport(DllName, EntryPoint = "libp2p_start", CallingConvention = CallingConvention.Cdecl)]
         public static extern unsafe void Start([In] [Out] string[] args, int length);

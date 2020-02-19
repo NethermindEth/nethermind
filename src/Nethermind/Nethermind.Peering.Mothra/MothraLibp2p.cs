@@ -34,34 +34,81 @@ namespace Nethermind.Peering.Mothra
             [LogLevel.Critical] = "crit"
         };
 
-        private MothraInterop.DiscoveredPeer _discoveredPeer;
+        private readonly MothraInterop.DiscoveredPeer _discoveredPeer;
         private GCHandle _discoveredPeerHandle;
-        private MothraInterop.ReceiveGossip _receiveGossip;
+        private readonly MothraInterop.ReceiveGossip _receiveGossip;
         private GCHandle _receiveGossipHandle;
-        private MothraInterop.ReceiveRpc _receiveRpc;
+        private readonly MothraInterop.ReceiveRpc _receiveRpc;
         private GCHandle _receiveRpcHandle;
 
-        public event EventHandler<GossipReceivedEventArgs> GossipReceived;
-
-        public event EventHandler<PeerDiscoveredEventArgs> PeerDiscovered;
-
-        public event EventHandler<RpcReceivedEventArgs> RpcReceived;
-
-        public void SendGossip()
+        public MothraLibp2p()
         {
+            unsafe
+            {
+                _discoveredPeer = DiscoveredPeerHandler;
+                _receiveGossip = ReceiveGossipHandler;
+                _receiveRpc = ReceiveRpcHandler;
+            }
+
+            _discoveredPeerHandle = GCHandle.Alloc(_discoveredPeer);
+            _receiveGossipHandle = GCHandle.Alloc(_receiveGossip);
+            _receiveRpcHandle = GCHandle.Alloc(_receiveRpc);
         }
 
-        public void SendRpcRequest()
+        public event EventHandler<GossipReceivedEventArgs>? GossipReceived;
+
+        public event EventHandler<PeerDiscoveredEventArgs>? PeerDiscovered;
+
+        public event EventHandler<RpcReceivedEventArgs>? RpcReceived;
+
+        public void SendGossip(string topic, ReadOnlySpan<byte> data)
         {
+            byte[] topicUtf8 = Encoding.UTF8.GetBytes(topic);
+            unsafe
+            {
+                fixed (byte* topicUtf8Ptr = topicUtf8)
+                fixed (byte* dataPtr = data)
+                {
+                    MothraInterop.SendGossip(topicUtf8Ptr, topicUtf8.Length, dataPtr, data.Length);
+                }
+            }
         }
 
-        public void SendRpcResponse()
+        public void SendRpcRequest(string method, string peer, ReadOnlySpan<byte> data)
         {
+            byte[] methodUtf8 = Encoding.UTF8.GetBytes(method);
+            byte[] peerUtf8 = Encoding.UTF8.GetBytes(peer);
+            unsafe
+            {
+                fixed (byte* methodUtf8Ptr = methodUtf8)
+                fixed (byte* peerUtf8Ptr = peerUtf8)
+                fixed (byte* dataPtr = data)
+                {
+                    MothraInterop.SendRequest(methodUtf8Ptr, methodUtf8.Length, peerUtf8Ptr, peerUtf8.Length, dataPtr,
+                        data.Length);
+                }
+            }
+        }
+
+        public void SendRpcResponse(string method, string peer, ReadOnlySpan<byte> data)
+        {
+            byte[] methodUtf8 = Encoding.UTF8.GetBytes(method);
+            byte[] peerUtf8 = Encoding.UTF8.GetBytes(peer);
+            unsafe
+            {
+                fixed (byte* methodUtf8Ptr = methodUtf8)
+                fixed (byte* peerUtf8Ptr = peerUtf8)
+                fixed (byte* dataPtr = data)
+                {
+                    MothraInterop.SendRequest(methodUtf8Ptr, methodUtf8.Length, peerUtf8Ptr, peerUtf8.Length, dataPtr,
+                        data.Length);
+                }
+            }
         }
 
         public void Start(MothraSettings settings)
         {
-            RegisterHandlers();
+            MothraInterop.RegisterHandlers(_discoveredPeer, _receiveGossip, _receiveRpc);
             string[] args = BuildArgs(settings);
             MothraInterop.Start(args, args.Length);
         }
@@ -145,9 +192,9 @@ namespace Nethermind.Peering.Mothra
             return args.ToArray();
         }
 
-        private unsafe void DiscoveredPeerHandler(byte* peerUtf8, int peerLength)
+        private unsafe void DiscoveredPeerHandler(byte* peerUtf8Ptr, int peerLength)
         {
-            string peer = new String((sbyte*) peerUtf8, 0, peerLength, Encoding.UTF8);
+            string peer = new String((sbyte*) peerUtf8Ptr, 0, peerLength, Encoding.UTF8);
             OnPeerDiscovered(new PeerDiscoveredEventArgs(peer));
         }
 
@@ -166,32 +213,24 @@ namespace Nethermind.Peering.Mothra
             RpcReceived?.Invoke(this, e);
         }
 
-        private unsafe void ReceiveGossipHandler(byte* topicUtf8, int topicLength, byte* data, int dataLength)
+        private unsafe void ReceiveGossipHandler(byte* topicUtf8Ptr, int topicLength, byte* dataPtr, int dataLength)
         {
-            Console.Write("dotnet: receive");
-            string topic = new String((sbyte*) topicUtf8, 0, topicLength, Encoding.UTF8);
-            string dataString = new String((sbyte*) data, 0, dataLength, Encoding.UTF8);
-            Console.WriteLine($" gossip={topic},data={dataString}");
+            string topic = new String((sbyte*) topicUtf8Ptr, 0, topicLength, Encoding.UTF8);
+            byte[] data = new byte[dataLength];
+            Marshal.Copy((IntPtr) dataPtr, data, 0, dataLength);
+            OnGossipReceived(new GossipReceivedEventArgs(topic, data));
         }
 
-        private unsafe void ReceiveRpcHandler(byte* methodUtf8, int methodLength, int requestResponseFlag,
-            byte* peerUtf8,
-            int peerLength, byte* data, int dataLength)
+        private unsafe void ReceiveRpcHandler(byte* methodUtf8Ptr, int methodLength, int requestResponseFlag,
+            byte* peerUtf8Ptr,
+            int peerLength, byte* dataPtr, int dataLength)
         {
-            // Nothing
-        }
-
-        private unsafe void RegisterHandlers()
-        {
-            _discoveredPeer = new MothraInterop.DiscoveredPeer(DiscoveredPeerHandler);
-            _receiveGossip = new MothraInterop.ReceiveGossip(ReceiveGossipHandler);
-            _receiveRpc = new MothraInterop.ReceiveRpc(ReceiveRpcHandler);
-
-            _discoveredPeerHandle = GCHandle.Alloc(_discoveredPeer);
-            _receiveGossipHandle = GCHandle.Alloc(_receiveGossip);
-            _receiveRpcHandle = GCHandle.Alloc(_receiveRpc);
-
-            MothraInterop.RegisterHandlers(_discoveredPeer, _receiveGossip, _receiveRpc);
+            string method = new String((sbyte*) methodUtf8Ptr, 0, methodLength, Encoding.UTF8);
+            bool isResponse = requestResponseFlag > 0;
+            string peer = new String((sbyte*) peerUtf8Ptr, 0, peerLength, Encoding.UTF8);
+            byte[] data = new byte[dataLength];
+            Marshal.Copy((IntPtr) dataPtr, data, 0, dataLength);
+            OnRpcReceived(new RpcReceivedEventArgs(method, isResponse, peer, data));
         }
     }
 }

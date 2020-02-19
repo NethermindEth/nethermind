@@ -20,5 +20,14 @@ namespace Nethermind.Peering.Mothra
 {
     public class GossipReceivedEventArgs : EventArgs
     {
+        public GossipReceivedEventArgs(string topic, byte[] data)
+        {
+            Topic = topic;
+            Data = data;
+        }
+
+        public byte[] Data { get; }
+
+        public string Topic { get; }
     }
 }

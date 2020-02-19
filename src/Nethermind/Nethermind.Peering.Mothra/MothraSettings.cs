@@ -22,7 +22,7 @@ namespace Nethermind.Peering.Mothra
     public class MothraSettings
     {
         public IList<string> BootNodes { get; } = new List<string>();
-        
+
         public string? DataDirectory { get; set; }
 
         public LogLevel? DebugLevel { get; set; }
