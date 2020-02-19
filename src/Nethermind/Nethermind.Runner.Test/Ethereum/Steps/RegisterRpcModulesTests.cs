@@ -64,6 +64,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
             EthereumRunnerContext context = new EthereumRunnerContext(configProvider, LimboLogs.Instance);
             context.ConfigProvider = configProvider;
+            context.RpcModuleProvider = rpcModuleProvider;
 
             RegisterRpcModules registerRpcModules = new RegisterRpcModules(context);
             registerRpcModules.Execute();
