@@ -19,7 +19,7 @@ using Nethermind.Runner.Ethereum.Context;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies(typeof(InitializeBlockchain), typeof(DatabaseMigrations))]
+    [RunnerStepDependencies(typeof(InitializeBlockchain))]
     public class StartBlockProcessor : IStep
     {
         private readonly EthereumRunnerContext _context;
