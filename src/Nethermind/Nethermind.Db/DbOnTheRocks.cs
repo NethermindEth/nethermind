@@ -31,9 +31,9 @@ namespace Nethermind.Db
     public abstract class DbOnTheRocks : IDb, IDbWithSpan
     {
         private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath = new ConcurrentDictionary<string, RocksDb>();
-        private readonly RocksDb _db;
-        private WriteBatch _currentBatch;
-        private WriteOptions _writeOptions;
+        internal readonly RocksDb Db;
+        internal WriteBatch CurrentBatch { get; private set; }
+        internal WriteOptions WriteOptions { get; private set; }
 
         public abstract string Name { get; }
 
@@ -41,8 +41,13 @@ namespace Nethermind.Db
         
         private long _maxThisDbSize;
 
-        public DbOnTheRocks(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager = null, bool deleteOnStart = false) // TODO: check column families
+        public DbOnTheRocks(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
         {
+            RocksDb Open(DbOptions options, string path, ColumnFamilies families)
+            {
+                return families == null ? RocksDb.Open(options, path) : RocksDb.Open(options, path, families);
+            }
+
             string fullPath = dbPath.GetApplicationResourcePath(basePath);
             _logger = logManager?.GetClassLogger() ?? NullLogger.Instance;
             if (!Directory.Exists(fullPath))
@@ -69,7 +74,7 @@ namespace Nethermind.Db
                 
                 // ReSharper disable once VirtualMemberCallInConstructor
                 if (_logger.IsInfo) _logger.Info($"Loading {Name.PadRight(16)} from {fullPath} with max memory footprint of {_maxThisDbSize / 1024 / 1024}MB");
-                _db = DbsByPath.GetOrAdd(fullPath, path => RocksDb.Open(options, path));
+                Db = DbsByPath.GetOrAdd(fullPath, path => Open(options, path, columnFamilies));
             }
             catch (DllNotFoundException e) when (e.Message.Contains("libdl"))
             {
@@ -78,17 +83,15 @@ namespace Nethermind.Db
             }
         }
 
-        protected virtual void UpdateReadMetrics() => Metrics.OtherDbReads++;
-        protected virtual void UpdateWriteMetrics() => Metrics.OtherDbWrites++;
+        protected internal virtual void UpdateReadMetrics() => Metrics.OtherDbReads++;
+        protected internal virtual void UpdateWriteMetrics() => Metrics.OtherDbWrites++;
 
         private T ReadConfig<T>(IDbConfig dbConfig, string propertyName)
         {
-            string prefixed = string.Concat(Name == "State" ? string.Empty : string.Concat(Name, "Db"),
-                propertyName);
+            string prefixed = string.Concat(Name == "State" ? string.Empty : string.Concat(Name, "Db"), propertyName);
             try
             {
-                return (T) dbConfig.GetType().GetProperty(prefixed, BindingFlags.Public | BindingFlags.Instance)
-                    .GetValue(dbConfig);
+                return (T) dbConfig.GetType().GetProperty(prefixed, BindingFlags.Public | BindingFlags.Instance).GetValue(dbConfig);
             }
             catch (Exception e)
             {
@@ -96,7 +99,7 @@ namespace Nethermind.Db
             }
         }
 
-        private DbOptions BuildOptions(IDbConfig dbConfig)
+        protected virtual DbOptions BuildOptions(IDbConfig dbConfig)
         {
             _maxThisDbSize = 0;
             BlockBasedTableOptions tableOptions = new BlockBasedTableOptions();
@@ -153,8 +156,8 @@ namespace Nethermind.Db
             options.SetRecycleLogFileNum(dbConfig.RecycleLogFileNum); // potential optimization for reusing allocated log files
 
 //            options.SetLevelCompactionDynamicLevelBytes(true); // only switch on on empty DBs
-            _writeOptions = new WriteOptions();
-            _writeOptions.SetSync(dbConfig.WriteAheadLogSync); // potential fix for corruption on hard process termination, may cause performance degradation
+            WriteOptions = new WriteOptions();
+            WriteOptions.SetSync(dbConfig.WriteAheadLogSync); // potential fix for corruption on hard process termination, may cause performance degradation
 
             return options;
         }
@@ -163,76 +166,76 @@ namespace Nethermind.Db
         {
             get
             {
-                UpdateReadMetrics();
-                return _db.Get(key);
+                return Db.Get(key);
             }
             set
             {
                 UpdateWriteMetrics();
-                if (_currentBatch != null)
+                if (CurrentBatch != null)
                 {
                     if (value == null)
                     {
-                        _currentBatch.Delete(key);
+                        CurrentBatch.Delete(key);
                     }
                     else
                     {
-                        _currentBatch.Put(key, value);
+                        CurrentBatch.Put(key, value);
                     }
                 }
                 else
                 {
                     if (value == null)
                     {
-                        _db.Remove(key, null, _writeOptions);
+                        Db.Remove(key, null, WriteOptions);
                     }
                     else
                     {
-                        _db.Put(key, value, null, _writeOptions);
+                        Db.Put(key, value, null, WriteOptions);
                     }
                 }
             }
         }
 
+        public KeyValuePair<byte[],byte[]>[] this[byte[][] keys] => Db.MultiGet(keys);
+
         public Span<byte> GetSpan(byte[] key)
         {
             UpdateReadMetrics();
-            return _db.GetSpan(key);
+            return Db.GetSpan(key);
         }
 
         public void DangerousReleaseMemory(in Span<byte> span)
         {
-            _db.DangerousReleaseMemory(in span);
+            Db.DangerousReleaseMemory(in span);
         }
 
         public void Remove(byte[] key)
         {
-            _db.Remove(key, null, _writeOptions);
+            Db.Remove(key, null, WriteOptions);
         }
 
-        public byte[][] GetAll()
+        public IEnumerable<byte[]> GetAll()
         {
-            Iterator iterator = _db.NewIterator();
-            iterator = iterator.SeekToFirst();
-            var values = new List<byte[]>();
+            using Iterator iterator = Db.NewIterator();
+            return GetAllCore(iterator);
+        }
+
+        internal IEnumerable<byte[]> GetAllCore(Iterator iterator)
+        {
+            iterator.SeekToFirst();
             while (iterator.Valid())
             {
-                values.Add(iterator.Value());
-                iterator = iterator.Next();
+                yield return iterator.Value();
+                iterator.Next();
             }
-
-            iterator.Dispose();
-
-            return values.ToArray();
         }
 
-        private byte[] _keyExistsBuffer = new byte[1];
         private ILogger _logger;
 
         public bool KeyExists(byte[] key)
         {
             // seems it has no performance impact
-            return _db.Get(key) != null;
+            return Db.Get(key) != null;
 //            return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
         }
 
@@ -240,20 +243,46 @@ namespace Nethermind.Db
 
         public void StartBatch()
         {
-            _currentBatch = new WriteBatch();
+            CurrentBatch = new WriteBatch();
         }
 
         public void CommitBatch()
         {
-            _db.Write(_currentBatch, _writeOptions);
-            _currentBatch.Dispose();
-            _currentBatch = null;
+            Db.Write(CurrentBatch, WriteOptions);
+            CurrentBatch.Dispose();
+            CurrentBatch = null;
         }
 
         public void Dispose()
         {
-            _db?.Dispose();
-            _currentBatch?.Dispose();
+            Db?.Dispose();
+            CurrentBatch?.Dispose();
+        }
+
+        public void Flush()
+        {
+            Native.Instance.rocksdb_flush(Db.Handle, FlushOptions.DefaultFlushOptions.Handle);
+        }
+
+        private class FlushOptions
+        {
+            internal static FlushOptions DefaultFlushOptions { get; } = new FlushOptions();
+            
+            public FlushOptions()
+            {
+                Handle = Native.Instance.rocksdb_flushoptions_create();
+            }
+            
+            public IntPtr Handle { get; protected set; }
+
+            ~FlushOptions()
+            {
+                if (Handle != IntPtr.Zero)
+                {
+                    Native.Instance.rocksdb_flushoptions_destroy(Handle);
+                    Handle = IntPtr.Zero;
+                }
+            }
         }
     }
 }

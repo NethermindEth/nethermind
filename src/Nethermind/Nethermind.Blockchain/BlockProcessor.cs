@@ -261,7 +261,7 @@ namespace Nethermind.Blockchain
                 bh.Timestamp,
                 bh.ExtraData)
             {
-                Bloom = Bloom.Empty,
+                Bloom = Core.Bloom.Empty,
                 Author = bh.Author,
                 Hash = bh.Hash,
                 MixHash = bh.MixHash,

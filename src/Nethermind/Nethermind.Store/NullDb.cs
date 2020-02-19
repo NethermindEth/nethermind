@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 
 namespace Nethermind.Store
@@ -36,6 +37,8 @@ namespace Nethermind.Store
             set => throw new System.NotSupportedException();
         }
 
+        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, null)).ToArray(); 
+
         public void Remove(byte[] key)
         {
             throw new System.NotSupportedException();
@@ -47,8 +50,9 @@ namespace Nethermind.Store
         }
 
         public IDb Innermost => this;
+        public void Flush() { }
 
-        public byte[][] GetAll()
+        public IEnumerable<byte[]> GetAll()
         {
             throw new System.NotImplementedException();
         }

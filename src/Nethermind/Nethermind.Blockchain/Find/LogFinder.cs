@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -28,49 +29,82 @@ namespace Nethermind.Blockchain.Find
     public class LogFinder : ILogFinder
     {
         private readonly IReceiptStorage _receiptStorage;
+        private readonly IBloomStorage _bloomStorage;
+        private readonly IReceiptsRecovery _receiptsRecovery;
         private readonly int _maxBlockDepth;
         private readonly IBlockFinder _blockFinder;
         
-        public LogFinder(IBlockFinder blockFinder, IReceiptStorage receiptStorage, int maxBlockDepth = 1000)
+        public LogFinder(IBlockFinder blockFinder, IReceiptStorage receiptStorage, IBloomStorage bloomStorage, IReceiptsRecovery receiptsRecovery, int maxBlockDepth = 1000)
         {
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
+            _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
             _maxBlockDepth = maxBlockDepth;
         }
 
-        public FilterLog[] FindLogs(LogFilter filter)
+        public IEnumerable<FilterLog> FindLogs(LogFilter filter)
         {
-            int count = 0;
-            var block = _blockFinder.FindHeader(filter.ToBlock);
-            if (block is null)
+            BlockHeader FindHeader(BlockParameter blockParameter, string name) => _blockFinder.FindHeader(blockParameter) ?? throw new ArgumentException(ILogFinder.NotFoundError, name);
+
+            var toBlock = FindHeader(filter.ToBlock, nameof(filter.ToBlock));
+            var fromBlock = FindHeader(filter.FromBlock, nameof(filter.FromBlock));
+
+            if (fromBlock.Number > toBlock.Number && toBlock.Number != 0)
             {
-                return Array.Empty<FilterLog>();
+                throw new ArgumentException("'From' block is later than 'to' block.");
             }
             
-            var fromBlock = _blockFinder.FindHeader(filter.FromBlock);
-            List<FilterLog> results = new List<FilterLog>();
+            return CanUseBloomDatabase(toBlock, fromBlock) 
+                ? FilterLogsWithBloomsIndex(filter, fromBlock, toBlock) 
+                : FilterLogsIteratively(filter, fromBlock, toBlock);
+        }
 
-            while (count < _maxBlockDepth && block.Number >= (fromBlock?.Number ?? long.MaxValue))
+        private IEnumerable<FilterLog> FilterLogsWithBloomsIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
+        {
+            var enumeration = _bloomStorage.GetBlooms(fromBlock.Number, toBlock.Number);
+            foreach (var bloom in enumeration)
             {
-                if (filter.Matches(block.Bloom))
+                if (filter.Matches(bloom) && enumeration.TryGetBlockNumber(out var blockNumber))
                 {
-                    FindLogsInBlock(filter, _blockFinder.FindBlock(block.Hash), results);
+                    foreach (var filterLog in FindLogsInBlock(filter, _blockFinder.FindBlock(blockNumber)))
+                    {
+                        yield return filterLog;
+                    }
+                }
+            }
+        }
+
+        private bool CanUseBloomDatabase(BlockHeader toBlock, BlockHeader fromBlock) => _bloomStorage.ContainsRange(fromBlock.Number, toBlock.Number) && _blockFinder.IsMainChain(toBlock) && _blockFinder.IsMainChain(fromBlock);
+
+        private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
+        {
+            int count = 0;
+            
+            while (count < _maxBlockDepth && toBlock.Number >= (fromBlock?.Number ?? long.MaxValue))
+            {
+                foreach (var filterLog in FindLogsInBlock(filter, toBlock))
+                {
+                    yield return filterLog;
                 }
 
-                if (!TryGetParentBlock(block, out block))
+                if (!TryGetParentBlock(toBlock, out toBlock))
                 {
                     break;
                 }
 
                 count++;
             }
-
-            return results.ToArray();
         }
 
-        private void FindLogsInBlock(LogFilter filter, Block currentBlock, List<FilterLog> results)
+        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, BlockHeader block) => 
+            filter.Matches(block.Bloom) 
+                ? FindLogsInBlock(filter, _blockFinder.FindBlock(block.Hash)) 
+                : Enumerable.Empty<FilterLog>();
+
+        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Block block)
         {
-            var receipts = _receiptStorage.FindForBlock(currentBlock);
+            var receipts = _receiptStorage.FindForBlock(block, _receiptsRecovery);
             long logIndexInBlock = 0;
             foreach (var receipt in receipts)
             {
@@ -86,7 +120,7 @@ namespace Nethermind.Blockchain.Find
                         var log = receipt.Logs[index];
                         if (filter.Accepts(log))
                         {
-                            results.Add(new FilterLog(logIndexInBlock, index, receipt, log));
+                            yield return new FilterLog(logIndexInBlock, index, receipt, log);
                         }
 
                         logIndexInBlock++;

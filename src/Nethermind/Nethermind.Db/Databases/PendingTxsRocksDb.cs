@@ -25,11 +25,11 @@ namespace Nethermind.Db.Databases
         public override string Name { get; } = "PendingTxs";
 
         public PendingTxsRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
-            : base(basePath, "pendingtxs", dbConfig, logManager, true)
+            : base(basePath, "pendingtxs", dbConfig, logManager, deleteOnStart: true)
         {
         }
 
-        protected override void UpdateReadMetrics() => Metrics.PendingTxsDbReads++;
-        protected override void UpdateWriteMetrics() => Metrics.PendingTxsDbWrites++;
+        protected internal override void UpdateReadMetrics() => Metrics.PendingTxsDbReads++;
+        protected internal override void UpdateWriteMetrics() => Metrics.PendingTxsDbWrites++;
     }
 }

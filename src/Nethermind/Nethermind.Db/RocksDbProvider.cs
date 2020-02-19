@@ -49,6 +49,7 @@ namespace Nethermind.Db
             allInitializers.Add(Task.Run(() => StateDb = new StateDb(new StateRocksDb(basePath, dbConfig, _logManager))));
             allInitializers.Add(Task.Run(() => CodeDb = new StateDb(new CodeRocksDb(basePath, dbConfig, _logManager))));
             allInitializers.Add(Task.Run(() => PendingTxsDb = new PendingTxsRocksDb(basePath, dbConfig, _logManager)));
+            allInitializers.Add(Task.Run(() => BloomDb = new BloomRocksDb(basePath, dbConfig, _logManager)));
 
             allInitializers.Add(Task.Run(() =>
             {
@@ -99,6 +100,8 @@ namespace Nethermind.Db
             }
         }
 
+        public IDb BloomDb { get; private set; }
+
         public void Dispose()
         {
             StateDb?.Dispose();
@@ -108,8 +111,8 @@ namespace Nethermind.Db
             HeadersDb?.Dispose();
             BlockInfosDb?.Dispose();
             PendingTxsDb?.Dispose();
-            ConfigsDb?.Dispose();
-            EthRequestsDb?.Dispose();
+            _configsDb?.Dispose();
+            _ethRequestsDb?.Dispose();
         }
     }
 }

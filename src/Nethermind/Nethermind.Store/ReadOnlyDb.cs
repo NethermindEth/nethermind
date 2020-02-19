@@ -15,12 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 
 namespace Nethermind.Store
 {
     public class ReadOnlyDb : ISnapshotableDb
     {
-        private MemDb _memDb = new MemDb();
+        private readonly MemDb _memDb = new MemDb();
 
         private readonly IDb _wrappedDb;
         private readonly bool _createInMemWriteStore;
@@ -33,6 +34,7 @@ namespace Nethermind.Store
 
         public void Dispose()
         {
+            _memDb.Dispose();
         }
 
         public string Name { get; } = "ReadOnlyDb";
@@ -51,7 +53,26 @@ namespace Nethermind.Store
             }
         }
 
-        public byte[][] GetAll() => _memDb.GetAll();
+        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys]
+        {
+            get
+            {
+                var result = _wrappedDb[keys];
+                var memResult = _memDb[keys];
+                for (int i = 0; i < memResult.Length; i++)
+                {
+                    var memValue = memResult[i];
+                    if (memValue.Value != null)
+                    {
+                        result[i] = memValue;
+                    }
+                }
+
+                return result;
+            }
+        }
+
+        public IEnumerable<byte[]> GetAll() => _memDb.GetAll();
 
         public void StartBatch()
         {
@@ -71,8 +92,13 @@ namespace Nethermind.Store
         }
 
         public IDb Innermost => _wrappedDb.Innermost;
+        public void Flush()
+        {
+            _wrappedDb.Flush();
+            _memDb.Flush();
+        }
 
-        public void ClearTempChanges()
+        public virtual void ClearTempChanges()
         {
             _memDb.Clear();
         }

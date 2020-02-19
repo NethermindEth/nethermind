@@ -16,6 +16,7 @@
 
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
@@ -82,6 +83,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
         private IEthJsonRpcClientProxy _ethJsonRpcClientProxy;
         private IHttpClient _httpClient;
         private IMonitoringService _monitoringService;
+        private IBloomStorage _bloomStorage;
 
         [SetUp]
         public void Setup()
@@ -119,6 +121,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
             _httpClient = Substitute.For<IHttpClient>();
             _monitoringService = Substitute.For<IMonitoringService>();
             _ndmModule = new NdmModule();
+            _bloomStorage = Substitute.For<IBloomStorage>();
         }
 
         [Test]
@@ -129,7 +132,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
                 _receiptStorage, _filterStore, _filterManager, _wallet, _timestamper, _ecdsa, _keyStore,
                 _rpcModuleProvider, _jsonSerializer, _cryptoRandom, _enode, _ndmConsumerChannelManager,
                 _ndmDataPublisher, _grpcServer, _ethRequestService, _notifier, _enableUnsecuredDevWallet,
-                _blockProcessor, _jsonRpcClientProxy, _ethJsonRpcClientProxy, _httpClient, _monitoringService));
+                _blockProcessor, _jsonRpcClientProxy, _ethJsonRpcClientProxy, _httpClient, _monitoringService, _bloomStorage));
             services.Should().NotBeNull();
             services.CreatedServices.Should().NotBeNull();
             services.RequiredServices.Should().NotBeNull();

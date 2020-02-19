@@ -17,6 +17,7 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.TxPools;
@@ -47,8 +48,19 @@ namespace Nethermind.JsonRpc.Test.Modules
             ITxPool txPool = NullTxPool.Instance;
             MemDbProvider dbProvider = new MemDbProvider();
 
-            BlockTree blockTree = new BlockTree(dbProvider.BlocksDb, dbProvider.HeadersDb, dbProvider.BlockInfosDb, new ChainLevelInfoRepository(dbProvider.BlockInfosDb), specProvider, txPool, new SyncConfig(), LimboLogs.Instance);
-            _factory = new EthModuleFactory(dbProvider, txPool, NullWallet.Instance, blockTree, new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance), NullBlockProcessor.Instance, new InMemoryReceiptStorage(), specProvider, new JsonRpcConfig(), LimboLogs.Instance);
+            BlockTree blockTree = new BlockTree(dbProvider.BlocksDb, dbProvider.HeadersDb, dbProvider.BlockInfosDb, new ChainLevelInfoRepository(dbProvider.BlockInfosDb), specProvider, txPool, NullBloomStorage.Instance, new SyncConfig(), LimboLogs.Instance);
+            _factory = new EthModuleFactory(
+                dbProvider,
+                txPool,
+                NullWallet.Instance,
+                blockTree,
+                new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance), 
+                NullBlockProcessor.Instance, 
+                new InMemoryReceiptStorage(), 
+                specProvider, 
+                new JsonRpcConfig(),
+                NullBloomStorage.Instance,
+                LimboLogs.Instance);
         }
 
         [Test]

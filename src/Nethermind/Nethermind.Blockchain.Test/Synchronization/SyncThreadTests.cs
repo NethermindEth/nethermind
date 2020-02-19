@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -261,7 +262,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             var ecdsa = new EthereumEcdsa(specProvider, logManager);
             var txPool = new TxPool(new InMemoryTxStorage(), new Timestamper(), ecdsa, specProvider, new TxPoolConfig(), stateProvider, logManager);
-            var tree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, txPool, logManager);
+            var tree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, txPool, NullBloomStorage.Instance, logManager);
             var blockhashProvider = new BlockhashProvider(tree, LimboLogs.Instance);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, logManager);
 

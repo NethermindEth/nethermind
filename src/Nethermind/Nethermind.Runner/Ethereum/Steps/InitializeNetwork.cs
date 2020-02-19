@@ -308,7 +308,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.CryptoRandom, _context.Enode, _context.NdmConsumerChannelManager, _context.NdmDataPublisher, _context.GrpcServer,
                     _context.NodeStatsManager, _context.ProtocolsManager, protocolValidator, _context._messageSerializationService,
                     initConfig.EnableUnsecuredDevWallet, _context.WebSocketsManager, _context.LogManager, _context.MainBlockProcessor,
-                    _context.JsonRpcClientProxy, _context.EthJsonRpcClientProxy, _context.HttpClient, _context.MonitoringService);
+                    _context.JsonRpcClientProxy, _context.EthJsonRpcClientProxy, _context.HttpClient, _context.MonitoringService, _context.BloomStorage);
                 capabilityConnector.Init();
                 if (_context.Logger.IsInfo) _context.Logger.Info($"NDM initialized.");
             }

@@ -75,7 +75,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             PublicKey consumerNodeId = null, Address consumerAddress = null, PublicKey providerNodeId = null,
             Address providerAddress = null)
         {
-            var sessionsBytes = _database.GetAll();
+            var sessionsBytes = _database.GetAll().ToArray();
             if (sessionsBytes.Length == 0)
             {
                 return Array.Empty<ConsumerSession>();

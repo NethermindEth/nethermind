@@ -34,6 +34,7 @@ namespace Nethermind.Store
         IDb PendingTxsDb { get; }
         IDb ConfigsDb { get; }
         IDb EthRequestsDb { get; }
+        IDb BloomDb { get; }
         // add C#8 Dispose (default implementation)
     }
 }

@@ -62,6 +62,8 @@ namespace Nethermind.Network
             set { _cache.AddOrUpdate(key, newValue => Add(value), (x, oldValue) => Update(oldValue, value)); }
         }
 
+        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] =>  keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _cache.TryGetValue(k, out var value) ? value : null)).ToArray();
+
         public void Remove(byte[] key)
         {
             _hasPendingChanges = true;
@@ -74,8 +76,9 @@ namespace Nethermind.Network
         }
 
         public IDb Innermost => this;
+        public void Flush() { }
 
-        public byte[][] GetAll() => _cache.Values.Select(v => v).ToArray();
+        public IEnumerable<byte[]> GetAll() => _cache.Values;
 
         public void StartBatch()
         {

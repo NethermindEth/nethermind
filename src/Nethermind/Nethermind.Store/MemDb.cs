@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -59,6 +58,20 @@ namespace Nethermind.Store
             }
         }
 
+        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys]
+        {
+            get
+            {
+                if (_readDelay > 0)
+                {
+                    Thread.Sleep(_readDelay);
+                }
+
+                ReadsCount += keys.Length;
+                return keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _db.TryGetValue(k, out var value) ? value : null)).ToArray();
+            }
+        }
+
         public void Remove(byte[] key)
         {
             _db.TryRemove(key, out _);
@@ -70,8 +83,9 @@ namespace Nethermind.Store
         }
 
         public IDb Innermost => this;
+        public void Flush() { }
 
-        public byte[][] GetAll() => Values.Select(v => v).ToArray();
+        public IEnumerable<byte[]> GetAll() => Values;
 
         public void StartBatch()
         {

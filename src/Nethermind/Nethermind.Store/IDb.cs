@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 
 namespace Nethermind.Store
 {
@@ -22,7 +23,8 @@ namespace Nethermind.Store
     {
         string Name { get; }
         byte[] this[byte[] key] { get; set; }
-        byte[][] GetAll();
+        KeyValuePair<byte[],byte[]>[] this[byte[][] keys] { get; }
+        IEnumerable<byte[]> GetAll();
         void StartBatch();
         void CommitBatch();
         void Remove(byte[] key);
@@ -32,6 +34,8 @@ namespace Nethermind.Store
         /// For nested DB structures returns the innermost one
         /// </summary>
         public IDb Innermost { get; }
+
+        void Flush();
     }
 
     public interface IDbWithSpan : IDisposable

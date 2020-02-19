@@ -27,6 +27,7 @@ using Nethermind.AuRa;
 using Nethermind.AuRa.Rewards;
 using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.TxPools;
@@ -156,6 +157,11 @@ namespace Nethermind.PerfTest
                 return _blockTree.FindHeader(blockNumber, options);
             }
 
+            public bool IsMainChain(BlockHeader blockHeader)
+            {
+                return _blockTree.IsMainChain(blockHeader);
+            }
+
             public Keccak FindHash(long blockNumber)
             {
                 return _blockTree.FindHash(blockNumber);
@@ -268,7 +274,7 @@ namespace Nethermind.PerfTest
                 _logManager);
 
             var blockInfoRepository = new ChainLevelInfoRepository(blockInfosDb);
-            var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, headersDb, blockInfosDb, blockInfoRepository, specProvider, transactionPool, _logManager));
+            var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, headersDb, blockInfosDb, blockInfoRepository, specProvider, transactionPool, new BloomStorage(new BloomConfig(), dbProvider.HeadersDb, new InMemoryDictionaryFileStoreFactory()),  _logManager));
             var receiptStorage = new InMemoryReceiptStorage();
 
             IBlockDataRecoveryStep recoveryStep = new TxSignaturesRecoveryStep(ethereumSigner, transactionPool, _logManager);

@@ -74,11 +74,8 @@ namespace Nethermind.Store
             db[key.ToBigEndianByteArrayWithoutLeadingZeros()] = value;
         }
         
-        public static byte[] Get(this IDb db, long key)
-        {
-            return db[key.ToBigEndianByteArrayWithoutLeadingZeros()];
-        }
-        
+        public static byte[] Get(this IDb db, long key) => db[key.ToBigEndianByteArrayWithoutLeadingZeros()];
+
         public static void Delete(this IDb db, long key)
         {
             db.Remove(key.ToBigEndianByteArrayWithoutLeadingZeros());

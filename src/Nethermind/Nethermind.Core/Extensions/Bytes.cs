@@ -32,7 +32,7 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Extensions
 {
-    public static unsafe class Bytes
+    public static unsafe partial class Bytes
     {
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
 
@@ -306,38 +306,6 @@ namespace Nethermind.Core.Extensions
         public static BigInteger ToUnsignedBigInteger(this Span<byte> bytes, Endianness endianness = Endianness.Big)
         {
             return new BigInteger(bytes, true, endianness == Endianness.Big);
-        }
-
-        private static byte[] _reverseMask = {15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0};
-        private static Vector256<byte> _reverseMaskVec;
-
-        static Bytes()
-        {
-            if (Avx2.IsSupported)
-            {
-                unsafe
-                {
-                    fixed (byte* ptr_mask = _reverseMask)
-                    {
-                        _reverseMaskVec = Avx2.LoadVector256(ptr_mask);
-                    }
-                }
-            }
-        }
-
-        public static void Avx2Reverse256InPlace(Span<byte> bytes)
-        {
-            unsafe
-            {
-                fixed (byte* inputPointer = bytes)
-                {
-                    Vector256<byte> inputVector = Avx2.LoadVector256(inputPointer);
-                    Vector256<byte> resultVector = Avx2.Shuffle(inputVector, _reverseMaskVec);
-                    resultVector = Avx2.Permute4x64(resultVector.As<byte, ulong>(), 0b01001110).As<ulong, byte>();
-
-                    Avx2.Store(inputPointer, resultVector);
-                }
-            }
         }
 
         public static uint ReadEthUInt32(this Span<byte> bytes)
