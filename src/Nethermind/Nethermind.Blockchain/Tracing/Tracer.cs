@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Tracing
 
             try
             {
-                _blockProcessor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain, blockTracer);
+                _blockProcessor.Process(block, ProcessingOptions.Trace, blockTracer);
             }
             catch (Exception)
             {

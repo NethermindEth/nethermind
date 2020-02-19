@@ -76,13 +76,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 sourceHeader.Hash,
                 Keccak.OfAnEmptySequenceRlp,
                 Address.Zero,
-                
                 0,
                 sourceHeader.Number + 1,
                 sourceHeader.GasLimit,
                 sourceHeader.Timestamp,
                 Bytes.Empty);
-            
+
             callHeader.TxRoot = Keccak.EmptyTreeHash;
             callHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
             callHeader.Author = Address.SystemUser;
@@ -91,12 +90,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             Transaction transaction = tx.ToTransaction();
             transaction.SenderAddress ??= Address.SystemUser;
+
             if (transaction.GasLimit == 0)
             {
                 transaction.GasLimit = callHeader.GasLimit;
             }
 
-            
             Block block = new Block(callHeader, new[] {transaction}, Enumerable.Empty<BlockHeader>());
 
             ProofBlockTracer proofBlockTracer = new ProofBlockTracer(null, transaction.SenderAddress == Address.SystemUser);

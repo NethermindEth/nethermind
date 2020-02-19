@@ -27,8 +27,10 @@ namespace Nethermind.Blockchain
         StoreReceipts = 4,
         NoValidation = 8,
         IgnoreParentNotOnMainChain = 16,
-        All = 31,
+        DoNotVerifyNonce = 32,
+        All = 63,
         ProducingBlock = NoValidation | ReadOnlyChain,
+        Trace = ForceProcessing | ReadOnlyChain | DoNotVerifyNonce | NoValidation,
     }
 
     public static class ProcessingOptionsExtensions
