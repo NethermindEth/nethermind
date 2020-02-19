@@ -31,10 +31,10 @@ namespace Nethermind.Store.Proofs
     public class AccountProofCollector : ITreeVisitor
     {
         private int _pathIndex;
-        private Address _address;
+        private Address _address = Address.Zero;
         private AccountProof _accountProof;
 
-        private Nibble[] _prefix => Nibbles.FromBytes(Keccak.Compute(_address.Bytes).Bytes);
+        private Nibble[] _prefix;
         private Nibble[][] _storagePrefixes;
 
         private List<byte[]> _proofBits = new List<byte[]>();
@@ -66,15 +66,11 @@ namespace Nethermind.Store.Proofs
             return bytes;
         }
 
-        public AccountProofCollector(Address address, UInt256[] storageKeys)
-            : this(address, storageKeys.Select(ToKey).ToArray())
-        {
-        }
-
-        public AccountProofCollector(Address address, params byte[][] storageKeys)
+        internal AccountProofCollector(byte[] hashedAddress, params byte[][] storageKeys)
         {
             storageKeys ??= new byte[0][];
-            _address = address ?? throw new ArgumentNullException(nameof(address));
+            _prefix = Nibbles.FromBytes(hashedAddress);
+
             Keccak[] localStorageKeys = storageKeys.Select(ToKey).ToArray();
 
             _accountProof = new AccountProof();
@@ -96,6 +92,18 @@ namespace Nethermind.Store.Proofs
                 _accountProof.StorageProofs[i].Key = storageKeys[i];
                 _accountProof.StorageProofs[i].Value = null;
             }
+        }
+
+        public AccountProofCollector(Address address, params byte[][] storageKeys)
+            : this(Keccak.Compute(address?.Bytes ?? Address.Zero.Bytes).Bytes, storageKeys)
+        {
+            _accountProof.Address = _address = address ?? throw new ArgumentNullException(nameof(address));
+        }
+        
+        public AccountProofCollector(Address address, UInt256[] storageKeys)
+            : this(address, storageKeys.Select(ToKey).ToArray())
+        {
+            _accountProof.Address = _address = address ?? throw new ArgumentNullException(nameof(address));
         }
 
         public AccountProof BuildResult()
@@ -134,7 +142,6 @@ namespace Nethermind.Store.Proofs
 
             if (trieVisitContext.IsStorage)
             {
-                //                Console.WriteLine($"Visiting BRANCH {node.Keccak} at {_pathIndex}");
                 foreach (int storageIndex in _nodeInfos[node.Keccak].StorageIndices)
                 {
                     Keccak childHash = node.GetChildHash((byte) _storagePrefixes[storageIndex][_pathIndex]);
@@ -153,7 +160,6 @@ namespace Nethermind.Store.Proofs
 
                         _nodeInfos[childHash].PathIndex = _pathIndex + 1;
                         _nodeInfos[childHash].StorageIndices.Add(storageIndex);
-                        //                        Console.WriteLine($"For BRANCH {storageIndex} will visit {childHash} at {_pathIndex + 1}");
 
                         _visitingFilter.Add(childHash);
                     }
@@ -177,7 +183,7 @@ namespace Nethermind.Store.Proofs
             {
                 _nodeInfos[childHash] = new NodeInfo();
                 _nodeInfos[childHash].PathIndex = _pathIndex + node.Path.Length;
-                
+
                 foreach (int storageIndex in _nodeInfos[node.Keccak].StorageIndices)
                 {
                     bool isPathMatched = IsPathMatched(node, _storagePrefixes[storageIndex]);
@@ -188,9 +194,11 @@ namespace Nethermind.Store.Proofs
                 }
             }
 
-            _visitingFilter.Add(childHash); // always accept so can optimize
-
-            _pathIndex += node.Path.Length;
+            if (IsPathMatched(node, _prefix))
+            {
+                _visitingFilter.Add(childHash); // always accept so can optimize
+                _pathIndex += node.Path.Length;
+            }
         }
 
         private void AddProofBits(TrieNode node, TrieVisitContext trieVisitContext)
