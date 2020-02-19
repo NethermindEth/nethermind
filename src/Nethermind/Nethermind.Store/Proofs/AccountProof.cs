@@ -35,7 +35,7 @@ namespace Nethermind.Store.Proofs
 
         public UInt256 Nonce { get; set; }
 
-        public Keccak StorageRoot { get; set; } = Keccak.OfAnEmptySequenceRlp;
+        public Keccak StorageRoot { get; set; } = Keccak.EmptyTreeHash;
 
         public StorageProof[] StorageProofs { get; set; }
     }

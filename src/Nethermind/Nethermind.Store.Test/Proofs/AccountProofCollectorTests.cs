@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -37,7 +38,7 @@ namespace Nethermind.Store.Test.Proofs
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual(TestItem.AddressA, proof.Address);
             Assert.AreEqual(Keccak.OfAnEmptyString, proof.CodeHash);
-            Assert.AreEqual(Keccak.OfAnEmptySequenceRlp, proof.StorageRoot);
+            Assert.AreEqual(Keccak.EmptyTreeHash, proof.StorageRoot);
             Assert.AreEqual(UInt256.Zero, proof.Balance);
             Assert.AreEqual(null, proof.StorageProofs[0].Value);
             Assert.AreEqual(null, proof.StorageProofs[1].Value);
@@ -45,7 +46,7 @@ namespace Nethermind.Store.Test.Proofs
         }
         
         [Test]
-        public void Non_existing_account_is_valid_on_non_empty_tree()
+        public void Non_existing_account_is_valid_on_non_empty_tree_with_branch_without_matching_child()
         {
             StateTree tree = new StateTree();
 
@@ -58,13 +59,65 @@ namespace Nethermind.Store.Test.Proofs
             AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressC, new UInt256[] {1, 2, 3});
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
+            proof.Proof.Should().HaveCount(1);
             Assert.AreEqual(TestItem.AddressC, proof.Address);
             Assert.AreEqual(Keccak.OfAnEmptyString, proof.CodeHash);
-            Assert.AreEqual(Keccak.OfAnEmptySequenceRlp, proof.StorageRoot);
+            Assert.AreEqual(Keccak.EmptyTreeHash, proof.StorageRoot);
             Assert.AreEqual(UInt256.Zero, proof.Balance);
             Assert.AreEqual(null, proof.StorageProofs[0].Value);
             Assert.AreEqual(null, proof.StorageProofs[1].Value);
             Assert.AreEqual(null, proof.StorageProofs[2].Value);
+        }
+        
+        [Test]
+        public void Non_existing_account_is_valid_even_when_leaf_is_the_last_part_of_the_proof()
+        {
+            StateTree tree = new StateTree();
+
+            Account account1 = Build.An.Account.WithBalance(1).TestObject;
+            tree.Set(TestItem.AddressA, account1);
+            tree.Commit();
+            
+            AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressC, new UInt256[] {1, 2, 3});
+            tree.Accept(accountProofCollector, tree.RootHash);
+            AccountProof proof = accountProofCollector.BuildResult();
+            proof.Proof.Should().HaveCount(1);
+            Assert.AreEqual(TestItem.AddressC, proof.Address);
+            Assert.AreEqual(Keccak.OfAnEmptyString, proof.CodeHash);
+            Assert.AreEqual(Keccak.EmptyTreeHash, proof.StorageRoot);
+            Assert.AreEqual(UInt256.Zero, proof.Balance);
+            Assert.AreEqual(null, proof.StorageProofs[0].Value);
+            Assert.AreEqual(null, proof.StorageProofs[1].Value);
+            Assert.AreEqual(null, proof.StorageProofs[2].Value);
+        }
+        
+        [Test]
+        public void Non_existing_account_is_valid_even_when_extension_on_the_way_is_not_fully_matched()
+        {
+            // extension for a & b of the same length as for the c & d
+            byte[] a = Bytes.FromHexString("0xeeeeeeeeeeeeeeeeeeeeeeee0eeeeeeeeeeeeeeeee1111111111111111111111");
+            byte[] b = Bytes.FromHexString("0xeeeeeeeeeeeeeeeeeeeeeeee0eeeeeeeeeeeeeeeee2222222222222222222222");
+            // but the extensions themselves have a difference in the middle (0 instead of e)
+            byte[] c = Bytes.FromHexString("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee3333333333333333333333");
+            byte[] d = Bytes.FromHexString("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee4444444444444444444444");
+            
+            StateTree tree = new StateTree();
+
+            // we ensure that accounts a and b do not exist in the trie
+            Account account = Build.An.Account.WithBalance(1).TestObject;
+            tree.Set(c.AsSpan(), Rlp.Encode(account.WithChangedBalance(3)));
+            tree.Set(d.AsSpan(), Rlp.Encode(account.WithChangedBalance(4)));
+            tree.Commit();
+            
+            // now wer are looking for a trying to trick the code to think that the extension of c and d is a good match
+            // if everything is ok the proof length of 1 is enough since the extension from the root is not matched
+            AccountProofCollector accountProofCollector = new AccountProofCollector(a);
+            tree.Accept(accountProofCollector, tree.RootHash);
+            AccountProof proof = accountProofCollector.BuildResult();
+            proof.Proof.Should().HaveCount(1);
+            
+            // and because the account does not exist, the balance should be 0
+            proof.Balance.Should().Be(UInt256.Zero);
         }
 
         [Test]
@@ -434,7 +487,7 @@ namespace Nethermind.Store.Test.Proofs
             AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA);
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
-            Assert.AreEqual((UInt256) 2, proof.Balance);
+            Assert.AreEqual((UInt256) 0, proof.Balance);
             Assert.AreEqual(UInt256.Zero, proof.Nonce);
             Assert.AreEqual(Keccak.OfAnEmptyString, proof.CodeHash);
             Assert.AreEqual(Keccak.EmptyTreeHash, proof.StorageRoot);
