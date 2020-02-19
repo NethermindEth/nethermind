@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -18,20 +18,8 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public static class ReceiptStorageExtensions
+    public interface IReceiptsRecovery
     {
-        public static TxReceipt[] FindForBlock(this IReceiptStorage receiptStorage, Block block)
-        {
-            var recovery = new ReceiptsRecovery();
-            TxReceipt[] result = new TxReceipt[block.Body.Transactions.Length];
-            for (int i = 0; i < result.Length; i++)
-            {
-                result[i] = receiptStorage.Find(block.Body.Transactions[i].Hash);
-            }
-
-            recovery.TryRecover(block, result);
-
-            return result;
-        }
+        public bool TryRecover(Block block, TxReceipt[] receipts);
     }
 }
