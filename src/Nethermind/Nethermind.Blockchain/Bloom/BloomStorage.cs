@@ -133,13 +133,14 @@ namespace Nethermind.Blockchain.Bloom
             foreach (var blockHeader in headers)
             {
                 i++;
-                
-                lastLevel.StoreMigration(blockHeader.Number, blockHeader.Bloom);
+
+                var blockHeaderBloom = blockHeader.Bloom ?? Core.Bloom.Empty;
+                lastLevel.StoreMigration(blockHeader.Number, blockHeaderBloom);
                 
                 for (var index = 0; index < levelBlooms.Length; index++)
                 {
                     var levelBloom = levelBlooms[index];
-                    levelBloom.Bloom.Accrue(blockHeader.Bloom);
+                    levelBloom.Bloom.Accrue(blockHeaderBloom);
                     
                     if (i % levelBloom.Level.LevelElementSize == 0)
                     {

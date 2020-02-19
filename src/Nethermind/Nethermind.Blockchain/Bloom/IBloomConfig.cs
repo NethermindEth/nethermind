@@ -23,7 +23,7 @@ namespace Nethermind.Blockchain.Bloom
         [ConfigItem(Description = "Defines whether the Bloom index is used. Bloom index speeds up rpc log searches.", DefaultValue = "true")]
         bool Index { get; set; }
         
-        [ConfigItem(Description = "Defines multipliers for index levels. Can be tweaked per chain to boost performance.", DefaultValue = "{4}")]
+        [ConfigItem(Description = "Defines multipliers for index levels. Can be tweaked per chain to boost performance.", DefaultValue = "[4]")]
         int[] IndexLevelBucketSizes { get; set; }
         
         [ConfigItem(Description = "Defines if migration statistics are to be calculated and output.", DefaultValue = "false")]

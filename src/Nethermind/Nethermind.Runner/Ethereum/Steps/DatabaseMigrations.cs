@@ -38,7 +38,7 @@ using Timer = System.Timers.Timer;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(InitializeBlockchain), typeof(LoadGenesisBlock))]
+    [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(InitializeBlockchain))]
     public class DatabaseMigrations : IStep, IAsyncDisposable
     {
         private readonly EthereumRunnerContext _context;
@@ -70,7 +70,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             var storage = _context.BloomStorage;
             if (storage.NeedsMigration)
             {
-                if (_bloomConfig.Migration)
+                if (_bloomConfig.Migration && _context.BlockTree.Head != null)
                 {
                     _cancellationTokenSource = new CancellationTokenSource();
                     _context.DisposeStack.Push(this);
@@ -103,8 +103,8 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private void RunBloomMigration(CancellationToken token)
         {
-            var storage = _context.BloomStorage;
             var blockTree = _context.BlockTree;
+            var storage = _context.BloomStorage;
             var to = MinBlockNumber;
             long synced = storage.MigratedBlockNumber + 1;
             var from = synced;
