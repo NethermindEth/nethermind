@@ -37,7 +37,7 @@ namespace Nethermind.Store.Test.Proofs
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual(TestItem.AddressA, proof.Address);
             Assert.AreEqual(Keccak.OfAnEmptyString, proof.CodeHash);
-            Assert.AreEqual(Keccak.OfAnEmptySequenceRlp, proof.StorageRoot);
+            Assert.AreEqual(Keccak.EmptyTreeHash, proof.StorageRoot);
             Assert.AreEqual(UInt256.Zero, proof.Balance);
             Assert.AreEqual(null, proof.StorageProofs[0].Value);
             Assert.AreEqual(null, proof.StorageProofs[1].Value);
@@ -60,7 +60,28 @@ namespace Nethermind.Store.Test.Proofs
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual(TestItem.AddressC, proof.Address);
             Assert.AreEqual(Keccak.OfAnEmptyString, proof.CodeHash);
-            Assert.AreEqual(Keccak.OfAnEmptySequenceRlp, proof.StorageRoot);
+            Assert.AreEqual(Keccak.EmptyTreeHash, proof.StorageRoot);
+            Assert.AreEqual(UInt256.Zero, proof.Balance);
+            Assert.AreEqual(null, proof.StorageProofs[0].Value);
+            Assert.AreEqual(null, proof.StorageProofs[1].Value);
+            Assert.AreEqual(null, proof.StorageProofs[2].Value);
+        }
+        
+        [Test]
+        public void Non_existing_account_is_valid_even_when_leaf_is_the_last_part_of_the_proof()
+        {
+            StateTree tree = new StateTree();
+
+            Account account1 = Build.An.Account.WithBalance(1).TestObject;
+            tree.Set(TestItem.AddressA, account1);
+            tree.Commit();
+            
+            AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressC, new UInt256[] {1, 2, 3});
+            tree.Accept(accountProofCollector, tree.RootHash);
+            AccountProof proof = accountProofCollector.BuildResult();
+            Assert.AreEqual(TestItem.AddressC, proof.Address);
+            Assert.AreEqual(Keccak.OfAnEmptyString, proof.CodeHash);
+            Assert.AreEqual(Keccak.EmptyTreeHash, proof.StorageRoot);
             Assert.AreEqual(UInt256.Zero, proof.Balance);
             Assert.AreEqual(null, proof.StorageProofs[0].Value);
             Assert.AreEqual(null, proof.StorageProofs[1].Value);
@@ -434,7 +455,7 @@ namespace Nethermind.Store.Test.Proofs
             AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA);
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
-            Assert.AreEqual((UInt256) 2, proof.Balance);
+            Assert.AreEqual((UInt256) 0, proof.Balance);
             Assert.AreEqual(UInt256.Zero, proof.Nonce);
             Assert.AreEqual(Keccak.OfAnEmptyString, proof.CodeHash);
             Assert.AreEqual(Keccak.EmptyTreeHash, proof.StorageRoot);

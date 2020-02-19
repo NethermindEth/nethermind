@@ -180,17 +180,8 @@ namespace Nethermind.Store.Proofs
                 
                 foreach (int storageIndex in _nodeInfos[node.Keccak].StorageIndices)
                 {
-                    bool isMatched = true;
-                    for (int i = _pathIndex; i < node.Path.Length + _pathIndex; i++)
-                    {
-                        if ((byte) _storagePrefixes[storageIndex][i] != node.Path[i - _pathIndex])
-                        {
-                            isMatched = false;
-                            break;
-                        }
-                    }
-
-                    if (isMatched)
+                    bool isPathMatched = IsPathMatched(node, _storagePrefixes[storageIndex]);
+                    if (isPathMatched)
                     {
                         _nodeInfos[childHash].StorageIndices.Add(storageIndex);
                     }
@@ -247,17 +238,9 @@ namespace Nethermind.Store.Proofs
             {
                 foreach (int storageIndex in _nodeInfos[node.Keccak].StorageIndices)
                 {
-                    bool isMatched = true;
-                    for (int i = _pathIndex; i < 64; i++)
-                    {
-                        if ((byte) _storagePrefixes[storageIndex][i] != node.Path[i - _pathIndex])
-                        {
-                            isMatched = false;
-                            break;
-                        }
-                    }
-
-                    if (isMatched)
+                    Nibble[] thisStoragePath = _storagePrefixes[storageIndex];
+                    bool isPathMatched = IsPathMatched(node, thisStoragePath);
+                    if (isPathMatched)
                     {
                         _accountProof.StorageProofs[storageIndex].Value = new RlpStream(node.Value).DecodeByteArray();
                     }
@@ -266,24 +249,43 @@ namespace Nethermind.Store.Proofs
             else
             {
                 Account account = _accountDecoder.Decode(new RlpStream(node.Value));
-                _accountProof.Nonce = account.Nonce;
-                _accountProof.Balance = account.Balance;
-                _accountProof.StorageRoot = account.StorageRoot;
-                _accountProof.CodeHash = account.CodeHash;
-
-                if (_storagePrefixes.Length > 0)
+                bool isPathMatched = IsPathMatched(node, _prefix);
+                if (isPathMatched)
                 {
-                    _visitingFilter.Add(_accountProof.StorageRoot);
-                    _nodeInfos[_accountProof.StorageRoot] = new NodeInfo();
-                    _nodeInfos[_accountProof.StorageRoot].PathIndex = 0;
-                    for (int i = 0; i < _storagePrefixes.Length; i++)
+                    _accountProof.Nonce = account.Nonce;
+                    _accountProof.Balance = account.Balance;
+                    _accountProof.StorageRoot = account.StorageRoot;
+                    _accountProof.CodeHash = account.CodeHash;
+
+                    if (_storagePrefixes.Length > 0)
                     {
-                        _nodeInfos[_accountProof.StorageRoot].StorageIndices.Add(i);
+                        _visitingFilter.Add(_accountProof.StorageRoot);
+                        _nodeInfos[_accountProof.StorageRoot] = new NodeInfo();
+                        _nodeInfos[_accountProof.StorageRoot].PathIndex = 0;
+                        for (int i = 0; i < _storagePrefixes.Length; i++)
+                        {
+                            _nodeInfos[_accountProof.StorageRoot].StorageIndices.Add(i);
+                        }
                     }
                 }
             }
 
             _pathIndex = 0;
+        }
+
+        private bool IsPathMatched(TrieNode node, Nibble[] path)
+        {
+            bool isPathMatched = true;
+            for (int i = _pathIndex; i < node.Path.Length + _pathIndex; i++)
+            {
+                if ((byte) path[i] != node.Path[i - _pathIndex])
+                {
+                    isPathMatched = false;
+                    break;
+                }
+            }
+
+            return isPathMatched;
         }
 
         private AccountDecoder _accountDecoder = new AccountDecoder();
