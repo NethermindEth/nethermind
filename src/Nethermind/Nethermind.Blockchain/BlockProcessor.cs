@@ -149,6 +149,11 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
+                if((processingOptions & ProcessingOptions.DoNotVerifyNonce) != 0)
+                {
+                    currentTx.Nonce = _stateProvider.GetNonce(currentTx.SenderAddress);
+                }
+                
                 _receiptsTracer.StartNewTxTrace(currentTx.Hash);
                 _transactionProcessor.Execute(currentTx, block.Header, _receiptsTracer);
                 _receiptsTracer.EndTxTrace();
