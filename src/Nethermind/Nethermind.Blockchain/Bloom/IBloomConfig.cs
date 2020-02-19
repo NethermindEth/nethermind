@@ -14,18 +14,22 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Attributes;
+using Nethermind.Config;
 
 namespace Nethermind.Blockchain.Bloom
 {
-    public class BloomConfig : IBloomConfig
+    public interface IBloomConfig : IConfig
     {
-        public bool Index { get; set; } = true;
+        [ConfigItem(Description = "Defines whether the Bloom index is used. Bloom index speeds up rpc log searches.", DefaultValue = "true")]
+        bool Index { get; set; }
         
-        public int[] IndexLevelBucketSizes { get; set; } = {4};
+        [ConfigItem(Description = "Defines multipliers for index levels. Can be tweaked per chain to boost performance.", DefaultValue = "{4}")]
+        int[] IndexLevelBucketSizes { get; set; }
         
-        public bool MigrationStatistics { get; set; } = false;
+        [ConfigItem(Description = "Defines if migration statistics are to be calculated and output.", DefaultValue = "false")]
+        bool MigrationStatistics { get; set; }
         
-        public bool Migration { get; set; } = false;
+        [ConfigItem(Description = "Defines if migration of previously downloaded blocks to Bloom index will be done.", DefaultValue = "false")]
+        bool Migration { get; set; }
     }
 }

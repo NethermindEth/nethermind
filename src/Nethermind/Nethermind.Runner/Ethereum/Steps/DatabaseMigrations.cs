@@ -29,13 +29,16 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Runner.Ethereum.Context;
 using ILogger = Nethermind.Logging.ILogger;
 using Timer = System.Timers.Timer;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(InitializeBlockchain))]
+    [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(InitializeBlockchain), typeof(LoadGenesisBlock))]
     public class DatabaseMigrations : IStep, IAsyncDisposable
     {
         private readonly EthereumRunnerContext _context;
@@ -103,13 +106,12 @@ namespace Nethermind.Runner.Ethereum.Steps
             var storage = _context.BloomStorage;
             var blockTree = _context.BlockTree;
             var to = MinBlockNumber;
-            var from = storage.MigratedBlockNumber + 1;
-            var maxLevelBucketLength = _bloomConfig.IndexLevelBucketSizes.Aggregate(1, (i, l) => i * l);
+            long synced = storage.MigratedBlockNumber + 1;
+            var from = synced;
             _migrateCount = to + 1;
             _averages = _context.BloomStorage.Averages.ToArray();
-            Bloom[] blooms = new Bloom[maxLevelBucketLength];
             
-            _progress.Update(from);
+            _progress.Update(synced);
 
             if (_logger.IsInfo) _logger.Info(GetLogMessage("started"));
 
@@ -120,45 +122,40 @@ namespace Nethermind.Runner.Ethereum.Steps
                     if (_logger.IsInfo) _logger.Info(GetLogMessage("in progress"));
                 });
 
-                long synced = 0;
                 try
                 {
-                    for (long i = from; i <= to; i += maxLevelBucketLength)
-                    {
-                        if (token.IsCancellationRequested)
-                        {
-                            timer.Stop();
-                            if (_logger.IsInfo) _logger.Info(GetLogMessage("cancelled"));
-                            return;
-                        }
-
-                        int j;
-                        for (j = 0; j < maxLevelBucketLength; j++)
-                        {
-                            if (j + i > to)
-                            {
-                                break;
-                            }
-                            else
-                            {
-                                var header = blockTree.FindHeader(i + j);
-                                blooms[j] = header?.Bloom ?? Bloom.Empty;
-                            }
-                        }
-                        
-                        storage.StoreMigration(i, blooms.AsSpan(0, j));
-                        synced += j;
-                        _progress.Update(synced);
-                    }
+                    storage.StoreMigration(GetHeadersForMigration());
                 }
                 finally
                 {
                     _progress.MarkEnd();
                     _stopwatch.Stop();
                 }
+
+                IEnumerable<BlockHeader> GetHeadersForMigration()
+                {
+                    for (long i = from; i <= to; i++)
+                    {
+                        if (token.IsCancellationRequested)
+                        {
+                            timer.Stop();
+                            if (_logger.IsInfo) _logger.Info(GetLogMessage("cancelled"));
+                            yield break;
+                        }
+
+                        var header = blockTree.FindHeader(i);
+                        yield return header ?? new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, UInt256.Zero, Bytes.Empty);
+
+                        synced++;
+                        _progress.Update(synced);
+                    }
+                }
             }
 
-            if (_logger.IsInfo) _logger.Info(GetLogMessage("finished"));
+            if (!token.IsCancellationRequested)
+            {
+                if (_logger.IsInfo) _logger.Info(GetLogMessage("finished"));
+            }
         }
 
         private string GetLogMessage(string status, string suffix = null)
@@ -171,14 +168,31 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private string GeAveragesMessage()
         {
-            if (_bloomConfig.Statistics)
+            if (_bloomConfig.MigrationStatistics)
             {
                 _builder.Clear();
                 _builder.Append("Average bloom saturation: ");
                 for (var index = 0; index < _averages.Length; index++)
                 {
                     var average = _averages[index];
-                    _builder.Append((average.Value / Bloom.BitLength).ToString("P1"));
+                    _builder.Append((average.Value / Bloom.BitLength).ToString("P2"));
+                    decimal count = 0;
+                    decimal length = 0;
+                    decimal safeBitCount = Bloom.BitLength * 0.6m;
+                    foreach (var bucket in average.Buckets)
+                    {
+                        if (bucket.Key > safeBitCount)
+                        {
+                            count += bucket.Value;
+                            length += (bucket.Key - safeBitCount) * bucket.Value;
+                        }
+                    }
+
+                    if (count > 0)
+                    {
+                        _builder.Append($"(W:{count}, {count / average.Count:P}, L:{length / count:F0})");
+                    }
+
                     _builder.Append('|');
                 }
 

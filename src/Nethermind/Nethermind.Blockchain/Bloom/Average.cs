@@ -40,20 +40,13 @@ namespace Nethermind.Blockchain.Bloom
         }
 
         public readonly IDictionary<uint, uint> Buckets = new Dictionary<uint, uint>();
+        
+        public int Count { get; private set; }
 
         public void Add(uint value)
         {
             Buckets[value] = Buckets.TryGetValue(value, out var count) ? count + 1 : 1;
-        }
-
-        public void Replace(uint value, uint oldValue)
-        {
-            if (Buckets.TryGetValue(oldValue, out var count) && count > 0)
-            {
-                Buckets[oldValue] -= 1;
-            }
-            
-            Add(value);
+            Count++;
         }
     }
 }

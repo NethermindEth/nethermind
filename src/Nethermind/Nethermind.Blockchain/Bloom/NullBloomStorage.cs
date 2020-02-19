@@ -18,6 +18,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Bloom
 {
@@ -28,7 +29,7 @@ namespace Nethermind.Blockchain.Bloom
         public long MaxBlockNumber { get; } = 0;
         public long MigratedBlockNumber { get; } = 0;
         public void Store(long blockNumber, Core.Bloom bloom) { }
-        public void StoreMigration(long blockNumber, Span<Core.Bloom> bloom) { }
+        public void StoreMigration(IEnumerable<BlockHeader> blockHeaders) { }
 
         public IBloomEnumeration GetBlooms(long fromBlock, long toBlock) => new NullBloomEnumerator();
 

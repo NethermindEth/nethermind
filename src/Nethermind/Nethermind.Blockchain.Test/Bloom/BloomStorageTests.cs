@@ -88,7 +88,7 @@ namespace Nethermind.Blockchain.Test.Bloom
                 IEnumerable<long> GetRange(long expectedFound, int offset = 0) => Enumerable.Range(offset, (int) expectedFound).Select(i => (long) i);
                 var searchesPerBucket = 1 + LevelMultiplier + LevelMultiplier*LevelMultiplier + LevelMultiplier*LevelMultiplier*LevelMultiplier;
                 
-                var bucketItems = new BloomStorage(new BloomConfig() {IndexLevelBucketSizes = new byte[]{LevelMultiplier, LevelMultiplier, LevelMultiplier}}, new MemDb(), new DictionaryFileStoreFactory()).MaxBucketSize;
+                var bucketItems = new BloomStorage(new BloomConfig() {IndexLevelBucketSizes = new []{LevelMultiplier, LevelMultiplier, LevelMultiplier}}, new MemDb(), new DictionaryFileStoreFactory()).MaxBucketSize;
                 var count = bucketItems*Buckets;
                 var maxIndex = count - 1;
                 yield return new TestCaseData(0, maxIndex, false, Enumerable.Empty<long>(), Buckets);
@@ -101,7 +101,7 @@ namespace Nethermind.Blockchain.Test.Bloom
         [TestCaseSource(nameof(GetBloomsTestCases))]
         public void Returns_proper_blooms_after_store(long from, long to, bool isMatch, IEnumerable<long> expectedBlocks, long expectedBloomsChecked)
         {
-            var storage = CreateBloomStorage(new BloomConfig() {IndexLevelBucketSizes = new byte[]{LevelMultiplier, LevelMultiplier, LevelMultiplier}});
+            var storage = CreateBloomStorage(new BloomConfig() {IndexLevelBucketSizes = new []{LevelMultiplier, LevelMultiplier, LevelMultiplier}});
             long bloomsChecked = 0; 
             
             var bloomEnumeration = storage.GetBlooms(from, to);

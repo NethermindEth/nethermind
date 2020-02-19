@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Bloom
 {
@@ -25,7 +26,7 @@ namespace Nethermind.Blockchain.Bloom
 
         void Store(long blockNumber, Core.Bloom bloom);
         
-        void StoreMigration(long blockNumber, Span<Core.Bloom> bloom);
+        void StoreMigration(IEnumerable<BlockHeader> blockHeaders);
         
         IBloomEnumeration GetBlooms(long fromBlock, long toBlock);
         
