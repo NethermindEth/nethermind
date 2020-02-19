@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Test.Find
             specProvider.GetSpec(Arg.Any<long>()).IsEip155Enabled.Returns(true);
             _receiptStorage = new InMemoryReceiptStorage();
             _blockTree = Build.A.BlockTree().WithTransactions(_receiptStorage, specProvider, LogsForBlockBuilder).OfChainLength(5).TestObject;
-            _bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new DictionaryFileStoreFactory());
+            _bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
             _logFinder = new LogFinder(_blockTree, _receiptStorage, _bloomStorage);
         }
 

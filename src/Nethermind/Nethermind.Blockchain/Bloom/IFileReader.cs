@@ -20,6 +20,6 @@ namespace Nethermind.Blockchain.Bloom
 {
     public interface IFileReader : IDisposable
     {
-        int Read(long index, byte[] element);
+        int Read(long index, Span<byte> element);
     }
 }

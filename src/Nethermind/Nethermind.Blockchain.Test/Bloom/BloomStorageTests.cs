@@ -29,7 +29,7 @@ namespace Nethermind.Blockchain.Test.Bloom
     {
         private IBloomConfig _config;
         private MemDb _bloomDb;
-        private DictionaryFileStoreFactory _fileStoreFactory;
+        private InMemoryDictionaryFileStoreFactory _fileStoreFactory;
 
 
         [SetUp]
@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Test.Bloom
         {
             _config = new BloomConfig();
             _bloomDb = new MemDb();
-            _fileStoreFactory = new DictionaryFileStoreFactory();
+            _fileStoreFactory = new InMemoryDictionaryFileStoreFactory();
         }
         
         [TestCase(0, 0)]
@@ -88,12 +88,12 @@ namespace Nethermind.Blockchain.Test.Bloom
                 IEnumerable<long> GetRange(long expectedFound, int offset = 0) => Enumerable.Range(offset, (int) expectedFound).Select(i => (long) i);
                 var searchesPerBucket = 1 + LevelMultiplier + LevelMultiplier*LevelMultiplier + LevelMultiplier*LevelMultiplier*LevelMultiplier;
                 
-                var bucketItems = new BloomStorage(new BloomConfig() {IndexLevelBucketSizes = new []{LevelMultiplier, LevelMultiplier, LevelMultiplier}}, new MemDb(), new DictionaryFileStoreFactory()).MaxBucketSize;
+                var bucketItems = new BloomStorage(new BloomConfig() {IndexLevelBucketSizes = new []{LevelMultiplier, LevelMultiplier, LevelMultiplier}}, new MemDb(), new InMemoryDictionaryFileStoreFactory()).MaxBucketSize;
                 var count = bucketItems*Buckets;
                 var maxIndex = count - 1;
                 yield return new TestCaseData(0, maxIndex, false, Enumerable.Empty<long>(), Buckets);
                 yield return new TestCaseData(0, maxIndex, true, GetRange(count), Buckets * searchesPerBucket);
-                yield return new TestCaseData(5, 49, true, GetRange(45, 5), 1 + 1 + 4 + 45);
+                yield return new TestCaseData(5, 49, true, GetRange(45, 5), 1 + 1 + 4 + 45); // 1 lookup at top level (16*16**16), 1 lookup at next level (16*16), 4 lookups at next level (16), 45 lookups at bottom level (49-5+1)
                 yield return new TestCaseData(0, LevelMultiplier*LevelMultiplier*LevelMultiplier - 1, true, GetRange(LevelMultiplier*LevelMultiplier*LevelMultiplier), searchesPerBucket);
             }
         }
@@ -125,7 +125,7 @@ namespace Nethermind.Blockchain.Test.Bloom
 
         private static BloomStorage CreateBloomStorage(BloomConfig bloomConfig = null)
         {
-            var storage = new BloomStorage(bloomConfig ?? new BloomConfig(), new MemDb(), new DictionaryFileStoreFactory());
+            var storage = new BloomStorage(bloomConfig ?? new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
             var bucketItems = storage.MaxBucketSize * Buckets;
             
             for (long i = 0; i < bucketItems; i++)

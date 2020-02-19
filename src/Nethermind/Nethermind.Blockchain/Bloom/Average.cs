@@ -43,7 +43,7 @@ namespace Nethermind.Blockchain.Bloom
         
         public int Count { get; private set; }
 
-        public void Add(uint value)
+        public void Increment(uint value)
         {
             Buckets[value] = Buckets.TryGetValue(value, out var count) ? count + 1 : 1;
             Count++;

@@ -85,7 +85,7 @@ namespace Nethermind.Store
         public IDb Innermost => this;
         public void Flush() { }
 
-        public IEnumerable<byte[]> GetAll() => Values.Select(v => v);
+        public IEnumerable<byte[]> GetAll() => Values;
 
         public void StartBatch()
         {

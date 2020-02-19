@@ -97,25 +97,23 @@ namespace Nethermind.Core.Extensions
             }
         }
 
-        public static ulong CountBits(this Span<byte> thisSpam)
+        public static ulong CountBits(this Span<byte> thisSpan)
         {
             ulong result = 0;
             if (Popcnt.IsSupported)
             {
-                Span<uint> uintSpam = MemoryMarshal.Cast<byte, uint>(thisSpam);
-                fixed (byte* thisPtr = thisSpam)
+                Span<uint> uintSpam = MemoryMarshal.Cast<byte, uint>(thisSpan);
+                for (int i = 0; i < uintSpam.Length; i++)
                 {
-                    for (int i = 0; i < uintSpam.Length; i++)
-                    {
-                        result += Popcnt.PopCount(uintSpam[i]);
-                    }
+                    result += Popcnt.PopCount(uintSpam[i]);
                 }
+
             }
             else
             {
-                for (int i = 0; i < thisSpam.Length; i++)
+                for (int i = 0; i < thisSpan.Length; i++)
                 {
-                    int n = thisSpam[i];
+                    int n = thisSpan[i];
                     while (n > 0) { 
                         n &= n - 1; 
                         result++; 

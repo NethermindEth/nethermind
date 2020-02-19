@@ -22,6 +22,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -571,7 +572,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 switch (e.Message)
                 {
-                    case "Block not found.": return ResultWrapper<IEnumerable<FilterLog>>.Fail(e.Message, ErrorCodes.ResourceNotFound);
+                    case ILogFinder.NotFoundError: return ResultWrapper<IEnumerable<FilterLog>>.Fail(e.Message, ErrorCodes.ResourceNotFound);
                     default:
                         return ResultWrapper<IEnumerable<FilterLog>>.Fail(e.Message, ErrorCodes.InvalidParams);
                 }

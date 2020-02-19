@@ -17,42 +17,35 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Bloom;
 
-namespace Nethermind.Blockchain.Test.Bloom
+namespace Nethermind.Blockchain.Bloom
 {
-    public class DictionaryFileStore : IFileStore
+    public class InMemoryDictionaryFileStore : IFileStore
     {
-        IDictionary<long, byte[]> _store = new Dictionary<long, byte[]>();
-            
-        public ValueTask DisposeAsync()
-        {
-            _store.Clear();
-            return default;
-        }
-
+        readonly IDictionary<long, byte[]> _store = new Dictionary<long, byte[]>();
+        
         public void Dispose()
         {
             _store.Clear();
         }
 
-        public void Write(long index, byte[] element)
+        public void Write(long index, ReadOnlySpan<byte> element)
         {
-            _store[index] = element;
+            _store[index] = element.ToArray();
         }
 
-        public int Read(long index, byte[] element)
+        public int Read(long index, Span<byte> element)
         {
             if (_store.TryGetValue(index, out var found))
             {
-                Array.Copy(found, element, found.Length);
+                found.CopyTo(element);
                 return found.Length;
             }
 
             return 0;
         }
 
-        public IFileReader GetFileReader() => new DictionaryFileReader(this);
+        public IFileReader GetFileReader() => new InMemoryDictionaryFileReader(this);
 
         public void Flush() { }
     }

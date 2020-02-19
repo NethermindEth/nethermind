@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.IO;
 
 namespace Nethermind.Blockchain.Bloom
@@ -29,10 +30,10 @@ namespace Nethermind.Blockchain.Bloom
             _file = File.Open(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         }
         
-        public int Read(long index, byte[] element)
+        public int Read(long index, Span<byte> element)
         {
             SeekIndex(index);
-            return _file.Read(element, 0, _elementSize);
+            return _file.Read(element);
         }
         
         private void SeekIndex(long index)

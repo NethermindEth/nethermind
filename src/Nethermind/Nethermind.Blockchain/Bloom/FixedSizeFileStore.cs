@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Bloom
             _fileRead = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         }
 
-        public void Write(long index, byte[] element)
+        public void Write(long index, ReadOnlySpan<byte> element)
         {
             if (element.Length != _elementSize)
             {
@@ -44,16 +44,16 @@ namespace Nethermind.Blockchain.Bloom
             lock (_fileWrite)
             {
                 SeekIndex(_fileWrite, index);
-                _fileWrite.Write(element, 0, _elementSize);
+                _fileWrite.Write(element);
             }
         }
 
-        public int Read(long index, byte[] element)
+        public int Read(long index, Span<byte> element)
         {
             lock (_fileRead)
             {
                 SeekIndex(_fileRead, index);
-                return _fileRead.Read(element, 0, _elementSize);
+                return _fileRead.Read(element);
             }            
         }
 

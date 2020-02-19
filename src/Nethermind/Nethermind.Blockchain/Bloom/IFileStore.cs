@@ -20,9 +20,9 @@ namespace Nethermind.Blockchain.Bloom
 {
     public interface IFileStore : IDisposable
     {
-        void Write(long index, byte[] element);
+        void Write(long index, ReadOnlySpan<byte> element);
 
-        int Read(long index, byte[] element);
+        int Read(long index, Span<byte> element);
         
         IFileReader GetFileReader();
         

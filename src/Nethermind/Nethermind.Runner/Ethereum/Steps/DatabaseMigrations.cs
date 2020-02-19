@@ -124,7 +124,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 try
                 {
-                    storage.StoreMigration(GetHeadersForMigration());
+                    storage.Migrate(GetHeadersForMigration());
                 }
                 finally
                 {

@@ -1005,6 +1005,7 @@ namespace Nethermind.Blockchain
 
         private TaskCompletionSource<object> _dbBatchProcessed;
 
+        [Todo(Improve.MissingFunctionality, "Recalculate bloom storage on reorg.")]
         private void MoveToMain(Block block, BatchWrite batch, bool wasProcessed)
         {
             if (_logger.IsTrace) _logger.Trace($"Moving {block.ToString(Block.Format.Short)} to main");

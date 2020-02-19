@@ -43,7 +43,7 @@ namespace Nethermind.Blockchain.Find
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter)
         {
-            BlockHeader FindHeader(BlockParameter blockParameter, string name) => _blockFinder.FindHeader(blockParameter) ?? throw new ArgumentException("Block not found.", name);
+            BlockHeader FindHeader(BlockParameter blockParameter, string name) => _blockFinder.FindHeader(blockParameter) ?? throw new ArgumentException(ILogFinder.NotFoundError, name);
 
             var toBlock = FindHeader(filter.ToBlock, nameof(filter.ToBlock));
             var fromBlock = FindHeader(filter.FromBlock, nameof(filter.FromBlock));

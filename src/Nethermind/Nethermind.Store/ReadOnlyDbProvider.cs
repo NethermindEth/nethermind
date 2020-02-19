@@ -78,8 +78,8 @@ namespace Nethermind.Store
             NestedHeadersDb.Restore(-1);
             NestedBlockInfosDb.Restore(-1);
             NestedConfigsDb.Restore(-1);
-            NestedEthRequestsDb.Restore(-1);
-			NestedReceiptsDb.Restore(-1);
+            NestedEthRequestsDb.Restore(-1); 
+            NestedReceiptsDb.Restore(-1);
             NestedBloomDb.Restore(-1);
         }
     }

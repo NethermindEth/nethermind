@@ -20,7 +20,6 @@ using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Test.Bloom;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
@@ -93,7 +92,7 @@ namespace Nethermind.JsonRpc.Benchmark
             blockchainProcessor.Process(genesisBlock, ProcessingOptions.None, NullBlockTracer.Instance);
             blockchainProcessor.Process(block1, ProcessingOptions.None, NullBlockTracer.Instance);
             
-            IBloomStorage bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new DictionaryFileStoreFactory());
+            IBloomStorage bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
 
             BlockchainBridge bridge = new BlockchainBridge(
                 stateReader,

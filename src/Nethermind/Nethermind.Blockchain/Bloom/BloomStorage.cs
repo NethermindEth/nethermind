@@ -71,8 +71,6 @@ namespace Nethermind.Blockchain.Bloom
                 Levels++;
             }
 
-            var maxElementSize = configIndexLevelBucketSizes.Aggregate(1, (i, b) => i * b);
-
             return configIndexLevelBucketSizes
                 .Select((size, i) =>
                 {
@@ -121,7 +119,7 @@ namespace Nethermind.Blockchain.Bloom
             }
         }
 
-        public void StoreMigration(IEnumerable<BlockHeader> headers)
+        public void Migrate(IEnumerable<BlockHeader> headers)
         {
             var batchSize =_storageLevels.First().LevelElementSize;
             (BloomStorageLevel Level, Core.Bloom Bloom)[] levelBlooms = _storageLevels.SkipLast(1).Select(l => (l, new Core.Bloom())).ToArray();
@@ -241,7 +239,7 @@ namespace Nethermind.Blockchain.Bloom
             {
                 if (_migrationStatistics)
                 {
-                    Average.Add(CountBits(bloom));
+                    Average.Increment(CountBits(bloom));
                 }
                         
                 _fileStore.Write(GetBucket(blockNumber), bloom.Bytes);
@@ -343,7 +341,7 @@ namespace Nethermind.Blockchain.Bloom
                     else
                     {
                         var storageLevel = _storageLevels[CurrentLevel];
-                        storageLevel .Reader.Read(storageLevel.Storage.GetBucket(_currentPosition), _bloom.Bytes);
+                        storageLevel.Reader.Read(storageLevel.Storage.GetBucket(_currentPosition), _bloom.Bytes);
                         return _bloom;
                     }
                 }

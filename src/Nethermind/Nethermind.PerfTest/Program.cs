@@ -30,7 +30,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Test.Bloom;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
@@ -275,7 +274,7 @@ namespace Nethermind.PerfTest
                 _logManager);
 
             var blockInfoRepository = new ChainLevelInfoRepository(blockInfosDb);
-            var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, headersDb, blockInfosDb, blockInfoRepository, specProvider, transactionPool, new BloomStorage(new BloomConfig(), dbProvider.HeadersDb, new DictionaryFileStoreFactory()),  _logManager));
+            var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, headersDb, blockInfosDb, blockInfoRepository, specProvider, transactionPool, new BloomStorage(new BloomConfig(), dbProvider.HeadersDb, new InMemoryDictionaryFileStoreFactory()),  _logManager));
             var receiptStorage = new InMemoryReceiptStorage();
 
             IBlockDataRecoveryStep recoveryStep = new TxSignaturesRecoveryStep(ethereumSigner, transactionPool, _logManager);

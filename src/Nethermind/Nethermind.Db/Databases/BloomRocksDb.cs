@@ -30,7 +30,7 @@ namespace Nethermind.Db.Databases
         {
         }
         
-        protected internal override void UpdateReadMetrics() => Metrics.BloomDbReads++;
-        protected internal override void UpdateWriteMetrics() => Metrics.BloomDbWrites++;
+        protected internal override void UpdateReadMetrics() => Metrics.OtherDbReads++;
+        protected internal override void UpdateWriteMetrics() => Metrics.OtherDbWrites++;
     }
 }

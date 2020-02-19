@@ -76,10 +76,6 @@ namespace Nethermind.Store
         
         public static byte[] Get(this IDb db, long key) => db[key.ToBigEndianByteArrayWithoutLeadingZeros()];
 
-        public static byte[] ToDbKey(this long key) => key.ToBigEndianByteArrayWithoutLeadingZeros();
-
-        public static byte[] ToDbKey(this Keccak key) => key.Bytes;
-
         public static void Delete(this IDb db, long key)
         {
             db.Remove(key.ToBigEndianByteArrayWithoutLeadingZeros());

@@ -14,21 +14,21 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Blockchain.Bloom;
+using System;
 
-namespace Nethermind.Blockchain.Test.Bloom
+namespace Nethermind.Blockchain.Bloom
 {
-    public class DictionaryFileReader : IFileReader
+    public class InMemoryDictionaryFileReader : IFileReader
     {
         private readonly IFileStore _store;
 
-        public DictionaryFileReader(IFileStore store)
+        public InMemoryDictionaryFileReader(IFileStore store)
         {
             _store = store;
         }
 
         public void Dispose() { }
 
-        public int Read(long index, byte[] element) => _store.Read(index, element);
+        public int Read(long index, Span<byte> element) => _store.Read(index, element);
     }
 }

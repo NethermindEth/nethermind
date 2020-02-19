@@ -32,8 +32,8 @@ namespace Nethermind.Db
     {
         private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath = new ConcurrentDictionary<string, RocksDb>();
         internal readonly RocksDb Db;
-        internal WriteBatch CurrentBatch;
-        internal WriteOptions WriteOptions;
+        internal WriteBatch CurrentBatch { get; private set; }
+        internal WriteOptions WriteOptions { get; private set; }
 
         public abstract string Name { get; }
 

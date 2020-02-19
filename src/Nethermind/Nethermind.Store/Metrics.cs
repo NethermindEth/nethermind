@@ -94,11 +94,5 @@ namespace Nethermind.Store
         
         [Description("Number of Headers DB writes.")]
         public static long HeaderDbWrites { get; set; }
-        
-        [Description("Number of Bloom DB reads.")]
-        public static long BloomDbReads { get; set; }
-        
-        [Description("Number of Bloom DB writes.")]
-        public static long BloomDbWrites { get; set; }
     }
 } 

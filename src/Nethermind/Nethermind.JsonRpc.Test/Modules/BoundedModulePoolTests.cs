@@ -20,7 +20,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Test.Bloom;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -55,7 +54,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 new ChainLevelInfoRepository(dbProvider.BlockInfosDb),
                 specProvider,
                 txPool,
-                new BloomStorage(new BloomConfig(), dbProvider.HeadersDb, new DictionaryFileStoreFactory()),
+                new BloomStorage(new BloomConfig(), dbProvider.HeadersDb, new InMemoryDictionaryFileStoreFactory()),
                 new SyncConfig(),
                 LimboLogs.Instance);
             

@@ -26,7 +26,7 @@ namespace Nethermind.Blockchain.Bloom
 
         void Store(long blockNumber, Core.Bloom bloom);
         
-        void StoreMigration(IEnumerable<BlockHeader> blockHeaders);
+        void Migrate(IEnumerable<BlockHeader> blockHeaders);
         
         IBloomEnumeration GetBlooms(long fromBlock, long toBlock);
         
