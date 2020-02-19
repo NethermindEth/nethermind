@@ -85,12 +85,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
                 Serialization.Rlp.Rlp.Encode(item.ConsumedUnitsFromProvider),
                 Serialization.Rlp.Rlp.Encode((int) item.DataAvailability));
         }
-
-        public void Encode(MemoryStream stream, ConsumerSession item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new System.NotImplementedException();
-        }
-
+        
         public int GetLength(ConsumerSession item, RlpBehaviors rlpBehaviors)
         {
             throw new System.NotImplementedException();

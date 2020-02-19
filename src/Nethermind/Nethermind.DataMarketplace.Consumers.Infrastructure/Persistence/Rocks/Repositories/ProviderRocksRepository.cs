@@ -52,14 +52,14 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
 
         private IEnumerable<DepositDetails> GetAll()
         {
-            var depositsBytes = _database.GetAll();
+            byte[][] depositsBytes = _database.GetAll();
             if (depositsBytes.Length == 0)
             {
                 yield break;
             }
 
-            var dataAssets = new DepositDetails[depositsBytes.Length];
-            for (var i = 0; i < depositsBytes.Length; i++)
+            DepositDetails[] dataAssets = new DepositDetails[depositsBytes.Length];
+            for (int i = 0; i < depositsBytes.Length; i++)
             {
                 yield return dataAssets[i] = Decode(depositsBytes[i]);
             }

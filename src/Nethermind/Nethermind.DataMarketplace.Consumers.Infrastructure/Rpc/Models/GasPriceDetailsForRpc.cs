@@ -21,12 +21,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
 {
     public class GasPriceDetailsForRpc
     {
-        public UInt256 Price { get; set; }
-        public double WaitTime { get; set; }
-
-        public GasPriceDetailsForRpc()
-        {
-        }
+        public UInt256 Price { get;  }
+        public double WaitTime { get;  }
 
         public GasPriceDetailsForRpc(GasPriceDetails details)
         {

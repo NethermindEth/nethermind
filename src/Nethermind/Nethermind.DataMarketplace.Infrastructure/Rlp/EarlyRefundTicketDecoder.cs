@@ -23,7 +23,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
-    public class EarlyRefundTicketDecoder : IRlpDecoder<EarlyRefundTicket>
+    public class EarlyRefundTicketDecoder : IRlpDecoder<EarlyRefundTicket?>
     {
         public static void Init()
         {
@@ -39,10 +39,15 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             Serialization.Rlp.Rlp.Decoders[typeof(EarlyRefundTicket)] = new EarlyRefundTicketDecoder();
         }
 
-        public EarlyRefundTicket Decode(RlpStream rlpStream,
+        public EarlyRefundTicket? Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            rlpStream.ReadSequenceLength();
+            int sequenceLength = rlpStream.ReadSequenceLength();
+            if (sequenceLength == 0)
+            {
+                return null;
+            }
+            
             Keccak depositId = rlpStream.DecodeKeccak();
             uint claimableAfter = rlpStream.DecodeUInt();
             Signature signature = SignatureDecoder.DecodeSignature(rlpStream);
@@ -50,7 +55,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             return new EarlyRefundTicket(depositId, claimableAfter, signature);
         }
 
-        public Serialization.Rlp.Rlp Encode(EarlyRefundTicket item,
+        public Serialization.Rlp.Rlp Encode(EarlyRefundTicket? item,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
@@ -66,7 +71,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Serialization.Rlp.Rlp.Encode(item.Signature.S.WithoutLeadingZeros()));
         }
 
-        public int GetLength(EarlyRefundTicket item, RlpBehaviors rlpBehaviors)
+        public int GetLength(EarlyRefundTicket? item, RlpBehaviors rlpBehaviors)
         {
             throw new System.NotImplementedException();
         }

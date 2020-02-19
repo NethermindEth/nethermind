@@ -22,20 +22,6 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
 {
     public class DataDeliveryReceiptReportItemForRpc
     {
-        public Keccak? Id { get; set; }
-        public uint Number { get; set; }
-        public Keccak? SessionId { get; set; }
-        public PublicKey? NodeId { get; set; }
-        public DataDeliveryReceiptRequestForRpc? Request { get; set; }
-        public DataDeliveryReceiptForRpc? Receipt { get; set; }
-        public ulong Timestamp { get; set; }
-        public bool IsMerged { get; set; }
-        public bool IsClaimed { get; set; }
-
-        public DataDeliveryReceiptReportItemForRpc()
-        {
-        }
-
         public DataDeliveryReceiptReportItemForRpc(DataDeliveryReceiptReportItem receipt)
         {
             Id = receipt.Id;
@@ -48,5 +34,15 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
             IsMerged = receipt.IsMerged;
             IsClaimed = receipt.IsClaimed;
         }
+
+        public Keccak Id { get; }
+        public uint Number { get; }
+        public Keccak SessionId { get; }
+        public PublicKey NodeId { get; }
+        public DataDeliveryReceiptRequestForRpc Request { get; }
+        public DataDeliveryReceiptForRpc Receipt { get; }
+        public ulong Timestamp { get; }
+        public bool IsMerged { get; }
+        public bool IsClaimed { get; }
     }
 }

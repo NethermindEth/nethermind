@@ -23,15 +23,11 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
 {
     public class DepositsReportForRpc
     {
-        public UInt256 TotalValue { get; set; }
-        public UInt256 ClaimedValue { get; set; }
-        public UInt256 RefundedValue { get; set; }
-        public UInt256 RemainingValue { get; set; }
-        public PagedResult<DepositReportItemForRpc>? Deposits { get; set; }
-
-        public DepositsReportForRpc()
-        {
-        }
+        public UInt256 TotalValue { get; }
+        public UInt256 ClaimedValue { get; }
+        public UInt256 RefundedValue { get; }
+        public UInt256 RemainingValue { get; }
+        public PagedResult<DepositReportItemForRpc> Deposits { get; }
 
         public DepositsReportForRpc(DepositsReport report)
         {

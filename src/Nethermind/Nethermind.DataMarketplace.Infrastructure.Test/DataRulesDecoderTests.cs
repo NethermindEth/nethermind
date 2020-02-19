@@ -14,20 +14,25 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core;
-using Nethermind.DataMarketplace.Consumers.Providers.Domain;
+using FluentAssertions;
+using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.DataMarketplace.Infrastructure.Rlp;
+using Nethermind.Serialization.Rlp;
+using NUnit.Framework;
 
-namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
+namespace Nethermind.DataMarketplace.Infrastructure.Test
 {
-    public class ProviderInfoForRpc
+    [TestFixture]
+    public class DataRulesDecoderTests
     {
-        public string Name { get;  }
-        public Address Address { get;  }
-
-        public ProviderInfoForRpc(ProviderInfo provider)
+        [Test]
+        public void One_and_null()
         {
-            Name = provider.Name;
-            Address = provider.Address;
+            DataAssetRuleDecoder.Init();
+            DataAssetRules rules = new DataAssetRules(new DataAssetRule(1), null);
+            
+            DataAssetRulesDecoder decoder = new DataAssetRulesDecoder();
+            decoder.Decode(decoder.Encode(rules).Bytes.AsRlpStream()).Should().BeEquivalentTo(rules); 
         }
     }
 }

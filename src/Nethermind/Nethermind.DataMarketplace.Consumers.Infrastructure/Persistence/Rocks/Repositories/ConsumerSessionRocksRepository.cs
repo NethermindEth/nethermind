@@ -50,7 +50,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
 
         public Task<ConsumerSession?> GetPreviousAsync(ConsumerSession session)
         {
-            var sessions = Filter(session.DepositId);
+            ConsumerSession[] sessions = Filter(session.DepositId);
             switch (sessions.Length)
             {
                 case 0:
@@ -59,7 +59,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
                     return Task.FromResult<ConsumerSession?>(GetUniqueSession(session, sessions[0]));
                 default:
                 {
-                    var previousSessions = sessions.Take(2).ToArray();
+                    ConsumerSession[] previousSessions = sessions.Take(2).ToArray();
 
                     return Task.FromResult<ConsumerSession?>(GetUniqueSession(session, previousSessions[1]) ??
                                                              GetUniqueSession(session, previousSessions[0]));
@@ -83,14 +83,14 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             PublicKey? providerNodeId = null,
             Address? providerAddress = null)
         {
-            var sessionsBytes = _database.GetAll();
+            byte[][] sessionsBytes = _database.GetAll();
             if (sessionsBytes.Length == 0)
             {
                 return Array.Empty<ConsumerSession>();
             }
 
-            var sessions = new ConsumerSession[sessionsBytes.Length];
-            for (var i = 0; i < sessionsBytes.Length; i++)
+            ConsumerSession[] sessions = new ConsumerSession[sessionsBytes.Length];
+            for (int i = 0; i < sessionsBytes.Length; i++)
             {
                 sessions[i] = Decode(sessionsBytes[i]);
             }
@@ -101,7 +101,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
                 return sessions;
             }
 
-            var filteredSessions = sessions.AsEnumerable();
+            IEnumerable<ConsumerSession> filteredSessions = sessions.AsEnumerable();
             if (!(depositId is null))
             {
                 filteredSessions = filteredSessions.Where(s => s.DepositId == depositId);

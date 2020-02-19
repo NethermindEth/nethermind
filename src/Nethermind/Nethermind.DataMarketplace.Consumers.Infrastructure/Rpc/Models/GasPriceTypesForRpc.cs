@@ -20,18 +20,14 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
 {
     public class GasPriceTypesForRpc
     {
-        public GasPriceDetailsForRpc? SafeLow { get; set; }
-        public GasPriceDetailsForRpc? Average { get; set; }
-        public GasPriceDetailsForRpc? Fast { get; set; }
-        public GasPriceDetailsForRpc? Fastest { get; set; }
-        public GasPriceDetailsForRpc? Custom { get; set; }
-        public string? Type { get; set; }
-        public ulong UpdatedAt { get; set; }
-
-        public GasPriceTypesForRpc()
-        {
-        }
-
+        public GasPriceDetailsForRpc? SafeLow { get;  }
+        public GasPriceDetailsForRpc? Average { get;  }
+        public GasPriceDetailsForRpc? Fast { get;  }
+        public GasPriceDetailsForRpc? Fastest { get;  }
+        public GasPriceDetailsForRpc? Custom { get;  }
+        public string? Type { get;  }
+        public ulong UpdatedAt { get;  }
+        
         public GasPriceTypesForRpc(GasPriceTypes types)
         {
             SafeLow = new GasPriceDetailsForRpc(types.SafeLow);

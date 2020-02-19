@@ -22,13 +22,9 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
 {
     public class ConsumerSessionForRpc : SessionForRpc
     {
-        public uint ConsumedUnitsFromProvider { get; set; }
-        public string? DataAvailability { get; set; }
-        public SessionClientForRpc[]? Clients { get; set; }
-
-        public ConsumerSessionForRpc()
-        {
-        }
+        public uint ConsumedUnitsFromProvider { get; }
+        public string DataAvailability { get; }
+        public SessionClientForRpc[] Clients { get; }
 
         public ConsumerSessionForRpc(ConsumerSession session) : base(session)
         {
