@@ -97,6 +97,12 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         public SyncMode SyncMode => _syncMode.Current;
+        
+        public event EventHandler<SyncModeChangedEventArgs> SyncModeChanged
+        {
+            add => _syncMode.Changed += value;
+            remove => _syncMode.Changed -= value;
+        }
 
         public void Start()
         {

@@ -38,7 +38,7 @@ using Timer = System.Timers.Timer;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(InitializeBlockchain))]
+    [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(InitializeBlockchain), typeof(InitializeNetwork))]
     public class DatabaseMigrations : IStep, IAsyncDisposable
     {
         private readonly EthereumRunnerContext _context;
@@ -70,20 +70,16 @@ namespace Nethermind.Runner.Ethereum.Steps
             var storage = _context.BloomStorage;
             if (storage.NeedsMigration)
             {
-                if (_bloomConfig.Migration && _context.BlockTree.Head != null)
+                if (_bloomConfig.Migration)
                 {
-                    _cancellationTokenSource = new CancellationTokenSource();
-                    _context.DisposeStack.Push(this);
-                    _stopwatch = Stopwatch.StartNew();
-                    _bloomDbMigrationTask = Task.Run(() => RunBloomMigration(_cancellationTokenSource.Token))
-                        .ContinueWith(x =>
-                        {
-                            if (x.IsFaulted && _logger.IsError)
-                            {
-                                _stopwatch.Stop();
-                                _logger.Error(GetLogMessage("failed", $"Error: {x.Exception}"), x.Exception);
-                            }
-                        });
+                    if (CanMigrate(_context.Synchronizer.SyncMode))
+                    {
+                        RunBloomMigration();
+                    }
+                    else
+                    {
+                        _context.Synchronizer.SyncModeChanged += SynchronizerOnSyncModeChanged;
+                    }
                 }
                 else
                 {
@@ -93,6 +89,47 @@ namespace Nethermind.Runner.Ethereum.Steps
             else
             {
                 if (_logger.IsDebug) _logger.Debug("BloomDb migration not needed.");
+            }
+        }
+
+        private bool CanMigrate(SyncMode syncMode)
+        {
+            switch (syncMode)
+            {
+                case SyncMode.NotStarted:
+                case SyncMode.FastBlocks:
+                case SyncMode.Beam:
+                    return false;
+                default:
+                    return true;
+            }
+        }
+
+        private void SynchronizerOnSyncModeChanged(object sender, SyncModeChangedEventArgs e)
+        {
+            if (CanMigrate(e.Current))
+            {
+                RunBloomMigration();
+                _context.Synchronizer.SyncModeChanged -= SynchronizerOnSyncModeChanged;
+            }
+        }
+
+        private void RunBloomMigration()
+        {
+            if (_context.BloomStorage.NeedsMigration)
+            {
+                _cancellationTokenSource = new CancellationTokenSource();
+                _context.DisposeStack.Push(this);
+                _stopwatch = Stopwatch.StartNew();
+                _bloomDbMigrationTask = Task.Run(() => RunBloomMigration(_cancellationTokenSource.Token))
+                    .ContinueWith(x =>
+                    {
+                        if (x.IsFaulted && _logger.IsError)
+                        {
+                            _stopwatch.Stop();
+                            _logger.Error(GetLogMessage("failed", $"Error: {x.Exception}"), x.Exception);
+                        }
+                    });
             }
         }
 
@@ -204,8 +241,8 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public async ValueTask DisposeAsync()
         {
-            _cancellationTokenSource.Cancel();
-            await _bloomDbMigrationTask;
+            _cancellationTokenSource?.Cancel();
+            await (_bloomDbMigrationTask ?? Task.CompletedTask);
         }
     }
 }
