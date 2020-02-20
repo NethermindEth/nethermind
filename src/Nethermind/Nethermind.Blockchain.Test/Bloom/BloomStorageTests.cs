@@ -93,8 +93,10 @@ namespace Nethermind.Blockchain.Test.Bloom
                 var maxIndex = count - 1;
                 yield return new TestCaseData(0, maxIndex, false, Enumerable.Empty<long>(), Buckets);
                 yield return new TestCaseData(0, maxIndex, true, GetRange(count), Buckets * searchesPerBucket);
-                yield return new TestCaseData(5, 49, true, GetRange(45, 5), 1 + 1 + 4 + 45); // 1 lookup at top level (16*16**16), 1 lookup at next level (16*16), 4 lookups at next level (16), 45 lookups at bottom level (49-5+1)
-                yield return new TestCaseData(0, LevelMultiplier*LevelMultiplier*LevelMultiplier - 1, true, GetRange(LevelMultiplier*LevelMultiplier*LevelMultiplier), searchesPerBucket);
+                yield return new TestCaseData(5, 49, true, GetRange(45, 5), 4 + 45); // 4 lookups at level one (16), 45 lookups at bottom level (49-5+1)
+                yield return new TestCaseData(0, LevelMultiplier*LevelMultiplier*LevelMultiplier - 1, true, GetRange(LevelMultiplier*LevelMultiplier*LevelMultiplier), searchesPerBucket - 1); // skips highest level
+                yield return new TestCaseData(0, LevelMultiplier*LevelMultiplier*LevelMultiplier * 2 - 1, true, GetRange(LevelMultiplier*LevelMultiplier*LevelMultiplier * 2), (searchesPerBucket - 1) * 2); // skips highest level
+                yield return new TestCaseData(0, LevelMultiplier*LevelMultiplier*LevelMultiplier * 3 - 1, true, GetRange(LevelMultiplier*LevelMultiplier*LevelMultiplier * 3), searchesPerBucket * 3); // doesn't skip highest level
             }
         }
 

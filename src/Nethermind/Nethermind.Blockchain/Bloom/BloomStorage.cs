@@ -194,6 +194,7 @@ namespace Nethermind.Blockchain.Bloom
         {
             public readonly byte Level;
             public readonly int LevelElementSize;
+            public readonly int LevelMultiplier;
             public readonly Average Average = new Average();
             
             private readonly IFileStore _fileStore;
@@ -206,6 +207,7 @@ namespace Nethermind.Blockchain.Bloom
                 _fileStore = fileStore;
                 Level = level;
                 LevelElementSize = levelElementSize;
+                LevelMultiplier = levelMultiplier;
                 _migrationStatistics = migrationStatistics;
                 _cache = new LruCache<long, Core.Bloom>(levelMultiplier);
             }
@@ -279,8 +281,7 @@ namespace Nethermind.Blockchain.Bloom
             private readonly long _toBlock;
             private readonly int _maxLevel;
             private long _currentPosition;
-            // private byte[] bytes = new byte[Core.Bloom.ByteLength];
-            private Core.Bloom _bloom = new Core.Bloom();
+            private readonly Core.Bloom _bloom = new Core.Bloom();
             
             private byte CurrentLevel
             {
@@ -297,11 +298,35 @@ namespace Nethermind.Blockchain.Bloom
 
             public BloomEnumerator(BloomStorageLevel[] storageLevels, in long fromBlock, in long toBlock)
             {
-                _storageLevels = storageLevels.Select(l => (l, l.GetReader())).ToArray();
+                _storageLevels = GetStorageLevels(storageLevels, fromBlock, toBlock);
                 _fromBlock = fromBlock;
                 _toBlock = toBlock;
-                _maxLevel = storageLevels.Length - 1;
+                _maxLevel = _storageLevels.Length - 1;
                 Reset();
+            }
+
+            private (BloomStorageLevel Storage, IFileReader Reader)[] GetStorageLevels(BloomStorageLevel[] storageLevels, long fromBlock, long toBlock)
+            {
+                // Skip higher levels if we would do only 1 or 2 lookups in them. Thanks to that we can skip a lot of IO operations on that file
+                IList<BloomStorageLevel> levels = new List<BloomStorageLevel>(storageLevels.Length);
+                for (int i = 0; i < storageLevels.Length; i++)
+                {
+                    var level = storageLevels[i];
+
+                    if (i != storageLevels.Length - 1)
+                    {
+                        var fromBucket = level.GetBucket(fromBlock);
+                        var toBucket = level.GetBucket(toBlock);
+                        if (toBucket - fromBucket + 1 <= 2)
+                        {
+                            continue;
+                        }
+                    }
+                    
+                    levels.Add(level);
+                }
+                
+                return levels.Select(l => (l, l.GetReader())).AsParallel().ToArray();
             }
 
             public void Reset()
