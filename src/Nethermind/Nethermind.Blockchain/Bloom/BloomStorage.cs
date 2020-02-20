@@ -84,22 +84,22 @@ namespace Nethermind.Blockchain.Bloom
                 return sizes;
             }
             
-            void ValidateCurrentDbStructure(List<int> ints)
+            void ValidateCurrentDbStructure(IList<int> sizes)
             {
                 var levelsFromDb = _bloomInfoDb.Get(LevelsKey);
 
                 if (levelsFromDb == null)
                 {
-                    _bloomInfoDb.Set(LevelsKey, Rlp.Encode(ints.ToArray()).Bytes);
+                    _bloomInfoDb.Set(LevelsKey, Rlp.Encode(sizes.ToArray()).Bytes);
                 }
                 else
                 {
                     var stream = new RlpStream(levelsFromDb);
                     var dbBucketSizes = stream.DecodeArray(x => x.DecodeInt());
 
-                    if (!dbBucketSizes.SequenceEqual(ints))
+                    if (!dbBucketSizes.SequenceEqual(sizes))
                     {
-                        throw new ArgumentException($"Can not create load bloom index. {nameof(config.IndexLevelBucketSizes)} changed. Db value is [{string.Join(",", dbBucketSizes)}]. Current value is [{string.Join(",", ints)}]. " +
+                        throw new ArgumentException($"Can not create load bloom index. {nameof(config.IndexLevelBucketSizes)} changed. Db value is [{string.Join(",", dbBucketSizes)}]. Current value is [{string.Join(",", sizes)}]. " +
                                                     $"If you want to rebuild {DbNames.Bloom} db, please delete db folder. If not, please change config value to reflect current db structure", nameof(config.IndexLevelBucketSizes));
                     }
                 }
@@ -113,7 +113,7 @@ namespace Nethermind.Blockchain.Bloom
             return configIndexLevelBucketSizes
                 .Select((size, i) =>
                 {
-                    byte level = (byte) (Levels - i - 1);
+                    byte level = (byte) (configIndexLevelBucketSizes.Count - i - 1);
                     var levelElementSize = lastLevelSize * size;
                     lastLevelSize = levelElementSize;
                     return new BloomStorageLevel(_fileStoreFactory.Create(level.ToString()), level, levelElementSize, size, _config.MigrationStatistics);
