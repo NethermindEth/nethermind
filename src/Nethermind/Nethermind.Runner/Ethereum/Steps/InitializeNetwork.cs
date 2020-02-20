@@ -134,7 +134,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
 
             ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_context.Enode.HostIp}:{_context.Enode.Port}");
-            ThisNodeInfo.AddInfo("Version      :", $"{ClientVersion.Description}");
+            ThisNodeInfo.AddInfo("Version      :", $"{ClientVersion.Description.Replace("Nethermind/v", string.Empty)}");
             ThisNodeInfo.AddInfo("This node    :", $"{_context.Enode.Info}");
             ThisNodeInfo.AddInfo("Node address :", $"{_context.Enode.Address} (do not use as an account)");
         }

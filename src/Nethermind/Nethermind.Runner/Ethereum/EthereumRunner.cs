@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.TxPools;
@@ -79,9 +80,8 @@ namespace Nethermind.Runner.Ethereum
             stepsManager.DiscoverAll();
             await stepsManager.InitializeAll();
             
-            if (_context.Logger.IsInfo) _context.Logger.Info("============== Nethermind initialization completed ==============");
-            
-            ThisNodeInfo.LogAll(_context.Logger);
+            string infoScreen = ThisNodeInfo.BuildNodeInfoScreen();
+            if (_context.Logger.IsInfo) _context.Logger.Info(infoScreen);
         }
 
         public async Task StopAsync()
