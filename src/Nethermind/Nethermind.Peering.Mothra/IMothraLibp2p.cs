@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,20 +14,18 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Nethermind.Core2;
-using Nethermind.Peering.Mothra;
+using System;
 
-namespace Nethermind.BeaconNode.Peering
+namespace Nethermind.Peering.Mothra
 {
-    public static class BeaconNodePeeringServiceCollectionExtensions
+    public interface IMothraLibp2p
     {
-        public static void AddBeaconNodePeering(this IServiceCollection services, IConfiguration configuration)
-        {
-            services.AddSingleton<INetworkPeering, NetworkPeering>();
-            services.AddHostedService<PeeringWorker>();
-            services.AddSingleton<IMothraLibp2p, MothraLibp2p>();
-        }
+        event EventHandler<GossipReceivedEventArgs>? GossipReceived;
+        event EventHandler<PeerDiscoveredEventArgs>? PeerDiscovered;
+        event EventHandler<RpcReceivedEventArgs>? RpcReceived;
+        void SendGossip(string topic, ReadOnlySpan<byte> data);
+        void SendRpcRequest(string method, string peer, ReadOnlySpan<byte> data);
+        void SendRpcResponse(string method, string peer, ReadOnlySpan<byte> data);
+        void Start(MothraSettings settings);
     }
 }

@@ -22,7 +22,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Nethermind.Peering.Mothra
 {
-    public class MothraLibp2p
+    public class MothraLibp2p : IMothraLibp2p
     {
         private readonly Dictionary<LogLevel, string> _debugLevels = new Dictionary<LogLevel, string>()
         {
