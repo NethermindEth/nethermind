@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain.Find
         private readonly IReceiptsRecovery _receiptsRecovery;
         private readonly int _maxBlockDepth;
         private readonly IBlockFinder _blockFinder;
-        
+
         public LogFinder(IBlockFinder blockFinder, IReceiptStorage receiptStorage, IBloomStorage bloomStorage, IReceiptsRecovery receiptsRecovery, int maxBlockDepth = 1000)
         {
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
@@ -55,9 +55,15 @@ namespace Nethermind.Blockchain.Find
                 throw new ArgumentException("'From' block is later than 'to' block.");
             }
             
-            return CanUseBloomDatabase(toBlock, fromBlock) 
+            return ShouldUseBloomDatabase(fromBlock, toBlock) && CanUseBloomDatabase(toBlock, fromBlock)
                 ? FilterLogsWithBloomsIndex(filter, fromBlock, toBlock) 
                 : FilterLogsIteratively(filter, fromBlock, toBlock);
+        }
+
+        private bool ShouldUseBloomDatabase(BlockHeader fromBlock, BlockHeader toBlock)
+        {
+            var blocksToSearch = toBlock.Number - fromBlock.Number + 1;
+            return blocksToSearch > 1; // if we are searching only in 1 block skip bloom index altogether, this can be tweaked
         }
 
         private IEnumerable<FilterLog> FilterLogsWithBloomsIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
