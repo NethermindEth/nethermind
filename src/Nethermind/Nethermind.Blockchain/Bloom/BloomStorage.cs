@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Bloom
 
                     if (!dbBucketSizes.SequenceEqual(sizes))
                     {
-                        throw new ArgumentException($"Can not create load bloom index. {nameof(config.IndexLevelBucketSizes)} changed. Db value is [{string.Join(",", dbBucketSizes)}]. Current value is [{string.Join(",", sizes)}]. " +
+                        throw new ArgumentException($"Can not load bloom db. {nameof(config.IndexLevelBucketSizes)} changed without rebuilding bloom db. Db structure is [{string.Join(",", dbBucketSizes)}]. Current config value is [{string.Join(",", sizes)}]. " +
                                                     $"If you want to rebuild {DbNames.Bloom} db, please delete db folder. If not, please change config value to reflect current db structure", nameof(config.IndexLevelBucketSizes));
                     }
                 }
