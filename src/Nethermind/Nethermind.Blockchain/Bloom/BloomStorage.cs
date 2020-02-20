@@ -17,6 +17,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Runtime.Intrinsics.X86;
 using System.Threading.Tasks;
@@ -24,6 +25,7 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain.Bloom
@@ -35,7 +37,8 @@ namespace Nethermind.Blockchain.Bloom
 
         internal static readonly Keccak MinBlockNumberKey = Keccak.Compute(nameof(MinBlockNumber));
         internal static readonly Keccak MaxBlockNumberKey = Keccak.Compute(nameof(MaxBlockNumber));
-        internal static readonly Keccak MigrationBlockNumberKey = Keccak.Compute(nameof(MigratedBlockNumber));
+        private static readonly Keccak MigrationBlockNumberKey = Keccak.Compute(nameof(MigratedBlockNumber));
+        private static readonly Keccak LevelsKey = Keccak.Compute(nameof(LevelsKey));
         
         private readonly BloomStorageLevel[] _storageLevels;
         private readonly IBloomConfig _config;
@@ -53,8 +56,8 @@ namespace Nethermind.Blockchain.Bloom
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _bloomInfoDb = bloomDb ?? throw new ArgumentNullException(nameof(_bloomInfoDb));
             _fileStoreFactory = fileStoreFactory;
-            SetLevels(config);
             _storageLevels = CreateStorageLevels(config);
+            Levels = (byte) _storageLevels.Length;
             MinBlockNumber = Get(MinBlockNumberKey, long.MaxValue);
             MaxBlockNumber = Get(MaxBlockNumberKey, -1);
             MigratedBlockNumber = Get(MigrationBlockNumberKey, -1);
@@ -62,15 +65,51 @@ namespace Nethermind.Blockchain.Bloom
 
         private BloomStorageLevel[] CreateStorageLevels(IBloomConfig config)
         {
-            var lastLevelSize = 1;
+            void ValidateConfigValue()
+            {
+                if (config.IndexLevelBucketSizes.Length == 0)
+                {
+                    throw new ArgumentException($"Can not create bloom index when there are no {nameof(config.IndexLevelBucketSizes)} provided.", nameof(config.IndexLevelBucketSizes));
+                }
+            }
+            
+            List<int> InsertBaseLevelIfNeeded()
+            {
+                List<int> sizes = config.IndexLevelBucketSizes.ToList();
+                if (sizes.FirstOrDefault() != 1)
+                {
+                    sizes.Insert(0, 1);
+                }
 
-            var configIndexLevelBucketSizes = config.IndexLevelBucketSizes.ToList();
-            if (configIndexLevelBucketSizes.FirstOrDefault() != 1)
-            { 
-                configIndexLevelBucketSizes.Insert(0, 1);
-                Levels++;
+                return sizes;
+            }
+            
+            void ValidateCurrentDbStructure(List<int> ints)
+            {
+                var levelsFromDb = _bloomInfoDb.Get(LevelsKey);
+
+                if (levelsFromDb == null)
+                {
+                    _bloomInfoDb.Set(LevelsKey, Rlp.Encode(ints.ToArray()).Bytes);
+                }
+                else
+                {
+                    var stream = new RlpStream(levelsFromDb);
+                    var dbBucketSizes = stream.DecodeArray(x => x.DecodeInt());
+
+                    if (!dbBucketSizes.SequenceEqual(ints))
+                    {
+                        throw new ArgumentException($"Can not create load bloom index. {nameof(config.IndexLevelBucketSizes)} changed. Db value is [{string.Join(",", dbBucketSizes)}]. Current value is [{string.Join(",", ints)}]. " +
+                                                    $"If you want to rebuild {DbNames.Bloom} db, please delete db folder. If not, please change config value to reflect current db structure", nameof(config.IndexLevelBucketSizes));
+                    }
+                }
             }
 
+            ValidateConfigValue();
+            var configIndexLevelBucketSizes = InsertBaseLevelIfNeeded();
+            ValidateCurrentDbStructure(configIndexLevelBucketSizes);
+
+            var lastLevelSize = 1;
             return configIndexLevelBucketSizes
                 .Select((size, i) =>
                 {
@@ -83,16 +122,6 @@ namespace Nethermind.Blockchain.Bloom
                 .ToArray();
         }
 
-        private void SetLevels(IBloomConfig config)
-        {
-            Levels = (byte) config.IndexLevelBucketSizes.Length;
-
-            if (Levels == 0)
-            {
-                throw new ArgumentException($"Can not create bloom index when there are no {nameof(config.IndexLevelBucketSizes)} provided.");
-            }
-        }
-        
         private bool Contains(long blockNumber) => blockNumber >= MinBlockNumber && blockNumber <= MaxBlockNumber;
         
         public bool ContainsRange(in long fromBlockNumber, in long toBlockNumber) => Contains(fromBlockNumber) && Contains(toBlockNumber);
