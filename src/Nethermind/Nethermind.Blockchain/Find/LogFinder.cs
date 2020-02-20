@@ -55,9 +55,15 @@ namespace Nethermind.Blockchain.Find
                 throw new ArgumentException("'From' block is later than 'to' block.");
             }
 
-            return CanUseBloomDatabase(toBlock, fromBlock)
-                ? FilterLogsWithBloomsIndex(filter, fromBlock, toBlock)
+            return ShouldUseBloomDatabase(fromBlock, toBlock) && CanUseBloomDatabase(toBlock, fromBlock)
+                ? FilterLogsWithBloomsIndex(filter, fromBlock, toBlock) 
                 : FilterLogsIteratively(filter, fromBlock, toBlock);
+        }
+
+        private bool ShouldUseBloomDatabase(BlockHeader fromBlock, BlockHeader toBlock)
+        {
+            var blocksToSearch = toBlock.Number - fromBlock.Number + 1;
+            return blocksToSearch > 1; // if we are searching only in 1 block skip bloom index altogether, this can be tweaked
         }
 
         private IEnumerable<FilterLog> FilterLogsWithBloomsIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
