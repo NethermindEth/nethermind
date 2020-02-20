@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain.Find
             {
                 throw new ArgumentException("'From' block is later than 'to' block.");
             }
-            
+
             return ShouldUseBloomDatabase(fromBlock, toBlock) && CanUseBloomDatabase(toBlock, fromBlock)
                 ? FilterLogsWithBloomsIndex(filter, fromBlock, toBlock) 
                 : FilterLogsIteratively(filter, fromBlock, toBlock);
@@ -86,7 +86,7 @@ namespace Nethermind.Blockchain.Find
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
         {
             int count = 0;
-            
+
             while (count < _maxBlockDepth && toBlock.Number >= (fromBlock?.Number ?? long.MaxValue))
             {
                 foreach (var filterLog in FindLogsInBlock(filter, toBlock))
@@ -103,9 +103,9 @@ namespace Nethermind.Blockchain.Find
             }
         }
 
-        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, BlockHeader block) => 
-            filter.Matches(block.Bloom) 
-                ? FindLogsInBlock(filter, _blockFinder.FindBlock(block.Hash)) 
+        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, BlockHeader block) =>
+            filter.Matches(block.Bloom)
+                ? FindLogsInBlock(filter, _blockFinder.FindBlock(block.Hash))
                 : Enumerable.Empty<FilterLog>();
 
         private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Block block)
@@ -139,18 +139,16 @@ namespace Nethermind.Blockchain.Find
             }
         }
 
-        private bool TryGetParentBlock(BlockHeader currentBlock, out BlockHeader parentBlock)
+        private bool TryGetParentBlock(BlockHeader currentBlock, out BlockHeader parentHeader)
         {
             if (currentBlock.IsGenesis)
             {
-                parentBlock = null;
+                parentHeader = null;
                 return false;
             }
-            else
-            {
-                parentBlock = _blockFinder.FindHeader(currentBlock.ParentHash);
-                return true;
-            }
+
+            parentHeader = _blockFinder.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            return true;
         }
     }
 }

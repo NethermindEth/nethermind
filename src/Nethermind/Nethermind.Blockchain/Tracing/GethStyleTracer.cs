@@ -16,6 +16,7 @@
 
 using System;
 using System.Linq;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;

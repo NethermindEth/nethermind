@@ -17,16 +17,16 @@
 using System;
 using Nethermind.Core;
 
-namespace Nethermind.Blockchain.Validators
+namespace Nethermind.Blockchain.Find
 {
     // ReSharper disable once InconsistentNaming
-    public static class IBlockTreeExtensions
+    public static class IBlockFinderExtensions
     {
-        public static BlockHeader FindParentHeader(this IBlockTree tree, BlockHeader header, BlockTreeLookupOptions options)
+        public static BlockHeader FindParentHeader(this IBlockFinder finder, BlockHeader header, BlockTreeLookupOptions options)
         {
             if (header.MaybeParent == null)
             {
-                BlockHeader parent = tree.FindHeader(header.ParentHash, options);
+                BlockHeader parent = finder.FindHeader(header.ParentHash, options);
                 header.MaybeParent = new WeakReference<BlockHeader>(parent);
                 return parent;
             }
@@ -34,38 +34,33 @@ namespace Nethermind.Blockchain.Validators
             header.MaybeParent.TryGetTarget(out BlockHeader maybeParent);
             if (maybeParent == null)
             {
-                BlockHeader parent = tree.FindHeader(header.ParentHash, options);
+                BlockHeader parent = finder.FindHeader(header.ParentHash, options);
                 header.MaybeParent.SetTarget(parent);
                 return parent;
             }
 
             if (maybeParent.TotalDifficulty == null && (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) == 0)
             {
-                BlockHeader fromDb = tree.FindHeader(header.ParentHash, options);
+                BlockHeader fromDb = finder.FindHeader(header.ParentHash, options);
                 maybeParent.TotalDifficulty = fromDb.TotalDifficulty;
             }
             
             return maybeParent; 
         }
 
-        public static Block FindParent(this IBlockTree tree, Block block, BlockTreeLookupOptions options)
+        public static Block FindParent(this IBlockFinder finder, Block block, BlockTreeLookupOptions options)
         {
-            return tree.FindBlock(block.Header.ParentHash, options);
+            return finder.FindBlock(block.Header.ParentHash, options);
         }
 
-        public static Block FindParent(this IBlockTree tree, BlockHeader blockHeader, BlockTreeLookupOptions options)
+        public static Block FindParent(this IBlockFinder finder, BlockHeader blockHeader, BlockTreeLookupOptions options)
         {
-            return tree.FindBlock(blockHeader.ParentHash, options);
+            return finder.FindBlock(blockHeader.ParentHash, options);
         }
 
-        public static Block RetrieveHeadBlock(this IBlockTree tree)
+        public static Block RetrieveHeadBlock(this IBlockFinder finder)
         {
-            return tree.FindBlock(tree.Head.Hash, BlockTreeLookupOptions.None);
-        }
-
-        public static Block RetrieveGenesisBlock(this IBlockTree tree)
-        {
-            return tree.FindBlock(tree.Genesis.Hash, BlockTreeLookupOptions.RequireCanonical);
+            return finder.FindBlock(finder.Head.Hash, BlockTreeLookupOptions.None);
         }
     }
 }
