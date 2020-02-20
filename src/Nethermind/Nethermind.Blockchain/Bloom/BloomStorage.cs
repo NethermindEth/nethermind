@@ -17,6 +17,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Runtime.Intrinsics.X86;
 using System.Threading.Tasks;
@@ -24,6 +25,7 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain.Bloom
@@ -35,7 +37,8 @@ namespace Nethermind.Blockchain.Bloom
 
         internal static readonly Keccak MinBlockNumberKey = Keccak.Compute(nameof(MinBlockNumber));
         internal static readonly Keccak MaxBlockNumberKey = Keccak.Compute(nameof(MaxBlockNumber));
-        internal static readonly Keccak MigrationBlockNumberKey = Keccak.Compute(nameof(MigratedBlockNumber));
+        private static readonly Keccak MigrationBlockNumberKey = Keccak.Compute(nameof(MigratedBlockNumber));
+        private static readonly Keccak LevelsKey = Keccak.Compute(nameof(LevelsKey));
         
         private readonly BloomStorageLevel[] _storageLevels;
         private readonly IBloomConfig _config;
@@ -53,8 +56,8 @@ namespace Nethermind.Blockchain.Bloom
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _bloomInfoDb = bloomDb ?? throw new ArgumentNullException(nameof(_bloomInfoDb));
             _fileStoreFactory = fileStoreFactory;
-            SetLevels(config);
             _storageLevels = CreateStorageLevels(config);
+            Levels = (byte) _storageLevels.Length;
             MinBlockNumber = Get(MinBlockNumberKey, long.MaxValue);
             MaxBlockNumber = Get(MaxBlockNumberKey, -1);
             MigratedBlockNumber = Get(MigrationBlockNumberKey, -1);
@@ -62,19 +65,55 @@ namespace Nethermind.Blockchain.Bloom
 
         private BloomStorageLevel[] CreateStorageLevels(IBloomConfig config)
         {
-            var lastLevelSize = 1;
+            void ValidateConfigValue()
+            {
+                if (config.IndexLevelBucketSizes.Length == 0)
+                {
+                    throw new ArgumentException($"Can not create bloom index when there are no {nameof(config.IndexLevelBucketSizes)} provided.", nameof(config.IndexLevelBucketSizes));
+                }
+            }
+            
+            List<int> InsertBaseLevelIfNeeded()
+            {
+                List<int> sizes = config.IndexLevelBucketSizes.ToList();
+                if (sizes.FirstOrDefault() != 1)
+                {
+                    sizes.Insert(0, 1);
+                }
 
-            var configIndexLevelBucketSizes = config.IndexLevelBucketSizes.ToList();
-            if (configIndexLevelBucketSizes.FirstOrDefault() != 1)
-            { 
-                configIndexLevelBucketSizes.Insert(0, 1);
-                Levels++;
+                return sizes;
+            }
+            
+            void ValidateCurrentDbStructure(IList<int> sizes)
+            {
+                var levelsFromDb = _bloomInfoDb.Get(LevelsKey);
+
+                if (levelsFromDb == null)
+                {
+                    _bloomInfoDb.Set(LevelsKey, Rlp.Encode(sizes.ToArray()).Bytes);
+                }
+                else
+                {
+                    var stream = new RlpStream(levelsFromDb);
+                    var dbBucketSizes = stream.DecodeArray(x => x.DecodeInt());
+
+                    if (!dbBucketSizes.SequenceEqual(sizes))
+                    {
+                        throw new ArgumentException($"Can not load bloom db. {nameof(config.IndexLevelBucketSizes)} changed without rebuilding bloom db. Db structure is [{string.Join(",", dbBucketSizes)}]. Current config value is [{string.Join(",", sizes)}]. " +
+                                                    $"If you want to rebuild {DbNames.Bloom} db, please delete db folder. If not, please change config value to reflect current db structure", nameof(config.IndexLevelBucketSizes));
+                    }
+                }
             }
 
+            ValidateConfigValue();
+            var configIndexLevelBucketSizes = InsertBaseLevelIfNeeded();
+            ValidateCurrentDbStructure(configIndexLevelBucketSizes);
+
+            var lastLevelSize = 1;
             return configIndexLevelBucketSizes
                 .Select((size, i) =>
                 {
-                    byte level = (byte) (Levels - i - 1);
+                    byte level = (byte) (configIndexLevelBucketSizes.Count - i - 1);
                     var levelElementSize = lastLevelSize * size;
                     lastLevelSize = levelElementSize;
                     return new BloomStorageLevel(_fileStoreFactory.Create(level.ToString()), level, levelElementSize, size, _config.MigrationStatistics);
@@ -83,16 +122,6 @@ namespace Nethermind.Blockchain.Bloom
                 .ToArray();
         }
 
-        private void SetLevels(IBloomConfig config)
-        {
-            Levels = (byte) config.IndexLevelBucketSizes.Length;
-
-            if (Levels == 0)
-            {
-                throw new ArgumentException($"Can not create bloom index when there are no {nameof(config.IndexLevelBucketSizes)} provided.");
-            }
-        }
-        
         private bool Contains(long blockNumber) => blockNumber >= MinBlockNumber && blockNumber <= MaxBlockNumber;
         
         public bool ContainsRange(in long fromBlockNumber, in long toBlockNumber) => Contains(fromBlockNumber) && Contains(toBlockNumber);
@@ -194,6 +223,7 @@ namespace Nethermind.Blockchain.Bloom
         {
             public readonly byte Level;
             public readonly int LevelElementSize;
+            public readonly int LevelMultiplier;
             public readonly Average Average = new Average();
             
             private readonly IFileStore _fileStore;
@@ -206,6 +236,7 @@ namespace Nethermind.Blockchain.Bloom
                 _fileStore = fileStore;
                 Level = level;
                 LevelElementSize = levelElementSize;
+                LevelMultiplier = levelMultiplier;
                 _migrationStatistics = migrationStatistics;
                 _cache = new LruCache<long, Core.Bloom>(levelMultiplier);
             }
@@ -279,8 +310,7 @@ namespace Nethermind.Blockchain.Bloom
             private readonly long _toBlock;
             private readonly int _maxLevel;
             private long _currentPosition;
-            // private byte[] bytes = new byte[Core.Bloom.ByteLength];
-            private Core.Bloom _bloom = new Core.Bloom();
+            private readonly Core.Bloom _bloom = new Core.Bloom();
             
             private byte CurrentLevel
             {
@@ -297,11 +327,35 @@ namespace Nethermind.Blockchain.Bloom
 
             public BloomEnumerator(BloomStorageLevel[] storageLevels, in long fromBlock, in long toBlock)
             {
-                _storageLevels = storageLevels.Select(l => (l, l.GetReader())).ToArray();
+                _storageLevels = GetStorageLevels(storageLevels, fromBlock, toBlock);
                 _fromBlock = fromBlock;
                 _toBlock = toBlock;
-                _maxLevel = storageLevels.Length - 1;
+                _maxLevel = _storageLevels.Length - 1;
                 Reset();
+            }
+
+            private (BloomStorageLevel Storage, IFileReader Reader)[] GetStorageLevels(BloomStorageLevel[] storageLevels, long fromBlock, long toBlock)
+            {
+                // Skip higher levels if we would do only 1 or 2 lookups in them. Thanks to that we can skip a lot of IO operations on that file
+                IList<BloomStorageLevel> levels = new List<BloomStorageLevel>(storageLevels.Length);
+                for (int i = 0; i < storageLevels.Length; i++)
+                {
+                    var level = storageLevels[i];
+
+                    if (i != storageLevels.Length - 1)
+                    {
+                        var fromBucket = level.GetBucket(fromBlock);
+                        var toBucket = level.GetBucket(toBlock);
+                        if (toBucket - fromBucket + 1 <= 2)
+                        {
+                            continue;
+                        }
+                    }
+                    
+                    levels.Add(level);
+                }
+                
+                return levels.Select(l => (l, l.GetReader())).AsParallel().ToArray();
             }
 
             public void Reset()
