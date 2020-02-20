@@ -29,6 +29,8 @@ namespace Nethermind.AuRa.Contracts
 {
     public class RewardContract : SystemContract
     {
+        public long TransitionBlock { get; }
+        
         private readonly IAbiEncoder _abiEncoder;
         
         [SuppressMessage("ReSharper", "InconsistentNaming")]
@@ -98,8 +100,9 @@ namespace Nethermind.AuRa.Contracts
             }
         }
         
-        public RewardContract(IAbiEncoder abiEncoder, Address contractAddress) : base(contractAddress)
+        public RewardContract(IAbiEncoder abiEncoder, Address contractAddress, long transitionBlock) : base(contractAddress)
         {
+            TransitionBlock = transitionBlock;
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
         }
         
