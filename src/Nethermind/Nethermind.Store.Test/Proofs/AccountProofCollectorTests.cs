@@ -15,11 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Store.Proofs;
@@ -44,7 +47,7 @@ namespace Nethermind.Store.Test.Proofs
             Assert.AreEqual(null, proof.StorageProofs[1].Value);
             Assert.AreEqual(null, proof.StorageProofs[2].Value);
         }
-        
+
         [Test]
         public void Non_existing_account_is_valid_on_non_empty_tree_with_branch_without_matching_child()
         {
@@ -55,7 +58,7 @@ namespace Nethermind.Store.Test.Proofs
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
             tree.Commit();
-            
+
             AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressC, new UInt256[] {1, 2, 3});
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
@@ -68,7 +71,7 @@ namespace Nethermind.Store.Test.Proofs
             Assert.AreEqual(null, proof.StorageProofs[1].Value);
             Assert.AreEqual(null, proof.StorageProofs[2].Value);
         }
-        
+
         [Test]
         public void Non_existing_account_is_valid_even_when_leaf_is_the_last_part_of_the_proof()
         {
@@ -77,7 +80,7 @@ namespace Nethermind.Store.Test.Proofs
             Account account1 = Build.An.Account.WithBalance(1).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Commit();
-            
+
             AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressC, new UInt256[] {1, 2, 3});
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
@@ -90,7 +93,7 @@ namespace Nethermind.Store.Test.Proofs
             Assert.AreEqual(null, proof.StorageProofs[1].Value);
             Assert.AreEqual(null, proof.StorageProofs[2].Value);
         }
-        
+
         [Test]
         public void Non_existing_account_is_valid_even_when_extension_on_the_way_is_not_fully_matched()
         {
@@ -100,7 +103,7 @@ namespace Nethermind.Store.Test.Proofs
             // but the extensions themselves have a difference in the middle (0 instead of e)
             byte[] c = Bytes.FromHexString("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee3333333333333333333333");
             byte[] d = Bytes.FromHexString("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee4444444444444444444444");
-            
+
             StateTree tree = new StateTree();
 
             // we ensure that accounts a and b do not exist in the trie
@@ -108,14 +111,14 @@ namespace Nethermind.Store.Test.Proofs
             tree.Set(c.AsSpan(), Rlp.Encode(account.WithChangedBalance(3)));
             tree.Set(d.AsSpan(), Rlp.Encode(account.WithChangedBalance(4)));
             tree.Commit();
-            
+
             // now wer are looking for a trying to trick the code to think that the extension of c and d is a good match
             // if everything is ok the proof length of 1 is enough since the extension from the root is not matched
             AccountProofCollector accountProofCollector = new AccountProofCollector(a);
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             proof.Proof.Should().HaveCount(1);
-            
+
             // and because the account does not exist, the balance should be 0
             proof.Balance.Should().Be(UInt256.Zero);
         }
@@ -529,6 +532,83 @@ namespace Nethermind.Store.Test.Proofs
             Assert.AreEqual("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[0].Value.ToHexString(true));
             Assert.AreEqual("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[1].Value.ToHexString(true));
             Assert.AreEqual("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[2].Value.ToHexString(true));
+        }
+
+        private class AddressWithStorage
+        {
+            public Address Address { get; set; }
+            public StorageCell[] StorageCells { get; set; }
+        }
+
+        [Test]
+        public void Chaotic_test()
+        {
+            const int accountsCount = 10000;
+            const int storagesPerAccount = 10000;
+
+            CryptoRandom random = new CryptoRandom();
+            List<AddressWithStorage> addressesWithStorage = new List<AddressWithStorage>();
+
+            for (int i = 0; i < accountsCount; i++)
+            {
+                AddressWithStorage addressWithStorage = new AddressWithStorage();
+                addressWithStorage.StorageCells = new StorageCell[storagesPerAccount];
+                byte[] addressBytes = random.GenerateRandomBytes(20);
+                addressWithStorage.Address = new Address(addressBytes);
+
+                for (int j = 0; j < storagesPerAccount; j++)
+                {
+                    byte[] storageIndex = random.GenerateRandomBytes(32);
+                    UInt256.CreateFromBigEndian(out UInt256 index, storageIndex);
+                    StorageCell storageCell = new StorageCell(addressWithStorage.Address, index);
+                    addressWithStorage.StorageCells[j] = storageCell;
+                }
+
+                addressesWithStorage.Add(addressWithStorage);
+            }
+
+            IDb memDb = new MemDb();
+            StateTree tree = new StateTree(memDb);
+
+            for (int i = 0; i < accountsCount; i++)
+            {
+                Account account = Build.An.Account.WithBalance((UInt256) i).TestObject;
+                StorageTree storageTree = new StorageTree(memDb);
+                for (int j = 0; j < storagesPerAccount; j++)
+                {
+                    storageTree.Set(addressesWithStorage[i].StorageCells[j].Index, new byte[1] {1});
+                }
+
+                storageTree.UpdateRootHash();
+                storageTree.Commit();
+
+                account = account.WithChangedStorageRoot(storageTree.RootHash);
+                tree.Set(addressesWithStorage[i].Address, account);
+            }
+
+            tree.UpdateRootHash();
+            tree.Commit();
+
+            for (int i = 0; i < accountsCount; i++)
+            {
+                AccountProofCollector collector = new AccountProofCollector(addressesWithStorage[i].Address, addressesWithStorage[i].StorageCells.Select(sc => sc.Index).ToArray());
+                tree.Accept(collector, tree.RootHash);
+
+                AccountProof accountProof = collector.BuildResult();
+                accountProof.Address.Should().Be(addressesWithStorage[i].Address);
+                accountProof.Balance.Should().Be((UInt256) i);
+                accountProof.Nonce.Should().Be(0);
+                accountProof.CodeHash.Should().Be(Keccak.OfAnEmptyString);
+                accountProof.StorageRoot.Should().NotBe(Keccak.EmptyTreeHash);
+                accountProof.StorageProofs.Length.Should().Be(accountsCount);
+
+                for (int j = 0; j < storagesPerAccount; j++)
+                {
+                    byte[] indexBytes = new byte[32];
+                    addressesWithStorage[i].StorageCells[j].Index.ToBigEndian(indexBytes.AsSpan());
+                    accountProof.StorageProofs[j].Key.ToHexString().Should().Be(indexBytes.ToHexString(), $"{i} {j}");
+                }
+            }
         }
     }
 }
