@@ -364,7 +364,7 @@ namespace Nethermind.Blockchain.Bloom
                 CurrentLevel = 0;
             }
 
-            object? IEnumerator.Current => Current;
+            object IEnumerator.Current => Current;
 
             public bool MoveNext()
             {

@@ -41,7 +41,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
         {
         }
 
-        public TransactionInfoForRpc(Keccak hash, UInt256 value, UInt256 gasPrice, ulong gasLimit, ulong timestamp,
+        public TransactionInfoForRpc(Keccak? hash, UInt256 value, UInt256 gasPrice, ulong gasLimit, ulong timestamp,
             string type, string state)
         {
             Hash = hash;
