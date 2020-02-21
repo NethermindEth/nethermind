@@ -156,6 +156,7 @@ namespace Nethermind.Runner
                 _monitoringService.RegisterMetrics(typeof(Nethermind.Evm.Metrics));
                 _monitoringService.RegisterMetrics(typeof(Nethermind.Blockchain.Metrics));
                 _monitoringService.RegisterMetrics(typeof(Nethermind.Network.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Nethermind.TxPool.Metrics));
 
                 await _monitoringService.StartAsync().ContinueWith(x =>
                 {
