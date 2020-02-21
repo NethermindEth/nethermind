@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,12 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
-
-namespace Nethermind.Core.Extensions
+namespace Nethermind.Config
 {
-    public static class IListExtensions
+    public static class StringExtensions
     {
-        public static T GetItemRoundRobin<T>(this IList<T> array, long index) => array.Count == 0 ? default : array[(int) (index % array.Count)];
+        public static string RemoveStart(this string thisString, char removeChar) => thisString.StartsWith(removeChar) ? thisString.Substring(1, thisString.Length - 1) : thisString;
+
+        public static string  RemoveEnd(this string thisString, char removeChar) => thisString.EndsWith(removeChar) ? thisString.Substring(0, thisString.Length - 1) : thisString;
     }
 }

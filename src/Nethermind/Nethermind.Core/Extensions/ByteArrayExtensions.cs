@@ -15,124 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Threading;
-using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Extensions
 {
-    public static class SpanExtensions
-    {
-        public static string ToHexString(this Span<byte> span, bool withZeroX)
-        {
-            return ToHexString(span, withZeroX, false, false);
-        }
-        
-        public static string ToHexString(this Span<byte> span)
-        {
-            return ToHexString(span, false, false, false);
-        }
-        
-        public static string ToHexString(this Span<byte> span, bool withZeroX, bool noLeadingZeros, bool withEip55Checksum)
-        {
-            return ByteArrayToHexViaLookup32(span, withZeroX, noLeadingZeros, withEip55Checksum);
-        }
-        
-        [DebuggerStepThrough]
-        private static string ByteArrayToHexViaLookup32(Span<byte> span, bool withZeroX, bool skipLeadingZeros,
-            bool withEip55Checksum)
-        {
-            int leadingZeros = skipLeadingZeros ? CountLeadingZeros(span) : 0;
-            char[] result = new char[span.Length * 2 + (withZeroX ? 2 : 0) - leadingZeros];
-            string hashHex = null;
-            if (withEip55Checksum)
-            {
-                hashHex = Keccak.Compute(span.ToHexString(false)).ToString(false);
-            }
-
-            if (withZeroX)
-            {
-                result[0] = '0';
-                result[1] = 'x';
-            }
-
-            for (int i = 0; i < span.Length; i++)
-            {
-                uint val = Lookup32[span[i]];
-                char char1 = (char) val;
-                char char2 = (char) (val >> 16);
-
-                if (leadingZeros <= i * 2)
-                {
-                    result[2 * i + (withZeroX ? 2 : 0) - leadingZeros] =
-                        withEip55Checksum && char.IsLetter(char1) && hashHex[2 * i] > '7'
-                            ? char.ToUpper(char1)
-                            : char1;
-                }
-
-                if (leadingZeros <= i * 2 + 1)
-                {
-                    result[2 * i + 1 + (withZeroX ? 2 : 0) - leadingZeros] =
-                        withEip55Checksum && char.IsLetter(char2) && hashHex[2 * i + 1] > '7'
-                            ? char.ToUpper(char2)
-                            : char2;
-                }
-            }
-
-            if (skipLeadingZeros && result.Length == (withZeroX ? 2 : 0))
-            {
-                return withZeroX ? "0x0" : "0";
-            }
-
-            return new string(result);
-        }
-        
-        private static readonly uint[] Lookup32 = CreateLookup32("x2");
-
-        private static uint[] CreateLookup32(string format)
-        {
-            uint[] result = new uint[256];
-            for (int i = 0; i < 256; i++)
-            {
-                string s = i.ToString(format);
-                result[i] = s[0] + ((uint) s[1] << 16);
-            }
-
-            return result;
-        }
-        
-        private static int CountLeadingZeros(Span<byte> span)
-        {
-            int leadingZeros = 0;
-            for (int i = 0; i < span.Length; i++)
-            {
-                if ((span[i] & 240) == 0)
-                {
-                    leadingZeros++;
-                    if ((span[i] & 15) == 0)
-                    {
-                        leadingZeros++;
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-                else
-                {
-                    break;
-                }
-            }
-
-            return leadingZeros;
-        }        
-    }
-    
     public static class ByteArrayExtensions
     {
         public static byte[] Xor(this byte[] bytes, byte[] otherBytes)
@@ -197,46 +88,6 @@ namespace Nethermind.Core.Extensions
             byte[] slice = new byte[length];
             Buffer.BlockCopy(bytes, startIndex, slice, 0, length);
             return slice;
-        }
-
-        public static ZeroPaddedSpan SliceWithZeroPadding(this Span<byte> bytes, int startIndex, int length)
-        {
-            if (startIndex >= bytes.Length)
-            {
-                return new ZeroPaddedSpan(Span<byte>.Empty, length);
-            }
-
-            if (length == 1)
-            {
-                // why do we return zero length here?
-                // it was passing all the tests like this...
-                // return bytes.Length == 0 ? new byte[0] : new[] {bytes[startIndex]};
-                return bytes.Length == 0 ? new ZeroPaddedSpan(Span<byte>.Empty, 0) : new ZeroPaddedSpan(bytes.Slice(startIndex, 1), 0);
-                // return bytes.Length == 0 ? new ZeroPaddedSpan(Span<byte>.Empty, 1) : new ZeroPaddedSpan(bytes.Slice(startIndex, 1), 0);
-            }
-            
-            int copiedLength = Math.Min(bytes.Length - startIndex, length);
-            return new ZeroPaddedSpan(bytes.Slice(startIndex, copiedLength), length - copiedLength);
-        }
-
-        public static ZeroPaddedSpan SliceWithZeroPadding(this Span<byte> bytes, UInt256 startIndex, int length)
-        {
-            if (startIndex >= bytes.Length || startIndex > int.MaxValue)
-            {
-                return new ZeroPaddedSpan(Span<byte>.Empty, length);
-            }
-
-            return SliceWithZeroPadding(bytes, (int) startIndex, length);
-        }
-        
-        public static ZeroPaddedSpan SliceWithZeroPadding(this byte[] bytes, UInt256 startIndex, int length)
-        {
-            return bytes.AsSpan().SliceWithZeroPadding(startIndex, length);
-        }
-        
-        public static ZeroPaddedSpan SliceWithZeroPadding(this byte[] bytes, int startIndex, int length)
-        {
-            return bytes.AsSpan().SliceWithZeroPadding(startIndex, length);
         }
 
         public static byte[] SliceWithZeroPaddingEmptyOnError(this byte[] bytes, BigInteger startIndex, int length)

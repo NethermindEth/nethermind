@@ -90,26 +90,18 @@ namespace Nethermind.Core.Extensions
 
         public static readonly byte[] Zero32 = new byte[32];
 
-        public static readonly byte[] Zero256 = new byte[256];
-
         public static readonly byte[] Empty = new byte[0];
-
-        public enum Endianness
-        {
-            Big,
-            Little
-        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool GetBit(this byte b, int bitNumber)
         {
             return (b & (1 << (7 - bitNumber))) != 0;
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void SetBit(this ref byte b, int bitNumber)
         {
-            byte mask = (byte)(1 << (7 - bitNumber));
+            byte mask = (byte) (1 << (7 - bitNumber));
             b = b |= mask;
         }
 
@@ -298,14 +290,14 @@ namespace Nethermind.Core.Extensions
             }
         }
 
-        public static BigInteger ToUnsignedBigInteger(this byte[] bytes, Endianness endianness = Endianness.Big)
+        public static BigInteger ToUnsignedBigInteger(this byte[] bytes)
         {
-            return ToUnsignedBigInteger(bytes.AsSpan(), endianness);
+            return ToUnsignedBigInteger(bytes.AsSpan());
         }
 
-        public static BigInteger ToUnsignedBigInteger(this Span<byte> bytes, Endianness endianness = Endianness.Big)
+        public static BigInteger ToUnsignedBigInteger(this Span<byte> bytes)
         {
-            return new BigInteger(bytes, true, endianness == Endianness.Big);
+            return new BigInteger(bytes, true);
         }
 
         public static uint ReadEthUInt32(this Span<byte> bytes)
@@ -319,11 +311,10 @@ namespace Nethermind.Core.Extensions
             {
                 return BinaryPrimitives.ReadUInt32BigEndian(bytes);
             }
-            
+
             Span<byte> fourBytes = stackalloc byte[4];
             bytes.CopyTo(fourBytes.Slice(4 - bytes.Length));
             return BinaryPrimitives.ReadUInt32BigEndian(fourBytes);
-
         }
 
         public static uint ReadEthUInt32LittleEndian(this Span<byte> bytes)
@@ -337,11 +328,10 @@ namespace Nethermind.Core.Extensions
             {
                 return BinaryPrimitives.ReadUInt32LittleEndian(bytes);
             }
-            
+
             Span<byte> fourBytes = stackalloc byte[4];
             bytes.CopyTo(fourBytes.Slice(4 - bytes.Length));
             return BinaryPrimitives.ReadUInt32LittleEndian(fourBytes);
-
         }
 
 
@@ -356,11 +346,10 @@ namespace Nethermind.Core.Extensions
             {
                 return BinaryPrimitives.ReadInt32BigEndian(bytes);
             }
-            
+
             Span<byte> fourBytes = stackalloc byte[4];
             bytes.CopyTo(fourBytes.Slice(4 - bytes.Length));
             return BinaryPrimitives.ReadInt32BigEndian(fourBytes);
-
         }
 
         public static ulong ReadEthUInt64(this Span<byte> bytes)
@@ -374,19 +363,17 @@ namespace Nethermind.Core.Extensions
             {
                 return BinaryPrimitives.ReadUInt64BigEndian(bytes);
             }
-            
+
             Span<byte> eightBytes = stackalloc byte[8];
             bytes.CopyTo(eightBytes.Slice(8 - bytes.Length));
             return BinaryPrimitives.ReadUInt64BigEndian(eightBytes);
-
         }
 
-        public static BigInteger ToSignedBigInteger(this byte[] bytes, int byteLength,
-            Endianness endianness = Endianness.Big)
+        public static BigInteger ToSignedBigInteger(this byte[] bytes, int byteLength)
         {
             if (bytes.Length == byteLength)
             {
-                return new BigInteger(bytes.AsSpan(), false, endianness == Endianness.Big);
+                return new BigInteger(bytes.AsSpan(), false, true);
             }
 
             Debug.Assert(bytes.Length <= byteLength,
@@ -398,30 +385,18 @@ namespace Nethermind.Core.Extensions
                 Buffer.BlockCopy(bytes, 0, bytesToUse, byteLength - bytes.Length, bytes.Length);
             }
 
-            if (BitConverter.IsLittleEndian && endianness == Endianness.Big ||
-                !BitConverter.IsLittleEndian && endianness == Endianness.Little)
+            byte[] signedResult = new byte[byteLength];
+            for (int i = 0; i < byteLength; i++)
             {
-                byte[] signedResult = new byte[byteLength];
-                for (int i = 0; i < byteLength; i++)
-                {
-                    signedResult[byteLength - i - 1] = bytesToUse[i];
-                }
-
-                return new BigInteger(signedResult);
+                signedResult[byteLength - i - 1] = bytesToUse[i];
             }
 
-            return new BigInteger(bytesToUse);
+            return new BigInteger(signedResult);
         }
 
-        public static UInt256 ToUInt256(this byte[] bytes, Endianness endianness = Endianness.Big)
+        public static UInt256 ToUInt256(this byte[] bytes)
         {
-            if (endianness == Endianness.Little)
-            {
-                throw new NotImplementedException();
-            }
-
             UInt256.CreateFromBigEndian(out UInt256 result, bytes);
-
             return result;
         }
 
@@ -475,18 +450,6 @@ namespace Nethermind.Core.Extensions
             return new BitArray(inverted);
         }
 
-        public static BitArray ToBigEndianBitArray2048(this Span<byte> bytes)
-        {
-            byte[] inverted = new byte[256];
-            int startIndex = 256 - bytes.Length;
-            for (int i = startIndex; i < inverted.Length; i++)
-            {
-                inverted[i] = Reverse(bytes[i - startIndex]);
-            }
-
-            return new BitArray(inverted);
-        }
-
         public static string ToHexString(this byte[] bytes)
         {
             return ToHexString(bytes, false, false, false);
@@ -524,11 +487,11 @@ namespace Nethermind.Core.Extensions
                 Bytes = bytes;
                 WithZeroX = withZeroX;
             }
-            
+
             public byte[] Bytes;
             public bool WithZeroX;
         }
-        
+
         private struct State
         {
             public State(byte[] bytes, int leadingZeros, bool withZeroX, bool withEip55Checksum)
@@ -552,10 +515,10 @@ namespace Nethermind.Core.Extensions
             {
                 return withZeroX ? "0x" : "";
             }
-            
+
             int length = bytes.Length * 2 + (withZeroX ? 2 : 0);
             StateSmall stateToPass = new StateSmall(bytes, withZeroX);
-            
+
             return string.Create(length, stateToPass, (chars, state) =>
             {
                 ref var charsRef = ref MemoryMarshal.GetReference(chars);
@@ -586,7 +549,7 @@ namespace Nethermind.Core.Extensions
 
                     output = ref Unsafe.Add(ref output, 8);
                     input = ref Unsafe.Add(ref input, 8);
-                    
+
                     toProcess -= 8;
                 }
 

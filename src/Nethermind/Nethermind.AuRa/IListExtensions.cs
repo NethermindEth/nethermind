@@ -14,33 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
+using System.Collections.Generic;
 
-namespace Nethermind.Core.Extensions
+namespace Nethermind.AuRa
 {
-    public ref struct ZeroPaddedSpan
+    public static class IListExtensions
     {
-        public static ZeroPaddedSpan Empty => new ZeroPaddedSpan(Span<byte>.Empty, 0);
-        
-        public ZeroPaddedSpan(Span<byte> span, int paddingLength)
-        {
-            Span = span;
-            PaddingLength = paddingLength;
-        }
-        
-        public Span<byte> Span;
-        public int PaddingLength;
-        public int Length => Span.Length + PaddingLength;
-
-        /// <summary>
-        /// Temporary to handle old invocations
-        /// </summary>
-        /// <returns></returns>
-        public readonly byte[] ToArray()
-        {
-            byte[] result = new byte[Span.Length + PaddingLength];
-            Span.CopyTo(result.AsSpan().Slice(0, Span.Length));
-            return result;
-        }
+        public static T GetItemRoundRobin<T>(this IList<T> array, long index) => array.Count == 0 ? default : array[(int) (index % array.Count)];
     }
 }

@@ -16,6 +16,7 @@
 
 using System.Numerics;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test

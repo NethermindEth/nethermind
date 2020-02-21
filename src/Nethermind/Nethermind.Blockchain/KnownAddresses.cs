@@ -15,8 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using Nethermind.Core;
 
-namespace Nethermind.Core
+namespace Nethermind.Blockchain
 {
     public static class KnownAddresses
     {

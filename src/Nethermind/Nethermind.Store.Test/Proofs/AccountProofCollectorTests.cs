@@ -115,7 +115,7 @@ namespace Nethermind.Store.Test.Proofs
 
             // now wer are looking for a trying to trick the code to think that the extension of c and d is a good match
             // if everything is ok the proof length of 1 is enough since the extension from the root is not matched
-            AccountProofCollector accountProofCollector = new AccountProofCollector(new Address(a));
+            AccountProofCollector accountProofCollector = new AccountProofCollector(a);
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             proof.Proof.Should().HaveCount(1);

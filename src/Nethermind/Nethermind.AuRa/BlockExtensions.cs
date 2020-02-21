@@ -15,9 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
-using Nethermind.Core.Crypto;
+using Nethermind.Core;
 
-namespace Nethermind.Core.Extensions
+namespace Nethermind.AuRa
 {
     public static class BlockExtensions
     {

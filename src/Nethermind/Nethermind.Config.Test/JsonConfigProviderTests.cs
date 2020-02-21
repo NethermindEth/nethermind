@@ -22,7 +22,6 @@ using Nethermind.KeyStore.Config;
 using Nethermind.Network.Config;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Nethermind.Store.Bloom;
 using NUnit.Framework;
 
 namespace Nethermind.Config.Test
@@ -73,9 +72,6 @@ namespace Nethermind.Config.Test
             {
                 Assert.IsTrue(statsConfig.PenalizedReputationLocalDisconnectReasons.Contains(x));
             });
-
-            var bloomConfig = _configProvider.GetConfig<IBloomConfig>();
-            CollectionAssert.AreEquivalent(new []{16, 16, 16}, bloomConfig.IndexLevelBucketSizes);
         }
         
         [Test]

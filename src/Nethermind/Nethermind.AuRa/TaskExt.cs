@@ -15,28 +15,28 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Globalization;
-using System.Numerics;
-using System.Security.Cryptography;
+using System.Threading;
+using System.Threading.Tasks;
 
-namespace Nethermind.Core.Extensions
+namespace Nethermind.AuRa
 {
-    public static class BigIntegerExtensions
+    public static class TaskExt
     {
-        public static byte[] ToBigEndianByteArray(this BigInteger bigInteger, int outputLength = -1)
+        /// <summary>
+        /// Guarantees to delay at least the specified delay. 
+        ///  </summary>
+        /// <param name="delay">Time to delay</param>
+        /// <param name="token"></param>
+        /// <remarks>Due to different resolution of timers on different systems, Task.Delay can return before specified delay.</remarks>
+        /// <returns></returns>
+        public static async Task DelayAtLeast(TimeSpan delay, CancellationToken token = default)
         {
-            byte[] result = bigInteger.ToByteArray(false, true);
-            if (result[0] == 0 && result.Length != 1)
+            while (delay > TimeSpan.Zero)
             {
-                result = result.Slice(1, result.Length - 1);
+                var before = DateTimeOffset.Now;
+                await Task.Delay(delay, token);
+                delay -= (DateTimeOffset.Now - before);
             }
-
-            if (outputLength != -1)
-            {
-                result = result.PadLeft(outputLength, bigInteger.Sign < 0 ? (byte) 0xff : (byte) 0x00);
-            }
-
-            return result;
         }
     }
 }

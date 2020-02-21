@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,28 +15,32 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Threading;
-using System.Threading.Tasks;
 
-namespace Nethermind.Core.Extensions
+namespace Nethermind.Evm
 {
-    public static class TaskExt
+    public ref struct ZeroPaddedSpan
     {
-        /// <summary>
-        /// Guarantees to delay at least the specified delay. 
-        ///  </summary>
-        /// <param name="delay">Time to delay</param>
-        /// <param name="token"></param>
-        /// <remarks>Due to different resolution of timers on different systems, Task.Delay can return before specified delay.</remarks>
-        /// <returns></returns>
-        public static async Task DelayAtLeast(TimeSpan delay, CancellationToken token = default)
+        public static ZeroPaddedSpan Empty => new ZeroPaddedSpan(Span<byte>.Empty, 0);
+        
+        public ZeroPaddedSpan(Span<byte> span, int paddingLength)
         {
-            while (delay > TimeSpan.Zero)
-            {
-                var before = DateTimeOffset.Now;
-                await Task.Delay(delay, token);
-                delay -= (DateTimeOffset.Now - before);
-            }
+            Span = span;
+            PaddingLength = paddingLength;
+        }
+        
+        public Span<byte> Span;
+        public int PaddingLength;
+        public int Length => Span.Length + PaddingLength;
+
+        /// <summary>
+        /// Temporary to handle old invocations
+        /// </summary>
+        /// <returns></returns>
+        public readonly byte[] ToArray()
+        {
+            byte[] result = new byte[Span.Length + PaddingLength];
+            Span.CopyTo(result.AsSpan().Slice(0, Span.Length));
+            return result;
         }
     }
 }

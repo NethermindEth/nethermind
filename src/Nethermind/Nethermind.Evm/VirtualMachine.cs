@@ -738,7 +738,7 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            BigInteger res = a.Sign * BigInteger.Remainder(a.Abs(), b.Abs());
+                            BigInteger res = a.Sign * BigInteger.Remainder(BigInteger.Abs(a),BigInteger.Abs(b));
                             stack.PushSignedInt(in res);
                         }
 

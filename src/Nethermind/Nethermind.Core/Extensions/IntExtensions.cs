@@ -20,24 +20,6 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Extensions
 {
-    public static class ULongExtensions
-    {
-        public static ulong GB(this ulong @this)
-        {
-            return @this * 1024UL * 1024UL * 1024UL;
-        }
-        
-        public static ulong MB(this ulong @this)
-        {
-            return @this * 1024UL * 1024UL;
-        }
-        
-        public static ulong KB(this ulong @this)
-        {
-            return @this * 1024UL;
-        }
-    }
-
     public static class IntExtensions
     {   
         public static ulong GB(this int @this)
@@ -70,29 +52,14 @@ namespace Nethermind.Core.Extensions
             return (uint)@this * Unit.GWei;
         }
 
-        public static byte[] ToByteArray(this int value, Bytes.Endianness endianness)
+        public static byte[] ToByteArray(this int value)
         {
-            byte[] bytes = BitConverter.GetBytes(value);
-            if(BitConverter.IsLittleEndian && endianness != Bytes.Endianness.Little || !BitConverter.IsLittleEndian && endianness == Bytes.Endianness.Little)
-            {
-                Array.Reverse(bytes);
-            }
-
+            byte[] bytes = new byte[sizeof(int)];
+            BinaryPrimitives.WriteInt32BigEndian(bytes, value);
             return bytes;
         }
         
         public static byte[] ToBigEndianByteArray(this int value)
-        {
-            byte[] bytes = BitConverter.GetBytes(value);
-            if (BitConverter.IsLittleEndian)
-            {
-                Array.Reverse(bytes);
-            }
-
-            return bytes;
-        }
-        
-        public static byte[] ToBigEndianByteArray(this uint value)
         {
             byte[] bytes = BitConverter.GetBytes(value);
             if (BitConverter.IsLittleEndian)
