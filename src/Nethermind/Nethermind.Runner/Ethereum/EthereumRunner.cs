@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.TxPools;
@@ -84,9 +85,8 @@ namespace Nethermind.Runner.Ethereum
             stepsManager.DiscoverAll();
             await stepsManager.InitializeAll();
             
-            if (_logger.IsInfo) _logger.Info("============== Nethermind initialization completed ==============");
-            
-            ThisNodeInfo.LogAll(_logger);
+            string infoScreen = ThisNodeInfo.BuildNodeInfoScreen();
+            if (_logger.IsInfo) _logger.Info(infoScreen);
         }
 
         public async Task StopAsync()
@@ -94,7 +94,7 @@ namespace Nethermind.Runner.Ethereum
             if (_logger.IsInfo) _logger.Info("Shutting down...");
             _context.RunnerCancellation?.Cancel();
 
-            if (_logger.IsInfo) _logger.Info("Stopping sesison monitor...");
+            if (_logger.IsInfo) _logger.Info("Stopping session monitor...");
             _context.SessionMonitor?.Stop();
 
             if (_logger.IsInfo) _logger.Info("Stopping discovery app...");
@@ -120,17 +120,18 @@ namespace Nethermind.Runner.Ethereum
             Task rlpxPeerTask = _context.RlpxPeer?.Shutdown() ?? Task.CompletedTask;
 
             await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, synchronizerTask, peerPoolTask, blockchainProcessorTask, blockProducerTask);
-
-            if (_logger.IsInfo) _logger.Info("Closing DBs...");
-            _context.DbProvider?.Dispose();
-            if (_logger.IsInfo) _logger.Info("All DBs closed.");
-
+            
             while (_context.DisposeStack.Count != 0)
             {
-                IDisposable disposable = _context.DisposeStack.Pop();
+                IAsyncDisposable disposable = _context.DisposeStack.Pop();
                 if (_logger.IsDebug) _logger.Debug($"Disposing {disposable.GetType().Name}");
+                await disposable.DisposeAsync();
             }
-
+            
+            if (_logger.IsInfo) _logger.Info("Closing DBs...");
+            _context.DbProvider?.Dispose();
+            
+            if (_logger.IsInfo) _logger.Info("All DBs closed.");
             if (_logger.IsInfo) _logger.Info("Ethereum shutdown complete... please wait for all components to close");
         }
     }

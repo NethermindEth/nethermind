@@ -158,6 +158,11 @@ namespace Nethermind.Core.Extensions
 
         public static long ToLongFromBigEndianByteArrayWithoutLeadingZeros(this byte[] bytes)
         {
+            if (bytes == null)
+            {
+                return 0L;
+            }
+            
             long value = 0;
             int length = bytes.Length;
 

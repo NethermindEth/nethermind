@@ -43,7 +43,8 @@ namespace Nethermind.Config
                 }
                 else
                 {
-                    var valueItems = valueString.Split(',').ToArray();
+                    valueString = valueString.Trim().RemoveStart('[').RemoveEnd(']');
+                    var valueItems = valueString.Split(',').Select(s => s.Trim()).ToArray();
                     var collection = valueType.IsGenericType
                         ? (IList) Activator.CreateInstance(typeof(List<>).MakeGenericType(itemType))
                         : (IList) Activator.CreateInstance(valueType, valueItems.Length);

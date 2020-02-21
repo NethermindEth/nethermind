@@ -34,5 +34,6 @@ namespace Nethermind.Store
         public const string ConsumerDepositApprovals = "consumerDepositApprovals";
         public const string Configs = "configs";
         public const string EthRequests = "ethRequests";
+        public const string Bloom = "bloom";
     }
 }

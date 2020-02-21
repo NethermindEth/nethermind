@@ -51,8 +51,7 @@ namespace Nethermind.Facade
         Account GetAccount(Address address, Keccak stateRoot);
         int NewBlockFilter();
         int NewPendingTransactionFilter();
-        int NewFilter(BlockParameter fromBlock, BlockParameter toBlock, object address = null,
-            IEnumerable<object> topics = null);
+        int NewFilter(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null);
         void UninstallFilter(int filterId);
         bool FilterExists(int filterId);
         FilterLog[] GetLogFilterChanges(int filterId);
@@ -60,8 +59,7 @@ namespace Nethermind.Facade
         Keccak[] GetPendingTransactionFilterChanges(int filterId);
         FilterType GetFilterType(int filterId);
         FilterLog[] GetFilterLogs(int filterId);
-        FilterLog[] GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address = null,
-            IEnumerable<object> topics = null);
+        IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null);
         void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot);
     }
 }

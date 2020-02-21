@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
@@ -147,7 +148,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         private void SetupLocalTree(int length = 1)
         {
             var blockInfoDb = new MemDb();
-            _localBlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainNetSpecProvider.Instance, NullTxPool.Instance, _syncConfig, LimboLogs.Instance);
+            _localBlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainNetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, _syncConfig, LimboLogs.Instance);
             for (int i = 0; i < length; i++)
             {
                 _localBlockTree.SuggestBlock(_validTree2048.FindBlock(i, BlockTreeLookupOptions.None));

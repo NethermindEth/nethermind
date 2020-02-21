@@ -47,7 +47,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositori
 
         public async Task<IReadOnlyList<DataDeliveryReceiptDetails>> BrowseAsync(Keccak? depositId = null, Keccak? dataAssetId = null, Keccak? sessionId = null)
         {
-            var receiptsBytes = _database.GetAll();
+            var receiptsBytes = _database.GetAll().ToArray();
             if (receiptsBytes.Length == 0)
             {
                 return Array.Empty<DataDeliveryReceiptDetails>();

@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
@@ -56,6 +58,8 @@ namespace Nethermind.Store.Rpc
             set => throw new InvalidOperationException("RPC DB does not support writes");
         }
 
+        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, GetThroughRpc(k))).ToArray();
+
         public void Remove(byte[] key)
         {
             throw new InvalidOperationException("RPC DB does not support writes");
@@ -67,8 +71,9 @@ namespace Nethermind.Store.Rpc
         }
 
         public IDb Innermost => this; // record db is just a helper DB here
+        public void Flush() { }
 
-        public byte[][] GetAll() => _recordDb.GetAll();
+        public IEnumerable<byte[]> GetAll() => _recordDb.GetAll();
 
         public void StartBatch()
         {

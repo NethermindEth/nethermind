@@ -20,6 +20,7 @@ using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using MongoDB.Driver;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
@@ -108,7 +109,8 @@ namespace Nethermind.DataMarketplace.Initializers
             IJsonRpcClientProxy? jsonRpcClientProxy,
             IEthJsonRpcClientProxy? ethJsonRpcClientProxy,
             IHttpClient httpClient,
-            IMonitoringService monitoringService)
+            IMonitoringService monitoringService,
+            IBloomStorage bloomStorage)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             INdmConfig ndmConfig = configProvider.GetConfig<INdmConfig>();
@@ -146,7 +148,8 @@ namespace Nethermind.DataMarketplace.Initializers
                 jsonRpcClientProxy,
                 ethJsonRpcClientProxy,
                 httpClient,
-                monitoringService);
+                monitoringService,
+                bloomStorage);
 
             NdmSubprotocolFactory subprotocolFactory = new NdmSubprotocolFactory(messageSerializationService, nodeStatsManager,
                 logManager, accountService, consumerService, consumerChannelManager, ecdsa, wallet, faucet,
@@ -200,7 +203,8 @@ namespace Nethermind.DataMarketplace.Initializers
                 IJsonRpcClientProxy? jsonRpcClientProxy,
                 IEthJsonRpcClientProxy? ethJsonRpcClientProxy,
                 IHttpClient httpClient,
-                IMonitoringService monitoringService)
+                IMonitoringService monitoringService,
+                IBloomStorage bloomStorage)
         {
             // what is block processor doing here?
             
@@ -258,6 +262,7 @@ namespace Nethermind.DataMarketplace.Initializers
             NdmNotifier notifier = new NdmNotifier(webSocketsModule);
             EthRequestService ethRequestService = new EthRequestService(ndmConfig.FaucetHost, logManager);
             DbPath = Path.Combine(baseDbPath, ndmConfig.DatabasePath);
+
             INdmServices services = _ndmModule.Init(
                 new NdmRequiredServices(
                     configProvider,
@@ -291,7 +296,8 @@ namespace Nethermind.DataMarketplace.Initializers
                     jsonRpcClientProxy,
                     ethJsonRpcClientProxy,
                     httpClient, 
-                    monitoringService));
+                    monitoringService,
+                    bloomStorage));
 
             INdmFaucet faucet;
             if (ndmConfig.FaucetEnabled)

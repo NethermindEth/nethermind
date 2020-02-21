@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -41,7 +42,7 @@ namespace Nethermind.Blockchain.TxPools.Storages
 
         public Transaction[] GetAll()
         {
-            var transactionsBytes = _database.GetAll();
+            var transactionsBytes = _database.GetAll().ToArray();
             if (transactionsBytes.Length == 0)
             {
                 return Array.Empty<Transaction>();

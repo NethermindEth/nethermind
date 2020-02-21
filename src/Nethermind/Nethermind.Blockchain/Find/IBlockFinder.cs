@@ -40,6 +40,20 @@ namespace Nethermind.Blockchain.Find
         
         BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options);
         
+        /// <summary>
+        /// Checks if the block is currently in the canonical chain
+        /// </summary>
+        /// <param name="blockHeader">Block header to check</param>
+        /// <returns><value>True</value> if part of the canonical chain, otherwise <value>False</value></returns>
+        bool IsMainChain(BlockHeader blockHeader);
+        
+        /// <summary>
+        /// Checks if the block is currently in the canonical chain
+        /// </summary>
+        /// <param name="blockHash">Hash of the block to check</param>
+        /// <returns><value>True</value> if part of the canonical chain, otherwise <value>False</value></returns>
+        bool IsMainChain(Keccak blockHash);
+        
         public Block FindBlock(Keccak blockHash) => FindBlock(blockHash, BlockTreeLookupOptions.None);
         
         public Block FindBlock(long blockNumber) => FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);

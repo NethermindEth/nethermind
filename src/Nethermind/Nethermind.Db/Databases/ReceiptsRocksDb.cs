@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Collections;
 using Nethermind.Db.Config;
 using Nethermind.Logging;
 using Nethermind.Store;
@@ -29,7 +31,7 @@ namespace Nethermind.Db.Databases
         {
         }
 
-        protected override void UpdateReadMetrics() => Metrics.ReceiptsDbReads++;
-        protected override void UpdateWriteMetrics() => Metrics.ReceiptsDbWrites++;
+        protected internal override void UpdateReadMetrics() => Metrics.ReceiptsDbReads++;
+        protected internal override void UpdateWriteMetrics() => Metrics.ReceiptsDbWrites++;
     }
 }

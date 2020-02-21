@@ -124,21 +124,21 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("eth", "getBlockTransactionCountByNumber")]
-        public JsValue GetBlockTransactionCountByNumber(string blockParameter)
+        public long GetBlockTransactionCountByNumber(string blockParameter)
         {
-            return NodeManager.PostJint("eth_getBlockTransactionCountByNumber", blockParameter).Result;
+            return NodeManager.Post<long>("eth_getBlockTransactionCountByNumber", blockParameter).Result;
         }
 
         [CliFunction("eth", "getBlockTransactionCountByHash")]
-        public JsValue GetBlockTransactionCountByHash(string hash)
+        public long GetBlockTransactionCountByHash(string hash)
         {
-            return NodeManager.PostJint("eth_getBlockTransactionCountByHash", CliParseHash(hash)).Result;
+            return NodeManager.Post<long>("eth_getBlockTransactionCountByHash", CliParseHash(hash)).Result;
         }
 
         [CliFunction("eth", "getUncleCountByBlockNumber")]
-        public JsValue GetUncleCountByBlockNumber(string blockParameter)
+        public long GetUncleCountByBlockNumber(string blockParameter)
         {
-            return NodeManager.PostJint("eth_getUncleCountByBlockNumber", blockParameter).Result;
+            return NodeManager.Post<long>("eth_getUncleCountByBlockNumber", blockParameter).Result;
         }
 
         [CliFunction("eth", "getTransactionByBlockNumberAndIndex")]

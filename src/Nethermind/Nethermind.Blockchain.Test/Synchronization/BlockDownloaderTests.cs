@@ -21,6 +21,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Proofs;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
@@ -332,7 +333,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                         .Select(t => Build.A.Receipt
                             .WithStatusCode(StatusCode.Success)
                             .WithGasUsed(10)
-                            .WithBloom(Bloom.Empty)
+                            .WithBloom(Core.Bloom.Empty)
                             .WithLogs(Build.A.LogEntry.WithAddress(t.SenderAddress).WithTopics(TestItem.KeccakA).TestObject)
                             .TestObject)
                         .ToArray();
@@ -353,7 +354,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             Block genesis = Build.A.Block.Genesis.TestObject;
             MemDb blockInfoDb = new MemDb();
-            _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainNetSpecProvider.Instance, NullTxPool.Instance, LimboLogs.Instance);
+            _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainNetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
             _blockTree.SuggestBlock(genesis);
 
             _testHeaderMapping = new Dictionary<long, Keccak>();

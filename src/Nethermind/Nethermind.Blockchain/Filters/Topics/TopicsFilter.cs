@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain.Filters.Topics
             return true;
         }
 
-        public bool Matches(Bloom bloom)
+        public bool Matches(Core.Bloom bloom)
         {
             bool result = true;
             

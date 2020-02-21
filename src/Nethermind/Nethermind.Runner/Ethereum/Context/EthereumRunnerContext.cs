@@ -14,11 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -71,7 +71,7 @@ namespace Nethermind.Runner.Ethereum.Context
         
         public IConfigProvider ConfigProvider { get; set; }
         public ILogManager LogManager{ get; set; }
-        public Stack<IDisposable> DisposeStack { get; }= new Stack<IDisposable>();
+        public DisposableStack DisposeStack { get; } = new DisposableStack();
         public List<IProducer> Producers { get; }= new List<IProducer>();
         public IGrpcServer? GrpcServer { get; set; }
         public INodeDataConsumer NodeDataConsumer { get; set; } = NullDataConsumer.Instance;
@@ -127,5 +127,6 @@ namespace Nethermind.Runner.Ethereum.Context
         public INdmConsumerChannelManager? NdmConsumerChannelManager { get; set; }
         public INdmDataPublisher? NdmDataPublisher { get; set; }
         public INdmInitializer? NdmInitializer { get; set; }
+        public IBloomStorage? BloomStorage { get; set; }
     }
 }

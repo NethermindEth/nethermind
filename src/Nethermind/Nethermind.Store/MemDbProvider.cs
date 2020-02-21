@@ -27,6 +27,7 @@ namespace Nethermind.Store
         public IDb PendingTxsDb { get; } = new MemDb();
         public IDb ConfigsDb { get; } = new MemDb();
         public IDb EthRequestsDb { get; } = new MemDb();
+        public IDb BloomDb { get; } = new MemDb();
 
         public void Dispose()
         {
@@ -38,6 +39,7 @@ namespace Nethermind.Store
             PendingTxsDb?.Dispose();
             ConfigsDb?.Dispose();
             EthRequestsDb?.Dispose();
+            BloomDb?.Dispose();
         }
     }
 }

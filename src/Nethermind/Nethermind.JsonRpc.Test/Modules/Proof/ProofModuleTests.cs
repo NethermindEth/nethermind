@@ -19,10 +19,12 @@ using System.IO;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.JsonRpc.Data;
@@ -66,7 +68,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             ProofModuleFactory moduleFactory = new ProofModuleFactory(
                 _dbProvider,
                 _blockTree,
-                new CompositeDataRecoveryStep(),
+                new CompositeDataRecoveryStep(new TxSignaturesRecoveryStep(new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance), NullTxPool.Instance, LimboLogs.Instance)),
                 receiptStorage,
                 _specProvider,
                 LimboLogs.Instance);
@@ -178,6 +180,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 To = TestItem.AddressB,
                 GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
             };
+            
             _proofModule.proof_call(tx, new BlockParameter(block.Number));
 
             EthereumJsonSerializer serializer = new EthereumJsonSerializer();
@@ -660,10 +663,35 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            TestCallWithStorageAndCode(code);
+            TestCallWithStorageAndCode(code, _useNonZeroGasPrice ? 10.GWei() : 0);
+        }
+        
+        [Test]
+        public void Can_call_with_mix_of_everything_and_storage_from_another_account_wrong_nonce()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData(TestItem.AddressC)
+                .Op(Instruction.BALANCE)
+                .PushData("0x01")
+                .Op(Instruction.BLOCKHASH)
+                .PushData("0x02")
+                .Op(Instruction.BLOCKHASH)
+                .PushData("0x01")
+                .Op(Instruction.SLOAD)
+                .PushData("0x02")
+                .Op(Instruction.SLOAD)
+                .PushData("0x01")
+                .PushData("0x01")
+                .Op(Instruction.SSTORE)
+                .PushData("0x03")
+                .PushData("0x03")
+                .Op(Instruction.SSTORE)
+                .Done;
+
+            TestCallWithStorageAndCode(code, 0, TestItem.AddressD);
         }
 
-        private CallResultWithProof TestCallWithCode(byte[] code)
+        private CallResultWithProof TestCallWithCode(byte[] code, Address from = null)
         {
             StateProvider stateProvider = CreateInitialState(code);
 
@@ -677,6 +705,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             TransactionForRpc tx = new TransactionForRpc
             {
+                From = from,
                 To = TestItem.AddressB,
                 GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
             };
@@ -686,10 +715,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             foreach (AccountProof accountProof in callResultWithProof.Accounts)
             {
-                VerifyProof(accountProof.Proof, block.StateRoot);
+                ProofVerifier.Verify(accountProof.Proof, block.StateRoot);
                 foreach (StorageProof storageProof in accountProof.StorageProofs)
                 {
-                    VerifyProof(storageProof.Proof, accountProof.StorageRoot);
+                    ProofVerifier.Verify(storageProof.Proof, accountProof.StorageRoot);
                 }
             }
 
@@ -700,7 +729,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             return callResultWithProof;
         }
 
-        private void TestCallWithStorageAndCode(byte[] code)
+        private void TestCallWithStorageAndCode(byte[] code, UInt256 gasPrice, Address from = null)
         {
             StateProvider stateProvider = CreateInitialState(code);
             StorageProvider storageProvider = new StorageProvider(_dbProvider.StateDb, stateProvider, LimboLogs.Instance);
@@ -728,9 +757,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             TransactionForRpc tx = new TransactionForRpc
             {
-                // we are testing system transaction here
+                // we are testing system transaction here when From is null
+                From = from,
                 To = TestItem.AddressB,
-                GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
+                GasPrice = gasPrice,
+                Nonce = 1000
             };
 
             CallResultWithProof callResultWithProof = _proofModule.proof_call(tx, new BlockParameter(blockOnTop.Number)).Data;
@@ -757,7 +788,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 Account account;
                 try
                 {
-                    account = new AccountDecoder().Decode(new RlpStream(VerifyProof(accountProof.Proof, block.StateRoot)));
+                    account = new AccountDecoder().Decode(new RlpStream(ProofVerifier.Verify(accountProof.Proof, block.StateRoot)));
                 }
                 catch (Exception)
                 {
@@ -767,7 +798,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 foreach (StorageProof storageProof in accountProof.StorageProofs)
                 {
                     // we read the values here just to allow easier debugging so you can confirm that the value is same as the one in the proof and in the trie
-                    byte[] value = VerifyProof(storageProof.Proof, accountProof.StorageRoot);
+                    byte[] value = ProofVerifier.Verify(storageProof.Proof, accountProof.StorageRoot);
                 }
             }
 
@@ -812,37 +843,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             stateProvider.CommitTree();
             _dbProvider.CodeDb.Commit();
             _dbProvider.StateDb.Commit();
-        }
-
-        private byte[] VerifyProof(byte[][] proof, Keccak txRoot)
-        {
-            if (proof.Length == 0)
-            {
-                return null;
-            }
-
-            TrieNode trieNode = new TrieNode(NodeType.Unknown, new Rlp(proof.Last()));
-            trieNode.ResolveNode(null);
-            for (int i = proof.Length; i > 0; i--)
-            {
-                Keccak proofHash = Keccak.Compute(proof[i - 1]);
-                if (i > 1)
-                {
-                    if (!new Rlp(proof[i - 2]).ToString(false).Contains(proofHash.ToString(false)))
-                    {
-                        throw new InvalidDataException();
-                    }
-                }
-                else
-                {
-                    if (proofHash != txRoot)
-                    {
-                        throw new InvalidDataException();
-                    }
-                }
-            }
-
-            return trieNode.Value;
         }
     }
 }

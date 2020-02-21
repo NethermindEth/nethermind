@@ -16,6 +16,7 @@
 
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -65,7 +66,7 @@ namespace Nethermind.JsonRpc.Benchmark
             StateReader stateReader = new StateReader(stateDb, codeDb, LimboLogs.Instance);
             
             ChainLevelInfoRepository chainLevelInfoRepository = new ChainLevelInfoRepository(blockInfoDb);
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, chainLevelInfoRepository, specProvider, NullTxPool.Instance, LimboLogs.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, chainLevelInfoRepository, specProvider, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
             _blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
             _virtualMachine = new VirtualMachine(stateProvider, storageProvider, _blockhashProvider, specProvider, LimboLogs.Instance);
 
@@ -90,6 +91,8 @@ namespace Nethermind.JsonRpc.Benchmark
 
             blockchainProcessor.Process(genesisBlock, ProcessingOptions.None, NullBlockTracer.Instance);
             blockchainProcessor.Process(block1, ProcessingOptions.None, NullBlockTracer.Instance);
+            
+            IBloomStorage bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
 
             BlockchainBridge bridge = new BlockchainBridge(
                 stateReader,
@@ -102,7 +105,9 @@ namespace Nethermind.JsonRpc.Benchmark
                 NullFilterManager.Instance, 
                 new DevWallet(new WalletConfig(), LimboLogs.Instance), 
                 transactionProcessor, 
-                new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance));
+                new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance),
+                bloomStorage, 
+                new ReceiptsRecovery());
             
             _ethModule = new EthModule(new JsonRpcConfig(), LimboLogs.Instance, bridge);
         }

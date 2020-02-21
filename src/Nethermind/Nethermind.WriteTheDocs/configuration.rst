@@ -4,6 +4,25 @@ Configuration
 Use '/' as the path separator so the configs can be shared between all platforms supported (Linux, Windows, MacOS).
 '--config', '--baseDbPath', and '--log' options are available from the command line to select config file, base DB directory prefix and log level respectively. 
 
+BloomConfig
+^^^^^^^^^^^
+
+ Index
+   Defines whether the Bloom index is used. Bloom index speeds up rpc log searches.
+   default value: true
+
+ IndexLevelBucketSizes
+   Defines multipliers for index levels. Can be tweaked per chain to boost performance.
+   default value: [4, 8, 8]
+
+ Migration
+   Defines if migration of previously downloaded blocks to Bloom index will be done.
+   default value: false
+
+ MigrationStatistics
+   Defines if migration statistics are to be calculated and output.
+   default value: false
+
 DbConfig
 ^^^^^^^^
 
@@ -24,6 +43,14 @@ DbConfig
  BlocksDbWriteBufferNumber
 
  BlocksDbWriteBufferSize
+
+ BloomDbBlockCacheSize
+
+ BloomDbCacheIndexAndFilterBlocks
+
+ BloomDbWriteBufferNumber
+
+ BloomDbWriteBufferSize
 
  CacheIndexAndFilterBlocks
 
@@ -485,6 +512,12 @@ Sample configuration (mainnet)
 ::
 
     {
+        "Bloom": {
+              "Index" : true,
+              "IndexLevelBucketSizes" : [4, 8, 8],
+              "Migration" : false,
+              "MigrationStatistics" : false
+        },
         "Db": {
               "BlockCacheSize" : [MISSING_DOCS],
               "BlockInfosDbBlockCacheSize" : [MISSING_DOCS],
@@ -495,6 +528,10 @@ Sample configuration (mainnet)
               "BlocksDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
               "BlocksDbWriteBufferNumber" : [MISSING_DOCS],
               "BlocksDbWriteBufferSize" : [MISSING_DOCS],
+              "BloomDbBlockCacheSize" : [MISSING_DOCS],
+              "BloomDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
+              "BloomDbWriteBufferNumber" : [MISSING_DOCS],
+              "BloomDbWriteBufferSize" : [MISSING_DOCS],
               "CacheIndexAndFilterBlocks" : [MISSING_DOCS],
               "CodeDbBlockCacheSize" : [MISSING_DOCS],
               "CodeDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],

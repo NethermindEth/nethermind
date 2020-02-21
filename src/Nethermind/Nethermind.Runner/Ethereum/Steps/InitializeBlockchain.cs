@@ -17,6 +17,7 @@
 using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
@@ -60,6 +61,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_context.SpecProvider == null) throw new StepDependencyException(nameof(_context.SpecProvider));
             
             ILogger logger = _context.LogManager.GetClassLogger();
+            IInitConfig initConfig = _context.Config<IInitConfig>();
             ISyncConfig syncConfig = _context.Config<ISyncConfig>();
             if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
             {
@@ -91,6 +93,13 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             _context.ReceiptStorage = new PersistentReceiptStorage(_context.DbProvider.ReceiptsDb, _context.SpecProvider, _context.LogManager);
 
+            var bloomConfig = _context.Config<IBloomConfig>();
+            _context.BloomStorage = bloomConfig.Index 
+                ? new BloomStorage(bloomConfig, _context.DbProvider.BloomDb, new FixedSizeFileStoreFactory(Path.Combine(initConfig.BaseDbPath, DbNames.Bloom), DbNames.Bloom, Bloom.ByteLength)) 
+                : (IBloomStorage) NullBloomStorage.Instance;
+            
+            _context.DisposeStack.Push(_context.BloomStorage);
+            
             _context.ChainLevelInfoRepository = new ChainLevelInfoRepository(_context.DbProvider.BlockInfosDb);
 
             _context.BlockTree = new BlockTree(
@@ -100,6 +109,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.ChainLevelInfoRepository,
                 _context.SpecProvider,
                 _context.TxPool,
+                _context.BloomStorage,
                 _context.Config<ISyncConfig>(),
                 _context.LogManager);
 
@@ -161,13 +171,13 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.TxPoolInfoProvider = new TxPoolInfoProvider(_context.StateProvider, _context.TxPool);
 
             _context.MainBlockProcessor = CreateBlockProcessor();
-
+            
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(
                 _context.BlockTree,
                 _context.MainBlockProcessor,
                 _context.RecoveryStep,
                 _context.LogManager,
-                _context.Config<IInitConfig>().StoreReceipts,
+                initConfig.StoreReceipts,
                 !syncConfig.BeamSync);
 
             _context.BlockProcessingQueue = blockchainProcessor;

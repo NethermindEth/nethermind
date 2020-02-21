@@ -38,6 +38,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             ConfigsDb = otherProvider.ConfigsDb;
             EthRequestsDb = otherProvider.EthRequestsDb;
             ReceiptsDb = otherProvider.ReceiptsDb;
+            BloomDb = otherProvider.BloomDb;
         }
         
         public ISnapshotableDb StateDb { get; }
@@ -49,6 +50,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
         public IDb PendingTxsDb { get; }
         public IDb ConfigsDb { get; }
         public IDb EthRequestsDb { get; }
+        public IDb BloomDb { get; }
 
         public void Dispose()
         {
@@ -61,6 +63,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             PendingTxsDb?.Dispose();
             ConfigsDb?.Dispose();
             EthRequestsDb?.Dispose();
+            BloomDb?.Dispose();
         }
     }
 }

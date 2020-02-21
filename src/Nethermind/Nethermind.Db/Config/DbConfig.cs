@@ -86,6 +86,12 @@ namespace Nethermind.Db.Config
         public uint EthRequestsDbWriteBufferNumber { get; set; } = 4;
         public ulong EthRequestsDbBlockCacheSize { get; set; } = 8.MB();
         public bool EthRequestsDbCacheIndexAndFilterBlocks { get; set; } = true;
+        
+        public ulong BloomDbWriteBufferSize { get; set; } = 1.KB();
+        public uint BloomDbWriteBufferNumber { get; set; } = 4;
+        public ulong BloomDbBlockCacheSize { get; set; } = 1.KB();
+        public bool BloomDbCacheIndexAndFilterBlocks { get; set; } = false;
+        
         public uint RecycleLogFileNum { get; set; } = 0;
         public bool WriteAheadLogSync { get; set; } = false;
     }

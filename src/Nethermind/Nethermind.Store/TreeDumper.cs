@@ -51,7 +51,7 @@ namespace Nethermind.Store
         private string GetPrefix(TrieVisitContext context) => string.Concat($"{GetIndent(context.Level)}", context.IsStorage ? "STORAGE " : "", $"{GetChildIndex(context)}");
         
         private string GetIndent(int level) => new string('+', level * 2);
-        private string GetChildIndex(TrieVisitContext context) => context.BranchChildIndex == null ? string.Empty : $"{context.BranchChildIndex:00} ";
+        private string GetChildIndex(TrieVisitContext context) => context.BranchChildIndex == null ? string.Empty : $"{context.BranchChildIndex:x2} ";
         
         public void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext)
         {
@@ -60,12 +60,12 @@ namespace Nethermind.Store
 
         public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
         {
-            _builder.AppendLine($"{GetPrefix(trieVisitContext)}BRANCH {(node.Keccak?.Bytes ?? node.FullRlp?.Bytes)?.ToHexString()}");
+            _builder.AppendLine($"{GetPrefix(trieVisitContext)}BRANCH | -> {(node.Keccak?.Bytes ?? node.FullRlp?.Bytes)?.ToHexString()}");
         }
 
         public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
         {
-            _builder.AppendLine($"{GetPrefix(trieVisitContext)}EXTENSION {(node.Keccak?.Bytes ?? node.FullRlp?.Bytes)?.ToHexString()}");
+            _builder.AppendLine($"{GetPrefix(trieVisitContext)}EXTENSION {Nibbles.FromBytes(node.Path).ToPackedByteArray().ToHexString(false)} -> {(node.Keccak?.Bytes ?? node.FullRlp?.Bytes)?.ToHexString()}");
         }
 
         private AccountDecoder decoder = new AccountDecoder();
@@ -73,7 +73,7 @@ namespace Nethermind.Store
         public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null)
         {
             string leafDescription = trieVisitContext.IsStorage ? "LEAF " : "ACCOUNT ";
-            _builder.AppendLine($"{GetPrefix(trieVisitContext)}{leafDescription}{(node.Keccak?.Bytes ?? node.FullRlp?.Bytes)?.ToHexString()}");
+            _builder.AppendLine($"{GetPrefix(trieVisitContext)}{leafDescription} {Nibbles.FromBytes(node.Path).ToPackedByteArray().ToHexString(false)} -> {(node.Keccak?.Bytes ?? node.FullRlp?.Bytes)?.ToHexString()}");
             if (!trieVisitContext.IsStorage)
             {
                 Account account = decoder.Decode(new RlpStream(value));

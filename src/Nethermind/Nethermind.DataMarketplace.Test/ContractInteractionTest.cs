@@ -209,26 +209,18 @@ namespace Nethermind.DataMarketplace.Test
             public Keccak HeadHash => _headBlock.Hash;
             public Keccak GenesisHash => null;
             public Keccak PendingHash => null;
-            public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options)
-            {
-                return _headBlock.Hash == blockHash ? _headBlock : null;
-            }
+            public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options) => _headBlock.Hash == blockHash ? _headBlock : null;
 
-            public Block FindBlock(long blockNumber, BlockTreeLookupOptions options)
-            {
-                return _headBlock.Number == blockNumber ? _headBlock : null;
-            }
+            public Block FindBlock(long blockNumber, BlockTreeLookupOptions options) => _headBlock.Number == blockNumber ? _headBlock : null;
 
-            public BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options)
-            {
-                return _headBlock.Hash == blockHash ? _headBlock.Header : null;
-            }
+            public BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options) => _headBlock.Hash == blockHash ? _headBlock.Header : null;
 
-            public BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options)
-            {
-                return _headBlock.Number == blockNumber ? _headBlock.Header : null;
-            }
-            
+            public BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options) => _headBlock.Number == blockNumber ? _headBlock.Header : null;
+
+            public bool IsMainChain(BlockHeader blockHeader) => blockHeader.Number == _headBlock.Number;
+
+            public bool IsMainChain(Keccak blockHash) => _headBlock.Hash == blockHash;
+
             public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
             {
                 return (new TxReceipt(), new Transaction
@@ -380,7 +372,7 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
-            public FilterLog[] GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null)
+            public IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address, IEnumerable<object> topics)
             {
                 throw new NotImplementedException();
             }

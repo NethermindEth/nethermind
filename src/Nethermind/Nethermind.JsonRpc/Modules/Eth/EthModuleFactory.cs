@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
@@ -44,6 +45,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IFilterStore _filterStore;
         private readonly IFilterManager _filterManager;
         private readonly IJsonRpcConfig _rpcConfig;
+        private readonly IBloomStorage _bloomStorage;
 
         public EthModuleFactory(IDbProvider dbProvider,
             ITxPool txPool,
@@ -54,6 +56,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             IReceiptStorage receiptStorage,
             ISpecProvider specProvider,
             IJsonRpcConfig config,
+            IBloomStorage bloomStorage,
             ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
@@ -64,6 +67,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _rpcConfig = config ?? throw new ArgumentNullException(nameof(config));
+            _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             
             _filterStore = new FilterStore();
@@ -88,6 +92,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _wallet,
                 readOnlyTxProcessingEnv.TransactionProcessor,
                 _ethereumEcdsa,
+                _bloomStorage,
+                new ReceiptsRecovery(),
                 _rpcConfig.FindLogBlockDepthLimit);
             
             return new EthModule(_rpcConfig, _logManager, blockchainBridge);

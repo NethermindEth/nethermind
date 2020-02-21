@@ -144,7 +144,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
 
             ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_context.Enode.HostIp}:{_context.Enode.Port}");
-            ThisNodeInfo.AddInfo("Version      :", $"{ClientVersion.Description}");
+            ThisNodeInfo.AddInfo("Version      :", $"{ClientVersion.Description.Replace("Nethermind/v", string.Empty)}");
             ThisNodeInfo.AddInfo("This node    :", $"{_context.Enode.Info}");
             ThisNodeInfo.AddInfo("Node address :", $"{_context.Enode.Address} (do not use as an account)");
         }
@@ -336,6 +336,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 if (_context.GrpcServer == null) throw new StepDependencyException(nameof(_context.GrpcServer));
                 if (_context.NdmDataPublisher == null) throw new StepDependencyException(nameof(_context.NdmDataPublisher));
                 if (_context.NdmConsumerChannelManager == null) throw new StepDependencyException(nameof(_context.NdmConsumerChannelManager));
+                if (_context.BloomStorage == null) throw new StepDependencyException(nameof(_context.BloomStorage));
 
                 if (_logger.IsInfo) _logger.Info($"Initializing NDM...");
                 _context.HttpClient = new DefaultHttpClient(new HttpClient(), _context.EthereumJsonSerializer, _context.LogManager);
@@ -381,7 +382,9 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.JsonRpcClientProxy,
                     _context.EthJsonRpcClientProxy,
                     _context.HttpClient,
-                    _context.MonitoringService);
+                    _context.MonitoringService,
+                    _context.BloomStorage);
+
                 capabilityConnector.Init();
                 if (_logger.IsInfo) _logger.Info($"NDM initialized.");
             }
