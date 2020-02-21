@@ -21,9 +21,9 @@ namespace Nethermind.DataMarketplace.Core.Domain
     public class DataAssetData
     {
         public Keccak AssetId { get; }
-        public string Data { get; }
+        public string? Data { get; }
 
-        public DataAssetData(Keccak assetId, string data)
+        public DataAssetData(Keccak assetId, string? data)
         {
             AssetId = assetId;
             Data = data;
