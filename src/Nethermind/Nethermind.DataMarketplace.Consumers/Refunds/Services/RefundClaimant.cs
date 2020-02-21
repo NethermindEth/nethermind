@@ -173,7 +173,13 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             {
                 foreach (TransactionInfo transaction in pendingTransactions)
                 {
-                    Keccak transactionHash = transaction.Hash;
+                    Keccak? transactionHash = transaction.Hash;
+                    if (transactionHash is null)
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Transaction was not found for hash: '{null}' for deposit: '{depositId}' to claim the {claimType}.");
+                        return false;
+                    }
+                    
                     transactionDetails  = await _blockchainBridge.GetTransactionAsync(transactionHash);
                     if (transactionDetails is null)
                     {
@@ -200,7 +206,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             }
             else
             {
-                transactionDetails = await _blockchainBridge.GetTransactionAsync(includedTransaction.Hash);
+                transactionDetails = includedTransaction.Hash == null ? null : await _blockchainBridge.GetTransactionAsync(includedTransaction.Hash);
                 if (transactionDetails is null)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Transaction (set as included) was not found for hash: '{includedTransaction.Hash}' for deposit: '{deposit.Id}' {claimType} claim.");

@@ -131,7 +131,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
 
         public void ClearPlugin() => SetPlugin(string.Empty);
 
-        public void SetPlugin(string plugin)
+        public void SetPlugin(string? plugin)
         {
             string? pluginName = plugin?.ToLowerInvariant();
             if (Plugin == pluginName)

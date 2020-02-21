@@ -95,10 +95,15 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                 return new UpdatedTransactionInfo(UpdatedTransactionStatus.ResourceConfirmed);
             }
 
-            Keccak currentHash = deposit!.Transaction.Hash;
+            Keccak? currentHash = deposit!.Transaction.Hash;
+            if (currentHash == null)
+            {
+                return new UpdatedTransactionInfo(UpdatedTransactionStatus.MissingTransaction, null);
+            }
+            
             ulong gasLimit = deposit!.Transaction.GasLimit;
             if (_logger.IsInfo) _logger.Info($"Updating gas price for deposit with id: '{depositId}', current transaction hash: '{currentHash}'.");
-            Keccak transactionHash = await _transactionService.UpdateGasPriceAsync(currentHash, gasPrice);
+            Keccak? transactionHash = await _transactionService.UpdateGasPriceAsync(currentHash, gasPrice);
             if (_logger.IsInfo) _logger.Info($"Received transaction hash: '{transactionHash}' for deposit with id: '{depositId}' after updating gas price.");
             deposit!.AddTransaction(TransactionInfo.SpeedUp(transactionHash, deposit!.Deposit.Value, gasPrice, gasLimit,
                 _timestamper.EpochSeconds));
@@ -132,12 +137,18 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                 if (_logger.IsError) _logger.Error($"Deposit with id: '{depositId}' has no transaction for refund claim.");
                 return new UpdatedTransactionInfo(UpdatedTransactionStatus.MissingTransaction);
             }
-
-            Keccak currentHash = deposit!.ClaimedRefundTransaction.Hash;
+            
+            Keccak? currentHash = deposit!.ClaimedRefundTransaction.Hash;
+            
             if (deposit!.RefundClaimed)
             {
                 if (_logger.IsError) _logger.Error($"Deposit with id: '{depositId}' has already claimed refund (transaction hash: '{currentHash}').");
                 return new UpdatedTransactionInfo(UpdatedTransactionStatus.ResourceConfirmed);
+            }
+            
+            if (currentHash == null)
+            {
+                return new UpdatedTransactionInfo(UpdatedTransactionStatus.MissingTransaction, null);
             }
             
             ulong gasLimit = deposit!.Transaction.GasLimit;
@@ -178,6 +189,12 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                 return new UpdatedTransactionInfo(UpdatedTransactionStatus.AlreadyIncluded);
             }
             
+            if (deposit!.Transaction.Hash == null)
+            {
+                if (_logger.IsError) _logger.Error($"Cannot cancel transaction with hash: '{deposit!.Transaction.Hash}' for deposit with id: '{depositId}' (state: '{deposit.Transaction.State}').");
+                return new UpdatedTransactionInfo(UpdatedTransactionStatus.MissingTransaction);
+            }
+            
             CanceledTransactionInfo transaction = await _transactionService.CancelAsync(deposit!.Transaction.Hash);
             if (_logger.IsWarn) _logger.Warn($"Canceled transaction for deposit with id: '{depositId}', transaction hash: '{transaction.Hash}'.");
             TransactionInfo cancellingTransaction = TransactionInfo.Cancellation(transaction.Hash, transaction.GasPrice,
@@ -203,11 +220,17 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                 return new UpdatedTransactionInfo(UpdatedTransactionStatus.MissingTransaction);
             }
             
-            Keccak currentHash = deposit!.ClaimedRefundTransaction.Hash;
+            Keccak? currentHash = deposit!.ClaimedRefundTransaction.Hash;
             if (deposit!.RefundClaimed)
             {
                 if (_logger.IsError) _logger.Error($"Deposit with id: '{depositId}' has already claimed refund (transaction hash: '{currentHash}').");
                 return new UpdatedTransactionInfo(UpdatedTransactionStatus.ResourceConfirmed);
+            }
+            
+            if (currentHash is null)
+            {
+                if (_logger.IsError) _logger.Error($"Cannot cancel transaction with hash: '{null}' for refund for deposit with id: '{depositId}' (state: '{deposit.ClaimedRefundTransaction.State}').");
+                return new UpdatedTransactionInfo(UpdatedTransactionStatus.MissingTransaction);
             }
             
             if (deposit!.ClaimedRefundTransaction.State != TransactionState.Pending)

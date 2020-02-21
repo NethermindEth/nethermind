@@ -26,15 +26,15 @@ namespace Nethermind.DataMarketplace.Core.Domain
 {
     public class TransactionInfo : IEquatable<TransactionInfo>
     {
-        public Keccak Hash { get; private set; }
-        public UInt256 Value { get; private set; }
-        public UInt256 GasPrice { get; private set; }
-        public ulong GasLimit { get; private set; }
-        public ulong Timestamp { get; private set; }
-        public TransactionType Type { get; private set; }
+        public Keccak? Hash { get; }
+        public UInt256 Value { get; }
+        public UInt256 GasPrice { get; }
+        public ulong GasLimit { get; }
+        public ulong Timestamp { get; }
+        public TransactionType Type { get; }
         public TransactionState State { get; private set; }
 
-        internal TransactionInfo(Keccak hash, UInt256 value, UInt256 gasPrice, ulong gasLimit, ulong timestamp,
+        internal TransactionInfo(Keccak? hash, UInt256 value, UInt256 gasPrice, ulong gasLimit, ulong timestamp,
             TransactionType type = TransactionType.Default, TransactionState state = TransactionState.Pending)
         {
             Hash = hash;
@@ -46,15 +46,15 @@ namespace Nethermind.DataMarketplace.Core.Domain
             State = state;
         }
 
-        public static TransactionInfo Default(Keccak hash, UInt256 value, UInt256 gasPrice, ulong gasLimit,
+        public static TransactionInfo Default(Keccak? hash, UInt256 value, UInt256 gasPrice, ulong gasLimit,
             ulong timestamp)
             => new TransactionInfo(hash, value, gasPrice, gasLimit, timestamp);
 
-        public static TransactionInfo SpeedUp(Keccak hash, UInt256 value, UInt256 gasPrice, ulong gasLimit,
+        public static TransactionInfo SpeedUp(Keccak? hash, UInt256 value, UInt256 gasPrice, ulong gasLimit,
             ulong timestamp)
             => new TransactionInfo(hash, value, gasPrice, gasLimit, timestamp, TransactionType.SpeedUp);
 
-        public static TransactionInfo Cancellation(Keccak hash, UInt256 gasPrice, ulong gasLimit, ulong timestamp)
+        public static TransactionInfo Cancellation(Keccak? hash, UInt256 gasPrice, ulong gasLimit, ulong timestamp)
             => new TransactionInfo(hash, 0, gasPrice, gasLimit, timestamp, TransactionType.Cancellation);
 
         public void SetIncluded()
