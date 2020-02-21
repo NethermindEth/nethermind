@@ -109,6 +109,18 @@ namespace Nethermind.AuRa.Test.Reward
         
         [TestCase(10, 100)]
         [TestCase(15, 150)]
+        public void calculates_rewards_correctly_after_subsequent_contract_transitions(long blockNumber, long expectedReward)
+        {
+            _block.Header.Number = blockNumber;
+            var expected = new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.Block);
+            SetupBlockRewards(expected);
+            var calculator = new AuRaRewardCalculator(_auraParameters, _abiEncoder, _transactionProcessor);
+            var result =  calculator.CalculateRewards(_block);            
+            result.Should().BeEquivalentTo(expected);
+        }
+        
+        [TestCase(10, 100)]
+        [TestCase(15, 150)]
         public void calculates_rewards_correctly_for_ommers(long blockNumber, long expectedReward)
         {
             _block.Header.Number = blockNumber;
@@ -169,10 +181,9 @@ namespace Nethermind.AuRa.Test.Reward
                         Array.Empty<LogEntry>()));
         }
         
-        private bool CheckTransaction(Transaction t, byte[] transactionData)
-        {
-            return t.SenderAddress == Address.SystemUser && t.To == _auraParameters.BlockRewardContractAddress && t.Data == transactionData;
-        }
+        private bool CheckTransaction(Transaction t, byte[] transactionData) => 
+            t.SenderAddress == Address.SystemUser 
+            && t.To == _auraParameters.BlockRewardContractAddress && t.Data == transactionData;
 
         private byte[] SetupAbiAddresses(BlockReward[] rewards)
         {

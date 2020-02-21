@@ -42,18 +42,24 @@ namespace Nethermind.AuRa.Rewards
             IList<RewardContract> BuildTransitions()
             {
                 var contracts = new List<RewardContract>();
-                
-                if (auRaParameters.BlockRewardContractTransition.HasValue)
-                {
-                    contracts.Add(new RewardContract(abiEncoder, auRaParameters.BlockRewardContractAddress, auRaParameters.BlockRewardContractTransition.Value));
-                }
 
                 if (auRaParameters.BlockRewardContractTransitions != null)
                 {
                     contracts.AddRange(auRaParameters.BlockRewardContractTransitions.Select(t => new RewardContract(abiEncoder, t.Value, t.Key)));
                 }
-
+                
                 contracts.Sort((a, b) => a.TransitionBlock.CompareTo(b.TransitionBlock));
+                
+                if (auRaParameters.BlockRewardContractAddress != null)
+                {
+                    var contractTransition = auRaParameters.BlockRewardContractTransition ?? 0;
+                    if (contractTransition > (contracts.FirstOrDefault()?.TransitionBlock ?? long.MaxValue))
+                    {
+                        throw new ArgumentException($"BlockRewardContractTransition provided for BlockRewardContractAddress is higher than first BlockRewardContractTransitions.");
+                    }
+                    
+                    contracts.Insert(0, new RewardContract(abiEncoder, auRaParameters.BlockRewardContractAddress, contractTransition));
+                }
 
                 return contracts;
             }
@@ -71,7 +77,7 @@ namespace Nethermind.AuRa.Rewards
 
         private bool TryGetContract(in long blockNumber, out RewardContract contract)
         {
-            var index = _contracts.BinarySearch(blockNumber, (b, c) => c.TransitionBlock.CompareTo(b));
+            var index = _contracts.BinarySearch(blockNumber, (b, c) => b.CompareTo(c.TransitionBlock));
             if (index >= 0)
             {
                 contract = _contracts[index];
