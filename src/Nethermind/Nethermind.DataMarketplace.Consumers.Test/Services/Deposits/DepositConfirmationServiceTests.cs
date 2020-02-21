@@ -123,6 +123,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         {
             var transactionDetails = GetTransaction();
             var transaction = transactionDetails.Transaction;
+            transaction.Hash = Keccak.Zero;
+            
             var deposit = GetDepositDetails(transactions: new[]
             {
                 new TransactionInfo(transaction.Hash, transaction.Value, transaction.GasPrice,
