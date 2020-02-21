@@ -715,10 +715,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             foreach (AccountProof accountProof in callResultWithProof.Accounts)
             {
-                VerifyProof(accountProof.Proof, block.StateRoot);
+                ProofVerifier.Verify(accountProof.Proof, block.StateRoot);
                 foreach (StorageProof storageProof in accountProof.StorageProofs)
                 {
-                    VerifyProof(storageProof.Proof, accountProof.StorageRoot);
+                    ProofVerifier.Verify(storageProof.Proof, accountProof.StorageRoot);
                 }
             }
 
@@ -788,7 +788,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 Account account;
                 try
                 {
-                    account = new AccountDecoder().Decode(new RlpStream(VerifyProof(accountProof.Proof, block.StateRoot)));
+                    account = new AccountDecoder().Decode(new RlpStream(ProofVerifier.Verify(accountProof.Proof, block.StateRoot)));
                 }
                 catch (Exception)
                 {
@@ -798,7 +798,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 foreach (StorageProof storageProof in accountProof.StorageProofs)
                 {
                     // we read the values here just to allow easier debugging so you can confirm that the value is same as the one in the proof and in the trie
-                    byte[] value = VerifyProof(storageProof.Proof, accountProof.StorageRoot);
+                    byte[] value = ProofVerifier.Verify(storageProof.Proof, accountProof.StorageRoot);
                 }
             }
 
@@ -843,37 +843,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             stateProvider.CommitTree();
             _dbProvider.CodeDb.Commit();
             _dbProvider.StateDb.Commit();
-        }
-
-        private byte[] VerifyProof(byte[][] proof, Keccak txRoot)
-        {
-            if (proof.Length == 0)
-            {
-                return null;
-            }
-
-            TrieNode trieNode = new TrieNode(NodeType.Unknown, new Rlp(proof.Last()));
-            trieNode.ResolveNode(null);
-            for (int i = proof.Length; i > 0; i--)
-            {
-                Keccak proofHash = Keccak.Compute(proof[i - 1]);
-                if (i > 1)
-                {
-                    if (!new Rlp(proof[i - 2]).ToString(false).Contains(proofHash.ToString(false)))
-                    {
-                        throw new InvalidDataException();
-                    }
-                }
-                else
-                {
-                    if (proofHash != txRoot)
-                    {
-                        throw new InvalidDataException();
-                    }
-                }
-            }
-
-            return trieNode.Value;
         }
     }
 }
