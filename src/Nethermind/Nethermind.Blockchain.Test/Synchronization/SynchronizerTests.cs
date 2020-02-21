@@ -20,9 +20,7 @@ using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -38,7 +36,10 @@ using Nethermind.Store.Repositories;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Blockchain.Test.Validators;
+using Nethermind.Network;
 using Nethermind.Store.BeamSync;
+using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization
@@ -215,6 +216,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             public Stack<Block> ReceivedBlocks { get; set; } = new Stack<Block>();
             public event EventHandler Disconnected;
+
+            public PublicKey Id => Node.Id;
 
             public void SendNewTransaction(Transaction transaction)
             {

@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Linq;
-using Nethermind.Blockchain.TxPools;
+using Nethermind.TxPool;
 
 namespace Nethermind.JsonRpc.Modules.TxPool
 {

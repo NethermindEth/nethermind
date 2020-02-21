@@ -16,15 +16,13 @@
 
 using System.IO;
 using System.Linq;
-using Nethermind.Blockchain.Bloom;
-using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore.Config;
-using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Store.Bloom;
 using NUnit.Framework;
 
 namespace Nethermind.Config.Test

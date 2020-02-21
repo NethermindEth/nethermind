@@ -21,7 +21,6 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;

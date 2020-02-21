@@ -21,7 +21,6 @@ using Nethermind.AuRa.Rewards;
 using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;

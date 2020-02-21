@@ -18,9 +18,9 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
-using Nethermind.Blockchain.Bloom;
 using Nethermind.Core.Extensions;
 using Nethermind.Store;
+using Nethermind.Store.Bloom;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Bloom

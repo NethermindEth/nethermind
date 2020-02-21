@@ -16,16 +16,12 @@
 
 using FluentAssertions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Specs;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Configs;
@@ -42,6 +38,8 @@ using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Store;
+using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;

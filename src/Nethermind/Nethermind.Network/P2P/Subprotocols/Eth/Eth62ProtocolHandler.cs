@@ -23,7 +23,6 @@ using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -32,10 +31,11 @@ using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class Eth62ProtocolHandler : ProtocolHandlerBase, IZeroProtocolHandler, ISyncPeer
+    public class Eth62ProtocolHandler : ProtocolHandlerBase, IZeroProtocolHandler, ISyncPeer, ITxPoolPeer
     {
         private System.Timers.Timer _txFloodCheckTimer;
         protected ISyncServer SyncServer { get; }
@@ -290,6 +290,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             msg.BlockHashes = new[] {(blockHash, number)};
             Send(msg);
         }
+
+        public PublicKey Id => Node.Id;
 
         public void SendNewTransaction(Transaction transaction)
         {

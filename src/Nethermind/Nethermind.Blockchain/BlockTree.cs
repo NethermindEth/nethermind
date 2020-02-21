@@ -16,19 +16,14 @@
 
 using System;
 using System.Collections;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.TxPools;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
@@ -39,7 +34,9 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
+using Nethermind.Store.Bloom;
 using Nethermind.Store.Repositories;
+using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain
 {

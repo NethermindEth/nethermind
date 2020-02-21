@@ -17,8 +17,6 @@
 using System;
 using System.Numerics;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Bloom;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Specs;
@@ -29,7 +27,9 @@ using Nethermind.Logging;
 using Nethermind.Mining;
 using Nethermind.Mining.Difficulty;
 using Nethermind.Store;
+using Nethermind.Store.Bloom;
 using Nethermind.Store.Repositories;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 

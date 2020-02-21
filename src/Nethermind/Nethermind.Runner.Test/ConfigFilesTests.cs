@@ -15,22 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
-using System.Net;
 using FluentAssertions;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.EthStats;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc;
-using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.PubSub.Kafka;
-using Nethermind.Stats;
+using Nethermind.Store.Bloom;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test

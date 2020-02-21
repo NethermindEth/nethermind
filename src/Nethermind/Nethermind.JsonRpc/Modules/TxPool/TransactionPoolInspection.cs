@@ -16,8 +16,8 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
+using Nethermind.TxPool;
 
 namespace Nethermind.JsonRpc.Modules.TxPool
 {

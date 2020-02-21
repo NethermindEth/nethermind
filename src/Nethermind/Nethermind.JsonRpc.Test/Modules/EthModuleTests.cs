@@ -18,12 +18,9 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.TxPools;
-using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -42,7 +39,10 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
+using Nethermind.Store.Bloom;
 using Nethermind.Store.Repositories;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Storages;
 using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
@@ -85,7 +85,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree();
 
-            ITxPool txPool = new TxPool(txStorage, Timestamper.Default, ethereumEcdsa, specProvider, new TxPoolConfig(), stateProvider, LimboLogs.Instance);
+            ITxPool txPool = new TxPool.TxPool(txStorage, Timestamper.Default, ethereumEcdsa, specProvider, new TxPoolConfig(), stateProvider, LimboLogs.Instance);
 
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();

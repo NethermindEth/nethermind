@@ -17,16 +17,16 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Store;
+using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
 

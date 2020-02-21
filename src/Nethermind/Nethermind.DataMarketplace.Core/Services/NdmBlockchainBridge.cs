@@ -16,12 +16,12 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade;
+using Nethermind.TxPool;
 
 namespace Nethermind.DataMarketplace.Core.Services
 {

@@ -16,15 +16,11 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Blockchain.Bloom;
-using Nethermind.Blockchain.Proofs;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -42,9 +38,10 @@ using Nethermind.Store.Repositories;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Network;
+using Nethermind.Store.Bloom;
+using Nethermind.Store.Proofs;
+using Nethermind.TxPool;
 using NSubstitute;
-using NSubstitute.Core;
-using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization
@@ -165,6 +162,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
             {
                 throw new NotImplementedException();
             }
+
+            public PublicKey Id => Node.Id;
 
             public void SendNewTransaction(Transaction transaction)
             {
@@ -819,6 +818,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
             {
                 throw new NotImplementedException();
             }
+
+            public PublicKey Id => Node.Id;
 
             public void SendNewTransaction(Transaction transaction)
             {

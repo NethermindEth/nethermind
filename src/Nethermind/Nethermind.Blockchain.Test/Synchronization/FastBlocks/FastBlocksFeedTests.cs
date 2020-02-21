@@ -17,9 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -33,6 +31,8 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.FastBlocks;
 using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 

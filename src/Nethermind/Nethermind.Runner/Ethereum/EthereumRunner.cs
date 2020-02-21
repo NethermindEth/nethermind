@@ -18,7 +18,6 @@ using System;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.DataMarketplace.Channels;

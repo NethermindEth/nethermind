@@ -21,11 +21,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.TxPools;
-using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -38,7 +35,10 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Store;
+using Nethermind.Store.Bloom;
 using Nethermind.Store.Repositories;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Storages;
 using Nethermind.Wallet;
 using NUnit.Framework;
 
@@ -60,7 +60,7 @@ namespace Nethermind.Clique.Test
             private Dictionary<PrivateKey, BlockTree> _blockTrees = new Dictionary<PrivateKey, BlockTree>();
             private Dictionary<PrivateKey, AutoResetEvent> _blockEvents = new Dictionary<PrivateKey, AutoResetEvent>();
             private Dictionary<PrivateKey, CliqueBlockProducer> _producers = new Dictionary<PrivateKey, CliqueBlockProducer>();
-            private Dictionary<PrivateKey, TxPool> _pools = new Dictionary<PrivateKey, TxPool>();
+            private Dictionary<PrivateKey, TxPool.TxPool> _pools = new Dictionary<PrivateKey, TxPool.TxPool>();
 
             private On()
                 : this(15)
@@ -101,7 +101,7 @@ namespace Nethermind.Clique.Test
                 stateProvider.Commit(GoerliSpecProvider.Instance.GenesisSpec);
                 stateProvider.CommitTree();
 
-                TxPool txPool = new TxPool(new InMemoryTxStorage(), _timestamper, _ethereumEcdsa, GoerliSpecProvider.Instance, new TxPoolConfig(), stateProvider, _logManager);
+                TxPool.TxPool txPool = new TxPool.TxPool(new InMemoryTxStorage(), _timestamper, _ethereumEcdsa, GoerliSpecProvider.Instance, new TxPoolConfig(), stateProvider, _logManager);
                 _pools[privateKey] = txPool;
 
                 BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), GoerliSpecProvider.Instance, txPool, NullBloomStorage.Instance,  nodeLogManager);

@@ -18,8 +18,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using Nethermind.Blockchain.Bloom;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -28,7 +26,9 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Store;
+using Nethermind.Store.Bloom;
 using Nethermind.Store.Repositories;
+using Nethermind.TxPool;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test

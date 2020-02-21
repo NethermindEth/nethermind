@@ -21,7 +21,6 @@ using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
@@ -31,6 +30,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 

@@ -19,7 +19,6 @@ using System.IO;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -36,6 +35,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Store;
 using Nethermind.Store.Proofs;
+using Nethermind.TxPool;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Proof

@@ -17,10 +17,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Blockchain.Proofs;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -34,6 +32,8 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Store;
 using Nethermind.Store.BeamSync;
+using Nethermind.Store.Proofs;
+using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain
 {

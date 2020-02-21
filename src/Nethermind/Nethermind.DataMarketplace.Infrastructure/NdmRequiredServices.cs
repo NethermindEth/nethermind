@@ -16,10 +16,8 @@
 
 using System;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -38,6 +36,8 @@ using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Store;
+using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
 using Nethermind.Wallet;
 
 namespace Nethermind.DataMarketplace.Infrastructure

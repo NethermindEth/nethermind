@@ -16,9 +16,11 @@
     <ProjectReference Include="..\Nethermind.Mining\Nethermind.Mining.csproj" />
     <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
     <ProjectReference Include="..\Nethermind.Stats\Nethermind.Stats.csproj" />
+    <ProjectReference Include="..\Nethermind.Store.Bloom\Nethermind.Store.Bloom.csproj" />
     <ProjectReference Include="..\Nethermind.Store\Nethermind.Store.csproj">
       <Project>{8311E4F7-DB36-40F5-A496-7CE4FD486FEE}</Project>
       <Name>Nethermind.Store</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Nethermind.TxPool\Nethermind.TxPool.csproj" />
   </ItemGroup>
 </Project>

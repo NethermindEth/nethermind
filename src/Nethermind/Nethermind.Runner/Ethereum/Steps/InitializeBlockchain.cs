@@ -17,13 +17,10 @@
 using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.BeamSync;
-using Nethermind.Blockchain.TxPools;
-using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -32,9 +29,11 @@ using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Mining;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Specs;
 using Nethermind.Store;
+using Nethermind.Store.Bloom;
 using Nethermind.Store.Repositories;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Storages;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -82,7 +81,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.LogManager);
 
             _context.EthereumEcdsa = new EthereumEcdsa(_context.SpecProvider, _context.LogManager);
-            _context.TxPool = new TxPool(
+            _context.TxPool = new TxPool.TxPool(
                 new PersistentTxStorage(_context.DbProvider.PendingTxsDb, _context.SpecProvider),
                 Timestamper.Default,
                 _context.EthereumEcdsa,

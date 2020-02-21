@@ -25,7 +25,6 @@ using System.Threading.Tasks;
 using Nethermind.AuRa.Config;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Producers;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;

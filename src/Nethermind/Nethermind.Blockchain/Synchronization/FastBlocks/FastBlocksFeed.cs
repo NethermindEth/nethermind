@@ -22,7 +22,6 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Proofs;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization.SyncLimits;
 using Nethermind.Blockchain.Validators;
@@ -32,6 +31,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Store.Proofs;
 
 // ReSharper disable InconsistentlySynchronizedField
 namespace Nethermind.Blockchain.Synchronization.FastBlocks

@@ -15,8 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Core;
+using Nethermind.Mining;
 
 namespace Nethermind.Clique
 {

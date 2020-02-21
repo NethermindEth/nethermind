@@ -15,13 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Blockchain.Proofs;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Logging;
+using Nethermind.Store.Proofs;
 
 namespace Nethermind.Blockchain.Validators
 {

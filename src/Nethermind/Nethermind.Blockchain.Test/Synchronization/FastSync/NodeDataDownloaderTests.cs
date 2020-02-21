@@ -29,6 +29,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Store;
@@ -219,6 +220,8 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             {
                 throw new NotImplementedException();
             }
+
+            public PublicKey Id => Node.Id;
 
             public void SendNewTransaction(Transaction transaction)
             {

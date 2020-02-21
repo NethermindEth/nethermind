@@ -18,13 +18,10 @@ using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Blockchain.TxPools;
-using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -37,7 +34,10 @@ using Nethermind.Mining;
 using Nethermind.Mining.Difficulty;
 using Nethermind.Serialization.Json;
 using Nethermind.Store;
+using Nethermind.Store.Bloom;
 using Nethermind.Store.Repositories;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Storages;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test
@@ -73,7 +73,7 @@ namespace Nethermind.Blockchain.Test
 
             EthereumEcdsa ecdsa = new EthereumEcdsa(specProvider, logManager);
             MemDb receiptsDb = new MemDb();
-            TxPool txPool = new TxPool(NullTxStorage.Instance, Timestamper.Default, ecdsa, specProvider, new TxPoolConfig(), stateProvider, logManager);
+            TxPool.TxPool txPool = new TxPool.TxPool(NullTxStorage.Instance, Timestamper.Default, ecdsa, specProvider, new TxPoolConfig(), stateProvider, logManager);
             IReceiptStorage receiptStorage = new PersistentReceiptStorage(receiptsDb, specProvider, logManager);
             var blockInfoDb = new MemDb();
             BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, txPool, NullBloomStorage.Instance, logManager);

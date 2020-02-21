@@ -15,12 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -33,7 +31,9 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Store;
+using Nethermind.Store.Bloom;
 using Nethermind.Store.Repositories;
+using Nethermind.TxPool;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace

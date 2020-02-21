@@ -20,8 +20,6 @@ using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.TxPools;
-using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -41,6 +39,8 @@ using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Store;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Storages;
 using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
@@ -123,7 +123,7 @@ namespace Nethermind.DataMarketplace.Test
             TxReceipt receipt = DeployContract(Bytes.FromHexString(ContractData.GetInitCode(_feeAccount)));
             ((NdmConfig) _ndmConfig).ContractAddress = receipt.ContractAddress.ToString();
             _contractAddress = receipt.ContractAddress;
-            _txPool = new TxPool(new InMemoryTxStorage(), new Timestamper(),
+            _txPool = new TxPool.TxPool(new InMemoryTxStorage(), new Timestamper(),
                 new EthereumEcdsa(specProvider, _logManager), specProvider, new TxPoolConfig(), _state, _logManager);
             
             _ndmBridge = new NdmBlockchainBridge(_bridge, _txPool);

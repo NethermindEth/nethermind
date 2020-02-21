@@ -25,8 +25,6 @@ using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Proofs;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -36,6 +34,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Mining;
 using Nethermind.Store;
+using Nethermind.Store.Proofs;
 
 namespace Nethermind.Clique
 {

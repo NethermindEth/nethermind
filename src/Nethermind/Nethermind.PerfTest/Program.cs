@@ -18,30 +18,20 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Abi;
-using Nethermind.AuRa;
-using Nethermind.AuRa.Rewards;
-using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.TxPools;
-using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Clique;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Specs.Forks;
 using Nethermind.Db;
 using Nethermind.Db.Config;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
@@ -53,7 +43,10 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Store;
+using Nethermind.Store.Bloom;
 using Nethermind.Store.Repositories;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Storages;
 
 namespace Nethermind.PerfTest
 {
@@ -198,8 +191,15 @@ namespace Nethermind.PerfTest
             }
 
             public event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
-            public event EventHandler<BlockEventArgs> BlockAddedToMain;
+
+            public event EventHandler<BlockEventArgs> BlockAddedToMain
+            {
+                add { }
+                remove { }
+            }
+
             public event EventHandler<BlockEventArgs> NewHeadBlock;
+
             public void DeleteChainSlice(in long startNumber, in long endNumber)
             {
                 _blockTree.DeleteChainSlice(startNumber, endNumber);
@@ -220,13 +220,13 @@ namespace Nethermind.PerfTest
         private static readonly string FullPendingTxsDbPath = Path.Combine(DbBasePath, "pendingtxs");
         private static readonly string FullBlocksDbPath = Path.Combine(DbBasePath, "blocks");
         private static readonly string FullBlockInfosDbPath = Path.Combine(DbBasePath, "blockInfos");
-        
+
         private const int BlocksToLoad = 100_000;
 
         private static async Task RunBenchmarkBlocks()
         {
             Rlp.RegisterDecoders(typeof(ParityTraceDecoder).Assembly);
-            
+
             /* logging & instrumentation */
             _logManager = new NLogManager("perfTest.logs.txt", null);
             _logger = _logManager.GetClassLogger();
@@ -245,7 +245,7 @@ namespace Nethermind.PerfTest
             _logger.Info($"Loading ChainSpec from {path}");
             ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
             _logger.Info($"ChainSpec loaded");
-            
+
             var specProvider = new ChainSpecBasedSpecProvider(chainSpec);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
 
@@ -257,33 +257,33 @@ namespace Nethermind.PerfTest
             var headersDb = dbProvider.HeadersDb;
             var blockInfosDb = dbProvider.BlockInfosDb;
             var receiptsDb = dbProvider.ReceiptsDb;
-            
+
             /* state & storage */
             var stateProvider = new StateProvider(stateDb, codeDb, _logManager);
             var storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
 
             var ethereumSigner = new EthereumEcdsa(specProvider, _logManager);
-            
-            var transactionPool = new TxPool(
-                NullTxStorage.Instance, 
+
+            var transactionPool = new TxPool.TxPool(
+                NullTxStorage.Instance,
                 Timestamper.Default,
-                ethereumSigner, 
-                specProvider, 
+                ethereumSigner,
+                specProvider,
                 new TxPoolConfig(),
                 stateProvider,
                 _logManager);
 
             var blockInfoRepository = new ChainLevelInfoRepository(blockInfosDb);
-            var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, headersDb, blockInfosDb, blockInfoRepository, specProvider, transactionPool, new BloomStorage(new BloomConfig(), dbProvider.HeadersDb, new InMemoryDictionaryFileStoreFactory()),  _logManager));
+            var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, headersDb, blockInfosDb, blockInfoRepository, specProvider, transactionPool, new BloomStorage(new BloomConfig(), dbProvider.HeadersDb, new InMemoryDictionaryFileStoreFactory()), _logManager));
             var receiptStorage = new InMemoryReceiptStorage();
 
             IBlockDataRecoveryStep recoveryStep = new TxSignaturesRecoveryStep(ethereumSigner, transactionPool, _logManager);
-           
+
             /* blockchain processing */
             var blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, _logManager);
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, _logManager);
-            
+
             ISealValidator sealValidator;
             if (specProvider.ChainId == RopstenSpecProvider.Instance.ChainId)
             {
@@ -307,7 +307,7 @@ namespace Nethermind.PerfTest
             var ommersValidator = new OmmersValidator(blockTree, headerValidator, _logManager);
             var transactionValidator = new TxValidator(chainSpec.ChainId);
             var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, _logManager);
-            
+
             /* blockchain processing */
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, stateProvider, storageProvider, transactionPool, receiptStorage, _logManager);
             var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, recoveryStep, _logManager, true);
@@ -320,7 +320,7 @@ namespace Nethermind.PerfTest
                     Keccak codeHash = stateProvider.UpdateCode(allocation.Code);
                     stateProvider.UpdateCodeHash(address, codeHash, specProvider.GenesisSpec);
                 }
-                
+
                 if (allocation.Constructor != null)
                 {
                     Transaction constructorTransaction = new Transaction(true)
@@ -329,15 +329,15 @@ namespace Nethermind.PerfTest
                         Init = allocation.Constructor,
                         GasLimit = chainSpec.Genesis.GasLimit
                     };
-                    
+
                     processor.Execute(constructorTransaction, chainSpec.Genesis.Header, NullTxTracer.Instance);
                 }
             }
-            
+
             _logger.Info($"Allocations configured, committing...");
 
             stateProvider.Commit(specProvider.GenesisSpec);
-            
+
             _logger.Info($"Finalizing genesis...");
             stateProvider.RecalculateStateRoot();
             chainSpec.Genesis.Header.StateRoot = stateProvider.StateRoot;

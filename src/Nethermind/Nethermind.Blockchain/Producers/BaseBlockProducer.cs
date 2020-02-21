@@ -18,7 +18,6 @@ using System;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Proofs;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -26,6 +25,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Mining;
 using Nethermind.Store;
+using Nethermind.Store.Proofs;
 
 namespace Nethermind.Blockchain.Producers
 {
