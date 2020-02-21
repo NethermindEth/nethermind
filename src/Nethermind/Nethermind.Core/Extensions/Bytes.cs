@@ -297,7 +297,7 @@ namespace Nethermind.Core.Extensions
 
         public static BigInteger ToUnsignedBigInteger(this Span<byte> bytes)
         {
-            return new BigInteger(bytes, true);
+            return new BigInteger(bytes, true, true);
         }
 
         public static uint ReadEthUInt32(this Span<byte> bytes)
