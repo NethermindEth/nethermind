@@ -14,14 +14,18 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.IO;
 using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Db;
 using Nethermind.Db.Config;
+using Nethermind.JsonRpc.Client;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Store;
+using Nethermind.Store.Rpc;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -64,11 +68,11 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.NodeDataConsumer = beamSyncProvider.NodeDataConsumer;
             }
 
-            // IDbProvider debugRecorder = new RocksDbProvider(Path.Combine(_context._initConfig.BaseDbPath, "debug"), dbConfig, _context._logManager, _context._initConfig.StoreTraces, _context._initConfig.StoreReceipts);
-            // _context._dbProvider = new RpcDbProvider(_context._jsonSerializer, new BasicJsonRpcClient(KnownRpcUris.Localhost, _context._jsonSerializer, _context._logManager), _context._logManager, debugRecorder);
-
-            // IDbProvider debugReader = new ReadOnlyDbProvider(new RocksDbProvider(Path.Combine(_context._initConfig.BaseDbPath, "debug"), dbConfig, _context._logManager, _context._initConfig.StoreTraces, _context._initConfig.StoreReceipts), false);
-            // _context._dbProvider = debugReader;
+            // RocksDbProvider debugRecorder = new RocksDbProvider(_context.LogManager);
+            // await debugRecorder.Init(Path.Combine(initConfig.BaseDbPath, "debug"), dbConfig, initConfig.StoreReceipts);
+            // var host = KnownRpcUris.Localhost; // new Uri("http://host:Port");
+            // _context.DbProvider = new RpcDbProvider(_context.EthereumJsonSerializer, new BasicJsonRpcClient(host, _context.EthereumJsonSerializer, _context.LogManager), _context.LogManager, debugRecorder);
+            // _context.DbProvider = new ReadOnlyDbProvider(debugRecorder, false);;
         }
     }
 }
