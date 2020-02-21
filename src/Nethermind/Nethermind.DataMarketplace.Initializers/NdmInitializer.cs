@@ -62,7 +62,7 @@ using Nethermind.WebSockets;
 namespace Nethermind.DataMarketplace.Initializers
 {
     [NdmInitializer("ndm")]
-    public sealed class NdmInitializer : INdmInitializer
+    public class NdmInitializer : INdmInitializer
     {
         private readonly INdmModule _ndmModule;
         private readonly INdmConsumersModule _ndmConsumersModule;
