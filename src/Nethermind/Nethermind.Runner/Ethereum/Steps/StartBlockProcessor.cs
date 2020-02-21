@@ -31,6 +31,11 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         public Task Execute()
         {
+            if (_context.BlockchainProcessor == null)
+            {
+                throw new StepDependencyException();
+            }
+            
             _context.BlockchainProcessor.Start();
             return Task.CompletedTask;
         }

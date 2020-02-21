@@ -29,6 +29,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Logging;
 using Nethermind.Mining;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Specs;
@@ -55,17 +56,22 @@ namespace Nethermind.Runner.Ethereum.Steps
          [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
         private Task InitBlockchain()
         {
+            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
+            if (_context.DbProvider == null) throw new StepDependencyException(nameof(_context.DbProvider));
+            if (_context.SpecProvider == null) throw new StepDependencyException(nameof(_context.SpecProvider));
+            
+            ILogger logger = _context.LogManager.GetClassLogger();
             IInitConfig initConfig = _context.Config<IInitConfig>();
             ISyncConfig syncConfig = _context.Config<ISyncConfig>();
             if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
             {
-                _context.Logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
+                logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
                 syncConfig.DownloadBodiesInFastSync = true;
             }
 
             if (syncConfig.BeamSync)
             {
-                _context.Logger.Warn("Welcome to the alpha version of the Nethermind Goerli Beam Sync. I will start by downloading the pivot block header and then will continue to download all the headers from the pivot upwards. After that I will be beam synchronizing the new blocks. Many things can fail - appreciated if you report issues via GitHub or Gitter.");
+                logger.Warn("Welcome to the alpha version of the Nethermind Goerli Beam Sync. I will start by downloading the pivot block header and then will continue to download all the headers from the pivot upwards. After that I will be beam synchronizing the new blocks. Many things can fail - appreciated if you report issues via GitHub or Gitter.");
             }
             
             Account.AccountStartNonce = _context.ChainSpec.Parameters.AccountStartNonce;
@@ -139,6 +145,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.LogManager);
 
             InitSealEngine();
+            if (_context.SealValidator == null) throw new StepDependencyException(nameof(_context.SealValidator));
 
             /* validation */
             _context.HeaderValidator = new HeaderValidator(
@@ -192,8 +199,12 @@ namespace Nethermind.Runner.Ethereum.Steps
             return Task.CompletedTask;
         }
 
-        protected virtual BlockProcessor CreateBlockProcessor() =>
-            new BlockProcessor(
+        protected virtual BlockProcessor CreateBlockProcessor()
+        {
+            if (_context.DbProvider == null) throw new StepDependencyException(nameof(_context.DbProvider));
+            if (_context.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_context.RewardCalculatorSource));
+            
+            return new BlockProcessor(
                 _context.SpecProvider,
                 _context.BlockValidator,
                 _context.RewardCalculatorSource.Get(_context.TransactionProcessor),
@@ -205,6 +216,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.TxPool,
                 _context.ReceiptStorage,
                 _context.LogManager);
+        }
 
         protected virtual void InitSealEngine()
         {

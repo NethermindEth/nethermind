@@ -15,8 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Linq;
-using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Logging;
@@ -26,34 +24,41 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Runner.Ethereum
 {
-    public class EthereumRunnerContextCreator
+    public class EthereumRunnerContextFactory
     {
-        public EthereumRunnerContextCreator(IConfigProvider configProvider, IJsonSerializer ethereumJsonSerializer,   ILogger logger)
+        private readonly IConfigProvider _configProvider;
+        private readonly ILogManager _logManager;
+
+        public EthereumRunnerContextFactory(IConfigProvider configProvider, IJsonSerializer ethereumJsonSerializer, ILogManager logManager)
         {
+            _configProvider = configProvider;
+            _logManager = logManager;
+            
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+            ILogger logger = _logManager.GetClassLogger();
             if (logger.IsInfo) logger.Info($"Loading chain spec from {initConfig.ChainSpecPath}");
             IChainSpecLoader loader = new ChainSpecLoader(ethereumJsonSerializer);
-            var chainSpec = loader.LoadFromFile(initConfig.ChainSpecPath);
+            ChainSpec chainSpec = loader.LoadFromFile(initConfig.ChainSpecPath);
 
-            Context = CreateEthereumRunnerContext(chainSpec.SealEngineType);
+            Context = Create(chainSpec.SealEngineType);
             Context.ChainSpec = chainSpec;
             Context.SpecProvider = new ChainSpecBasedSpecProvider(Context.ChainSpec);
         }
 
-        private EthereumRunnerContext CreateEthereumRunnerContext(SealEngineType engine)
+        private EthereumRunnerContext Create(SealEngineType engine)
         {
             switch (engine)
             {
                 case SealEngineType.Ethash:
-                    return new EthashEthereumRunnerContext();
+                    return new EthashEthereumRunnerContext(_configProvider, _logManager);
                 case SealEngineType.AuRa:
-                    return new AuRaEthereumRunnerContext();
+                    return new AuRaEthereumRunnerContext(_configProvider, _logManager);
                 case SealEngineType.Clique:
-                    return new CliqueEthereumRunnerContext();
+                    return new CliqueEthereumRunnerContext(_configProvider, _logManager);
                 case SealEngineType.NethDev:
-                    return new NethDevEthereumRunnerContext();
+                    return new NethDevEthereumRunnerContext(_configProvider, _logManager);
                 case SealEngineType.None:
-                    return new EthereumRunnerContext();
+                    return new EthereumRunnerContext(_configProvider, _logManager);
                 default:
                     throw new ArgumentOutOfRangeException(nameof(engine), engine, "Unexpected engine.");
             }

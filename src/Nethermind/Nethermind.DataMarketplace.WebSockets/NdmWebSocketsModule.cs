@@ -34,12 +34,11 @@ namespace Nethermind.DataMarketplace.WebSockets
         private readonly INdmConsumerChannelManager _consumerChannelManager;
         private readonly INdmDataPublisher _dataPublisher;
         private readonly IJsonSerializer _jsonSerializer;
-        private NdmWebSocketsConsumerChannel _channel;
+        private NdmWebSocketsConsumerChannel? _channel;
 
         public string Name { get; } = "ndm";
 
-        public NdmWebSocketsModule(INdmConsumerChannelManager consumerChannelManager, INdmDataPublisher dataPublisher,
-            IJsonSerializer jsonSerializer)
+        public NdmWebSocketsModule(INdmConsumerChannelManager consumerChannelManager, INdmDataPublisher dataPublisher, IJsonSerializer jsonSerializer)
         {
             _consumerChannelManager = consumerChannelManager;
             _dataPublisher = dataPublisher;
@@ -53,7 +52,7 @@ namespace Nethermind.DataMarketplace.WebSockets
 
         public IWebSocketsClient CreateClient(WebSocket webSocket, string client)
         {
-            var socketsClient = new NdmWebSocketsClient(new WebSocketsClient(webSocket, client, _jsonSerializer),
+            NdmWebSocketsClient socketsClient = new NdmWebSocketsClient(new WebSocketsClient(webSocket, client, _jsonSerializer),
                 _dataPublisher);
             _channel = new NdmWebSocketsConsumerChannel(socketsClient);
             _consumerChannelManager.Add(_channel);

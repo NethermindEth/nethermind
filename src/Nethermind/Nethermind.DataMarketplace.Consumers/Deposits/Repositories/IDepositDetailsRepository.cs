@@ -24,7 +24,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Repositories
 {
     public interface IDepositDetailsRepository
     {
-        Task<DepositDetails> GetAsync(Keccak id);
+        Task<DepositDetails?> GetAsync(Keccak id);
         Task<PagedResult<DepositDetails>> BrowseAsync(GetDeposits query);
         Task AddAsync(DepositDetails deposit);
         Task UpdateAsync(DepositDetails deposit);

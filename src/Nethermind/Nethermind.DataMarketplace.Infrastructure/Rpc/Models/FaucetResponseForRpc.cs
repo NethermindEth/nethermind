@@ -20,8 +20,8 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
 {
     public class FaucetResponseForRpc
     {
-        public string Status { get; set; }
-        public FaucetRequestDetailsForRpc LatestRequest { get; set; }
+        public string? Status { get; set; }
+        public FaucetRequestDetailsForRpc? LatestRequest { get; set; }
 
         public FaucetResponseForRpc()
         {

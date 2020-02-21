@@ -43,7 +43,7 @@ namespace Nethermind.Runner.Ethereum
         private readonly IJsonRpcProcessor _jsonRpcProcessor;
         private readonly IWebSocketsManager _webSocketsManager;
         private readonly IJsonRpcConfig _jsonRpcConfig;
-        private IWebHost _webHost;
+        private IWebHost? _webHost;
         private IInitConfig _initConfig;
 
         public JsonRpcRunner(
@@ -129,7 +129,7 @@ namespace Nethermind.Runner.Ethereum
         {
             try
             {
-                await _webHost.StopAsync();
+                await (_webHost?.StopAsync() ?? Task.CompletedTask);
                 if(_logger.IsInfo) _logger.Info("JSON RPC service stopped");
             }
             catch (Exception e)

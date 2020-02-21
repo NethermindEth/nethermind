@@ -69,6 +69,11 @@ namespace Nethermind.Runner.Test
                     return (true, true);
                 }
                 
+                if (name.EndsWith("Enabled"))
+                {
+                    return (true, true);
+                }
+                
                 return (false, null);
             }
 

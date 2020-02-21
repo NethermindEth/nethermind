@@ -37,8 +37,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.
             _database = database;
         }
 
-        public Task<DepositDetails> GetAsync(Keccak id)
-            => Deposits.Find(c => c.Id == id).FirstOrDefaultAsync();
+        public Task<DepositDetails?> GetAsync(Keccak id)
+            => Deposits.Find(c => c.Id == id).FirstOrDefaultAsync()!;
 
         public async Task<PagedResult<DepositDetails>> BrowseAsync(GetDeposits query)
         {
@@ -80,7 +80,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.
                                                                    ));
                 }
 
-                return filteredDeposits.OrderByDescending(d => d.Timestamp).Paginate(query);
+                return filteredDeposits.OrderByDescending(d => d.Timestamp).ToArray().Paginate(query);
             }
 
             return await deposits.OrderByDescending(d => d.Timestamp).PaginateAsync(query);

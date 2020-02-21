@@ -29,7 +29,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
 {
-    public class P2PProtocolHandler : ProtocolHandlerBase, IProtocolHandler, IPingSender
+    public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender
     {
         private TaskCompletionSource<Packet> _pongCompletionSource;
         private readonly INodeStatsManager _nodeStatsManager;
@@ -55,9 +55,9 @@ namespace Nethermind.Network.P2P
         public int ListenPort { get; }
         public PublicKey LocalNodeId { get; }
         public string RemoteClientId { get; private set; }
-        public bool HasAvailableCapability(Capability capability) => AvailableCapabilities.Contains(capability);
-        public bool HasAgreedCapability(Capability capability) => AgreedCapabilities.Contains(capability);
-        public void AddSupportedCapability(Capability capability)
+        public override bool HasAvailableCapability(Capability capability) => AvailableCapabilities.Contains(capability);
+        public override bool HasAgreedCapability(Capability capability) => AgreedCapabilities.Contains(capability);
+        public override void AddSupportedCapability(Capability capability)
         {
             if (SupportedCapabilities.Contains(capability))
             {
@@ -67,11 +67,11 @@ namespace Nethermind.Network.P2P
             SupportedCapabilities.Add(capability);
         }
 
-        public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
+        public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
 
-        public event EventHandler<ProtocolEventArgs> SubprotocolRequested;
+        public override event EventHandler<ProtocolEventArgs> SubprotocolRequested;
 
-        public void Init()
+        public override void Init()
         {
             SendHello();
 
@@ -85,13 +85,13 @@ namespace Nethermind.Network.P2P
             });
         }
 
-        public byte ProtocolVersion { get; private set; } = 5;
+        public override byte ProtocolVersion { get; protected set; } = 5;
 
-        public string ProtocolCode => Protocol.P2P;
+        public override string ProtocolCode => Protocol.P2P;
 
-        public int MessageIdSpaceSize => 0x10;
+        public override int MessageIdSpaceSize => 0x10;
 
-        public void HandleMessage(Packet msg)
+        public override void HandleMessage(Packet msg)
         {
             if (msg.PacketType == P2PMessageCode.Hello)
             {
@@ -240,7 +240,7 @@ namespace Nethermind.Network.P2P
             return true;
         }
 
-        public void InitiateDisconnect(DisconnectReason disconnectReason, string details)
+        public override void InitiateDisconnect(DisconnectReason disconnectReason, string details)
         {
             if (Logger.IsTrace) Logger.Trace($"Sending disconnect {disconnectReason} ({details}) to {Session.Node:s}");
             DisconnectMessage message = new DisconnectMessage(disconnectReason);
@@ -311,7 +311,7 @@ namespace Nethermind.Network.P2P
             _pongCompletionSource?.TrySetResult(msg);
         }
 
-        public void Dispose()
+        public override void Dispose()
         {
         }
     }

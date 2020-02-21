@@ -16,7 +16,10 @@
 
 using System;
 using System.IO;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
@@ -40,30 +43,19 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
         public FaucetRequestDetails Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = rlpStream.ReadSequenceLength();
-            if (sequenceLength == 0)
-            {
-                return null;
-            }
-
-            var host = rlpStream.DecodeString();
-            var address = rlpStream.DecodeAddress();
-            var value = rlpStream.DecodeUInt256();
-            var date = DateTimeOffset.FromUnixTimeSeconds(rlpStream.DecodeLong()).UtcDateTime;
-            var transactionHash = rlpStream.DecodeKeccak();
+            rlpStream.ReadSequenceLength();
+            string host = rlpStream.DecodeString();
+            Address address = rlpStream.DecodeAddress();
+            UInt256 value = rlpStream.DecodeUInt256();
+            DateTime date = DateTimeOffset.FromUnixTimeSeconds(rlpStream.DecodeLong()).UtcDateTime;
+            Keccak transactionHash = rlpStream.DecodeKeccak();
 
             return new FaucetRequestDetails(host, address, value, date, transactionHash);
         }
 
-        public Serialization.Rlp.Rlp Encode(FaucetRequestDetails item,
-            RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Serialization.Rlp.Rlp Encode(FaucetRequestDetails item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
-            {
-                return Serialization.Rlp.Rlp.OfEmptySequence;
-            }
-
-            var date = item.Date == DateTime.MinValue ? 0 : new DateTimeOffset(item.Date).ToUnixTimeSeconds();
+            long date = (item.Date == DateTime.MinValue || item.Date == null) ? 0 : new DateTimeOffset(item.Date.Value).ToUnixTimeSeconds();
 
             return Serialization.Rlp.Rlp.Encode(
                 Serialization.Rlp.Rlp.Encode(item.Host),
@@ -71,12 +63,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Serialization.Rlp.Rlp.Encode(item.Value),
                 Serialization.Rlp.Rlp.Encode(date),
                 Serialization.Rlp.Rlp.Encode(item.TransactionHash));
-        }
-
-        public void Encode(MemoryStream stream, FaucetRequestDetails item,
-            RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new System.NotImplementedException();
         }
 
         public int GetLength(FaucetRequestDetails item, RlpBehaviors rlpBehaviors)

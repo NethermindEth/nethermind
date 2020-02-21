@@ -21,6 +21,7 @@ using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -37,8 +38,7 @@ namespace Nethermind.Runner.Test.Ethereum
     {
         public static EthereumRunnerContext ContextWithMocks()
         {
-            EthereumRunnerContext context = new EthereumRunnerContext();
-            context.Logger = LimboNoErrorLogger.Instance;
+            EthereumRunnerContext context = new EthereumRunnerContext(Substitute.For<IConfigProvider>(), LimboLogs.Instance);
             context.LogManager = LimboLogs.Instance;
             context.Enode = Substitute.For<IEnode>();
             context.TxPool = Substitute.For<ITxPool>();

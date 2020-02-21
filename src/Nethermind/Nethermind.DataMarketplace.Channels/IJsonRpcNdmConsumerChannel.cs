@@ -20,6 +20,6 @@ namespace Nethermind.DataMarketplace.Channels
 {
     public interface IJsonRpcNdmConsumerChannel : INdmConsumerChannel
     {
-        string Pull(Keccak depositId);
+        string? Pull(Keccak depositId);
     }
 }

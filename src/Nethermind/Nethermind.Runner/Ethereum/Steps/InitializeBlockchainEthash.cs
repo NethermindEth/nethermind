@@ -35,7 +35,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.RewardCalculatorSource = RewardCalculator.GetSource(_context.SpecProvider);
             DifficultyCalculator difficultyCalculator = new DifficultyCalculator(_context.SpecProvider);
             _context.Sealer = _context.Config<IInitConfig>().IsMining ? (ISealer) new EthashSealer(new Ethash(_context.LogManager), _context.LogManager) : NullSealEngine.Instance;
-
             _context.SealValidator = new EthashSealValidator(_context.LogManager, difficultyCalculator, _context.CryptoRandom, new Ethash(_context.LogManager));
         }
     }

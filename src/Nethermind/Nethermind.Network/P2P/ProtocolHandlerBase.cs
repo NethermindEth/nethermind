@@ -26,7 +26,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
 {
-    public abstract class ProtocolHandlerBase
+    public abstract class ProtocolHandlerBase : IProtocolHandler
     {
         public abstract string Name { get; }
         protected INodeStatsManager StatsManager { get; }
@@ -90,5 +90,25 @@ namespace Nethermind.Network.P2P
         {
             _initCompletionSource?.SetResult(msg);
         }
+
+        public abstract void Dispose();
+
+        public abstract byte ProtocolVersion { get; protected set; }
+        public abstract string ProtocolCode { get; }
+        public abstract int MessageIdSpaceSize { get; }
+        public abstract void Init();
+
+        public abstract void HandleMessage(Packet message);
+
+        public abstract void InitiateDisconnect(DisconnectReason disconnectReason, string details);
+
+        public abstract bool HasAvailableCapability(Capability capability);
+
+        public abstract bool HasAgreedCapability(Capability capability);
+
+        public abstract void AddSupportedCapability(Capability capability);
+
+        public abstract event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
+        public abstract event EventHandler<ProtocolEventArgs> SubprotocolRequested;
     }
 }

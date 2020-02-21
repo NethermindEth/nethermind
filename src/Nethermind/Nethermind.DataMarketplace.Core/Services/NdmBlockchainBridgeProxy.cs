@@ -49,21 +49,21 @@ namespace Nethermind.DataMarketplace.Core.Services
             return result?.IsValid == true ? result.Result : Array.Empty<byte>();
         }
 
-        public async Task<Block> FindBlockAsync(Keccak blockHash)
+        public async Task<Block?> FindBlockAsync(Keccak blockHash)
         {
             var result = await _proxy.eth_getBlockByHash(blockHash);
 
             return result?.IsValid == true ? result.Result?.ToBlock() : null;
         }
 
-        public async Task<Block> FindBlockAsync(long blockNumber)
+        public async Task<Block?> FindBlockAsync(long blockNumber)
         {
             var result = await _proxy.eth_getBlockByNumber(BlockParameterModel.FromNumber(blockNumber));
 
             return result?.IsValid == true ? result.Result?.ToBlock() : null;
         }
 
-        public async Task<Block> GetLatestBlockAsync()
+        public async Task<Block?> GetLatestBlockAsync()
         {
             var result = await _proxy.eth_getBlockByNumber(BlockParameterModel.Latest);
 
@@ -79,7 +79,7 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public Task<UInt256> ReserveOwnTransactionNonceAsync(Address address) => GetNonceAsync(address);
 
-        public async Task<NdmTransaction> GetTransactionAsync(Keccak transactionHash)
+        public async Task<NdmTransaction?> GetTransactionAsync(Keccak transactionHash)
         {
             var transactionTask = _proxy.eth_getTransactionByHash(transactionHash);
             var receiptTask = _proxy.eth_getTransactionReceipt(transactionHash);
@@ -112,7 +112,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             return result?.IsValid == true ? result.Result ?? Array.Empty<byte>() : Array.Empty<byte>();
         }
 
-        public async Task<Keccak> SendOwnTransactionAsync(Transaction transaction)
+        public async Task<Keccak?> SendOwnTransactionAsync(Transaction transaction)
         {
             var data = Rlp.Encode(transaction).Bytes;
             var result = await _proxy.eth_sendRawTransaction(data);
@@ -120,10 +120,9 @@ namespace Nethermind.DataMarketplace.Core.Services
             return result?.IsValid == true ? result.Result : null;
         }
 
-        private static NdmTransaction MapTransaction(TransactionModel transaction, ReceiptModel receipt)
+        private static NdmTransaction MapTransaction(TransactionModel transaction, ReceiptModel? receipt)
         {
             var isPending = receipt is null;
-
             return new NdmTransaction(transaction.ToTransaction(), isPending, (long) (receipt?.BlockNumber ?? 0),
                 receipt?.BlockHash, (long) (receipt?.GasUsed ?? 0));
         }

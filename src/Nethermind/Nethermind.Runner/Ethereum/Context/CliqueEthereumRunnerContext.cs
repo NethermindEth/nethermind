@@ -15,16 +15,23 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Clique;
+using Nethermind.Config;
+using Nethermind.Logging;
 
 namespace Nethermind.Runner.Ethereum.Context
 {
     public class CliqueEthereumRunnerContext : EthereumRunnerContext
     {
-        public ISnapshotManager SnapshotManager{ get; set; }
-
-        public new CliqueSealer Sealer
+        public CliqueEthereumRunnerContext(IConfigProvider configProvider, ILogManager logManager)
+            : base(configProvider, logManager)
         {
-            get => (CliqueSealer) base.Sealer;
+        }
+        
+        public ISnapshotManager? SnapshotManager{ get; set; }
+
+        public new CliqueSealer? Sealer
+        {
+            get => base.Sealer as CliqueSealer;
             set => base.Sealer = value;
         }
     }

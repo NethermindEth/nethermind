@@ -37,7 +37,7 @@ namespace Nethermind.Abi
             return (Encoding.ASCII.GetString((byte[]) bytes), newPosition);
         }
 
-        public override byte[] Encode(object arg, bool packed)
+        public override byte[] Encode(object? arg, bool packed)
         {
             if (arg is string input)
             {

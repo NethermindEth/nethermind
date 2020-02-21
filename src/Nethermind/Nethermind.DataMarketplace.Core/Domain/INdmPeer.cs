@@ -27,8 +27,8 @@ namespace Nethermind.DataMarketplace.Core.Domain
     public interface INdmPeer : IDisposable
     {
         PublicKey NodeId { get; }
-        Address ConsumerAddress { get; }
-        Address ProviderAddress { get; }
+        Address? ConsumerAddress { get; }
+        Address? ProviderAddress { get; }
         bool IsConsumer { get; }
         bool IsProvider { get; }
         void ChangeConsumerAddress(Address address);
@@ -47,7 +47,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
         Task<FaucetResponse> SendRequestEthAsync(Address address, UInt256 value, CancellationToken? token = null);
         void SendRequestDepositApproval(Keccak assetId, Address consumer, string kyc);
 
-        Task<IReadOnlyList<DepositApproval>> SendGetDepositApprovals(Keccak dataAssetId = null,
+        Task<IReadOnlyList<DepositApproval>> SendGetDepositApprovals(Keccak? dataAssetId = null,
             bool onlyPending = false, CancellationToken? token = null);
     }
 }

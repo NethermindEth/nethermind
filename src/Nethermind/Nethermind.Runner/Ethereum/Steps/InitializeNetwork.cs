@@ -54,32 +54,42 @@ namespace Nethermind.Runner.Ethereum.Steps
     {
         private const string DiscoveryNodesDbPath = "discoveryNodes";
         private const string PeersDbPath = "peers";
-    
+
         private readonly EthereumRunnerContext _context;
+        private ILogger _logger;
+        private INetworkConfig _networkConfig;
 
         public InitializeNetwork(EthereumRunnerContext context)
         {
             _context = context;
+            _logger = _context.LogManager.GetClassLogger();
+            _networkConfig = _context.Config<INetworkConfig>();
         }
 
         public async Task Execute()
         {
             await Initialize();
         }
-        
+
         private async Task Initialize()
         {
-            INetworkConfig networkConfig = _context.Config<INetworkConfig>();
-            if (networkConfig.DiagTracerEnabled)
+            if (_context.DbProvider == null) throw new StepDependencyException(nameof(_context.DbProvider));
+            if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
+            if (_context.ReceiptStorage == null) throw new StepDependencyException(nameof(_context.ReceiptStorage));
+            if (_context.BlockValidator == null) throw new StepDependencyException(nameof(_context.BlockValidator));
+            if (_context.SealValidator == null) throw new StepDependencyException(nameof(_context.SealValidator));
+            if (_context.Enode == null) throw new StepDependencyException(nameof(_context.Enode));
+
+            if (_networkConfig.DiagTracerEnabled)
             {
                 NetworkDiagTracer.IsEnabled = true;
                 NetworkDiagTracer.Start();
             }
-            
-            // Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", "8192");
-            Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", networkConfig.NettyArenaOrder.ToString());
 
-            int maxPeersCount = networkConfig.ActivePeersMaxCount;
+            // Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", "8192");
+            Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", _networkConfig.NettyArenaOrder.ToString());
+
+            int maxPeersCount = _networkConfig.ActivePeersMaxCount;
             _context.SyncPeerPool = new EthSyncPeerPool(_context.BlockTree, _context.NodeStatsManager, maxPeersCount, _context.LogManager);
             _context.DisposeStack.Push(_context.SyncPeerPool);
             NodeDataFeed feed = new NodeDataFeed(_context.DbProvider.CodeDb, _context.DbProvider.StateDb, _context.LogManager);
@@ -104,7 +114,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 if (initPeerTask.IsFaulted)
                 {
-                    _context.Logger.Error("Unable to init the peer manager.", initPeerTask.Exception);
+                    _logger.Error("Unable to init the peer manager.", initPeerTask.Exception);
                 }
             });
 
@@ -112,7 +122,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 if (initNetTask.IsFaulted)
                 {
-                    _context.Logger.Error("Unable to start the synchronizer.", initNetTask.Exception);
+                    _logger.Error("Unable to start the synchronizer.", initNetTask.Exception);
                 }
             });
 
@@ -120,7 +130,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 if (initDiscoveryTask.IsFaulted)
                 {
-                    _context.Logger.Error("Unable to start the discovery protocol.", initDiscoveryTask.Exception);
+                    _logger.Error("Unable to start the discovery protocol.", initDiscoveryTask.Exception);
                 }
             });
 
@@ -130,7 +140,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             catch (Exception e)
             {
-                _context.Logger.Error("Unable to start the peer manager.", e);
+                _logger.Error("Unable to start the peer manager.", e);
             }
 
             ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_context.Enode.HostIp}:{_context.Enode.Port}");
@@ -138,36 +148,46 @@ namespace Nethermind.Runner.Ethereum.Steps
             ThisNodeInfo.AddInfo("This node    :", $"{_context.Enode.Info}");
             ThisNodeInfo.AddInfo("Node address :", $"{_context.Enode.Address} (do not use as an account)");
         }
-        
+
         private Task StartDiscovery()
         {
+            if (_context.DiscoveryApp == null) throw new StepDependencyException(nameof(_context.DiscoveryApp));
+
             if (!_context.Config<IInitConfig>().DiscoveryEnabled)
             {
-                if (_context.Logger.IsWarn) _context.Logger.Warn($"Skipping discovery init due to ({nameof(IInitConfig.DiscoveryEnabled)} set to false)");
+                if (_logger.IsWarn) _logger.Warn($"Skipping discovery init due to ({nameof(IInitConfig.DiscoveryEnabled)} set to false)");
                 return Task.CompletedTask;
             }
 
-            if (_context.Logger.IsDebug) _context.Logger.Debug("Starting discovery process.");
+            if (_logger.IsDebug) _logger.Debug("Starting discovery process.");
             _context.DiscoveryApp.Start();
-            if (_context.Logger.IsDebug) _context.Logger.Debug("Discovery process started.");
+            if (_logger.IsDebug) _logger.Debug("Discovery process started.");
             return Task.CompletedTask;
         }
-        
+
         private void StartPeer()
         {
+            if (_context.PeerManager == null) throw new StepDependencyException(nameof(_context.PeerManager));
+            if (_context.SessionMonitor == null) throw new StepDependencyException(nameof(_context.SessionMonitor));
+
             if (!_context.Config<IInitConfig>().PeerManagerEnabled)
             {
-                if (_context.Logger.IsWarn) _context.Logger.Warn($"Skipping peer manager init due to {nameof(IInitConfig.PeerManagerEnabled)} set to false)");
+                if (_logger.IsWarn) _logger.Warn($"Skipping peer manager init due to {nameof(IInitConfig.PeerManagerEnabled)} set to false)");
             }
 
-            if (_context.Logger.IsDebug) _context.Logger.Debug("Initializing peer manager");
+            if (_logger.IsDebug) _logger.Debug("Initializing peer manager");
             _context.PeerManager.Start();
             _context.SessionMonitor.Start();
-            if (_context.Logger.IsDebug) _context.Logger.Debug("Peer manager initialization completed");
+            if (_logger.IsDebug) _logger.Debug("Peer manager initialization completed");
         }
 
         private void InitDiscovery()
         {
+            if (_context.NodeStatsManager == null) throw new StepDependencyException(nameof(_context.NodeStatsManager));
+            if (_context.Timestamper == null) throw new StepDependencyException(nameof(_context.Timestamper));
+            if (_context.NodeKey == null) throw new StepDependencyException(nameof(_context.NodeKey));
+            if (_context.CryptoRandom == null) throw new StepDependencyException(nameof(_context.CryptoRandom));
+
             if (!_context.Config<IInitConfig>().DiscoveryEnabled)
             {
                 _context.DiscoveryApp = new NullDiscoveryApp();
@@ -191,7 +211,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             NodeDistanceCalculator nodeDistanceCalculator = new NodeDistanceCalculator(discoveryConfig);
 
-            NodeTable nodeTable = new NodeTable(nodeDistanceCalculator, discoveryConfig, _context.NetworkConfig, _context.LogManager);
+            NodeTable nodeTable = new NodeTable(nodeDistanceCalculator, discoveryConfig, _networkConfig, _context.LogManager);
             EvictionManager evictionManager = new EvictionManager(nodeTable, _context.LogManager);
 
             NodeLifecycleManagerFactory nodeLifeCycleFactory = new NodeLifecycleManagerFactory(
@@ -227,23 +247,27 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context._messageSerializationService,
                 _context.CryptoRandom,
                 discoveryStorage,
-                _context.NetworkConfig,
+                _networkConfig,
                 discoveryConfig,
                 _context.Timestamper,
                 _context.LogManager);
 
             _context.DiscoveryApp.Initialize(_context.NodeKey.PublicKey);
         }
-        
+
         private Task StartSync()
         {
+            if (_context.SyncPeerPool == null) throw new StepDependencyException(nameof(_context.SyncPeerPool));
+            if (_context.Synchronizer == null) throw new StepDependencyException(nameof(_context.Synchronizer));
+            if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
+
             if (!_context.Config<ISyncConfig>().SynchronizationEnabled)
             {
-                if (_context.Logger.IsWarn) _context.Logger.Warn($"Skipping blockchain synchronization init due to ({nameof(ISyncConfig.SynchronizationEnabled)} set to false)");
+                if (_logger.IsWarn) _logger.Warn($"Skipping blockchain synchronization init due to ({nameof(ISyncConfig.SynchronizationEnabled)} set to false)");
                 return Task.CompletedTask;
             }
 
-            if (_context.Logger.IsDebug) _context.Logger.Debug($"Starting synchronization from block {_context.BlockTree.Head.ToString(BlockHeader.Format.Short)}.");
+            if (_logger.IsDebug) _logger.Debug($"Starting synchronization from block {_context.BlockTree.Head.ToString(BlockHeader.Format.Short)}.");
 
             _context.SyncPeerPool.Start();
             _context.Synchronizer.Start();
@@ -252,6 +276,24 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private async Task InitPeer()
         {
+            if (_context.DbProvider == null) throw new StepDependencyException(nameof(_context.DbProvider));
+            if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
+            if (_context.ReceiptStorage == null) throw new StepDependencyException(nameof(_context.ReceiptStorage));
+            if (_context.BlockValidator == null) throw new StepDependencyException(nameof(_context.BlockValidator));
+            if (_context.SyncPeerPool == null) throw new StepDependencyException(nameof(_context.SyncPeerPool));
+            if (_context.Synchronizer == null) throw new StepDependencyException(nameof(_context.Synchronizer));
+            if (_context.Enode == null) throw new StepDependencyException(nameof(_context.Enode));
+            if (_context.NodeKey == null) throw new StepDependencyException(nameof(_context.NodeKey));
+            if (_context.MainBlockProcessor == null) throw new StepDependencyException(nameof(_context.MainBlockProcessor));
+            if (_context.NodeStatsManager == null) throw new StepDependencyException(nameof(_context.NodeStatsManager));
+            if (_context.KeyStore == null) throw new StepDependencyException(nameof(_context.KeyStore));
+            if (_context.RpcModuleProvider == null) throw new StepDependencyException(nameof(_context.RpcModuleProvider));
+            if (_context.Wallet == null) throw new StepDependencyException(nameof(_context.Wallet));
+            if (_context.EthereumEcdsa == null) throw new StepDependencyException(nameof(_context.EthereumEcdsa));
+            if (_context.SpecProvider == null) throw new StepDependencyException(nameof(_context.SpecProvider));
+            if (_context.TxPool == null) throw new StepDependencyException(nameof(_context.TxPool));
+            if (_context.EthereumJsonSerializer == null) throw new StepDependencyException(nameof(_context.EthereumJsonSerializer));
+
             /* rlpx */
             EciesCipher eciesCipher = new EciesCipher(_context.CryptoRandom);
             Eip8MessagePad eip8Pad = new Eip8MessagePad(_context.CryptoRandom);
@@ -268,11 +310,11 @@ namespace Nethermind.Runner.Ethereum.Steps
             IDiscoveryConfig discoveryConfig = _context.Config<IDiscoveryConfig>();
             IInitConfig initConfig = _context.Config<IInitConfig>();
 
-            _context.SessionMonitor = new SessionMonitor(_context.NetworkConfig, _context.LogManager);
+            _context.SessionMonitor = new SessionMonitor(_networkConfig, _context.LogManager);
             _context.RlpxPeer = new RlpxPeer(
                 _context._messageSerializationService,
                 _context.NodeKey.PublicKey,
-                _context.NetworkConfig.P2PPort,
+                _networkConfig.P2PPort,
                 encryptionHandshakeServiceA,
                 _context.LogManager,
                 _context.SessionMonitor);
@@ -290,7 +332,13 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (!(_context.NdmInitializer is null))
             {
-                if (_context.Logger.IsInfo) _context.Logger.Info($"Initializing NDM...");
+                if (_context.WebSocketsManager == null) throw new StepDependencyException(nameof(_context.WebSocketsManager));
+                if (_context.GrpcServer == null) throw new StepDependencyException(nameof(_context.GrpcServer));
+                if (_context.NdmDataPublisher == null) throw new StepDependencyException(nameof(_context.NdmDataPublisher));
+                if (_context.NdmConsumerChannelManager == null) throw new StepDependencyException(nameof(_context.NdmConsumerChannelManager));
+                if (_context.BloomStorage == null) throw new StepDependencyException(nameof(_context.BloomStorage));
+
+                if (_logger.IsInfo) _logger.Info($"Initializing NDM...");
                 _context.HttpClient = new DefaultHttpClient(new HttpClient(), _context.EthereumJsonSerializer, _context.LogManager);
                 INdmConfig ndmConfig = _context.Config<INdmConfig>();
                 if (ndmConfig.ProxyEnabled)
@@ -302,19 +350,47 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 FilterStore filterStore = new FilterStore();
                 FilterManager filterManager = new FilterManager(filterStore, _context.MainBlockProcessor, _context.TxPool, _context.LogManager);
-                INdmCapabilityConnector capabilityConnector = await _context.NdmInitializer.InitAsync(_context.ConfigProvider, _context.DbProvider,
-                    initConfig.BaseDbPath, _context.BlockTree, _context.TxPool, _context.SpecProvider, _context.ReceiptStorage, _context.Wallet, filterStore,
-                    filterManager, _context.Timestamper, _context.EthereumEcdsa, _context.RpcModuleProvider, _context.KeyStore, _context.EthereumJsonSerializer,
-                    _context.CryptoRandom, _context.Enode, _context.NdmConsumerChannelManager, _context.NdmDataPublisher, _context.GrpcServer,
-                    _context.NodeStatsManager, _context.ProtocolsManager, protocolValidator, _context._messageSerializationService,
-                    initConfig.EnableUnsecuredDevWallet, _context.WebSocketsManager, _context.LogManager, _context.MainBlockProcessor,
-                    _context.JsonRpcClientProxy, _context.EthJsonRpcClientProxy, _context.HttpClient, _context.MonitoringService, _context.BloomStorage);
+                INdmCapabilityConnector capabilityConnector = await _context.NdmInitializer.InitAsync(
+                    _context.ConfigProvider,
+                    _context.DbProvider,
+                    initConfig.BaseDbPath,
+                    _context.BlockTree,
+                    _context.TxPool,
+                    _context.SpecProvider,
+                    _context.ReceiptStorage,
+                    _context.Wallet,
+                    filterStore,
+                    filterManager,
+                    _context.Timestamper,
+                    _context.EthereumEcdsa,
+                    _context.RpcModuleProvider,
+                    _context.KeyStore,
+                    _context.EthereumJsonSerializer,
+                    _context.CryptoRandom,
+                    _context.Enode,
+                    _context.NdmConsumerChannelManager,
+                    _context.NdmDataPublisher,
+                    _context.GrpcServer,
+                    _context.NodeStatsManager,
+                    _context.ProtocolsManager,
+                    protocolValidator,
+                    _context._messageSerializationService,
+                    initConfig.EnableUnsecuredDevWallet,
+                    _context.WebSocketsManager,
+                    _context.LogManager,
+                    _context.MainBlockProcessor,
+                    _context.JsonRpcClientProxy,
+                    _context.EthJsonRpcClientProxy,
+                    _context.HttpClient,
+                    _context.MonitoringService,
+                    _context.BloomStorage);
+
                 capabilityConnector.Init();
-                if (_context.Logger.IsInfo) _context.Logger.Info($"NDM initialized.");
+                if (_logger.IsInfo) _logger.Info($"NDM initialized.");
             }
 
-            PeerLoader peerLoader = new PeerLoader(_context.NetworkConfig, discoveryConfig, _context.NodeStatsManager, peerStorage, _context.LogManager);
-            _context.PeerManager = new PeerManager(_context.RlpxPeer, _context.DiscoveryApp, _context.NodeStatsManager, peerStorage, peerLoader, _context.NetworkConfig, _context.LogManager, _context.StaticNodesManager);
+            PeerLoader peerLoader = new PeerLoader(_networkConfig, discoveryConfig, _context.NodeStatsManager, peerStorage, _context.LogManager);
+            _context.PeerManager = new PeerManager(_context.RlpxPeer, _context.DiscoveryApp, _context.NodeStatsManager, peerStorage, peerLoader, _networkConfig, _context.LogManager, _context.StaticNodesManager);
             _context.PeerManager.Init();
         }
     }

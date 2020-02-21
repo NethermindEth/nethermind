@@ -55,7 +55,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
         public Task<PagedResult<DepositApproval>> BrowseAsync(GetConsumerDepositApprovals query)
             => _depositApprovalRepository.BrowseAsync(query);
 
-        public async Task<Keccak> RequestAsync(Keccak assetId, Address consumer, string kyc)
+        public async Task<Keccak?> RequestAsync(Keccak assetId, Address consumer, string kyc)
         {
             if (_logger.IsInfo) _logger.Info($"Requesting a deposit approval for data asset: '{assetId}', consumer: '{consumer}'...");
             var dataAsset = _dataAssetService.GetDiscovered(assetId);
@@ -92,7 +92,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             if (approval is null)
             {
                 approval = new DepositApproval(id, assetId, dataAsset.Name, kyc, consumer,
-                    dataAsset.Provider.Address, _timestamper.EpochSeconds);
+                    dataAsset.Provider.Address, _timestamper.EpochSeconds, DepositApprovalState.Pending);
                 await _depositApprovalRepository.AddAsync(approval);
             }
 

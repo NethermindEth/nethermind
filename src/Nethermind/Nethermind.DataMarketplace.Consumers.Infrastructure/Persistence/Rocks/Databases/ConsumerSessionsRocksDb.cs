@@ -24,7 +24,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
     {
         public override string Name { get; } = "ConsumerSessions";
 
-        public ConsumerSessionsRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
+        public ConsumerSessionsRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager)
             : base(basePath, "consumerSessions", dbConfig, logManager)
         {
         }

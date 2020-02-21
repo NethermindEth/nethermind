@@ -20,8 +20,8 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
 {
     public class DataAssetRulesForRpc
     {
-        public DataAssetRuleForRpc Expiry { get; set; }
-        public DataAssetRuleForRpc UpfrontPayment { get; set; }
+        public DataAssetRuleForRpc? Expiry { get; set; }
+        public DataAssetRuleForRpc? UpfrontPayment { get; set; }
 
         public DataAssetRulesForRpc()
         {

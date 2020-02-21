@@ -32,17 +32,28 @@ namespace Nethermind.DataMarketplace.Core.Domain
         public uint MaxUnits { get; private set; }
         public DataAssetRules Rules { get; private set; }
         public DataAssetProvider Provider { get; private set; }
-        public string File { get; private set; }
+        public string? File { get; private set; }
         public DataAssetState State { get; private set; }
-        public string TermsAndConditions { get; private set; }
+        public string? TermsAndConditions { get; private set; }
         public bool KycRequired { get; private set; }
-        public string Plugin { get; private set; }
+        public string? Plugin { get; private set; }
 
-        public DataAsset(Keccak id, string name, string description, UInt256 unitPrice,
-            DataAssetUnitType unitType, uint minUnits, uint maxUnits, DataAssetRules rules,
-            DataAssetProvider provider, string file = null, QueryType queryType = QueryType.Stream,
-            DataAssetState state = DataAssetState.Unpublished, string termsAndConditions = null,
-            bool kycRequired = false, string plugin = null)
+        public DataAsset(
+            Keccak id,
+            string name,
+            string description,
+            UInt256 unitPrice,
+            DataAssetUnitType unitType,
+            uint minUnits,
+            uint maxUnits,
+            DataAssetRules rules,
+            DataAssetProvider provider,
+            string? file = null,
+            QueryType queryType = QueryType.Stream,
+            DataAssetState state = DataAssetState.Unpublished,
+            string? termsAndConditions = null,
+            bool kycRequired = false,
+            string? plugin = null)
         {
             if (provider == null || string.IsNullOrWhiteSpace(provider.Name) || provider.Address == null)
             {
@@ -74,7 +85,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
                 throw new ArgumentException($"Missing rules.", nameof(rules));
             }
 
-            if (rules.Expiry is null && rules.Expiry.Value <= 0)
+            if (rules.Expiry != null && rules.Expiry.Value <= 0)
             {
                 throw new ArgumentException($"Invalid expiry rule value: {rules.Expiry}.", nameof(rules.Expiry));
             }
@@ -102,7 +113,10 @@ namespace Nethermind.DataMarketplace.Core.Domain
             TermsAndConditions = termsAndConditions;
             KycRequired = kycRequired;
             SetState(state);
-            SetPlugin(plugin);
+            if (plugin != null)
+            {
+                SetPlugin(plugin);
+            }
         }
 
         public void SetState(DataAssetState state)
@@ -119,7 +133,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
 
         public void SetPlugin(string plugin)
         {
-            var pluginName = plugin?.ToLowerInvariant();
+            string? pluginName = plugin?.ToLowerInvariant();
             if (Plugin == pluginName)
             {
                 return;

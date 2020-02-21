@@ -57,7 +57,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             return Task.CompletedTask;
         }
 
-        public event EventHandler<SubsystemStateEventArgs> SubsystemStateChanged;
+        public event EventHandler<SubsystemStateEventArgs>? SubsystemStateChanged;
 
         public EthereumSubsystem MonitoredSubsystem => EthereumSubsystem.Grpc;
     }

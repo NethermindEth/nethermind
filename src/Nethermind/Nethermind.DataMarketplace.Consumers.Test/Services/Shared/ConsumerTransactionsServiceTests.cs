@@ -416,9 +416,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             Keccak claimedRefundTransactionHash = null, bool cancelled = false)
             => new DepositDetails(new Deposit(TestItem.KeccakA, 1, 1, 1),
                 GetDataAsset(DataAssetUnitType.Unit), TestItem.AddressB, Array.Empty<byte>(), 1,
-                transactionHash is null ? null : new[] {TransactionInfo.Default(transactionHash, 1, 1, 1, 1)},
+                transactionHash is null ? Array.Empty<TransactionInfo>() : new[] {TransactionInfo.Default(transactionHash, 1, 1, 1, 1)},
                 claimedRefundTransactions: claimedRefundTransactionHash is null
-                    ? null
+                    ? Array.Empty<TransactionInfo>()
                     : new[] {TransactionInfo.Default(claimedRefundTransactionHash, 1, 1, 1, 1)},
                 cancelled: cancelled);
 

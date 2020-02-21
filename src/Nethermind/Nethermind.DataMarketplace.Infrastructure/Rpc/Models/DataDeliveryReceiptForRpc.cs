@@ -20,9 +20,9 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
 {
     public class DataDeliveryReceiptForRpc
     {
-        public string StatusCode { get; set; }
-        public uint ConsumedUnits { get; set; }
-        public uint UnpaidUnits { get; set; }
+        public string? StatusCode { get; set; }
+        public uint? ConsumedUnits { get; set; }
+        public uint? UnpaidUnits { get; set; }
 
         public DataDeliveryReceiptForRpc()
         {

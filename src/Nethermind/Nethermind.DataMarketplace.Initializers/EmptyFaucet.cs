@@ -14,11 +14,25 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Network.P2P;
+using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.DataMarketplace.Core.Services;
+using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.DataMarketplace.Subprotocols
+namespace Nethermind.DataMarketplace.Initializers
 {
-    public interface INdmSubprotocol : IProtocolHandler
+    public class EmptyFaucet : INdmFaucet
     {
+        private EmptyFaucet()
+        {
+        }
+
+        public static EmptyFaucet Instance { get; } = new EmptyFaucet();
+        
+        private static readonly FaucetResponse Response = new FaucetResponse(FaucetRequestStatus.FaucetDisabled);
+
+        public Task<FaucetResponse> TryRequestEthAsync(string node, Address address, UInt256 value)
+            => Task.FromResult(Response);
     }
 }

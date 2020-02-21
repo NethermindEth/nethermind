@@ -16,12 +16,19 @@
 
 using Nethermind.AuRa;
 using Nethermind.Blockchain;
+using Nethermind.Config;
+using Nethermind.Logging;
 
 namespace Nethermind.Runner.Ethereum.Context
 {
     public class AuRaEthereumRunnerContext : EthereumRunnerContext
     {
-        public IAuRaBlockProcessorExtension AuRaBlockProcessorExtension { get; set; }
-        public IBlockFinalizationManager FinalizationManager { get; set; }
+        public AuRaEthereumRunnerContext(IConfigProvider configProvider, ILogManager logManager)
+            : base(configProvider, logManager)
+        {
+        }
+        
+        public IAuRaBlockProcessorExtension? AuRaBlockProcessorExtension { get; set; }
+        public IBlockFinalizationManager? FinalizationManager { get; set; }
     }
 }

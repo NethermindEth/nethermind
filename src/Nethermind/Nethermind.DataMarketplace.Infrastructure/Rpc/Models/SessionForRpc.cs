@@ -22,22 +22,22 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
 {
     public class SessionForRpc
     {
-        public Keccak Id { get; set; }
-        public Keccak DepositId { get; set; }
-        public Keccak DataAssetId { get; set; }
-        public Address ConsumerAddress { get; set; }
-        public PublicKey ConsumerNodeId { get; set; }
-        public Address ProviderAddress { get; set; }
-        public PublicKey ProviderNodeId { get; set; }
-        public string State { get; set; }
-        public uint StartUnitsFromConsumer { get; set; }
-        public uint StartUnitsFromProvider { get; set; }
-        public ulong StartTimestamp { get; set; }
-        public ulong FinishTimestamp { get; set; }
-        public uint ConsumedUnits { get; set; }
-        public uint UnpaidUnits { get; set; }
-        public uint PaidUnits { get; set; }
-        public uint SettledUnits { get; set; }
+        public Keccak? Id { get; set; }
+        public Keccak? DepositId { get; set; }
+        public Keccak? DataAssetId { get; set; }
+        public Address? ConsumerAddress { get; set; }
+        public PublicKey? ConsumerNodeId { get; set; }
+        public Address? ProviderAddress { get; set; }
+        public PublicKey? ProviderNodeId { get; set; }
+        public string? State { get; set; }
+        public uint? StartUnitsFromConsumer { get; set; }
+        public uint? StartUnitsFromProvider { get; set; }
+        public ulong? StartTimestamp { get; set; }
+        public ulong? FinishTimestamp { get; set; }
+        public uint? ConsumedUnits { get; set; }
+        public uint? UnpaidUnits { get; set; }
+        public uint? PaidUnits { get; set; }
+        public uint? SettledUnits { get; set; }
 
         public SessionForRpc()
         {

@@ -49,8 +49,12 @@ namespace Nethermind.DataMarketplace.Test.Initializers
             _logManager = NullLogManager.Instance;
             _providerAddress = Address.Zero;
             _consumerAddress = Address.Zero;
-            _capabilityConnector = new NdmCapabilityConnector(_protocolsManager, _protocolHandlerFactory,
-                _accountService, _logManager, _providerAddress);
+            _capabilityConnector = new NdmCapabilityConnector(
+                _protocolsManager,
+                _protocolHandlerFactory,
+                _accountService,
+                _logManager,
+                _providerAddress);
         }
 
         [Test]

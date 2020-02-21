@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.DataMarketplace.Core.Configs
@@ -30,17 +31,17 @@ namespace Nethermind.DataMarketplace.Core.Configs
         public string ProviderName { get; set; } = "Nethermind";
         public string Persistence { get; set; } = "rocks";
         public bool VerifyP2PSignature { get; set; } = true;
-        public string ProviderAddress { get; set; } = "";
-        public string ProviderColdWalletAddress { get; set; } = "";
-        public string ConsumerAddress { get; set; } = "";
-        public string ContractAddress { get; set; } = "";
+        public string? ProviderAddress { get; set; } = null;
+        public string? ProviderColdWalletAddress { get; set; } = null;
+        public string? ConsumerAddress { get; set; } = null;
+        public string? ContractAddress { get; set; } = null;
         public UInt256 ReceiptRequestThreshold { get; set; } = 10000000000000000;
         public UInt256 ReceiptsMergeThreshold { get; set; } = 100000000000000000;
         public UInt256 PaymentClaimThreshold { get; set; } = 1000000000000000000;
         public uint BlockConfirmations { get; set; } = 0;
         public bool FaucetEnabled { get; set; } = false;
-        public string FaucetAddress { get; set; }
-        public string FaucetHost { get; set; }
+        public string? FaucetAddress { get; set; }
+        public string? FaucetHost { get; set; }
         public UInt256 FaucetWeiRequestMaxValue { get; set; } = 1000000000000000000;
         public UInt256 FaucetEthDailyRequestsTotalValue { get; set; } = 500;
         public string PluginsPath { get; set; } = "ndm/plugins";

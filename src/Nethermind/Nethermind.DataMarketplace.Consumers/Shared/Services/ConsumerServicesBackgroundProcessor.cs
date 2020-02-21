@@ -20,12 +20,15 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Blockchain;
+using Nethermind.Core;
 using Nethermind.DataMarketplace.Consumers.Deposits;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Deposits.Queries;
 using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
 using Nethermind.DataMarketplace.Consumers.Notifiers;
 using Nethermind.DataMarketplace.Consumers.Refunds;
+using Nethermind.DataMarketplace.Consumers.Shared.Services.Models;
+using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.Facade.Proxy;
 using Nethermind.Facade.Proxy.Models;
@@ -39,23 +42,32 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
         private readonly IDepositDetailsRepository _depositRepository;
         private readonly IConsumerNotifier _consumerNotifier;
         private readonly bool _useDepositTimer;
-        private readonly IEthJsonRpcClientProxy _ethJsonRpcClientProxy;
+        private readonly IEthJsonRpcClientProxy? _ethJsonRpcClientProxy;
         private readonly IAccountService _accountService;
         private readonly IRefundClaimant _refundClaimant;
         private readonly IDepositConfirmationService _depositConfirmationService;
         private readonly IEthPriceService _ethPriceService;
         private readonly IGasPriceService _gasPriceService;
         private readonly IBlockProcessor _blockProcessor;
-        private readonly Timer _depositTimer;
         private readonly ILogger _logger;
+
+        private Timer? _depositTimer;
+        private uint _depositTimerPeriod;
         private long _currentBlockTimestamp;
         private long _currentBlockNumber;
 
-        public ConsumerServicesBackgroundProcessor(IAccountService accountService, IRefundClaimant refundClaimant,
-            IDepositConfirmationService depositConfirmationService, IEthPriceService ethPriceService,
-            IGasPriceService gasPriceService, IBlockProcessor blockProcessor,
-            IDepositDetailsRepository depositRepository, IConsumerNotifier consumerNotifier, ILogManager logManager,
-            bool useDepositTimer = false, IEthJsonRpcClientProxy ethJsonRpcClientProxy = null,
+        public ConsumerServicesBackgroundProcessor(
+            IAccountService accountService,
+            IRefundClaimant refundClaimant,
+            IDepositConfirmationService depositConfirmationService,
+            IEthPriceService ethPriceService,
+            IGasPriceService gasPriceService,
+            IBlockProcessor blockProcessor,
+            IDepositDetailsRepository depositRepository,
+            IConsumerNotifier consumerNotifier,
+            ILogManager logManager,
+            bool useDepositTimer = false,
+            IEthJsonRpcClientProxy? ethJsonRpcClientProxy = null,
             uint depositTimer = 10000)
         {
             _accountService = accountService;
@@ -69,32 +81,38 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             _useDepositTimer = useDepositTimer;
             _ethJsonRpcClientProxy = ethJsonRpcClientProxy;
             _logger = logManager.GetClassLogger();
-            if (_useDepositTimer)
-            {
-                _depositTimer = new Timer(depositTimer);
-            }
-
             _ethPriceService.UpdateAsync();
             _gasPriceService.UpdateAsync();
+            _depositTimerPeriod = depositTimer;
         }
 
         public void Init()
         {
             if (_useDepositTimer)
             {
-                _depositTimer.Elapsed += DepositTimerOnElapsed;
-                _depositTimer.Start();
-            }
-            else
-            {
-                _blockProcessor.BlockProcessed += OnBlockProcessed;
-            }
+                if (_depositTimer == null)
+                {
+                    if (_ethJsonRpcClientProxy == null)
+                    {
+                        if(_logger.IsError) _logger.Error("Cannot find any configured ETH proxy to run deposit timer.");
+                        return;
+                    }
+                    
+                    _depositTimer = new Timer(_depositTimerPeriod);
+                    _depositTimer.Elapsed += DepositTimerOnElapsed;
+                    _depositTimer.Start();
+                }
+                else
+                {
+                    _blockProcessor.BlockProcessed += OnBlockProcessed;
+                }
 
-            if (_logger.IsInfo) _logger.Info("Initialized NDM consumer services background processor.");
+                if (_logger.IsInfo) _logger.Info("Initialized NDM consumer services background processor.");
+            }
         }
 
         private void DepositTimerOnElapsed(object sender, ElapsedEventArgs e)
-            => _ethJsonRpcClientProxy.eth_getBlockByNumber(BlockParameterModel.Latest)
+            => _ethJsonRpcClientProxy?.eth_getBlockByNumber(BlockParameterModel.Latest)
                 .ContinueWith(async t =>
                 {
                     if (t.IsFaulted && _logger.IsError)
@@ -103,7 +121,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                         return;
                     }
 
-                    var block = t.Result?.IsValid == true ? t.Result.Result : null;
+                    BlockModel? block = t.Result?.IsValid == true ? t.Result.Result : null;
                     if (block is null)
                     {
                         _logger.Error("Latest block fetched via proxy is null.", t.Exception);
@@ -119,7 +137,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                 });
 
 
-        private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
+        private void OnBlockProcessed(object? sender, BlockProcessedEventArgs e)
             => ProcessBlockAsync(e.Block.Number, (long) e.Block.Timestamp).ContinueWith(t =>
             {
                 if (t.IsFaulted && _logger.IsError)
@@ -133,24 +151,30 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             Interlocked.Exchange(ref _currentBlockNumber, number);
             Interlocked.Exchange(ref _currentBlockTimestamp, timestamp);
             await _consumerNotifier.SendBlockProcessedAsync(number);
-            var depositsToConfirm = await _depositRepository.BrowseAsync(new GetDeposits
+            PagedResult<DepositDetails> depositsToConfirm = await _depositRepository.BrowseAsync(new GetDeposits
             {
                 OnlyUnconfirmed = true,
                 OnlyNotRejected = true,
                 Results = int.MaxValue
             });
+
             await TryConfirmDepositsAsync(depositsToConfirm.Items);
-            var depositsToRefund = await _depositRepository.BrowseAsync(new GetDeposits
+            PagedResult<DepositDetails> depositsToRefund = await _depositRepository.BrowseAsync(new GetDeposits
             {
                 EligibleToRefund = true,
                 CurrentBlockTimestamp = _currentBlockTimestamp,
                 Results = int.MaxValue
             });
+
             await TryClaimRefundsAsync(depositsToRefund.Items);
             await _ethPriceService.UpdateAsync();
             await _consumerNotifier.SendEthUsdPriceAsync(_ethPriceService.UsdPrice, _ethPriceService.UpdatedAt);
             await _gasPriceService.UpdateAsync();
-            await _consumerNotifier.SendGasPriceAsync(_gasPriceService.Types);
+
+            if (_gasPriceService.Types != null)
+            {
+                await _consumerNotifier.SendGasPriceAsync(_gasPriceService.Types);
+            }
         }
 
         private async Task TryConfirmDepositsAsync(IReadOnlyList<DepositDetails> deposits)
@@ -160,13 +184,13 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                 if (_logger.IsInfo) _logger.Info("No deposits to be verified have been found.");
                 return;
             }
-            
-            foreach (var deposit in deposits)
+
+            foreach (DepositDetails deposit in deposits)
             {
                 await _depositConfirmationService.TryConfirmAsync(deposit);
             }
         }
-        
+
         private async Task TryClaimRefundsAsync(IReadOnlyList<DepositDetails> deposits)
         {
             if (!deposits.Any())
@@ -174,24 +198,24 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                 if (_logger.IsInfo) _logger.Info("No claimable refunds have been found.");
                 return;
             }
-            
-            if (_logger.IsInfo) _logger.Info($"Found {deposits.Count()} claimable refunds.");
-            
-            foreach (var deposit in deposits)
+
+            if (_logger.IsInfo) _logger.Info($"Found {deposits.Count} claimable refunds.");
+
+            foreach (DepositDetails deposit in deposits)
             {
-                var refundTo = _accountService.GetAddress();
-                var earlyRefundClaimStatus = await _refundClaimant.TryClaimEarlyRefundAsync(deposit, refundTo);
+                Address refundTo = _accountService.GetAddress();
+                RefundClaimStatus earlyRefundClaimStatus = await _refundClaimant.TryClaimEarlyRefundAsync(deposit, refundTo);
                 if (earlyRefundClaimStatus.IsConfirmed)
                 {
                     await _consumerNotifier.SendClaimedEarlyRefundAsync(deposit.Id, deposit.DataAsset.Name,
-                        earlyRefundClaimStatus.TransactionHash);
+                        earlyRefundClaimStatus.TransactionHash!);
                 }
 
-                var refundClaimStatus = await _refundClaimant.TryClaimRefundAsync(deposit, refundTo);
+                RefundClaimStatus refundClaimStatus = await _refundClaimant.TryClaimRefundAsync(deposit, refundTo);
                 if (refundClaimStatus.IsConfirmed)
                 {
                     await _consumerNotifier.SendClaimedRefundAsync(deposit.Id, deposit.DataAsset.Name,
-                        refundClaimStatus.TransactionHash);
+                        refundClaimStatus.TransactionHash!);
                 }
             }
         }

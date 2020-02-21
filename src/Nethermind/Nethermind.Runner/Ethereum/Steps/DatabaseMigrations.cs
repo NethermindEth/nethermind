@@ -1,4 +1,4 @@
-﻿﻿﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -43,12 +43,12 @@ namespace Nethermind.Runner.Ethereum.Steps
     {
         private readonly EthereumRunnerContext _context;
         private readonly ILogger _logger;
-        private Stopwatch _stopwatch;
+        private Stopwatch? _stopwatch;
         private readonly MeasuredProgress _progress = new MeasuredProgress();
         private long _migrateCount;
-        private CancellationTokenSource _cancellationTokenSource;
-        private Task _bloomDbMigrationTask;
-        private Average[] _averages;
+        private CancellationTokenSource? _cancellationTokenSource;
+        private Task? _bloomDbMigrationTask;
+        private Average[]? _averages;
         private readonly StringBuilder _builder = new StringBuilder();
         private IBloomConfig _bloomConfig;
 
@@ -56,6 +56,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             _context = context;
             _logger = context.LogManager.GetClassLogger();
+            _bloomConfig = context.Config<IBloomConfig>();
         }
 
         public Task Execute()
@@ -66,8 +67,10 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private void DoBloomMigration()
         {
-            _bloomConfig = _context.Config<IBloomConfig>();
-            var storage = _context.BloomStorage;
+            if (_context.BloomStorage == null) throw new StepDependencyException(nameof(_context.BloomStorage));
+            if (_context.Synchronizer == null) throw new StepDependencyException(nameof(_context.Synchronizer));
+
+            IBloomStorage? storage = _context.BloomStorage;
             if (storage.NeedsMigration)
             {
                 if (_bloomConfig.Migration)
@@ -83,7 +86,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 }
                 else
                 {
-                    if (_logger.IsInfo) _logger.Info($"BloomDb migration disabled. Finding logs in first {MinBlockNumber} blocks might be slow.");    
+                    if (_logger.IsInfo) _logger.Info($"BloomDb migration disabled. Finding logs in first {MinBlockNumber} blocks might be slow.");
                 }
             }
             else
@@ -105,10 +108,11 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
         }
 
-        private void SynchronizerOnSyncModeChanged(object sender, SyncModeChangedEventArgs e)
+        private void SynchronizerOnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
         {
             if (CanMigrate(e.Current))
             {
+                if (_context.Synchronizer == null) throw new StepDependencyException(nameof(_context.Synchronizer));
                 RunBloomMigration();
                 _context.Synchronizer.SyncModeChanged -= SynchronizerOnSyncModeChanged;
             }
@@ -116,6 +120,9 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private void RunBloomMigration()
         {
+            if (_context.DisposeStack == null) throw new StepDependencyException(nameof(_context.DisposeStack));
+            if (_context.BloomStorage == null) throw new StepDependencyException(nameof(_context.BloomStorage));
+
             if (_context.BloomStorage.NeedsMigration)
             {
                 _cancellationTokenSource = new CancellationTokenSource();
@@ -133,21 +140,32 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
         }
 
-
-        private long MinBlockNumber => _context.BloomStorage.MinBlockNumber == long.MaxValue
-            ? _context.BlockTree.BestKnownNumber
-            : _context.BloomStorage.MinBlockNumber - 1;
+        private long MinBlockNumber
+        {
+            get
+            {
+                if (_context.BloomStorage == null) throw new StepDependencyException(nameof(_context.BloomStorage));
+                if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
+                
+                return _context.BloomStorage.MinBlockNumber == long.MaxValue
+                    ? _context.BlockTree.BestKnownNumber
+                    : _context.BloomStorage.MinBlockNumber - 1;
+            }
+        }
 
         private void RunBloomMigration(CancellationToken token)
         {
-            var blockTree = _context.BlockTree;
-            var storage = _context.BloomStorage;
-            var to = MinBlockNumber;
+            if (_context.BloomStorage == null) throw new StepDependencyException(nameof(_context.BloomStorage));
+            if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
+            
+            IBlockTree blockTree = _context.BlockTree;
+            IBloomStorage storage = _context.BloomStorage;
+            long to = MinBlockNumber;
             long synced = storage.MigratedBlockNumber + 1;
-            var from = synced;
+            long from = synced;
             _migrateCount = to + 1;
             _averages = _context.BloomStorage.Averages.ToArray();
-            
+
             _progress.Update(synced);
 
             if (_logger.IsInfo) _logger.Info(GetLogMessage("started"));
@@ -166,7 +184,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 finally
                 {
                     _progress.MarkEnd();
-                    _stopwatch.Stop();
+                    _stopwatch?.Stop();
                 }
 
                 IEnumerable<BlockHeader> GetHeadersForMigration()
@@ -195,21 +213,20 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
         }
 
-        private string GetLogMessage(string status, string suffix = null)
+        private string GetLogMessage(string status, string? suffix = null)
         {
-            var message = $"BloomDb migration {status} | {_stopwatch.Elapsed:d\\:hh\\:mm\\:ss} | {_progress.CurrentValue.ToString().PadLeft(_migrateCount.ToString().Length)} / {_migrateCount} blocks migrated. | current {_progress.CurrentPerSecond:F2}bps | total {_progress.TotalPerSecond:F2}bps. {GeAveragesMessage()} {suffix}";
+            string message = $"BloomDb migration {status} | {_stopwatch?.Elapsed:d\\:hh\\:mm\\:ss} | {_progress.CurrentValue.ToString().PadLeft(_migrateCount.ToString().Length)} / {_migrateCount} blocks migrated. | current {_progress.CurrentPerSecond:F2}bps | total {_progress.TotalPerSecond:F2}bps. {GeAveragesMessage()} {suffix}";
             _progress.SetMeasuringPoint();
             return message;
-
         }
 
         private string GeAveragesMessage()
         {
-            if (_bloomConfig.MigrationStatistics)
+            if (_bloomConfig.MigrationStatistics && _averages != null)
             {
                 _builder.Clear();
                 _builder.Append("Average bloom saturation: ");
-                for (var index = 0; index < _averages.Length; index++)
+                for (int index = 0; index < _averages.Length; index++)
                 {
                     var average = _averages[index];
                     _builder.Append((average.Value / Bloom.BitLength).ToString("P2"));
@@ -235,7 +252,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 return _builder.ToString();
             }
-            
+
             return String.Empty;
         }
 

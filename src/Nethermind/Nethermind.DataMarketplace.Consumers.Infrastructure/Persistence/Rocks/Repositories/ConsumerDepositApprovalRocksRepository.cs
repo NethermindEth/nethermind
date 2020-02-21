@@ -14,10 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Consumers.Deposits.Queries;
 using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
 using Nethermind.DataMarketplace.Core;
@@ -38,28 +39,29 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             _rlpDecoder = rlpDecoder;
         }
 
-        public Task<DepositApproval> GetAsync(Keccak id) => Task.FromResult(Decode(_database.Get(id)));
+        public Task<DepositApproval?> GetAsync(Keccak id)
+        {
+            byte[]? fromDatabase = _database.Get(id);
+            return fromDatabase == null ? Task.FromResult<DepositApproval?>(null) : Task.FromResult<DepositApproval?>(Decode(fromDatabase));
+        }
 
         public Task<PagedResult<DepositApproval>> BrowseAsync(GetConsumerDepositApprovals query)
         {
-            if (query is null)
-            {
-                return Task.FromResult(PagedResult<DepositApproval>.Empty);
-            }
-
-            var depositApprovalsBytes = _database.GetAll().ToArray();
+            if (query == null) throw new ArgumentNullException(nameof(query));
+            
+            byte[][] depositApprovalsBytes = _database.GetAll().ToArray();
             if (depositApprovalsBytes.Length == 0)
             {
                 return Task.FromResult(PagedResult<DepositApproval>.Empty);
             }
 
-            var depositApprovals = new DepositApproval[depositApprovalsBytes.Length];
-            for (var i = 0; i < depositApprovalsBytes.Length; i++)
+            DepositApproval[] depositApprovals = new DepositApproval[depositApprovalsBytes.Length];
+            for (int i = 0; i < depositApprovalsBytes.Length; i++)
             {
                 depositApprovals[i] = Decode(depositApprovalsBytes[i]);
             }
 
-            var filteredDepositApprovals = depositApprovals.AsEnumerable();
+            IEnumerable<DepositApproval> filteredDepositApprovals = depositApprovals.AsEnumerable();
             if (!(query.DataAssetId is null))
             {
                 filteredDepositApprovals = filteredDepositApprovals.Where(a => a.AssetId == query.DataAssetId);
@@ -75,7 +77,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
                 filteredDepositApprovals = filteredDepositApprovals.Where(a => a.State == DepositApprovalState.Pending);
             }
 
-            return Task.FromResult(filteredDepositApprovals.OrderByDescending(a => a.Timestamp).Paginate(query));
+            return Task.FromResult(filteredDepositApprovals.OrderByDescending(a => a.Timestamp).ToArray().Paginate(query));
         }
 
         public Task AddAsync(DepositApproval depositApproval) => AddOrUpdateAsync(depositApproval);
@@ -83,15 +85,13 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
 
         private Task AddOrUpdateAsync(DepositApproval depositApproval)
         {
-            var rlp = _rlpDecoder.Encode(depositApproval);
+            Serialization.Rlp.Rlp rlp = _rlpDecoder.Encode(depositApproval);
             _database.Set(depositApproval.Id, rlp.Bytes);
 
             return Task.CompletedTask;
         }
 
         private DepositApproval Decode(byte[] bytes)
-            => bytes is null
-                ? null
-                : _rlpDecoder.Decode(bytes.AsRlpStream());
+            => _rlpDecoder.Decode(bytes.AsRlpStream());
     }
 }

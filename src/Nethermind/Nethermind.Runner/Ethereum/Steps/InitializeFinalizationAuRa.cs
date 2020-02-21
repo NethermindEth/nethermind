@@ -31,13 +31,15 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             _context = context;
         }
-        
+
         public Task Execute()
         {
+            if (_context.AuRaBlockProcessorExtension == null) throw new StepDependencyException(nameof(_context.AuRaBlockProcessorExtension));
+            
             _context.FinalizationManager = InitFinalizationManager(_context.AuRaBlockProcessorExtension);
             return Task.CompletedTask;
         }
-        
+
         private IBlockFinalizationManager InitFinalizationManager(IAuRaBlockProcessorExtension auRaBlockProcessorExtension)
         {
             AuRaBlockFinalizationManager finalizationManager = new AuRaBlockFinalizationManager(_context.BlockTree, _context.ChainLevelInfoRepository, _context.MainBlockProcessor, _context.ValidatorStore, new ValidSealerStrategy(), _context.LogManager);

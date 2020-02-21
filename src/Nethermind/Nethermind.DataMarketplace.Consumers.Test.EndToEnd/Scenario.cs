@@ -189,8 +189,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.EndToEnd
             var makeDeposit = new MakeDepositForRpc
             {
                 DataAssetId = dataAsset.Id,
-                Units = dataAsset.MaxUnits,
-                Value = dataAsset.MaxUnits * new UInt256(dataAsset.UnitPrice)
+                Units = dataAsset.MaxUnits ?? 0,
+                Value = (dataAsset.MaxUnits ?? 0) * new UInt256(dataAsset.UnitPrice ?? 0)
             };
             Log(_serializer.Serialize(makeDeposit, true));
             Separator();

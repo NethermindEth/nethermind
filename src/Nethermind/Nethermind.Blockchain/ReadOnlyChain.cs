@@ -22,6 +22,7 @@ namespace Nethermind.Blockchain
     {
         public IBlockchainProcessor ChainProcessor { get; set; }
         public IStateProvider ReadOnlyStateProvider { get; set; }
+        
         public IBlockProcessor BlockProcessor { get; set; }
         public IPendingTxSelector PendingTxSelector { get; set; }
     }
