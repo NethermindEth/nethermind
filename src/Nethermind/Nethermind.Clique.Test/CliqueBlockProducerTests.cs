@@ -772,7 +772,7 @@ namespace Nethermind.Clique.Test
             await goerli.StopNode(TestItem.PrivateKeyA);
         }
 
-        [Test]
+        [Test, Retry(3)]
         public async Task Many_validators_can_process_blocks()
         {
             PrivateKey[] keys = new[] {TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC}.OrderBy(pk => pk.Address, AddressComparer.Instance).ToArray();
