@@ -22,20 +22,20 @@ namespace Nethermind.DataMarketplace.Core.Domain
 {
     public class DataAsset
     {
-        public Keccak Id { get; private set; }
-        public string Name { get; private set; }
-        public string Description { get; private set; }
-        public UInt256 UnitPrice { get; private set; }
-        public DataAssetUnitType UnitType { get; private set; }
-        public QueryType QueryType { get; private set; }
-        public uint MinUnits { get; private set; }
-        public uint MaxUnits { get; private set; }
-        public DataAssetRules Rules { get; private set; }
-        public DataAssetProvider Provider { get; private set; }
-        public string? File { get; private set; }
+        public Keccak Id { get; }
+        public string Name { get; }
+        public string Description { get; }
+        public UInt256 UnitPrice { get; }
+        public DataAssetUnitType UnitType { get; }
+        public QueryType QueryType { get; }
+        public uint MinUnits { get; }
+        public uint MaxUnits { get; }
+        public DataAssetRules Rules { get; }
+        public DataAssetProvider Provider { get; }
+        public string? File { get; }
         public DataAssetState State { get; private set; }
-        public string? TermsAndConditions { get; private set; }
-        public bool KycRequired { get; private set; }
+        public string? TermsAndConditions { get; }
+        public bool KycRequired { get; }
         public string? Plugin { get; private set; }
 
         public DataAsset(

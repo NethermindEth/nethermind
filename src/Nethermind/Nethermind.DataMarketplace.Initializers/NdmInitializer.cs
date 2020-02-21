@@ -77,7 +77,7 @@ namespace Nethermind.DataMarketplace.Initializers
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public async Task<INdmCapabilityConnector> InitAsync(
+        public virtual async Task<INdmCapabilityConnector> InitAsync(
             IConfigProvider configProvider,
             IDbProvider dbProvider,
             string baseDbPath,
@@ -172,7 +172,7 @@ namespace Nethermind.DataMarketplace.Initializers
             return capabilityConnector;
         }
 
-        private async Task<(NdmConfig config, INdmServices services, INdmFaucet faucet,
+        protected async Task<(NdmConfig config, INdmServices services, INdmFaucet faucet,
                 IEthRequestService ethRequestService, IAccountService accountService,
                 IConsumerService consumerService, Address consumerAddress, Address providerAddress)>
             PreInitAsync(

@@ -28,8 +28,8 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
         public BigInteger? UnitPrice { get; set; }
         public string? UnitType { get; set; }
         public string? QueryType { get; set; }
-        public uint? MinUnits { get; set; }
-        public uint? MaxUnits { get; set; }
+        public uint MinUnits { get; set; }
+        public uint MaxUnits { get; set; }
         public DataAssetRulesForRpc? Rules { get; set; }
         public DataAssetProviderForRpc? Provider { get; set; }
         public string? File { get; set; }
