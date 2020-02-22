@@ -23,21 +23,26 @@ namespace Nethermind.Core
 {
     public static class ClientVersion
     {
+        private static string _gitTag;
+        private static string _osDescription;
+        private static string _date;
+
         static ClientVersion()
         {
-            string osDescription = RuntimeInformation.OSDescription;
-            if (osDescription.Contains('#'))
+            _osDescription = RuntimeInformation.OSDescription;
+            if (_osDescription.Contains('#'))
             {
-                int indexOfHash = osDescription.IndexOf('#');
-                osDescription = osDescription.Substring(0, Math.Max(0, indexOfHash - 1));
+                int indexOfHash = _osDescription.IndexOf('#');
+                _osDescription = _osDescription.Substring(0, Math.Max(0, indexOfHash - 1));
             }
-            string date = DateTime.UtcNow.ToString("yyyyMMdd");
-            string gitTag = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "git-hash")) ? File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "git-hash")).Trim().Replace("g", "") : string.Empty;
+            
+            _date = DateTime.UtcNow.ToString("yyyyMMdd");
+            _gitTag = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "git-hash")) ? File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "git-hash")).Trim().Replace("g", "") : string.Empty;
 
-            Description = $"Nethermind/v{gitTag}-{date}/{RuntimeInformation.OSArchitecture}-{osDescription}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
+            Description = $"Nethermind/v{Version}/{RuntimeInformation.OSArchitecture}-{_osDescription}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
         }
-        
-        public static string Version { get; }
+
+        public static string Version => $"{_gitTag}-{_date}";
         
         public static string Description { get; }
     }

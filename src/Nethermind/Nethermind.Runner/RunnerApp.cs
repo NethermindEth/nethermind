@@ -22,6 +22,7 @@ using System.Reflection;
 using System.Runtime.Loader;
 using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Logging;
 using NLog;
 using NLog.Config;
@@ -67,6 +68,7 @@ namespace Nethermind.Runner
 
             CommandLineApplication app = new CommandLineApplication {Name = "Nethermind.Runner"};
             app.HelpOption("-?|-h|--help");
+            app.VersionOption("-v|--version", () => ClientVersion.Version, () => ClientVersion.Description);
             CommandOption configFile = app.Option("-c|--config <configFile>", "config file path", CommandOptionType.SingleValue);
             CommandOption dbBasePath = app.Option("-d|--baseDbPath <baseDbPath>", "base db path", CommandOptionType.SingleValue);
             CommandOption logLevelOverride = app.Option("-l|--log <logLevel>", "log level", CommandOptionType.SingleValue);
