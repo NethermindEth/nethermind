@@ -84,9 +84,9 @@ jobs:
     - name: Nethermind.Core2.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Core2.Test
-    - name: Nethermind.Store.Test
+    - name: Nethermind.State.Test
       run: |
-        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Store.Test
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.State.Test
     - name: Nethermind.Wallet.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Wallet.Test
