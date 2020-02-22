@@ -24,7 +24,9 @@ using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Store;
+using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Ethereum.Trie.Test
@@ -161,7 +163,7 @@ namespace Ethereum.Trie.Test
 
                 TestContext.WriteLine();
                 TestContext.WriteLine($"Setting {keyString} -> {valueString}");
-                patriciaTree.Set(key, value);
+                patriciaTree.Set(key.ToPackedByteArray(), value);
             }
 
             patriciaTree.UpdateRootHash();
@@ -335,11 +337,11 @@ namespace Ethereum.Trie.Test
         public void Delete_missing_resolved_on_extension()
         {
             PatriciaTree patriciaTree = new PatriciaTree(_db, Keccak.EmptyTreeHash, false, true);
-            patriciaTree.Set(new Nibble[] { 1, 2, 3, 4 }, new byte[] { 1 });
-            patriciaTree.Set(new Nibble[] { 1, 2, 3, 4, 5 }, new byte[] { 2 });
+            patriciaTree.Set(new Nibble[] { 1, 2, 3, 4 }.ToPackedByteArray(), new byte[] { 1 });
+            patriciaTree.Set(new Nibble[] { 1, 2, 3, 4, 5 }.ToPackedByteArray(), new byte[] { 2 });
             patriciaTree.UpdateRootHash();
             Keccak rootBefore = patriciaTree.RootHash;
-            patriciaTree.Set(new Nibble[] { 1, 2, 3 }, new byte[] { });
+            patriciaTree.Set(new Nibble[] { 1, 2, 3 }.ToPackedByteArray(), new byte[] { });
             patriciaTree.UpdateRootHash();
             Assert.AreEqual(rootBefore, patriciaTree.RootHash);
         }

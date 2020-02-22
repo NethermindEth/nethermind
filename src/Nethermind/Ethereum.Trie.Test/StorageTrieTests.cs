@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Store;
 using NUnit.Framework;
 
