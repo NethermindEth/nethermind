@@ -57,7 +57,7 @@ namespace Nethermind.AuRa.Test
             _auRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
             _validatorStore = Substitute.For<IValidatorStore>();
             _validSealerStrategy = Substitute.For<IValidSealerStrategy>();
-            var wallet = new DevWallet(new WalletConfig(), NullLogManager.Instance);
+            var wallet = new DevWallet(new WalletConfig(), LimboLogs.Instance);
             _address = wallet.NewAccount(new NetworkCredential(string.Empty, "AAA").SecurePassword);
             
             _auRaSealer = new AuRaSealer(
@@ -67,7 +67,7 @@ namespace Nethermind.AuRa.Test
                 _address,
                 wallet,
                 _validSealerStrategy,
-                NullLogManager.Instance);
+                LimboLogs.Instance);
         }
 
         [TestCase(9, true, ExpectedResult = false, TestName = "Step too low.")]
@@ -90,7 +90,7 @@ namespace Nethermind.AuRa.Test
             
             block = await _auRaSealer.SealBlock(block, CancellationToken.None);
             
-            var ecdsa = new EthereumEcdsa(new MordenSpecProvider(), NullLogManager.Instance);
+            var ecdsa = new EthereumEcdsa(new MordenSpecProvider(), LimboLogs.Instance);
             var signature = new Signature(block.Header.AuRaSignature);
             signature.V += Signature.VOffset;
             var recoveredAddress = ecdsa.RecoverAddress(signature, block.Header.CalculateHash(RlpBehaviors.ForSealing));

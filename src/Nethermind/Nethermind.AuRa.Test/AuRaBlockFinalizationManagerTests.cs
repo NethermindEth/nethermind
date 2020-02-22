@@ -46,7 +46,7 @@ namespace Nethermind.AuRa.Test
             _chainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
             _blockProcessor = Substitute.For<IBlockProcessor>();
             _validatorStore = Substitute.For<IValidatorStore>();
-            _logManager = Substitute.For<ILogManager>();
+            _logManager = LimboLogs.Instance;
             _validSealerStrategy = Substitute.For<IValidSealerStrategy>();
 
             _validatorStore.GetValidators().Returns(new Address[] {TestItem.AddressA, TestItem.AddressB, TestItem.AddressC});

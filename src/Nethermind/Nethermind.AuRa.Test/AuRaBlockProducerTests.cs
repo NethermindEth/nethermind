@@ -73,7 +73,7 @@ namespace Nethermind.AuRa.Test
                 _blockTree,
                 _blockProcessingQueue,
                 _timestamper,
-                NullLogManager.Instance, _auRaStepCalculator, _auraConfig, _nodeAddress);
+                LimboLogs.Instance, _auRaStepCalculator, _auraConfig, _nodeAddress);
 
             _auraConfig.ForceSealing.Returns(true);
             _pendingTxSelector.SelectTransactions(Arg.Any<long>()).Returns(Array.Empty<Transaction>());

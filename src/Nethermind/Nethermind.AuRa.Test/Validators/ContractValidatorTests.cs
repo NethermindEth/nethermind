@@ -68,7 +68,7 @@ namespace Nethermind.AuRa.Test.Validators
             _validSealerStrategy = new ValidSealerStrategy();
             _stateProvider = Substitute.For<IStateProvider>();
             _abiEncoder = Substitute.For<IAbiEncoder>();
-            _logManager = Substitute.For<ILogManager>();
+            _logManager = LimboLogs.Instance;
             _blockTree = Substitute.For<IBlockTree>();
             _blockFinalizationManager = Substitute.For<IBlockFinalizationManager>();
             _receiptsStorage = Substitute.For<IReceiptStorage>();

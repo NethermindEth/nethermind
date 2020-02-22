@@ -52,7 +52,7 @@ namespace Nethermind.AuRa.Test
         {
             _auRaParameters = new AuRaParameters();
             _auRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
-            _logManager = NullLogManager.Instance;
+            _logManager = LimboLogs.Instance;
             _wallet = new DevWallet(new WalletConfig(), _logManager);
             _address = _wallet.NewAccount(new NetworkCredential(string.Empty, "AAA").SecurePassword);
             

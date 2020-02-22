@@ -46,7 +46,7 @@ namespace Nethermind.AuRa.Test.Validators
             _validator = GetValidator(AuRaParameters.ValidatorType.List);
             _innerValidators = new SortedList<long, IAuRaValidatorProcessorExtension>();
             _factory = Substitute.For<IAuRaValidatorProcessorFactory>();
-            _logManager = Substitute.For<ILogManager>();
+            _logManager = LimboLogs.Instance;
             _finalizationManager = Substitute.For<IBlockFinalizationManager>();
             _blockTree = Substitute.For<IBlockTree>();
             _validatorStore = Substitute.For<IValidatorStore>();
