@@ -29,7 +29,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Logging;
 using Nethermind.Store;
-using Nethermind.Store.BeamSync;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test

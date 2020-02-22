@@ -20,6 +20,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -32,7 +33,6 @@ using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Store;
-using Nethermind.Store.BeamSync;
 using Nethermind.Trie;
 using NUnit.Framework;
 

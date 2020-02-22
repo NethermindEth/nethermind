@@ -14,7 +14,4 @@
     <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
     <ProjectReference Include="..\Nethermind.Trie\Nethermind.Trie.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <Folder Include="Db" />
-  </ItemGroup>
 </Project>

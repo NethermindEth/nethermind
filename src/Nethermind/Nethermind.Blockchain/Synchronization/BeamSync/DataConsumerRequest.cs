@@ -16,7 +16,7 @@
 
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Store.BeamSync
+namespace Nethermind.Blockchain.Synchronization.BeamSync
 {
     public class DataConsumerRequest
     {

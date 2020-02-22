@@ -45,7 +45,6 @@ using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Store;
-using Nethermind.Store.BeamSync;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {

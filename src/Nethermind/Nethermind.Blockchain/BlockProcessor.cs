@@ -32,7 +32,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Store;
-using Nethermind.Store.BeamSync;
 using Nethermind.Store.Proofs;
 using Nethermind.TxPool;
 

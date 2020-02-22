@@ -17,7 +17,7 @@
 using System;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Store.BeamSync
+namespace Nethermind.Blockchain.Synchronization.BeamSync
 {
     public interface INodeDataConsumer
     {

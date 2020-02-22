@@ -16,10 +16,9 @@
 
 using System;
 using System.Threading;
-using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Store.BeamSync
+namespace Nethermind.Blockchain.Synchronization.BeamSync
 {
     public class NullDataConsumer : INodeDataConsumer
     {

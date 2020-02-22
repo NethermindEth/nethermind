@@ -28,7 +28,6 @@ using Nethermind.Logging;
 using Nethermind.Mining;
 using Nethermind.Stats.Model;
 using Nethermind.Store;
-using Nethermind.Store.BeamSync;
 
 namespace Nethermind.Blockchain.Synchronization
 {

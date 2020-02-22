@@ -18,11 +18,11 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Store;
-using Nethermind.Store.BeamSync;
 
 namespace Nethermind.Blockchain.Synchronization.FastSync
 {

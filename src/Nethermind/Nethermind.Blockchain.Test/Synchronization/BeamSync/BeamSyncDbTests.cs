@@ -23,7 +23,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Store;
-using Nethermind.Store.BeamSync;
 using Nethermind.Trie;
 using NUnit.Framework;
 
