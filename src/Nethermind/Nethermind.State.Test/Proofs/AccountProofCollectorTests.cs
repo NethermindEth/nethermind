@@ -27,7 +27,8 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store.Proofs;
+using Nethermind.State;
+using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using NUnit.Framework;
 

@@ -31,7 +31,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.Store.Proofs;
+using Nethermind.State.Proofs;
 
 // ReSharper disable InconsistentlySynchronizedField
 namespace Nethermind.Blockchain.Synchronization.FastBlocks

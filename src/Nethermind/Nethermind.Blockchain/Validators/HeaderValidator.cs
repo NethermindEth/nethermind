@@ -16,13 +16,13 @@
 
 using System;
 using Nethermind.Blockchain.Find;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Specs;
 using Nethermind.Logging;
-using Nethermind.Mining;
 
 namespace Nethermind.Blockchain.Validators
 {

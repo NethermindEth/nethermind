@@ -18,7 +18,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Store.Proofs
+namespace Nethermind.State.Proofs
 {
     /// <summary>
     /// EIP-1186 style account proof

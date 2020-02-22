@@ -21,7 +21,7 @@ using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
-namespace Nethermind.Store
+namespace Nethermind.State
 {
     public class StateTree : PatriciaTree
     {

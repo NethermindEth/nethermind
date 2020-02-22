@@ -27,7 +27,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.Store;
+using Nethermind.State;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.Synchronization.BeamSync
 {

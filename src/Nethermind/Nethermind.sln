@@ -39,7 +39,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.PerfTest", "Neth
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Runner", "Nethermind.Runner\Nethermind.Runner.csproj", "{33E2CCD2-0D52-477C-8EAC-D429F66BEAC0}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Mining", "Nethermind.Mining\Nethermind.Mining.csproj", "{81CC021C-021C-427C-9CE1-2E521E7F2985}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Consensus.Ethash", "Nethermind.Consensus.Ethash\Nethermind.Consensus.Ethash.csproj", "{81CC021C-021C-427C-9CE1-2E521E7F2985}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Mining.Test", "Nethermind.Mining.Test\Nethermind.Mining.Test.csproj", "{658F7F8A-0314-4005-93E8-03B4EB367597}"
 EndProject
@@ -101,7 +101,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Wallet.Test", "N
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.EvmPlayground", "Nethermind.EvmPlayground\Nethermind.EvmPlayground.csproj", "{1FAA38E0-6392-4487-BEF1-7AD8B13A011E}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Clique", "Nethermind.Clique\Nethermind.Clique.csproj", "{EEA444A4-522B-4E09-A822-A69EC007EC5D}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Consensus.Clique", "Nethermind.Consensus.Clique\Nethermind.Consensus.Clique.csproj", "{EEA444A4-522B-4E09-A822-A69EC007EC5D}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Clique.Test", "Nethermind.Clique.Test\Nethermind.Clique.Test.csproj", "{333F90F5-6A53-40AF-98DC-1DE4B024D5D8}"
 EndProject
@@ -171,7 +171,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataMarketplace.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Runner.Test", "Nethermind.Runner.Test\Nethermind.Runner.Test.csproj", "{47B19E0D-5DED-436D-9BFB-17EF887634D3}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.AuRa", "Nethermind.AuRa\Nethermind.AuRa.csproj", "{82C4DEFF-0025-4BFF-9FED-A050F1BEFC3E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Consensus.AuRa", "Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj", "{82C4DEFF-0025-4BFF-9FED-A050F1BEFC3E}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.AuRa.Test", "Nethermind.AuRa.Test\Nethermind.AuRa.Test.csproj", "{2D5512D3-8E5B-4815-9791-A2220559AF92}"
 EndProject
@@ -268,6 +268,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Db.Rpc", "Nethermind.Db.Rpc\Nethermind.Db.Rpc.csproj", "{78618EE3-9D90-4BD9-80F0-BAF842B3E07D}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Db.Rocks", "Nethermind.Db.Rocks\Nethermind.Db.Rocks.csproj", "{EBDCE0AD-DDB6-46D6-B86D-396679FEBB3C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Consensus", "Nethermind.Consensus\Nethermind.Consensus.csproj", "{74F3A9CF-C38C-497C-8FC1-131AC97C0DAE}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -719,6 +721,10 @@ Global
 		{EBDCE0AD-DDB6-46D6-B86D-396679FEBB3C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EBDCE0AD-DDB6-46D6-B86D-396679FEBB3C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EBDCE0AD-DDB6-46D6-B86D-396679FEBB3C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{74F3A9CF-C38C-497C-8FC1-131AC97C0DAE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{74F3A9CF-C38C-497C-8FC1-131AC97C0DAE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{74F3A9CF-C38C-497C-8FC1-131AC97C0DAE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{74F3A9CF-C38C-497C-8FC1-131AC97C0DAE}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

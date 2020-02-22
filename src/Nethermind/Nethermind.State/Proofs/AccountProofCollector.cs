@@ -24,7 +24,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
-namespace Nethermind.Store.Proofs
+namespace Nethermind.State.Proofs
 {
     /// <summary>
     /// EIP-1186 style proof collector

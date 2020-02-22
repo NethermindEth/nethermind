@@ -19,14 +19,15 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
-using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store.Repositories;
+using Nethermind.State.Repositories;
 using NSubstitute;
 using NUnit.Framework;
 

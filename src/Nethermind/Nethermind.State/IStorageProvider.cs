@@ -16,7 +16,7 @@
 
 using Nethermind.Core;
 
-namespace Nethermind.Store
+namespace Nethermind.State
 {
     public interface IStorageProvider
     {

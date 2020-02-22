@@ -32,9 +32,10 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
+using Nethermind.State;
+using Nethermind.State.Repositories;
 using Nethermind.Store;
 using Nethermind.Store.Bloom;
-using Nethermind.Store.Repositories;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 

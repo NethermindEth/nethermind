@@ -20,6 +20,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.State;
 using Nethermind.Store;
 using Nethermind.TxPool;
 using NSubstitute;

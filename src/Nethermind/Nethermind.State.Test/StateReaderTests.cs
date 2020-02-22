@@ -22,6 +22,7 @@ using Nethermind.Db;
 using Nethermind.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 

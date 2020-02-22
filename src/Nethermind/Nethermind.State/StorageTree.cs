@@ -23,7 +23,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
-namespace Nethermind.Store
+namespace Nethermind.State
 {
     public class StorageTree : PatriciaTree
     {

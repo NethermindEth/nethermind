@@ -22,7 +22,7 @@ using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Store;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.Synchronization.FastSync
 {

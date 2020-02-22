@@ -19,6 +19,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test

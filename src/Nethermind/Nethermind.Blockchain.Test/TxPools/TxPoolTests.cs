@@ -30,6 +30,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Specs;
+using Nethermind.State;
 using Nethermind.Store;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Filters;

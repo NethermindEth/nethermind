@@ -31,9 +31,10 @@ using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.State;
+using Nethermind.State.Repositories;
 using Nethermind.Store;
 using Nethermind.Store.Bloom;
-using Nethermind.Store.Repositories;
 using Nethermind.TxPool;
 using NUnit.Framework;
 

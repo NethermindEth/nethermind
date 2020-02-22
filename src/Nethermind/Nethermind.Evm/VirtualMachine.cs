@@ -32,7 +32,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.Store;
+using Nethermind.State;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 

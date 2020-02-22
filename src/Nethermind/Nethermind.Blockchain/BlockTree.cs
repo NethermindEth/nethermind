@@ -34,9 +34,9 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store;
+using Nethermind.State.Repositories;
+using Nethermind.State;
 using Nethermind.Store.Bloom;
-using Nethermind.Store.Repositories;
 using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain

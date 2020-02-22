@@ -31,8 +31,9 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.Store;
-using Nethermind.Store.Proofs;
+using Nethermind.State;
+using Nethermind.State.Proofs;
+using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain

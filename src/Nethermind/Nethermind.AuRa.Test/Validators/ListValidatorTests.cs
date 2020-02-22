@@ -21,7 +21,7 @@ using System.Linq;
 using System.Numerics;
 using System.Runtime.Serialization.Formatters;
 using FluentAssertions;
-using Nethermind.AuRa.Validators;
+using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs.ChainSpecStyle;

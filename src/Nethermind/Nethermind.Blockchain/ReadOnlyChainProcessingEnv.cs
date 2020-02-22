@@ -22,7 +22,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Specs;
 using Nethermind.Logging;
-using Nethermind.Store;
+using Nethermind.State;
+using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain

@@ -15,10 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Abi;
-using Nethermind.AuRa;
-using Nethermind.AuRa.Rewards;
-using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Rewards;
+using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Evm;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Wallet;

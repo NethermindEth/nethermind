@@ -21,10 +21,6 @@
       <Project>{968435E3-4245-4CE2-A720-7F334BBB46FA}</Project>
       <Name>Ethereum.Test.Base</Name>
     </ProjectReference>
-    <ProjectReference Include="..\Nethermind.Store\Nethermind.Store.csproj">
-      <Project>{8311E4F7-DB36-40F5-A496-7CE4FD486FEE}</Project>
-      <Name>Nethermind.Store</Name>
-    </ProjectReference>
     <EmbeddedResource Include="..\..\tests\TrieTests\hex_encoded_securetrie_test.json">
       <Link>hex_encoded_securetrie_test.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

@@ -20,7 +20,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
-namespace Nethermind.Store.Proofs
+namespace Nethermind.State.Proofs
 {
     public static class ProofVerifier
     {

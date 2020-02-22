@@ -23,7 +23,7 @@ using Nethermind.Logging;
 using Nethermind.Trie;
 using Metrics = Nethermind.Db.Metrics;
 
-namespace Nethermind.Store
+namespace Nethermind.State
 {
     public class StateReader : IStateReader
     {

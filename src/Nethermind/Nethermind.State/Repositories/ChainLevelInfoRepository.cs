@@ -20,7 +20,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Store.Repositories
+namespace Nethermind.State.Repositories
 {
     public class ChainLevelInfoRepository : IChainLevelInfoRepository
     {

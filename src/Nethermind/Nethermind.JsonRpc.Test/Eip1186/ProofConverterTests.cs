@@ -21,8 +21,9 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Test.Data;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
+using Nethermind.State.Proofs;
 using Nethermind.Store;
-using Nethermind.Store.Proofs;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Eip1186

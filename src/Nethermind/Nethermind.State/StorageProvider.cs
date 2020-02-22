@@ -23,7 +23,7 @@ using Nethermind.Core.Resettables;
 using Nethermind.Db;
 using Nethermind.Logging;
 
-namespace Nethermind.Store
+namespace Nethermind.State
 {
     public class StorageProvider : IStorageProvider
     {

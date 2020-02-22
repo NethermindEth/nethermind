@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
@@ -25,9 +26,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
-using Nethermind.Mining;
 using Nethermind.Stats.Model;
-using Nethermind.Store;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.Synchronization
 {

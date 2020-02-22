@@ -26,9 +26,9 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.State.Repositories;
 using Nethermind.Store;
 using Nethermind.Store.Bloom;
-using Nethermind.Store.Repositories;
 using Nethermind.TxPool;
 using NUnit.Framework;
 

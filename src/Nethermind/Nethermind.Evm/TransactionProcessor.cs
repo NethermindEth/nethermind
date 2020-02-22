@@ -27,7 +27,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.Store;
+using Nethermind.State;
 using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Evm

@@ -16,7 +16,7 @@
 
 using Nethermind.Core;
 
-namespace Nethermind.Store.Repositories
+namespace Nethermind.State.Repositories
 {
     public interface IChainLevelInfoRepository
     {

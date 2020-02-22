@@ -19,7 +19,7 @@ using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Store
+namespace Nethermind.State
 {
     [DebuggerDisplay("{Address}->{Index}")]
     public struct StorageCell : IEquatable<StorageCell>

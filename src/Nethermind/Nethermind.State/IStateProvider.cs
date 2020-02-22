@@ -20,7 +20,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Trie;
 
-namespace Nethermind.Store
+namespace Nethermind.State
 {
     public interface IStateProvider
     {

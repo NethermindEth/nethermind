@@ -19,7 +19,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
-using Nethermind.Store;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain
 {

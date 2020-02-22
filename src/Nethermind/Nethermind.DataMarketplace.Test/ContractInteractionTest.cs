@@ -39,6 +39,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
+using Nethermind.State;
 using Nethermind.Store;
 using Nethermind.Trie;
 using Nethermind.TxPool;

@@ -17,7 +17,7 @@
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Store
+namespace Nethermind.State
 {
     public interface IStateTracer
     {

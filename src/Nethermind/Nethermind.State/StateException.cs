@@ -16,7 +16,7 @@
 
 using System;
 
-namespace Nethermind.Store
+namespace Nethermind.State
 {
     public class StateException : Exception
     {

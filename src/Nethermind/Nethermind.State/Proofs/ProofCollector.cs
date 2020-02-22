@@ -19,7 +19,7 @@ using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 
-namespace Nethermind.Store.Proofs
+namespace Nethermind.State.Proofs
 {
     /// <summary>
     /// EIP-1186 style proof collector

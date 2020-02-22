@@ -14,8 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Mining;
-using Nethermind.Store;
+using Nethermind.Consensus;
+using Nethermind.State;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain
 {

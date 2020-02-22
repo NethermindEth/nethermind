@@ -32,7 +32,7 @@ using Metrics = Nethermind.Db.Metrics;
 [assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 
-namespace Nethermind.Store
+namespace Nethermind.State
 {
     public class StateProvider : IStateProvider
     {

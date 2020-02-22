@@ -17,8 +17,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.AuRa.Rewards;
-using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;

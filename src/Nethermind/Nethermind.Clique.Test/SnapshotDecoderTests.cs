@@ -16,6 +16,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.Clique;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;

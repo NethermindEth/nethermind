@@ -17,7 +17,6 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Logging;
-using Nethermind.Mining;
 using Nethermind.Runner.Ethereum.Context;
 
 namespace Nethermind.Runner.Ethereum.Steps

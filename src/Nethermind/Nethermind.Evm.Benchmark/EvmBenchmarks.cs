@@ -25,7 +25,7 @@ using Nethermind.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.Store;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Benchmark
 {

@@ -30,7 +30,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Store;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Ethereum.Test.Base

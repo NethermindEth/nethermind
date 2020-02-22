@@ -28,6 +28,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Store;
 using NUnit.Framework;
 

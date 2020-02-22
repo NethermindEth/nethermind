@@ -17,7 +17,7 @@
 using System;
 using System.Threading;
 
-namespace Nethermind.Store.Repositories
+namespace Nethermind.State.Repositories
 {
     public class BatchWrite : IDisposable
     {

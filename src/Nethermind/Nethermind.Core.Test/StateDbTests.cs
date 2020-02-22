@@ -16,7 +16,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
-using Nethermind.Store;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test

@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Store;
 using Nethermind.Trie;
 using NUnit.Framework;

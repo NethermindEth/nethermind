@@ -22,6 +22,7 @@ using Nethermind.Core.Resettables;
 using Nethermind.Db;
 using Nethermind.Specs.Forks;
 using Nethermind.Logging;
+using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
