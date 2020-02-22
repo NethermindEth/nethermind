@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain.Test.Filters
             _filterStore = Substitute.For<IFilterStore>();
             _blockProcessor = Substitute.For<IBlockProcessor>();
             _txPool = Substitute.For<ITxPool>();
-            _logManager = Substitute.For<ILogManager>();
+            _logManager = LimboLogs.Instance;
         }
 
         [Test]
