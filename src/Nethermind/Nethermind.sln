@@ -271,6 +271,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Db.Rocks", "Neth
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Consensus", "Nethermind.Consensus\Nethermind.Consensus.csproj", "{74F3A9CF-C38C-497C-8FC1-131AC97C0DAE}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.WebSockets.Test", "Nethermind.DataMarketplace.WebSockets.Test\Nethermind.DataMarketplace.WebSockets.Test.csproj", "{95663D3B-C3AC-4352-9AD0-AB8BB565A928}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -725,6 +727,10 @@ Global
 		{74F3A9CF-C38C-497C-8FC1-131AC97C0DAE}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{74F3A9CF-C38C-497C-8FC1-131AC97C0DAE}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{74F3A9CF-C38C-497C-8FC1-131AC97C0DAE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{95663D3B-C3AC-4352-9AD0-AB8BB565A928}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{95663D3B-C3AC-4352-9AD0-AB8BB565A928}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{95663D3B-C3AC-4352-9AD0-AB8BB565A928}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{95663D3B-C3AC-4352-9AD0-AB8BB565A928}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -808,6 +814,7 @@ Global
 		{FC8F352F-2F4C-41BF-93E4-C8905B3FFF47} = {C18B9986-E399-45EF-B10A-E5E94220A1A9}
 		{E2B9C82E-9711-4241-A9D7-54312D0AF5CB} = {1564814A-27F8-40A3-943E-8E950D5EE17D}
 		{EF364625-0EAD-4C4D-BFD7-9F9CDC245201} = {568F4A96-2AA2-4B80-A58A-36950E13A242}
+		{95663D3B-C3AC-4352-9AD0-AB8BB565A928} = {568F4A96-2AA2-4B80-A58A-36950E13A242}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}

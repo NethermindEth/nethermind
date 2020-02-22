@@ -70,6 +70,11 @@ namespace Nethermind.DataMarketplace.WebSockets
             var extension = parts[1];
             var data = parts[2];
 
+            if (dataAssetId.Length != 64)
+            {
+                return (null, null);
+            }
+
             return string.IsNullOrWhiteSpace(dataAssetId) ? (null, null) : (new Keccak(dataAssetId), data);
         }
 

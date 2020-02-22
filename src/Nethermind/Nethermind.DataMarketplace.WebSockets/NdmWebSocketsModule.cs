@@ -67,8 +67,6 @@ namespace Nethermind.DataMarketplace.WebSockets
         public Task SendAsync(WebSocketsMessage message)
             => Task.WhenAll(_clients.Values.Select(c => c.SendAsync(message)));
 
-        public void Cleanup(string clientId) => _clients.TryRemove(clientId, out _);
-        
         public void RemoveClient(string id) => _clients.TryRemove(id, out _);
     }
 }
