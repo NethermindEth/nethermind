@@ -15,9 +15,9 @@
       <Name>Nethermind.Evm</Name>
     </ProjectReference>
     <ProjectReference Include="..\Nethermind.Mining\Nethermind.Mining.csproj" />
+    <ProjectReference Include="..\Nethermind.Network.Stats\Nethermind.Network.Stats.csproj" />
     <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
     <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
-    <ProjectReference Include="..\Nethermind.Stats\Nethermind.Stats.csproj" />
     <ProjectReference Include="..\Nethermind.Store.Bloom\Nethermind.Store.Bloom.csproj" />
     <ProjectReference Include="..\Nethermind.TxPool\Nethermind.TxPool.csproj" />
   </ItemGroup>
