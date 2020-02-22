@@ -30,6 +30,7 @@ using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Infrastructure;
 using Nethermind.DataMarketplace.Initializers;
+using Nethermind.Db;
 using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;

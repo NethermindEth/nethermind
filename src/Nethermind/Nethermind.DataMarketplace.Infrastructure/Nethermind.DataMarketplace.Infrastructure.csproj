@@ -22,7 +22,7 @@
       <ProjectReference Include="..\Nethermind.Grpc\Nethermind.Grpc.csproj" />
       <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
       <ProjectReference Include="..\Nethermind.Monitoring\Nethermind.Monitoring.csproj" />
-      <ProjectReference Include="..\Nethermind.Store\Nethermind.Store.csproj" />
+      <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
       <ProjectReference Include="..\Nethermind.WebSockets\Nethermind.WebSockets.csproj" />
     </ItemGroup>
 

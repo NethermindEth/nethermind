@@ -29,6 +29,7 @@ using Nethermind.Crypto;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Initializers;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;

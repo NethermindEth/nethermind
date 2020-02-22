@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Runner.Ethereum.Context;

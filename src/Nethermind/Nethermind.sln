@@ -11,7 +11,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Blockchain", "Ne
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Evm", "Nethermind.Evm\Nethermind.Evm.csproj", "{E992EFB5-85F0-49B1-9C0B-6D3846A813A5}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Store", "Nethermind.Store\Nethermind.Store.csproj", "{8311E4F7-DB36-40F5-A496-7CE4FD486FEE}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.State", "Nethermind.State\Nethermind.State.csproj", "{8311E4F7-DB36-40F5-A496-7CE4FD486FEE}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Core.Test", "Nethermind.Core.Test\Nethermind.Core.Test.csproj", "{6BAD851C-B0A2-4DFE-A1F3-1C3A634C522B}"
 EndProject
@@ -60,7 +60,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83
 		Chains\xdai.json = Chains\xdai.json
 	EndProjectSection
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Store.Test", "Nethermind.Store.Test\Nethermind.Store.Test.csproj", "{0A927E80-884F-4F41-BC5E-1825D32726DB}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.State.Test", "Nethermind.State.Test\Nethermind.State.Test.csproj", "{0A927E80-884F-4F41-BC5E-1825D32726DB}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Config", "Nethermind.Config\Nethermind.Config.csproj", "{56791AE4-2679-47A5-9918-6D0199FD2EE9}"
 EndProject
@@ -92,8 +92,6 @@ EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RocksDbNative", "..\rocksdb-sharp\RocksDbNative\RocksDbNative.csproj", "{0CD42613-757B-4AA6-903D-CDFC0EAC697B}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Db.Test", "Nethermind.Db.Test\Nethermind.Db.Test.csproj", "{462BCF0B-2B76-45F0-A73D-34B540FEA569}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Store.Rpc", "Nethermind.Store.Rpc\Nethermind.Store.Rpc.csproj", "{FC966422-78F7-4D8E-9012-F5E3843CD217}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.JsonRpc.Client", "Nethermind.JsonRpc.Client\Nethermind.JsonRpc.Client.csproj", "{B4FAD285-1FCC-49FC-BBE8-EA8A9356097F}"
 EndProject
@@ -265,6 +263,12 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Store.Bloom", "N
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.TxPool", "Nethermind.TxPool\Nethermind.TxPool.csproj", "{7E5E72BF-5878-4FC0-B18F-CC3E814EC739}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Trie", "Nethermind.Trie\Nethermind.Trie.csproj", "{991BF7D6-EC40-48F1-BF26-E4B66BB840BE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Db.Rpc", "Nethermind.Db.Rpc\Nethermind.Db.Rpc.csproj", "{78618EE3-9D90-4BD9-80F0-BAF842B3E07D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Db.Rocks", "Nethermind.Db.Rocks\Nethermind.Db.Rocks.csproj", "{EBDCE0AD-DDB6-46D6-B86D-396679FEBB3C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -391,10 +395,6 @@ Global
 		{462BCF0B-2B76-45F0-A73D-34B540FEA569}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{462BCF0B-2B76-45F0-A73D-34B540FEA569}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{462BCF0B-2B76-45F0-A73D-34B540FEA569}.Release|Any CPU.Build.0 = Release|Any CPU
-		{FC966422-78F7-4D8E-9012-F5E3843CD217}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{FC966422-78F7-4D8E-9012-F5E3843CD217}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{FC966422-78F7-4D8E-9012-F5E3843CD217}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{FC966422-78F7-4D8E-9012-F5E3843CD217}.Release|Any CPU.Build.0 = Release|Any CPU
 		{B4FAD285-1FCC-49FC-BBE8-EA8A9356097F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{B4FAD285-1FCC-49FC-BBE8-EA8A9356097F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B4FAD285-1FCC-49FC-BBE8-EA8A9356097F}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -707,6 +707,18 @@ Global
 		{7E5E72BF-5878-4FC0-B18F-CC3E814EC739}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7E5E72BF-5878-4FC0-B18F-CC3E814EC739}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7E5E72BF-5878-4FC0-B18F-CC3E814EC739}.Release|Any CPU.Build.0 = Release|Any CPU
+		{991BF7D6-EC40-48F1-BF26-E4B66BB840BE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{991BF7D6-EC40-48F1-BF26-E4B66BB840BE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{991BF7D6-EC40-48F1-BF26-E4B66BB840BE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{991BF7D6-EC40-48F1-BF26-E4B66BB840BE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{78618EE3-9D90-4BD9-80F0-BAF842B3E07D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{78618EE3-9D90-4BD9-80F0-BAF842B3E07D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{78618EE3-9D90-4BD9-80F0-BAF842B3E07D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{78618EE3-9D90-4BD9-80F0-BAF842B3E07D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EBDCE0AD-DDB6-46D6-B86D-396679FEBB3C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EBDCE0AD-DDB6-46D6-B86D-396679FEBB3C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EBDCE0AD-DDB6-46D6-B86D-396679FEBB3C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EBDCE0AD-DDB6-46D6-B86D-396679FEBB3C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

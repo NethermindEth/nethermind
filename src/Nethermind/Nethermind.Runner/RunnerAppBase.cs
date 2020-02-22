@@ -54,6 +54,7 @@ using Newtonsoft.Json;
 using NLog;
 using NLog.Config;
 using ILogger = Nethermind.Logging.ILogger;
+using Metrics = Nethermind.Trie.Metrics;
 
 namespace Nethermind.Runner
 {
@@ -152,7 +153,7 @@ namespace Nethermind.Runner
                     metricOptions.PushGatewayUrl, ClientVersion.Description,
                     metricOptions.NodeName, intervalSeconds, logManager);
                 _monitoringService.RegisterMetrics(typeof(Nethermind.JsonRpc.Metrics));
-                _monitoringService.RegisterMetrics(typeof(Nethermind.Store.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Metrics));
                 _monitoringService.RegisterMetrics(typeof(Nethermind.Evm.Metrics));
                 _monitoringService.RegisterMetrics(typeof(Nethermind.Blockchain.Metrics));
                 _monitoringService.RegisterMetrics(typeof(Nethermind.Network.Metrics));

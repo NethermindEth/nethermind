@@ -22,6 +22,7 @@ using Nethermind.DataMarketplace.Consumers.DataAssets.Domain;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Providers.Domain;
 using Nethermind.DataMarketplace.Consumers.Providers.Repositories;
+using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
 

@@ -37,6 +37,7 @@ using Nethermind.Store;
 using Nethermind.Store.Repositories;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Test.Validators;
+using Nethermind.Db;
 using Nethermind.Network;
 using Nethermind.Store.Bloom;
 using Nethermind.Store.Proofs;

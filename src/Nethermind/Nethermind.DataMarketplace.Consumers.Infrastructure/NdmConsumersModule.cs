@@ -52,7 +52,7 @@ using Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositories;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.DataMarketplace.Core.Repositories;
 using Nethermind.DataMarketplace.Core.Services;
-using Nethermind.Db.Config;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Facade;
 using Nethermind.Facade.Proxy;
 using Nethermind.JsonRpc.Modules;

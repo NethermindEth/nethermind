@@ -19,10 +19,10 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Db;
-using Nethermind.Db.Config;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Store;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {

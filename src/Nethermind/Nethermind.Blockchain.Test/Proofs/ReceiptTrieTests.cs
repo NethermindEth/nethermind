@@ -23,6 +23,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Store;
 using Nethermind.Store.Proofs;
+using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Proofs

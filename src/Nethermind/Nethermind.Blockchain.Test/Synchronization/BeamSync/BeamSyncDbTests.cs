@@ -20,9 +20,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Store;
 using Nethermind.Store.BeamSync;
+using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization.BeamSync

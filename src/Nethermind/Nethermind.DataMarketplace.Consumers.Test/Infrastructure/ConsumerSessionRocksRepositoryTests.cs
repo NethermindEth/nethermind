@@ -26,6 +26,7 @@ using Nethermind.DataMarketplace.Consumers.Sessions.Domain;
 using Nethermind.DataMarketplace.Consumers.Sessions.Queries;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
+using Nethermind.Db;
 using Nethermind.Store;
 using NUnit.Framework;
 

@@ -30,6 +30,7 @@ using Nethermind.Store.Repositories;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.FastBlocks;
 using Nethermind.Blockchain.Synchronization.FastSync;
+using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Store.Bloom;
 using Nethermind.TxPool;

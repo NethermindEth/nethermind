@@ -27,6 +27,7 @@ using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Store;
 using Nethermind.Store.Bloom;
 using NSubstitute;

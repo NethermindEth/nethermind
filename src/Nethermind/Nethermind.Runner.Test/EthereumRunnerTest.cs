@@ -24,7 +24,7 @@ using Nethermind.Config;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Initializers;
-using Nethermind.Db.Config;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.EthStats;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc;
@@ -41,7 +41,6 @@ using Nethermind.TxPool;
 using Nethermind.WebSockets;
 using NSubstitute;
 using NUnit.Framework;
-using Org.BouncyCastle.Utilities.Collections;
 
 namespace Nethermind.Runner.Test
 {

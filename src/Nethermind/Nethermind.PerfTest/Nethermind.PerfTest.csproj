@@ -14,6 +14,7 @@
       <Name>Nethermind.Blockchain</Name>
     </ProjectReference>
     <ProjectReference Include="..\Nethermind.Clique\Nethermind.Clique.csproj" />
+    <ProjectReference Include="..\Nethermind.Db.Rocks\Nethermind.Db.Rocks.csproj" />
     <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
     <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj">
       <Project>{E992EFB5-85F0-49B1-9C0B-6D3846A813A5}</Project>

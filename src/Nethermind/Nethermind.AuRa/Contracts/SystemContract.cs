@@ -18,6 +18,7 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Specs.Forks;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;

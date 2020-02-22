@@ -18,7 +18,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Crypto
 {
     public static class TransactionExtensions
     {

@@ -18,6 +18,7 @@ using Nethermind.Abi;
 using Nethermind.AuRa;
 using Nethermind.AuRa.Config;
 using Nethermind.Blockchain;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Store;

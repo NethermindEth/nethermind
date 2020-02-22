@@ -23,6 +23,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Mining;
 using Nethermind.Mining.Difficulty;
