@@ -678,7 +678,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggestedBlockHasNumber(1).Stop();
         }
 
-        [Test, Retry(5)]
+        [Test, Retry(20)]
         public void Will_inform_connecting_peer_about_the_alternative_branch_with_same_difficulty()
         {
             if (_synchronizerType == SynchronizerType.Fast)
