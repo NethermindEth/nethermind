@@ -678,7 +678,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggestedBlockHasNumber(1).Stop();
         }
 
-        [Test, Ignore("Need to make this test consistent before reenabling")]
+        [Test]
         public void Will_inform_connecting_peer_about_the_alternative_branch_with_same_difficulty()
         {
             if (_synchronizerType == SynchronizerType.Fast)
@@ -701,8 +701,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .Stop();
 
             Assert.AreNotEqual(peerB.HeadBlock.Hash, peerA.HeadBlock.Hash);
-            
-            SpinWait.SpinUntil(() => peerB.ReceivedBlocks.Peek().Hash == peerA.HeadBlock.Hash, WaitTime);
+
+            SpinWait.SpinUntil(() => peerB.ReceivedBlocks.Any() && peerB.ReceivedBlocks.Peek().Hash == peerA.HeadBlock.Hash, WaitTime);
             Assert.AreEqual(peerB.ReceivedBlocks.Peek().Hash, peerA.HeadBlock.Hash);
         }
 
