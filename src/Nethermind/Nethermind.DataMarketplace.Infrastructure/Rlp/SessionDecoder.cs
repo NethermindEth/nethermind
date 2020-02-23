@@ -54,7 +54,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             uint settledUnits = rlpStream.DecodeUInt();
 
             return new Session(id, depositId, dataAssetId, consumerAddress, consumerNodeId, providerAddress,
-                providerNodeId, state,  startUnitsFromProvider, startUnitsFromConsumer, startTimestamp, finishTimestamp,
+                providerNodeId, state,  startUnitsFromConsumer, startUnitsFromProvider, startTimestamp, finishTimestamp,
                 consumedUnits, unpaidUnits, paidUnits, settledUnits);
         }
 

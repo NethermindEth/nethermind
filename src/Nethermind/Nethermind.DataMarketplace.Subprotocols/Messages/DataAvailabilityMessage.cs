@@ -22,7 +22,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
 {
     public class DataAvailabilityMessage : P2PMessage
     {
-        public override int PacketType { get; } = NdmMessageCode.DataUnavailable;
+        public override int PacketType { get; } = NdmMessageCode.DataAvailability;
         public override string Protocol => "ndm";
         public Keccak DepositId { get; }
         public DataAvailability DataAvailability { get; }

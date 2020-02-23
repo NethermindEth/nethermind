@@ -10,11 +10,12 @@
         <PackageReference Include="coverlet.msbuild" Version="2.8.0" />
         <PackageReference Include="FluentAssertions" Version="5.10.2" />
         <PackageReference Include="nunit" Version="3.12.0" />
-        <PackageReference Include="NUnit3TestAdapter" Version="3.13.0" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.2.0" />
+        <PackageReference Include="NUnit3TestAdapter" Version="3.16.1" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.4.0" />
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
       <ProjectReference Include="..\Nethermind.DataMarketplace.Subprotocols\Nethermind.DataMarketplace.Subprotocols.csproj" />
       <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
     </ItemGroup>

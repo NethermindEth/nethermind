@@ -25,7 +25,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
     {
         public string? Host { get; }
         public Address? Address { get; }
-        public UInt256? Value { get; }
+        public UInt256 Value { get; }
         public DateTime? Date { get; }
         public Keccak? TransactionHash { get; }
 
