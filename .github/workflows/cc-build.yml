@@ -93,6 +93,9 @@ jobs:
     - name: Nethermind.DataMarketplace.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.DataMarketplace.Test
+    - name: Nethermind.DataMarketplace.Channels.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.DataMarketplace.Channels.Test
     - name: Nethermind.DataMarketplace.Consumers.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.DataMarketplace.Consumers.Test
