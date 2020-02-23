@@ -27,11 +27,13 @@ using Nethermind.DataMarketplace.Consumers.DataStreams.Services;
 using Nethermind.DataMarketplace.Consumers.Deposits;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Notifiers;
+using Nethermind.DataMarketplace.Consumers.Notifiers.Services;
 using Nethermind.DataMarketplace.Consumers.Providers;
 using Nethermind.DataMarketplace.Consumers.Sessions;
 using Nethermind.DataMarketplace.Consumers.Sessions.Domain;
 using Nethermind.DataMarketplace.Consumers.Sessions.Repositories;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.Logging;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -59,7 +61,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
             _providerService = Substitute.For<IProviderService>();
             _sessionService = Substitute.For<ISessionService>();
             _wallet = Substitute.For<IWallet>();
-            _consumerNotifier = Substitute.For<IConsumerNotifier>();
+            _consumerNotifier = new ConsumerNotifier(Substitute.For<INdmNotifier>());
             _sessionRepository = Substitute.For<IConsumerSessionRepository>();
             _providerPeer = Substitute.For<INdmPeer>();
             _dataStreamService = new DataStreamService(_dataAssetService, _depositProvider, _providerService,

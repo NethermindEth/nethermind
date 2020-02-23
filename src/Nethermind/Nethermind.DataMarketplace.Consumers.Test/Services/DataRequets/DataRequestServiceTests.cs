@@ -27,11 +27,13 @@ using Nethermind.DataMarketplace.Consumers.DataRequests.Services;
 using Nethermind.DataMarketplace.Consumers.Deposits;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Notifiers;
+using Nethermind.DataMarketplace.Consumers.Notifiers.Services;
 using Nethermind.DataMarketplace.Consumers.Providers;
 using Nethermind.DataMarketplace.Consumers.Sessions.Domain;
 using Nethermind.DataMarketplace.Consumers.Sessions.Queries;
 using Nethermind.DataMarketplace.Consumers.Sessions.Repositories;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.Logging;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -64,7 +66,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataRequets
             _providerService = Substitute.For<IProviderService>();
             _timestamper = new Timestamper(Date);
             _sessionRepository = Substitute.For<IConsumerSessionRepository>();
-            _consumerNotifier = Substitute.For<IConsumerNotifier>();
+            _consumerNotifier = new ConsumerNotifier(Substitute.For<INdmNotifier>());
             _dataRequestService = new DataRequestService(_dataRequestFactory, _depositProvider, _kycVerifier, _wallet,
                 _providerService, _timestamper, _sessionRepository, _consumerNotifier, LimboLogs.Instance);
         }

@@ -26,6 +26,7 @@ using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
 using Nethermind.DataMarketplace.Consumers.Deposits.Services;
 using Nethermind.DataMarketplace.Consumers.Notifiers;
+using Nethermind.DataMarketplace.Consumers.Notifiers.Services;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.Logging;
@@ -47,7 +48,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         public void Setup()
         {
             _blockchainBridge = Substitute.For<INdmBlockchainBridge>();
-            _consumerNotifier = Substitute.For<IConsumerNotifier>();
+            _consumerNotifier = _consumerNotifier = new ConsumerNotifier(Substitute.For<INdmNotifier>());
             _depositRepository = Substitute.For<IDepositDetailsRepository>();
             _depositService = Substitute.For<IDepositService>();
             _requiredBlockConfirmations = 2;

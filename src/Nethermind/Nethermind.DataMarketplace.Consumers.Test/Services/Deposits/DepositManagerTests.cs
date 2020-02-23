@@ -30,6 +30,7 @@ using Nethermind.DataMarketplace.Consumers.Deposits.Services;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.InMemory.Databases;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.InMemory.Repositories;
 using Nethermind.DataMarketplace.Consumers.Notifiers;
+using Nethermind.DataMarketplace.Consumers.Notifiers.Services;
 using Nethermind.DataMarketplace.Consumers.Providers.Repositories;
 using Nethermind.DataMarketplace.Consumers.Providers.Services;
 using Nethermind.DataMarketplace.Consumers.Sessions.Repositories;
@@ -78,7 +79,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             depositsInMemoryDb.Add(_details);
 
             IProviderRepository providerRepository = new ProviderInMemoryRepository(depositsInMemoryDb);
-            IConsumerNotifier notifier = Substitute.For<IConsumerNotifier>();
+            IConsumerNotifier notifier = new ConsumerNotifier(Substitute.For<INdmNotifier>());
             DataAssetService dataAssetService = new DataAssetService(providerRepository, notifier, LimboLogs.Instance);
             INdmPeer peer = Substitute.For<INdmPeer>();
             peer.NodeId.Returns(TestItem.PublicKeyB);
