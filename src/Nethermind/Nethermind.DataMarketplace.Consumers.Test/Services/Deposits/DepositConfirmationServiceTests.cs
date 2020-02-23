@@ -48,7 +48,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         public void Setup()
         {
             _blockchainBridge = Substitute.For<INdmBlockchainBridge>();
-            _consumerNotifier = _consumerNotifier = new ConsumerNotifier(Substitute.For<INdmNotifier>());
+            _consumerNotifier = Substitute.For<IConsumerNotifier>();
             _depositRepository = Substitute.For<IDepositDetailsRepository>();
             _depositService = Substitute.For<IDepositService>();
             _requiredBlockConfirmations = 2;

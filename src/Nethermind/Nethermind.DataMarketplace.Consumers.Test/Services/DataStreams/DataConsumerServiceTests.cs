@@ -54,7 +54,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
         {
             _depositProvider = Substitute.For<IDepositProvider>();
             _sessionService = Substitute.For<ISessionService>();
-            _consumerNotifier = new ConsumerNotifier(Substitute.For<INdmNotifier>());
+            _consumerNotifier = Substitute.For<IConsumerNotifier>();
             _timestamper = new Timestamper(Date);
             _sessionRepository = Substitute.For<IConsumerSessionRepository>();
             _dataConsumerService = new DataConsumerService(_depositProvider, _sessionService, _consumerNotifier,
