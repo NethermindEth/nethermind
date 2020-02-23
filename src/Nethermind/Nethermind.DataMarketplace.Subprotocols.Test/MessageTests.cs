@@ -105,7 +105,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
             Test(new HiMessage(1, TestItem.AddressA, TestItem.AddressB, TestItem.PublicKeyA, signature));
             Test(new InvalidDataMessage(Keccak.OfAnEmptyString, InvalidDataReason.InvalidResult));
             Test(new ProviderAddressChangedMessage(Address.SystemUser));
-            Test(new RequestDataDeliveryReceiptMessage(new DataDeliveryReceiptRequest(1, Keccak.OfAnEmptyString, new UnitsRange(2, 3), true, new DataDeliveryReceiptToMerge[0])));
+            Test(new RequestDataDeliveryReceiptMessage(new DataDeliveryReceiptRequest(1, Keccak.OfAnEmptyString, new UnitsRange(2, 3), true, new [] {new DataDeliveryReceiptToMerge(new UnitsRange(7, 8), signature)})));
             Test(new RequestDepositApprovalMessage(Keccak.OfAnEmptyString, Address.SystemUser, "kyc"));
             Test(new RequestEthMessage(Address.SystemUser, UInt256.One));
             Test(new SessionFinishedMessage(session));
