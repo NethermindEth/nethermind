@@ -24,6 +24,10 @@ namespace Nethermind.Store.Bloom
 {
     public class NullBloomStorage : IBloomStorage
     {
+        private NullBloomStorage()
+        {
+        }
+        
         public static NullBloomStorage Instance { get; } = new NullBloomStorage();
         public long MinBlockNumber { get; } = 0;
         public long MaxBlockNumber { get; } = 0;
