@@ -260,7 +260,7 @@ namespace Nethermind.Network.Test
             Assert.AreEqual(50, _rlpxPeer.ConnectAsyncCallsCount);
         }
 
-        [Test]
+        [Test, Retry(5)]
         public void Ok_if_fails_to_connect()
         {
             SetupPersistedPeers(50);
