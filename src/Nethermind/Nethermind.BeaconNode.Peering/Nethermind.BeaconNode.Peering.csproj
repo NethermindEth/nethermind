@@ -11,6 +11,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Nethermind.BeaconNode\Nethermind.BeaconNode.csproj" />
       <ProjectReference Include="..\Nethermind.Core2.Abstractions\Nethermind.Core2.Abstractions.csproj" />
       <ProjectReference Include="..\Nethermind.Logging.Microsoft\Nethermind.Logging.Microsoft.csproj" />
       <ProjectReference Include="..\Nethermind.Peering.Mothra\Nethermind.Peering.Mothra.csproj" />

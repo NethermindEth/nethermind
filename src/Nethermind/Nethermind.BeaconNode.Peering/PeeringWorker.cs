@@ -20,6 +20,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core2;
+using Nethermind.Core2.Containers;
 using Nethermind.Logging.Microsoft;
 using Nethermind.Peering.Mothra;
 
@@ -27,18 +28,23 @@ namespace Nethermind.BeaconNode.Peering
 {
     public class PeeringWorker : BackgroundService
     {
-        private readonly ILogger _logger;
-        private readonly IHostEnvironment _environment;
         private readonly IClientVersion _clientVersion;
+        private readonly IHostEnvironment _environment;
+        private readonly ForkChoice _forkChoice;
+        private readonly ILogger _logger;
         private readonly IMothraLibp2p _mothraLibp2p;
         private bool _stopped;
+        private readonly IStoreProvider _storeProvider;
 
-        public PeeringWorker(ILogger<PeeringWorker> logger, IHostEnvironment environment, IClientVersion clientVersion, IMothraLibp2p mothraLibp2p)
+        public PeeringWorker(ILogger<PeeringWorker> logger, IHostEnvironment environment, IClientVersion clientVersion,
+            IMothraLibp2p mothraLibp2p, ForkChoice forkChoice, IStoreProvider storeProvider)
         {
             _logger = logger;
             _environment = environment;
             _clientVersion = clientVersion;
             _mothraLibp2p = mothraLibp2p;
+            _forkChoice = forkChoice;
+            _storeProvider = storeProvider;
         }
 
         protected override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -47,7 +53,7 @@ namespace Nethermind.BeaconNode.Peering
             return Task.CompletedTask;
         }
 
-        public async override Task StartAsync(CancellationToken cancellationToken)
+        public override async Task StartAsync(CancellationToken cancellationToken)
         {
             if (_logger.IsInfo())
                 Log.PeeringWorkerStarting(_logger, _clientVersion.Description,
@@ -60,7 +66,7 @@ namespace Nethermind.BeaconNode.Peering
                 _mothraLibp2p.RpcReceived += MothraLibp2pOnRpcReceived;
 
                 //System.Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData) + "nethermind/mothra";
-                
+
                 MothraSettings mothraSettings = new MothraSettings()
                 {
                     //DataDirectory = "",
@@ -79,16 +85,37 @@ namespace Nethermind.BeaconNode.Peering
             await base.StartAsync(cancellationToken);
         }
 
-        private void MothraLibp2pOnRpcReceived(object sender, RpcReceivedEventArgs e)
+        public override async Task StopAsync(CancellationToken cancellationToken)
         {
-            if (_logger.IsDebug()) LogDebug.RpcReceived(_logger, e.IsResponse ? "Response" : "Request", e.Method, e.Peer, e.Data.Length, null);
-            // TODO: handle RPC
+            if (_logger.IsDebug()) LogDebug.PeeringWorkerStopping(_logger, null);
+            _stopped = true;
+            await base.StopAsync(cancellationToken);
+        }
+
+        private void HandleBeaconBlock(byte[] data)
+        {
+            BeaconBlock beaconBlock = Ssz.Ssz.DecodeBeaconBlock(data);
+            if (!_storeProvider.TryGetStore(out IStore? retrievedStore))
+            {
+                throw new Exception("Beacon chain is currently syncing or waiting for genesis.");
+            }
+
+            IStore store = retrievedStore!;
+            _forkChoice.OnBlockAsync(store, beaconBlock);
         }
 
         private void MothraLibp2pOnGossipReceived(object sender, GossipReceivedEventArgs e)
         {
             if (_logger.IsDebug()) LogDebug.GossipReceived(_logger, e.Topic, e.Data.Length, null);
             // TODO: handle topic
+            switch (e.Topic)
+            {
+                case Topic.BeaconBlock:
+                {
+                    HandleBeaconBlock(e.Data);
+                    break;
+                }
+            }
         }
 
         private void MothraLibp2pOnPeerDiscovered(object sender, PeerDiscoveredEventArgs e)
@@ -96,11 +123,12 @@ namespace Nethermind.BeaconNode.Peering
             if (_logger.IsInfo()) Log.PeerDiscovered(_logger, e.Peer, null);
         }
 
-        public override async Task StopAsync(CancellationToken cancellationToken)
+        private void MothraLibp2pOnRpcReceived(object sender, RpcReceivedEventArgs e)
         {
-            if (_logger.IsDebug()) LogDebug.PeeringWorkerStopping(_logger, null);
-            _stopped = true;
-            await base.StopAsync(cancellationToken);
+            if (_logger.IsDebug())
+                LogDebug.RpcReceived(_logger, e.IsResponse ? "Response" : "Request", e.Method, e.Peer, e.Data.Length,
+                    null);
+            // TODO: handle RPC
         }
     }
 }

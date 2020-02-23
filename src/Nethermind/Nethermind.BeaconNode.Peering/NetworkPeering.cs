@@ -1,11 +1,9 @@
 ﻿using System;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Peering.Mothra;
-using Nethermind.Ssz;
 
 namespace Nethermind.BeaconNode.Peering
 {
@@ -30,7 +28,7 @@ namespace Nethermind.BeaconNode.Peering
 
             LogDebug.GossipSend(_logger, topic, encoded.Length, null);
             _mothraLibp2p.SendGossip(topic, encoded);
-            
+
             return Task.CompletedTask;
         }
     }
