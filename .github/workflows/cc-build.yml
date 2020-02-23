@@ -99,6 +99,9 @@ jobs:
     - name: Nethermind.DataMarketplace.Infrastructure.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.DataMarketplace.Infrastructure.Test
+    - name: Nethermind.DataMarketplace.Subprotocols.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.DataMarketplace.Subprotocols.Test
     - name: Nethermind.DataMarketplace.WebSockets.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.DataMarketplace.WebSockets.Test
