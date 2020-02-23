@@ -32,6 +32,8 @@ namespace Nethermind.DataMarketplace.Initializers
         
         private static readonly FaucetResponse Response = new FaucetResponse(FaucetRequestStatus.FaucetDisabled);
 
+        public bool IsInitialized => true;
+
         public Task<FaucetResponse> TryRequestEthAsync(string node, Address address, UInt256 value)
             => Task.FromResult(Response);
     }

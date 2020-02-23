@@ -87,6 +87,8 @@ namespace Nethermind.DataMarketplace.Core.Services
             });
         }
 
+        public bool IsInitialized => _initialized;
+
         public async Task<FaucetResponse> TryRequestEthAsync(string node, Address address, UInt256 value)
         {
             if (!_enabled)
