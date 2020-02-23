@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -116,9 +117,9 @@ namespace Nethermind.Blockchain.Test
             {
                 private ILogger _logger;
                 
-                private HashSet<Keccak> _allowed = new HashSet<Keccak>();
+                private ConcurrentDictionary<Keccak, object> _allowed = new ConcurrentDictionary<Keccak, object>();
 
-                private HashSet<Keccak> _allowedToFail = new HashSet<Keccak>();
+                private ConcurrentDictionary<Keccak, object> _allowedToFail = new ConcurrentDictionary<Keccak, object>();
 
                 public RecoveryStepMock(ILogManager logManager)
                 {
@@ -128,13 +129,13 @@ namespace Nethermind.Blockchain.Test
                 public void Allow(Keccak hash)
                 {
                     _logger.Info($"Allowing {hash} to recover");
-                    _allowed.Add(hash);
+                    _allowed[hash] = new object();
                 }
 
                 public void AllowToFail(Keccak hash)
                 {
                     _logger.Info($"Allowing {hash} to fail recover");
-                    _allowedToFail.Add(hash);
+                    _allowedToFail[hash] = new object();
                 }
 
                 public void RecoverData(Block block)
@@ -148,11 +149,11 @@ namespace Nethermind.Blockchain.Test
 
                     while (true)
                     {
-                        if (!_allowed.Contains(block.Hash))
+                        if (!_allowed.ContainsKey(block.Hash))
                         {
-                            if (_allowedToFail.Contains(block.Hash))
+                            if (_allowedToFail.ContainsKey(block.Hash))
                             {
-                                _allowedToFail.Remove(block.Hash);
+                                _allowedToFail.Remove(block.Hash, out _);
                                 throw new Exception();
                             }
 
@@ -161,7 +162,7 @@ namespace Nethermind.Blockchain.Test
                         }
 
                         block.Header.Author = Address.Zero;
-                        _allowed.Remove(block.Hash);
+                        _allowed.Remove(block.Hash, out _);
                         return;
                     }
                 }
