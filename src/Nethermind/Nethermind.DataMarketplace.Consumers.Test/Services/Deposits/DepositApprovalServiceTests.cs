@@ -56,13 +56,16 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         private DepositApproval _pendingApproval;
         private DepositApproval _confirmedApproval;
         private DepositApproval _rejectedApproval;
+        private ProviderService _providerService;
+        private PublicKey _providerId;
 
         [SetUp]
         public void Setup()
         {
             INdmPeer peer = Substitute.For<INdmPeer>();
             peer.ProviderAddress.Returns(_providerAddress);
-            peer.NodeId.Returns(TestItem.PublicKeyB);
+            _providerId = TestItem.PublicKeyB;
+            peer.NodeId.Returns(_providerId);
 
             DataAssetProvider provider = new DataAssetProvider(_providerAddress, "name");
             
@@ -83,10 +86,10 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             dataAssetService.AddDiscovered(rejectedAsset, peer);
             dataAssetService.AddDiscovered(confirmedAsset, peer);
 
-            ProviderService providerService = new ProviderService(providerRepository, notifier, LimboLogs.Instance);
-            providerService.Add(peer);
+            _providerService = new ProviderService(providerRepository, notifier, LimboLogs.Instance);
+            _providerService.Add(peer);
 
-            _service = new DepositApprovalService(dataAssetService, providerService, _cdaRepo, Timestamper.Default, notifier, LimboLogs.Instance);
+            _service = new DepositApprovalService(dataAssetService, _providerService, _cdaRepo, Timestamper.Default, notifier, LimboLogs.Instance);
 
             _confirmedApproval = new DepositApproval(Keccak.Compute(Rlp.Encode(Rlp.Encode(_confirmedAssetId), Rlp.Encode(_consumerAddress)).Bytes), _confirmedAssetId, "asset", "kyc", _consumerAddress, _providerAddress, 1, DepositApprovalState.Confirmed);
             _pendingApproval = new DepositApproval(Keccak.Compute(Rlp.Encode(Rlp.Encode(_pendingAssetId), Rlp.Encode(_consumerAddress)).Bytes), _pendingAssetId, "asset", "kyc", _consumerAddress, _providerAddress, 1, DepositApprovalState.Pending);
@@ -126,6 +129,14 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
 
             var result = await _service.BrowseAsync(new GetConsumerDepositApprovals());
             result.Items.Should().HaveCount(4);
+        }
+        
+        [Test]
+        public async Task Cannot_request_when_provider_is_missing()
+        {
+            _providerService.Remove(_providerId);
+            Keccak id = await _service.RequestAsync(_newPendingAssetId, _consumerAddress, "kyc");
+            id.Should().BeNull();
         }
 
         [Test]
