@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core;
@@ -37,6 +38,7 @@ using Nethermind.PubSub.Kafka;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Serialization.Json;
 using Nethermind.Stats;
+using Nethermind.Store.Bloom;
 using Nethermind.TxPool;
 using Nethermind.WebSockets;
 using NSubstitute;
@@ -113,6 +115,8 @@ namespace Nethermind.Runner.Test
             Type type5 = typeof(IStatsConfig);
             Type type6 = typeof(IKafkaConfig);
             Type type7 = typeof(IEthStatsConfig);
+            Type type8 = typeof(ISyncConfig);
+            Type type9 = typeof(IBloomConfig);
 
             var configProvider = new ConfigProvider();
             configProvider.AddSource(new ConfigSource(chainSpecPath));
@@ -124,11 +128,13 @@ namespace Nethermind.Runner.Test
             Console.WriteLine(type5.Name);
             Console.WriteLine(type6.Name);
             Console.WriteLine(type7.Name);
+            Console.WriteLine(type8.Name);
+            Console.WriteLine(type9.Name);
             
             EthereumRunner runner = new EthereumRunner(
                 new RpcModuleProvider(new JsonRpcConfig(), LimboLogs.Instance),
                 configProvider,
-                LimboLogs.Instance,
+                LimboLogs.Instance, 
                 Substitute.For<IGrpcServer>(),
                 Substitute.For<INdmConsumerChannelManager>(),
                 Substitute.For<INdmDataPublisher>(),
