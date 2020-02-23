@@ -23,6 +23,10 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
     public class NdmConfigDecoder : IRlpDecoder<NdmConfig>
     {
+        public static void Init()
+        {
+        }
+        
         static NdmConfigDecoder()
         {
             Serialization.Rlp.Rlp.Decoders[typeof(NdmConfig)] = new NdmConfigDecoder();
@@ -73,15 +77,15 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                     VerifyP2PSignature = verifyP2PSignature,
                     Persistence = persistence,
                     FaucetEnabled = faucetEnabled,
-                    FaucetAddress = faucetAddress,
-                    FaucetHost = faucetHost,
+                    FaucetAddress = faucetAddress == string.Empty ? null : faucetAddress,
+                    FaucetHost = faucetHost == string.Empty ? null : faucetHost,
                     FaucetWeiRequestMaxValue = faucetWeiRequestMaxValue,
                     FaucetEthDailyRequestsTotalValue = faucetEthDailyRequestsTotalValue,
-                    ConsumerAddress = consumerAddress,
-                    ContractAddress = contractAddress,
+                    ConsumerAddress = consumerAddress == string.Empty ? null : consumerAddress,
+                    ContractAddress = contractAddress == string.Empty ? null : contractAddress,
                     ProviderName = providerName,
-                    ProviderAddress = providerAddress,
-                    ProviderColdWalletAddress = providerColdWalletAddress,
+                    ProviderAddress = providerAddress == string.Empty ? null : providerAddress,
+                    ProviderColdWalletAddress = providerColdWalletAddress == string.Empty ? null : providerColdWalletAddress,
                     ReceiptRequestThreshold = receiptRequestThreshold,
                     ReceiptsMergeThreshold = receiptsMergeThreshold,
                     PaymentClaimThreshold = paymentClaimThreshold,
