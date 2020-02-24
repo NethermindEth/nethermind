@@ -120,7 +120,7 @@ namespace Nethermind.Peering.Mothra
             if (settings.DataDirectory != null)
             {
                 args.Add("--datadir");
-                args.Add($"'{settings.DataDirectory}'");
+                args.Add(settings.DataDirectory);
             }
 
             if (settings.ListenAddress != null)

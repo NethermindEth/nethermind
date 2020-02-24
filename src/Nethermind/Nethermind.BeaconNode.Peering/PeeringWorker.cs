@@ -15,8 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core2;
@@ -28,19 +31,22 @@ namespace Nethermind.BeaconNode.Peering
 {
     public class PeeringWorker : BackgroundService
     {
+        private const string _dataDirectoryKey = "datadirectory";
         private readonly IClientVersion _clientVersion;
         private readonly IHostEnvironment _environment;
+        private readonly IConfiguration _configuration;
         private readonly ForkChoice _forkChoice;
         private readonly ILogger _logger;
         private readonly IMothraLibp2p _mothraLibp2p;
         private bool _stopped;
         private readonly IStoreProvider _storeProvider;
 
-        public PeeringWorker(ILogger<PeeringWorker> logger, IHostEnvironment environment, IClientVersion clientVersion,
+        public PeeringWorker(ILogger<PeeringWorker> logger, IHostEnvironment environment, IConfiguration configuration, IClientVersion clientVersion,
             IMothraLibp2p mothraLibp2p, ForkChoice forkChoice, IStoreProvider storeProvider)
         {
             _logger = logger;
             _environment = environment;
+            _configuration = configuration;
             _clientVersion = clientVersion;
             _mothraLibp2p = mothraLibp2p;
             _forkChoice = forkChoice;
@@ -67,12 +73,22 @@ namespace Nethermind.BeaconNode.Peering
 
                 //System.Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData) + "nethermind/mothra";
 
+                string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
+                string dataDirectory = _configuration.GetValue<string>(_dataDirectoryKey);
+                string mothraDataDirectory = Path.Combine(baseDirectory, dataDirectory, "mothra");
+                
                 MothraSettings mothraSettings = new MothraSettings()
                 {
-                    //DataDirectory = "",
-                    //BootNodes = {},
-                    //Topics = { Topic.BeaconBlock }
+                    DataDirectory = mothraDataDirectory,
+                    Topics = { Topic.BeaconBlock }
                 };
+
+                IConfigurationSection bootNodes = _configuration.GetSection("Peering:BootNodes");
+                foreach (KeyValuePair<string, string> bootNode in bootNodes.AsEnumerable())
+                {
+                    mothraSettings.BootNodes.Add(bootNode.Value);
+                }
+                
                 _mothraLibp2p.Start(mothraSettings);
 
                 if (_logger.IsDebug()) LogDebug.PeeringWorkerStarted(_logger, null);
