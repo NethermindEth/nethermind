@@ -12,15 +12,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="..\Nethermind.BeaconNode.Host\appsettings.Development.json" Link="appsettings.Development.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="..\Nethermind.BeaconNode.Host\appsettings.Production.json" Link="appsettings.Production.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="3.0.1" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="3.0.1" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.4.0" />
@@ -44,6 +35,17 @@
     <ProjectReference Include="..\Nethermind.Core2.Cryptography\Nethermind.Core2.Cryptography.csproj" />
     <ProjectReference Include="..\Nethermind.Core2.Json\Nethermind.Core2.Json.csproj" />
     <ProjectReference Include="..\Nethermind.Core2\Nethermind.Core2.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\Nethermind.BeaconNode.Host\appsettings.json">
+      <Link>appsettings.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\Nethermind.BeaconNode.Host\Development\appsettings.json">
+      <Link>Development/appsettings.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

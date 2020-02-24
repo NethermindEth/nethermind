@@ -16,11 +16,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.VisualBasic.FileIO;
 using Nethermind.BeaconNode.MockedStart;
 using Nethermind.BeaconNode.Peering;
 using Nethermind.BeaconNode.Storage;
@@ -33,9 +35,15 @@ namespace Nethermind.BeaconNode.Host
 {
     public class Program
     {
-        private const string DefaultProductionYamlConfig = "mainnet";
-        private const string DefaultNonProductionYamlConfig = "minimal";
-        private const string YamlConfigKey = "config";
+        private const string _yamlConfigKey = "config";
+        private const string _dataDirectoryKey = "datadirectory";
+
+        private static readonly Environment.SpecialFolder[] _specialFolders = new[]
+        {
+            Environment.SpecialFolder.CommonApplicationData,
+            Environment.SpecialFolder.ApplicationData,
+            Environment.SpecialFolder.LocalApplicationData
+        };
 
         public static IHostBuilder CreateHostBuilder(string[] args) =>
             Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder(args)
@@ -65,18 +73,21 @@ namespace Nethermind.BeaconNode.Host
                     // Base JSON settings
                     config.AddJsonFile("appsettings.json");
 
-                    // Support standard YAML config files
-                    var yamlConfig = hostContext.Configuration[YamlConfigKey];
-                    if (string.IsNullOrWhiteSpace(yamlConfig))
+                    // Other settings are based on data directory; can be relative, or start with a special folder token,
+                    // e.g. "{CommonApplicationData}/Nethermind/BeaconHost/Production" 
+                    string dataDirectory = ResolveSpecialDirectory( hostContext.Configuration.GetValue<string>(_dataDirectoryKey));
+                        
+                    // Support standard YAML config files, if specified
+                    string yamlConfig = hostContext.Configuration[_yamlConfigKey];
+                    if (!string.IsNullOrWhiteSpace(yamlConfig))
                     {
-                        yamlConfig = hostContext.HostingEnvironment.IsProduction()
-                            ? DefaultProductionYamlConfig : DefaultNonProductionYamlConfig;
-                        config.AddInMemoryCollection(new Dictionary<string, string> { { YamlConfigKey, yamlConfig } });
+                        string yamlPath = Path.Combine(dataDirectory, $"{yamlConfig}.yaml");
+                        config.AddYamlFile(yamlPath, true, true);
                     }
-                    config.AddYamlFile($"{yamlConfig}.yaml", true, true);
-
+                    
                     // Override with environment specific JSON files
-                    config.AddJsonFile("appsettings." + hostContext.HostingEnvironment.EnvironmentName + ".json", true, true);
+                    string settingsPath = Path.Combine(dataDirectory, $"appsettings.json");
+                    config.AddJsonFile(settingsPath, true, true);
 
                     config.AddCommandLine(args);
                 })
@@ -103,6 +114,23 @@ namespace Nethermind.BeaconNode.Host
                 {
                     webBuilder.UseStartup<Startup>();
                 });
+
+        private static string ResolveSpecialDirectory(string directorySetting)
+        {
+            foreach (Environment.SpecialFolder specialFolder in _specialFolders)
+            {
+                string specialFolderToken = "{" + specialFolder + "}";
+                if (directorySetting.StartsWith(specialFolderToken))
+                {
+                    string specialFolderPath =
+                        Environment.GetFolderPath(specialFolder, Environment.SpecialFolderOption.Create);
+                    string resolvedPath = specialFolderPath +
+                                          directorySetting.Substring(specialFolderToken.Length);
+                    return resolvedPath;
+                }
+            }
+            return directorySetting;
+        }
 
         public static void Main(string[] args)
         {

@@ -36,7 +36,7 @@ namespace Nethermind.HonestValidator.Test
             
             var configuration = new ConfigurationBuilder()
                 .AddJsonFile("appsettings.json")
-                .AddJsonFile("appsettings.Development.json")
+                .AddJsonFile("Development/appsettings.json")
                 .Build();
             services.AddSingleton<IConfiguration>(configuration);
 

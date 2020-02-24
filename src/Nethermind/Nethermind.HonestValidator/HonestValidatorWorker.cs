@@ -29,6 +29,7 @@ namespace Nethermind.HonestValidator
 {
     public class HonestValidatorWorker : BackgroundService
     {
+        private const string _dataDirectoryKey = "datadirectory";
         private readonly IConfiguration _configuration;
         private readonly IBeaconNodeApi _beaconNodeApi;
         private readonly BeaconChain _beaconChain;
@@ -76,7 +77,7 @@ namespace Nethermind.HonestValidator
         {
             if (_logger.IsInfo())
                 Log.HonestValidatorWorkerExecuteStarted(_logger, _clientVersion.Description,
-                    _environment.EnvironmentName, Thread.CurrentThread.ManagedThreadId, null);
+                    _configuration[_dataDirectoryKey], _environment.EnvironmentName, Thread.CurrentThread.ManagedThreadId, null);
 
             try
             {

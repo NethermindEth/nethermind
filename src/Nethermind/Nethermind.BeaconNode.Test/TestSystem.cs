@@ -41,7 +41,8 @@ namespace Nethermind.BeaconNode.Test
             var services = new ServiceCollection();
             
             var configuration = new ConfigurationBuilder()
-                .AddJsonFile("appsettings.Development.json")
+                .AddJsonFile("appsettings.json")
+                .AddJsonFile("Development/appsettings.json")
                 .Build();
             services.AddSingleton<IConfiguration>(configuration);
 

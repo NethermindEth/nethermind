@@ -31,7 +31,7 @@ namespace Nethermind.BeaconNode
     // ReSharper disable once ClassNeverInstantiated.Global
     public class BeaconNodeWorker : BackgroundService
     {
-        private const string ConfigKey = "config";
+        private const string _dataDirectoryKey = "datadirectory";
 
         private readonly IConfiguration _configuration;
         private readonly IClientVersion _clientVersion;
@@ -82,8 +82,8 @@ namespace Nethermind.BeaconNode
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             if (_logger.IsInfo())
-                Log.BeaconNodeWorkerExecuteStarted(_logger, _clientVersion.Description, _environment.EnvironmentName,
-                    _configuration[ConfigKey], Thread.CurrentThread.ManagedThreadId, null);
+                Log.BeaconNodeWorkerExecuteStarted(_logger, _clientVersion.Description,
+                    _configuration[_dataDirectoryKey], _environment.EnvironmentName, Thread.CurrentThread.ManagedThreadId, null);
 
             try
             {

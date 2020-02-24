@@ -22,7 +22,7 @@ New-Item -Path $latestFolder -ItemType Directory -Force
 Copy-Item -Path (Join-Path $PSScriptRoot 'bin/Release/netcoreapp3.0/publish/*') -Destination $latestFolder -Recurse
 
 $hostsettings = Get-Content -Raw -Path (Join-Path $latestFolder 'hostsettings.json') | ConvertFrom-Json
-$hostsettings.Environment = 'Production'
+$hostsettings.DataDirectory = '{CommonApplicationData}/Nethermind/BeaconHost/Production'
 $hostsettings | ConvertTo-Json | Set-Content -Path (Join-Path $latestFolder 'hostsettings.json')
 
 $versionFolder = Join-Path $PSScriptRoot "release/$($v.NuGetVersion)"

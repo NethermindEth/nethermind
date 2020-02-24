@@ -35,7 +35,7 @@ namespace Nethermind.Core2.Configuration.Test
             var services = new ServiceCollection();
             services.AddLogging(configure => configure.AddConsole());
             var configuration = new ConfigurationBuilder()
-                .AddJsonFile("appsettings.Development.json")
+                .AddJsonFile("Development/appsettings.json")
                 .Build();
             services.ConfigureBeaconChain(configuration);
             var testServiceProvider = services.BuildServiceProvider();

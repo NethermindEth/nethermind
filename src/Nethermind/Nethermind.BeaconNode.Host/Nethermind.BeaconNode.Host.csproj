@@ -38,5 +38,9 @@
     <None Include="configuration\**" CopyToOutputDirectory="Never" />
     <None Include="release\**" CopyToOutputDirectory="Never" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Production" />
+  </ItemGroup>
   
 </Project>
