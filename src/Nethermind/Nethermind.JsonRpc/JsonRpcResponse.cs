@@ -21,23 +21,23 @@ namespace Nethermind.JsonRpc
 {
     public class JsonRpcResponse
     {
-        [JsonProperty(PropertyName = "jsonrpc", Order = 1)]
+        [JsonProperty(PropertyName = "jsonrpc", Order = 0)]
         public readonly string JsonRpc = "2.0";
 
         [JsonConverter(typeof(IdConverter))]
-        [JsonProperty(PropertyName = "id", Order = 0, NullValueHandling = NullValueHandling.Include)]
+        [JsonProperty(PropertyName = "id", Order = 2, NullValueHandling = NullValueHandling.Include)]
         public object Id { get; set; }
     }
 
     public class JsonRpcSuccessResponse : JsonRpcResponse
     {
-        [JsonProperty(PropertyName = "result", NullValueHandling = NullValueHandling.Include, Order = 2)]
+        [JsonProperty(PropertyName = "result", NullValueHandling = NullValueHandling.Include, Order = 1)]
         public object Result { get; set; }
     }
 
     public class JsonRpcErrorResponse : JsonRpcResponse
     {
-        [JsonProperty(PropertyName = "error", NullValueHandling = NullValueHandling.Include, Order = 2)]
+        [JsonProperty(PropertyName = "error", NullValueHandling = NullValueHandling.Include, Order = 1)]
         public Error Error { get; set; }
     }
 }
