@@ -16,10 +16,8 @@
 
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Specs;
 using Nethermind.Evm;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.State;
 
 namespace Nethermind.Blockchain

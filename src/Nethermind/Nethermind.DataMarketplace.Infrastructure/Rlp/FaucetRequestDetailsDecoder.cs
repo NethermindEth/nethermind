@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
@@ -39,7 +38,12 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
         public FaucetRequestDetails Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            rlpStream.ReadSequenceLength();
+            int sequenceLength = rlpStream.ReadSequenceLength();
+            if (sequenceLength == 0)
+            {
+                return FaucetRequestDetails.Empty;
+            }
+            
             string host = rlpStream.DecodeString();
             Address address = rlpStream.DecodeAddress();
             UInt256 value = rlpStream.DecodeUInt256();
@@ -51,6 +55,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
         public Serialization.Rlp.Rlp Encode(FaucetRequestDetails? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (item == null)
+            {
+                return Serialization.Rlp.Rlp.OfEmptySequence;
+            }
+            
             long date = (item.Date == DateTime.MinValue || item.Date == null) ? 0 : new DateTimeOffset(item.Date.Value).ToUnixTimeSeconds();
 
             return Serialization.Rlp.Rlp.Encode(

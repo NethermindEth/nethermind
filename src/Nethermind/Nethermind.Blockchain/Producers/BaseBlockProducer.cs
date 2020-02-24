@@ -26,7 +26,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Proofs;
-using Nethermind.State;
 
 namespace Nethermind.Blockchain.Producers
 {

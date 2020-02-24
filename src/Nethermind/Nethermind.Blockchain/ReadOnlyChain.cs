@@ -16,7 +16,6 @@
 
 using Nethermind.Consensus;
 using Nethermind.State;
-using Nethermind.State;
 
 namespace Nethermind.Blockchain
 {
