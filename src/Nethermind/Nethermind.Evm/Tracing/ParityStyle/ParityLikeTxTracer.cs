@@ -249,7 +249,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress.Length}");
             }
 
-            _trace.Output = output;
+            _trace.Output = Bytes.Empty;
             
             // quick tx fail (before execution)
             if (_trace.Action == null)
@@ -261,6 +261,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 _trace.Action.Input = _tx.Data;
                 _trace.Action.Gas = (long)_tx.GasLimit;
                 _trace.Action.CallType = _tx.IsMessageCall ? "call" : "init";
+                _trace.Action.Result.Output = output;
             }
         }
 
