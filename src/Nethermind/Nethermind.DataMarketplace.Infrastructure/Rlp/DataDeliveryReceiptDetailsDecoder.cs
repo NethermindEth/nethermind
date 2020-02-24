@@ -38,30 +38,23 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 new DataDeliveryReceiptDetailsDecoder();
         }
 
-        public DataDeliveryReceiptDetails Decode(RlpStream rlpStream,
-            RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public DataDeliveryReceiptDetails Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = rlpStream.ReadSequenceLength();
-            if (sequenceLength == 0)
-            {
-                return null;
-            }
-
-            var id = rlpStream.DecodeKeccak();
-            var sessionId = rlpStream.DecodeKeccak();
-            var dataAssetId = rlpStream.DecodeKeccak();
-            var consumerNodeId = new PublicKey(rlpStream.DecodeByteArray());
-            var request = Serialization.Rlp.Rlp.Decode<DataDeliveryReceiptRequest>(rlpStream);
-            var receipt = Serialization.Rlp.Rlp.Decode<DataDeliveryReceipt>(rlpStream);
-            var timestamp = rlpStream.DecodeUlong();
-            var isClaimed = rlpStream.DecodeBool();
+            rlpStream.ReadSequenceLength();
+            Keccak id = rlpStream.DecodeKeccak();
+            Keccak sessionId = rlpStream.DecodeKeccak();
+            Keccak dataAssetId = rlpStream.DecodeKeccak();
+            PublicKey consumerNodeId = new PublicKey(rlpStream.DecodeByteArray());
+            DataDeliveryReceiptRequest request = Serialization.Rlp.Rlp.Decode<DataDeliveryReceiptRequest>(rlpStream);
+            DataDeliveryReceipt receipt = Serialization.Rlp.Rlp.Decode<DataDeliveryReceipt>(rlpStream);
+            ulong timestamp = rlpStream.DecodeUlong();
+            bool isClaimed = rlpStream.DecodeBool();
 
             return new DataDeliveryReceiptDetails(id, sessionId, dataAssetId, consumerNodeId, request, receipt,
                 timestamp, isClaimed);
         }
 
-        public Serialization.Rlp.Rlp Encode(DataDeliveryReceiptDetails item,
-            RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Serialization.Rlp.Rlp Encode(DataDeliveryReceiptDetails item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
@@ -77,11 +70,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Serialization.Rlp.Rlp.Encode(item.Receipt),
                 Serialization.Rlp.Rlp.Encode(item.Timestamp),
                 Serialization.Rlp.Rlp.Encode(item.IsClaimed));
-        }
-
-        public void Encode(MemoryStream stream, DataDeliveryReceiptDetails item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new System.NotImplementedException();
         }
 
         public int GetLength(DataDeliveryReceiptDetails item, RlpBehaviors rlpBehaviors)

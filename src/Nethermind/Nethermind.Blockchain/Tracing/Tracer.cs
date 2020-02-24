@@ -18,7 +18,8 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
-using Nethermind.Store;
+using Nethermind.State;
+using Nethermind.Trie;
 
 namespace Nethermind.Blockchain.Tracing
 {

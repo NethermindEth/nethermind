@@ -14,8 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.IO;
-using Nethermind.Core;
+using System;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Serialization.Rlp;
@@ -38,21 +38,22 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             Serialization.Rlp.Rlp.Decoders[typeof(DataDeliveryReceipt)] = new DataDeliveryReceiptDecoder();
         }
 
-        public DataDeliveryReceipt Decode(RlpStream rlpStream,
-            RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public DataDeliveryReceipt Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = rlpStream.ReadSequenceLength();
-            if (sequenceLength == 0)
+            try
             {
-                return null;
+                rlpStream.ReadSequenceLength();
+                StatusCodes statusCode = (StatusCodes) rlpStream.DecodeInt();
+                uint consumedUnits = rlpStream.DecodeUInt();
+                uint unpaidUnits = rlpStream.DecodeUInt();
+                Signature signature = SignatureDecoder.DecodeSignature(rlpStream);
+
+                return new DataDeliveryReceipt(statusCode, consumedUnits, unpaidUnits, signature);
             }
-
-            var statusCode = (StatusCodes) rlpStream.DecodeInt();
-            var consumedUnits = rlpStream.DecodeUInt();
-            var unpaidUnits = rlpStream.DecodeUInt();
-            var signature = SignatureDecoder.DecodeSignature(rlpStream);
-
-            return new DataDeliveryReceipt(statusCode, consumedUnits, unpaidUnits, signature);
+            catch (Exception e)
+            {
+                throw new RlpException($"{nameof(DataDeliveryReceiptDecoder)} could not be decoded", e);
+            }
         }
 
         public Serialization.Rlp.Rlp Encode(DataDeliveryReceipt item,
@@ -70,11 +71,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Serialization.Rlp.Rlp.Encode(item.Signature.V),
                 Serialization.Rlp.Rlp.Encode(item.Signature.R.WithoutLeadingZeros()),
                 Serialization.Rlp.Rlp.Encode(item.Signature.S.WithoutLeadingZeros()));
-        }
-        
-        public void Encode(MemoryStream stream, DataDeliveryReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new System.NotImplementedException();
         }
 
         public int GetLength(DataDeliveryReceipt item, RlpBehaviors rlpBehaviors)

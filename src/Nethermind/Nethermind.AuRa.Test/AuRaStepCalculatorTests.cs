@@ -17,6 +17,7 @@
 using System;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;

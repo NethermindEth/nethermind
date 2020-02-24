@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using FluentAssertions;
-using Nethermind.AuRa.Validators;
+using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;

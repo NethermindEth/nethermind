@@ -17,6 +17,7 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Crypto

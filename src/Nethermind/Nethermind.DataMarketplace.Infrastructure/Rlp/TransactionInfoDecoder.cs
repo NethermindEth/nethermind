@@ -14,8 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.IO;
+using System;
+using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
@@ -35,24 +37,26 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
         {
             Serialization.Rlp.Rlp.Decoders[typeof(TransactionInfo)] = new TransactionInfoDecoder();
         }
-        
+
         public TransactionInfo Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = rlpStream.ReadSequenceLength();
-            if (sequenceLength == 0)
+            rlpStream.ReadSequenceLength();
+            try
             {
-                return null;
+                Keccak hash = rlpStream.DecodeKeccak();
+                UInt256 value = rlpStream.DecodeUInt256();
+                UInt256 gasPrice = rlpStream.DecodeUInt256();
+                ulong gasLimit = rlpStream.DecodeUlong();
+                ulong timestamp = rlpStream.DecodeUlong();
+                TransactionType type = (TransactionType) rlpStream.DecodeInt();
+                TransactionState state = (TransactionState) rlpStream.DecodeInt();
+                
+                return new TransactionInfo(hash, value, gasPrice, gasLimit, timestamp, type, state);
             }
-
-            var hash = rlpStream.DecodeKeccak();
-            var value = rlpStream.DecodeUInt256();
-            var gasPrice = rlpStream.DecodeUInt256();
-            var gasLimit = rlpStream.DecodeUlong();
-            var timestamp = rlpStream.DecodeUlong();
-            var type = (TransactionType) rlpStream.DecodeInt();
-            var state = (TransactionState) rlpStream.DecodeInt();
-
-            return new TransactionInfo(hash, value, gasPrice, gasLimit, timestamp, type, state);
+            catch (Exception e)
+            {
+                throw new RlpException($"{nameof(TransactionInfo)} could not be decoded", e);
+            }
         }
 
         public Serialization.Rlp.Rlp Encode(TransactionInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -70,11 +74,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Serialization.Rlp.Rlp.Encode(item.Timestamp),
                 Serialization.Rlp.Rlp.Encode((int) item.Type),
                 Serialization.Rlp.Rlp.Encode((int) item.State));
-        }
-
-        public void Encode(MemoryStream stream, TransactionInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new System.NotImplementedException();
         }
 
         public int GetLength(TransactionInfo item, RlpBehaviors rlpBehaviors)

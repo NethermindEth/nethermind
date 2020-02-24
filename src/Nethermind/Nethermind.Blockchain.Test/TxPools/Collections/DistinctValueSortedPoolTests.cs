@@ -17,12 +17,12 @@
 using System.Collections;
 using System.Linq;
 using FluentAssertions;
-using Nethermind.Blockchain.TxPools;
-using Nethermind.Blockchain.TxPools.Collections;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Collections;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.TxPools.Collections

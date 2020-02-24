@@ -34,8 +34,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.
             _database = database;
         }
 
-        public Task<DepositApproval> GetAsync(Keccak id)
-            => DepositApprovals.Find(a => a.Id == id).FirstOrDefaultAsync();
+        public Task<DepositApproval?> GetAsync(Keccak id)
+            => DepositApprovals.Find(a => a.Id == id).FirstOrDefaultAsync()!;
 
         public async Task<PagedResult<DepositApproval>> BrowseAsync(GetConsumerDepositApprovals query)
         {

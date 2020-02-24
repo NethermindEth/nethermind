@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
-using Nethermind.Clique;
+using Nethermind.Consensus.Clique;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Runner.Ethereum.Context;
 
@@ -32,7 +32,12 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public override Task Execute()
         {
-            var result = base.Execute();
+            if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
+            if (_context.SnapshotManager == null) throw new StepDependencyException(nameof(_context.SnapshotManager));
+            if (_context.RpcModuleProvider == null) throw new StepDependencyException(nameof(_context.RpcModuleProvider));
+            
+            Task result = base.Execute();
+            if (_context.SnapshotManager == null) throw new StepDependencyException(nameof(_context.SnapshotManager));
             CliqueModule cliqueModule = new CliqueModule(_context.LogManager, new CliqueBridge(_context.BlockProducer as ICliqueBlockProducer, _context.SnapshotManager, _context.BlockTree));
             _context.RpcModuleProvider.Register(new SingletonModulePool<ICliqueModule>(cliqueModule, true));
             return result;

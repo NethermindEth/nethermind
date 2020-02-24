@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.ComponentModel;
+using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -44,16 +46,31 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             _requiredBlockConfirmations = requiredBlockConfirmations;
         }
 
-        public Task<DepositDetails> GetAsync(Keccak depositId) => _depositManager.GetAsync(depositId);
+        public Task<DepositDetails?> GetAsync(Keccak depositId) => _depositManager.GetAsync(depositId);
         
         public Task<PagedResult<DepositDetails>> BrowseAsync(GetDeposits query) => _depositManager.BrowseAsync(query);
 
-        public async Task<Keccak> MakeAsync(Keccak assetId, uint units, UInt256 value, Address address,
+        public async Task<Keccak?> MakeAsync(Keccak assetId, uint units, UInt256 value, Address address,
             UInt256? gasPrice = null)
         {
-            var depositId = await _depositManager.MakeAsync(assetId, units, value, address, gasPrice);
+            Keccak? depositId = await _depositManager.MakeAsync(assetId, units, value, address, gasPrice);
+            if(depositId == null)
+            {
+                return null;
+            }
+            
             if (_logger.IsWarn) _logger.Warn($"NDM instantly verifying deposit with id: '{depositId}'...");
-            var deposit = await _depositDetailsRepository.GetAsync(depositId);
+            DepositDetails? deposit = await _depositDetailsRepository.GetAsync(depositId);
+            if (deposit is null)
+            {
+                throw new InvalidDataException($"Deposit details are null just after creating deposit with id '{depositId}'");
+            }
+            
+            if (deposit.Transaction == null)
+            {
+                throw new InvalidDataException($"Retrieved a deposit {depositId} without Transaction set.");
+            }
+            
             deposit.Transaction.SetIncluded();
             deposit.SetConfirmations(_requiredBlockConfirmations);
             deposit.SetConfirmationTimestamp((uint) _timestamper.EpochSeconds);

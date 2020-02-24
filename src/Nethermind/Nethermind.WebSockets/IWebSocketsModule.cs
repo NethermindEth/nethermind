@@ -25,9 +25,8 @@ namespace Nethermind.WebSockets
         string Name { get; }
         bool TryInit(HttpRequest request);
         IWebSocketsClient CreateClient(WebSocket webSocket, string client);
+        Task SendRawAsync(string rawMessage);
         Task SendAsync(WebSocketsMessage message);
-        Task SendRawAsync(string data);
-        void Cleanup(string clientId);
         void RemoveClient(string clientId);
     }
 }

@@ -14,7 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.IO;
+using System;
+using Nethermind.Core;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Serialization.Rlp;
 
@@ -39,16 +40,17 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
         public DataAssetProvider Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = rlpStream.ReadSequenceLength();
-            if (sequenceLength == 0)
+            try
             {
-                return null;
+                rlpStream.ReadSequenceLength();
+                Address address = rlpStream.DecodeAddress();
+                string name = rlpStream.DecodeString();
+                return new DataAssetProvider(address, name);
             }
-
-            var address = rlpStream.DecodeAddress();
-            var name = rlpStream.DecodeString();
-
-            return new DataAssetProvider(address, name);
+            catch (Exception e)
+            {
+                throw new RlpException($"{nameof(DataAssetProvider)} cannot be deserialized from", e);
+            }
         }
 
         public Serialization.Rlp.Rlp Encode(DataAssetProvider item,
@@ -62,11 +64,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             return Serialization.Rlp.Rlp.Encode(
                 Serialization.Rlp.Rlp.Encode(item.Address),
                 Serialization.Rlp.Rlp.Encode(item.Name));
-        }
-
-        public void Encode(MemoryStream stream, DataAssetProvider item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new System.NotImplementedException();
         }
 
         public int GetLength(DataAssetProvider item, RlpBehaviors rlpBehaviors)

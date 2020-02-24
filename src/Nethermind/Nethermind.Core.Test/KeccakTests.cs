@@ -16,6 +16,7 @@
 
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -34,6 +35,25 @@ namespace Nethermind.Core.Test
             Assert.AreEqual(expected, result);
         }
 
+        [Test]
+        public void Built_digest_short()
+        {
+            byte[] bytes = new byte[32];
+            new Random(42).NextBytes(bytes);
+            
+            string result = Keccak.Compute(bytes).ToString();
+
+            KeccakHash keccakHash = KeccakHash.Create();
+            keccakHash.Reset();
+            
+            for (int i = 0; i < 1024 / 32; i += 32)
+            {
+                keccakHash.Update(bytes, i, 32);
+            }
+            
+            Assert.AreEqual(result, keccakHash.Hash.ToHexString(true));
+        }
+        
         [Test]
         public void Empty_byte_array()
         {

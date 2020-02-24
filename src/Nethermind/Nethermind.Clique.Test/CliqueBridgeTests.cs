@@ -15,12 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.TxPools;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Clique;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Store;
 using Nethermind.Wallet;
 using NSubstitute;

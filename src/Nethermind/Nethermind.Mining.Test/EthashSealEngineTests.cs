@@ -18,13 +18,12 @@ using System;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
+using Nethermind.Consensus.Mining;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
-using Nethermind.Mining.Difficulty;
 using NSubstitute;
 using NUnit.Framework;
 

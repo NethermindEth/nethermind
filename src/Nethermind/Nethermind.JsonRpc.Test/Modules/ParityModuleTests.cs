@@ -14,25 +14,23 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections;
-using System.Threading;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.TxPools;
-using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.Logging;
+using Nethermind.State;
+using Nethermind.State.Repositories;
 using Nethermind.Store;
-using Nethermind.Store.Repositories;
-using NSubstitute;
+using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Storages;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -49,7 +47,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             var specProvider = MainNetSpecProvider.Instance;
             var ethereumEcdsa = new EthereumEcdsa(specProvider, logger);
             var txStorage = new InMemoryTxStorage();
-            var txPool = new TxPool(txStorage, Timestamper.Default, ethereumEcdsa, specProvider, new TxPoolConfig(),
+            var txPool = new TxPool.TxPool(txStorage, Timestamper.Default, ethereumEcdsa, specProvider, new TxPoolConfig(),
                 new StateProvider(new StateDb(), new MemDb(), LimboLogs.Instance),  LimboLogs.Instance);
             
             IDb blockDb = new MemDb();

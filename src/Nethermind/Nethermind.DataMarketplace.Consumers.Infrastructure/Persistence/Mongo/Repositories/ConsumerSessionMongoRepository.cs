@@ -36,10 +36,10 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.
             _database = database;
         }
 
-        public Task<ConsumerSession> GetAsync(Keccak id)
-            => Sessions.Find(s => s.Id == id).FirstOrDefaultAsync();
+        public Task<ConsumerSession?> GetAsync(Keccak id)
+            => Sessions.Find(s => s.Id == id).FirstOrDefaultAsync()!;
 
-        public async Task<ConsumerSession> GetPreviousAsync(ConsumerSession session)
+        public async Task<ConsumerSession?> GetPreviousAsync(ConsumerSession session)
         {
             var previousSessions = await Filter(session.DepositId).Take(2).ToListAsync();
             switch (previousSessions.Count)
@@ -56,16 +56,20 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.
             }
         }
 
-        private static ConsumerSession GetUniqueSession(ConsumerSession current, ConsumerSession previous)
+        private static ConsumerSession? GetUniqueSession(ConsumerSession current, ConsumerSession previous)
             => current.Equals(previous) ? null : previous;
 
         public async Task<PagedResult<ConsumerSession>> BrowseAsync(GetConsumerSessions query)
             => await Filter(query.DepositId, query.DataAssetId, query.ConsumerNodeId, query.ConsumerAddress,
                 query.ProviderNodeId, query.ProviderAddress).PaginateAsync(query);
 
-        private IMongoQueryable<ConsumerSession> Filter(Keccak depositId = null, Keccak dataAssetId = null,
-            PublicKey consumerNodeId = null, Address consumerAddress = null, PublicKey providerNodeId = null,
-            Address providerAddress = null)
+        private IMongoQueryable<ConsumerSession> Filter(
+            Keccak? depositId = null,
+            Keccak? dataAssetId = null,
+            PublicKey? consumerNodeId = null,
+            Address? consumerAddress = null,
+            PublicKey? providerNodeId = null,
+            Address? providerAddress = null)
         {
             var sessions = Sessions.AsQueryable();
             if (!(depositId is null))

@@ -80,7 +80,7 @@ jobs:
         dotnet test -c Release src/Nethermind/Nethermind.Core2.Test
     - name: Nethermind.Store.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Store.Test
+        dotnet test -c Release src/Nethermind/Nethermind.State.Test
     - name: Nethermind.Wallet.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Wallet.Test

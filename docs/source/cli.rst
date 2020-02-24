@@ -99,6 +99,9 @@ eth
  eth.blockNumber
   <check JSON RPC docs>
 
+ eth.getProof(address, storageKeys, blockParameter)
+  <check JSON RPC docs>
+
  eth.call(tx, blockParameter)
   <check JSON RPC docs>
 

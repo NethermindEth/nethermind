@@ -16,6 +16,7 @@
 
 using System.IO;
 using System.Linq;
+using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Serialization.Rlp;
 
@@ -41,16 +42,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
         public DataDeliveryReceiptRequest Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = rlpStream.ReadSequenceLength();
-            if (sequenceLength == 0)
-            {
-                return null;
-            }
-
-            var number = rlpStream.DecodeUInt();
-            var depositId = rlpStream.DecodeKeccak();
-            var unitsRange = Serialization.Rlp.Rlp.Decode<UnitsRange>(rlpStream);
-            var isSettlement = rlpStream.DecodeBool();
+            rlpStream.ReadSequenceLength();
+            uint number = rlpStream.DecodeUInt();
+            Keccak depositId = rlpStream.DecodeKeccak();
+            UnitsRange unitsRange = Serialization.Rlp.Rlp.Decode<UnitsRange>(rlpStream);
+            bool isSettlement = rlpStream.DecodeBool();
             var receipts = Serialization.Rlp.Rlp.DecodeArray<DataDeliveryReceiptToMerge>(rlpStream);
 
             return new DataDeliveryReceiptRequest(number, depositId, unitsRange, isSettlement, receipts);
@@ -70,11 +66,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Serialization.Rlp.Rlp.Encode(item.UnitsRange),
                 Serialization.Rlp.Rlp.Encode(item.IsSettlement),
                 Serialization.Rlp.Rlp.Encode(item.ReceiptsToMerge.ToArray()));
-        }
-        
-        public void Encode(MemoryStream stream, DataDeliveryReceiptRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new System.NotImplementedException();
         }
 
         public int GetLength(DataDeliveryReceiptRequest item, RlpBehaviors rlpBehaviors)

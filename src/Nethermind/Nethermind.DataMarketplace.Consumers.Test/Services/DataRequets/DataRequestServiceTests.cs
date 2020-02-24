@@ -27,11 +27,13 @@ using Nethermind.DataMarketplace.Consumers.DataRequests.Services;
 using Nethermind.DataMarketplace.Consumers.Deposits;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Notifiers;
+using Nethermind.DataMarketplace.Consumers.Notifiers.Services;
 using Nethermind.DataMarketplace.Consumers.Providers;
 using Nethermind.DataMarketplace.Consumers.Sessions.Domain;
 using Nethermind.DataMarketplace.Consumers.Sessions.Queries;
 using Nethermind.DataMarketplace.Consumers.Sessions.Repositories;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.Logging;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -53,6 +55,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataRequets
         private const uint DepositConfirmationTimestamp = 1546300800;
         private const uint DepositExpiryTime = 1546393600;
         private static readonly DateTime Date = new DateTime(2019, 1, 2); //1546383600
+        private INdmNotifier _notifier;
 
         [SetUp]
         public void Setup()
@@ -64,7 +67,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataRequets
             _providerService = Substitute.For<IProviderService>();
             _timestamper = new Timestamper(Date);
             _sessionRepository = Substitute.For<IConsumerSessionRepository>();
-            _consumerNotifier = Substitute.For<IConsumerNotifier>();
+            _notifier = Substitute.For<INdmNotifier>();
+            _consumerNotifier = new ConsumerNotifier(_notifier);
             _dataRequestService = new DataRequestService(_dataRequestFactory, _depositProvider, _kycVerifier, _wallet,
                 _providerService, _timestamper, _sessionRepository, _consumerNotifier, LimboLogs.Instance);
         }
@@ -193,7 +197,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataRequets
             _dataRequestFactory.Received(1).Create(deposit.Deposit, deposit.DataAsset.Id,
                 deposit.DataAsset.Provider.Address, deposit.Consumer, deposit.Pepper);
             await provider.Received(1).SendDataRequestAsync(dataRequest, consumedUnits);
-            await _consumerNotifier.Received(1).SendDataRequestResultAsync(depositId, result);
+            await _notifier.ReceivedWithAnyArgs(1).NotifyAsync(null);
         }
 
         private static ConsumerSession GetConsumerSession()

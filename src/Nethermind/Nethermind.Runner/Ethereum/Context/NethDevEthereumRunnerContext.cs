@@ -14,9 +14,16 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Config;
+using Nethermind.Logging;
+
 namespace Nethermind.Runner.Ethereum.Context
 {
     public class NethDevEthereumRunnerContext : EthereumRunnerContext
     {
+        public NethDevEthereumRunnerContext(IConfigProvider configProvider, ILogManager logManager)
+            : base(configProvider, logManager)
+        {
+        }
     }
 }

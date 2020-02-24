@@ -25,7 +25,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
-using Nethermind.Store;
+using Nethermind.State;
 
 namespace Nethermind.State.Test.Runner
 {

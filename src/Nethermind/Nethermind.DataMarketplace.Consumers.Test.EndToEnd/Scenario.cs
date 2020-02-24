@@ -190,7 +190,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.EndToEnd
             {
                 DataAssetId = dataAsset.Id,
                 Units = dataAsset.MaxUnits,
-                Value = dataAsset.MaxUnits * new UInt256(dataAsset.UnitPrice)
+                Value = dataAsset.MaxUnits * new UInt256(dataAsset.UnitPrice ?? 0)
             };
             Log(_serializer.Serialize(makeDeposit, true));
             Separator();

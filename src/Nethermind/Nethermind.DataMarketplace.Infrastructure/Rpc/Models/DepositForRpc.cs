@@ -22,10 +22,10 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
 {
     public class DepositForRpc
     {
-        public Keccak Id { get; set; }
-        public uint Units { get; set; }
-        public BigInteger Value { get; set; }
-        public uint ExpiryTime { get; set; }
+        public Keccak? Id { get; set; }
+        public uint? Units { get; set; }
+        public BigInteger? Value { get; set; }
+        public uint? ExpiryTime { get; set; }
 
         public DepositForRpc()
         {

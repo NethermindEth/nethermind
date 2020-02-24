@@ -16,23 +16,23 @@
 
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Repositories;
 using Nethermind.Store;
-using Nethermind.Store.Repositories;
+using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 

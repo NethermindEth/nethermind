@@ -20,13 +20,13 @@ using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.TxPool;
 
 namespace Nethermind.JsonRpc.Modules.Parity
 {

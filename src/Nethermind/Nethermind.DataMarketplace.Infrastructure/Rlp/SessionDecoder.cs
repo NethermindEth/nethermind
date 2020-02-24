@@ -14,7 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.IO;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Serialization.Rlp;
@@ -33,44 +33,33 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             Serialization.Rlp.Rlp.Decoders[typeof(Session)] = new SessionDecoder();
         }
 
-        public Session Decode(RlpStream rlpStream,
-            RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Session Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = rlpStream.ReadSequenceLength();
-            if (sequenceLength == 0)
-            {
-                return null;
-            }
-
-            var id = rlpStream.DecodeKeccak();
-            var depositId = rlpStream.DecodeKeccak();
-            var dataAssetId = rlpStream.DecodeKeccak();
-            var consumerAddress = rlpStream.DecodeAddress();
-            var consumerNodeId = new PublicKey(rlpStream.DecodeByteArray());
-            var providerAddress = rlpStream.DecodeAddress();
-            var providerNodeId = new PublicKey(rlpStream.DecodeByteArray());
-            var state = (SessionState) rlpStream.DecodeInt();
-            var startUnitsFromProvider = rlpStream.DecodeUInt();
-            var startUnitsFromConsumer = rlpStream.DecodeUInt();
-            var startTimestamp = rlpStream.DecodeUlong();
-            var finishTimestamp = rlpStream.DecodeUlong();
-            var consumedUnits = rlpStream.DecodeUInt();
-            var unpaidUnits = rlpStream.DecodeUInt();
-            var paidUnits = rlpStream.DecodeUInt();
-            var settledUnits = rlpStream.DecodeUInt();
+            rlpStream.ReadSequenceLength();
+            Keccak id = rlpStream.DecodeKeccak();
+            Keccak depositId = rlpStream.DecodeKeccak();
+            Keccak dataAssetId = rlpStream.DecodeKeccak();
+            Address consumerAddress = rlpStream.DecodeAddress();
+            PublicKey consumerNodeId = new PublicKey(rlpStream.DecodeByteArray());
+            Address providerAddress = rlpStream.DecodeAddress();
+            PublicKey providerNodeId = new PublicKey(rlpStream.DecodeByteArray());
+            SessionState state = (SessionState) rlpStream.DecodeInt();
+            uint startUnitsFromProvider = rlpStream.DecodeUInt();
+            uint startUnitsFromConsumer = rlpStream.DecodeUInt();
+            ulong startTimestamp = rlpStream.DecodeUlong();
+            ulong finishTimestamp = rlpStream.DecodeUlong();
+            uint consumedUnits = rlpStream.DecodeUInt();
+            uint unpaidUnits = rlpStream.DecodeUInt();
+            uint paidUnits = rlpStream.DecodeUInt();
+            uint settledUnits = rlpStream.DecodeUInt();
 
             return new Session(id, depositId, dataAssetId, consumerAddress, consumerNodeId, providerAddress,
-                providerNodeId, state,  startUnitsFromProvider, startUnitsFromConsumer, startTimestamp, finishTimestamp,
+                providerNodeId, state,  startUnitsFromConsumer, startUnitsFromProvider, startTimestamp, finishTimestamp,
                 consumedUnits, unpaidUnits, paidUnits, settledUnits);
         }
 
         public Serialization.Rlp.Rlp Encode(Session item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
-            {
-                return Serialization.Rlp.Rlp.OfEmptySequence;
-            }
-
             return Serialization.Rlp.Rlp.Encode(
                 Serialization.Rlp.Rlp.Encode(item.Id),
                 Serialization.Rlp.Rlp.Encode(item.DepositId),
@@ -88,11 +77,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Serialization.Rlp.Rlp.Encode(item.UnpaidUnits),
                 Serialization.Rlp.Rlp.Encode(item.PaidUnits),
                 Serialization.Rlp.Rlp.Encode(item.SettledUnits));
-        }
-
-        public void Encode(MemoryStream stream, Session item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new System.NotImplementedException();
         }
 
         public int GetLength(Session item, RlpBehaviors rlpBehaviors)

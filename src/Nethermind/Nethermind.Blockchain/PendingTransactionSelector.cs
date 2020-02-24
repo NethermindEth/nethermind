@@ -17,11 +17,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Blockchain.TxPools;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
-using Nethermind.Store;
+using Nethermind.State;
+using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain
 {

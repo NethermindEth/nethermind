@@ -49,7 +49,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
             return From == other.From && To == other.To;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

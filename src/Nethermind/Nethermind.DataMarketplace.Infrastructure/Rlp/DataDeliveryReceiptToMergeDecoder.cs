@@ -14,8 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.IO;
-using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Serialization.Rlp;
@@ -42,14 +41,9 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
         public DataDeliveryReceiptToMerge Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = rlpStream.ReadSequenceLength();
-            if (sequenceLength == 0)
-            {
-                return null;
-            }
-
-            var unitsRange = Serialization.Rlp.Rlp.Decode<UnitsRange>(rlpStream);
-            var signature = SignatureDecoder.DecodeSignature(rlpStream);
+            rlpStream.ReadSequenceLength();
+            UnitsRange unitsRange = Serialization.Rlp.Rlp.Decode<UnitsRange>(rlpStream);
+            Signature signature = SignatureDecoder.DecodeSignature(rlpStream);
 
             return new DataDeliveryReceiptToMerge(unitsRange, signature);
         }
@@ -67,11 +61,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Serialization.Rlp.Rlp.Encode(item.Signature.V),
                 Serialization.Rlp.Rlp.Encode(item.Signature.R.WithoutLeadingZeros()),
                 Serialization.Rlp.Rlp.Encode(item.Signature.S.WithoutLeadingZeros()));
-        }
-
-        public void Encode(MemoryStream stream, DataDeliveryReceiptToMerge item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new System.NotImplementedException();
         }
 
         public int GetLength(DataDeliveryReceiptToMerge item, RlpBehaviors rlpBehaviors)

@@ -32,22 +32,22 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo
     public class MongoProvider : IMongoProvider
     {
         private static bool _initialized;
-        private static IMongoClient _client;
+        private static IMongoClient? _client;
         private readonly INdmMongoConfig _config;
 
         public MongoProvider(INdmMongoConfig config, ILogManager logManager)
         {
             _config = config;
-            var logger = logManager.GetClassLogger();
+            ILogger logger = logManager.GetClassLogger();
             if (_initialized)
             {
                 return;
             }
 
             RegisterConventions();
-            var connectionUrl = new MongoUrl(config.ConnectionString);
-            var clientSettings = MongoClientSettings.FromUrl(connectionUrl);
-            if (_config.LogQueries)
+            MongoUrl connectionUrl = new MongoUrl(config.ConnectionString);
+            MongoClientSettings clientSettings = MongoClientSettings.FromUrl(connectionUrl);
+            if (_config.LogQueries ?? false)
             {
                 clientSettings.ClusterConfigurator = cb =>
                 {
@@ -70,7 +70,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo
             _initialized = true;
         }
         
-        public IMongoDatabase GetDatabase() => _client.GetDatabase(_config.Database);
+        public IMongoDatabase? GetDatabase() => _client?.GetDatabase(_config.Database);
 
         private static void RegisterConventions()
         {
@@ -94,16 +94,16 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo
             };
         }
 
-        private class AddressSerializer : SerializerBase<Address>
+        private class AddressSerializer : SerializerBase<Address?>
         {
-            public override Address Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
+            public override Address? Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
             {
-                var value = context.Reader.ReadString();
+                string value = context.Reader.ReadString();
 
                 return string.IsNullOrWhiteSpace(value) ? null : new Address(value);
             }
 
-            public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, Address value)
+            public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, Address? value)
                 => context.Writer.WriteString(value?.ToString());
         }
 
@@ -116,43 +116,42 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo
                 BigInteger value) => context.Writer.WriteString(value.ToString());
         }
 
-        private class KeccakSerializer : SerializerBase<Keccak>
+        private class KeccakSerializer : SerializerBase<Keccak?>
         {
-            public override Keccak Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
+            public override Keccak? Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
             {
-                var value = context.Reader.ReadString();
+                string value = context.Reader.ReadString();
 
                 return string.IsNullOrWhiteSpace(value) ? null : new Keccak(value);
             }
 
-            public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, Keccak value)
+            public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, Keccak? value)
                 => context.Writer.WriteString(value?.ToString() ?? string.Empty);
         }
         
-        private class PublicKeySerializer : SerializerBase<PublicKey>
+        private class PublicKeySerializer : SerializerBase<PublicKey?>
         {
-            public override PublicKey Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
+            public override PublicKey? Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
             {
-                var value = context.Reader.ReadString();
-
+                string value = context.Reader.ReadString();
                 return string.IsNullOrWhiteSpace(value) ? null : new PublicKey(value);
             }
 
             public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args,
-                PublicKey value) => context.Writer.WriteString(value?.ToString() ?? string.Empty);
+                PublicKey? value) => context.Writer.WriteString(value?.ToString() ?? string.Empty);
         }
 
-        private class SignatureSerializer : SerializerBase<Signature>
+        private class SignatureSerializer : SerializerBase<Signature?>
         {
-            public override Signature Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
+            public override Signature? Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
             {
-                var value = context.Reader.ReadString();
+                string value = context.Reader.ReadString();
 
                 return string.IsNullOrWhiteSpace(value) ? null : new Signature(value);
             }
 
-            public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args,
-                Signature value) => context.Writer.WriteString(value?.ToString() ?? string.Empty);
+            public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, Signature? value)
+                => context.Writer.WriteString(value?.ToString() ?? string.Empty);
         }
 
         private class UInt256Serializer : SerializerBase<UInt256>

@@ -18,12 +18,9 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.TxPools;
-using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -32,6 +29,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing.ParityStyle;
@@ -41,8 +39,12 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
+using Nethermind.State.Repositories;
 using Nethermind.Store;
-using Nethermind.Store.Repositories;
+using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Storages;
 using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
@@ -85,7 +87,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree();
 
-            ITxPool txPool = new TxPool(txStorage, Timestamper.Default, ethereumEcdsa, specProvider, new TxPoolConfig(), stateProvider, LimboLogs.Instance);
+            ITxPool txPool = new TxPool.TxPool(txStorage, Timestamper.Default, ethereumEcdsa, specProvider, new TxPoolConfig(), stateProvider, LimboLogs.Instance);
 
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
@@ -128,7 +130,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 BlockBuilder builder = Build.A.Block.WithNumber(i).WithParent(previousBlock).WithTransactions(i == 2 ? new Transaction[] {Build.A.Transaction.SignedAndResolved().TestObject} : Array.Empty<Transaction>()).WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"));
                 if (auRa)
                 {
-                    builder.WithAura(i, i.ToByteArray(Bytes.Endianness.Big));
+                    builder.WithAura(i, i.ToByteArray());
                 }
 
                 Block block = builder.TestObject;

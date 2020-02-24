@@ -57,7 +57,7 @@ namespace Nethermind.DataMarketplace.Test.Subprotocols
         {
             _messageSerializationService = Substitute.For<IMessageSerializationService>();
             _nodeStatsManager = Substitute.For<INodeStatsManager>();
-            _logManager = Substitute.For<ILogManager>();
+            _logManager = LimboLogs.Instance;
             _accountService = Substitute.For<IAccountService>();
             _consumerService = Substitute.For<IConsumerService>();
             _ndmConsumerChannelManager = Substitute.For<INdmConsumerChannelManager>();

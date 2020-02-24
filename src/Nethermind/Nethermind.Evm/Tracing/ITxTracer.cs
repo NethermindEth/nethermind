@@ -20,7 +20,7 @@ using System.Data.SqlTypes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Store;
+using Nethermind.State;
 using Newtonsoft.Json.Serialization;
 
 namespace Nethermind.Evm.Tracing

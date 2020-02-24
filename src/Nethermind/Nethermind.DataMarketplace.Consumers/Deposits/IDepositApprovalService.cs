@@ -26,7 +26,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits
     public interface IDepositApprovalService
     {
         Task<PagedResult<DepositApproval>> BrowseAsync(GetConsumerDepositApprovals query);
-        Task<Keccak> RequestAsync(Keccak assetId, Address consumer, string kyc);
+        Task<Keccak?> RequestAsync(Keccak assetId, Address consumer, string kyc);
         Task ConfirmAsync(Keccak assetId, Address consumer);
         Task RejectAsync(Keccak assetId, Address consumer);
         Task UpdateAsync(IReadOnlyList<DepositApproval> approvals, Address provider);

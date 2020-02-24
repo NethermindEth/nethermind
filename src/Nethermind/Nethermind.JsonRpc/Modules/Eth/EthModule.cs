@@ -23,7 +23,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -33,8 +32,9 @@ using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Proofs;
 using Nethermind.Store;
-using Nethermind.Store.Proofs;
+using Nethermind.TxPool;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {

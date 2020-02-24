@@ -14,8 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Db;
-using Nethermind.Db.Config;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.Databases
@@ -24,7 +24,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
     {
         public override string Name { get; } = "ConsumerSessions";
 
-        public ConsumerSessionsRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
+        public ConsumerSessionsRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager)
             : base(basePath, "consumerSessions", dbConfig, logManager)
         {
         }

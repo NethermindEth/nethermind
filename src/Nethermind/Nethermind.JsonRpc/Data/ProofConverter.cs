@@ -17,7 +17,7 @@
 using System;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules.Trace;
-using Nethermind.Store.Proofs;
+using Nethermind.State.Proofs;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Data

@@ -18,24 +18,20 @@ using System;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using MongoDB.Driver;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Specs;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Consumers.Infrastructure;
 using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Configs;
-using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Infrastructure;
 using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
 using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo.Repositories;
@@ -45,7 +41,7 @@ using Nethermind.DataMarketplace.Core.Repositories;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Notifiers;
 using Nethermind.DataMarketplace.Subprotocols.Factories;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Db;
 using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
@@ -55,10 +51,13 @@ using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Stats;
 using Nethermind.Store;
+using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.WebSockets;
 
-[assembly:InternalsVisibleTo("Nethermind.DataMarketplace.Test")]
+[assembly: InternalsVisibleTo("Nethermind.DataMarketplace.Test")]
+
 namespace Nethermind.DataMarketplace.Initializers
 {
     [NdmInitializer("ndm")]
@@ -66,62 +65,148 @@ namespace Nethermind.DataMarketplace.Initializers
     {
         private readonly INdmModule _ndmModule;
         private readonly INdmConsumersModule _ndmConsumersModule;
-        
-        internal string DbPath { get; private set; }
+        private ILogger _logger;
 
-        public NdmInitializer(INdmModule ndmModule, INdmConsumersModule ndmConsumersModule)
+        internal string? DbPath { get; private set; }
+
+        public NdmInitializer(INdmModule ndmModule, INdmConsumersModule ndmConsumersModule, ILogManager logManager)
         {
-            _ndmModule = ndmModule;
-            _ndmConsumersModule = ndmConsumersModule;
+            _ndmModule = ndmModule ?? throw new ArgumentNullException(nameof(ndmModule));
+            _ndmConsumersModule = ndmConsumersModule ?? throw new ArgumentNullException(nameof(ndmConsumersModule));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
-        
-        public virtual async Task<INdmCapabilityConnector> InitAsync(IConfigProvider configProvider,
-            IDbProvider dbProvider, string baseDbPath, IBlockTree blockTree, ITxPool txPool, ISpecProvider specProvider,
-            IReceiptStorage receiptStorage, IWallet wallet, IFilterStore filterStore, IFilterManager filterManager,
-            ITimestamper timestamper, IEthereumEcdsa ecdsa, IRpcModuleProvider rpcModuleProvider, IKeyStore keyStore,
-            IJsonSerializer jsonSerializer, ICryptoRandom cryptoRandom, IEnode enode,
-            INdmConsumerChannelManager consumerChannelManager, INdmDataPublisher dataPublisher, IGrpcServer grpcServer,
-            INodeStatsManager nodeStatsManager, IProtocolsManager protocolsManager,
-            IProtocolValidator protocolValidator, IMessageSerializationService messageSerializationService,
-            bool enableUnsecuredDevWallet, IWebSocketsManager webSocketsManager, ILogManager logManager,
-            IBlockProcessor blockProcessor, IJsonRpcClientProxy jsonRpcClientProxy,
-            IEthJsonRpcClientProxy ethJsonRpcClientProxy, IHttpClient httpClient, IMonitoringService monitoringService, 
+
+        public virtual async Task<INdmCapabilityConnector> InitAsync(
+            IConfigProvider configProvider,
+            IDbProvider dbProvider,
+            string baseDbPath,
+            IBlockTree blockTree,
+            ITxPool txPool,
+            ISpecProvider specProvider,
+            IReceiptStorage receiptStorage,
+            IWallet wallet,
+            IFilterStore filterStore,
+            IFilterManager filterManager,
+            ITimestamper timestamper,
+            IEthereumEcdsa ecdsa,
+            IRpcModuleProvider rpcModuleProvider,
+            IKeyStore keyStore,
+            IJsonSerializer jsonSerializer,
+            ICryptoRandom cryptoRandom,
+            IEnode enode,
+            INdmConsumerChannelManager consumerChannelManager,
+            INdmDataPublisher dataPublisher,
+            IGrpcServer grpcServer,
+            INodeStatsManager nodeStatsManager,
+            IProtocolsManager protocolsManager,
+            IProtocolValidator protocolValidator,
+            IMessageSerializationService messageSerializationService,
+            bool enableUnsecuredDevWallet,
+            IWebSocketsManager webSocketsManager,
+            ILogManager logManager,
+            IBlockProcessor blockProcessor,
+            IJsonRpcClientProxy? jsonRpcClientProxy,
+            IEthJsonRpcClientProxy? ethJsonRpcClientProxy,
+            IHttpClient httpClient,
+            IMonitoringService monitoringService,
             IBloomStorage bloomStorage)
         {
-            var (config, services, faucet, ethRequestService, accountService, consumerService, consumerAddress,
-                providerAddress) = await PreInitAsync(configProvider, dbProvider, baseDbPath, blockTree, txPool,
-                specProvider, receiptStorage, wallet, filterStore, filterManager, timestamper, ecdsa, rpcModuleProvider,
-                keyStore, jsonSerializer, cryptoRandom, enode, consumerChannelManager, dataPublisher, grpcServer,
-                enableUnsecuredDevWallet, webSocketsManager, logManager, blockProcessor, jsonRpcClientProxy,
-                ethJsonRpcClientProxy, httpClient, monitoringService, bloomStorage);
-            if (!config.Enabled)
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            INdmConfig ndmConfig = configProvider.GetConfig<INdmConfig>();
+            if (!ndmConfig.Enabled)
             {
-                return default;
+                // can we not even call it here? // can be step and use the subsystems
+                return NullNdmCapabilityConnector.Instance;
             }
 
-            var subprotocolFactory = new NdmSubprotocolFactory(messageSerializationService, nodeStatsManager,
+            (NdmConfig config, INdmServices services, INdmFaucet faucet, IEthRequestService ethRequestService, IAccountService accountService, IConsumerService consumerService, Address consumerAddress, Address providerAddress) = await PreInitAsync(
+                configProvider,
+                dbProvider,
+                baseDbPath,
+                blockTree,
+                txPool,
+                specProvider,
+                receiptStorage,
+                wallet,
+                filterStore,
+                filterManager,
+                timestamper,
+                ecdsa,
+                rpcModuleProvider,
+                keyStore,
+                jsonSerializer,
+                cryptoRandom,
+                enode,
+                consumerChannelManager,
+                dataPublisher,
+                grpcServer,
+                enableUnsecuredDevWallet,
+                webSocketsManager,
+                logManager,
+                blockProcessor,
+                jsonRpcClientProxy,
+                ethJsonRpcClientProxy,
+                httpClient,
+                monitoringService,
+                bloomStorage);
+
+            NdmSubprotocolFactory subprotocolFactory = new NdmSubprotocolFactory(messageSerializationService, nodeStatsManager,
                 logManager, accountService, consumerService, consumerChannelManager, ecdsa, wallet, faucet,
                 enode.PublicKey, providerAddress, consumerAddress, config.VerifyP2PSignature);
-            var protocolHandlerFactory = new ProtocolHandlerFactory(subprotocolFactory, protocolValidator,
+            ProtocolHandlerFactory protocolHandlerFactory = new ProtocolHandlerFactory(subprotocolFactory, protocolValidator,
                 ethRequestService, logManager);
-            var capabilityConnector = new NdmCapabilityConnector(protocolsManager, protocolHandlerFactory,
-                accountService, logManager);
+
+            if (ndmConfig.ProviderAddress == null)
+            {
+                return NullNdmCapabilityConnector.Instance; 
+            }
+            
+            NdmCapabilityConnector capabilityConnector = new NdmCapabilityConnector(
+                protocolsManager,
+                protocolHandlerFactory,
+                accountService,
+                logManager,
+                new Address(ndmConfig.ProviderAddress));
 
             return capabilityConnector;
         }
 
-        protected async Task<(NdmConfig config, INdmServices services, INdmFaucet faucet, IEthRequestService ethRequestService, IAccountService accountService, IConsumerService consumerService, Address consumerAddress, Address
-            providerAddress)> PreInitAsync(IConfigProvider configProvider, IDbProvider dbProvider, string baseDbPath,
-            IBlockTree blockTree, ITxPool txPool, ISpecProvider specProvider,
-            IReceiptStorage receiptStorage, IWallet wallet, IFilterStore filterStore, IFilterManager filterManager,
-            ITimestamper timestamper, IEthereumEcdsa ecdsa, IRpcModuleProvider rpcModuleProvider,
-            IKeyStore keyStore, IJsonSerializer jsonSerializer, ICryptoRandom cryptoRandom, IEnode enode,
-            INdmConsumerChannelManager consumerChannelManager, INdmDataPublisher dataPublisher,
-            IGrpcServer grpcServer, bool enableUnsecuredDevWallet, IWebSocketsManager webSocketsManager,
-            ILogManager logManager, IBlockProcessor blockProcessor, IJsonRpcClientProxy jsonRpcClientProxy,
-            IEthJsonRpcClientProxy ethJsonRpcClientProxy, IHttpClient httpClient,
-            IMonitoringService monitoringService, IBloomStorage bloomStorage)
+        protected async Task<(NdmConfig config, INdmServices services, INdmFaucet faucet,
+                IEthRequestService ethRequestService, IAccountService accountService,
+                IConsumerService consumerService, Address consumerAddress, Address providerAddress)>
+            PreInitAsync(
+                IConfigProvider configProvider,
+                IDbProvider dbProvider,
+                string baseDbPath,
+                IBlockTree blockTree,
+                ITxPool txPool,
+                ISpecProvider specProvider,
+                IReceiptStorage receiptStorage,
+                IWallet wallet,
+                IFilterStore filterStore,
+                IFilterManager filterManager,
+                ITimestamper timestamper,
+                IEthereumEcdsa ecdsa,
+                IRpcModuleProvider rpcModuleProvider,
+                IKeyStore keyStore,
+                IJsonSerializer jsonSerializer,
+                ICryptoRandom cryptoRandom,
+                IEnode enode,
+                INdmConsumerChannelManager consumerChannelManager,
+                INdmDataPublisher dataPublisher,
+                IGrpcServer grpcServer,
+                bool enableUnsecuredDevWallet,
+                IWebSocketsManager webSocketsManager,
+                ILogManager logManager,
+                IBlockProcessor blockProcessor,
+                IJsonRpcClientProxy? jsonRpcClientProxy,
+                IEthJsonRpcClientProxy? ethJsonRpcClientProxy,
+                IHttpClient httpClient,
+                IMonitoringService monitoringService,
+                IBloomStorage bloomStorage)
         {
+            // what is block processor doing here?
+            
             if (!(configProvider.GetConfig<INdmConfig>() is NdmConfig defaultConfig))
             {
                 return default;
@@ -137,26 +222,32 @@ namespace Nethermind.DataMarketplace.Initializers
                 throw new ArgumentException("NDM config stored in database requires an id.", nameof(defaultConfig.Id));
             }
 
-            IMongoProvider mongoProvider = null;
-            IConfigRepository configRepository = null;
-            IEthRequestRepository ethRequestRepository = null;
+            IMongoProvider mongoProvider;
+            IConfigRepository configRepository;
+            IEthRequestRepository ethRequestRepository;
             switch (defaultConfig.Persistence?.ToLowerInvariant())
             {
                 case "mongo":
                     mongoProvider = new MongoProvider(configProvider.GetConfig<INdmMongoConfig>(), logManager);
-                    var database = mongoProvider.GetDatabase();
+                    IMongoDatabase? database = mongoProvider.GetDatabase();
+                    if (database == null)
+                    {
+                        throw new ApplicationException("Failed to initialize Mongo database");
+                    }
+                    
                     configRepository = new ConfigMongoRepository(database);
                     ethRequestRepository = new EthRequestMongoRepository(database);
                     break;
                 default:
+                    mongoProvider = NullMongoProvider.Instance;
                     configRepository = new ConfigRocksRepository(dbProvider.ConfigsDb, new NdmConfigDecoder());
                     ethRequestRepository = new EthRequestRocksRepository(dbProvider.EthRequestsDb,
                         new EthRequestDecoder());
                     break;
             }
 
-            var configManager = new ConfigManager(defaultConfig, configRepository);
-            var ndmConfig = await configManager.GetAsync(defaultConfig.Id);
+            ConfigManager configManager = new ConfigManager(defaultConfig, configRepository);
+            NdmConfig? ndmConfig = await configManager.GetAsync(defaultConfig.Id);
             if (ndmConfig is null)
             {
                 ndmConfig = defaultConfig;
@@ -166,51 +257,87 @@ namespace Nethermind.DataMarketplace.Initializers
                 }
             }
 
-            var webSocketsModule = webSocketsManager.GetModule("ndm");
-            var notifier = new NdmNotifier(webSocketsModule);
-            var ethRequestService = new EthRequestService(ndmConfig.FaucetHost, logManager);
+            IWebSocketsModule webSocketsModule = webSocketsManager.GetModule("ndm");
+            NdmNotifier notifier = new NdmNotifier(webSocketsModule);
+            EthRequestService ethRequestService = new EthRequestService(ndmConfig.FaucetHost, logManager);
             DbPath = Path.Combine(baseDbPath, ndmConfig.DatabasePath);
-            var services = _ndmModule.Init(new NdmRequiredServices(configProvider, configManager, ndmConfig,
-                DbPath, dbProvider, mongoProvider, logManager, blockTree, txPool, specProvider, receiptStorage,
-                filterStore, filterManager, wallet, timestamper, ecdsa, keyStore, rpcModuleProvider, jsonSerializer,
-                cryptoRandom, enode, consumerChannelManager, dataPublisher, grpcServer, ethRequestService, notifier,
-                enableUnsecuredDevWallet, blockProcessor, jsonRpcClientProxy, ethJsonRpcClientProxy, httpClient,
-                monitoringService, bloomStorage));
 
-            var faucetAddress = string.IsNullOrWhiteSpace(ndmConfig.FaucetAddress)
-                ? null
-                : new Address(ndmConfig.FaucetAddress);
+            INdmServices services = _ndmModule.Init(
+                new NdmRequiredServices(
+                    configProvider,
+                    configManager,
+                    ndmConfig, 
+                    DbPath,
+                    dbProvider,
+                    mongoProvider,
+                    logManager,
+                    blockTree,
+                    txPool,
+                    specProvider,
+                    receiptStorage, 
+                    filterStore,
+                    filterManager,
+                    wallet,
+                    timestamper,
+                    ecdsa,
+                    keyStore,
+                    rpcModuleProvider,
+                    jsonSerializer, 
+                    cryptoRandom,
+                    enode,
+                    consumerChannelManager,
+                    dataPublisher,
+                    grpcServer,
+                    ethRequestService,
+                    notifier, 
+                    enableUnsecuredDevWallet,
+                    blockProcessor,
+                    jsonRpcClientProxy,
+                    ethJsonRpcClientProxy,
+                    httpClient, 
+                    monitoringService,
+                    bloomStorage));
 
             INdmFaucet faucet;
             if (ndmConfig.FaucetEnabled)
             {
-                faucet = new NdmFaucet(services.CreatedServices.BlockchainBridge, ethRequestRepository, faucetAddress,
-                    ndmConfig.FaucetWeiRequestMaxValue, ndmConfig.FaucetEthDailyRequestsTotalValue,
-                    ndmConfig.FaucetEnabled, timestamper, wallet, logManager);
+                // faucet should be separate from NDM? but it uses MongoDB?
+                // so maybe we could extract Mongo DB beyond NDM? why would it be related?
+                if (string.IsNullOrWhiteSpace(ndmConfig.FaucetAddress))
+                {
+                    faucet = EmptyFaucet.Instance;
+                    _logger.Warn("Faucet cannot be started due to missing faucet address configuration.");
+                }
+                else
+                {
+                    Address faucetAddress = new Address(ndmConfig.FaucetAddress);
+                    faucet = new NdmFaucet(
+                        services.CreatedServices.BlockchainBridge,
+                        ethRequestRepository,
+                        faucetAddress,
+                        ndmConfig.FaucetWeiRequestMaxValue,
+                        ndmConfig.FaucetEthDailyRequestsTotalValue,
+                        ndmConfig.FaucetEnabled,
+                        timestamper,
+                        wallet,
+                        logManager);
+                }
             }
             else
             {
-                faucet = new EmptyFaucet();
+                faucet = EmptyFaucet.Instance;
             }
 
-            var consumerAddress = string.IsNullOrWhiteSpace(ndmConfig.ConsumerAddress)
+            Address consumerAddress = string.IsNullOrWhiteSpace(ndmConfig.ConsumerAddress)
                 ? Address.Zero
                 : new Address(ndmConfig.ConsumerAddress);
-            var providerAddress = string.IsNullOrWhiteSpace(ndmConfig.ProviderAddress)
+            Address providerAddress = string.IsNullOrWhiteSpace(ndmConfig.ProviderAddress)
                 ? Address.Zero
                 : new Address(ndmConfig.ProviderAddress);
-            var consumers = _ndmConsumersModule.Init(services);
+            INdmConsumerServices consumers = _ndmConsumersModule.Init(services);
 
             return (ndmConfig, services, faucet, ethRequestService, consumers.AccountService, consumers.ConsumerService,
                 consumerAddress, providerAddress);
-        }
-
-        private class EmptyFaucet : INdmFaucet
-        {
-            private static readonly FaucetResponse Response = new FaucetResponse(FaucetRequestStatus.FaucetDisabled);
-
-            public Task<FaucetResponse> TryRequestEthAsync(string node, Address address, UInt256 value)
-                => Task.FromResult(Response);
         }
     }
 }

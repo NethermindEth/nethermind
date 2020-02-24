@@ -53,9 +53,9 @@ namespace Nethermind.DataMarketplace.Consumers.Shared
         
         #region DataStreams
         
-        Task<Keccak> EnableDataStreamAsync(Keccak depositId, string client, string[] args);
-        Task<Keccak> DisableDataStreamAsync(Keccak depositId, string client);
-        Task<Keccak> DisableDataStreamsAsync(Keccak depositId);
+        Task<Keccak?> EnableDataStreamAsync(Keccak depositId, string client, string[] args);
+        Task<Keccak?> DisableDataStreamAsync(Keccak depositId, string client);
+        Task<Keccak?> DisableDataStreamsAsync(Keccak depositId);
         Task SetEnabledDataStreamAsync(Keccak depositId, string client, string[] args);
         Task SetDisabledDataStreamAsync(Keccak depositId, string client);
         
@@ -68,12 +68,12 @@ namespace Nethermind.DataMarketplace.Consumers.Shared
         
         #region Deposits
         
-        Task<DepositDetails> GetDepositAsync(Keccak depositId);
+        Task<DepositDetails?> GetDepositAsync(Keccak depositId);
         Task<PagedResult<DepositDetails>> GetDepositsAsync(GetDeposits query);
-        Task<Keccak> MakeDepositAsync(Keccak assetId, uint units, UInt256 value, UInt256? gasPrice = null);
+        Task<Keccak?> MakeDepositAsync(Keccak assetId, uint units, UInt256 value, UInt256? gasPrice = null);
 
         Task<PagedResult<DepositApproval>> GetDepositApprovalsAsync(GetConsumerDepositApprovals query);
-        Task<Keccak> RequestDepositApprovalAsync(Keccak assetId, string kyc);
+        Task<Keccak?> RequestDepositApprovalAsync(Keccak assetId, string kyc);
         Task ConfirmDepositApprovalAsync(Keccak assetId, Address consumer);
         Task RejectDepositApprovalAsync(Keccak assetId, Address consumer);
         Task UpdateDepositApprovalsAsync(IReadOnlyList<DepositApproval> depositApprovals, Address provider);
@@ -105,7 +105,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared
         
         IReadOnlyList<ConsumerSession> GetActiveSessions();
         Task StartSessionAsync(Session session, INdmPeer provider);
-        Task<Keccak> SendFinishSessionAsync(Keccak depositId);
+        Task<Keccak?> SendFinishSessionAsync(Keccak depositId);
         Task FinishSessionAsync(Session session, INdmPeer provider, bool removePeer = true);
         Task FinishSessionsAsync(INdmPeer provider, bool removePeer = true);
         
@@ -113,7 +113,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared
 
         #region Proxy
         
-        Task<NdmProxy> GetProxyAsync();
+        Task<NdmProxy?> GetProxyAsync();
         Task SetProxyAsync(IEnumerable<string> urls);
         
         #endregion

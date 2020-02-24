@@ -19,12 +19,9 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.TxPools;
-using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -34,17 +31,21 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Store;
-using Nethermind.Store.Repositories;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Blockchain.Test.Validators;
+using Nethermind.Db;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store.BeamSync;
+using Nethermind.State;
+using Nethermind.State.Repositories;
+using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Storages;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization
@@ -261,7 +262,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var receiptStorage = new InMemoryReceiptStorage();
 
             var ecdsa = new EthereumEcdsa(specProvider, logManager);
-            var txPool = new TxPool(new InMemoryTxStorage(), new Timestamper(), ecdsa, specProvider, new TxPoolConfig(), stateProvider, logManager);
+            var txPool = new TxPool.TxPool(new InMemoryTxStorage(), new Timestamper(), ecdsa, specProvider, new TxPoolConfig(), stateProvider, logManager);
             var tree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, txPool, NullBloomStorage.Instance, logManager);
             var blockhashProvider = new BlockhashProvider(tree, LimboLogs.Instance);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, logManager);

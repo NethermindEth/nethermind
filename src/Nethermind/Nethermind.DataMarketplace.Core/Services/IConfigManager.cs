@@ -21,7 +21,7 @@ namespace Nethermind.DataMarketplace.Core.Services
 {
     public interface IConfigManager
     {
-        Task<NdmConfig> GetAsync(string id);
+        Task<NdmConfig?> GetAsync(string id);
         Task UpdateAsync(NdmConfig config);
     }
 }

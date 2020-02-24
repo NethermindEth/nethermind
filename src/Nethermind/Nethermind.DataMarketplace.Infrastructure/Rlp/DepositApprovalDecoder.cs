@@ -14,7 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.IO;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Serialization.Rlp;
 
@@ -39,20 +40,15 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
         public DepositApproval Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = rlpStream.ReadSequenceLength();
-            if (sequenceLength == 0)
-            {
-                return null;
-            }
-
-            var id = rlpStream.DecodeKeccak();
-            var assetId = rlpStream.DecodeKeccak();
-            var assetName = rlpStream.DecodeString();
-            var kyc = rlpStream.DecodeString();
-            var consumer = rlpStream.DecodeAddress();
-            var provider = rlpStream.DecodeAddress();
-            var timestamp = rlpStream.DecodeUlong();
-            var state = (DepositApprovalState) rlpStream.DecodeInt();
+            rlpStream.ReadSequenceLength();
+            Keccak id = rlpStream.DecodeKeccak();
+            Keccak assetId = rlpStream.DecodeKeccak();
+            string assetName = rlpStream.DecodeString();
+            string kyc = rlpStream.DecodeString();
+            Address consumer = rlpStream.DecodeAddress();
+            Address provider = rlpStream.DecodeAddress();
+            ulong timestamp = rlpStream.DecodeUlong();
+            DepositApprovalState state = (DepositApprovalState) rlpStream.DecodeInt();
 
             return new DepositApproval(id, assetId, assetName, kyc, consumer, provider, timestamp, state);
         }
@@ -73,11 +69,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Serialization.Rlp.Rlp.Encode(item.Provider),
                 Serialization.Rlp.Rlp.Encode(item.Timestamp),
                 Serialization.Rlp.Rlp.Encode((int) item.State));
-        }
-
-        public void Encode(MemoryStream stream, DepositApproval item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new System.NotImplementedException();
         }
 
         public int GetLength(DepositApproval item, RlpBehaviors rlpBehaviors)

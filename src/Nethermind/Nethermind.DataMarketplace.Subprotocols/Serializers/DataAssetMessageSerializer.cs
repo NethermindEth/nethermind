@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.IO;
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
@@ -31,7 +33,16 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
         {
             var context = bytes.AsRlpStream();
             context.ReadSequenceLength();
-            var dataAsset = Rlp.Decode<DataAsset>(context);
+
+            DataAsset dataAsset;
+            try
+            {
+                dataAsset = Rlp.Decode<DataAsset>(context);
+            }
+            catch (RlpException)
+            {
+                throw new InvalidDataException("DataAssset cannot be null");
+            }
 
             return new DataAssetMessage(dataAsset);
         }

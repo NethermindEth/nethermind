@@ -15,19 +15,20 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
-using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Store;
+using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
 
@@ -37,8 +38,7 @@ namespace Nethermind.Runner.Test.Ethereum
     {
         public static EthereumRunnerContext ContextWithMocks()
         {
-            EthereumRunnerContext context = new EthereumRunnerContext();
-            context.Logger = LimboNoErrorLogger.Instance;
+            EthereumRunnerContext context = new EthereumRunnerContext(Substitute.For<IConfigProvider>(), LimboLogs.Instance);
             context.LogManager = LimboLogs.Instance;
             context.Enode = Substitute.For<IEnode>();
             context.TxPool = Substitute.For<ITxPool>();

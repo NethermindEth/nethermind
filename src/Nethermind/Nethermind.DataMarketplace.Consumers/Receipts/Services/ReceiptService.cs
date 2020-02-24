@@ -154,10 +154,10 @@ namespace Nethermind.DataMarketplace.Consumers.Receipts.Services
             if (_logger.IsInfo) _logger.Info($"Sent data delivery receipt for deposit: '{depositId}', range: [{request.UnitsRange.From}, {request.UnitsRange.To}].");
         }
 
-        private async Task<(DepositDetails deposit, ConsumerSession session)> TryGetDepositAndSessionAsync(
+        private async Task<(DepositDetails? deposit, ConsumerSession? session)> TryGetDepositAndSessionAsync(
             Keccak depositId, int fetchSessionRetries = 5, int fetchSessionRetryDelayMilliseconds = 3000)
         {
-            var deposit = await _depositProvider.GetAsync(depositId);
+            DepositDetails? deposit = await _depositProvider.GetAsync(depositId);
             if (deposit is null)
             {
                 if (_logger.IsInfo) _logger.Info($"Deposit: '{depositId}' was not found.");

@@ -24,11 +24,11 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions
 {
     public interface ISessionService
     {
-        ConsumerSession GetActive(Keccak depositId);
+        ConsumerSession? GetActive(Keccak depositId);
         IReadOnlyList<ConsumerSession> GetAllActive();
         Task StartSessionAsync(Session session, INdmPeer provider);
         Task FinishSessionAsync(Session session, INdmPeer provider, bool removePeer = true);
         Task FinishSessionsAsync(INdmPeer provider, bool removePeer = true);
-        Task<Keccak> SendFinishSessionAsync(Keccak depositId);
+        Task<Keccak?> SendFinishSessionAsync(Keccak depositId);
     }
 }

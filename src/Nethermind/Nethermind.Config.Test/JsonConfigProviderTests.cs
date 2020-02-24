@@ -16,12 +16,9 @@
 
 using System.IO;
 using System.Linq;
-using Nethermind.Blockchain.Bloom;
-using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore.Config;
-using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -75,9 +72,6 @@ namespace Nethermind.Config.Test
             {
                 Assert.IsTrue(statsConfig.PenalizedReputationLocalDisconnectReasons.Contains(x));
             });
-
-            var bloomConfig = _configProvider.GetConfig<IBloomConfig>();
-            CollectionAssert.AreEquivalent(new []{16, 16, 16}, bloomConfig.IndexLevelBucketSizes);
         }
         
         [Test]
