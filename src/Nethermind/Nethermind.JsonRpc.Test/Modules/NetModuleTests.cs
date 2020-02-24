@@ -43,7 +43,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             NetBridge netBridge = new NetBridge(enode, Substitute.For<ISyncServer>(), Substitute.For<IPeerManager>());
             NetModule module = new NetModule(NullLogManager.Instance, netBridge);
             string response = RpcTest.TestSerializedRequest<INetModule>(module, "net_peerCount");
-            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x0\"}", response);
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x0\",\"id\":67}", response);
         }
         
         [Test]
@@ -53,7 +53,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             NetBridge netBridge = new NetBridge(enode, Substitute.For<ISyncServer>(), Substitute.For<IPeerManager>());
             NetModule module = new NetModule(NullLogManager.Instance, netBridge);
             string response = RpcTest.TestSerializedRequest<INetModule>(module, "net_version");
-            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0\"}", response);
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0\",\"id\":67}", response);
         }
     }
 }
