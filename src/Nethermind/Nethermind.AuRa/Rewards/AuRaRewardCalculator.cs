@@ -55,7 +55,7 @@ namespace Nethermind.AuRa.Rewards
                     var contractTransition = auRaParameters.BlockRewardContractTransition ?? 0;
                     if (contractTransition > (contracts.FirstOrDefault()?.TransitionBlock ?? long.MaxValue))
                     {
-                        throw new ArgumentException($"BlockRewardContractTransition provided for BlockRewardContractAddress is higher than first BlockRewardContractTransitions.");
+                        throw new ArgumentException($"{nameof(auRaParameters.BlockRewardContractTransition)} provided for {nameof(auRaParameters.BlockRewardContractAddress)} is higher than first {nameof(auRaParameters.BlockRewardContractTransitions)}.");
                     }
                     
                     contracts.Insert(0, new RewardContract(abiEncoder, auRaParameters.BlockRewardContractAddress, contractTransition));
