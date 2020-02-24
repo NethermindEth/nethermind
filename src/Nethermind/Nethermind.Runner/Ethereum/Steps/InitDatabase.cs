@@ -23,6 +23,8 @@ using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.Db.Rpc;
+using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 
@@ -51,29 +53,39 @@ namespace Nethermind.Runner.Ethereum.Steps
                 if (logger.IsDebug) logger.Debug($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");
             }
 
-            if (initConfig.UseMemDb)
-            {
-                _context.DbProvider = new MemDbProvider();
-            }
-            else
-            {
-                RocksDbProvider rocksDbProvider = new RocksDbProvider(_context.LogManager);
-                await rocksDbProvider.Init(initConfig.BaseDbPath, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
-                _context.DbProvider = rocksDbProvider;
-            }
-
+            _context.DbProvider = await GetDbProvider(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
+            
             if (syncConfig.BeamSync)
             {
                 BeamSyncDbProvider beamSyncProvider = new BeamSyncDbProvider(_context.DbProvider, "processor DB", _context.LogManager);
                 _context.DbProvider = beamSyncProvider;
                 _context.NodeDataConsumer = beamSyncProvider.NodeDataConsumer;
             }
+        }
 
-            // RocksDbProvider debugRecorder = new RocksDbProvider(_context.LogManager);
-            // await debugRecorder.Init(Path.Combine(initConfig.BaseDbPath, "debug"), dbConfig, initConfig.StoreReceipts);
-            // var host = KnownRpcUris.Localhost; // new Uri("http://host:Port");
-            // _context.DbProvider = new RpcDbProvider(_context.EthereumJsonSerializer, new BasicJsonRpcClient(host, _context.EthereumJsonSerializer, _context.LogManager), _context.LogManager, debugRecorder);
-            // _context.DbProvider = new ReadOnlyDbProvider(debugRecorder, false);;
+        private async Task<IDbProvider> GetDbProvider(IInitConfig initConfig, IDbConfig dbConfig, bool storeReceipts)
+        {
+            RocksDbProvider rocksDb;
+            switch (initConfig.DiagnosticMode)
+            {
+                case DiagnosticMode.RpcDb:
+                    rocksDb = await GetRocksDbProvider(dbConfig, Path.Combine(initConfig.BaseDbPath, "debug"), storeReceipts);
+                    return new RpcDbProvider(_context.EthereumJsonSerializer, new BasicJsonRpcClient(new Uri(initConfig.RpcDbUrl), _context.EthereumJsonSerializer, _context.LogManager), _context.LogManager, rocksDb);
+                case DiagnosticMode.ReadOnlyDb:
+                    rocksDb = await GetRocksDbProvider(dbConfig, Path.Combine(initConfig.BaseDbPath, "debug"), storeReceipts);
+                    return new ReadOnlyDbProvider(rocksDb, storeReceipts);
+                case DiagnosticMode.MemDb:
+                    return new MemDbProvider();
+                default:
+                    return await GetRocksDbProvider(dbConfig, initConfig.BaseDbPath, storeReceipts);
+            }
+        }
+
+        private async Task<RocksDbProvider> GetRocksDbProvider(IDbConfig dbConfig, string basePath, bool useReceiptsDb)
+        {
+            RocksDbProvider debugRecorder = new RocksDbProvider(_context.LogManager);
+            await debugRecorder.Init(basePath, dbConfig, useReceiptsDb);
+            return debugRecorder;
         }
     }
 }
