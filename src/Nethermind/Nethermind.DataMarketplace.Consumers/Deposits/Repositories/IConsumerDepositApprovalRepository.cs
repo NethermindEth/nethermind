@@ -23,7 +23,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Repositories
 {
     public interface IConsumerDepositApprovalRepository
     {
-        Task<DepositApproval> GetAsync(Keccak id);
+        Task<DepositApproval?> GetAsync(Keccak id);
         Task<PagedResult<DepositApproval>> BrowseAsync(GetConsumerDepositApprovals query);
         Task AddAsync(DepositApproval depositApproval);
         Task UpdateAsync(DepositApproval depositApproval);

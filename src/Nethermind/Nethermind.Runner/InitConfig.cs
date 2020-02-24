@@ -25,12 +25,12 @@ namespace Nethermind.Runner
         public bool ProcessingEnabled { get; set; } = true;
         public bool PeerManagerEnabled { get; set; } = true;
         public bool IsMining { get; set; } = false;
-        public string ChainSpecPath { get; set; }
+        public string ChainSpecPath { get; set; } = "chainspec/foundation.json";
         public string BaseDbPath { get; set; } = "db";
         public string LogFileName { get; set; } = "log.txt";
-        public string GenesisHash { get; set; }
+        public string? GenesisHash { get; set; }
         public string StaticNodesPath { get; set; } = "Data/static-nodes.json";
-        public string LogDirectory { get; set; } = null;
+        public string? LogDirectory { get; set; }
         public bool StoreReceipts { get; set; } = true;
         public bool UseMemDb { get; set; } = false;
     }

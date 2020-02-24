@@ -18,6 +18,7 @@ using System.Linq;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Network;
 using NSubstitute;
 using NUnit.Framework;
 

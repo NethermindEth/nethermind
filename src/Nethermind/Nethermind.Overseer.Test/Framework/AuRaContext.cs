@@ -15,11 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Overseer.Test.Framework;
 using Nethermind.Overseer.Test.JsonRpc;
 using Newtonsoft.Json.Linq;
 
-namespace Nethermind.Overseer.Test
+namespace Nethermind.Overseer.Test.Framework
 {
     public class AuRaContext : TestContextBase<AuRaContext, AuRaState>
     {

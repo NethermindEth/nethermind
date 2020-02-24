@@ -18,6 +18,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using NUnit.Framework;
 

@@ -23,9 +23,11 @@ using System.Threading;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store;
+using Nethermind.State;
+using Nethermind.Trie;
 
 namespace Nethermind.Blockchain.Synchronization.FastSync
 {

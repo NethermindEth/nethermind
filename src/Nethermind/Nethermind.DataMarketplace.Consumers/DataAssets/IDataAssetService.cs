@@ -25,7 +25,7 @@ namespace Nethermind.DataMarketplace.Consumers.DataAssets
     public interface IDataAssetService
     {
         bool IsAvailable(DataAsset dataAsset);
-        DataAsset GetDiscovered(Keccak dataAssetId);
+        DataAsset? GetDiscovered(Keccak dataAssetId);
         IReadOnlyList<DataAsset> GetAllDiscovered();
         Task<IReadOnlyList<DataAssetInfo>> GetAllKnownAsync();
         void AddDiscovered(DataAsset dataAsset, INdmPeer peer);

@@ -19,7 +19,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Proofs;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
@@ -33,7 +32,7 @@ using Nethermind.Evm.Tracing.Proofs;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store.Proofs;
+using Nethermind.State.Proofs;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {

@@ -57,8 +57,6 @@ namespace Nethermind.JsonRpc.WebSockets
 
         public Task SendAsync(WebSocketsMessage message) => Task.CompletedTask;
 
-        public void Cleanup(string clientId) => _clients.TryRemove(clientId, out _);
-
         public void RemoveClient(string id) => _clients.TryRemove(id, out _);
     }
 }

@@ -18,13 +18,9 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
 {
     public class EthUsdPriceForRpc
     {
-        public decimal Price { get; set; }
-        public ulong UpdatedAt { get; set; }
+        public decimal Price { get;  }
+        public ulong UpdatedAt { get;  }
 
-        public EthUsdPriceForRpc()
-        {
-        }
-        
         public EthUsdPriceForRpc(decimal price, ulong updatedAt)
         {
             Price = price;

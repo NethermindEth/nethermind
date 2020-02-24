@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.DataMarketplace.Channels;
@@ -37,22 +38,28 @@ namespace Nethermind.DataMarketplace.Infrastructure
         public INdmConsumerChannelManager NdmConsumerChannelManager { get; }
         public INdmBlockchainBridge BlockchainBridge { get; }
 
-        public NdmCreatedServices(Address consumerAddress,
-            IAbiEncoder abiEncoder, IRlpDecoder<DataAsset> dataAssetRlpDecoder, IDepositService depositService,
-            GasPriceService gasPriceService, TransactionService transactionService,
-            INdmDataPublisher ndmDataPublisher, IJsonRpcNdmConsumerChannel jsonRpcNdmConsumerChannel,
-            INdmConsumerChannelManager ndmConsumerChannelManager, INdmBlockchainBridge blockchainBridge)
+        public NdmCreatedServices(
+            Address consumerAddress,
+            IAbiEncoder abiEncoder,
+            IRlpDecoder<DataAsset> dataAssetRlpDecoder,
+            IDepositService depositService,
+            GasPriceService gasPriceService,
+            TransactionService transactionService,
+            INdmDataPublisher ndmDataPublisher,
+            IJsonRpcNdmConsumerChannel jsonRpcNdmConsumerChannel,
+            INdmConsumerChannelManager ndmConsumerChannelManager,
+            INdmBlockchainBridge blockchainBridge)
         {
-            ConsumerAddress = consumerAddress;
-            AbiEncoder = abiEncoder;
-            DataAssetRlpDecoder = dataAssetRlpDecoder;
-            DepositService = depositService;
-            GasPriceService = gasPriceService;
-            TransactionService = transactionService;
-            NdmDataPublisher = ndmDataPublisher;
-            JsonRpcNdmConsumerChannel = jsonRpcNdmConsumerChannel;
-            NdmConsumerChannelManager = ndmConsumerChannelManager;
-            BlockchainBridge = blockchainBridge;
+            ConsumerAddress = consumerAddress ?? throw new ArgumentNullException(nameof(consumerAddress));
+            AbiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
+            DataAssetRlpDecoder = dataAssetRlpDecoder ?? throw new ArgumentNullException(nameof(dataAssetRlpDecoder));
+            DepositService = depositService ?? throw new ArgumentNullException(nameof(depositService));
+            GasPriceService = gasPriceService ?? throw new ArgumentNullException(nameof(gasPriceService));
+            TransactionService = transactionService ?? throw new ArgumentNullException(nameof(transactionService));
+            NdmDataPublisher = ndmDataPublisher ?? throw new ArgumentNullException(nameof(ndmDataPublisher));
+            JsonRpcNdmConsumerChannel = jsonRpcNdmConsumerChannel ?? throw new ArgumentNullException(nameof(jsonRpcNdmConsumerChannel));
+            NdmConsumerChannelManager = ndmConsumerChannelManager ?? throw new ArgumentNullException(nameof(ndmConsumerChannelManager));
+            BlockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
         }
     }
 }

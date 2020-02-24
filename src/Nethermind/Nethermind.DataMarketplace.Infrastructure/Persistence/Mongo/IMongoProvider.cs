@@ -20,6 +20,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo
 {
     public interface IMongoProvider
     {
-        IMongoDatabase GetDatabase();
+        IMongoDatabase? GetDatabase();
     }
 }

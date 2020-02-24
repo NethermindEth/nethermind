@@ -14,9 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -25,10 +26,12 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class ReviewBlockTree : IStep
     {
         private readonly EthereumRunnerContext _context;
+        private ILogger _logger;
 
         public ReviewBlockTree(EthereumRunnerContext context)
         {
             _context = context;
+            _logger = _context.LogManager.GetClassLogger();
         }
 
         public async Task Execute()
@@ -41,44 +44,47 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             else
             {
-                if (_context.Logger.IsWarn) _context.Logger.Warn($"Shutting down the blockchain processor due to {nameof(InitConfig)}.{nameof(InitConfig.ProcessingEnabled)} set to false");
-                await _context.BlockchainProcessor.StopAsync();
+                if (_logger.IsWarn) _logger.Warn($"Shutting down the blockchain processor due to {nameof(InitConfig)}.{nameof(InitConfig.ProcessingEnabled)} set to false");
+                await (_context.BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
             }
         }
-        
+
         private async Task RunBlockTreeInitTasks()
         {
-            ISyncConfig syncConfig = _context.Config<ISyncConfig>(); 
+            ISyncConfig syncConfig = _context.Config<ISyncConfig>();
             if (!syncConfig.SynchronizationEnabled)
             {
                 return;
             }
+            
+            if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
 
+            
             if (!syncConfig.FastSync && !syncConfig.BeamSync)
             {
-                await _context.BlockTree.LoadBlocksFromDb(_context.RunnerCancellation.Token, null).ContinueWith(t =>
+                await _context.BlockTree.LoadBlocksFromDb(_context.RunnerCancellation?.Token ?? CancellationToken.None, null).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
-                        if (_context.Logger.IsError) _context.Logger.Error("Loading blocks from the DB failed.", t.Exception);
+                        if (_logger.IsError) _logger.Error("Loading blocks from the DB failed.", t.Exception);
                     }
                     else if (t.IsCanceled)
                     {
-                        if (_context.Logger.IsWarn) _context.Logger.Warn("Loading blocks from the DB canceled.");
+                        if (_logger.IsWarn) _logger.Warn("Loading blocks from the DB canceled.");
                     }
                 });
             }
-            else if(!syncConfig.BeamSync)
+            else if (!syncConfig.BeamSync)
             {
-                await _context.BlockTree.FixFastSyncGaps(_context.RunnerCancellation.Token).ContinueWith(t =>
+                await _context.BlockTree.FixFastSyncGaps(_context.RunnerCancellation?.Token ?? CancellationToken.None).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
-                        if (_context.Logger.IsError) _context.Logger.Error("Fixing gaps in DB failed.", t.Exception);
+                        if (_logger.IsError) _logger.Error("Fixing gaps in DB failed.", t.Exception);
                     }
                     else if (t.IsCanceled)
                     {
-                        if (_context.Logger.IsWarn) _context.Logger.Warn("Fixing gaps in DB canceled.");
+                        if (_logger.IsWarn) _logger.Warn("Fixing gaps in DB canceled.");
                     }
                 });
             }

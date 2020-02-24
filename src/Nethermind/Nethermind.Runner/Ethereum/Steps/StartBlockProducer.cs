@@ -17,14 +17,12 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.AuRa.Rewards;
-using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
@@ -49,6 +47,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (initConfig.IsMining)
             {
                 BuildProducer();
+                if (_context.BlockProducer == null) throw new StepDependencyException(nameof(_context.BlockProducer));
 
                 _context.BlockProducer.Start();
 
@@ -60,17 +59,18 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected virtual void BuildProducer()
         {
+            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             throw new NotSupportedException($"Mining in {_context.ChainSpec.SealEngineType} mode is not supported");
         }
 
         protected BlockProducerContext GetProducerChain()
         {
-            var readOnlyDbProvider = new ReadOnlyDbProvider(_context.DbProvider, false);
-            var readOnlyBlockTree = new ReadOnlyBlockTree(_context.BlockTree);
-            var readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyBlockTree, _context.SpecProvider, _context.LogManager);
-            var blockProcessor = CreateBlockProcessor(readOnlyTxProcessingEnv, readOnlyDbProvider);
-            var chainProcessor = new OneTimeChainProcessor(readOnlyDbProvider, new BlockchainProcessor(readOnlyBlockTree, blockProcessor, _context.RecoveryStep, _context.LogManager, false));
-            var pendingTxSelector = new PendingTxSelector(_context.TxPool, readOnlyTxProcessingEnv.StateProvider, _context.LogManager);
+            ReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_context.DbProvider, false);
+            ReadOnlyBlockTree readOnlyBlockTree = new ReadOnlyBlockTree(_context.BlockTree);
+            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyBlockTree, _context.SpecProvider, _context.LogManager);
+            BlockProcessor blockProcessor = CreateBlockProcessor(readOnlyTxProcessingEnv, readOnlyDbProvider);
+            OneTimeChainProcessor chainProcessor = new OneTimeChainProcessor(readOnlyDbProvider, new BlockchainProcessor(readOnlyBlockTree, blockProcessor, _context.RecoveryStep, _context.LogManager, false));
+            PendingTxSelector pendingTxSelector = new PendingTxSelector(_context.TxPool, readOnlyTxProcessingEnv.StateProvider, _context.LogManager);
 
             return new BlockProducerContext
             {
@@ -80,8 +80,15 @@ namespace Nethermind.Runner.Ethereum.Steps
             };
         }
 
-        protected virtual BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, IReadOnlyDbProvider readOnlyDbProvider) => 
-            new BlockProcessor(
+        protected virtual BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, IReadOnlyDbProvider readOnlyDbProvider)
+        {
+            if (_context.SpecProvider == null) throw new StepDependencyException(nameof(_context.SpecProvider));
+            if (_context.BlockValidator == null) throw new StepDependencyException(nameof(_context.BlockValidator));
+            if (_context.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_context.RewardCalculatorSource));
+            if (_context.ReceiptStorage == null) throw new StepDependencyException(nameof(_context.ReceiptStorage));
+            if (_context.TxPool == null) throw new StepDependencyException(nameof(_context.TxPool));
+
+            return new BlockProcessor(
                 _context.SpecProvider,
                 _context.BlockValidator,
                 _context.RewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
@@ -93,8 +100,9 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.TxPool,
                 _context.ReceiptStorage,
                 _context.LogManager);
+        }
 
-        public event EventHandler<SubsystemStateEventArgs> SubsystemStateChanged;
+        public event EventHandler<SubsystemStateEventArgs>? SubsystemStateChanged;
 
         public EthereumSubsystem MonitoredSubsystem => EthereumSubsystem.Mining;
     }

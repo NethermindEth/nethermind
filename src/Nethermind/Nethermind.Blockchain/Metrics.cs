@@ -40,17 +40,5 @@ namespace Nethermind.Blockchain
         
         [Description("Number of sync peers.")]
         public static long SyncPeers { get; set; }
-        
-        [Description("Number of pending transactions broadcasted to peers.")]
-        public static long PendingTransactionsSent { get; set; }
-        
-        [Description("Number of pending transactions received from peers.")]
-        public static long PendingTransactionsReceived { get; set; }
-        
-        [Description("Number of pending transactions received that were ignored.")]
-        public static long PendingTransactionsDiscarded { get; set; }
-        
-        [Description("Number of known pending transactions.")]
-        public static long PendingTransactionsKnown { get; set; }
     }
 }

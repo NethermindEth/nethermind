@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -21,24 +22,31 @@ namespace Nethermind.DataMarketplace.Core.Domain
 {
     public class DepositApproval
     {
-        public Keccak Id { get; private set; }
-        public Keccak AssetId { get; private set; }
-        public string AssetName { get; private set; }
-        public string Kyc { get; private set; }
-        public Address Consumer { get; private set; }
-        public Address Provider { get; private set; }
-        public ulong Timestamp { get; private set; }
+        public Keccak Id { get; }
+        public Keccak AssetId { get; }
+        public string AssetName { get; }
+        public string Kyc { get; }
+        public Address Consumer { get; }
+        public Address Provider { get; }
+        public ulong Timestamp { get; }
         public DepositApprovalState State { get; private set; }
 
-        public DepositApproval(Keccak id, Keccak assetId, string assetName, string kyc, Address consumer,
-            Address provider, ulong timestamp, DepositApprovalState state = DepositApprovalState.Pending)
+        public DepositApproval(
+            Keccak id,
+            Keccak assetId,
+            string assetName,
+            string kyc,
+            Address consumer,
+            Address provider,
+            ulong timestamp,
+            DepositApprovalState state)
         {
-            Id = id;
-            AssetId = assetId;
-            AssetName = assetName;
-            Kyc = kyc;
-            Consumer = consumer;
-            Provider = provider;
+            Id = id ?? throw new ArgumentNullException(nameof(id));
+            AssetId = assetId ?? throw new ArgumentNullException(nameof(assetId));
+            AssetName = assetName ?? throw new ArgumentNullException(nameof(assetName));
+            Kyc = kyc ?? throw new ArgumentNullException(nameof(kyc));
+            Consumer = consumer ?? throw new ArgumentNullException(nameof(consumer));
+            Provider = provider ?? throw new ArgumentNullException(nameof(provider));
             Timestamp = timestamp;
             State = state;
         }

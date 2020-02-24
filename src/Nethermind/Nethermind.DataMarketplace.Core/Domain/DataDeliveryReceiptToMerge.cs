@@ -37,7 +37,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
             return Equals(UnitsRange, other.UnitsRange) && Equals(Signature, other.Signature);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

@@ -16,7 +16,7 @@
 
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
-using Nethermind.Store;
+using Nethermind.State;
 
 namespace Nethermind.Evm
 {

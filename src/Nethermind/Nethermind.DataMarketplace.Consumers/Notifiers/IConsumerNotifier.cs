@@ -34,6 +34,7 @@ namespace Nethermind.DataMarketplace.Consumers.Notifiers
         Task SendSessionStartedAsync(Keccak depositId, Keccak sessionId);
         Task SendSessionFinishedAsync(Keccak depositId, Keccak sessionId);
         Task SendConsumerAccountLockedAsync(Address address);
+        Task SendConsumerAccountUnlockedAsync(Address address);
         Task SendConsumerAddressChangedAsync(Address newAddress, Address previousAddress);
         Task SendProviderAddressChangedAsync(Address newAddress, Address previousAddress);
         Task SendDataAssetStateChangedAsync(Keccak id, string name, DataAssetState state);

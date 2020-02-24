@@ -86,7 +86,7 @@ namespace Nethermind.DataMarketplace.Core.Services
         }
 
 
-        public async Task<Keccak> MakeDepositAsync(Address onBehalfOf, Deposit deposit, UInt256 gasPrice)
+        public async Task<Keccak?> MakeDepositAsync(Address onBehalfOf, Deposit deposit, UInt256 gasPrice)
         {
             var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.DepositAbiSig,
                 deposit.Id.Bytes, deposit.Units, deposit.ExpiryTime);

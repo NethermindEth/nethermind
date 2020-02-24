@@ -17,6 +17,7 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Logging;
 using Nethermind.PubSub;
 using Nethermind.PubSub.Kafka;
 using Nethermind.PubSub.Kafka.Avro;
@@ -29,10 +30,12 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class StartKafkaProducer : IStep, ISubsystemStateAware
     {
         private readonly EthereumRunnerContext _context;
+        private ILogger _logger;
 
         public StartKafkaProducer(EthereumRunnerContext context)
         {
             _context = context;
+            _logger = context.LogManager.GetClassLogger();
             EthereumSubsystemState newState = _context.Config<IKafkaConfig>().Enabled
                 ? EthereumSubsystemState.AwaitingInitialization
                 : EthereumSubsystemState.Disabled;
@@ -42,9 +45,15 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public async Task Execute()
         {
-            if (_context.Config<IKafkaConfig>().Enabled)
+            if (_context.BlockTree == null)
             {
-                IProducer kafkaProducer = await PrepareKafkaProducer(_context.BlockTree, _context.Config<IKafkaConfig>());
+                throw new InvalidOperationException("Kafka producer initialization started before the block tree is ready.");
+            }
+            
+            IKafkaConfig kafkaConfig = _context.Config<IKafkaConfig>();
+            if (kafkaConfig.Enabled)
+            {
+                IProducer kafkaProducer = await PrepareKafkaProducer(_context.BlockTree, kafkaConfig);
                 _context.Producers.Add(kafkaProducer);
             }
         }
@@ -56,13 +65,13 @@ namespace Nethermind.Runner.Ethereum.Steps
             KafkaProducer kafkaProducer = new KafkaProducer(kafkaConfig, pubSubModelMapper, avroMapper, _context.LogManager);
             await kafkaProducer.InitAsync().ContinueWith(x =>
             {
-                if (x.IsFaulted && _context.Logger.IsError) _context.Logger.Error("Error during Kafka initialization", x.Exception);
+                if (x.IsFaulted && _logger.IsError) _logger.Error("Error during Kafka initialization", x.Exception);
             });
 
             return kafkaProducer;
         }
         
-        public event EventHandler<SubsystemStateEventArgs> SubsystemStateChanged;
+        public event EventHandler<SubsystemStateEventArgs>? SubsystemStateChanged;
 
         public EthereumSubsystem MonitoredSubsystem => EthereumSubsystem.Kafka;
     }

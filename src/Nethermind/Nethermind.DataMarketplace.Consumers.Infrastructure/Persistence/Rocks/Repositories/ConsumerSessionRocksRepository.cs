@@ -26,6 +26,7 @@ using Nethermind.DataMarketplace.Consumers.Sessions.Queries;
 using Nethermind.DataMarketplace.Consumers.Sessions.Repositories;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
 
@@ -42,28 +43,32 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             _rlpDecoder = rlpDecoder;
         }
 
-        public Task<ConsumerSession> GetAsync(Keccak id) => Task.FromResult(Decode(_database.Get(id)));
-
-        public Task<ConsumerSession> GetPreviousAsync(ConsumerSession session)
+        public Task<ConsumerSession?> GetAsync(Keccak id)
         {
-            var sessions = Filter(session.DepositId);
-            switch (sessions.Count)
+            byte[] fromDatabase = _database.Get(id);
+            return fromDatabase == null ? Task.FromResult<ConsumerSession?>(null) : Task.FromResult<ConsumerSession?>(Decode(fromDatabase));
+        }
+
+        public Task<ConsumerSession?> GetPreviousAsync(ConsumerSession session)
+        {
+            ConsumerSession[] sessions = Filter(session.DepositId);
+            switch (sessions.Length)
             {
                 case 0:
-                    return Task.FromResult<ConsumerSession>(null);
+                    return Task.FromResult<ConsumerSession?>(null);
                 case 1:
-                    return Task.FromResult(GetUniqueSession(session, sessions[0]));
+                    return Task.FromResult<ConsumerSession?>(GetUniqueSession(session, sessions[0]));
                 default:
                 {
-                    var previousSessions = sessions.Take(2).ToArray();
+                    ConsumerSession[] previousSessions = sessions.Take(2).ToArray();
 
-                    return Task.FromResult(GetUniqueSession(session, previousSessions[1]) ??
-                                           GetUniqueSession(session, previousSessions[0]));
+                    return Task.FromResult<ConsumerSession?>(GetUniqueSession(session, previousSessions[1]) ??
+                                                             GetUniqueSession(session, previousSessions[0]));
                 }
             }
         }
 
-        private static ConsumerSession GetUniqueSession(ConsumerSession current, ConsumerSession previous)
+        private static ConsumerSession? GetUniqueSession(ConsumerSession current, ConsumerSession previous)
             => current.Equals(previous) ? null : previous;
 
 
@@ -71,18 +76,22 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             => Task.FromResult(Filter(query.DepositId, query.DataAssetId, query.ConsumerNodeId, query.ConsumerAddress,
                 query.ProviderNodeId, query.ProviderAddress).Paginate(query));
 
-        private IReadOnlyList<ConsumerSession> Filter(Keccak depositId = null, Keccak dataAssetId = null,
-            PublicKey consumerNodeId = null, Address consumerAddress = null, PublicKey providerNodeId = null,
-            Address providerAddress = null)
+        private ConsumerSession[] Filter(
+            Keccak? depositId = null,
+            Keccak? dataAssetId = null,
+            PublicKey? consumerNodeId = null,
+            Address? consumerAddress = null,
+            PublicKey? providerNodeId = null,
+            Address? providerAddress = null)
         {
-            var sessionsBytes = _database.GetAll().ToArray();
+            byte[][] sessionsBytes = _database.GetAll().ToArray();
             if (sessionsBytes.Length == 0)
             {
                 return Array.Empty<ConsumerSession>();
             }
 
-            var sessions = new ConsumerSession[sessionsBytes.Length];
-            for (var i = 0; i < sessionsBytes.Length; i++)
+            ConsumerSession[] sessions = new ConsumerSession[sessionsBytes.Length];
+            for (int i = 0; i < sessionsBytes.Length; i++)
             {
                 sessions[i] = Decode(sessionsBytes[i]);
             }
@@ -93,7 +102,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
                 return sessions;
             }
 
-            var filteredSessions = sessions.AsEnumerable();
+            IEnumerable<ConsumerSession> filteredSessions = sessions.AsEnumerable();
             if (!(depositId is null))
             {
                 filteredSessions = filteredSessions.Where(s => s.DepositId == depositId);
@@ -133,15 +142,13 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
 
         private Task AddOrUpdateAsync(ConsumerSession session)
         {
-            var rlp = _rlpDecoder.Encode(session);
+            Serialization.Rlp.Rlp rlp = _rlpDecoder.Encode(session);
             _database.Set(session.Id, rlp.Bytes);
 
             return Task.CompletedTask;
         }
 
         private ConsumerSession Decode(byte[] bytes)
-            => bytes is null
-                ? null
-                : _rlpDecoder.Decode(bytes.AsRlpStream());
+            => _rlpDecoder.Decode(bytes.AsRlpStream());
     }
 }

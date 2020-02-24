@@ -32,7 +32,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             _repository = repository ?? throw new ArgumentNullException(nameof(repository), "NDM config repository was not provided.");
         }
 
-        public async Task<NdmConfig> GetAsync(string id)
+        public async Task<NdmConfig?> GetAsync(string id)
         {
             if (!_config.StoreConfigInDatabase)
             {

@@ -19,6 +19,7 @@ using System.Numerics;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
@@ -69,8 +70,8 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public async Task<CanceledTransactionInfo> CancelAsync(Keccak transactionHash)
         {
-            var config = await _configManager.GetAsync(_configId);
-            var multiplier = config.CancelTransactionGasPricePercentageMultiplier;
+            NdmConfig? config = await _configManager.GetAsync(_configId);
+            uint multiplier = config?.CancelTransactionGasPricePercentageMultiplier ?? 0;
             if (multiplier == 0)
             {
                 throw new InvalidOperationException("Multiplier for gas price when canceling transaction cannot be 0.");

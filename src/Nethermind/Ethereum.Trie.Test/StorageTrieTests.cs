@@ -17,7 +17,8 @@
  */
 
 using Nethermind.Core.Crypto;
-using Nethermind.Store;
+using Nethermind.Db;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Ethereum.Trie.Test

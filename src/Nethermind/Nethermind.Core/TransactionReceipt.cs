@@ -26,7 +26,6 @@ namespace Nethermind.Core
         ///     EIP-658
         /// </summary>
         public byte StatusCode { get; set; }
-
         public long BlockNumber { get; set; }
         public Keccak BlockHash { get; set; }
         public Keccak TxHash { get; set; }

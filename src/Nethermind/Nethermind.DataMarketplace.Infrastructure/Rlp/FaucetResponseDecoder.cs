@@ -39,14 +39,9 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
         public FaucetResponse Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = rlpStream.ReadSequenceLength();
-            if (sequenceLength == 0)
-            {
-                return null;
-            }
-
-            var status = (FaucetRequestStatus) rlpStream.DecodeInt();
-            var request = Serialization.Rlp.Rlp.Decode<FaucetRequestDetails>(rlpStream);
+            rlpStream.ReadSequenceLength();
+            FaucetRequestStatus status = (FaucetRequestStatus) rlpStream.DecodeInt();
+            FaucetRequestDetails request = Serialization.Rlp.Rlp.Decode<FaucetRequestDetails>(rlpStream);
 
             return new FaucetResponse(status, request);
         }
@@ -61,11 +56,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             return Serialization.Rlp.Rlp.Encode(
                 Serialization.Rlp.Rlp.Encode((int) item.Status),
                 Serialization.Rlp.Rlp.Encode(item.LatestRequest));
-        }
-
-        public void Encode(MemoryStream stream, FaucetResponse item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new System.NotImplementedException();
         }
 
         public int GetLength(FaucetResponse item, RlpBehaviors rlpBehaviors)

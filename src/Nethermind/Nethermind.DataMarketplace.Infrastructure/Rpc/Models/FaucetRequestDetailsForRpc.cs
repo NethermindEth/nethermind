@@ -24,11 +24,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
 {
     public class FaucetRequestDetailsForRpc
     {
-        public string Host { get; set; }
-        public Address Address { get; set; }
-        public UInt256 Value { get; set; }
-        public DateTime Date { get; set; }
-        public Keccak TransactionHash { get; set; }
+        public string? Host { get; set; }
+        public Address? Address { get; set; }
+        public UInt256? Value { get; set; }
+        public DateTime? Date { get; set; }
+        public Keccak? TransactionHash { get; set; }
 
         public FaucetRequestDetailsForRpc()
         {
@@ -39,8 +39,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
         {
         }
 
-        public FaucetRequestDetailsForRpc(string host, Address address, UInt256 value, DateTime date,
-            Keccak transactionHash)
+        public FaucetRequestDetailsForRpc(string? host, Address? address, UInt256? value, DateTime? date, Keccak? transactionHash)
         {
             Host = host;
             Address = address;

@@ -56,7 +56,7 @@ namespace Nethermind.DataMarketplace.WebSockets
             return Task.CompletedTask;
         }
 
-        private static (Keccak dataAssetId, string data) GetDataInfo(byte[] bytes)
+        private static (Keccak? dataAssetId, string? data) GetDataInfo(byte[] bytes)
         {
             var request = Encoding.UTF8.GetString(bytes);
             var parts = request.Split('|');
@@ -69,6 +69,11 @@ namespace Nethermind.DataMarketplace.WebSockets
             var dataAssetId = parts[0];
             var extension = parts[1];
             var data = parts[2];
+
+            if (dataAssetId.Length != 64)
+            {
+                return (null, null);
+            }
 
             return string.IsNullOrWhiteSpace(dataAssetId) ? (null, null) : (new Keccak(dataAssetId), data);
         }

@@ -34,38 +34,42 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.InMemo
         private readonly ConcurrentDictionary<Keccak, ConsumerSession> _db =
             new ConcurrentDictionary<Keccak, ConsumerSession>();
 
-        public Task<ConsumerSession> GetAsync(Keccak id)
-            => Task.FromResult(_db.TryGetValue(id, out var session) ? session : null);
+        public Task<ConsumerSession?> GetAsync(Keccak id)
+            => Task.FromResult(_db.TryGetValue(id, out ConsumerSession? session) ? session : null);
 
-        public Task<ConsumerSession> GetPreviousAsync(ConsumerSession session)
+        public Task<ConsumerSession?> GetPreviousAsync(ConsumerSession session)
         {
             var sessions = Filter(session.DepositId);
             switch (sessions.Count)
             {
                 case 0:
-                    return Task.FromResult<ConsumerSession>(null);
+                    return Task.FromResult<ConsumerSession?>(null);
                 case 1:
-                    return Task.FromResult(GetUniqueSession(session, sessions[0]));
+                    return Task.FromResult<ConsumerSession?>(GetUniqueSession(session, sessions[0]));
                 default:
                 {
                     var previousSessions = sessions.Take(2).ToArray();
 
-                    return Task.FromResult(GetUniqueSession(session, previousSessions[1]) ??
-                                           GetUniqueSession(session, previousSessions[0]));
+                    return Task.FromResult<ConsumerSession?>(GetUniqueSession(session, previousSessions[1]) ??
+                                                             GetUniqueSession(session, previousSessions[0]));
                 }
             }
         }
 
-        private static ConsumerSession GetUniqueSession(ConsumerSession current, ConsumerSession previous)
+        private static ConsumerSession? GetUniqueSession(ConsumerSession current, ConsumerSession previous)
             => current.Equals(previous) ? null : previous;
 
         public Task<PagedResult<ConsumerSession>> BrowseAsync(GetConsumerSessions query)
             => Task.FromResult(Filter(query.DepositId, query.DataAssetId, query.ConsumerNodeId, query.ConsumerAddress,
-                query.ProviderNodeId, query.ProviderAddress).Paginate(query));
+                query.ProviderNodeId, query.ProviderAddress).ToArray().Paginate(query));
 
-        private IReadOnlyList<ConsumerSession> Filter(Keccak depositId = null, Keccak dataAssetId = null,
-            PublicKey consumerNodeId = null, Address consumerAddress = null, PublicKey providerNodeId = null,
-            Address providerAddress = null)
+        private IReadOnlyList<ConsumerSession> Filter(
+            Keccak? depositId = null,
+            Keccak? dataAssetId = null,
+            PublicKey? consumerNodeId = null,
+            Address? consumerAddress = null,
+            PublicKey? providerNodeId = null,
+            Address? providerAddress = null)
         {
 
             var sessions = _db.Values;

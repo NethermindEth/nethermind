@@ -23,12 +23,13 @@ using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Store;
-using Nethermind.Store.BeamSync;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test

@@ -16,19 +16,16 @@
 
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Specs;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core;
+using Nethermind.Db;
 using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
@@ -38,6 +35,8 @@ using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Stats;
 using Nethermind.Store;
+using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.WebSockets;
 
@@ -45,16 +44,39 @@ namespace Nethermind.DataMarketplace.Initializers
 {
     public interface INdmInitializer
     {
-        Task<INdmCapabilityConnector> InitAsync(IConfigProvider configProvider, IDbProvider dbProvider,
-            string baseDbPath, IBlockTree blockTree, ITxPool txPool, ISpecProvider specProvider,
-            IReceiptStorage receiptStorage, IWallet wallet, IFilterStore filterStore, IFilterManager filterManager,
-            ITimestamper timestamper, IEthereumEcdsa ecdsa, IRpcModuleProvider rpcModuleProvider, IKeyStore keyStore,
-            IJsonSerializer jsonSerializer, ICryptoRandom cryptoRandom, IEnode enode,
-            INdmConsumerChannelManager consumerChannelManager, INdmDataPublisher dataPublisher,
-            IGrpcServer grpcServer, INodeStatsManager nodeStatsManager, IProtocolsManager protocolsManager,
-            IProtocolValidator protocolValidator, IMessageSerializationService messageSerializationService,
-            bool enableUnsecuredDevWallet, IWebSocketsManager webSocketsManager, ILogManager logManager,
-            IBlockProcessor blockProcessor, IJsonRpcClientProxy jsonRpcClientProxy,
-            IEthJsonRpcClientProxy ethJsonRpcClientProxy, IHttpClient httpClient, IMonitoringService monitoringService, IBloomStorage bloomStorage);
+        Task<INdmCapabilityConnector> InitAsync(
+            IConfigProvider configProvider,
+            IDbProvider dbProvider,
+            string baseDbPath,
+            IBlockTree blockTree,
+            ITxPool txPool,
+            ISpecProvider specProvider,
+            IReceiptStorage receiptStorage,
+            IWallet wallet,
+            IFilterStore filterStore,
+            IFilterManager filterManager,
+            ITimestamper timestamper,
+            IEthereumEcdsa ecdsa,
+            IRpcModuleProvider rpcModuleProvider,
+            IKeyStore keyStore,
+            IJsonSerializer jsonSerializer,
+            ICryptoRandom cryptoRandom,
+            IEnode enode,
+            INdmConsumerChannelManager consumerChannelManager,
+            INdmDataPublisher dataPublisher,
+            IGrpcServer grpcServer,
+            INodeStatsManager nodeStatsManager,
+            IProtocolsManager protocolsManager,
+            IProtocolValidator protocolValidator,
+            IMessageSerializationService messageSerializationService,
+            bool enableUnsecuredDevWallet,
+            IWebSocketsManager webSocketsManager,
+            ILogManager logManager,
+            IBlockProcessor blockProcessor,
+            IJsonRpcClientProxy? jsonRpcClientProxy,
+            IEthJsonRpcClientProxy? ethJsonRpcClientProxy,
+            IHttpClient httpClient,
+            IMonitoringService monitoringService,
+            IBloomStorage bloomStorage);
     }
 }

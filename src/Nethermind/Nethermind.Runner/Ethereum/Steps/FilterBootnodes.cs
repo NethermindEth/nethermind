@@ -33,6 +33,16 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public Task Execute()
         {
+            if (_context.ChainSpec == null)
+            {
+                return Task.CompletedTask;
+            }
+            
+            if (_context.NodeKey == null)
+            {
+                return Task.CompletedTask;
+            }
+
             _context.ChainSpec.Bootnodes = _context.ChainSpec.Bootnodes?.Where(n => !n.NodeId?.Equals(_context.NodeKey.PublicKey) ?? false).ToArray() ?? new NetworkNode[0];
             return Task.CompletedTask;
         }

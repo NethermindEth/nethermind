@@ -33,7 +33,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
         public const int DisableDataStream = 0x0C;
         public const int DataStreamEnabled = 0x0D;
         public const int DataStreamDisabled = 0x0E;
-        public const int DataUnavailable = 0x0F;
+        public const int DataAvailability = 0x0F;
         public const int RequestDataDeliveryReceipt = 0x10;
         public const int DataDeliveryReceipt = 0x11;
         public const int EarlyRefundTicket = 0x12;

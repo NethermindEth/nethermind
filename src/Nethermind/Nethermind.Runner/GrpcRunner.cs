@@ -26,7 +26,7 @@ namespace Nethermind.Runner
         private readonly NethermindService.NethermindServiceBase _service;
         private readonly IGrpcConfig _config;
         private readonly ILogger _logger;
-        private Server _server;
+        private Server? _server;
 
         public GrpcRunner(NethermindService.NethermindServiceBase service, IGrpcConfig config, ILogManager logManager)
         {
@@ -50,10 +50,10 @@ namespace Nethermind.Runner
 
         public async Task StopAsync()
         {
-            if (_logger.IsInfo) _logger.Info($"Stopping GRPC server...");
-            await _server.ShutdownAsync();
+            if (_logger.IsInfo) _logger.Info("Stopping GRPC server...");
+            await (_server?.ShutdownAsync() ?? Task.CompletedTask);
             await GrpcEnvironment.ShutdownChannelsAsync();
-            if (_logger.IsInfo) _logger.Info($"GRPC shutdown complete.");
+            if (_logger.IsInfo) _logger.Info("GRPC shutdown complete.");
         }
     }
 }

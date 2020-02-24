@@ -26,7 +26,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds
     {
         ulong GasLimit { get; }
         Task SetEarlyRefundTicketAsync(EarlyRefundTicket ticket, RefundReason reason);
-        Task<Keccak> ClaimRefundAsync(Address onBehalfOf, RefundClaim refundClaim, UInt256 gasPrice);
-        Task<Keccak> ClaimEarlyRefundAsync(Address onBehalfOf, EarlyRefundClaim earlyRefundClaim, UInt256 gasPrice);
+        Task<Keccak?> ClaimRefundAsync(Address onBehalfOf, RefundClaim refundClaim, UInt256 gasPrice);
+        Task<Keccak?> ClaimEarlyRefundAsync(Address onBehalfOf, EarlyRefundClaim earlyRefundClaim, UInt256 gasPrice);
     }
 }

@@ -19,9 +19,9 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Logging;
-using Nethermind.Mining;
 
 namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {

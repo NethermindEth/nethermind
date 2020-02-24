@@ -18,13 +18,16 @@ using Nethermind.Config;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo
 {
+    // TODO: probably can ensure non-nullability of fields with default values in configs
     public interface INdmMongoConfig : IConfig
     {
         [ConfigItem(Description = "Connection string to the Mongo database (if NdmConfig.Persistence = mongo)", DefaultValue = "mongodb://localhost:27017")]
-        string ConnectionString { get; }
+        string? ConnectionString { get; }
+        
         [ConfigItem(Description = "An arbitrary name of the Mongo database", DefaultValue = "ndm")]
-        string Database { get; }
+        string? Database { get; }
+        
         [ConfigItem(Description = "If 'true' then it logs the queries sent to the Mongo database", DefaultValue = "false")]
-        bool LogQueries { get; }
+        bool? LogQueries { get; }
     }
 }

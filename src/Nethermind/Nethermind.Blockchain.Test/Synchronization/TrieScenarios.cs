@@ -21,7 +21,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.State;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain.Test.Synchronization

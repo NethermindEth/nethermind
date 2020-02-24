@@ -47,8 +47,8 @@ namespace Nethermind.DataMarketplace.Consumers.DataAssets.Services
         public bool IsAvailable(DataAsset dataAsset)
             => dataAsset.State == DataAssetState.Published || dataAsset.State == DataAssetState.UnderMaintenance;
 
-        public DataAsset GetDiscovered(Keccak dataAssetId)
-            => _discoveredDataAssets.TryGetValue(dataAssetId, out var dataAsset) ? dataAsset : null;
+        public DataAsset? GetDiscovered(Keccak dataAssetId)
+            => _discoveredDataAssets.TryGetValue(dataAssetId, out DataAsset? dataAsset) ? dataAsset : null;
 
         public IReadOnlyList<DataAsset> GetAllDiscovered()
             => _discoveredDataAssets.Values.Where(h => h.State == DataAssetState.Published ||

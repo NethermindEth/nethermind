@@ -21,7 +21,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Store;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing
 {
@@ -171,7 +171,7 @@ namespace Nethermind.Evm.Tracing
                     long excess = GasLeft;
                     for (int i = 0; i < NestingLevel; i++)
                     {
-                        excess = (long) Math.Ceiling(excess * 64m / 63);    
+                        excess = (long) Math.Floor(excess * 64m / 63);    
                     }
 
                     return excess;

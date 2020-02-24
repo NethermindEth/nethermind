@@ -66,7 +66,7 @@ namespace Nethermind.Abi
             return ((BigInteger, int))Decode(data, position, packed);
         }
 
-        public override byte[] Encode(object arg, bool packed)
+        public override byte[] Encode(object? arg, bool packed)
         {
             if (arg is BigInteger input)
             {

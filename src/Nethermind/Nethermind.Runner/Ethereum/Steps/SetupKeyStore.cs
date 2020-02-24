@@ -19,6 +19,7 @@ using System.Threading.Tasks;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
 using Nethermind.Network;
+using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Wallet;
 
@@ -39,6 +40,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             await Task.Run(() =>
             {
                 IKeyStoreConfig keyStoreConfig = _context.Config<IKeyStoreConfig>();
+                INetworkConfig networkConfig = _context.Config<INetworkConfig>();
 
                 AesEncrypter encrypter = new AesEncrypter(
                     keyStoreConfig,
@@ -62,7 +64,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 INodeKeyManager nodeKeyManager = new NodeKeyManager(_context.CryptoRandom, _context.KeyStore, keyStoreConfig, _context.LogManager);
                 _context.NodeKey = nodeKeyManager.LoadNodeKey();
-                _context.Enode = new Enode(_context.NodeKey.PublicKey, IPAddress.Parse(_context.NetworkConfig.ExternalIp), _context.NetworkConfig.P2PPort);
+                _context.Enode = new Enode(_context.NodeKey.PublicKey, IPAddress.Parse(networkConfig.ExternalIp), networkConfig.P2PPort);
             });
         }
     }

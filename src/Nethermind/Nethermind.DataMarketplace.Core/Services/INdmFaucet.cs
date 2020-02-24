@@ -23,6 +23,8 @@ namespace Nethermind.DataMarketplace.Core.Services
 {
     public interface INdmFaucet
     {
+        bool IsInitialized { get; }
+
         Task<FaucetResponse> TryRequestEthAsync(string node, Address address, UInt256 value);
     }
 }

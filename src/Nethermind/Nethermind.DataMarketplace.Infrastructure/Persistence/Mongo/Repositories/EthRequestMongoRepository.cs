@@ -34,8 +34,8 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo.Repositori
             _database = database;
         }
 
-        public Task<EthRequest> GetLatestAsync(string host)
-            => EthRequests.AsQueryable().Where(r => r.Host == host).FirstOrDefaultAsync();
+        public Task<EthRequest?> GetLatestAsync(string host)
+            => EthRequests.AsQueryable().Where(r => r.Host == host).FirstOrDefaultAsync()!;
 
         public Task AddAsync(EthRequest request) => EthRequests.InsertOneAsync(request);
         public Task UpdateAsync(EthRequest request) => EthRequests.ReplaceOneAsync(r => r.Id == request.Id, request);

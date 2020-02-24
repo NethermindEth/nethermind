@@ -20,14 +20,10 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
 {
     public class SessionClientForRpc
     {
-        public string Id { get; set; }
-        public bool StreamEnabled { get; set; }
-        public string[] Args { get; set; }
-
-        public SessionClientForRpc()
-        {
-        }
-
+        public string Id { get;  }
+        public bool StreamEnabled { get;  }
+        public string[] Args { get;  }
+        
         public SessionClientForRpc(SessionClient session)
         {
             Id = session.Id;

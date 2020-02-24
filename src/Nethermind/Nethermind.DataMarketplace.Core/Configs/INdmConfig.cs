@@ -42,15 +42,15 @@ namespace Nethermind.DataMarketplace.Core.Configs
         [ConfigItem(Description = "If 'false' then signature verification will be skipped during NDM capability P2P handshake", DefaultValue = "true")]
         bool VerifyP2PSignature { get; }
         [ConfigItem(Description = "An account address (hot wallet) of the data provider", DefaultValue = "")]
-        string ProviderAddress { get; }
+        string? ProviderAddress { get; }
         [ConfigItem(Description = "An account address (cold wallet) of the data provider", DefaultValue = "")]
-        string ProviderColdWalletAddress { get; }
+        string? ProviderColdWalletAddress { get; }
         [ConfigItem(Description = "An account address (hot wallet) of the data consumer", DefaultValue = "")]
-        string ConsumerAddress { get; }
+        string? ConsumerAddress { get; }
 
         [DoNotUseInSecuredContext("Hardcode so cannot be overwritten to redirect to another contract")]
         [ConfigItem(Description = "An address of the smart contract used by NDM", DefaultValue = "0x82c839fa4a41e158f613ec8a1a84be3c816d370f")]
-        string ContractAddress { get; }
+        string? ContractAddress { get; }
 
         [ConfigItem(Description = "Data provider's threshold (Wei) that once reached will send a receipt request to the data consumer", DefaultValue = "10000000000000000")]
         UInt256 ReceiptRequestThreshold { get; }
@@ -62,10 +62,10 @@ namespace Nethermind.DataMarketplace.Core.Configs
         uint BlockConfirmations { get; }
         [ConfigItem(Description = "If 'true' then it enables the faucet capability", DefaultValue = "false")]
         bool FaucetEnabled { get; }
-        [ConfigItem(Description = "An account address that will be used to transfer the funds from if faucet capability is enabled", DefaultValue = "")]
-        string FaucetAddress { get; }
-        [ConfigItem(Description = "IP address of the faucet to connect to in order to request ETH", DefaultValue = "")]
-        string FaucetHost { get; }
+        [ConfigItem(Description = "An account address that will be used to transfer the funds from if faucet capability is enabled", DefaultValue = null)]
+        string? FaucetAddress { get; }
+        [ConfigItem(Description = "IP address of the faucet to connect to in order to request ETH", DefaultValue = null)]
+        string? FaucetHost { get; }
         [ConfigItem(Description = "Maximal value (Wei) of a single ETH request to the faucet", DefaultValue = "1000000000000000000")]
         UInt256 FaucetWeiRequestMaxValue { get; }
         [ConfigItem(Description = "Maximal value (ETH) of a total ETH requests (per day) to the faucet", DefaultValue = "500")]

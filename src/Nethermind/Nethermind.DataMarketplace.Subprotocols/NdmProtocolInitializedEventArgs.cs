@@ -21,12 +21,12 @@ namespace Nethermind.DataMarketplace.Subprotocols
 {
     public class NdmProtocolInitializedEventArgs : ProtocolInitializedEventArgs
     {
-        public string Protocol { get; set; }
-        public byte ProtocolVersion { get; set; }
-        public Address ProviderAddress { get; set; }
-        public Address ConsumerAddress { get; set; }
+        public string? Protocol { get; set; }
+        public byte? ProtocolVersion { get; set; }
+        public Address? ProviderAddress { get; set; }
+        public Address? ConsumerAddress { get; set; }
 
-        public NdmProtocolInitializedEventArgs(INdmSubprotocol subprotocol) : base(subprotocol)
+        public NdmProtocolInitializedEventArgs(IProtocolHandler subprotocol) : base(subprotocol)
         {
         }
     }

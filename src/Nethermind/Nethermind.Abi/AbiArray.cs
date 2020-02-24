@@ -53,14 +53,14 @@ namespace Nethermind.Abi
             return (result, position);
         }
 
-        public override byte[] Encode(object arg, bool packed)
+        public override byte[] Encode(object? arg, bool packed)
         {
             if (arg is Array input)
             {
                 byte[][] encodedItems = new byte[input.Length + 1][];
                 int i = 0;
                 encodedItems[i++] = UInt256.Encode((BigInteger)input.Length, packed);
-                foreach (object o in input)
+                foreach (object? o in input)
                 {
                     encodedItems[i++] = _elementType.Encode(o, packed);
                 }

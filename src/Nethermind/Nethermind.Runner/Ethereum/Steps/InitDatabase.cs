@@ -21,11 +21,10 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Db;
-using Nethermind.Db.Config;
-using Nethermind.JsonRpc.Client;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
+using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Store;
-using Nethermind.Store.Rpc;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -40,6 +39,8 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public async Task Execute()
         {
+            ILogger logger = _context.LogManager.GetClassLogger();
+            
             /* sync */
             IDbConfig dbConfig = _context.Config<IDbConfig>();
             ISyncConfig syncConfig = _context.Config<ISyncConfig>();
@@ -47,7 +48,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             foreach (PropertyInfo propertyInfo in typeof(IDbConfig).GetProperties())
             {
-                if (_context.Logger.IsDebug) _context.Logger.Debug($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");
+                if (logger.IsDebug) logger.Debug($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");
             }
 
             if (initConfig.UseMemDb)

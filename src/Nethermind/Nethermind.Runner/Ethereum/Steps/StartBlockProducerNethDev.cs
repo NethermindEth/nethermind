@@ -16,6 +16,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Producers;
+using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -31,7 +32,8 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected override void BuildProducer()
         {
-            if (_context.Logger.IsWarn) _context.Logger.Warn("Starting Neth Dev block producer & sealer");
+            ILogger logger = _context.LogManager.GetClassLogger();
+            if (logger.IsWarn) logger.Warn("Starting Neth Dev block producer & sealer");
             BlockProducerContext producerChain = GetProducerChain();
             _context.BlockProducer = new DevBlockProducer(
                 producerChain.PendingTxSelector,

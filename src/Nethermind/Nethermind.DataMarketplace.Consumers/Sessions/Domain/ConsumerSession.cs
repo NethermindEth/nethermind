@@ -72,7 +72,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Domain
             session.StartTimestamp, session.FinishTimestamp, session.ConsumedUnits, session.UnpaidUnits,
             session.PaidUnits, session.SettledUnits);
         
-        public SessionClient GetClient(string client)
+        public SessionClient? GetClient(string client)
             => _clients.TryGetValue(client, out var sessionClient) ? sessionClient : null;
 
         public void Start(ulong timestamp)

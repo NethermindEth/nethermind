@@ -18,42 +18,38 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Abi;
-using Nethermind.AuRa;
-using Nethermind.AuRa.Rewards;
-using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Bloom;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.TxPools;
-using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
-using Nethermind.Clique;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Clique;
+using Nethermind.Consensus.Mining;
+using Nethermind.Consensus.Mining.Difficulty;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Specs.Forks;
-using Nethermind.Db;
-using Nethermind.Db.Config;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
-using Nethermind.Mining;
-using Nethermind.Mining.Difficulty;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using Nethermind.State;
+using Nethermind.State.Repositories;
 using Nethermind.Store;
-using Nethermind.Store.Repositories;
+using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Storages;
+using Metrics = Nethermind.Trie.Metrics;
 
 namespace Nethermind.PerfTest
 {
@@ -198,8 +194,15 @@ namespace Nethermind.PerfTest
             }
 
             public event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
-            public event EventHandler<BlockEventArgs> BlockAddedToMain;
+
+            public event EventHandler<BlockEventArgs> BlockAddedToMain
+            {
+                add { }
+                remove { }
+            }
+
             public event EventHandler<BlockEventArgs> NewHeadBlock;
+
             public void DeleteChainSlice(in long startNumber, in long endNumber)
             {
                 _blockTree.DeleteChainSlice(startNumber, endNumber);
@@ -220,13 +223,13 @@ namespace Nethermind.PerfTest
         private static readonly string FullPendingTxsDbPath = Path.Combine(DbBasePath, "pendingtxs");
         private static readonly string FullBlocksDbPath = Path.Combine(DbBasePath, "blocks");
         private static readonly string FullBlockInfosDbPath = Path.Combine(DbBasePath, "blockInfos");
-        
+
         private const int BlocksToLoad = 100_000;
 
         private static async Task RunBenchmarkBlocks()
         {
             Rlp.RegisterDecoders(typeof(ParityTraceDecoder).Assembly);
-            
+
             /* logging & instrumentation */
             _logManager = new NLogManager("perfTest.logs.txt", null);
             _logger = _logManager.GetClassLogger();
@@ -245,7 +248,7 @@ namespace Nethermind.PerfTest
             _logger.Info($"Loading ChainSpec from {path}");
             ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
             _logger.Info($"ChainSpec loaded");
-            
+
             var specProvider = new ChainSpecBasedSpecProvider(chainSpec);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
 
@@ -257,33 +260,33 @@ namespace Nethermind.PerfTest
             var headersDb = dbProvider.HeadersDb;
             var blockInfosDb = dbProvider.BlockInfosDb;
             var receiptsDb = dbProvider.ReceiptsDb;
-            
+
             /* state & storage */
             var stateProvider = new StateProvider(stateDb, codeDb, _logManager);
             var storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
 
             var ethereumSigner = new EthereumEcdsa(specProvider, _logManager);
-            
-            var transactionPool = new TxPool(
-                NullTxStorage.Instance, 
+
+            var transactionPool = new TxPool.TxPool(
+                NullTxStorage.Instance,
                 Timestamper.Default,
-                ethereumSigner, 
-                specProvider, 
+                ethereumSigner,
+                specProvider,
                 new TxPoolConfig(),
                 stateProvider,
                 _logManager);
 
             var blockInfoRepository = new ChainLevelInfoRepository(blockInfosDb);
-            var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, headersDb, blockInfosDb, blockInfoRepository, specProvider, transactionPool, new BloomStorage(new BloomConfig(), dbProvider.HeadersDb, new InMemoryDictionaryFileStoreFactory()),  _logManager));
+            var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, headersDb, blockInfosDb, blockInfoRepository, specProvider, transactionPool, new BloomStorage(new BloomConfig(), dbProvider.HeadersDb, new InMemoryDictionaryFileStoreFactory()), _logManager));
             var receiptStorage = new InMemoryReceiptStorage();
 
             IBlockDataRecoveryStep recoveryStep = new TxSignaturesRecoveryStep(ethereumSigner, transactionPool, _logManager);
-           
+
             /* blockchain processing */
             var blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, _logManager);
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, _logManager);
-            
+
             ISealValidator sealValidator;
             if (specProvider.ChainId == RopstenSpecProvider.Instance.ChainId)
             {
@@ -307,7 +310,7 @@ namespace Nethermind.PerfTest
             var ommersValidator = new OmmersValidator(blockTree, headerValidator, _logManager);
             var transactionValidator = new TxValidator(chainSpec.ChainId);
             var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, _logManager);
-            
+
             /* blockchain processing */
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, stateProvider, storageProvider, transactionPool, receiptStorage, _logManager);
             var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, recoveryStep, _logManager, true);
@@ -320,7 +323,7 @@ namespace Nethermind.PerfTest
                     Keccak codeHash = stateProvider.UpdateCode(allocation.Code);
                     stateProvider.UpdateCodeHash(address, codeHash, specProvider.GenesisSpec);
                 }
-                
+
                 if (allocation.Constructor != null)
                 {
                     Transaction constructorTransaction = new Transaction(true)
@@ -329,15 +332,15 @@ namespace Nethermind.PerfTest
                         Init = allocation.Constructor,
                         GasLimit = chainSpec.Genesis.GasLimit
                     };
-                    
+
                     processor.Execute(constructorTransaction, chainSpec.Genesis.Header, NullTxTracer.Instance);
                 }
             }
-            
+
             _logger.Info($"Allocations configured, committing...");
 
             stateProvider.Commit(specProvider.GenesisSpec);
-            
+
             _logger.Info($"Finalizing genesis...");
             stateProvider.RecalculateStateRoot();
             chainSpec.Genesis.Header.StateRoot = stateProvider.StateRoot;
@@ -377,25 +380,25 @@ namespace Nethermind.PerfTest
                     _logger.Warn($"Is server GC {number}           : {System.Runtime.GCSettings.IsServerGC}");
                     _logger.Warn($"GC latency mode {number}        : {System.Runtime.GCSettings.LatencyMode}");
 
-                    _logger.Warn($"TOTAL after {number} blocks DB reads      : {Store.Metrics.BlocksDbReads}");
-                    _logger.Warn($"TOTAL after {number} blocks DB writes     : {Store.Metrics.BlocksDbWrites}");
-                    _logger.Warn($"TOTAL after {number} infos DB reads       : {Store.Metrics.BlockInfosDbReads}");
-                    _logger.Warn($"TOTAL after {number} infos DB writes      : {Store.Metrics.BlockInfosDbWrites}");
-                    _logger.Warn($"TOTAL after {number} state tree reads     : {Store.Metrics.StateTreeReads}");
-                    _logger.Warn($"TOTAL after {number} state tree writes    : {Store.Metrics.StateTreeWrites}");
-                    _logger.Warn($"TOTAL after {number} state DB reads       : {Store.Metrics.StateDbReads}");
-                    _logger.Warn($"TOTAL after {number} state DB writes      : {Store.Metrics.StateDbWrites}");
-                    _logger.Warn($"TOTAL after {number} storage tree reads   : {Store.Metrics.StorageTreeReads}");
-                    _logger.Warn($"TOTAL after {number} storage tree writes  : {Store.Metrics.StorageTreeWrites}");
-                    _logger.Warn($"TOTAL after {number} tree node hash       : {Store.Metrics.TreeNodeHashCalculations}");
-                    _logger.Warn($"TOTAL after {number} tree node RLP decode : {Store.Metrics.TreeNodeRlpDecodings}");
-                    _logger.Warn($"TOTAL after {number} tree node RLP encode : {Store.Metrics.TreeNodeRlpEncodings}");
-                    _logger.Warn($"TOTAL after {number} code DB reads        : {Store.Metrics.CodeDbReads}");
-                    _logger.Warn($"TOTAL after {number} code DB writes       : {Store.Metrics.CodeDbWrites}");
-                    _logger.Warn($"TOTAL after {number} receipts DB reads    : {Store.Metrics.ReceiptsDbReads}");
-                    _logger.Warn($"TOTAL after {number} receipts DB writes   : {Store.Metrics.ReceiptsDbWrites}");
-                    _logger.Warn($"TOTAL after {number} other DB reads       : {Store.Metrics.OtherDbReads}");
-                    _logger.Warn($"TOTAL after {number} other DB writes      : {Store.Metrics.OtherDbWrites}");
+                    _logger.Warn($"TOTAL after {number} blocks DB reads      : {Db.Metrics.BlocksDbReads}");
+                    _logger.Warn($"TOTAL after {number} blocks DB writes     : {Db.Metrics.BlocksDbWrites}");
+                    _logger.Warn($"TOTAL after {number} infos DB reads       : {Db.Metrics.BlockInfosDbReads}");
+                    _logger.Warn($"TOTAL after {number} infos DB writes      : {Db.Metrics.BlockInfosDbWrites}");
+                    _logger.Warn($"TOTAL after {number} state tree reads     : {Db.Metrics.StateTreeReads}");
+                    _logger.Warn($"TOTAL after {number} state tree writes    : {Db.Metrics.StateTreeWrites}");
+                    _logger.Warn($"TOTAL after {number} state DB reads       : {Db.Metrics.StateDbReads}");
+                    _logger.Warn($"TOTAL after {number} state DB writes      : {Db.Metrics.StateDbWrites}");
+                    _logger.Warn($"TOTAL after {number} storage tree reads   : {Db.Metrics.StorageTreeReads}");
+                    _logger.Warn($"TOTAL after {number} storage tree writes  : {Db.Metrics.StorageTreeWrites}");
+                    _logger.Warn($"TOTAL after {number} tree node hash       : {Metrics.TreeNodeHashCalculations}");
+                    _logger.Warn($"TOTAL after {number} tree node RLP decode : {Metrics.TreeNodeRlpDecodings}");
+                    _logger.Warn($"TOTAL after {number} tree node RLP encode : {Metrics.TreeNodeRlpEncodings}");
+                    _logger.Warn($"TOTAL after {number} code DB reads        : {Db.Metrics.CodeDbReads}");
+                    _logger.Warn($"TOTAL after {number} code DB writes       : {Db.Metrics.CodeDbWrites}");
+                    _logger.Warn($"TOTAL after {number} receipts DB reads    : {Db.Metrics.ReceiptsDbReads}");
+                    _logger.Warn($"TOTAL after {number} receipts DB writes   : {Db.Metrics.ReceiptsDbWrites}");
+                    _logger.Warn($"TOTAL after {number} other DB reads       : {Db.Metrics.OtherDbReads}");
+                    _logger.Warn($"TOTAL after {number} other DB writes      : {Db.Metrics.OtherDbWrites}");
                     _logger.Warn($"TOTAL after {number} EVM exceptions       : {Evm.Metrics.EvmExceptions}");
                     _logger.Warn($"TOTAL after {number} SLOAD opcodes        : {Evm.Metrics.SloadOpcode}");
                     _logger.Warn($"TOTAL after {number} SSTORE opcodes       : {Evm.Metrics.SstoreOpcode}");

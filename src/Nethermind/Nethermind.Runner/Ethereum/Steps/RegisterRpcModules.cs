@@ -30,6 +30,7 @@ using Nethermind.JsonRpc.Modules.Personal;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.TxPool;
+using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Subsystems;
 
@@ -47,6 +48,9 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public virtual Task Execute()
         { 
+            if (_context.RpcModuleProvider == null) throw new StepDependencyException(nameof(_context.RpcModuleProvider));
+            
+            ILogger logger = _context.LogManager.GetClassLogger();
             IJsonRpcConfig jsonRpcConfig = _context.Config<IJsonRpcConfig>();
             if (!jsonRpcConfig.Enabled)
             {
@@ -54,7 +58,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
 
             // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
-            if (_context.Logger.IsDebug) _context.Logger.Debug($"Resolving CLI ({nameof(CliModuleLoader)})");
+            if (logger.IsDebug) logger.Debug($"Resolving CLI ({nameof(CliModuleLoader)})");
 
             IInitConfig initConfig = _context.Config<IInitConfig>();
             INdmConfig ndmConfig = _context.Config<INdmConfig>();
@@ -63,7 +67,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 EthModuleProxyFactory proxyFactory = new EthModuleProxyFactory(_context.EthJsonRpcClientProxy, _context.Wallet);
                 _context.RpcModuleProvider.Register(new SingletonModulePool<IEthModule>(proxyFactory, true));
-                if (_context.Logger.IsInfo) _context.Logger.Info("Enabled JSON RPC Proxy for NDM.");
+                if (logger.IsInfo) logger.Info("Enabled JSON RPC Proxy for NDM.");
             }
             else
             {
@@ -104,7 +108,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             return Task.CompletedTask;
         }
         
-        public event EventHandler<SubsystemStateEventArgs> SubsystemStateChanged;
+        public event EventHandler<SubsystemStateEventArgs>? SubsystemStateChanged;
 
         public EthereumSubsystem MonitoredSubsystem => EthereumSubsystem.Kafka;
     }

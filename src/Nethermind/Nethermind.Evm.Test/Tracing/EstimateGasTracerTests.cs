@@ -86,7 +86,7 @@ namespace Nethermind.Evm.Test.Tracing
                 tracer.ReportActionEnd(300, Bytes.Empty); // should not happen
             }
 
-            tracer.ExcessiveGas.Should().Be(204L);
+            tracer.ExcessiveGas.Should().Be(203L);
         }
 
         [Test]
@@ -110,7 +110,7 @@ namespace Nethermind.Evm.Test.Tracing
                 tracer.ReportActionEnd(500, Bytes.Empty); // should not happen
             }
 
-            tracer.ExcessiveGas.Should().Be(407L);
+            tracer.ExcessiveGas.Should().Be(406L);
         }
 
         [Test]
@@ -134,7 +134,7 @@ namespace Nethermind.Evm.Test.Tracing
                 tracer.ReportActionEnd(500, Bytes.Empty); // should not happen
             }
 
-            tracer.ExcessiveGas.Should().Be(208L);
+            tracer.ExcessiveGas.Should().Be(206L);
         }
 
         [Test]
@@ -158,7 +158,7 @@ namespace Nethermind.Evm.Test.Tracing
                 tracer.ReportActionEnd(500, Bytes.Empty); // should not happen
             }
 
-            tracer.ExcessiveGas.Should().Be(204L);
+            tracer.ExcessiveGas.Should().Be(203L);
         }
     }
 }

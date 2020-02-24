@@ -20,7 +20,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
 {
     public class NdmProxyResponseForRpc
     {
-        public bool Enabled { get; set; }
-        public IEnumerable<string> Urls { get; set; }
+        public bool? Enabled { get; set; }
+        public IEnumerable<string>? Urls { get; set; }
     }
 }

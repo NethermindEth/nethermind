@@ -39,7 +39,7 @@ namespace Nethermind.DataMarketplace.Core.Services.Models
             return ReferenceEquals(this, other) || Equals(Hash, other.Hash);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
