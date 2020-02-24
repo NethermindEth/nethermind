@@ -123,7 +123,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
 
             var (beneficiaries, kinds) = GetBeneficiaries();
             var transaction = contract.Reward(beneficiaries, kinds);
-            contract.InvokeTransaction(block.Header, _transactionProcessor, transaction, _tracer);
+            contract.Call(block.Header, _transactionProcessor, transaction, _tracer);
             var (addresses, rewards) = contract.DecodeRewards(_tracer.ReturnValue);
 
             var blockRewards = new BlockReward[addresses.Length];

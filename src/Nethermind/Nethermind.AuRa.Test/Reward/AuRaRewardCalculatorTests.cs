@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -50,9 +51,9 @@ namespace Nethermind.AuRa.Test.Reward
         [SetUp]
         public void SetUp()
         {
-            _address10 = Address.FromNumber(10);
-            _address50 = Address.FromNumber(50);
-            _address150 = Address.FromNumber(150);
+            _address10 = TestItem.AddressA;
+            _address50 = TestItem.AddressB;
+            _address150 = TestItem.AddressC;
             _auraParameters = new AuRaParameters
             {
                 BlockRewardContractAddress = _address10,
@@ -125,11 +126,19 @@ namespace Nethermind.AuRa.Test.Reward
             var result =  calculator.CalculateRewards(_block);            
             result.Should().BeEquivalentTo(expected);
         }
-        
-        [TestCase(10, 100)]
-        [TestCase(50, 150)]
-        [TestCase(150, 200)]
-        public void calculates_rewards_correctly_after_subsequent_contract_transitions(long blockNumber, long expectedReward)
+
+        public static IEnumerable SubsequentTransitionsTestCases
+        {
+            get
+            {
+                yield return new TestCaseData(10, 100, TestItem.AddressA);
+                yield return new TestCaseData(50, 150, TestItem.AddressB);
+                yield return new TestCaseData(150, 200, TestItem.AddressC);
+            }
+        }
+
+        [TestCaseSource(nameof(SubsequentTransitionsTestCases))]
+        public void calculates_rewards_correctly_after_subsequent_contract_transitions(long blockNumber, long expectedReward, Address address)
         {
             _auraParameters.BlockRewardContractTransitions = new Dictionary<long, Address>()
             {
@@ -138,7 +147,7 @@ namespace Nethermind.AuRa.Test.Reward
             };
             _block.Header.Number = blockNumber;
             var expected = new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.Block);
-            SetupBlockRewards(new Dictionary<Address, BlockReward[]>() {{Address.FromNumber((UInt256) blockNumber), new[] {expected}}});
+            SetupBlockRewards(new Dictionary<Address, BlockReward[]>() {{address, new[] {expected}}});
             var calculator = new AuRaRewardCalculator(_auraParameters, _abiEncoder, _transactionProcessor);
             var result =  calculator.CalculateRewards(_block);            
             result.Should().BeEquivalentTo(expected);
@@ -151,8 +160,8 @@ namespace Nethermind.AuRa.Test.Reward
             _block.Header.Number = blockNumber;
             _block.Body = new BlockBody(_block.Body.Transactions, new[]
             {
-                 Build.A.BlockHeader.WithBeneficiary(Address.FromNumber(777)).WithNumber(blockNumber - 1).TestObject,
-                 Build.A.BlockHeader.WithBeneficiary(Address.FromNumber(888)).WithNumber(blockNumber - 2).TestObject
+                 Build.A.BlockHeader.WithBeneficiary(TestItem.AddressB).WithNumber(blockNumber - 1).TestObject,
+                 Build.A.BlockHeader.WithBeneficiary(TestItem.AddressD).WithNumber(blockNumber - 2).TestObject
             });
             
             var expected = new BlockReward[]
@@ -174,8 +183,8 @@ namespace Nethermind.AuRa.Test.Reward
             _block.Header.Number = 10;
             _block.Body = new BlockBody(_block.Body.Transactions, new[]
             {
-                 Build.A.BlockHeader.WithBeneficiary(Address.FromNumber(777)).WithNumber(9).TestObject,
-                 Build.A.BlockHeader.WithBeneficiary(Address.FromNumber(888)).WithNumber(8).TestObject
+                 Build.A.BlockHeader.WithBeneficiary(TestItem.Addresses[0]).WithNumber(9).TestObject,
+                 Build.A.BlockHeader.WithBeneficiary(TestItem.Addresses[1]).WithNumber(8).TestObject
             });
             
             var expected = new BlockReward[]

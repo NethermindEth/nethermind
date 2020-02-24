@@ -19,7 +19,7 @@ using System.Collections.Generic;
 
 namespace Nethermind.Consensus.AuRa
 {
-    public static class IListExtensions
+    public static class ListExtensions
     {
         public static T GetItemRoundRobin<T>(this IList<T> array, long index) => array.Count == 0 ? default : array[(int) (index % array.Count)];
 
