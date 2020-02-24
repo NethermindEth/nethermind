@@ -48,5 +48,11 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
             EthereumEcdsa ecdsa = new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance);
             _subprotocol = new NdmSubprotocol(session, nodeStatsManager, serializationService, LimboLogs.Instance, consumerService, consumerChannelManager, ecdsa, new DevWallet(new WalletConfig(), LimboLogs.Instance), Substitute.For<INdmFaucet>(), TestItem.PublicKeyB, TestItem.AddressB, TestItem.AddressA, false);
         }
+
+        [Test]
+        public void Fails_if_receives_any_message_before_hi()
+        {
+            _subprotocol.Name
+        }
     }
 }

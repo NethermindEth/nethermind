@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,27 +17,21 @@
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
 
-namespace Nethermind.JsonRpc
+namespace Nethermind.JsonRpc.Client
 {
-    public class JsonRpcResponse
+    public class JsonRpcResponse<T>
     {
         [JsonProperty(PropertyName = "jsonrpc", Order = 1)]
-        public readonly string JsonRpc = "2.0";
+        public string JsonRpc { get; set; }
+
+        [JsonProperty(PropertyName = "result", NullValueHandling = NullValueHandling.Ignore, Order = 2)]
+        public T Result { get; set; }
+
+        [JsonProperty(PropertyName = "error", NullValueHandling = NullValueHandling.Ignore, Order = 3)]
+        public Error Error { get; set; }
 
         [JsonConverter(typeof(IdConverter))]
         [JsonProperty(PropertyName = "id", Order = 0, NullValueHandling = NullValueHandling.Include)]
         public object Id { get; set; }
-    }
-
-    public class JsonRpcSuccessResponse : JsonRpcResponse
-    {
-        [JsonProperty(PropertyName = "result", NullValueHandling = NullValueHandling.Include, Order = 2)]
-        public object Result { get; set; }
-    }
-
-    public class JsonRpcErrorResponse : JsonRpcResponse
-    {
-        [JsonProperty(PropertyName = "error", NullValueHandling = NullValueHandling.Include, Order = 2)]
-        public Error Error { get; set; }
     }
 }
