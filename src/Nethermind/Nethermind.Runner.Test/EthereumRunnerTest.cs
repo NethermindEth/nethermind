@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using log4net.Core;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.DataMarketplace.Channels;
@@ -130,17 +131,21 @@ namespace Nethermind.Runner.Test
             Console.WriteLine(type7.Name);
             Console.WriteLine(type8.Name);
             Console.WriteLine(type9.Name);
+
+            // To eliminate file locks on index files.
+            configProvider.GetConfig<IBloomConfig>().Index = false;
             
             EthereumRunner runner = new EthereumRunner(
                 new RpcModuleProvider(new JsonRpcConfig(), LimboLogs.Instance),
                 configProvider,
-                LimboLogs.Instance, 
+                NUnitLogManager.Instance, 
                 Substitute.For<IGrpcServer>(),
                 Substitute.For<INdmConsumerChannelManager>(),
                 Substitute.For<INdmDataPublisher>(),
                 Substitute.For<INdmInitializer>(),
                 Substitute.For<IWebSocketsManager>(),
-                new EthereumJsonSerializer(), Substitute.For<IMonitoringService>());
+                new EthereumJsonSerializer(), 
+                Substitute.For<IMonitoringService>());
 
             await runner.Start();
             await runner.StopAsync();
