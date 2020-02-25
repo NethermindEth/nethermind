@@ -70,10 +70,10 @@ namespace Nethermind.JsonRpc.Data
         public UInt256? GasPrice { get; set; }
         public long? Gas { get; set; }
         
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
         public byte[] Data { get; set; }
         
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
         public byte[] Input { get; set; }
         public UInt256? V { get; set; }
 

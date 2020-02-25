@@ -142,7 +142,7 @@ namespace Nethermind.Facade.Test
             tx.GasLimit = 1000;
             
             var gas = _blockchainBridge.EstimateGas(header, tx);
-            gas.GasSpent.Should().Be(1000);
+            gas.GasSpent.Should().Be(0);
             
             _transactionProcessor.Received().CallAndRestore(
                 tx,

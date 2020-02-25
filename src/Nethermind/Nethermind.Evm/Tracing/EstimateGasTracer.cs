@@ -40,8 +40,10 @@ namespace Nethermind.Evm.Tracing
         public byte[] ReturnValue { get; set; }
 
         public long GasSpent { get; set; }
+        
+        public long IntrinsicGasAt { get; set; }
 
-        public long ExcessiveGas
+        public long AdditionalGasRequired
         {
             get
             {
@@ -50,7 +52,7 @@ namespace Nethermind.Evm.Tracing
                     return 0;
                 }
                 
-                return _gasOnEnd.Min(g => g.Excess);
+                return _gasOnEnd.Sum(g => Math.Max(0, g.AdditionalGasRequired));
             }
         }
 
@@ -153,44 +155,55 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        private struct GasLeftAndNestingLevel
+        private class GasAndNesting
         {
-            public GasLeftAndNestingLevel(long gasLeft, int nestingLevel)
+            public GasAndNesting(long gasOnStart, int nestingLevel)
             {
-                GasLeft = gasLeft;
+                GasOnStart = gasOnStart;
                 NestingLevel = nestingLevel;
             }
 
+            public long GasOnStart { get; set; }
+            
             public long GasLeft { get; set; }
             public int NestingLevel { get; set; }
 
-            public long Excess
+            private long MaxGasNeeded
             {
                 get
                 {
-                    long excess = GasLeft;
+                    long maxGasNeeded = GasOnStart - GasLeft;
                     for (int i = 0; i < NestingLevel; i++)
                     {
-                        excess = (long) Math.Floor(excess * 64m / 63);    
+                        maxGasNeeded = (long) Math.Ceiling(maxGasNeeded * 64m / 63);    
                     }
-
-                    return excess;
-                           
+                    
+                    return maxGasNeeded;
                 }
             }
+            
+            public long AdditionalGasRequired => MaxGasNeeded - (GasOnStart - GasLeft);
         }
 
-        private List<GasLeftAndNestingLevel> _gasOnEnd = new List<GasLeftAndNestingLevel>();
+        private List<GasAndNesting> _gasOnEnd = new List<GasAndNesting>();
 
         private int _currentNestingLevel = -1;
 
         private bool _isInPrecompile = false;
 
+        private Stack<GasAndNesting> _currentGasAndNesting = new Stack<GasAndNesting>();
+
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
         {
+            if (_currentNestingLevel == -1)
+            {
+                IntrinsicGasAt = gas;
+            }
+            
             if (!isPrecompileCall)
             {
                 _currentNestingLevel++;
+                _currentGasAndNesting.Push(new GasAndNesting(gas, _currentNestingLevel));
             }
             else
             {
@@ -202,7 +215,9 @@ namespace Nethermind.Evm.Tracing
         {
             if (!_isInPrecompile)
             {
-                _gasOnEnd.Add(new GasLeftAndNestingLevel(gas, _currentNestingLevel--));
+                var current = _currentGasAndNesting.Pop();
+                current.GasLeft = gas;
+                _gasOnEnd.Add(current);
             }
             else
             {
@@ -219,7 +234,9 @@ namespace Nethermind.Evm.Tracing
         {
             if (!_isInPrecompile)
             {
-                _gasOnEnd.Add(new GasLeftAndNestingLevel(gas, _currentNestingLevel--));
+                var current = _currentGasAndNesting.Pop();
+                current.GasLeft = gas;
+                _gasOnEnd.Add(current);
             }
             else
             {

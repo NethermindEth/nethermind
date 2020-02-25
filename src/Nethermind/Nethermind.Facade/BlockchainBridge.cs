@@ -210,7 +210,7 @@ namespace Nethermind.Facade
         {
             EstimateGasTracer estimateGasTracer = new EstimateGasTracer();
             CallAndRestore(header, transaction, estimateGasTracer);
-            return new CallOutput {Error = estimateGasTracer.Error, GasSpent = transaction.GasLimit - estimateGasTracer.ExcessiveGas, OutputData = estimateGasTracer.ReturnValue};
+            return new CallOutput {Error = estimateGasTracer.Error, GasSpent = estimateGasTracer.GasSpent + estimateGasTracer.AdditionalGasRequired};
         }
 
         private void CallAndRestore(BlockHeader blockHeader, Transaction transaction, ITxTracer tracer)

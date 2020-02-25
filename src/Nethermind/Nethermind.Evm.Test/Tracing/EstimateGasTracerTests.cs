@@ -41,7 +41,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Bytes.Empty, ExecutionType.Call, true);
             tracer.ReportActionEnd(400, Bytes.Empty); // this would not happen but we want to ensure that precompiles are ignored
             tracer.ReportActionEnd(600, Bytes.Empty);
-            tracer.ExcessiveGas.Should().Be(600L);
+            tracer.AdditionalGasRequired.Should().Be(0);
         }
 
         [Test]
@@ -64,7 +64,7 @@ namespace Nethermind.Evm.Test.Tracing
             EstimateGasTracer tracer = new EstimateGasTracer();
             tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Bytes.Empty, ExecutionType.Transaction, false);
             tracer.ReportActionEnd(600, Bytes.Empty);
-            tracer.ExcessiveGas.Should().Be(600L);
+            tracer.AdditionalGasRequired.Should().Be(0);
         }
 
         [Test]
@@ -86,7 +86,7 @@ namespace Nethermind.Evm.Test.Tracing
                 tracer.ReportActionEnd(300, Bytes.Empty); // should not happen
             }
 
-            tracer.ExcessiveGas.Should().Be(203L);
+            tracer.AdditionalGasRequired.Should().Be(18);
         }
 
         [Test]
@@ -110,7 +110,20 @@ namespace Nethermind.Evm.Test.Tracing
                 tracer.ReportActionEnd(500, Bytes.Empty); // should not happen
             }
 
-            tracer.ExcessiveGas.Should().Be(406L);
+            tracer.AdditionalGasRequired.Should().Be(8);
+        }
+
+        [Test]
+        public void Easy_one_level_case()
+        {
+            EstimateGasTracer tracer = new EstimateGasTracer();
+            tracer.ReportAction(128, 0, Address.Zero, Address.Zero, Bytes.Empty, ExecutionType.Transaction, false);
+            tracer.ReportAction(100, 0, Address.Zero, Address.Zero, Bytes.Empty, _executionType, false);
+
+            tracer.ReportActionEnd(63, Bytes.Empty); // second level
+            tracer.ReportActionEnd(65, Bytes.Empty);
+
+            tracer.AdditionalGasRequired.Should().Be(1);
         }
 
         [Test]
@@ -134,7 +147,7 @@ namespace Nethermind.Evm.Test.Tracing
                 tracer.ReportActionEnd(500, Bytes.Empty); // should not happen
             }
 
-            tracer.ExcessiveGas.Should().Be(206L);
+            tracer.AdditionalGasRequired.Should().Be(18);
         }
 
         [Test]
@@ -158,7 +171,7 @@ namespace Nethermind.Evm.Test.Tracing
                 tracer.ReportActionEnd(500, Bytes.Empty); // should not happen
             }
 
-            tracer.ExcessiveGas.Should().Be(203L);
+            tracer.AdditionalGasRequired.Should().Be(17);
         }
     }
 }
