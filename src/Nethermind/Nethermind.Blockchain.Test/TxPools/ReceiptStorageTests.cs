@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         public void Setup()
         {
             _specProvider = RopstenSpecProvider.Instance;
-            _ethereumEcdsa = new EthereumEcdsa(_specProvider, NullLogManager.Instance);
+            _ethereumEcdsa = new EthereumEcdsa(_specProvider, LimboLogs.Instance);
         }
 
         [Test]

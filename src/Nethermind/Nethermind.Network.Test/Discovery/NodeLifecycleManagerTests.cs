@@ -56,7 +56,7 @@ namespace Nethermind.Network.Test.Discovery
             NetworkNodeDecoder.Init();
             SetupNodeIds();
 
-            var logManager = NullLogManager.Instance;
+            var logManager = LimboLogs.Instance;
             //setting config to store 3 nodes in a bucket and for table to have one bucket//setting config to store 3 nodes in a bucket and for table to have one bucket
 
             _configurationProvider = new ConfigProvider();

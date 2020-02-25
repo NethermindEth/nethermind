@@ -57,7 +57,7 @@ namespace Nethermind.Blockchain.Test
 
             /* logging & instrumentation */
 //            OneLoggerLogManager logger = new OneLoggerLogManager(new SimpleConsoleLogger(true));
-            ILogManager logManager = NullLogManager.Instance;
+            ILogManager logManager = LimboLogs.Instance;
             ILogger logger = logManager.GetClassLogger();
 
             /* spec */
@@ -86,7 +86,7 @@ namespace Nethermind.Blockchain.Test
             TxValidator txValidator = new TxValidator(ChainId.Ropsten);
             BlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, ommersValidator, specProvider, logManager);
 
-            TestTransactionsGenerator generator = new TestTransactionsGenerator(txPool, ecdsa, TimeSpan.FromMilliseconds(50 * timeMultiplier), NullLogManager.Instance);
+            TestTransactionsGenerator generator = new TestTransactionsGenerator(txPool, ecdsa, TimeSpan.FromMilliseconds(50 * timeMultiplier), LimboLogs.Instance);
             generator.Start();
             
             /* blockchain processing */
@@ -123,7 +123,7 @@ namespace Nethermind.Blockchain.Test
             blockchainProcessor.Start();
 
             var transactionSelector = new PendingTxSelector(txPool, stateProvider, logManager);
-            MinedBlockProducer minedBlockProducer = new MinedBlockProducer(transactionSelector, blockchainProcessor, sealer, blockTree, blockchainProcessor, stateProvider, timestamper, NullLogManager.Instance, difficultyCalculator);
+            MinedBlockProducer minedBlockProducer = new MinedBlockProducer(transactionSelector, blockchainProcessor, sealer, blockTree, blockchainProcessor, stateProvider, timestamper, LimboLogs.Instance, difficultyCalculator);
             minedBlockProducer.Start();
 
             ManualResetEventSlim manualResetEvent = new ManualResetEventSlim(false);

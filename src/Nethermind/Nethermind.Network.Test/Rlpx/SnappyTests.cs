@@ -35,7 +35,7 @@ namespace Nethermind.Network.Test.Rlpx
         public class SnappyDecoderForTest : SnappyDecoder
         {
             public SnappyDecoderForTest()
-                : base(NullLogger.Instance)
+                : base(LimboTraceLogger.Instance)
             {
             }
 
