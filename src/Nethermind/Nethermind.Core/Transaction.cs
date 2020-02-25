@@ -25,6 +25,8 @@ namespace Nethermind.Core
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
     public class Transaction
     {
+        public const int BaseTxGasCost = 21000;
+        
         private readonly bool _isSystem;
 
         public Transaction() { }

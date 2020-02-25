@@ -89,6 +89,17 @@ namespace Nethermind.Blockchain
 
             foreach (Transaction tx in transactions)
             {
+                if (gasRemaining < Transaction.BaseTxGasCost)
+                {
+                    continue;
+                }
+
+                if (tx.GasLimit > gasRemaining)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Rejecting (tx gas limit {tx.GasLimit} above remaining block gas {gasRemaining}) {tx.ToShortString()}");
+                    continue;
+                }
+                
                 if (tx.SenderAddress == null)
                 {
                     _transactionPool.RemoveTransaction(tx.Hash, 0);
@@ -117,12 +128,6 @@ namespace Nethermind.Blockchain
                     
                     if (_logger.IsInfo) _logger.Info($"Rejecting (invalid nonce - expected {expectedNonce}) {tx.ToShortString()}");
                     continue;
-                }
-
-                if (tx.GasLimit > gasRemaining)
-                {
-                    if (_logger.IsInfo) _logger.Info($"Rejecting (tx gas limit {tx.GasLimit} above remaining block gas {gasRemaining}) {tx.ToShortString()}");
-                    break;
                 }
 
                 if (!HasEnoughFounds(remainingBalance, tx))

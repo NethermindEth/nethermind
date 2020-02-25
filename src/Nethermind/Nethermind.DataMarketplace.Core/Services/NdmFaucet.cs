@@ -184,7 +184,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 var transaction = new Transaction
                 {
                     Value = value,
-                    GasLimit = 21000,
+                    GasLimit = Transaction.BaseTxGasCost,
                     GasPrice = 20.GWei(),
                     To = address,
                     SenderAddress = _faucetAddress,

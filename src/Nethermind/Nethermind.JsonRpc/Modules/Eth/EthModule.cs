@@ -330,8 +330,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
             BlockHeader head = _blockchainBridge.FindLatestHeader();
             FixCallTx(transactionCall, head);
 
-            long result = _blockchainBridge.EstimateGas(head, transactionCall.ToTransaction());
-            return ResultWrapper<UInt256?>.Success((UInt256) result);
+            BlockchainBridge.CallOutput result = _blockchainBridge.EstimateGas(head, transactionCall.ToTransaction());
+            if (result.Error == null)
+            {
+                return ResultWrapper<UInt256?>.Success((UInt256) result.GasSpent);
+            }
+
+            return ResultWrapper<UInt256?>.Fail(result.Error);
         }
 
         public ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects)
