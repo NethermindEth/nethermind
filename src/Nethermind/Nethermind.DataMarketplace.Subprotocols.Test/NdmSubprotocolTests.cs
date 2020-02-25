@@ -52,7 +52,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
         [Test]
         public void Fails_if_receives_any_message_before_hi()
         {
-            _subprotocol.Name
+            
         }
     }
 }
