@@ -29,8 +29,6 @@ namespace Nethermind.HonestValidator
 {
     public class HonestValidatorWorker : BackgroundService
     {
-        private const string _dataDirectoryKey = "datadirectory";
-        private readonly IConfiguration _configuration;
         private readonly IBeaconNodeApi _beaconNodeApi;
         private readonly BeaconChain _beaconChain;
         private readonly ValidatorClient _validatorClient;
@@ -38,12 +36,13 @@ namespace Nethermind.HonestValidator
         private readonly ILogger _logger;
         private readonly IClock _clock;
         private readonly IHostEnvironment _environment;
+        private readonly DataDirectory _dataDirectory;
         private bool _stopped;
 
         public HonestValidatorWorker(ILogger<HonestValidatorWorker> logger,
             IClock clock,
             IHostEnvironment environment,
-            IConfiguration configuration,
+            DataDirectory dataDirectory,
             IBeaconNodeApi beaconNodeApi,
             BeaconChain beaconChain,
             ValidatorClient validatorClient,
@@ -52,7 +51,7 @@ namespace Nethermind.HonestValidator
             _logger = logger;
             _clock = clock;
             _environment = environment;
-            _configuration = configuration;
+            _dataDirectory = dataDirectory;
             _beaconNodeApi = beaconNodeApi;
             _beaconChain = beaconChain;
             _validatorClient = validatorClient;
@@ -77,7 +76,7 @@ namespace Nethermind.HonestValidator
         {
             if (_logger.IsInfo())
                 Log.HonestValidatorWorkerExecuteStarted(_logger, _clientVersion.Description,
-                    _configuration[_dataDirectoryKey], _environment.EnvironmentName, Thread.CurrentThread.ManagedThreadId, null);
+                    _dataDirectory.ResolvedPath, _environment.EnvironmentName, Thread.CurrentThread.ManagedThreadId, null);
 
             try
             {

@@ -27,6 +27,8 @@ namespace Nethermind.Core2.Configuration
             services.AddSingleton<IClientVersion, ClientVersion>();
             
             services.AddSingleton<ChainConstants>();
+
+            services.AddSingleton(new DataDirectory(configuration.GetValue<string>(DataDirectory.Key)));
             
             services.Configure<MiscellaneousParameters>(x =>
             {

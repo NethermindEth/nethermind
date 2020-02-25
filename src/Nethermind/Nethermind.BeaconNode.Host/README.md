@@ -135,21 +135,37 @@ Then run the DLL that was published:
 dotnet ./src/Nethermind/Nethermind.BeaconNode.Host/release/latest/Nethermind.BeaconNode.Host.dll
 ```
 
-From the published version you can also start with Development (minimal) configuration, and quick start parameters:
+The published host is configured to use the data directory '{LocalApplicationData}/Nethermind/BeaconHost/Production'.
+
+On Linux & OSX this is '/home/<user>/.local/share/Nethermind/BeaconHost/Production', and on Windows it is 'C:\Users\<user>\AppData\Local\Nethermind\BeaconHost\Production'
+
+From the published version you can also start with relative data directory 'Development', which contains the minimal configuration, and quick start parameters:
 
 ```
-dotnet ./src/Nethermind/Nethermind.BeaconNode.Host/release/latest/Nethermind.BeaconNode.Host.dll --Environment Development --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64
+dotnet ./src/Nethermind/Nethermind.BeaconNode.Host/release/latest/Nethermind.BeaconNode.Host.dll --DataDirectory Development --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64
 ```
 
 ## Development
 
 ### Configuration files
 
-Primary configuration files use .NET Core JSON settings files, with overrides from envrionment variables and command line.
+Primary configuration is based on a separate data directory for each instance, using the --DataDirectory parameter.
 
-There is a script in src/Nethermind/Nethermind.BeaconNode.Host/configuration that will convert from the specification YAML files to fragments to insert into the relevant Production and Development configuration JSON files.
+The main data directory is configured in the hostsettings.json file; for development this is set to 'Development', a relative directory.
+ 
+The published version has '{LocalApplicationData}/Nethermind/BeaconHost/Production', which is resolved to a subfolder within a standard system folder.
 
-For backwards compatibility, the application can also use the YAML files directly if necessary (although values are overwritten by anything from the full appsettings).
+Supported special directory tokens are:
+
+* {CommonApplicationData}: '/usr/share' on Linux/OSX, 'C:\ProgramData' on Windows.
+* {LocalApplicationData}: '/home/<user>/.local/share' on Linux/OSX, 'C:\Users\<user>\AppData\Local' on Windows.
+* {ApplicationData}: '/home/<user>/.config' on Linux/OSX, 'C:\Users\<user>\AppData\Roaming' on Windows.
+
+Configuration is loaded from the default appsettings.json in the application directory, and then overriden by the appsettings.json in the data directory, with additional overrides from envrionment variables and command line.
+
+There is a script in src/Nethermind/Nethermind.BeaconNode.Host/configuration that will convert from the specification YAML files to fragments to insert into the relevant default Production and Development configuration JSON files.
+
+For backwards compatibility, the application can also use the YAML files from the data directory by passing the --config parameter.
 
 ### API generation
 

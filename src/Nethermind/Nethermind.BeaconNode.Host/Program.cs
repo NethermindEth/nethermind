@@ -36,14 +36,6 @@ namespace Nethermind.BeaconNode.Host
     public class Program
     {
         private const string _yamlConfigKey = "config";
-        private const string _dataDirectoryKey = "datadirectory";
-
-        private static readonly Environment.SpecialFolder[] _specialFolders = new[]
-        {
-            Environment.SpecialFolder.CommonApplicationData,
-            Environment.SpecialFolder.ApplicationData,
-            Environment.SpecialFolder.LocalApplicationData
-        };
 
         public static IHostBuilder CreateHostBuilder(string[] args) =>
             Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder(args)
@@ -74,19 +66,19 @@ namespace Nethermind.BeaconNode.Host
                     config.AddJsonFile("appsettings.json");
 
                     // Other settings are based on data directory; can be relative, or start with a special folder token,
-                    // e.g. "{CommonApplicationData}/Nethermind/BeaconHost/Production" 
-                    string dataDirectory = ResolveSpecialDirectory( hostContext.Configuration.GetValue<string>(_dataDirectoryKey));
+                    // e.g. "{CommonApplicationData}/Nethermind/BeaconHost/Production"
+                    DataDirectory dataDirectory = new DataDirectory(hostContext.Configuration.GetValue<string>(DataDirectory.Key));
                         
                     // Support standard YAML config files, if specified
                     string yamlConfig = hostContext.Configuration[_yamlConfigKey];
                     if (!string.IsNullOrWhiteSpace(yamlConfig))
                     {
-                        string yamlPath = Path.Combine(dataDirectory, $"{yamlConfig}.yaml");
+                        string yamlPath = Path.Combine(dataDirectory.ResolvedPath, $"{yamlConfig}.yaml");
                         config.AddYamlFile(yamlPath, true, true);
                     }
                     
                     // Override with environment specific JSON files
-                    string settingsPath = Path.Combine(dataDirectory, $"appsettings.json");
+                    string settingsPath = Path.Combine(dataDirectory.ResolvedPath, $"appsettings.json");
                     config.AddJsonFile(settingsPath, true, true);
 
                     config.AddCommandLine(args);
@@ -114,23 +106,6 @@ namespace Nethermind.BeaconNode.Host
                 {
                     webBuilder.UseStartup<Startup>();
                 });
-
-        private static string ResolveSpecialDirectory(string directorySetting)
-        {
-            foreach (Environment.SpecialFolder specialFolder in _specialFolders)
-            {
-                string specialFolderToken = "{" + specialFolder + "}";
-                if (directorySetting.StartsWith(specialFolderToken))
-                {
-                    string specialFolderPath =
-                        Environment.GetFolderPath(specialFolder, Environment.SpecialFolderOption.Create);
-                    string resolvedPath = specialFolderPath +
-                                          directorySetting.Substring(specialFolderToken.Length);
-                    return resolvedPath;
-                }
-            }
-            return directorySetting;
-        }
 
         public static void Main(string[] args)
         {

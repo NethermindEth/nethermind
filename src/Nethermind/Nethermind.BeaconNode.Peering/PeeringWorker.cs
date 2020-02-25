@@ -33,9 +33,9 @@ namespace Nethermind.BeaconNode.Peering
 {
     public class PeeringWorker : BackgroundService
     {
-        private const string _dataDirectoryKey = "datadirectory";
         private const string _mothraDirectory = "mothra";
         private readonly IClientVersion _clientVersion;
+        private readonly DataDirectory _dataDirectory;
         private readonly IOptionsMonitor<PeeringConfiguration> _peeringConfigurationMonitor;
         private readonly IHostEnvironment _environment;
         private readonly IConfiguration _configuration;
@@ -44,13 +44,21 @@ namespace Nethermind.BeaconNode.Peering
         private readonly IMothraLibp2p _mothraLibp2p;
         private readonly IStoreProvider _storeProvider;
 
-        public PeeringWorker(ILogger<PeeringWorker> logger, IHostEnvironment environment, IConfiguration configuration, IClientVersion clientVersion, IOptionsMonitor<PeeringConfiguration> peeringConfigurationMonitor,
-            IMothraLibp2p mothraLibp2p, ForkChoice forkChoice, IStoreProvider storeProvider)
+        public PeeringWorker(ILogger<PeeringWorker> logger, 
+            IHostEnvironment environment, 
+            IConfiguration configuration, 
+            IClientVersion clientVersion, 
+            DataDirectory dataDirectory,
+            IOptionsMonitor<PeeringConfiguration> peeringConfigurationMonitor,
+            IMothraLibp2p mothraLibp2p, 
+            ForkChoice forkChoice, 
+            IStoreProvider storeProvider)
         {
             _logger = logger;
             _environment = environment;
             _configuration = configuration;
             _clientVersion = clientVersion;
+            _dataDirectory = dataDirectory;
             _peeringConfigurationMonitor = peeringConfigurationMonitor;
             _mothraLibp2p = mothraLibp2p;
             _forkChoice = forkChoice;
@@ -77,9 +85,7 @@ namespace Nethermind.BeaconNode.Peering
 
                 //System.Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData) + "nethermind/mothra";
 
-                string baseDirectory = AppDomain.CurrentDomain.BaseDirectory ?? string.Empty;
-                string dataDirectory = _configuration.GetValue<string>(_dataDirectoryKey);
-                string mothraDataDirectory = Path.Combine(baseDirectory, dataDirectory, _mothraDirectory);
+                string mothraDataDirectory = Path.Combine(_dataDirectory.ResolvedPath, _mothraDirectory);
                 MothraSettings mothraSettings = new MothraSettings()
                 {
                     DataDirectory = mothraDataDirectory,

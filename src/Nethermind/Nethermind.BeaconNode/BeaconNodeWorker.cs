@@ -31,11 +31,9 @@ namespace Nethermind.BeaconNode
     // ReSharper disable once ClassNeverInstantiated.Global
     public class BeaconNodeWorker : BackgroundService
     {
-        private const string _dataDirectoryKey = "datadirectory";
-
-        private readonly IConfiguration _configuration;
         private readonly IClientVersion _clientVersion;
         private readonly IStoreProvider _storeProvider;
+        private readonly DataDirectory _dataDirectory;
         private readonly ForkChoice _forkChoice;
         private readonly INodeStart _nodeStart;
         private readonly ILogger _logger;
@@ -48,9 +46,9 @@ namespace Nethermind.BeaconNode
             IOptionsMonitor<TimeParameters> timeParameterOptions,
             IClock clock,
             IHostEnvironment environment,
-            IConfiguration configuration,
             IClientVersion clientVersion,
             IStoreProvider storeProvider,
+            DataDirectory dataDirectory,
             ForkChoice forkChoice,
             INodeStart nodeStart)
         {
@@ -58,9 +56,9 @@ namespace Nethermind.BeaconNode
             _timeParameterOptions = timeParameterOptions;
             _clock = clock;
             _environment = environment;
-            _configuration = configuration;
             _clientVersion = clientVersion;
             _storeProvider = storeProvider;
+            _dataDirectory = dataDirectory;
             _forkChoice = forkChoice;
             _nodeStart = nodeStart;
         }
@@ -83,7 +81,7 @@ namespace Nethermind.BeaconNode
         {
             if (_logger.IsInfo())
                 Log.BeaconNodeWorkerExecuteStarted(_logger, _clientVersion.Description,
-                    _configuration[_dataDirectoryKey], _environment.EnvironmentName, Thread.CurrentThread.ManagedThreadId, null);
+                    _dataDirectory.ResolvedPath, _environment.EnvironmentName, Thread.CurrentThread.ManagedThreadId, null);
 
             try
             {
