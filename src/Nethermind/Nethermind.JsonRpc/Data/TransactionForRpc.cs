@@ -38,8 +38,7 @@ namespace Nethermind.JsonRpc.Data
             Value = transaction.Value;
             GasPrice = transaction.GasPrice;
             Gas = transaction.GasLimit;
-            Input = transaction.Init;
-            Data = transaction.Data;
+            Input = Data = transaction.Data ?? transaction.Init;
             R = transaction.Signature?.R;
             S = transaction.Signature?.S;
             V = (UInt256?) transaction.Signature?.V;
@@ -51,7 +50,6 @@ namespace Nethermind.JsonRpc.Data
         }
 
         public Keccak Hash { get; set; }
-        
         public UInt256? Nonce { get; set; }
         
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
@@ -69,11 +67,8 @@ namespace Nethermind.JsonRpc.Data
         public UInt256? Value { get; set; }
         public UInt256? GasPrice { get; set; }
         public long? Gas { get; set; }
-        
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public byte[] Data { get; set; }
-        
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+        public bool ShouldSerializeData() => false;
         public byte[] Input { get; set; }
         public UInt256? V { get; set; }
 
