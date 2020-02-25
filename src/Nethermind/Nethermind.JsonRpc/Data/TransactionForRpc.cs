@@ -69,6 +69,8 @@ namespace Nethermind.JsonRpc.Data
         public long? Gas { get; set; }
         public byte[] Data { get; set; }
         public bool ShouldSerializeData() => false;
+        
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public byte[] Input { get; set; }
         public UInt256? V { get; set; }
 
