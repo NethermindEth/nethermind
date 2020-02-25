@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Buffers.Binary;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -24,9 +26,11 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Store;
 using NSubstitute;
@@ -42,7 +46,7 @@ namespace Nethermind.Evm.Test
         private IEthereumEcdsa _ethereumEcdsa;
         private TransactionProcessor _transactionProcessor;
         private StateProvider _stateProvider;
-        
+
         [SetUp]
         public void Setup()
         {
@@ -52,7 +56,7 @@ namespace Nethermind.Evm.Test
             _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
             _stateProvider.Commit(_specProvider.GenesisSpec);
             _stateProvider.CommitTree();
-            
+
             StorageProvider storageProvider = new StorageProvider(stateDb, _stateProvider, LimboLogs.Instance);
             VirtualMachine virtualMachine = new VirtualMachine(_stateProvider, storageProvider, Substitute.For<IBlockhashProvider>(), _specProvider, LimboLogs.Instance);
             _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
@@ -74,7 +78,7 @@ namespace Nethermind.Evm.Test
 
             Assert.AreEqual(StatusCode.Success, tracer.TxReceipts[0].StatusCode);
         }
-        
+
         [TestCase(true, true)]
         [TestCase(true, false)]
         [TestCase(false, true)]
@@ -106,7 +110,7 @@ namespace Nethermind.Evm.Test
 
             Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
         }
-        
+
         [TestCase(true, true)]
         [TestCase(true, false)]
         [TestCase(false, true)]
@@ -122,7 +126,7 @@ namespace Nethermind.Evm.Test
 
             Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
         }
-        
+
         [TestCase(true, true)]
         [TestCase(true, false)]
         [TestCase(false, true)]
@@ -138,7 +142,7 @@ namespace Nethermind.Evm.Test
 
             Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
         }
-        
+
         [TestCase(true, true)]
         [TestCase(true, false)]
         [TestCase(false, true)]
@@ -154,7 +158,7 @@ namespace Nethermind.Evm.Test
 
             Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
         }
-        
+
         [TestCase(true, true)]
         [TestCase(true, false)]
         [TestCase(false, true)]
@@ -163,7 +167,7 @@ namespace Nethermind.Evm.Test
         {
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithGasLimit(100000).TestObject;
             tx.Value = 2.Ether();
-            
+
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
             BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
@@ -171,7 +175,7 @@ namespace Nethermind.Evm.Test
 
             Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
         }
-        
+
         [TestCase(true, true)]
         [TestCase(true, false)]
         [TestCase(false, true)]
@@ -187,7 +191,7 @@ namespace Nethermind.Evm.Test
 
             Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
         }
-        
+
         [TestCase(true, true)]
         [TestCase(true, false)]
         [TestCase(false, true)]
@@ -203,7 +207,54 @@ namespace Nethermind.Evm.Test
 
             Assert.AreEqual(StatusCode.Success, tracer.TxReceipts[0].StatusCode);
         }
-        
+
+        [Test]
+        public void Can_estimate_simple()
+        {
+            long gasLimit = 100000;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithGasLimit(gasLimit).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
+
+            EstimateGasTracer tracer = new EstimateGasTracer();
+            _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
+            
+            Assert.AreEqual(21000, tracer.GasSpent);
+            Assert.AreEqual(0, tracer.AdditionalGasRequired);
+        }
+
+        [Test]
+        public void Can_estimate_with_single_call()
+        {
+            byte[] initByteCode = Prepare.EvmCode
+                .ForInitOf(Bytes.FromHexString("6000")).Done;
+
+            Address contractAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
+
+            byte[] byteCode = Prepare.EvmCode
+                .Call(contractAddress, 46179).Done;
+
+            long gasLimit = 100000;
+
+            Transaction initTx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithInit(initByteCode).WithGasLimit(gasLimit).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithInit(byteCode).WithGasLimit(gasLimit).WithNonce(1).TestObject;
+            Block block = Build.A.Block.WithNumber(MainNetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
+
+            IntrinsicGasCalculator gasCalculator = new IntrinsicGasCalculator();
+            long intrinsic = gasCalculator.Calculate(tx, MuirGlacier.Instance);
+
+            _transactionProcessor.Execute(initTx, block.Header, NullTxTracer.Instance);
+
+            EstimateGasTracer tracer = new EstimateGasTracer();
+            _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
+            
+            long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
+            actualIntrinsic.Should().Be(53000);
+            tracer.AdditionalGasRequired.Should().Be(1);
+            tracer.GasSpent.Should().Be(53724);
+            long estimate = tracer.GasSpent + tracer.AdditionalGasRequired;
+            estimate.Should().Be(53725);
+        }
+
         [Test]
         public void Disables_Eip158_for_system_transactions()
         {
@@ -249,7 +300,7 @@ namespace Nethermind.Evm.Test
             _transactionProcessor.Execute(tx, block.Header, tracer);
             tracer.EndTxTrace();
         }
-        
+
         private void CallAndRestore(BlockReceiptsTracer tracer, Transaction tx, Block block)
         {
             tracer.StartNewBlockTrace(block);
