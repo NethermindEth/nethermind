@@ -47,7 +47,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         private Task? _bloomDbMigrationTask;
         private Average[]? _averages;
         private readonly StringBuilder _builder = new StringBuilder();
-        private IBloomConfig _bloomConfig;
+        private readonly IBloomConfig _bloomConfig;
 
         public DatabaseMigrations(EthereumRunnerContext context)
         {
@@ -152,6 +152,12 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private void RunBloomMigration(CancellationToken token)
         {
+            BlockHeader GetMissingBLockHeader(long i)
+            {
+                if (_logger.IsWarn) _logger.Warn(GetLogMessage("warning", $"Header for block {i} not found. Database might be corrupted and BloomDb will not be correct."));
+                return new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, UInt256.Zero, Bytes.Empty);
+            }
+
             if (_context.BloomStorage == null) throw new StepDependencyException(nameof(_context.BloomStorage));
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
             
@@ -162,6 +168,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             long from = synced;
             _migrateCount = to + 1;
             _averages = _context.BloomStorage.Averages.ToArray();
+            var chainLevelInfoRepository = _context.ChainLevelInfoRepository;
 
             _progress.Update(synced);
 
@@ -195,11 +202,27 @@ namespace Nethermind.Runner.Ethereum.Steps
                             yield break;
                         }
 
-                        var header = blockTree.FindHeader(i);
-                        yield return header ?? new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, UInt256.Zero, Bytes.Empty);
+                        var level = chainLevelInfoRepository.LoadLevel(i);
+                        if (level == null)
+                        {
+                            yield return GetMissingBLockHeader(i);
+                        }
+                        else
+                        {
+                            if (!level.HasBlockOnMainChain)
+                            {
+                                if (level.BlockInfos.Length > 0)
+                                {
+                                    level.HasBlockOnMainChain = true;
+                                    chainLevelInfoRepository.PersistLevel(i, level);
+                                }
+                            }
+                        
+                            var header = blockTree.FindHeader(level.MainChainBlock.BlockHash, BlockTreeLookupOptions.None);
+                            yield return header ?? GetMissingBLockHeader(i);
+                        }
 
-                        synced++;
-                        _progress.Update(synced);
+                        _progress.Update(++synced);
                     }
                 }
             }
