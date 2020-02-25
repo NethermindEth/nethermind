@@ -41,7 +41,7 @@ namespace Nethermind.Db.Test.Rpc
             var jsonSerializer = Substitute.For<IJsonSerializer>();
             var jsonRpcClient = Substitute.For<IJsonRpcClient>();
             var recordDbProvider = Substitute.For<IDbProvider>();
-            var rpcDbProvider = new RpcDbProvider(jsonSerializer, jsonRpcClient, NullLogManager.Instance, recordDbProvider);
+            var rpcDbProvider = new RpcDbProvider(jsonSerializer, jsonRpcClient, LimboLogs.Instance, recordDbProvider);
 
             ValidateDb<ReadOnlyDb>(
                 rpcDbProvider.BlocksDb, 

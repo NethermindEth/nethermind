@@ -40,7 +40,7 @@ namespace Nethermind.Db.Test.Rpc
             _jsonSerializer = Substitute.For<IJsonSerializer>();
             _jsonRpcClient = Substitute.For<IJsonRpcClient>();
             _recordDb = Substitute.For<IDb>();
-            _rpcDb = new RpcDb("Name", _jsonSerializer, _jsonRpcClient, NullLogManager.Instance, _recordDb);
+            _rpcDb = new RpcDb("Name", _jsonSerializer, _jsonRpcClient, LimboLogs.Instance, _recordDb);
         }
 
         [Test]
