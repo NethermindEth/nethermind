@@ -26,6 +26,7 @@ using Nethermind.Config;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Initializers;
+using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.EthStats;
 using Nethermind.Grpc;
@@ -98,6 +99,7 @@ namespace Nethermind.Runner.Test
                     "ndmtestnet0_local.json",
                 };
                 yield return new TestCaseData("testspec.json");
+                
                 foreach (var config in Directory.GetFiles("chainspec").Where(c => !ignoredSpecs.Contains(Path.GetFileName(c))))
                 {
                     yield return new TestCaseData(config);
@@ -132,23 +134,34 @@ namespace Nethermind.Runner.Test
             Console.WriteLine(type8.Name);
             Console.WriteLine(type9.Name);
 
-            // To eliminate file locks on index files.
-            configProvider.GetConfig<IBloomConfig>().Index = false;
-            
-            EthereumRunner runner = new EthereumRunner(
-                new RpcModuleProvider(new JsonRpcConfig(), LimboLogs.Instance),
-                configProvider,
-                NUnitLogManager.Instance, 
-                Substitute.For<IGrpcServer>(),
-                Substitute.For<INdmConsumerChannelManager>(),
-                Substitute.For<INdmDataPublisher>(),
-                Substitute.For<INdmInitializer>(),
-                Substitute.For<IWebSocketsManager>(),
-                new EthereumJsonSerializer(), 
-                Substitute.For<IMonitoringService>());
 
-            await runner.Start();
-            await runner.StopAsync();
+            var tempPath = Path.Combine(Path.GetTempPath(), "test_" + Guid.NewGuid());
+            Directory.CreateDirectory(tempPath);
+            
+            try
+            {
+                configProvider.GetConfig<IInitConfig>().BaseDbPath = tempPath;
+            
+                EthereumRunner runner = new EthereumRunner(
+                    new RpcModuleProvider(new JsonRpcConfig(), LimboLogs.Instance),
+                    configProvider,
+                    NUnitLogManager.Instance, 
+                    Substitute.For<IGrpcServer>(),
+                    Substitute.For<INdmConsumerChannelManager>(),
+                    Substitute.For<INdmDataPublisher>(),
+                    Substitute.For<INdmInitializer>(),
+                    Substitute.For<IWebSocketsManager>(),
+                    new EthereumJsonSerializer(), 
+                    Substitute.For<IMonitoringService>());
+
+                await runner.Start();
+                await runner.StopAsync();
+            }
+            finally
+            {
+                // rocks db still has a lock on a file called "LOCK".
+                Directory.Delete(tempPath, true);
+            }
         }
     }
 }
