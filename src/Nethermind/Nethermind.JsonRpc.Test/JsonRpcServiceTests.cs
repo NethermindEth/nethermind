@@ -45,7 +45,7 @@ namespace Nethermind.JsonRpc.Test
         {
             Assembly jConfig = typeof(JsonRpcConfig).Assembly;
             _configurationProvider = new ConfigProvider();
-            _logManager = NullLogManager.Instance;
+            _logManager = LimboLogs.Instance;
         }
 
         private IJsonRpcService _jsonRpcService;

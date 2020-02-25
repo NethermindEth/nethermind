@@ -215,7 +215,7 @@ namespace Nethermind.Network.Test.Discovery
 
         private void InitializeChannel(IDatagramChannel channel, IDiscoveryManager discoveryManager, IMessageSerializationService service)
         {
-            var handler = new NettyDiscoveryHandler(discoveryManager, channel, service, new Timestamper(), NullLogManager.Instance);
+            var handler = new NettyDiscoveryHandler(discoveryManager, channel, service, new Timestamper(), LimboLogs.Instance);
             handler.OnChannelActivated += (x, y) =>
             {
                 _channelActivatedCounter++;

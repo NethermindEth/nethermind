@@ -27,7 +27,7 @@ namespace Nethermind.Benchmarks.Mining
     [CoreJob(baseline: true)]
     public class EthashHashimotoBenchmarks
     {
-        private Ethash _ethash = new Ethash(NullLogManager.Instance);
+        private Ethash _ethash = new Ethash(LimboLogs.Instance);
         
         private BlockHeader _header;
 
