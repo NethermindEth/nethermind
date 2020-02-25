@@ -215,7 +215,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 }
                 else
                 {
-                    ValidatorContract.InvokeTransaction(block, _transactionProcessor, ValidatorContract.FinalizeChange(), Output);
+                    ValidatorContract.Call(block, _transactionProcessor, ValidatorContract.FinalizeChange(), Output);
                 }
                 SetPendingValidators(null, isProcessingBlock);
             }
@@ -239,7 +239,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private Address[] LoadValidatorsFromContract(BlockHeader blockHeader)
         {
             using var readOnlyTransactionProcessor = _readOnlyReadOnlyTransactionProcessorSource.Get(_stateProvider.StateRoot);
-            ValidatorContract.InvokeTransaction(blockHeader, readOnlyTransactionProcessor, ValidatorContract.GetValidators(), Output);
+            ValidatorContract.Call(blockHeader, readOnlyTransactionProcessor, ValidatorContract.GetValidators(), Output);
 
             if (Output.ReturnValue.Length == 0)
             {
