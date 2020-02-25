@@ -20,7 +20,7 @@ jobs:
       run: sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Installing macOS packages
       if: matrix.os == 'macOS'
-      run: brew install gmp && brew install snappy && brew install lz4
+      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
     - name: Nethermind.Abi.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Abi.Test;
