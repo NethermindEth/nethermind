@@ -83,7 +83,7 @@ namespace Nethermind.Facade.Test
                 _ethereumEcdsa,
                 _bloomStorage,
                 _receiptsRecovery,
-                NullLogManager.Instance);
+                LimboLogs.Instance);
         }
 
         [Test]
