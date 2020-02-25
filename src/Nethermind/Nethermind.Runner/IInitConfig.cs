@@ -74,9 +74,9 @@ namespace Nethermind.Runner
         None,
         [ConfigItem(Description = "Diagnostics mode which uses an in-memory DB")]
         MemDb,
-        [ConfigItem(Description = "Diagnostics mode which uses an remote DB")]
+        [ConfigItem(Description = "Diagnostics mode which uses a remote DB")]
         RpcDb,
-        [ConfigItem(Description = "Diagnostics mode which uses an read-only DB")]
+        [ConfigItem(Description = "Diagnostics mode which uses a read-only DB")]
         ReadOnlyDb
     }
 }
