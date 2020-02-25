@@ -34,6 +34,7 @@ namespace Nethermind.Peering.Mothra
             [LogLevel.Critical] = "crit"
         };
 
+        private GCHandle _argsHandle;
         private readonly MothraInterop.DiscoveredPeer _discoveredPeer;
         private GCHandle _discoveredPeerHandle;
         private readonly MothraInterop.ReceiveGossip _receiveGossip;
@@ -110,12 +111,15 @@ namespace Nethermind.Peering.Mothra
         {
             MothraInterop.RegisterHandlers(_discoveredPeer, _receiveGossip, _receiveRpc);
             string[] args = BuildArgs(settings);
+            _argsHandle = GCHandle.Alloc(args);
             MothraInterop.Start(args, args.Length);
         }
 
         private string[] BuildArgs(MothraSettings settings)
         {
             List<string> args = new List<string>();
+            // Arg0 is the program name (not an arg)
+            args.Add("--");
 
             if (settings.DataDirectory != null)
             {

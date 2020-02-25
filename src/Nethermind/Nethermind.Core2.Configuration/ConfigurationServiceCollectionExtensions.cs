@@ -204,6 +204,7 @@ namespace Nethermind.Core2.Configuration
                         () => configuration.GetValue<ulong>("ETH1_FOLLOW_DISTANCE"));
                 });
             });
+            services.Configure<PeeringConfiguration>(x => configuration.Bind("Peering", x));
         }
     }
 }

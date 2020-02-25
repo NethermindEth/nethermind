@@ -22,7 +22,9 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Nethermind.Core2;
+using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Logging.Microsoft;
 using Nethermind.Peering.Mothra;
@@ -32,22 +34,24 @@ namespace Nethermind.BeaconNode.Peering
     public class PeeringWorker : BackgroundService
     {
         private const string _dataDirectoryKey = "datadirectory";
+        private const string _mothraDirectory = "mothra";
         private readonly IClientVersion _clientVersion;
+        private readonly IOptionsMonitor<PeeringConfiguration> _peeringConfigurationMonitor;
         private readonly IHostEnvironment _environment;
         private readonly IConfiguration _configuration;
         private readonly ForkChoice _forkChoice;
         private readonly ILogger _logger;
         private readonly IMothraLibp2p _mothraLibp2p;
-        private bool _stopped;
         private readonly IStoreProvider _storeProvider;
 
-        public PeeringWorker(ILogger<PeeringWorker> logger, IHostEnvironment environment, IConfiguration configuration, IClientVersion clientVersion,
+        public PeeringWorker(ILogger<PeeringWorker> logger, IHostEnvironment environment, IConfiguration configuration, IClientVersion clientVersion, IOptionsMonitor<PeeringConfiguration> peeringConfigurationMonitor,
             IMothraLibp2p mothraLibp2p, ForkChoice forkChoice, IStoreProvider storeProvider)
         {
             _logger = logger;
             _environment = environment;
             _configuration = configuration;
             _clientVersion = clientVersion;
+            _peeringConfigurationMonitor = peeringConfigurationMonitor;
             _mothraLibp2p = mothraLibp2p;
             _forkChoice = forkChoice;
             _storeProvider = storeProvider;
@@ -73,22 +77,28 @@ namespace Nethermind.BeaconNode.Peering
 
                 //System.Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData) + "nethermind/mothra";
 
-                string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
+                string baseDirectory = AppDomain.CurrentDomain.BaseDirectory ?? string.Empty;
                 string dataDirectory = _configuration.GetValue<string>(_dataDirectoryKey);
-                string mothraDataDirectory = Path.Combine(baseDirectory, dataDirectory, "mothra");
-                
+                string mothraDataDirectory = Path.Combine(baseDirectory, dataDirectory, _mothraDirectory);
                 MothraSettings mothraSettings = new MothraSettings()
                 {
                     DataDirectory = mothraDataDirectory,
-                    Topics = { Topic.BeaconBlock }
+                    //Topics = { Topic.BeaconBlock }
                 };
 
-                IConfigurationSection bootNodes = _configuration.GetSection("Peering:BootNodes");
-                foreach (KeyValuePair<string, string> bootNode in bootNodes.AsEnumerable())
+                PeeringConfiguration peeringConfiguration = _peeringConfigurationMonitor.CurrentValue;
+
+                mothraSettings.DiscoveryAddress = peeringConfiguration.DiscoveryAddress;
+                mothraSettings.DiscoveryPort = peeringConfiguration.DiscoveryPort;
+                mothraSettings.ListenAddress = peeringConfiguration.ListenAddress;
+                mothraSettings.MaximumPeers = peeringConfiguration.MaximumPeers;
+                mothraSettings.Port = peeringConfiguration.Port;
+
+                foreach (string bootNode in peeringConfiguration.BootNodes)
                 {
-                    mothraSettings.BootNodes.Add(bootNode.Value);
+                    mothraSettings.BootNodes.Add(bootNode);
                 }
-                
+
                 _mothraLibp2p.Start(mothraSettings);
 
                 if (_logger.IsDebug()) LogDebug.PeeringWorkerStarted(_logger, null);
@@ -104,7 +114,6 @@ namespace Nethermind.BeaconNode.Peering
         public override async Task StopAsync(CancellationToken cancellationToken)
         {
             if (_logger.IsDebug()) LogDebug.PeeringWorkerStopping(_logger, null);
-            _stopped = true;
             await base.StopAsync(cancellationToken);
         }
 
@@ -120,7 +129,7 @@ namespace Nethermind.BeaconNode.Peering
             _forkChoice.OnBlockAsync(store, beaconBlock);
         }
 
-        private void MothraLibp2pOnGossipReceived(object sender, GossipReceivedEventArgs e)
+        private void MothraLibp2pOnGossipReceived(object? sender, GossipReceivedEventArgs e)
         {
             if (_logger.IsDebug()) LogDebug.GossipReceived(_logger, e.Topic, e.Data.Length, null);
             // TODO: handle topic
@@ -134,12 +143,12 @@ namespace Nethermind.BeaconNode.Peering
             }
         }
 
-        private void MothraLibp2pOnPeerDiscovered(object sender, PeerDiscoveredEventArgs e)
+        private void MothraLibp2pOnPeerDiscovered(object? sender, PeerDiscoveredEventArgs e)
         {
             if (_logger.IsInfo()) Log.PeerDiscovered(_logger, e.Peer, null);
         }
 
-        private void MothraLibp2pOnRpcReceived(object sender, RpcReceivedEventArgs e)
+        private void MothraLibp2pOnRpcReceived(object? sender, RpcReceivedEventArgs e)
         {
             if (_logger.IsDebug())
                 LogDebug.RpcReceived(_logger, e.IsResponse ? "Response" : "Request", e.Method, e.Peer, e.Data.Length,

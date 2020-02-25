@@ -28,7 +28,7 @@ dotnet test src/Nethermind/Nethermind.BeaconNode.Test
 To run the beacon node with default Development settings (minimal config), with mocked quick start:
 
 ```
-dotnet run --project src/Nethermind/Nethermind.BeaconNode.Host --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64
+dotnet run --project src/Nethermind/Nethermind.BeaconNode.Host -- --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64
 ```
 
 ### Test it works
@@ -49,7 +49,30 @@ Note: With QuickStart validator count 64, validators index 20, with public key 0
 This will run both the beacon node and an in-process honest validator, both using quick start mocked keys. For testing and devleopment it is easiest to run both components in a single host:
 
 ```
-dotnet run --project src/Nethermind/Nethermind.BeaconNode.Host --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ValidatorStartIndex 0 --QuickStart:NumberOfValidators 32
+dotnet run --project src/Nethermind/Nethermind.BeaconNode.Host -- --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ValidatorStartIndex 0 --QuickStart:NumberOfValidators 32
+```
+
+### Test with multiple nodes
+
+Running the node will create an ENR record in the configured data directory. You need to get the value for the first node and pass it to the second (the example below uses PowerShell).
+
+Ensure the host is build:
+
+```
+dotnet build src/Nethermind/Nethermind.BeaconNode.Host
+``` 
+
+Run the first node in one shell:
+
+```
+dotnet run --no-build --project src/Nethermind/Nethermind.BeaconNode.Host -- --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ValidatorStartIndex 0 --QuickStart:NumberOfValidators 32
+```
+
+And at the same time start the second node in a second PowerShell terminal, getting the ENR value (and see below for notes on clock synchronisation):
+
+```
+$enr = Get-Content 'src/Nethermind/Nethermind.BeaconNode.Host/bin/Debug/netcoreapp3.0/Development/mothra/network/enr.dat'
+dotnet run --no-build --project src/Nethermind/Nethermind.BeaconNode.Host -- --DataDirectory Development9001 --Peering:BootNodes:0 $enr --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ValidatorStartIndex 32 --QuickStart:NumberOfValidators 32
 ```
 
 ### Test with separate processes for node and validator
@@ -65,7 +88,7 @@ dotnet build src/Nethermind/Nethermind.BeaconNode.Host
 dotnet build src/Nethermind/Nethermind.HonestValidator.Host
 ```
 
-Then run the node in one shell:
+Then run the node in one shell (using PowerShell):
 
 ```
 $offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())/60) * 60; $offset; dotnet run --no-build --project src/Nethermind/Nethermind.BeaconNode.Host --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ClockOffset $offset

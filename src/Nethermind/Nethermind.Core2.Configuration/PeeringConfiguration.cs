@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,25 +14,19 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.Linq;
-using Nethermind.Core2;
-using Newtonsoft.Json;
-
-namespace Nethermind.BeaconNode.OApiClient
+namespace Nethermind.Core2.Configuration
 {
-    internal class PrefixedHexByteArrayNewtonsoftJsonConverter : JsonConverter<byte[]>
+    public class PeeringConfiguration
     {
-        public override void WriteJson(JsonWriter writer, byte[] value, JsonSerializer serializer)
-        {
-            writer.WriteValue(value.ToHexString(withZeroX: true));
-        }
-        
-        public override byte[] ReadJson(JsonReader reader, Type objectType, byte[] existingValue, bool hasExistingValue,
-            JsonSerializer serializer)
-        {
-            string s = reader.Value as string ?? string.Empty;
-            return Bytes.FromHexString(s);
-        }
+        public int? Port { get; set; }
+        public string[] BootNodes { get; set; } = new string[0];
+
+        public string? DiscoveryAddress { get; set; }
+
+        public int? DiscoveryPort { get; set; }
+
+        public string? ListenAddress { get; set; }
+
+        public int? MaximumPeers { get; set; }
     }
 }

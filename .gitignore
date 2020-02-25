@@ -361,6 +361,9 @@ src/Nethermind/Nethermind.Runner/node.key.plain
 
 src/Nethermind/**/cli.cmd.history
 
+# Output files
 src/Nethermind/Nethermind.BeaconNode.Host/configuration/Output
-
 src/Nethermind/Nethermind.BeaconNode.Host/release
+
+# Memory dumps
+mono_crash.mem.*.blob
