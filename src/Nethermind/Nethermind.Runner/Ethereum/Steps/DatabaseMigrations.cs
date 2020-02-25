@@ -38,6 +38,8 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(InitializeBlockchain), typeof(InitializeNetwork))]
     public class DatabaseMigrations : IStep, IAsyncDisposable
     {
+        private static BlockHeader EmptyHeader = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, UInt256.Zero, Bytes.Empty);
+        
         private readonly EthereumRunnerContext _context;
         private readonly ILogger _logger;
         private Stopwatch? _stopwatch;
@@ -154,8 +156,8 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             BlockHeader GetMissingBLockHeader(long i)
             {
-                if (_logger.IsWarn) _logger.Warn(GetLogMessage("warning", $"Header for block {i} not found. Database might be corrupted and BloomDb will not be correct."));
-                return new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, UInt256.Zero, Bytes.Empty);
+                if (_logger.IsWarn) _logger.Warn(GetLogMessage("warning", $"Header for block {i} not found. Logs will not be searchable for this block."));
+                return EmptyHeader;
             }
 
             if (_context.BloomStorage == null) throw new StepDependencyException(nameof(_context.BloomStorage));
