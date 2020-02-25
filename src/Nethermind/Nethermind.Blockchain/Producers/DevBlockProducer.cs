@@ -56,14 +56,15 @@ namespace Nethermind.Blockchain.Producers
 
         protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp) => 1;
 
-        public async ValueTask ProduceEmptyBlock()
+        private void OnNewPendingTx(object sender, TxEventArgs e)
         {
-            await base.TryProduceNewBlock(CancellationToken.None);
-        }
-        
-        private async void OnNewPendingTx(object sender, TxEventArgs e)
-        {
-            await base.TryProduceNewBlock(CancellationToken.None);
+            TryProduceNewBlock(CancellationToken.None).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    if(Logger.IsError) Logger.Error($"Failed to produce block after receiving transaction {e.Transaction}", t.Exception);
+                }
+            });
         }
     }
 }
