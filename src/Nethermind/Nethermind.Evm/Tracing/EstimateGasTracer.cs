@@ -27,6 +27,11 @@ namespace Nethermind.Evm.Tracing
 {
     public class EstimateGasTracer : ITxTracer
     {
+        public EstimateGasTracer()
+        {
+            _currentGasAndNesting.Push(new GasAndNesting(0, -1));
+        }
+
         public bool IsTracingReceipt => true;
         public bool IsTracingActions => true;
         public bool IsTracingOpLevelStorage => false;
@@ -40,21 +45,10 @@ namespace Nethermind.Evm.Tracing
         public byte[] ReturnValue { get; set; }
 
         public long GasSpent { get; set; }
-        
+
         public long IntrinsicGasAt { get; set; }
 
-        public long AdditionalGasRequired
-        {
-            get
-            {
-                if (_gasOnEnd.Count == 0)
-                {
-                    return 0;
-                }
-                
-                return _gasOnEnd.Sum(g => Math.Max(0, g.AdditionalGasRequired));
-            }
-        }
+        public long AdditionalGasRequired => _currentGasAndNesting.Peek().AdditionalGasRequired;
 
         public string Error { get; set; }
 
@@ -164,7 +158,7 @@ namespace Nethermind.Evm.Tracing
             }
 
             public long GasOnStart { get; set; }
-            
+            public long GasUsageFromChildren { get; set; }
             public long GasLeft { get; set; }
             public int NestingLevel { get; set; }
 
@@ -172,20 +166,18 @@ namespace Nethermind.Evm.Tracing
             {
                 get
                 {
-                    long maxGasNeeded = GasOnStart - GasLeft;
+                    long maxGasNeeded = GasOnStart - GasLeft + GasUsageFromChildren;
                     for (int i = 0; i < NestingLevel; i++)
                     {
-                        maxGasNeeded = (long) Math.Ceiling(maxGasNeeded * 64m / 63);    
+                        maxGasNeeded = (long) Math.Ceiling(maxGasNeeded * 64m / 63);
                     }
-                    
+
                     return maxGasNeeded;
                 }
             }
-            
+
             public long AdditionalGasRequired => MaxGasNeeded - (GasOnStart - GasLeft);
         }
-
-        private List<GasAndNesting> _gasOnEnd = new List<GasAndNesting>();
 
         private int _currentNestingLevel = -1;
 
@@ -199,7 +191,7 @@ namespace Nethermind.Evm.Tracing
             {
                 IntrinsicGasAt = gas;
             }
-            
+
             if (!isPrecompileCall)
             {
                 _currentNestingLevel++;
@@ -215,14 +207,19 @@ namespace Nethermind.Evm.Tracing
         {
             if (!_isInPrecompile)
             {
-                var current = _currentGasAndNesting.Pop();
-                current.GasLeft = gas;
-                _gasOnEnd.Add(current);
+                UpdateAdditionalGas(gas);
             }
             else
             {
                 _isInPrecompile = false;
             }
+        }
+
+        private void UpdateAdditionalGas(long gas)
+        {
+            var current = _currentGasAndNesting.Pop();
+            current.GasLeft = gas;
+            _currentGasAndNesting.Peek().GasUsageFromChildren += current.AdditionalGasRequired;
         }
 
         public void ReportActionError(EvmExceptionType exceptionType)
@@ -234,9 +231,7 @@ namespace Nethermind.Evm.Tracing
         {
             if (!_isInPrecompile)
             {
-                var current = _currentGasAndNesting.Pop();
-                current.GasLeft = gas;
-                _gasOnEnd.Add(current);
+                UpdateAdditionalGas(gas);
             }
             else
             {
