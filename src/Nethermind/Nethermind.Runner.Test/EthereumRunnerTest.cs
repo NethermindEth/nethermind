@@ -46,7 +46,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Runner.Test
 {
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.None)]
     public class EthereumRunnerTest
     {
         public class ConfigSource : IConfigSource
