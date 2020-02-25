@@ -38,7 +38,7 @@ namespace Ethereum.Test.Base
     public abstract class BlockchainTestBase
     {
         private static ILogger _logger = new SimpleConsoleLogger();
-        private static ILogManager _logManager = NullLogManager.Instance;
+        private static ILogManager _logManager = LimboLogs.Instance;
 
         [SetUp]
         public void Setup()
@@ -47,7 +47,7 @@ namespace Ethereum.Test.Base
 
         protected void Setup(ILogManager logManager)
         {
-            _logManager = logManager ?? NullLogManager.Instance;
+            _logManager = logManager ?? LimboLogs.Instance;
             _logger = _logManager.GetClassLogger();
         }
         

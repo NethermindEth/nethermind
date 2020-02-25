@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Test.Runner
             IEnumerable<BlockchainTest> tests = _testsSource.LoadTests();
             foreach (BlockchainTest test in tests)
             {
-                Setup(NullLogManager.Instance);
+                Setup(LimboLogs.Instance);
 
                 Console.Write($"{test,-120} ");
                 if (test.LoadFailure != null)

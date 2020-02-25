@@ -59,7 +59,7 @@ namespace Nethermind.Core.Test.Builders
             _genesisBlock = genesisBlock;
             var blockInfoDb = new MemDb();
             ChainLevelInfoRepository = new ChainLevelInfoRepository(blockInfoDb);
-            TestObjectInternal = new BlockTree(blocksDb, headersDb, blockInfoDb, ChainLevelInfoRepository, RopstenSpecProvider.Instance, Substitute.For<ITxPool>(), Substitute.For<IBloomStorage>(), NullLogManager.Instance);
+            TestObjectInternal = new BlockTree(blocksDb, headersDb, blockInfoDb, ChainLevelInfoRepository, RopstenSpecProvider.Instance, Substitute.For<ITxPool>(), Substitute.For<IBloomStorage>(), LimboLogs.Instance);
         }
 
         public ChainLevelInfoRepository ChainLevelInfoRepository { get; private set; }

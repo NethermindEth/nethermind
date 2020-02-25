@@ -46,7 +46,7 @@ namespace Nethermind.DataMarketplace.Test.Initializers
             _protocolsManager = Substitute.For<IProtocolsManager>();
             _protocolHandlerFactory = Substitute.For<IProtocolHandlerFactory>();
             _accountService = Substitute.For<IAccountService>();
-            _logManager = NullLogManager.Instance;
+            _logManager = LimboLogs.Instance;
             _providerAddress = Address.Zero;
             _consumerAddress = Address.Zero;
             _capabilityConnector = new NdmCapabilityConnector(

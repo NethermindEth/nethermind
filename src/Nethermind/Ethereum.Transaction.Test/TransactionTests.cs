@@ -211,7 +211,7 @@ namespace Ethereum.Transaction.Test
                 Assert.AreEqual(expectedSignature, transaction.Signature, "signature");
 //                if(useChainId && spec.IsEip155Enabled)
 //                
-                IEthereumEcdsa ecdsa = new EthereumEcdsa(new SingleReleaseSpecProvider(spec, useChainId ? (int)ChainId.MainNet : 0), NullLogManager.Instance);
+                IEthereumEcdsa ecdsa = new EthereumEcdsa(new SingleReleaseSpecProvider(spec, useChainId ? (int)ChainId.MainNet : 0), LimboLogs.Instance);
                 bool verified = ecdsa.Verify(
                     validTest.Sender,
                     transaction,

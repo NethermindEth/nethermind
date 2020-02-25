@@ -58,7 +58,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             _handshakeService.Ack(Arg.Any<EncryptionHandshake>(), Arg.Any<Packet>()).Returns(_ackPacket).AndDoes(ci => ci.Arg<EncryptionHandshake>().Secrets = NetTestVectors.BuildSecretsWithSameIngressAndEgress());
             _handshakeService.When(s => s.Agree(Arg.Any<EncryptionHandshake>(), Arg.Any<Packet>())).Do(ci => ci.Arg<EncryptionHandshake>().Secrets = NetTestVectors.BuildSecretsWithSameIngressAndEgress());
 
-            _logger = NullLogManager.Instance;
+            _logger = LimboLogs.Instance;
             _session.RemoteNodeId.Returns(NetTestVectors.StaticKeyB.PublicKey);
         }
 
