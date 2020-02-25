@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Data
         public long? BlockNumber { get; set; }
         
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        public int? TransactionIndex { get; set; }
+        public long? TransactionIndex { get; set; }
         public Address From { get; set; }
         
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
@@ -68,7 +68,6 @@ namespace Nethermind.JsonRpc.Data
         public UInt256? GasPrice { get; set; }
         public long? Gas { get; set; }
         public byte[] Data { get; set; }
-        public bool ShouldSerializeData() => false;
         
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public byte[] Input { get; set; }
@@ -81,8 +80,8 @@ namespace Nethermind.JsonRpc.Data
         public Transaction ToTransactionWithDefaults()
         {
             Transaction tx = new Transaction();
-            tx.GasLimit = (long)(Gas ?? 90000);
-            tx.GasPrice = (GasPrice ?? 20.GWei());
+            tx.GasLimit = Gas ?? 90000;
+            tx.GasPrice = GasPrice ?? 20.GWei();
             tx.Nonce = (ulong)(Nonce ?? 0); // here pick the last nonce?
             tx.To = To;
             tx.SenderAddress = From;
