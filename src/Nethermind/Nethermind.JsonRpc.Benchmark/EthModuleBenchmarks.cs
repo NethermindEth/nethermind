@@ -107,7 +107,8 @@ namespace Nethermind.JsonRpc.Benchmark
                 transactionProcessor, 
                 new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance),
                 bloomStorage, 
-                new ReceiptsRecovery());
+                new ReceiptsRecovery(),
+                LimboLogs.Instance);
             
             _ethModule = new EthModule(new JsonRpcConfig(), LimboLogs.Instance, bridge);
         }

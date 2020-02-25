@@ -20,6 +20,7 @@ using System.Linq;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Logging;
 using Nethermind.Store.Bloom;
 
 namespace Nethermind.Blockchain.Find
@@ -31,13 +32,15 @@ namespace Nethermind.Blockchain.Find
         private readonly IReceiptsRecovery _receiptsRecovery;
         private readonly int _maxBlockDepth;
         private readonly IBlockFinder _blockFinder;
+        private readonly ILogger _logger;
 
-        public LogFinder(IBlockFinder blockFinder, IReceiptStorage receiptStorage, IBloomStorage bloomStorage, IReceiptsRecovery receiptsRecovery, int maxBlockDepth = 1000)
+        public LogFinder(IBlockFinder blockFinder, IReceiptStorage receiptStorage, IBloomStorage bloomStorage, IReceiptsRecovery receiptsRecovery, ILogManager logManager, int maxBlockDepth = 1000)
         {
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
+            _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
             _maxBlockDepth = maxBlockDepth;
         }
 
@@ -66,12 +69,22 @@ namespace Nethermind.Blockchain.Find
 
         private IEnumerable<FilterLog> FilterLogsWithBloomsIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
         {
+            Block FindBlock(long blockNumber)
+            {
+                var block = _blockFinder.FindBlock(blockNumber);
+                if (block == null)
+                {
+                    if (_logger.IsError) _logger.Error($"Could not find block {blockNumber} in database. eth_getLogs will return incomplete results.");
+                }
+                return block;
+            }
+
             var enumeration = _bloomStorage.GetBlooms(fromBlock.Number, toBlock.Number);
             foreach (var bloom in enumeration)
             {
                 if (filter.Matches(bloom) && enumeration.TryGetBlockNumber(out var blockNumber))
                 {
-                    foreach (var filterLog in FindLogsInBlock(filter, _blockFinder.FindBlock(blockNumber)))
+                    foreach (var filterLog in FindLogsInBlock(filter, FindBlock(blockNumber)))
                     {
                         yield return filterLog;
                     }
@@ -108,31 +121,34 @@ namespace Nethermind.Blockchain.Find
 
         private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Block block)
         {
-            var receipts = _receiptStorage.FindForBlock(block, _receiptsRecovery);
-            long logIndexInBlock = 0;
-            foreach (var receipt in receipts)
+            if (block != null)
             {
-                if (receipt == null)
+                var receipts = _receiptStorage.FindForBlock(block, _receiptsRecovery);
+                long logIndexInBlock = 0;
+                foreach (var receipt in receipts)
                 {
-                    continue;
-                }
-
-                if (filter.Matches(receipt.Bloom))
-                {
-                    for (var index = 0; index < receipt.Logs.Length; index++)
+                    if (receipt == null)
                     {
-                        var log = receipt.Logs[index];
-                        if (filter.Accepts(log))
-                        {
-                            yield return new FilterLog(logIndexInBlock, index, receipt, log);
-                        }
-
-                        logIndexInBlock++;
+                        continue;
                     }
-                }
-                else
-                {
-                    logIndexInBlock += receipt.Logs.Length;
+
+                    if (filter.Matches(receipt.Bloom))
+                    {
+                        for (var index = 0; index < receipt.Logs.Length; index++)
+                        {
+                            var log = receipt.Logs[index];
+                            if (filter.Accepts(log))
+                            {
+                                yield return new FilterLog(logIndexInBlock, index, receipt, log);
+                            }
+
+                            logIndexInBlock++;
+                        }
+                    }
+                    else
+                    {
+                        logIndexInBlock += receipt.Logs.Length;
+                    }
                 }
             }
         }

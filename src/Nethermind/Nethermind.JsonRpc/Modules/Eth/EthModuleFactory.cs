@@ -95,6 +95,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _ethereumEcdsa,
                 _bloomStorage,
                 new ReceiptsRecovery(),
+                _logManager,
                 _rpcConfig.FindLogBlockDepthLimit);
             
             return new EthModule(_rpcConfig, _logManager, blockchainBridge);

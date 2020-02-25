@@ -25,6 +25,7 @@ using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Store;
 using Nethermind.Store.Bloom;
@@ -81,7 +82,8 @@ namespace Nethermind.Facade.Test
                 _transactionProcessor,
                 _ethereumEcdsa,
                 _bloomStorage,
-                _receiptsRecovery);
+                _receiptsRecovery,
+                LimboLogs.Instance);
         }
 
         [Test]
