@@ -259,8 +259,9 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 _trace.Action.To = _tx.To;
                 _trace.Action.Value = _tx.Value;
                 _trace.Action.Input = _tx.Data;
-                _trace.Action.Gas = (long)_tx.GasLimit;
+                _trace.Action.Gas = _tx.GasLimit;
                 _trace.Action.CallType = _tx.IsMessageCall ? "call" : "init";
+                _trace.Action.Error = error;
             }
         }
 
