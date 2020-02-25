@@ -56,7 +56,7 @@ namespace Ethereum.Test.Base
     public abstract class LegacyBlockchainTestBase
     {
         private static ILogger _logger = new SimpleConsoleLogger();
-        private static ILogManager _logManager = NullLogManager.Instance;
+        private static ILogManager _logManager = LimboLogs.Instance;
         private static ISealValidator Sealer { get; }
         private static DifficultyCalculatorWrapper DifficultyCalculator { get; }
 
@@ -90,7 +90,7 @@ namespace Ethereum.Test.Base
 
         protected void Setup(ILogManager logManager)
         {
-            _logManager = logManager ?? NullLogManager.Instance;
+            _logManager = logManager ?? LimboLogs.Instance;
             _logger = _logManager.GetClassLogger();
         }
 

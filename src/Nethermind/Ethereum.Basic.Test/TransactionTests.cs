@@ -53,7 +53,7 @@ namespace Ethereum.Basic.Test
         [TestCaseSource(nameof(LoadTests))]
         public void Test(TransactionTest test)
         {
-            EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(OlympicSpecProvider.Instance, NullLogManager.Instance);
+            EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(OlympicSpecProvider.Instance, LimboLogs.Instance);
             Transaction decodedUnsigned = Rlp.Decode<Transaction>(test.Unsigned);
             Assert.AreEqual(test.Value, decodedUnsigned.Value, "value");
             Assert.AreEqual(test.GasPrice, decodedUnsigned.GasPrice, "gasPrice");
