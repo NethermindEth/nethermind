@@ -38,4 +38,10 @@
       </None>
     </ItemGroup>
 
+    <ItemGroup>
+      <None Update="runtimes\osx-x64\native\libmothra.dylib">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
+    </ItemGroup>
+
 </Project>
