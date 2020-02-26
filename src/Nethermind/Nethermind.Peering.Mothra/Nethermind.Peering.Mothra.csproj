@@ -20,4 +20,22 @@
       </None>
     </ItemGroup>
 
+    <ItemGroup>
+        <None Update="runtimes\win-x64\native\mothra.dll">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+      <None Update="runtimes\win-x64\native\libcrypto-1_1-x64.dll">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
+      <None Update="runtimes\win-x64\native\libssl-1_1-x64.dll">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
+      <None Update="runtimes\win-x64\native\libcrypto-1_1-x64.pdb">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
+      <None Update="runtimes\win-x64\native\libssl-1_1-x64.pdb">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
+    </ItemGroup>
+
 </Project>
