@@ -16,9 +16,9 @@
 
 using System;
 using FluentAssertions;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.TxPool;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test

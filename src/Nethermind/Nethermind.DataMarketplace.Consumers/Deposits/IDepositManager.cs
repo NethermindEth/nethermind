@@ -26,8 +26,8 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits
 {
     public interface IDepositManager
     {
-        Task<DepositDetails> GetAsync(Keccak depositId);
+        Task<DepositDetails?> GetAsync(Keccak depositId);
         Task<PagedResult<DepositDetails>> BrowseAsync(GetDeposits query);
-        Task<Keccak> MakeAsync(Keccak assetId, uint units, UInt256 value, Address address, UInt256? gasPrice = null);
+        Task<Keccak?> MakeAsync(Keccak assetId, uint units, UInt256 value, Address address, UInt256? gasPrice = null);
     }
 }

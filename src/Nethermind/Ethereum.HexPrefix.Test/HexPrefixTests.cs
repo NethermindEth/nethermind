@@ -40,13 +40,13 @@ namespace Ethereum.HexPrefix.Test
         [TestCaseSource(nameof(LoadTests))]
         public void Test(HexPrefixTest test)
         {
-            Nethermind.Store.HexPrefix result =
-                new Nethermind.Store.HexPrefix(test.IsTerm, test.Sequence);
+            Nethermind.Trie.HexPrefix result =
+                new Nethermind.Trie.HexPrefix(test.IsTerm, test.Sequence);
             byte[] bytes = result.ToBytes();
             string resultHex = bytes.ToHexString(false);
             Assert.AreEqual(test.Output, resultHex);
 
-            Nethermind.Store.HexPrefix check = Nethermind.Store.HexPrefix.FromBytes(bytes);
+            Nethermind.Trie.HexPrefix check = Nethermind.Trie.HexPrefix.FromBytes(bytes);
             byte[] checkBytes = check.ToBytes();
             string checkHex = checkBytes.ToHexString(false);
             Assert.AreEqual(test.Output, checkHex);

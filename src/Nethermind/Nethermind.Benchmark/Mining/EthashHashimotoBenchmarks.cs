@@ -15,11 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using BenchmarkDotNet.Attributes;
+using Nethermind.Consensus.Mining;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
-using Nethermind.Mining;
 
 namespace Nethermind.Benchmarks.Mining
 {
@@ -27,7 +27,7 @@ namespace Nethermind.Benchmarks.Mining
     [CoreJob(baseline: true)]
     public class EthashHashimotoBenchmarks
     {
-        private Ethash _ethash = new Ethash(NullLogManager.Instance);
+        private Ethash _ethash = new Ethash(LimboLogs.Instance);
         
         private BlockHeader _header;
 

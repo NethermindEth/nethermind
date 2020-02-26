@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;

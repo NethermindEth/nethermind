@@ -16,14 +16,11 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Blockchain.Proofs;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -32,18 +29,20 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Logging;
-using Nethermind.Mining;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Stats.Model;
 using Nethermind.Store;
-using Nethermind.Store.Repositories;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Test.Validators;
+using Nethermind.Consensus;
+using Nethermind.Db;
 using Nethermind.Network;
+using Nethermind.State.Proofs;
+using Nethermind.State.Repositories;
+using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
 using NSubstitute;
-using NSubstitute.Core;
-using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization
@@ -164,6 +163,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
             {
                 throw new NotImplementedException();
             }
+
+            public PublicKey Id => Node.Id;
 
             public void SendNewTransaction(Transaction transaction)
             {
@@ -332,7 +333,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                         .Select(t => Build.A.Receipt
                             .WithStatusCode(StatusCode.Success)
                             .WithGasUsed(10)
-                            .WithBloom(Bloom.Empty)
+                            .WithBloom(Core.Bloom.Empty)
                             .WithLogs(Build.A.LogEntry.WithAddress(t.SenderAddress).WithTopics(TestItem.KeccakA).TestObject)
                             .TestObject)
                         .ToArray();
@@ -353,7 +354,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             Block genesis = Build.A.Block.Genesis.TestObject;
             MemDb blockInfoDb = new MemDb();
-            _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainNetSpecProvider.Instance, NullTxPool.Instance, LimboLogs.Instance);
+            _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainNetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
             _blockTree.SuggestBlock(genesis);
 
             _testHeaderMapping = new Dictionary<long, Keccak>();
@@ -818,6 +819,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
             {
                 throw new NotImplementedException();
             }
+
+            public PublicKey Id => Node.Id;
 
             public void SendNewTransaction(Transaction transaction)
             {

@@ -18,6 +18,7 @@ using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Store;
+using Nethermind.Trie;
 
 namespace Nethermind.Benchmarks.Store
 {
@@ -44,15 +45,15 @@ namespace Nethermind.Benchmarks.Store
         }
 
         [Benchmark]
-        public HexPrefix Improved()
+        public byte Improved()
         {
-            return HexPrefix.FromBytes(_a);
+            return HexPrefix.FromBytes(_a).Path[0];
         }
 
         [Benchmark(Baseline = true)]
-        public HexPrefix Current()
+        public byte Current()
         {
-            return HexPrefix.FromBytes(_a);
+            return HexPrefix.FromBytes(_a).Path[0];
         }
     }
 }

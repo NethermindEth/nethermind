@@ -20,18 +20,21 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Test.Synchronization;
-using Nethermind.Blockchain.TxPools;
-using Nethermind.Blockchain.TxPools.Filters;
-using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Specs;
+using Nethermind.State;
 using Nethermind.Store;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Filters;
+using Nethermind.TxPool.Storages;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -343,8 +346,8 @@ namespace Nethermind.Blockchain.Test.TxPools
             return peers;
         }
 
-        private TxPool CreatePool(ITxStorage txStorage)
-            => new TxPool(txStorage,
+        private TxPool.TxPool CreatePool(ITxStorage txStorage)
+            => new TxPool.TxPool(txStorage,
                 Timestamper.Default, _ethereumEcdsa, _specProvider, new TxPoolConfig(), _stateProvider, _logManager);
 
         private ISyncPeer GetPeer(PublicKey publicKey)

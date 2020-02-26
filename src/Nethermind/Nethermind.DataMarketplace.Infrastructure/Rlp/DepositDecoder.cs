@@ -14,8 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.IO;
+using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
@@ -39,16 +40,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
         public Deposit Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = rlpStream.ReadSequenceLength();
-            if (sequenceLength == 0)
-            {
-                return null;
-            }
-
-            var id = rlpStream.DecodeKeccak();
-            var units = rlpStream.DecodeUInt();
-            var expiryTime = rlpStream.DecodeUInt();
-            var value = rlpStream.DecodeUInt256();
+            rlpStream.ReadSequenceLength();
+            Keccak id = rlpStream.DecodeKeccak();
+            uint units = rlpStream.DecodeUInt();
+            uint expiryTime = rlpStream.DecodeUInt();
+            UInt256 value = rlpStream.DecodeUInt256();
 
             return new Deposit(id, units, expiryTime, value);
         }
@@ -65,11 +61,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Serialization.Rlp.Rlp.Encode(item.Units),
                 Serialization.Rlp.Rlp.Encode(item.ExpiryTime),
                 Serialization.Rlp.Rlp.Encode(item.Value));
-        }
-
-        public void Encode(MemoryStream stream, Deposit item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new System.NotImplementedException();
         }
 
         public int GetLength(Deposit item, RlpBehaviors rlpBehaviors)

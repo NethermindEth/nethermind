@@ -23,11 +23,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
 {
     public class DataRequestForRpc
     {
-        public Keccak DataAssetId { get; set; }
-        public uint Units { get; set; }
-        public BigInteger Value { get; set; }
-        public uint ExpiryTime { get; set; }
-        public Address Provider { get; set; }
+        public Keccak? DataAssetId { get; set; }
+        public uint? Units { get; set; }
+        public BigInteger? Value { get; set; }
+        public uint? ExpiryTime { get; set; }
+        public Address? Provider { get; set; }
 
         public DataRequestForRpc()
         {

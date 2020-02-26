@@ -18,16 +18,19 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Test.Validators;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.State;
+using Nethermind.State.Repositories;
 using Nethermind.Store;
-using Nethermind.Store.Repositories;
+using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Tracing
@@ -49,7 +52,7 @@ namespace Nethermind.Blockchain.Test.Tracing
             
             ChainLevelInfoRepository repository = new ChainLevelInfoRepository(blocksInfoDb);
             ISpecProvider specProvider = MainNetSpecProvider.Instance;
-            _blockTree = new BlockTree(blocksDb, headersDb, blocksInfoDb, repository, specProvider, NullTxPool.Instance, new SyncConfig(), LimboLogs.Instance);
+            _blockTree = new BlockTree(blocksDb, headersDb, blocksInfoDb, repository, specProvider, NullTxPool.Instance, NullBloomStorage.Instance, new SyncConfig(), LimboLogs.Instance);
             
             StateProvider stateProvider = new StateProvider(stateDb, codeDb, LimboLogs.Instance);
             StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, LimboLogs.Instance);

@@ -20,8 +20,9 @@ using System.Collections.Generic;
 using System.Net;
 using System.Security;
 using FluentAssertions;
-using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -52,7 +53,7 @@ namespace Nethermind.AuRa.Test
         {
             _auRaParameters = new AuRaParameters();
             _auRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
-            _logManager = NullLogManager.Instance;
+            _logManager = LimboLogs.Instance;
             _wallet = new DevWallet(new WalletConfig(), _logManager);
             _address = _wallet.NewAccount(new NetworkCredential(string.Empty, "AAA").SecurePassword);
             

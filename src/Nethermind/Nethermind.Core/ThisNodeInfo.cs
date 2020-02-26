@@ -16,7 +16,7 @@
 
 using System.Collections.Concurrent;
 using System.Linq;
-using Nethermind.Logging;
+using System.Text;
 
 namespace Nethermind.Core
 {
@@ -29,17 +29,19 @@ namespace Nethermind.Core
             _nodeInfoItems[infoDescription] = value;
         }
 
-        public static void LogAll(ILogger logger)
+        public static string BuildNodeInfoScreen()
         {
-            if (logger.IsInfo)
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine();
+            builder.AppendLine("======================== Nethermind initialization completed ========================");
+            
+            foreach ((string key, string value) in _nodeInfoItems.OrderByDescending(ni => ni.Key))
             {
-                foreach ((string key, string value) in _nodeInfoItems.OrderByDescending(ni => ni.Key))
-                {
-                    logger.Info($"{key} {value}"); // TODO: align nicely
-                }
-                
-                logger.Info("=================================================================");
+                builder.AppendLine($"{key} {value}");
             }
+
+            builder.Append("=====================================================================================");
+            return builder.ToString();
         }
     }
 }

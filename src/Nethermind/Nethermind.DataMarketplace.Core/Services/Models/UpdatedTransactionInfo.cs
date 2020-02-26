@@ -21,9 +21,9 @@ namespace Nethermind.DataMarketplace.Core.Services.Models
     public class UpdatedTransactionInfo
     {
         public UpdatedTransactionStatus Status { get; }
-        public Keccak Hash { get; }
+        public Keccak? Hash { get; }
 
-        public UpdatedTransactionInfo(UpdatedTransactionStatus status, Keccak hash = null)
+        public UpdatedTransactionInfo(UpdatedTransactionStatus status, Keccak? hash = null)
         {
             Status = status;
             Hash = hash;

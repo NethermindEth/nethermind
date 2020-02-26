@@ -19,16 +19,17 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.TxPools;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Specs;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
+using Nethermind.State.Repositories;
 using Nethermind.Store;
-using Nethermind.Store.Repositories;
+using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NUnit.Framework;
 
@@ -46,8 +47,31 @@ namespace Nethermind.JsonRpc.Test.Modules
             ITxPool txPool = NullTxPool.Instance;
             MemDbProvider dbProvider = new MemDbProvider();
 
-            BlockTree blockTree = new BlockTree(dbProvider.BlocksDb, dbProvider.HeadersDb, dbProvider.BlockInfosDb, new ChainLevelInfoRepository(dbProvider.BlockInfosDb), specProvider, txPool, new SyncConfig(), LimboLogs.Instance);
-            _modulePool = new BoundedModulePool<IEthModule>(1, new EthModuleFactory(dbProvider, txPool, NullWallet.Instance, blockTree, new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance), NullBlockProcessor.Instance, new InMemoryReceiptStorage(), specProvider, new JsonRpcConfig(), LimboLogs.Instance));
+            BlockTree blockTree = new BlockTree(
+                dbProvider.BlocksDb,
+                dbProvider.HeadersDb,
+                dbProvider.BlockInfosDb,
+                new ChainLevelInfoRepository(dbProvider.BlockInfosDb),
+                specProvider,
+                txPool,
+                new BloomStorage(new BloomConfig(), dbProvider.HeadersDb, new InMemoryDictionaryFileStoreFactory()),
+                new SyncConfig(),
+                LimboLogs.Instance);
+            
+            _modulePool = new BoundedModulePool<IEthModule>(
+                1, 
+                new EthModuleFactory(
+                    dbProvider, 
+                    txPool, 
+                    NullWallet.Instance, 
+                    blockTree, 
+                    new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance), 
+                    NullBlockProcessor.Instance, 
+                    new InMemoryReceiptStorage(), 
+                    specProvider, 
+                    new JsonRpcConfig(),
+                    NullBloomStorage.Instance,
+                    LimboLogs.Instance));
         }
 
         [Test]

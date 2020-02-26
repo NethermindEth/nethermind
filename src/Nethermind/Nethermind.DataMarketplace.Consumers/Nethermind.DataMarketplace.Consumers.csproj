@@ -3,12 +3,13 @@
     <PropertyGroup>
         <TargetFramework>netcoreapp3.0</TargetFramework>
         <LangVersion>8.0</LangVersion>
+        <Nullable>enable</Nullable>
     </PropertyGroup>
 
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.DataMarketplace.Core\Nethermind.DataMarketplace.Core.csproj" />
       <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
-      <ProjectReference Include="..\Nethermind.Store\Nethermind.Store.csproj" />
+      <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
     </ItemGroup>
 
 </Project>

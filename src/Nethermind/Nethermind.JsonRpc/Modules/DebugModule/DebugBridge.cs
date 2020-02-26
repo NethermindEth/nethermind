@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Serialization.Rlp;

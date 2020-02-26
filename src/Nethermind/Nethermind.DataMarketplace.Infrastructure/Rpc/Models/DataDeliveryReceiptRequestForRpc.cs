@@ -21,10 +21,10 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
 {
     public class DataDeliveryReceiptRequestForRpc
     {
-        public uint Number { get; set; }
-        public Keccak DepositId { get; set; }
-        public UnitsRangeForRpc UnitsRange { get; set; }
-        public bool IsSettlement { get; set; }
+        public uint? Number { get; set; }
+        public Keccak? DepositId { get; set; }
+        public UnitsRangeForRpc? UnitsRange { get; set; }
+        public bool? IsSettlement { get; set; }
 
         public DataDeliveryReceiptRequestForRpc()
         {

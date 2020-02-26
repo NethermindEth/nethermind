@@ -75,7 +75,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
                 _ecdsa, _nodePublicKey, LimboLogs.Instance);
         }
 
-        [Test, Retry(3)]
+        [Test]
         public async Task send_should_fail_if_deposit_does_not_exist()
         {
             var receipt = GetDataDeliveryReceiptRequest();
@@ -103,7 +103,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
             _sessionService.Received(fetchSessionRetries + 1).GetActive(receipt.DepositId);
         }
 
-        [Test, Retry(3)]
+        [Test]
         public async Task send_should_fail_if_provider_does_not_exist()
         {
             var receipt = GetDataDeliveryReceiptRequest();
@@ -118,14 +118,15 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
                 deposit.Deposit.Units);
         }
 
-        [Test, Retry(3)]
+        [Test]
         public async Task send_should_fail_if_validation_fails()
         {
+            var seconds = _timestamper.EpochSeconds;
             var receipt = GetDataDeliveryReceiptRequest();
             var deposit = GetDepositDetails();
             var session = GetConsumerSession();
             var receiptId = Keccak.Compute(Rlp.Encode(Rlp.Encode(receipt.DepositId), Rlp.Encode(receipt.Number),
-                Rlp.Encode(_timestamper.EpochSeconds)).Bytes);
+                Rlp.Encode(seconds)).Bytes);
             var provider = Substitute.For<INdmPeer>();
             _depositProvider.GetAsync(receipt.DepositId).Returns(deposit);
             _sessionService.GetActive(receipt.DepositId).Returns(session);
@@ -140,7 +141,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
                 x.DataAssetId == session.DataAssetId &&
                 x.ConsumerNodeId == _nodePublicKey &&
                 x.Request.Equals(receipt) && 
-                x.Timestamp == _timestamper.EpochSeconds && 
+                x.Timestamp == seconds && 
                 !x.IsClaimed));
             await _sessionRepository.Received().UpdateAsync(session);
             provider.Received().SendDataDeliveryReceipt(receipt.DepositId, Arg.Is<DataDeliveryReceipt>(x =>
@@ -151,15 +152,16 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
 
         }
         
-        [Test, Retry(5)]
+        [Test]
         public async Task send_should_fail_if_recover_public_key_fails()
         {
+            var timestamp = _timestamper.EpochSeconds;
             var receipt = GetDataDeliveryReceiptRequest();
             var deposit = GetDepositDetails();
             var session = GetConsumerSession();
             var provider = Substitute.For<INdmPeer>();
             var receiptId = Keccak.Compute(Rlp.Encode(Rlp.Encode(receipt.DepositId), Rlp.Encode(receipt.Number),
-                Rlp.Encode(_timestamper.EpochSeconds)).Bytes);
+                Rlp.Encode(timestamp)).Bytes);
             _depositProvider.GetAsync(receipt.DepositId).Returns(deposit);
             _sessionService.GetActive(receipt.DepositId).Returns(session);
             _providerService.GetPeer(deposit.DataAsset.Provider.Address).Returns(provider);
@@ -177,7 +179,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
                 x.DataAssetId == session.DataAssetId &&
                 x.ConsumerNodeId == _nodePublicKey &&
                 x.Request.Equals(receipt) && 
-                x.Timestamp == _timestamper.EpochSeconds && 
+                x.Timestamp == timestamp && 
                 !x.IsClaimed));
             await _sessionRepository.Received().UpdateAsync(session);
             provider.Received().SendDataDeliveryReceipt(receipt.DepositId, Arg.Is<DataDeliveryReceipt>(x =>
@@ -187,15 +189,16 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
                 x.Signature.Equals(new Signature(1, 1, 27))));
         }
 
-        [Test, Retry(3)]
+        [Test]
         public async Task send_should_succeed_when_receipt_is_valid()
         {
+            var timestamp = _timestamper.EpochSeconds;
             var receipt = GetDataDeliveryReceiptRequest();
             var deposit = GetDepositDetails();
             var session = GetConsumerSession();
             var provider = Substitute.For<INdmPeer>();
             var receiptId = Keccak.Compute(Rlp.Encode(Rlp.Encode(receipt.DepositId), Rlp.Encode(receipt.Number),
-                Rlp.Encode(_timestamper.EpochSeconds)).Bytes);
+                Rlp.Encode(timestamp)).Bytes);
             _depositProvider.GetAsync(receipt.DepositId).Returns(deposit);
             _sessionService.GetActive(receipt.DepositId).Returns(session);
             _providerService.GetPeer(deposit.DataAsset.Provider.Address).Returns(provider);
@@ -211,7 +214,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
                 x.DataAssetId == session.DataAssetId &&
                 x.ConsumerNodeId == _nodePublicKey &&
                 x.Request.Equals(receipt) &&
-                x.Timestamp == _timestamper.EpochSeconds &&
+                x.Timestamp == timestamp &&
                 !x.IsClaimed));
             provider.Received().SendDataDeliveryReceipt(receipt.DepositId, Arg.Is<DataDeliveryReceipt>(x =>
                 x.StatusCode == StatusCodes.Ok));

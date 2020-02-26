@@ -21,18 +21,21 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.BeamSync;
-using Nethermind.Blockchain.TxPools;
-using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm;
-using Nethermind.Mining;
+using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Specs;
+using Nethermind.State;
+using Nethermind.State.Repositories;
 using Nethermind.Store;
-using Nethermind.Store.Repositories;
+using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Storages;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -50,22 +53,28 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             await InitBlockchain();
         }
-        
-         [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
+
+        [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
         private Task InitBlockchain()
         {
+            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
+            if (_context.DbProvider == null) throw new StepDependencyException(nameof(_context.DbProvider));
+            if (_context.SpecProvider == null) throw new StepDependencyException(nameof(_context.SpecProvider));
+
+            ILogger logger = _context.LogManager.GetClassLogger();
+            IInitConfig initConfig = _context.Config<IInitConfig>();
             ISyncConfig syncConfig = _context.Config<ISyncConfig>();
             if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
             {
-                _context.Logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
+                logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
                 syncConfig.DownloadBodiesInFastSync = true;
             }
 
             if (syncConfig.BeamSync)
             {
-                _context.Logger.Warn("Welcome to the alpha version of the Nethermind Goerli Beam Sync. I will start by downloading the pivot block header and then will continue to download all the headers from the pivot upwards. After that I will be beam synchronizing the new blocks. Many things can fail - appreciated if you report issues via GitHub or Gitter.");
+                logger.Warn("Welcome to the alpha version of the Nethermind Goerli Beam Sync. I will start by downloading the pivot block header and then will continue to download all the headers from the pivot upwards. After that I will be beam synchronizing the new blocks. Many things can fail - appreciated if you report issues via GitHub or Gitter.");
             }
-            
+
             Account.AccountStartNonce = _context.ChainSpec.Parameters.AccountStartNonce;
 
             _context.StateProvider = new StateProvider(
@@ -74,7 +83,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.LogManager);
 
             _context.EthereumEcdsa = new EthereumEcdsa(_context.SpecProvider, _context.LogManager);
-            _context.TxPool = new TxPool(
+            _context.TxPool = new TxPool.TxPool(
                 new PersistentTxStorage(_context.DbProvider.PendingTxsDb, _context.SpecProvider),
                 Timestamper.Default,
                 _context.EthereumEcdsa,
@@ -85,6 +94,13 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             _context.ReceiptStorage = new PersistentReceiptStorage(_context.DbProvider.ReceiptsDb, _context.SpecProvider, _context.LogManager);
 
+            var bloomConfig = _context.Config<IBloomConfig>();
+            _context.BloomStorage = bloomConfig.Index
+                ? new BloomStorage(bloomConfig, _context.DbProvider.BloomDb, new FixedSizeFileStoreFactory(Path.Combine(initConfig.BaseDbPath, DbNames.Bloom), DbNames.Bloom, Bloom.ByteLength))
+                : (IBloomStorage) NullBloomStorage.Instance;
+
+            _context.DisposeStack.Push(_context.BloomStorage);
+
             _context.ChainLevelInfoRepository = new ChainLevelInfoRepository(_context.DbProvider.BlockInfosDb);
 
             _context.BlockTree = new BlockTree(
@@ -94,6 +110,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.ChainLevelInfoRepository,
                 _context.SpecProvider,
                 _context.TxPool,
+                _context.BloomStorage,
                 _context.Config<ISyncConfig>(),
                 _context.LogManager);
 
@@ -129,6 +146,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.LogManager);
 
             InitSealEngine();
+            if (_context.SealValidator == null) throw new StepDependencyException(nameof(_context.SealValidator));
 
             /* validation */
             _context.HeaderValidator = new HeaderValidator(
@@ -160,12 +178,12 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.MainBlockProcessor,
                 _context.RecoveryStep,
                 _context.LogManager,
-                _context.Config<IInitConfig>().StoreReceipts,
+                initConfig.StoreReceipts,
                 !syncConfig.BeamSync);
 
             _context.BlockProcessingQueue = blockchainProcessor;
             _context.BlockchainProcessor = blockchainProcessor;
-            
+
             if (syncConfig.BeamSync)
             {
                 _ = new BeamBlockchainProcessor(
@@ -182,8 +200,12 @@ namespace Nethermind.Runner.Ethereum.Steps
             return Task.CompletedTask;
         }
 
-        protected virtual BlockProcessor CreateBlockProcessor() =>
-            new BlockProcessor(
+        protected virtual BlockProcessor CreateBlockProcessor()
+        {
+            if (_context.DbProvider == null) throw new StepDependencyException(nameof(_context.DbProvider));
+            if (_context.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_context.RewardCalculatorSource));
+
+            return new BlockProcessor(
                 _context.SpecProvider,
                 _context.BlockValidator,
                 _context.RewardCalculatorSource.Get(_context.TransactionProcessor),
@@ -195,12 +217,13 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.TxPool,
                 _context.ReceiptStorage,
                 _context.LogManager);
+        }
 
         protected virtual void InitSealEngine()
         {
             _context.Sealer = NullSealEngine.Instance;
             _context.SealValidator = NullSealEngine.Instance;
             _context.RewardCalculatorSource = NoBlockRewards.Source;
-        }       
+        }
     }
 }

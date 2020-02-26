@@ -26,7 +26,7 @@ namespace Nethermind.Abi
 
         public override string Name => "bool";
 
-        public override byte[] Encode(object arg, bool packed)
+        public override byte[] Encode(object? arg, bool packed)
         {
             if (arg is bool input)
             {

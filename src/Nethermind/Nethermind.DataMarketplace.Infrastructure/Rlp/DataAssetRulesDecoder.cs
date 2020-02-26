@@ -14,7 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.IO;
+using System;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Serialization.Rlp;
 
@@ -26,11 +26,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
         {
             // here to register with RLP in static constructor
         }
-
-        private DataAssetRulesDecoder()
-        {
-        }
-
+        
         static DataAssetRulesDecoder()
         {
             Serialization.Rlp.Rlp.Decoders[typeof(DataAssetRules)] = new DataAssetRulesDecoder();
@@ -39,16 +35,18 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
         public DataAssetRules Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = rlpStream.ReadSequenceLength();
-            if (sequenceLength == 0)
+            try
             {
-                return null;
+                rlpStream.ReadSequenceLength();
+                DataAssetRule expiry = Serialization.Rlp.Rlp.Decode<DataAssetRule>(rlpStream);
+                DataAssetRule upfrontPayment = Serialization.Rlp.Rlp.Decode<DataAssetRule>(rlpStream);
+
+                return new DataAssetRules(expiry, upfrontPayment);
             }
-
-            var expiry = Serialization.Rlp.Rlp.Decode<DataAssetRule>(rlpStream);
-            var upfrontPayment = Serialization.Rlp.Rlp.Decode<DataAssetRule>(rlpStream);
-
-            return new DataAssetRules(expiry, upfrontPayment);
+            catch (Exception e)
+            {
+                throw new RlpException($"{nameof(DataAssetRules)} could not be deserialized", e);
+            }
         }
 
         public Serialization.Rlp.Rlp Encode(DataAssetRules item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -61,11 +59,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             return Serialization.Rlp.Rlp.Encode(
                 Serialization.Rlp.Rlp.Encode(item.Expiry),
                 Serialization.Rlp.Rlp.Encode(item.UpfrontPayment));
-        }
-
-        public void Encode(MemoryStream stream, DataAssetRules item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new System.NotImplementedException();
         }
 
         public int GetLength(DataAssetRules item, RlpBehaviors rlpBehaviors)

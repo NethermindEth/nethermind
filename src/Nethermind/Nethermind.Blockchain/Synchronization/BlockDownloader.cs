@@ -22,11 +22,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.Mining;
 
 namespace Nethermind.Blockchain.Synchronization
 {
@@ -171,6 +171,8 @@ namespace Nethermind.Blockchain.Synchronization
 
         public async Task<long> DownloadBlocks(PeerInfo bestPeer, int numberOfLatestBlocksToBeIgnored, CancellationToken cancellation, BlockDownloaderOptions options = BlockDownloaderOptions.Process)
         {
+            IReceiptsRecovery receiptsRecovery = new ReceiptsRecovery();
+            
             if (bestPeer == null)
             {
                 string message = $"Not expecting best peer to be null inside the {nameof(BlockDownloader)}";
@@ -206,7 +208,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
                 BlockHeader[] headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
-                BlockDownloadContext context = new BlockDownloadContext(_specProvider, bestPeer, headers, downloadReceipts);
+                BlockDownloadContext context = new BlockDownloadContext(_specProvider, bestPeer, headers, downloadReceipts, receiptsRecovery);
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
                 await RequestBodies(bestPeer, cancellation, context);

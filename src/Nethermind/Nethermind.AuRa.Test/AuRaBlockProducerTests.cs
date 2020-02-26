@@ -17,15 +17,17 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.AuRa.Config;
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
+using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.Mining;
+using Nethermind.State;
 using Nethermind.Store;
 using NSubstitute;
 using NSubstitute.ReceivedExtensions;
@@ -73,7 +75,7 @@ namespace Nethermind.AuRa.Test
                 _blockTree,
                 _blockProcessingQueue,
                 _timestamper,
-                NullLogManager.Instance, _auRaStepCalculator, _auraConfig, _nodeAddress);
+                LimboLogs.Instance, _auRaStepCalculator, _auraConfig, _nodeAddress);
 
             _auraConfig.ForceSealing.Returns(true);
             _pendingTxSelector.SelectTransactions(Arg.Any<long>()).Returns(Array.Empty<Transaction>());

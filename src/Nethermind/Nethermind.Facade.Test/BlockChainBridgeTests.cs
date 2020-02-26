@@ -19,14 +19,17 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Store;
+using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
@@ -47,6 +50,8 @@ namespace Nethermind.Facade.Test
         private IWallet _wallet;
         private ITransactionProcessor _transactionProcessor;
         private IEthereumEcdsa _ethereumEcdsa;
+        private IBloomStorage _bloomStorage;
+        private IReceiptsRecovery _receiptsRecovery;
 
         [SetUp]
         public void SetUp()
@@ -62,6 +67,8 @@ namespace Nethermind.Facade.Test
             _wallet = Substitute.For<IWallet>();
             _transactionProcessor = Substitute.For<ITransactionProcessor>();
             _ethereumEcdsa = Substitute.For<IEthereumEcdsa>();
+            _bloomStorage = Substitute.For<IBloomStorage>();
+            _receiptsRecovery = Substitute.For<IReceiptsRecovery>();
             _blockchainBridge = new BlockchainBridge(
                 _stateReader, 
                 _stateProvider,
@@ -73,7 +80,10 @@ namespace Nethermind.Facade.Test
                 _filterManager,
                 _wallet,
                 _transactionProcessor,
-                _ethereumEcdsa);
+                _ethereumEcdsa,
+                _bloomStorage,
+                _receiptsRecovery,
+                LimboLogs.Instance);
         }
 
         [Test]
@@ -131,8 +141,8 @@ namespace Nethermind.Facade.Test
             Transaction tx = new Transaction();
             tx.GasLimit = 1000;
             
-            long gas = _blockchainBridge.EstimateGas(header, tx);
-            gas.Should().Be(1000);
+            var gas = _blockchainBridge.EstimateGas(header, tx);
+            gas.GasSpent.Should().Be(0);
             
             _transactionProcessor.Received().CallAndRestore(
                 tx,

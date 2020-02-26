@@ -18,11 +18,12 @@ using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
+using Nethermind.Trie;
+using Nethermind.TxPool;
 using Block = Nethermind.Core.Block;
 
 namespace Nethermind.Facade
@@ -42,7 +43,7 @@ namespace Nethermind.Facade
         Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions);
         TxReceipt GetReceipt(Keccak txHash);
         BlockchainBridge.CallOutput Call(BlockHeader blockHeader, Transaction transaction);
-        long EstimateGas(BlockHeader header, Transaction transaction);
+        BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction transaction);
         long GetChainId();
         byte[] GetCode(Address address);
         byte[] GetCode(Keccak codeHash);
@@ -51,8 +52,7 @@ namespace Nethermind.Facade
         Account GetAccount(Address address, Keccak stateRoot);
         int NewBlockFilter();
         int NewPendingTransactionFilter();
-        int NewFilter(BlockParameter fromBlock, BlockParameter toBlock, object address = null,
-            IEnumerable<object> topics = null);
+        int NewFilter(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null);
         void UninstallFilter(int filterId);
         bool FilterExists(int filterId);
         FilterLog[] GetLogFilterChanges(int filterId);
@@ -60,8 +60,7 @@ namespace Nethermind.Facade
         Keccak[] GetPendingTransactionFilterChanges(int filterId);
         FilterType GetFilterType(int filterId);
         FilterLog[] GetFilterLogs(int filterId);
-        FilterLog[] GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address = null,
-            IEnumerable<object> topics = null);
+        IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null);
         void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot);
     }
 }

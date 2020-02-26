@@ -22,6 +22,7 @@ using System.Reflection;
 using System.Runtime.Loader;
 using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Logging;
 using NLog;
 using NLog.Config;
@@ -33,9 +34,9 @@ namespace Nethermind.Runner
         private const string DefaultConfigsDirectory = "configs";
         private readonly string _defaultConfigFile = Path.Combine(DefaultConfigsDirectory, "mainnet.cfg");
 
-        protected override (CommandLineApplication, Func<IConfigProvider>, Func<string>) BuildCommandLineApp()
+        protected override (CommandLineApplication, Func<IConfigProvider>, Func<string?>) BuildCommandLineApp()
         {
-            string pluginsDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "plugins");
+            string pluginsDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory ?? string.Empty, "plugins");
             if (Directory.Exists(pluginsDirectory))
             {
                 var plugins = Directory.GetFiles(pluginsDirectory, "*.dll");
@@ -60,13 +61,14 @@ namespace Nethermind.Runner
                 .ForEach(x => loadedAssemblies.Add(AppDomain.CurrentDomain.Load(x)));
 
             Type configurationType = typeof(IConfig);
-            var configTypes = AppDomain.CurrentDomain.GetAssemblies()
+            List<Type> configTypes = AppDomain.CurrentDomain.GetAssemblies()
                 .SelectMany(a => a.GetTypes())
                 .Where(t => configurationType.IsAssignableFrom(t) && !t.IsInterface)
                 .ToList();
 
             CommandLineApplication app = new CommandLineApplication {Name = "Nethermind.Runner"};
             app.HelpOption("-?|-h|--help");
+            app.VersionOption("-v|--version", () => ClientVersion.Version, () => ClientVersion.Description);
             CommandOption configFile = app.Option("-c|--config <configFile>", "config file path", CommandOptionType.SingleValue);
             CommandOption dbBasePath = app.Option("-d|--baseDbPath <baseDbPath>", "base db path", CommandOptionType.SingleValue);
             CommandOption logLevelOverride = app.Option("-l|--log <logLevel>", "log level", CommandOptionType.SingleValue);
@@ -75,13 +77,18 @@ namespace Nethermind.Runner
 
             foreach (Type configType in configTypes)
             {
+                if (configType == null)
+                {
+                    continue;
+                }
+                
                 foreach (PropertyInfo propertyInfo in configType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
                 {
-                    Type interfaceType = configType.GetInterface("I" + configType.Name);
-                    PropertyInfo interfaceProperty = interfaceType?.GetProperty(propertyInfo.Name);
+                    Type? interfaceType = configType.GetInterface("I" + configType.Name);
+                    PropertyInfo? interfaceProperty = interfaceType?.GetProperty(propertyInfo.Name);
 
-                    ConfigItemAttribute configItemAttribute = interfaceProperty?.GetCustomAttribute<ConfigItemAttribute>();
-                    app.Option($"--{configType.Name.Replace("Config", String.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute == null ? "<missing documentation>" : configItemAttribute?.Description ?? "<missing documentation>")}", CommandOptionType.SingleValue);
+                    ConfigItemAttribute? configItemAttribute = interfaceProperty?.GetCustomAttribute<ConfigItemAttribute>();
+                    app.Option($"--{configType.Name.Replace("Config", String.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute == null ? "<missing documentation>" : configItemAttribute.Description ?? "<missing documentation>")}", CommandOptionType.SingleValue);
                 }
             }
 
@@ -162,7 +169,7 @@ namespace Nethermind.Runner
 
                 string configDir = configsDirectory.HasValue() ? configsDirectory.Value() : DefaultConfigsDirectory;
                 string configFilePath = configFile.HasValue() ? configFile.Value() : _defaultConfigFile;
-                string configPathVariable = Environment.GetEnvironmentVariable("NETHERMIND_CONFIG");
+                string? configPathVariable = Environment.GetEnvironmentVariable("NETHERMIND_CONFIG");
                 if (!string.IsNullOrWhiteSpace(configPathVariable))
                 {
                     configFilePath = configPathVariable;
@@ -196,8 +203,8 @@ namespace Nethermind.Runner
                 if (!File.Exists(configFilePath))
                 {
                     string configName = Path.GetFileName(configFilePath);
-                    string configDirectory = Path.GetDirectoryName(configFilePath);
-                    string redirectedConfigPath = Path.Combine(configDirectory, configDir, configName);
+                    string? configDirectory = Path.GetDirectoryName(configFilePath);
+                    string redirectedConfigPath = Path.Combine(configDirectory ?? string.Empty, configDir, configName);
                     configFilePath = redirectedConfigPath;
                     if (!File.Exists(configFilePath))
                     {
@@ -212,7 +219,7 @@ namespace Nethermind.Runner
                 return configProvider;
             }
 
-            string GetBaseDbPath()
+            string? GetBaseDbPath()
             {
                 return dbBasePath.HasValue() ? dbBasePath.Value() : null;
             }

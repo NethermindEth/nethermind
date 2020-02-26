@@ -22,21 +22,24 @@ using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Blockchain.TxPools;
-using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Mining.Difficulty;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Evm;
 using Nethermind.Logging;
-using Nethermind.Mining;
-using Nethermind.Mining.Difficulty;
 using Nethermind.Serialization.Json;
+using Nethermind.State;
+using Nethermind.State.Repositories;
 using Nethermind.Store;
-using Nethermind.Store.Repositories;
+using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Storages;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test
@@ -54,7 +57,7 @@ namespace Nethermind.Blockchain.Test
 
             /* logging & instrumentation */
 //            OneLoggerLogManager logger = new OneLoggerLogManager(new SimpleConsoleLogger(true));
-            ILogManager logManager = NullLogManager.Instance;
+            ILogManager logManager = LimboLogs.Instance;
             ILogger logger = logManager.GetClassLogger();
 
             /* spec */
@@ -72,10 +75,10 @@ namespace Nethermind.Blockchain.Test
 
             EthereumEcdsa ecdsa = new EthereumEcdsa(specProvider, logManager);
             MemDb receiptsDb = new MemDb();
-            TxPool txPool = new TxPool(NullTxStorage.Instance, Timestamper.Default, ecdsa, specProvider, new TxPoolConfig(), stateProvider, logManager);
+            TxPool.TxPool txPool = new TxPool.TxPool(NullTxStorage.Instance, Timestamper.Default, ecdsa, specProvider, new TxPoolConfig(), stateProvider, logManager);
             IReceiptStorage receiptStorage = new PersistentReceiptStorage(receiptsDb, specProvider, logManager);
             var blockInfoDb = new MemDb();
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, txPool, logManager);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, txPool, NullBloomStorage.Instance, logManager);
             Timestamper timestamper = new Timestamper();
             DifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
             HeaderValidator headerValidator = new HeaderValidator(blockTree, sealer, specProvider, logManager);
@@ -83,7 +86,7 @@ namespace Nethermind.Blockchain.Test
             TxValidator txValidator = new TxValidator(ChainId.Ropsten);
             BlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, ommersValidator, specProvider, logManager);
 
-            TestTransactionsGenerator generator = new TestTransactionsGenerator(txPool, ecdsa, TimeSpan.FromMilliseconds(50 * timeMultiplier), NullLogManager.Instance);
+            TestTransactionsGenerator generator = new TestTransactionsGenerator(txPool, ecdsa, TimeSpan.FromMilliseconds(50 * timeMultiplier), LimboLogs.Instance);
             generator.Start();
             
             /* blockchain processing */
@@ -120,7 +123,7 @@ namespace Nethermind.Blockchain.Test
             blockchainProcessor.Start();
 
             var transactionSelector = new PendingTxSelector(txPool, stateProvider, logManager);
-            MinedBlockProducer minedBlockProducer = new MinedBlockProducer(transactionSelector, blockchainProcessor, sealer, blockTree, blockchainProcessor, stateProvider, timestamper, NullLogManager.Instance, difficultyCalculator);
+            MinedBlockProducer minedBlockProducer = new MinedBlockProducer(transactionSelector, blockchainProcessor, sealer, blockTree, blockchainProcessor, stateProvider, timestamper, LimboLogs.Instance, difficultyCalculator);
             minedBlockProducer.Start();
 
             ManualResetEventSlim manualResetEvent = new ManualResetEventSlim(false);

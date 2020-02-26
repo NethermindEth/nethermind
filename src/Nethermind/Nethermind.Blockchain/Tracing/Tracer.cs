@@ -18,7 +18,8 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
-using Nethermind.Store;
+using Nethermind.State;
+using Nethermind.Trie;
 
 namespace Nethermind.Blockchain.Tracing
 {
@@ -44,7 +45,7 @@ namespace Nethermind.Blockchain.Tracing
 
             try
             {
-                _blockProcessor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain, blockTracer);
+                _blockProcessor.Process(block, ProcessingOptions.Trace, blockTracer);
             }
             catch (Exception)
             {

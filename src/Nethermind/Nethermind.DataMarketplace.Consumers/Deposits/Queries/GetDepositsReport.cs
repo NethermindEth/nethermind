@@ -22,8 +22,8 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Queries
 {
     public class GetDepositsReport : PagedQueryBase
     {
-        public Keccak DepositId { get; set; }
-        public Keccak AssetId { get; set; }
-        public Address Provider { get; set; }
+        public Keccak? DepositId { get; set; }
+        public Keccak? AssetId { get; set; }
+        public Address? Provider { get; set; }
     }
 }

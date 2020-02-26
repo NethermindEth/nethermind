@@ -67,7 +67,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Factories
             AccountService.AddressChanged += (_, e) => ConsumerAddress = e.NewAddress;
         }
 
-        public virtual INdmSubprotocol Create(ISession p2PSession)
+        public virtual IProtocolHandler Create(ISession p2PSession)
             => new NdmSubprotocol(p2PSession, NodeStatsManager, MessageSerializationService, LogManager,
                 ConsumerService, NdmConsumerChannelManager, Ecdsa, Wallet, Faucet, NodeId, ProviderAddress,
                 ConsumerAddress, VerifySignature);

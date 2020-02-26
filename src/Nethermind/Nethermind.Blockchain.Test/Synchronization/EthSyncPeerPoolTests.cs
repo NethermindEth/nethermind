@@ -28,6 +28,7 @@ using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Network;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -116,6 +117,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
             public void HintNewBlock(Keccak blockHash, long number)
             {
             }
+
+            public PublicKey Id => Node.Id;
 
             public void SendNewTransaction(Transaction transaction)
             {

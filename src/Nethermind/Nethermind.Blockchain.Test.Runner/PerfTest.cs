@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Test.Runner
                     continue;
                 }
                 
-                Setup(NullLogManager.Instance);
+                Setup(LimboLogs.Instance);
                 stopwatch.Restart();
                 EthereumTestResult result = RunTest(test);
                 stopwatch.Stop();

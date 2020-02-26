@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -23,7 +24,7 @@ namespace Nethermind.Config
 {
     public class ConfigProvider : IConfigProvider
     {
-        private IDictionary<Type, object> _instances = new Dictionary<Type, object>();
+        private ConcurrentDictionary<Type, object> _instances = new ConcurrentDictionary<Type, object>();
         
         private List<IConfigSource> _configSource = new List<IConfigSource>();
 

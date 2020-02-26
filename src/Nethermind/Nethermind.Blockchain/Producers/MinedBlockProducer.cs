@@ -17,12 +17,12 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Mining.Difficulty;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
-using Nethermind.Mining;
-using Nethermind.Mining.Difficulty;
-using Nethermind.Store;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.Producers
 {

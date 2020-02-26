@@ -134,6 +134,21 @@ namespace Nethermind.DataMarketplace.Test.Services
             var ethRequested = await TryRequestEthAsync();
             ethRequested.Should().Be(FaucetResponse.SameAddressAsFaucet);
         }
+        
+        private async Task WaitFor(Func<bool> isConditionMet, string description = "condition to be met")
+        {
+            const int waitInterval = 10;
+            for (int i = 0; i < 10; i++)
+            {
+                if (isConditionMet())
+                {
+                    return;
+                }
+
+                TestContext.WriteLine($"({i}) Waiting {waitInterval} for {description}");
+                await Task.Delay(waitInterval);
+            }
+        }
 
         [Test]
         public async Task request_eth_should_fail_for_zero_value()
@@ -210,7 +225,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             _faucet = new NdmFaucet(_blockchainBridge, _repository, _faucetAddress, _maxValue,
                 _dailyRequestsTotalValueEth, _enabled, _timestamper, _wallet, _logManager);
-            await Task.Delay(1);
+            await WaitFor(() => _faucet.IsInitialized);
         }
 
         private Task<FaucetResponse> TryRequestEthAsync() => _faucet.TryRequestEthAsync(_host, _address, _value);

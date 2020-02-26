@@ -19,6 +19,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Core.Repositories;
+using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
 
@@ -35,7 +36,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositori
             _rlpDecoder = rlpDecoder;
         }
 
-        public Task<NdmConfig> GetAsync(string id) => Task.FromResult(Decode(_database.Get(Keccak.Compute(id))));
+        public Task<NdmConfig?> GetAsync(string id) => Task.FromResult(Decode(_database.Get(Keccak.Compute(id))));
 
         public Task AddAsync(NdmConfig config) => AddOrUpdateAsync(config);
 
@@ -43,13 +44,13 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositori
 
         private Task AddOrUpdateAsync(NdmConfig config)
         {
-            var rlp = _rlpDecoder.Encode(config);
+            Serialization.Rlp.Rlp rlp = _rlpDecoder.Encode(config);
             _database.Set(Keccak.Compute(config.Id), rlp.Bytes);
 
             return Task.CompletedTask;
         }
 
-        private NdmConfig Decode(byte[] bytes)
+        private NdmConfig? Decode(byte[] bytes)
             => bytes is null
                 ? null
                 : _rlpDecoder.Decode(bytes.AsRlpStream());

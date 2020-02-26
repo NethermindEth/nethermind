@@ -17,15 +17,17 @@
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Test.Validators;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Store;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 

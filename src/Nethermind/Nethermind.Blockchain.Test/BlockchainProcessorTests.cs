@@ -15,19 +15,22 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.State.Repositories;
 using Nethermind.Store;
-using Nethermind.Store.Repositories;
+using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test
@@ -114,9 +117,9 @@ namespace Nethermind.Blockchain.Test
             {
                 private ILogger _logger;
                 
-                private HashSet<Keccak> _allowed = new HashSet<Keccak>();
+                private ConcurrentDictionary<Keccak, object> _allowed = new ConcurrentDictionary<Keccak, object>();
 
-                private HashSet<Keccak> _allowedToFail = new HashSet<Keccak>();
+                private ConcurrentDictionary<Keccak, object> _allowedToFail = new ConcurrentDictionary<Keccak, object>();
 
                 public RecoveryStepMock(ILogManager logManager)
                 {
@@ -126,13 +129,13 @@ namespace Nethermind.Blockchain.Test
                 public void Allow(Keccak hash)
                 {
                     _logger.Info($"Allowing {hash} to recover");
-                    _allowed.Add(hash);
+                    _allowed[hash] = new object();
                 }
 
                 public void AllowToFail(Keccak hash)
                 {
                     _logger.Info($"Allowing {hash} to fail recover");
-                    _allowedToFail.Add(hash);
+                    _allowedToFail[hash] = new object();
                 }
 
                 public void RecoverData(Block block)
@@ -146,11 +149,11 @@ namespace Nethermind.Blockchain.Test
 
                     while (true)
                     {
-                        if (!_allowed.Contains(block.Hash))
+                        if (!_allowed.ContainsKey(block.Hash))
                         {
-                            if (_allowedToFail.Contains(block.Hash))
+                            if (_allowedToFail.ContainsKey(block.Hash))
                             {
-                                _allowedToFail.Remove(block.Hash);
+                                _allowedToFail.Remove(block.Hash, out _);
                                 throw new Exception();
                             }
 
@@ -159,7 +162,7 @@ namespace Nethermind.Blockchain.Test
                         }
 
                         block.Header.Author = Address.Zero;
-                        _allowed.Remove(block.Hash);
+                        _allowed.Remove(block.Hash, out _);
                         return;
                     }
                 }
@@ -178,7 +181,7 @@ namespace Nethermind.Blockchain.Test
                 MemDb blockDb = new MemDb();
                 MemDb blockInfoDb = new MemDb();
                 MemDb headersDb = new MemDb();
-                _blockTree = new BlockTree(blockDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainNetSpecProvider.Instance, NullTxPool.Instance, LimboLogs.Instance);
+                _blockTree = new BlockTree(blockDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainNetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
                 _blockProcessor = new BlockProcessorMock(_logManager);
                 _recoveryStep = new RecoveryStepMock(_logManager);
                 _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, LimboLogs.Instance, true);

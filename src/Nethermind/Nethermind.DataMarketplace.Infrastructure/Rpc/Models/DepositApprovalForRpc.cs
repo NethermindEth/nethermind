@@ -22,14 +22,14 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
 {
     public class DepositApprovalForRpc
     {
-        public Keccak Id { get; set; }
-        public Keccak AssetId { get; set; }
-        public string AssetName { get; set; }
-        public string Kyc { get; set; }
-        public Address Consumer { get; set; }
-        public Address Provider { get; set; }
-        public ulong Timestamp { get; set; }
-        public string State { get; set; }
+        public Keccak? Id { get; set; }
+        public Keccak? AssetId { get; set; }
+        public string? AssetName { get; set; }
+        public string? Kyc { get; set; }
+        public Address? Consumer { get; set; }
+        public Address? Provider { get; set; }
+        public ulong? Timestamp { get; set; }
+        public string? State { get; set; }
 
         public DepositApprovalForRpc()
         {

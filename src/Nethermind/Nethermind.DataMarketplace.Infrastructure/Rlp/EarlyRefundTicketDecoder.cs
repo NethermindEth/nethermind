@@ -16,13 +16,14 @@
 
 using System.IO;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
-    public class EarlyRefundTicketDecoder : IRlpDecoder<EarlyRefundTicket>
+    public class EarlyRefundTicketDecoder : IRlpDecoder<EarlyRefundTicket?>
     {
         public static void Init()
         {
@@ -38,23 +39,23 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             Serialization.Rlp.Rlp.Decoders[typeof(EarlyRefundTicket)] = new EarlyRefundTicketDecoder();
         }
 
-        public EarlyRefundTicket Decode(RlpStream rlpStream,
+        public EarlyRefundTicket? Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = rlpStream.ReadSequenceLength();
+            int sequenceLength = rlpStream.ReadSequenceLength();
             if (sequenceLength == 0)
             {
                 return null;
             }
-
-            var depositId = rlpStream.DecodeKeccak();
-            var claimableAfter = rlpStream.DecodeUInt();
-            var signature = SignatureDecoder.DecodeSignature(rlpStream);
+            
+            Keccak depositId = rlpStream.DecodeKeccak();
+            uint claimableAfter = rlpStream.DecodeUInt();
+            Signature signature = SignatureDecoder.DecodeSignature(rlpStream);
 
             return new EarlyRefundTicket(depositId, claimableAfter, signature);
         }
 
-        public Serialization.Rlp.Rlp Encode(EarlyRefundTicket item,
+        public Serialization.Rlp.Rlp Encode(EarlyRefundTicket? item,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
@@ -70,12 +71,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Serialization.Rlp.Rlp.Encode(item.Signature.S.WithoutLeadingZeros()));
         }
 
-        public void Encode(MemoryStream stream, EarlyRefundTicket item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new System.NotImplementedException();
-        }
-
-        public int GetLength(EarlyRefundTicket item, RlpBehaviors rlpBehaviors)
+        public int GetLength(EarlyRefundTicket? item, RlpBehaviors rlpBehaviors)
         {
             throw new System.NotImplementedException();
         }

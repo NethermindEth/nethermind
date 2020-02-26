@@ -19,6 +19,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Network;
 using NSubstitute;
 using NUnit.Framework;
 

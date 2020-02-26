@@ -23,13 +23,14 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Store;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Ethereum.Test.Base
@@ -37,7 +38,7 @@ namespace Ethereum.Test.Base
     public abstract class BlockchainTestBase
     {
         private static ILogger _logger = new SimpleConsoleLogger();
-        private static ILogManager _logManager = NullLogManager.Instance;
+        private static ILogManager _logManager = LimboLogs.Instance;
 
         [SetUp]
         public void Setup()
@@ -46,7 +47,7 @@ namespace Ethereum.Test.Base
 
         protected void Setup(ILogManager logManager)
         {
-            _logManager = logManager ?? NullLogManager.Instance;
+            _logManager = logManager ?? LimboLogs.Instance;
             _logger = _logManager.GetClassLogger();
         }
         

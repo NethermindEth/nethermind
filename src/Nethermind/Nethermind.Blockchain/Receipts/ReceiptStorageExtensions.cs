@@ -20,13 +20,15 @@ namespace Nethermind.Blockchain.Receipts
 {
     public static class ReceiptStorageExtensions
     {
-        public static TxReceipt[] FindForBlock(this IReceiptStorage receiptStorage, Block block)
+        public static TxReceipt[] FindForBlock(this IReceiptStorage receiptStorage, Block block, IReceiptsRecovery receiptsRecovery)
         {
             TxReceipt[] result = new TxReceipt[block.Body.Transactions.Length];
             for (int i = 0; i < result.Length; i++)
             {
                 result[i] = receiptStorage.Find(block.Body.Transactions[i].Hash);
             }
+
+            receiptsRecovery.TryRecover(block, result);
 
             return result;
         }

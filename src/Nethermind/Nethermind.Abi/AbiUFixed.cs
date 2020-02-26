@@ -80,7 +80,7 @@ namespace Nethermind.Abi
             return (rational, newPosition);
         }
 
-        public override byte[] Encode(object arg, bool packed)
+        public override byte[] Encode(object? arg, bool packed)
         {
             if (arg is BigRational input)
             {

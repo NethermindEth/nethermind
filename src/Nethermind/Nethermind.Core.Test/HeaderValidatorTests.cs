@@ -17,18 +17,21 @@
 using System;
 using System.Numerics;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Mining;
+using Nethermind.Consensus.Mining.Difficulty;
 using Nethermind.Core.Crypto;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Mining;
-using Nethermind.Mining.Difficulty;
-using Nethermind.Store;
-using Nethermind.Store.Repositories;
+using Nethermind.State.Repositories;
+using Nethermind.State;
+using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -47,10 +50,10 @@ namespace Nethermind.Core.Test
         public void Setup()
         {
             DifficultyCalculator calculator = new DifficultyCalculator(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.MainNet));
-            _ethash = new EthashSealValidator(NullLogManager.Instance, calculator, new CryptoRandom(), new Ethash(NullLogManager.Instance));
+            _ethash = new EthashSealValidator(LimboLogs.Instance, calculator, new CryptoRandom(), new Ethash(LimboLogs.Instance));
             _testLogger = new TestLogger();
             var blockInfoDb = new MemDb();
-            BlockTree blockStore = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), FrontierSpecProvider.Instance, Substitute.For<ITxPool>(), NullLogManager.Instance);
+            BlockTree blockStore = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), FrontierSpecProvider.Instance, Substitute.For<ITxPool>(), Substitute.For<IBloomStorage>(), LimboLogs.Instance);
             
             _validator = new HeaderValidator(blockStore, _ethash, new SingleReleaseSpecProvider(Byzantium.Instance, 3), new OneLoggerLogManager(_testLogger));
             _parentBlock = Build.A.Block.WithDifficulty(1).TestObject;

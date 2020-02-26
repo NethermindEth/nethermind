@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.DataMarketplace.Core.Domain;
 
 namespace Nethermind.DataMarketplace.Core.Services
@@ -32,8 +33,8 @@ namespace Nethermind.DataMarketplace.Core.Services
         
         public async Task<TransactionVerifierResult> VerifyAsync(NdmTransaction transaction)
         {
-            var confirmations = 0;
-            var latestBlock = await _blockchainBridge.GetLatestBlockAsync();
+            int confirmations = 0;
+            Block? latestBlock = await _blockchainBridge.GetLatestBlockAsync();
             if (latestBlock is null)
             {
                 return new TransactionVerifierResult(false, 0, _requiredBlockConfirmations);

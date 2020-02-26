@@ -23,6 +23,6 @@ namespace Nethermind.Blockchain.Filters.Topics
     {
         public abstract bool Accepts(Keccak topic);
 
-        public abstract bool Matches(Bloom bloom);
+        public abstract bool Matches(Core.Bloom bloom);
     }
 }

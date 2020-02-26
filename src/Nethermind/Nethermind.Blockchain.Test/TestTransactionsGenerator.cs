@@ -17,13 +17,13 @@
 using System;
 using System.IO;
 using System.Timers;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Test
 {

@@ -22,6 +22,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Repositories;
+using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
 
@@ -38,13 +39,16 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositori
             _rlpDecoder = rlpDecoder;
         }
 
-        public Task<DataDeliveryReceiptDetails> GetAsync(Keccak id)
-            => Task.FromResult(Decode(_database.Get(id)));
-
-        public async Task<IReadOnlyList<DataDeliveryReceiptDetails>> BrowseAsync(Keccak depositId = null,
-            Keccak dataAssetId = null, Keccak sessionId = null)
+        public Task<DataDeliveryReceiptDetails?> GetAsync(Keccak id)
         {
-            var receiptsBytes = _database.GetAll();
+            byte[] bytes = _database.Get(id);
+            return bytes == null ? Task.FromResult<DataDeliveryReceiptDetails?>(null) : Task.FromResult<DataDeliveryReceiptDetails?>(Decode(bytes));
+        }
+            
+
+        public async Task<IReadOnlyList<DataDeliveryReceiptDetails>> BrowseAsync(Keccak? depositId = null, Keccak? dataAssetId = null, Keccak? sessionId = null)
+        {
+            var receiptsBytes = _database.GetAll().ToArray();
             if (receiptsBytes.Length == 0)
             {
                 return Array.Empty<DataDeliveryReceiptDetails>();
@@ -89,8 +93,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositori
         }
 
         private DataDeliveryReceiptDetails Decode(byte[] bytes)
-            => bytes is null
-                ? null
-                : _rlpDecoder.Decode(bytes.AsRlpStream());
+            => _rlpDecoder.Decode(bytes.AsRlpStream());
     }
 }

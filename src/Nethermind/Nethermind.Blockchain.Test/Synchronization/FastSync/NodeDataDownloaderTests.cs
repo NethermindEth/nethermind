@@ -19,21 +19,22 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.VisualStudio.TestPlatform.ObjectModel;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Store;
-using Nethermind.Store.BeamSync;
-using NSubstitute;
+using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization.FastSync
@@ -103,12 +104,12 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
 
                 if (!skipLogs) _logger.Info("-------------------- REMOTE --------------------");
                 TreeDumper dumper = new TreeDumper();
-                dbContext.RemoteStateTree.Accept(dumper, dbContext.RemoteStateTree.RootHash);
+                dbContext.RemoteStateTree.Accept(dumper, dbContext.RemoteStateTree.RootHash, true);
                 string remote = dumper.ToString();
                 if (!skipLogs) _logger.Info(remote);
                 if (!skipLogs) _logger.Info("-------------------- LOCAL --------------------");
                 dumper.Reset();
-                dbContext.LocalStateTree.Accept(dumper, dbContext.LocalStateTree.RootHash);
+                dbContext.LocalStateTree.Accept(dumper, dbContext.LocalStateTree.RootHash, true);
                 string local = dumper.ToString();
                 if (!skipLogs) _logger.Info(local);
 
@@ -116,7 +117,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
                 {
                     Assert.AreEqual(remote, local, $"{remote}{Environment.NewLine}{local}");
                     TrieStatsCollector collector = new TrieStatsCollector(dbContext.LocalCodeDb, new OneLoggerLogManager(_logger));
-                    dbContext.LocalStateTree.Accept(collector, dbContext.LocalStateTree.RootHash);
+                    dbContext.LocalStateTree.Accept(collector, dbContext.LocalStateTree.RootHash, true);
                     Assert.AreEqual(0, collector.Stats.MissingCode);
                 }
 
@@ -220,6 +221,8 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
                 throw new NotImplementedException();
             }
 
+            public PublicKey Id => Node.Id;
+
             public void SendNewTransaction(Transaction transaction)
             {
                 throw new NotImplementedException();
@@ -291,7 +294,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             dbContext.RemoteStateDb.Commit();
 
             ExecutorMock mock = new ExecutorMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
-            mock.SetFilter(((MemDb) dbContext.RemoteStateDb._db).Keys.Take(((MemDb) dbContext.RemoteStateDb._db).Keys.Count - 4).Select(k => new Keccak(k)).ToArray());
+            mock.SetFilter(((MemDb) dbContext.RemoteStateDb.Innermost).Keys.Take(((MemDb) dbContext.RemoteStateDb.Innermost).Keys.Count - 4).Select(k => new Keccak(k)).ToArray());
 
             dbContext.CompareTrees("BEFORE FIRST SYNC", true);
 
@@ -434,7 +437,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             dbContext.RemoteStateDb.Commit();
 
             ExecutorMock mock = new ExecutorMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
-            mock.SetFilter(((MemDb) dbContext.RemoteStateDb._db).Keys.Take(((MemDb) dbContext.RemoteStateDb._db).Keys.Count - 1).Select(k => new Keccak(k)).ToArray());
+            mock.SetFilter(((MemDb) dbContext.RemoteStateDb.Innermost).Keys.Take(((MemDb) dbContext.RemoteStateDb.Innermost).Keys.Count - 1).Select(k => new Keccak(k)).ToArray());
 
             dbContext.CompareTrees("BEFORE FIRST SYNC");
 

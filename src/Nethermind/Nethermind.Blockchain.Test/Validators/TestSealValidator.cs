@@ -16,8 +16,8 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Mining;
 
 namespace Nethermind.Blockchain.Test.Validators
 {

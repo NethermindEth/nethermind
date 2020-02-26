@@ -22,7 +22,7 @@ namespace Nethermind.DataMarketplace.Core.Services
 {
     public interface IProxyService
     {
-        Task<NdmProxy> GetAsync();
+        Task<NdmProxy?> GetAsync();
         Task SetAsync(IEnumerable<string> urls);
     }
 }

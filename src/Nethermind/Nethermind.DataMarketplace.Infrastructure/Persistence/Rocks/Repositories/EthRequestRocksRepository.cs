@@ -20,6 +20,7 @@ using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Repositories;
+using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
@@ -37,12 +38,12 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositori
             _rlpDecoder = rlpDecoder;
         }
         
-        public Task<EthRequest> GetLatestAsync(string host)
+        public Task<EthRequest?> GetLatestAsync(string host)
         {
-            var requestsBytes = _database.GetAll();
+            var requestsBytes = _database.GetAll().ToArray();
             if (requestsBytes.Length == 0)
             {
-                return Task.FromResult<EthRequest>(null);
+                return Task.FromResult<EthRequest?>(null);
             }
 
             var requests = new EthRequest[requestsBytes.Length];
@@ -51,7 +52,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositori
                 requests[i] = Decode(requestsBytes[i]);
             }
 
-            return Task.FromResult(requests.FirstOrDefault(r => r.Host == host));
+            return Task.FromResult<EthRequest?>(requests.FirstOrDefault(r => r.Host == host));
         }
 
         public Task AddAsync(EthRequest request) => AddOrUpdateAsync(request);
@@ -60,7 +61,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositori
         
         public Task<UInt256> SumDailyRequestsTotalValueAsync(DateTime date)
         {
-            var requestsBytes = _database.GetAll();
+            var requestsBytes = _database.GetAll().ToArray();
             if (requestsBytes.Length == 0)
             {
                 return Task.FromResult<UInt256>(0);
@@ -88,8 +89,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositori
         }
 
         private EthRequest Decode(byte[] bytes)
-            => bytes is null
-                ? null
-                : _rlpDecoder.Decode(bytes.AsRlpStream());
+            => _rlpDecoder.Decode(bytes.AsRlpStream());
     }
 }

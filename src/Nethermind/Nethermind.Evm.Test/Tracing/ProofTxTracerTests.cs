@@ -18,6 +18,7 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing.Proofs;
+using Nethermind.State;
 using Nethermind.Store;
 using NUnit.Framework;
 

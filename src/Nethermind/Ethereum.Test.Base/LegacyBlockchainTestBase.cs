@@ -25,26 +25,30 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.TxPools;
-using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Mining;
+using Nethermind.Consensus.Mining.Difficulty;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Logging;
-using Nethermind.Mining;
-using Nethermind.Mining.Difficulty;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Store;
-using Nethermind.Store.Repositories;
+using Nethermind.State;
+using Nethermind.State.Repositories;
+using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Storages;
 using NUnit.Framework;
 
 namespace Ethereum.Test.Base
@@ -52,7 +56,7 @@ namespace Ethereum.Test.Base
     public abstract class LegacyBlockchainTestBase
     {
         private static ILogger _logger = new SimpleConsoleLogger();
-        private static ILogManager _logManager = NullLogManager.Instance;
+        private static ILogManager _logManager = LimboLogs.Instance;
         private static ISealValidator Sealer { get; }
         private static DifficultyCalculatorWrapper DifficultyCalculator { get; }
 
@@ -86,7 +90,7 @@ namespace Ethereum.Test.Base
 
         protected void Setup(ILogManager logManager)
         {
-            _logManager = logManager ?? NullLogManager.Instance;
+            _logManager = logManager ?? LimboLogs.Instance;
             _logger = _logManager.GetClassLogger();
         }
 
@@ -136,7 +140,7 @@ namespace Ethereum.Test.Base
             ITxPool transactionPool = new TxPool(NullTxStorage.Instance, new Timestamper(), ecdsa, specProvider, new TxPoolConfig(), stateProvider, _logManager);
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
             var blockInfoDb = new MemDb();
-            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, transactionPool, _logManager);
+            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, transactionPool, NullBloomStorage.Instance,  _logManager);
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, _logManager);
             ITxValidator txValidator = new TxValidator(ChainId.MainNet);
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);

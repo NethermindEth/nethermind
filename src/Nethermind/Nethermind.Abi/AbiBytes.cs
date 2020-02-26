@@ -51,7 +51,7 @@ namespace Nethermind.Abi
             return (data.Slice(position, Length), position + (packed ? Length : MaxLength));
         }
 
-        public override byte[] Encode(object arg, bool packed)
+        public override byte[] Encode(object? arg, bool packed)
         {
             if (arg is byte[] input)
             {

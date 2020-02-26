@@ -23,7 +23,7 @@ namespace Nethermind.DataMarketplace.Core.Repositories
 {
     public interface IEthRequestRepository
     {
-        Task<EthRequest> GetLatestAsync(string host);
+        Task<EthRequest?> GetLatestAsync(string host);
         Task AddAsync(EthRequest request);
         Task UpdateAsync(EthRequest request);
         Task<UInt256> SumDailyRequestsTotalValueAsync(DateTime date);

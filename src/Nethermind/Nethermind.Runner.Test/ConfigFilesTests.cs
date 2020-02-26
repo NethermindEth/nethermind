@@ -15,21 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
-using System.Net;
 using FluentAssertions;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.EthStats;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc;
-using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.PubSub.Kafka;
-using Nethermind.Stats;
+using Nethermind.Store.Bloom;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test
@@ -542,6 +538,38 @@ namespace Nethermind.Runner.Test
             Assert.True(initConfig.StoreReceipts, nameof(initConfig.StoreReceipts));
 
             Assert.AreEqual(configFile.Replace("cfg", "logs.txt"), initConfig.LogFileName, nameof(initConfig.LogFileName));
+        }
+        
+        
+        [TestCase("ropsten_archive.cfg")]
+        [TestCase("ropsten.cfg")]
+        [TestCase("rinkeby_archive.cfg")]
+        [TestCase("rinkeby.cfg")]
+        [TestCase("goerli_archive.cfg", new [] { 16, 16, 16, 16 })]
+        [TestCase("goerli.cfg", new [] { 16, 16, 16, 16 })]
+        [TestCase("goerli_beam.cfg", new [] { 16, 16, 16, 16 })]
+        [TestCase("mainnet_archive.cfg")]
+        [TestCase("mainnet.cfg")]
+        [TestCase("sokol.cfg", new [] { 16, 16, 16, 16 })]
+        [TestCase("sokol_archive.cfg", new [] { 16, 16, 16, 16 })]
+        [TestCase("sokol_fastsync.cfg", new [] { 16, 16, 16, 16 })]
+        [TestCase("sokol_validator.cfg", null, false)]
+        [TestCase("poacore.cfg", new [] { 16, 16, 16, 16 })]
+        [TestCase("poacore_archive.cfg", new [] { 16, 16, 16, 16 })]
+        [TestCase("poacore_validator.cfg", null, false)]
+        [TestCase("xdai.cfg", new [] { 16, 16, 16 })]
+        [TestCase("xdai_archive.cfg", new [] { 16, 16, 16 })]
+        [TestCase("xdai_validator.cfg", null, false)]
+        [TestCase("volta.cfg")]
+        [TestCase("volta_archive.cfg")]
+        public void Bloom_configs_are_as_expected(string configFile, int[] levels = null, bool index = true)
+        {
+            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+            IBloomConfig bloomConfig = configProvider.GetConfig<IBloomConfig>();
+            bloomConfig.Index.Should().Be(index);
+            bloomConfig.Migration.Should().BeFalse();
+            bloomConfig.MigrationStatistics.Should().BeFalse();
+            bloomConfig.IndexLevelBucketSizes.Should().Equal(levels ?? new BloomConfig().IndexLevelBucketSizes);
         }
 
         private static ConfigProvider GetConfigProviderFromFile(string configFile)

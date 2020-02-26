@@ -16,28 +16,28 @@
 
 using System;
 using System.Collections;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.TxPools;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store;
-using Nethermind.Store.Repositories;
+using Nethermind.State.Repositories;
+using Nethermind.State;
+using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain
 {
@@ -65,6 +65,7 @@ namespace Nethermind.Blockchain
         private readonly ILogger _logger;
         private readonly ISpecProvider _specProvider;
         private readonly ITxPool _txPool;
+        private readonly IBloomStorage _bloomStorage;
         private readonly ISyncConfig _syncConfig;
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
 
@@ -89,8 +90,9 @@ namespace Nethermind.Blockchain
             IChainLevelInfoRepository chainLevelInfoRepository,
             ISpecProvider specProvider,
             ITxPool txPool,
+            IBloomStorage bloomStorage,
             ILogManager logManager)
-            : this(blockDb, headerDb, blockInfoDb, chainLevelInfoRepository, specProvider, txPool, new SyncConfig(), logManager)
+            : this(blockDb, headerDb, blockInfoDb, chainLevelInfoRepository, specProvider, txPool, bloomStorage, new SyncConfig(), logManager)
         {
         }
 
@@ -101,6 +103,7 @@ namespace Nethermind.Blockchain
             IChainLevelInfoRepository chainLevelInfoRepository,
             ISpecProvider specProvider,
             ITxPool txPool,
+            IBloomStorage bloomStorage,
             ISyncConfig syncConfig,
             ILogManager logManager)
         {
@@ -110,6 +113,7 @@ namespace Nethermind.Blockchain
             _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
             _specProvider = specProvider;
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(txPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
 
@@ -137,6 +141,7 @@ namespace Nethermind.Blockchain
             }
 
             if (_logger.IsInfo) _logger.Info($"Block tree initialized, last processed is {Head?.ToString(BlockHeader.Format.Short) ?? "0"}, best queued is {BestSuggestedHeader?.Number.ToString() ?? "0"}, best known is {BestKnownNumber}, lowest inserted header {LowestInsertedHeader?.Number}, body {LowestInsertedBody?.Number}");
+            ThisNodeInfo.AddInfo("Chain        :", $"{Nethermind.Core.ChainId.GetChainName(ChainId)}");
             ThisNodeInfo.AddInfo("Chain head   :", $"{Head?.ToString(BlockHeader.Format.Short) ?? "0"}");
         }
 
@@ -436,6 +441,7 @@ namespace Nethermind.Blockchain
             BlockInfo blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? 0);
             ChainLevelInfo chainLevel = new ChainLevelInfo(true, blockInfo);
             _chainLevelInfoRepository.PersistLevel(header.Number, chainLevel);
+            _bloomStorage.Store(header.Number, header.Bloom);
 
             if (header.Number < (LowestInsertedHeader?.Number ?? long.MaxValue))
             {
@@ -910,11 +916,17 @@ namespace Nethermind.Blockchain
             return childHash;
         }
 
+        public bool IsMainChain(BlockHeader blockHeader) => LoadLevel(blockHeader.Number).MainChainBlock?.BlockHash.Equals(blockHeader.Hash) == true;
+
         public bool IsMainChain(Keccak blockHash)
         {
-            long number = LoadNumberOnly(blockHash);
-            ChainLevelInfo level = LoadLevel(number);
-            return level.MainChainBlock?.BlockHash.Equals(blockHash) == true;
+            BlockHeader header = FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (header == null)
+            {
+                throw new InvalidOperationException($"Not able to retrieve block number for an unknown block {blockHash}");
+            }
+
+            return IsMainChain(header);
         }
 
         public bool WasProcessed(long number, Keccak blockHash)
@@ -993,6 +1005,7 @@ namespace Nethermind.Blockchain
 
         private TaskCompletionSource<object> _dbBatchProcessed;
 
+        [Todo(Improve.MissingFunctionality, "Recalculate bloom storage on reorg.")]
         private void MoveToMain(Block block, BatchWrite batch, bool wasProcessed)
         {
             if (_logger.IsTrace) _logger.Trace($"Moving {block.ToString(Block.Format.Short)} to main");
@@ -1015,6 +1028,7 @@ namespace Nethermind.Blockchain
 
             level.HasBlockOnMainChain = true;
             _chainLevelInfoRepository.PersistLevel(block.Number, level, batch);
+            _bloomStorage.Store(block.Number, block.Bloom);
 
             BlockAddedToMain?.Invoke(this, new BlockEventArgs(block));
 
@@ -1216,18 +1230,6 @@ namespace Nethermind.Blockchain
             }
 
             return _chainLevelInfoRepository.LoadLevel(number);
-        }
-
-        private long LoadNumberOnly(Keccak blockHash)
-        {
-            BlockHeader header = FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            if (header == null)
-            {
-                throw new InvalidOperationException(
-                    $"Not able to retrieve block number for an unknown block {blockHash}");
-            }
-
-            return header.Number;
         }
 
         /// <summary>

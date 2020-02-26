@@ -18,23 +18,23 @@ using System;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Proofs;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.Mining;
-using Nethermind.Store;
+using Nethermind.State;
+using Nethermind.State.Proofs;
 
 namespace Nethermind.Blockchain.Producers
 {
     public abstract class BaseBlockProducer : IBlockProducer
     {
-        protected IBlockchainProcessor Processor { get; }
+        private IBlockchainProcessor Processor { get; }
         protected IBlockTree BlockTree { get; }
         protected IBlockProcessingQueue BlockProcessingQueue { get; }
-        
+
         private readonly ISealer _sealer;
         private readonly IStateProvider _stateProvider;
         private readonly ITimestamper _timestamper;
@@ -55,17 +55,19 @@ namespace Nethermind.Blockchain.Producers
             Processor = processor ?? throw new ArgumentNullException(nameof(processor));
             _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
             BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            BlockProcessingQueue = blockProcessingQueue ?? throw new ArgumentNullException(nameof(blockProcessingQueue)); 
+            BlockProcessingQueue = blockProcessingQueue ?? throw new ArgumentNullException(nameof(blockProcessingQueue));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
-        
+
         public abstract void Start();
 
         public abstract Task StopAsync();
-        
-        protected virtual async ValueTask TryProduceNewBlock(CancellationToken token)
+
+        private object _newBlockLock = new object();
+
+        protected async Task TryProduceNewBlock(CancellationToken token)
         {
             BlockHeader parentHeader = BlockTree.Head;
             if (parentHeader == null)
@@ -78,13 +80,18 @@ namespace Nethermind.Blockchain.Producers
             }
         }
 
-        protected ValueTask ProduceNewBlock(BlockHeader parent, CancellationToken token)
+        private Task ProduceNewBlock(BlockHeader parent, CancellationToken token)
         {
-            _stateProvider.StateRoot = parent.StateRoot;
-            
-            Block block = PrepareBlock(parent);
-            if (PreparedBlockCanBeMined(block))
+            lock (_newBlockLock)
             {
+                _stateProvider.StateRoot = parent.StateRoot;
+
+                Block block = PrepareBlock(parent);
+                if (!PreparedBlockCanBeMined(block))
+                {
+                    return Task.CompletedTask;
+                }
+
                 Block processedBlock = Processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
                 if (processedBlock == null)
                 {
@@ -116,9 +123,9 @@ namespace Nethermind.Blockchain.Producers
                         }
                     }, token);
                 }
-            }
 
-            return default;
+                return Task.CompletedTask;
+            }
         }
 
         protected virtual bool PreparedBlockCanBeMined(Block block)
@@ -143,7 +150,7 @@ namespace Nethermind.Blockchain.Producers
                 difficulty,
                 parent.Number + 1,
                 parent.GasLimit,
-                UInt256.Max( parent.Timestamp + 1, Timestamper.Default.EpochSeconds),
+                UInt256.Max(parent.Timestamp + 1, Timestamper.Default.EpochSeconds),
                 Encoding.UTF8.GetBytes("Nethermind"))
             {
                 TotalDifficulty = parent.TotalDifficulty + difficulty

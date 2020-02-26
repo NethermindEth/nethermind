@@ -46,8 +46,8 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
 
             _eciesCipher = new EciesCipher(_trueCryptoRandom); // TODO: provide a separate test random with specific IV and epehemeral key for testing
 
-            _initiatorService = new HandshakeService(_messageSerializationService, _eciesCipher, _testRandom, _ecdsa, NetTestVectors.StaticKeyA, NullLogManager.Instance);
-            _recipientService = new HandshakeService(_messageSerializationService, _eciesCipher, _testRandom, _ecdsa, NetTestVectors.StaticKeyB, NullLogManager.Instance);
+            _initiatorService = new HandshakeService(_messageSerializationService, _eciesCipher, _testRandom, _ecdsa, NetTestVectors.StaticKeyA, LimboLogs.Instance);
+            _recipientService = new HandshakeService(_messageSerializationService, _eciesCipher, _testRandom, _ecdsa, NetTestVectors.StaticKeyB, LimboLogs.Instance);
 
             _initiatorHandshake = new EncryptionHandshake();
             _recipientHandshake = new EncryptionHandshake();
@@ -56,7 +56,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             _ack = null;
         }
 
-        private readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(RopstenSpecProvider.Instance, NullLogManager.Instance); // TODO: separate general crypto signer from Ethereum transaction signing
+        private readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(RopstenSpecProvider.Instance, LimboLogs.Instance); // TODO: separate general crypto signer from Ethereum transaction signing
 
         private IMessageSerializationService _messageSerializationService;
 

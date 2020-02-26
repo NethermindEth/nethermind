@@ -19,13 +19,15 @@ using System.Collections.Generic;
 using System.Linq;
 using Castle.Components.DictionaryAdapter;
 using FluentAssertions;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Store;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using NUnit.Framework.Internal;
@@ -99,7 +101,7 @@ namespace Nethermind.Blockchain.Test
                         Build.A.Transaction.WithSenderAddress(TestItem.AddressC).WithNonce(3).WithValue(500).WithGasPrice(20).WithGasLimit(9).TestObject,
                         Build.A.Transaction.WithSenderAddress(TestItem.AddressC).WithNonce(4).WithValue(500).WithGasPrice(20).WithGasLimit(9).TestObject,
                     },
-                    GasLimit = 10000
+                    GasLimit = 10000000
                 };
                 complexCase.ExpectedSelectedTransactions.AddRange(new[] {3, 4, 0, 2, 7, 1 }.Select(i => complexCase.Transactions[i]));
                 yield return new TestCaseData(complexCase).SetName("Complex case");
@@ -109,7 +111,7 @@ namespace Nethermind.Blockchain.Test
         [TestCaseSource(nameof(ProperTransactionsSelectedTestCases))]
         public void Proper_transactions_selected(ProperTransactionsSelectedTestCase testCase)
         {
-            var stateProvider = new StateProvider(new StateDb(new MemDb()), new MemDb(), NullLogManager.Instance);
+            var stateProvider = new StateProvider(new StateDb(new MemDb()), new MemDb(), LimboLogs.Instance);
 
             void SetAccountStates()
             {
@@ -129,7 +131,7 @@ namespace Nethermind.Blockchain.Test
             transactionPool.GetPendingTransactions().Returns(testCase.Transactions.ToArray());
             SetAccountStates();
 
-            var selector = new PendingTxSelector(transactionPool, stateProvider, NullLogManager.Instance, testCase.MinGasPriceForMining);
+            var selector = new PendingTxSelector(transactionPool, stateProvider, LimboLogs.Instance, testCase.MinGasPriceForMining);
 
             var selectedTransactions = selector.SelectTransactions(testCase.GasLimit);
             selectedTransactions.Should().BeEquivalentTo(testCase.ExpectedSelectedTransactions);
@@ -155,7 +157,7 @@ namespace Nethermind.Blockchain.Test
                     Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1).WithValue(10).WithGasPrice(10).WithGasLimit(10).TestObject,
                     Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).WithValue(10).WithGasPrice(10).WithGasLimit(10).TestObject
                 },
-                GasLimit = 1000
+                GasLimit = 10000000
             };
     }
 }

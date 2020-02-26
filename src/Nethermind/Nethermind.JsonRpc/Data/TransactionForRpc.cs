@@ -38,8 +38,7 @@ namespace Nethermind.JsonRpc.Data
             Value = transaction.Value;
             GasPrice = transaction.GasPrice;
             Gas = transaction.GasLimit;
-            Input = transaction.Init;
-            Data = transaction.Data;
+            Input = Data = transaction.Data ?? transaction.Init;
             R = transaction.Signature?.R;
             S = transaction.Signature?.S;
             V = (UInt256?) transaction.Signature?.V;
@@ -51,7 +50,6 @@ namespace Nethermind.JsonRpc.Data
         }
 
         public Keccak Hash { get; set; }
-        
         public UInt256? Nonce { get; set; }
         
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
@@ -61,7 +59,7 @@ namespace Nethermind.JsonRpc.Data
         public long? BlockNumber { get; set; }
         
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        public int? TransactionIndex { get; set; }
+        public long? TransactionIndex { get; set; }
         public Address From { get; set; }
         
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
@@ -69,8 +67,6 @@ namespace Nethermind.JsonRpc.Data
         public UInt256? Value { get; set; }
         public UInt256? GasPrice { get; set; }
         public long? Gas { get; set; }
-        
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public byte[] Data { get; set; }
         
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
@@ -84,8 +80,8 @@ namespace Nethermind.JsonRpc.Data
         public Transaction ToTransactionWithDefaults()
         {
             Transaction tx = new Transaction();
-            tx.GasLimit = (long)(Gas ?? 90000);
-            tx.GasPrice = (GasPrice ?? 20.GWei());
+            tx.GasLimit = Gas ?? 90000;
+            tx.GasPrice = GasPrice ?? 20.GWei();
             tx.Nonce = (ulong)(Nonce ?? 0); // here pick the last nonce?
             tx.To = To;
             tx.SenderAddress = From;

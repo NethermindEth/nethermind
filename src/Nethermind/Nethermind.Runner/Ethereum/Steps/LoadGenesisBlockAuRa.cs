@@ -32,17 +32,22 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        protected override void Load(Keccak expectedGenesisHash)
+        protected override void Load()
         {
             CreateSystemAccounts();
-            base.Load(expectedGenesisHash);
+            base.Load();
         }
         
         private void CreateSystemAccounts()
         {
+            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
+            
             bool hasConstructorAllocation = _context.ChainSpec.Allocations.Values.Any(a => a.Constructor != null);
             if (hasConstructorAllocation)
             {
+                if (_context.StateProvider == null) throw new StepDependencyException(nameof(_context.StateProvider));
+                if (_context.StorageProvider == null) throw new StepDependencyException(nameof(_context.StorageProvider));
+
                 _context.StateProvider.CreateAccount(Address.Zero, UInt256.Zero);
                 _context.StorageProvider.Commit();
                 _context.StateProvider.Commit(Homestead.Instance);

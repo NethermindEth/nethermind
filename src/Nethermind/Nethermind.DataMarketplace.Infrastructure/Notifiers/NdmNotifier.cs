@@ -31,7 +31,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Notifiers
         }
 
         public Task NotifyAsync(Notification notification)
-            => _webSocketsModule?.SendAsync(new WebSocketsMessage(notification.Type, notification.Client,
+            => _webSocketsModule.SendAsync(new WebSocketsMessage(notification.Type, notification.Client,
                 notification.Data));
     }
 }

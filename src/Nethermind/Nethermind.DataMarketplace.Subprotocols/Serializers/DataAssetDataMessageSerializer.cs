@@ -14,7 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Extensions;
+using System.IO;
+using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
@@ -35,7 +36,12 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
         {
             var context = bytes.AsRlpStream();
             context.ReadSequenceLength();
-            var depositId = context.DecodeKeccak();
+            Keccak depositId = context.DecodeKeccak();
+            if (depositId == null)
+            {
+                throw new InvalidDataException($"{nameof(DataAssetDataMessage)}.{nameof(DataAssetDataMessage.DepositId)} cannot be null");
+            }
+
             var client = context.DecodeString();
             var data = context.DecodeString();
             var usage = context.DecodeUInt();

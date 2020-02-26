@@ -28,7 +28,7 @@ namespace Nethermind.Evm
     {
         private static List<Address> _emptyDestroyList = new List<Address>(0);
         private static List<LogEntry> _emptyLogs = new List<LogEntry>(0);
-        
+
         public TransactionSubstate(string error)
         {
             Error = error;
@@ -37,7 +37,7 @@ namespace Nethermind.Evm
             Logs = _emptyLogs;
             ShouldRevert = false;
         }
-        
+
         public TransactionSubstate(
             byte[] output,
             long refund,
@@ -63,7 +63,14 @@ namespace Nethermind.Evm
                     }
                     catch (Exception)
                     {
-                        // ignored
+                        try
+                        {
+                            Error = "revert: " + Output.ToHexString(true);
+                        }
+                        catch
+                        {
+                            // ignore
+                        }
                     }
                 }
             }
@@ -74,11 +81,11 @@ namespace Nethermind.Evm
         }
 
         public bool IsError => Error != null && !ShouldRevert;
-        
+
         public string Error { get; }
-        
+
         public byte[] Output { get; }
-        
+
         public bool ShouldRevert { get; }
 
         public long Refund { get; }

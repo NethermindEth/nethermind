@@ -25,7 +25,7 @@ namespace Nethermind.DataMarketplace.Consumers.Providers
 {
     public interface IProviderService
     {
-        INdmPeer GetPeer(Address address);
+        INdmPeer? GetPeer(Address address);
         IEnumerable<INdmPeer> GetPeers();
         Task<IReadOnlyList<ProviderInfo>> GetKnownAsync();
         void Add(INdmPeer peer);

@@ -138,7 +138,7 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
                 consumedUnitsFromProvider, consumedUnits, graceUnits);
         }
         
-        private async Task<(ConsumerSession session, DepositDetails deposit)> TryGetSessionAndDepositAsync(
+        private async Task<(ConsumerSession? session, DepositDetails? deposit)> TryGetSessionAndDepositAsync(
             Keccak depositId)
         {
             var session = _sessionService.GetActive(depositId);
