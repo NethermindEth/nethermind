@@ -36,5 +36,12 @@ namespace Nethermind.Runner
         public bool StoreReceipts { get; set; } = true;
         public DiagnosticMode DiagnosticMode { get; set; } = DiagnosticMode.None;
         public string RpcDbUrl { get; set; } = String.Empty;
+
+        [Obsolete("Use DiagnosticMode with MemDb instead")]
+        public bool UseMemDb
+        {
+            get => DiagnosticMode == DiagnosticMode.MemDb;
+            set => DiagnosticMode = DiagnosticMode.MemDb;
+        }
     }
 }
