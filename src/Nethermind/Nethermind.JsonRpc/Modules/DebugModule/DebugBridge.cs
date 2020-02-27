@@ -74,9 +74,9 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return _blockTree.FindLevel(number);
         }
         
-        public void DeleteChainSlice(long startNumber, long endNumber)
+        public void DeleteChainSlice(long startNumber)
         {
-            _blockTree.DeleteChainSlice(startNumber, endNumber);
+            _blockTree.DeleteChainSlice(startNumber);
         }
         
         public GethLikeTxTrace GetTransactionTrace(Keccak transactionHash, GethTraceOptions gethTraceOptions = null)

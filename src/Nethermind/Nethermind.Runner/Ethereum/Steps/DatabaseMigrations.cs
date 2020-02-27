@@ -195,6 +195,31 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 IEnumerable<BlockHeader> GetHeadersForMigration()
                 {
+                    bool TryGetMainChainBlockHashFromLevel(long number, out Keccak blockHash)
+                    {
+                        using var batch = chainLevelInfoRepository.StartBatch();
+                        var level = chainLevelInfoRepository.LoadLevel(number);
+                        if (level != null)
+                        {
+                            if (!level.HasBlockOnMainChain)
+                            {
+                                if (level.BlockInfos.Length > 0)
+                                {
+                                    level.HasBlockOnMainChain = true;
+                                    chainLevelInfoRepository.PersistLevel(number, level);
+                                }
+                            }
+                                
+                            blockHash = level.MainChainBlock?.BlockHash;
+                            return blockHash != null;
+                        }
+                        else
+                        {
+                            blockHash = null;
+                            return false;
+                        }
+                    }
+                    
                     for (long i = from; i <= to; i++)
                     {
                         if (token.IsCancellationRequested)
@@ -205,23 +230,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                         }
 
                         var level = chainLevelInfoRepository.LoadLevel(i);
-                        if (level == null)
+                        if (TryGetMainChainBlockHashFromLevel(i, out var blockHash))
                         {
-                            yield return GetMissingBLockHeader(i);
+                            var header = blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
+                            yield return header ?? GetMissingBLockHeader(i);
                         }
                         else
                         {
-                            if (!level.HasBlockOnMainChain)
-                            {
-                                if (level.BlockInfos.Length > 0)
-                                {
-                                    level.HasBlockOnMainChain = true;
-                                    chainLevelInfoRepository.PersistLevel(i, level);
-                                }
-                            }
-                        
-                            var header = blockTree.FindHeader(level.MainChainBlock.BlockHash, BlockTreeLookupOptions.None);
-                            yield return header ?? GetMissingBLockHeader(i);
+                            yield return GetMissingBLockHeader(i);
                         }
 
                         _progress.Update(++synced);
