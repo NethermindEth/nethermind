@@ -104,15 +104,16 @@ namespace Nethermind.Blockchain
         }
 
         public int DeleteChainSlice(in long startNumber, long? endNumber = null)
-        {           
-            if (endNumber == null)
+        {
+            var bestKnownNumber = BestKnownNumber;
+            if (endNumber == null || endNumber == bestKnownNumber)
             {
                 if (Head?.Number > 0)
                 {
                     if (Head.Number < startNumber)
                     {
                         const long searchLimit = 2;
-                        long endSearch = Math.Min(BestKnownNumber, startNumber + searchLimit - 1);
+                        long endSearch = Math.Min(bestKnownNumber, startNumber + searchLimit - 1);
                         
                         IEnumerable<BlockHeader> GetPotentiallyCorruptedBlocks(long start)
                         {
@@ -136,7 +137,7 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} cannot {nameof(DeleteChainSlice)} if {nameof(Head)} is not past Genesis.");
             }
 
-            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteChainSlice)} calls with {nameof(endNumber)} specified.");
+            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteChainSlice)} calls with {nameof(endNumber)} other than {nameof(BestKnownNumber)} specified.");
 
         }
 

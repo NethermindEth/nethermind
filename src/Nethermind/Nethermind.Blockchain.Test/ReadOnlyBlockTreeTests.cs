@@ -35,10 +35,10 @@ namespace Nethermind.Blockchain.Test
             _blockTree = new ReadOnlyBlockTree(_innerBlockTree);            
         }
         
-        [Test]
-        public void DeleteChainSlice_throws_when_endNumber_specified()
+        [TestCase]
+        public void DeleteChainSlice_throws_when_endNumber_other_than_bestKnownNumber()
         {
-            Action action = () => _blockTree.DeleteChainSlice(0);
+            Action action = () => _blockTree.DeleteChainSlice(0, 10);
             action.Should().Throw<InvalidOperationException>();
         }
         
