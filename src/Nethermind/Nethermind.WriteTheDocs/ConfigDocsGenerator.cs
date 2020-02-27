@@ -29,7 +29,7 @@ namespace Nethermind.WriteTheDocs
         private static List<string> _assemblyNames = new List<string>
         {
             "Nethermind.Blockchain",
-            "Nethermind.Clique",
+            "Nethermind.Consensus.Clique",
             "Nethermind.Db",
             "Nethermind.EthStats",
             "Nethermind.JsonRpc",

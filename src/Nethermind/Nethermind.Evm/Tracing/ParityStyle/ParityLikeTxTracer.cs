@@ -21,7 +21,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Store;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing.ParityStyle
 {
@@ -249,7 +249,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress.Length}");
             }
 
-            _trace.Output = Bytes.Empty;
+            _trace.Output = output;
             
             // quick tx fail (before execution)
             if (_trace.Action == null)
@@ -259,8 +259,9 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 _trace.Action.To = _tx.To;
                 _trace.Action.Value = _tx.Value;
                 _trace.Action.Input = _tx.Data;
-                _trace.Action.Gas = (long)_tx.GasLimit;
+                _trace.Action.Gas = _tx.GasLimit;
                 _trace.Action.CallType = _tx.IsMessageCall ? "call" : "init";
+                _trace.Action.Error = error;
             }
         }
 

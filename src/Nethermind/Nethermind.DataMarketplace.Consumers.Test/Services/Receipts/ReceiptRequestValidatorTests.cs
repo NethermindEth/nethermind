@@ -33,7 +33,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
         [SetUp]
         public void Setup()
         {
-            _validator = new ReceiptRequestValidator(NullLogManager.Instance);
+            _validator = new ReceiptRequestValidator(LimboLogs.Instance);
         }
         
         [Test]

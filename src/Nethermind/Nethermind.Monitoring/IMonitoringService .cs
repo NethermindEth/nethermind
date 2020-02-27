@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Reflection.Metadata;
 using System.Threading.Tasks;
 
 namespace Nethermind.Monitoring

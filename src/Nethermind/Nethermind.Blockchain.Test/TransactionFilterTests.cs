@@ -17,8 +17,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
-using Nethermind.Blockchain.TxPools;
-using Nethermind.Blockchain.TxPools.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -27,6 +25,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Filters;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test
@@ -42,7 +42,7 @@ namespace Nethermind.Blockchain.Test
         public void Setup()
         {
             _specProvider = RopstenSpecProvider.Instance;
-            _ethereumEcdsa = new EthereumEcdsa(_specProvider, NullLogManager.Instance);
+            _ethereumEcdsa = new EthereumEcdsa(_specProvider, LimboLogs.Instance);
         }
 
         [Test]

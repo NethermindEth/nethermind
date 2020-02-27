@@ -14,12 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.IO;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
+using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.Store;
@@ -61,6 +64,9 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 wallet,
                 readOnlyTxProcessingEnv.TransactionProcessor,
                 services.Ecdsa,
+                services.BloomStorage,
+                new ReceiptsRecovery(),
+                logManager,
                 jsonRpcConfig.FindLogBlockDepthLimit);
             var dataAssetRlpDecoder = new DataAssetDecoder();
             var encoder = new AbiEncoder();
@@ -68,7 +74,12 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             INdmBlockchainBridge ndmBlockchainBridge;
             if (config.ProxyEnabled)
             {
-                services.JsonRpcClientProxy.SetUrls(config.JsonRpcUrlProxies);
+                if (config.JsonRpcUrlProxies == null || services.EthJsonRpcClientProxy == null)
+                {
+                    throw new InvalidDataException("JSON RPC proxy is enabled but the proxies were not initialized properly.");
+                }
+                
+                services.JsonRpcClientProxy!.SetUrls(config.JsonRpcUrlProxies!);
                 ndmBlockchainBridge = new NdmBlockchainBridgeProxy(services.EthJsonRpcClientProxy);
             }
             else

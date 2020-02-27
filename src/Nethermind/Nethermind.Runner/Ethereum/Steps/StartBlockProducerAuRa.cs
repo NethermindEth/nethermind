@@ -15,9 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Abi;
-using Nethermind.AuRa;
-using Nethermind.AuRa.Config;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Store;
 
@@ -35,7 +37,11 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected override void BuildProducer()
         {
-            if (_context.Logger.IsWarn) _context.Logger.Warn("Starting AuRa block producer & sealer");
+            if (_context.NodeKey == null) throw new StepDependencyException(nameof(_context.NodeKey));
+            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
+            
+            ILogger logger = _context.LogManager.GetClassLogger();
+            if (logger.IsWarn) logger.Warn("Starting AuRa block producer & sealer");
             
             IAuRaStepCalculator stepCalculator = new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper);
             BlockProducerContext producerContext = GetProducerChain();
@@ -56,6 +62,10 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected override BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, IReadOnlyDbProvider readOnlyDbProvider)
         {
+            if (_context.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_context.RewardCalculatorSource));
+            if (_context.ValidatorStore == null) throw new StepDependencyException(nameof(_context.ValidatorStore));
+            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
+            
             var validator = new AuRaValidatorProcessorFactory(
                     readOnlyTxProcessingEnv.StateProvider,
                     new AbiEncoder(),

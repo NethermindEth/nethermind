@@ -35,11 +35,12 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo.Repositori
             _collectionName = collectionName;
         }
 
-        public Task<DataDeliveryReceiptDetails> GetAsync(Keccak id)
-            => Receipts.Find(c => c.Id == id).FirstOrDefaultAsync();
-
-        public async Task<IReadOnlyList<DataDeliveryReceiptDetails>> BrowseAsync(Keccak depositId = null,
-            Keccak dataAssetId = null, Keccak sessionId = null)
+        public Task<DataDeliveryReceiptDetails?> GetAsync(Keccak id)
+        {
+            return Receipts.Find(c => c.Id == id).FirstOrDefaultAsync<DataDeliveryReceiptDetails>()!;
+        }
+            
+        public async Task<IReadOnlyList<DataDeliveryReceiptDetails>> BrowseAsync(Keccak? depositId = null, Keccak? dataAssetId = null, Keccak? sessionId = null)
         {
             var receipts = Receipts.AsQueryable();
             if (!(depositId is null))

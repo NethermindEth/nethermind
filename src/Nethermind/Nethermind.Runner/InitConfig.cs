@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+
 namespace Nethermind.Runner
 {
     public class InitConfig : IInitConfig
@@ -25,13 +27,21 @@ namespace Nethermind.Runner
         public bool ProcessingEnabled { get; set; } = true;
         public bool PeerManagerEnabled { get; set; } = true;
         public bool IsMining { get; set; } = false;
-        public string ChainSpecPath { get; set; }
+        public string ChainSpecPath { get; set; } = "chainspec/foundation.json";
         public string BaseDbPath { get; set; } = "db";
         public string LogFileName { get; set; } = "log.txt";
-        public string GenesisHash { get; set; }
+        public string? GenesisHash { get; set; }
         public string StaticNodesPath { get; set; } = "Data/static-nodes.json";
-        public string LogDirectory { get; set; } = null;
+        public string? LogDirectory { get; set; }
         public bool StoreReceipts { get; set; } = true;
-        public bool UseMemDb { get; set; } = false;
+        public DiagnosticMode DiagnosticMode { get; set; } = DiagnosticMode.None;
+        public string RpcDbUrl { get; set; } = String.Empty;
+
+        [Obsolete("Use DiagnosticMode with MemDb instead")]
+        public bool UseMemDb
+        {
+            get => DiagnosticMode == DiagnosticMode.MemDb;
+            set => DiagnosticMode = DiagnosticMode.MemDb;
+        }
     }
 }

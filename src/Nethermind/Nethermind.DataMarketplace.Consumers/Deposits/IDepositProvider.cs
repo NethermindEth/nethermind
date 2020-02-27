@@ -22,6 +22,6 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits
 {
     public interface IDepositProvider
     {
-        Task<DepositDetails> GetAsync(Keccak depositId);
+        Task<DepositDetails?> GetAsync(Keccak depositId);
     }
 }

@@ -20,19 +20,17 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Specs;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Consumers.Infrastructure;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Infrastructure;
 using Nethermind.DataMarketplace.Initializers;
+using Nethermind.Db;
 using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
@@ -43,6 +41,8 @@ using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Stats;
 using Nethermind.Store;
+using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.WebSockets;
 using NSubstitute;
@@ -88,6 +88,7 @@ namespace Nethermind.DataMarketplace.Test.Initializers
         private IMonitoringService _monitoringService;
         private NdmConfig _ndmConfig;
         private NdmInitializer _ndmInitializer;
+        private IBloomStorage _bloomStorage;
 
         [SetUp]
         public void Setup()
@@ -127,7 +128,8 @@ namespace Nethermind.DataMarketplace.Test.Initializers
             _enableUnsecuredDevWallet = false;
             _ndmConfig = new NdmConfig {Enabled = true, StoreConfigInDatabase = false};
             _configProvider.GetConfig<INdmConfig>().Returns(_ndmConfig);
-            _ndmInitializer = new NdmInitializer(_ndmModule, _ndmConsumersModule);
+            _ndmInitializer = new NdmInitializer(_ndmModule, _ndmConsumersModule, _logManager);
+            _bloomStorage = Substitute.For<IBloomStorage>();
         }
 
         [Test]
@@ -140,7 +142,7 @@ namespace Nethermind.DataMarketplace.Test.Initializers
                 _rpcModuleProvider, _keyStore, _jsonSerializer, _cryptoRandom, _enode, _consumerChannelManager,
                 _dataPublisher, _grpcServer, _nodeStatsManager, _protocolsManager, _protocolValidator,
                 _messageSerializationService, _enableUnsecuredDevWallet, _webSocketsManager, _logManager,
-                _blockProcessor, _jsonRpcClientProxy, _ethJsonRpcClientProxy, _httpClient, _monitoringService);
+                _blockProcessor, _jsonRpcClientProxy, _ethJsonRpcClientProxy, _httpClient, _monitoringService, _bloomStorage);
             _ndmInitializer.DbPath.Should().Be(Path.Combine(_baseDbPath, _ndmConfig.DatabasePath));
         }
     }

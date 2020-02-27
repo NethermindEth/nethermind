@@ -21,7 +21,7 @@ namespace Nethermind.DataMarketplace.Core.Repositories
 {
     public interface IConfigRepository
     {
-        Task<NdmConfig> GetAsync(string id);
+        Task<NdmConfig?> GetAsync(string id);
         Task AddAsync(NdmConfig config);
         Task UpdateAsync(NdmConfig config);
     }

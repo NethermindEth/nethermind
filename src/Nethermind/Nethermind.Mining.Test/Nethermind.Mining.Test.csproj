@@ -19,9 +19,6 @@
     <DotNetCliToolReference Include="dotnet-xunit" Version="2.3.1" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Nethermind.Mining\Nethermind.Mining.csproj">
-      <Project>{81CC021C-021C-427C-9CE1-2E521E7F2985}</Project>
-      <Name>Nethermind.Mining</Name>
-    </ProjectReference>
+    <ProjectReference Include="..\Nethermind.Consensus.Ethash\Nethermind.Consensus.Ethash.csproj" />
   </ItemGroup>
 </Project>

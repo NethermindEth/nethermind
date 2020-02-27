@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Linq;
 using System.Numerics;
 using Jint.Native;
 using Nethermind.Core;
@@ -33,7 +34,7 @@ namespace Nethermind.Cli.Modules
 
             TransactionForRpc tx = new TransactionForRpc();
             tx.Value = amountInWei;
-            tx.Gas = 21000;
+            tx.Gas = Transaction.BaseTxGasCost;
             tx.GasPrice = (UInt256) Engine.JintEngine.GetValue("gasPrice").AsNumber();
             tx.To = address;
             tx.Nonce = (ulong) NodeManager.Post<long>("eth_getTransactionCount", address, blockNumber).Result;
@@ -43,6 +44,12 @@ namespace Nethermind.Cli.Modules
             return keccak.Bytes.ToHexString();
         }
 
+        [CliFunction("eth", "getProof")]
+        public JsValue Call(string address, string[] storageKeys, string blockParameter = null)
+        {
+            return NodeManager.PostJint("eth_getProof", CliParseAddress(address), storageKeys.Select(CliParseHash), blockParameter ?? "latest").Result;
+        }
+        
         [CliFunction("eth", "call")]
         public string Call(object tx, string blockParameter = null)
         {
@@ -116,21 +123,21 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("eth", "getBlockTransactionCountByNumber")]
-        public JsValue GetBlockTransactionCountByNumber(string blockParameter)
+        public long GetBlockTransactionCountByNumber(string blockParameter)
         {
-            return NodeManager.PostJint("eth_getBlockTransactionCountByNumber", blockParameter).Result;
+            return NodeManager.Post<long>("eth_getBlockTransactionCountByNumber", blockParameter).Result;
         }
 
         [CliFunction("eth", "getBlockTransactionCountByHash")]
-        public JsValue GetBlockTransactionCountByHash(string hash)
+        public long GetBlockTransactionCountByHash(string hash)
         {
-            return NodeManager.PostJint("eth_getBlockTransactionCountByHash", CliParseHash(hash)).Result;
+            return NodeManager.Post<long>("eth_getBlockTransactionCountByHash", CliParseHash(hash)).Result;
         }
 
         [CliFunction("eth", "getUncleCountByBlockNumber")]
-        public JsValue GetUncleCountByBlockNumber(string blockParameter)
+        public long GetUncleCountByBlockNumber(string blockParameter)
         {
-            return NodeManager.PostJint("eth_getUncleCountByBlockNumber", blockParameter).Result;
+            return NodeManager.Post<long>("eth_getUncleCountByBlockNumber", blockParameter).Result;
         }
 
         [CliFunction("eth", "getTransactionByBlockNumberAndIndex")]

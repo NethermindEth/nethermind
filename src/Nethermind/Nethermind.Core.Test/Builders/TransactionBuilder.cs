@@ -30,7 +30,7 @@ namespace Nethermind.Core.Test.Builders
         {   
             TestObjectInternal = new Transaction(isSystem);
             TestObjectInternal.GasPrice = 1;
-            TestObjectInternal.GasLimit = 21000;
+            TestObjectInternal.GasLimit = Transaction.BaseTxGasCost;
             TestObjectInternal.To = Address.Zero;
             TestObjectInternal.Nonce = 0;
             TestObjectInternal.Value = 1;

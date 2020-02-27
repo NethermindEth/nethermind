@@ -22,6 +22,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -31,34 +32,45 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class LoadGenesisBlock : IStep
     {
         private readonly EthereumRunnerContext _context;
+        private ILogger _logger;
 
         public LoadGenesisBlock(EthereumRunnerContext context)
         {
             _context = context;
+            _logger = _context.LogManager.GetClassLogger();
         }
 
         public Task Execute()
         {
-            var initConfig = _context.Config<IInitConfig>();
-            var expectedGenesisHash = string.IsNullOrWhiteSpace(initConfig.GenesisHash) ? null : new Keccak(initConfig.GenesisHash);
+            IInitConfig initConfig = _context.Config<IInitConfig>();
+            Keccak? expectedGenesisHash = string.IsNullOrWhiteSpace(initConfig.GenesisHash) ? null : new Keccak(initConfig.GenesisHash);
+
+            if (_context.BlockTree == null)
+            {
+                throw new StepDependencyException();
+            }
             
             // if we already have a database with blocks then we do not need to load genesis from spec
-            if (_context.BlockTree.Genesis != null)
+            if (_context.BlockTree.Genesis == null)
             {
-                ValidateGenesisHash(expectedGenesisHash);
+                Load();    
             }
-            else
-            {
-                Load(expectedGenesisHash);    
-            }
-
+            
+            ValidateGenesisHash(expectedGenesisHash);
             return Task.CompletedTask;
         }
 
-        protected virtual void Load(Keccak expectedGenesisHash)
+        protected virtual void Load()
         {
-            Block genesis = _context.ChainSpec.Genesis;
+            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
+            if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
+            if (_context.StateProvider == null) throw new StepDependencyException(nameof(_context.StateProvider));
+            if (_context.StorageProvider == null) throw new StepDependencyException(nameof(_context.StorageProvider));
+            if (_context.SpecProvider == null) throw new StepDependencyException(nameof(_context.SpecProvider));
+            if (_context.DbProvider == null) throw new StepDependencyException(nameof(_context.DbProvider));
+            if (_context.TransactionProcessor == null) throw new StepDependencyException(nameof(_context.TransactionProcessor));
 
+            Block genesis = _context.ChainSpec.Genesis;
             foreach ((Address address, ChainSpecAllocation allocation) in _context.ChainSpec.Allocations)
             {
                 _context.StateProvider.CreateAccount(address, allocation.Balance);
@@ -76,6 +88,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                         Init = allocation.Constructor,
                         GasLimit = genesis.GasLimit
                     };
+                    
                     _context.TransactionProcessor.Execute(constructorTransaction, genesis.Header, NullTxTracer.Instance);
                 }
             }
@@ -95,11 +108,11 @@ namespace Nethermind.Runner.Ethereum.Steps
             ManualResetEventSlim genesisProcessedEvent = new ManualResetEventSlim(false);
 
             bool genesisLoaded = false;
-
-            void GenesisProcessed(object sender, BlockEventArgs args)
+            void GenesisProcessed(object? sender, BlockEventArgs args)
             {
-                genesisLoaded = true;
+                if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
                 _context.BlockTree.NewHeadBlock -= GenesisProcessed;
+                genesisLoaded = true;
                 genesisProcessedEvent.Set();
             }
 
@@ -110,27 +123,29 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 throw new BlockchainException("Genesis block processing failure");
             }
-
-            ValidateGenesisHash(expectedGenesisHash);
         }
 
         /// <summary>
         /// If <paramref name="expectedGenesisHash"/> is <value>null</value> then it means that we do not care about the genesis hash (e.g. in some quick testing of private chains)/>
         /// </summary>
         /// <param name="expectedGenesisHash"></param>
-        private void ValidateGenesisHash(Keccak expectedGenesisHash)
+        private void ValidateGenesisHash(Keccak? expectedGenesisHash)
         {
+            if (_context.StateProvider == null) throw new StepDependencyException(nameof(_context.StateProvider));
+            if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
+            
             if (expectedGenesisHash != null && _context.BlockTree.Genesis.Hash != expectedGenesisHash)
             {
-                if (_context.Logger.IsWarn) _context.Logger.Warn(_context.StateProvider.DumpState());
-                if (_context.Logger.IsWarn) _context.Logger.Warn(_context.BlockTree.Genesis.ToString(BlockHeader.Format.Full));
-                if (_context.Logger.IsError) _context.Logger.Error($"Unexpected genesis hash, expected {expectedGenesisHash}, but was {_context.BlockTree.Genesis.Hash}");
+                if (_logger.IsWarn) _logger.Warn(_context.StateProvider.DumpState());
+                if (_logger.IsWarn) _logger.Warn(_context.BlockTree.Genesis.ToString(BlockHeader.Format.Full));
+                if (_logger.IsError) _logger.Error($"Unexpected genesis hash, expected {expectedGenesisHash}, but was {_context.BlockTree.Genesis.Hash}");
             }
             else
             {
-                if (_context.Logger.IsDebug) _context.Logger.Debug($"Genesis hash :  {_context.BlockTree.Genesis.Hash}");
-                ThisNodeInfo.AddInfo("Genesis hash :", $"{_context.BlockTree.Genesis.Hash}");
+                if (_logger.IsDebug) _logger.Debug($"Genesis hash :  {_context.BlockTree.Genesis.Hash}");
             }
+            
+            ThisNodeInfo.AddInfo("Genesis hash :", $"{_context.BlockTree.Genesis.Hash}");
         }
     }
 }

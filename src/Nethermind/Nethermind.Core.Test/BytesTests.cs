@@ -18,9 +18,12 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http.Headers;
 using System.Numerics;
+using FluentAssertions;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -72,23 +75,6 @@ namespace Nethermind.Core.Test
         {
             byte[] bytes = Bytes.FromHexString(input);
             Assert.AreEqual(expectedResult, bytes.ToHexString(with0x, noLeadingZeros));
-        }
-        
-        [TestCase("0x000102030405060708090a0b0c0d0e0f", 0, 1, "0x00")]
-        [TestCase("0x000102030405060708090a0b0c0d0e0f", 1, 1, "0x01")]
-        [TestCase("0x000102030405060708090a0b0c0d0e0f", 1, 15, "0x0102030405060708090a0b0c0d0e0f")]
-        [TestCase("0x000102030405060708090a0b0c0d0e0f", 0, 15, "0x000102030405060708090a0b0c0d0e")]
-        [TestCase("0x000102030405060708090a0b0c0d0e0f", 1, 16, "0x0102030405060708090a0b0c0d0e0f00")]
-        [TestCase("0x000102030405060708090a0b0c0d0e0f", 0, 16, "0x000102030405060708090a0b0c0d0e0f")]
-        [TestCase("0x000102030405060708090a0b0c0d0e0f", 0, 17, "0x000102030405060708090a0b0c0d0e0f00")]
-        [TestCase("0x000102030405060708090a0b0c0d0e0f", 1, 17, "0x0102030405060708090a0b0c0d0e0f0000")]
-        [TestCase("0x000102030405060708090a0b0c0d0e0f", 17, 2, "0x0000")]
-        [TestCase("0x000102030405060708090a0b0c0d0e0f", 16, 2, "0x0000")]
-        public void Can_slice_with_zero_padding(string inputHex, int startIndex, int length, string expectedResultHex)
-        {
-            byte[] input = Bytes.FromHexString(inputHex);
-            ZeroPaddedSpan result = input.SliceWithZeroPadding(startIndex, length);
-            Assert.AreEqual(expectedResultHex, result.ToArray().ToHexString(true));
         }
 
         [TestCase("0x", "0x", true)]
@@ -297,6 +283,42 @@ namespace Nethermind.Core.Test
             byte[] input = Bytes.FromHexString(hex);
             Bytes.ReverseInPlace(input);
             Assert.AreEqual(input, Bytes.FromHexString(expectedResult));
+        }
+
+        public static IEnumerable OrTests
+        {
+            get
+            {
+                byte[] GenerateRandom(int length)
+                {
+                    var bytes = new byte[length];
+                    TestContext.CurrentContext.Random.NextBytes(bytes);
+                    return bytes;
+                }
+
+                TestCaseData GenerateTest(int length)
+                {
+                    var thisArray = GenerateRandom(length);
+                    var valueArray = GenerateRandom(length);
+                    var resultArray = thisArray.Zip(valueArray, (b1, b2) => b1 | b2).Select(b => (byte) b).ToArray();
+                    return new TestCaseData(thisArray, valueArray, resultArray);
+                }
+                
+                yield return GenerateTest(1);
+                yield return GenerateTest(10);
+                yield return GenerateTest(32);
+                yield return GenerateTest(33);
+                yield return GenerateTest(48);
+                yield return GenerateTest(128);
+                yield return GenerateTest(200);
+            }
+        }
+        
+        [TestCaseSource(nameof(OrTests))]
+        public void Or(byte[] first, byte[] second, byte[] expected)
+        {
+            first.AsSpan().Or(second);
+            first.Should().Equal(expected);
         }
     }
 }

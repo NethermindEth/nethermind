@@ -17,11 +17,11 @@
 using System;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core.Test.Builders;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 

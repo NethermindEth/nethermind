@@ -32,7 +32,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
 {
     public class DepositApprovalService : IDepositApprovalService
     {
-        private const int MaxKycChars = 100000;
+        private const int MaxKycChars = 1024 * 32;
         private readonly IDataAssetService _dataAssetService;
         private readonly IProviderService _providerService;
         private readonly IConsumerDepositApprovalRepository _depositApprovalRepository;
@@ -55,28 +55,25 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
         public Task<PagedResult<DepositApproval>> BrowseAsync(GetConsumerDepositApprovals query)
             => _depositApprovalRepository.BrowseAsync(query);
 
-        public async Task<Keccak> RequestAsync(Keccak assetId, Address consumer, string kyc)
+        public async Task<Keccak?> RequestAsync(Keccak assetId, Address consumer, string kyc)
         {
             if (_logger.IsInfo) _logger.Info($"Requesting a deposit approval for data asset: '{assetId}', consumer: '{consumer}'...");
             var dataAsset = _dataAssetService.GetDiscovered(assetId);
             if (dataAsset is null)
             {
                 if (_logger.IsError) _logger.Error($"Data asset: '{assetId}' was not found.");
-
                 return null;
             }
 
             if (string.IsNullOrWhiteSpace(kyc))
             {
                 if (_logger.IsError) _logger.Error("KYC cannot be empty.");
-
                 return null;
             }
 
             if (kyc.Length > MaxKycChars)
             {
                 if (_logger.IsError) _logger.Error($"Invalid KYC (over {MaxKycChars} chars).");
-
                 return null;
             }
 
@@ -92,7 +89,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             if (approval is null)
             {
                 approval = new DepositApproval(id, assetId, dataAsset.Name, kyc, consumer,
-                    dataAsset.Provider.Address, _timestamper.EpochSeconds);
+                    dataAsset.Provider.Address, _timestamper.EpochSeconds, DepositApprovalState.Pending);
                 await _depositApprovalRepository.AddAsync(approval);
             }
 
@@ -109,14 +106,12 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             if (approval is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Deposit approval for data asset: '{assetId}', consumer: '{consumer}' was not found.");
-                
                 return;
             }
 
             if (approval.State == DepositApprovalState.Confirmed)
             {
-                if (_logger.IsInfo) _logger.Info($"Deposit approval for data asset: '{assetId}', consumer: '{consumer}' was already confirmed.");
-                
+                if (_logger.IsWarn) _logger.Warn($"Deposit approval for data asset: '{assetId}', consumer: '{consumer}' was already confirmed.");
                 return;
             }
             
@@ -133,21 +128,19 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             if (approval is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Deposit approval for data asset: '{assetId}', consumer: '{consumer}' was not found.");
-                
                 return;
             }
 
             if (approval.State == DepositApprovalState.Rejected)
             {
-                if (_logger.IsInfo) _logger.Info($"Deposit approval for data asset: '{assetId}', consumer: '{consumer}' was already rejected.");
-                
+                if (_logger.IsWarn) _logger.Warn($"Deposit approval for data asset: '{assetId}', consumer: '{consumer}' was already rejected.");
                 return;
             }
             
             approval.Reject();
             await _depositApprovalRepository.UpdateAsync(approval);
             await _consumerNotifier.SendDepositApprovalRejectedAsync(approval.AssetId, approval.AssetName, consumer);
-            if (_logger.IsWarn) _logger.Warn($"Deposit approval for data asset: '{assetId}', consumer: '{consumer}' was rejected.");
+            if (_logger.IsInfo) _logger.Info($"Deposit approval for data asset: '{assetId}', consumer: '{consumer}' was rejected.");
         }
 
         public async Task UpdateAsync(IReadOnlyList<DepositApproval> approvals, Address provider)
@@ -168,8 +161,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 var existingDepositApproval = existingApprovals.Items.SingleOrDefault(a => a.Id == approval.Id);
                 if (existingDepositApproval is null)
                 {
-                    await _depositApprovalRepository.AddAsync(approval);
-                    if (_logger.IsInfo) _logger.Info($"Added deposit approval for data asset: '{approval.AssetId}', consumer: '{approval.Consumer}'.");
+                    if (_logger.IsError) _logger.Error($"Provider sent an unknown deposit approval for data asset: '{approval.AssetId}', consumer: '{approval.Consumer}'.");
                     continue;
                 }
 
@@ -195,7 +187,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                         if (_logger.IsWarn) _logger.Warn($"Deposit approval for data asset: '{approval.AssetId}', consumer: '{approval.Consumer}' was rejected.");
                         break;
                     case DepositApprovalState.Pending:
-                        if (_logger.IsInfo) _logger.Info($"Deposit approval for data asset: '{approval.AssetId}', consumer: '{approval.Consumer}' is in pending state.");
+                        if (_logger.IsError) _logger.Error($"Deposit approval changed state back to pending after being in {existingDepositApproval.State} state: asset '{approval.AssetId}', consumer: '{approval.Consumer}' is in pending state.");
                         break;
                 }
             }

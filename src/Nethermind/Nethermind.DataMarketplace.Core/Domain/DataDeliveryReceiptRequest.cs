@@ -30,7 +30,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
         public bool IsSettlement { get; private set; }
 
         public DataDeliveryReceiptRequest(uint number, Keccak depositId, UnitsRange unitsRange,
-            bool isSettlement = false, IEnumerable<DataDeliveryReceiptToMerge> receiptsToMerge = null)
+            bool isSettlement = false, IEnumerable<DataDeliveryReceiptToMerge>? receiptsToMerge = null)
         {
             Number = number;
             DepositId = depositId;
@@ -49,7 +49,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
             return Number == other.Number && Equals(DepositId, other.DepositId);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

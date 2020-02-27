@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core;
 using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.Logging;
@@ -33,14 +34,17 @@ namespace Nethermind.DataMarketplace.Initializers
         private readonly ILogger _logger;
         public bool CapabilityAdded { get; private set; }
 
-        public NdmCapabilityConnector(IProtocolsManager protocolsManager,
-            IProtocolHandlerFactory protocolHandlerFactory, IAccountService accountService,
-            ILogManager logManager, Address providerAddress = null)
+        public NdmCapabilityConnector(
+            IProtocolsManager protocolsManager,
+            IProtocolHandlerFactory protocolHandlerFactory,
+            IAccountService accountService,
+            ILogManager logManager,
+            Address providerAddress)
         {
-            _protocolsManager = protocolsManager;
-            _protocolHandlerFactory = protocolHandlerFactory;
-            _accountService = accountService;
-            _logger = logManager.GetClassLogger();
+            _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
+            _protocolHandlerFactory = protocolHandlerFactory ?? throw new ArgumentNullException(nameof(protocolHandlerFactory));
+            _accountService = accountService ?? throw new ArgumentNullException(nameof(accountService));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _providerAddress = providerAddress;
         }
 

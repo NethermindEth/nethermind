@@ -16,13 +16,14 @@
 
 using System.IO;
 using System.Linq;
-using Nethermind.Blockchain.Proofs;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using Nethermind.State.Proofs;
 using Nethermind.Store;
+using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Proofs

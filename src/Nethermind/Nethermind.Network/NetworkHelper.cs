@@ -32,9 +32,24 @@ namespace Nethermind.Network
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
+
+            try
+            {
+                LocalIp = InitializeLocalIp();
+            }
+            catch (Exception)
+            {
+                LocalIp = IPAddress.Loopback;
+            }
             
-            LocalIp = InitializeLocalIp();
-            ExternalIp = InitializeExternalIp();
+            try
+            {
+                ExternalIp = InitializeExternalIp();
+            }
+            catch (Exception)
+            {
+               ExternalIp = IPAddress.None; 
+            }
         }
         
         public IPAddress LocalIp { get; }
@@ -82,19 +97,17 @@ namespace Nethermind.Network
             
             try
             {
-                using (Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0))
-                {
-                    socket.Connect("www.google.com", 80);
-                    IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
-                    IPAddress address = endPoint?.Address;
-                    if(_logger.IsDebug) _logger.Debug($"Local ip: {address}");
-                    return address;
-                }
+                using Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0);
+                socket.Connect("www.google.com", 80);
+                IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
+                IPAddress address = endPoint?.Address;
+                if(_logger.IsDebug) _logger.Debug($"Local ip: {address}");
+                return address;
             }
             catch (Exception e)
             {
                 if(_logger.IsError) _logger.Error("Error while getting local ip", e);
-                return null;
+                return IPAddress.Loopback;
             }
         }
     }

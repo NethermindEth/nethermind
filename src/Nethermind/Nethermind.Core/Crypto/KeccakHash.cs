@@ -378,47 +378,6 @@ namespace Nethermind.Core.Crypto
             st[24] = asu;
         }
 
-        /// <summary>
-        /// Computes the hash of a string using UTF8 encoding.
-        /// </summary>
-        /// <param name="utf8String">String to be converted to UTF8 bytes and hashed.</param>
-        /// <returns></returns>
-        public static byte[] FromString(string utf8String)
-        {
-            var input = System.Text.Encoding.UTF8.GetBytes(utf8String);
-            var output = new byte[32];
-            ComputeHash(input, output);
-            return output;
-        }
-
-        /// <summary>
-        /// Computes the hash of a string using given string encoding.
-        /// For example <see cref="System.Text.Encoding.ASCII"/>
-        /// </summary>
-        /// <param name="inputString">String to be converted to bytes and hashed.</param>
-        /// <param name="stringEncoding">The string encoding to use. For example <see cref="System.Text.Encoding.ASCII"/></param>
-        /// <returns></returns>
-        public static byte[] FromString(string inputString, System.Text.Encoding stringEncoding)
-        {
-            var input = stringEncoding.GetBytes(inputString);
-            var output = new byte[32];
-            ComputeHash(input, output);
-            return output;
-        }
-
-        /// <summary>
-        /// Decodes a hex string to bytes and computes the hash.
-        /// </summary>
-        /// <param name="hexString">The hex string to be decoded into bytes and hashed.</param>
-        /// <returns></returns>
-        public static byte[] FromHex(string hexString)
-        {
-            var input = Bytes.FromHexString(hexString);
-            var output = new byte[HASH_SIZE];
-            ComputeHash(input, output);
-            return output;
-        }
-
         public static Span<byte> ComputeHash(Span<byte> input, int size = HASH_SIZE)
         {
             Span<byte> output = new byte[size];
@@ -483,17 +442,7 @@ namespace Nethermind.Core.Crypto
             KeccakF(state);
             MemoryMarshal.AsBytes(state.Slice(0, HASH_SIZE / sizeof(ulong))).CopyTo(output);
         }
-
-        public static void Keccak1600(Span<byte> input, Span<byte> output)
-        {
-            if (output.Length != STATE_SIZE)
-            {
-                throw new ArgumentException($"Output length must be {STATE_SIZE} bytes");
-            }
-
-            ComputeHash(input, output);
-        }
-
+        
         public void Update(byte[] array, int index, int size)
         {
             // Bounds checking.

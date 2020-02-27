@@ -22,22 +22,22 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
 {
     public class DataAssetForRpc
     {
-        public Keccak Id { get; set; }
-        public string Name { get; set; }
-        public string Description { get; set; }
-        public BigInteger UnitPrice { get; set; }
-        public string UnitType { get; set; }
-        public string QueryType { get; set; }
+        public Keccak? Id { get; set; }
+        public string? Name { get; set; }
+        public string? Description { get; set; }
+        public BigInteger? UnitPrice { get; set; }
+        public string? UnitType { get; set; }
+        public string? QueryType { get; set; }
         public uint MinUnits { get; set; }
         public uint MaxUnits { get; set; }
-        public DataAssetRulesForRpc Rules { get; set; }
-        public DataAssetProviderForRpc Provider { get; set; }
-        public string File { get; set; }
-        public byte[] Data { get; set; }
-        public string State { get; }
-        public string TermsAndConditions { get; set; }
-        public bool KycRequired { get; set; }
-        public string Plugin { get; set; }
+        public DataAssetRulesForRpc? Rules { get; set; }
+        public DataAssetProviderForRpc? Provider { get; set; }
+        public string? File { get; set; }
+        public byte[]? Data { get; set; }
+        public string? State { get; }
+        public string? TermsAndConditions { get; set; }
+        public bool? KycRequired { get; set; }
+        public string? Plugin { get; set; }
 
         public DataAssetForRpc()
         {

@@ -20,11 +20,11 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Test.Builders;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain.Test.Filters
             _filterStore = Substitute.For<IFilterStore>();
             _blockProcessor = Substitute.For<IBlockProcessor>();
             _txPool = Substitute.For<ITxPool>();
-            _logManager = Substitute.For<ILogManager>();
+            _logManager = LimboLogs.Instance;
         }
 
         [Test]

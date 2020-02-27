@@ -14,7 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Extensions;
+using System.IO;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
@@ -29,10 +29,18 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 
         public DataAssetsMessage Deserialize(byte[] bytes)
         {
-            var dataAssets = Rlp.DecodeArray<DataAsset>(bytes.AsRlpStream());
-            foreach (var dataAsset in dataAssets)
+            DataAsset[] dataAssets;
+            try
             {
-                dataAsset.ClearPlugin();
+                dataAssets = Rlp.DecodeArray<DataAsset>(bytes.AsRlpStream());
+                foreach (var dataAsset in dataAssets)
+                {
+                    dataAsset.ClearPlugin();
+                }
+            }
+            catch (RlpException)
+            {
+                throw new InvalidDataException();
             }
 
             return new DataAssetsMessage(dataAssets);

@@ -31,11 +31,11 @@ namespace Nethermind.Cli.Modules
             return NodeManager.PostJint("debug_getChainLevel", number).Result;
         }
 
-        [CliFunction("debug", "deleteChainSlice")]
-        public JsValue DeleteChainSlice(long startNumber, long endNumber)
-        {
-            return NodeManager.PostJint("debug_deleteChainSlice", startNumber, endNumber).Result;
-        }
+        // [CliFunction("debug", "deleteChainSlice")]
+        // public JsValue DeleteChainSlice(long startNumber, long endNumber)
+        // {
+        //     return NodeManager.PostJint("debug_deleteChainSlice", startNumber, endNumber).Result;
+        // }
 
         [CliFunction("debug", "traceBlock")]
         public JsValue TraceBlock(string rlp, object options)

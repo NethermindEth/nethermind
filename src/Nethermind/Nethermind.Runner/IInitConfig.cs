@@ -41,14 +41,14 @@ namespace Nethermind.Runner
         [ConfigItem(Description = "If 'true' then the node will try to seal/mine new blocks", DefaultValue = "false")]
         bool IsMining { get; set; }
 
-        [ConfigItem(Description = "Path to the chain definition file (Parity chainspec or Geth genesis file).", DefaultValue = "null")]
+        [ConfigItem(Description = "Path to the chain definition file (Parity chainspec or Geth genesis file).", DefaultValue = "foundation/chainspec.json")]
         string ChainSpecPath { get; set; }
         
         [ConfigItem(Description = "Base directoy path for all the nethermind databases.", DefaultValue = "\"db\"")]
         string BaseDbPath { get; set; }
         
         [ConfigItem(Description = "Hash of the genesis block - if the default null value is left then the genesis block validity will not be checked which is useful for ad hoc test/private networks.", DefaultValue = "null")]
-        string GenesisHash { get; set; }
+        string? GenesisHash { get; set; }
         
         [ConfigItem(Description = "Path to the file with a list of static nodes.", DefaultValue = "\"Data/static-nodes.json\"")]
         string StaticNodesPath { get; set; }
@@ -57,12 +57,26 @@ namespace Nethermind.Runner
         string LogFileName { get; set; }
         
         [ConfigItem(Description = "In case of null, the path is set to [applicationDirectiory]\\logs", DefaultValue = "null")]
-        string LogDirectory { get; set; }
+        string? LogDirectory { get; set; }
 
         [ConfigItem(Description = "If set to 'false' then transaction receipts will not be stored in the database after a new block is processed. This setting is independent from downloading receipts in fast sync mode.", DefaultValue = "true")]
         bool StoreReceipts { get; set; }
         
-        [ConfigItem(Description = "Diagnostics mode which uses an in-memory DB", DefaultValue = "false")]
-        bool UseMemDb { get; set; }
+        [ConfigItem(Description = "Diagnostics modes", DefaultValue = "None")]
+        DiagnosticMode DiagnosticMode { get; set; }
+        
+        [ConfigItem(Description = "Url for remote node that will be used as DB source when 'DiagnosticMode' is set to'RpcDb'", DefaultValue = "")]
+        string RpcDbUrl { get; set; }
+    }
+    
+    public enum DiagnosticMode
+    {
+        None,
+        [ConfigItem(Description = "Diagnostics mode which uses an in-memory DB")]
+        MemDb,
+        [ConfigItem(Description = "Diagnostics mode which uses a remote DB")]
+        RpcDb,
+        [ConfigItem(Description = "Diagnostics mode which uses a read-only DB")]
+        ReadOnlyDb
     }
 }

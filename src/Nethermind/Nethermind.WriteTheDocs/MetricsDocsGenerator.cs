@@ -34,7 +34,7 @@ namespace Nethermind.WriteTheDocs
             "Nethermind.Evm",
             "Nethermind.JsonRpc",
             "Nethermind.Network",
-            "Nethermind.Store",
+            "Nethermind.State",
         };
 
         public void Generate()

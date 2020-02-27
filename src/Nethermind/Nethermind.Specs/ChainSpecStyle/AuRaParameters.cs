@@ -58,6 +58,8 @@ namespace Nethermind.Specs.ChainSpecStyle
         
         public long? BlockRewardContractTransition { get; set; }
         
+        public IDictionary<long, Address> BlockRewardContractTransitions { get; set; }
+        
         public long ValidateScoreTransition { get; set; }
         
         public long ValidateStepTransition { get; set; }

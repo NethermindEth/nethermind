@@ -17,12 +17,12 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.TxPools;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
-using Nethermind.Mining;
-using Nethermind.Store;
+using Nethermind.State;
+using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Producers
 {
@@ -56,14 +56,15 @@ namespace Nethermind.Blockchain.Producers
 
         protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp) => 1;
 
-        public async ValueTask ProduceEmptyBlock()
+        private void OnNewPendingTx(object sender, TxEventArgs e)
         {
-            await base.TryProduceNewBlock(CancellationToken.None);
-        }
-        
-        private async void OnNewPendingTx(object sender, TxEventArgs e)
-        {
-            await base.TryProduceNewBlock(CancellationToken.None);
+            TryProduceNewBlock(CancellationToken.None).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    if(Logger.IsError) Logger.Error($"Failed to produce block after receiving transaction {e.Transaction}", t.Exception);
+                }
+            });
         }
     }
 }

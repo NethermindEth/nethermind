@@ -21,7 +21,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -30,7 +29,12 @@ using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Store;
+using Nethermind.Store.Bloom;
+using Nethermind.Trie;
+using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Block = Nethermind.Core.Block;
 
@@ -51,7 +55,7 @@ namespace Nethermind.Facade
         private readonly IStorageProvider _storageProvider;
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly ILogFinder _logFinder;
-        private Timestamper _timestamper = new Timestamper();
+        private readonly Timestamper _timestamper = new Timestamper();
 
         public BlockchainBridge(
             IStateReader stateReader,
@@ -65,6 +69,9 @@ namespace Nethermind.Facade
             IWallet wallet,
             ITransactionProcessor transactionProcessor,
             IEthereumEcdsa ecdsa,
+            IBloomStorage bloomStorage, 
+            IReceiptsRecovery receiptsRecovery,
+            ILogManager logManager,
             int findLogBlockDepthLimit = 1000)
         {
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
@@ -78,7 +85,7 @@ namespace Nethermind.Facade
             _wallet = wallet ?? throw new ArgumentException(nameof(wallet));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentException(nameof(transactionProcessor));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-            _logFinder = new LogFinder(_blockTree, _receiptStorage, findLogBlockDepthLimit);
+            _logFinder = new LogFinder(_blockTree, _receiptStorage, bloomStorage, receiptsRecovery, logManager, findLogBlockDepthLimit);
         }
 
         public IReadOnlyCollection<Address> GetWalletAccounts()
@@ -199,11 +206,11 @@ namespace Nethermind.Facade
             return new CallOutput {Error = callOutputTracer.Error, GasSpent = callOutputTracer.GasSpent, OutputData = callOutputTracer.ReturnValue};
         }
 
-        public long EstimateGas(BlockHeader header, Transaction transaction)
+        public CallOutput EstimateGas(BlockHeader header, Transaction transaction)
         {
             EstimateGasTracer estimateGasTracer = new EstimateGasTracer();
             CallAndRestore(header, transaction, estimateGasTracer);
-            return transaction.GasLimit - estimateGasTracer.ExcessiveGas;
+            return new CallOutput {Error = estimateGasTracer.Error, GasSpent = estimateGasTracer.GasSpent + estimateGasTracer.AdditionalGasRequired};
         }
 
         private void CallAndRestore(BlockHeader blockHeader, Transaction transaction, ITxTracer tracer)
@@ -282,7 +289,7 @@ namespace Nethermind.Facade
         public FilterType GetFilterType(int filterId) => _filterStore.GetFilterType(filterId);
         public FilterLog[] GetFilterLogs(int filterId) => _filterManager.GetLogs(filterId);
 
-        public FilterLog[] GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address = null,
+        public IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address = null,
             IEnumerable<object> topics = null)
         {
             LogFilter filter = _filterStore.CreateLogFilter(fromBlock, toBlock, address, topics, false);
@@ -344,11 +351,10 @@ namespace Nethermind.Facade
         public Keccak GenesisHash => _blockTree.GenesisHash;
         public Keccak PendingHash => _blockTree.PendingHash;
         public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options) => _blockTree.FindBlock(blockHash, options);
-
         public Block FindBlock(long blockNumber, BlockTreeLookupOptions options) => _blockTree.FindBlock(blockNumber, options);
-
         public BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options) => _blockTree.FindHeader(blockHash, options);
-
         public BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options) => _blockTree.FindHeader(blockNumber, options);
+        public bool IsMainChain(BlockHeader blockHeader) => _blockTree.IsMainChain(blockHeader);
+        public bool IsMainChain(Keccak blockHash) => _blockTree.IsMainChain(blockHash);
     }
 }

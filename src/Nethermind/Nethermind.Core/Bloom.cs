@@ -25,15 +25,17 @@ namespace Nethermind.Core
     public class Bloom : IEquatable<Bloom>
     {
         public static readonly Bloom Empty = new Bloom();
+        public const int BitLength = 2048;
+        public const int ByteLength = BitLength / 8;
         
         public Bloom()
         {
-            Bytes = new byte[256];
+            Bytes = new byte[ByteLength];
         }
         
         public Bloom(LogEntry[] logEntries, Bloom blockBloom = null)
         {
-            Bytes = new byte[256];
+            Bytes = new byte[ByteLength];
             Add(logEntries, blockBloom);
         }
 
@@ -137,6 +139,11 @@ namespace Nethermind.Core
                     Set(topic.Bytes, blockBloom);
                 }
             }
+        }
+
+        public void Accumulate(Bloom bloom)
+        {
+            Bytes.AsSpan().Or(bloom.Bytes);
         }
         
         public bool Matches(LogEntry logEntry)

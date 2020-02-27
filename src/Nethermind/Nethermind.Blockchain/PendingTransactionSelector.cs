@@ -17,11 +17,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Blockchain.TxPools;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
-using Nethermind.Store;
+using Nethermind.State;
+using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain
 {
@@ -29,17 +30,17 @@ namespace Nethermind.Blockchain
     {
         private readonly ITxPool _transactionPool;
         private readonly IStateProvider _stateProvider;
-        private readonly long _minGasPriceForMining;
         private readonly ILogger _logger;
+        private readonly long _minGasPriceForMining;
 
-        public PendingTxSelector(ITxPool transactionPool, IStateProvider stateProvider, ILogManager logManager, long minGasPriceForMining = 1)
+        public PendingTxSelector(ITxPool transactionPool, IStateProvider stateProvider, ILogManager logManager, long minGasPriceForMining = 0)
         {
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _logger = logManager?.GetClassLogger<PendingTxSelector>() ?? throw new ArgumentNullException(nameof(logManager));
             _minGasPriceForMining = minGasPriceForMining;
         }
-        
+
         public IEnumerable<Transaction> SelectTransactions(long gasLimit)
         {
             UInt256 GetCurrentNonce(IDictionary<Address, UInt256> noncesDictionary, Address address)
@@ -51,32 +52,30 @@ namespace Nethermind.Blockchain
                 
                 return nonce;
             }
-            
+
             UInt256 GetRemainingBalance(IDictionary<Address, UInt256> balances, Address address)
             {
                 if (!balances.TryGetValue(address, out var balance))
                 {
                     balances[address] = balance = _stateProvider.GetBalance(address);
                 }
-                
+
                 return balance;
             }
-            
+
             bool HasEnoughFounds(IDictionary<Address, UInt256> balances, Transaction transaction)
             {
                 var balance = GetRemainingBalance(balances, transaction.SenderAddress);
                 var transactionPotentialCost = transaction.GasPrice * (ulong) transaction.GasLimit + transaction.Value;
-                
+
                 if (balance < transactionPotentialCost)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Rejecting transaction - transaction cost ({transactionPotentialCost}) is higher than sender balance ({balance}).");
                     return false;
                 }
-                else
-                {
-                    balances[transaction.SenderAddress] = balance - transactionPotentialCost;
-                    return true;
-                }
+
+                balances[transaction.SenderAddress] = balance - transactionPotentialCost;
+                return true;
             }
 
             var pendingTransactions = _transactionPool.GetPendingTransactions();
@@ -88,42 +87,60 @@ namespace Nethermind.Blockchain
 
             if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at min gas price {_minGasPriceForMining} and block gas limit {gasRemaining}.");
 
-            foreach (Transaction transaction in transactions)
+            foreach (Transaction tx in transactions)
             {
-                if (transaction.SenderAddress == null)
+                if (gasRemaining < Transaction.BaseTxGasCost)
                 {
-                    if (_logger.IsTrace) _logger.Trace("Rejecting null sender pending transaction.");
+                    continue;
+                }
+
+                if (tx.GasLimit > gasRemaining)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Rejecting (tx gas limit {tx.GasLimit} above remaining block gas {gasRemaining}) {tx.ToShortString()}");
                     continue;
                 }
                 
-                if (transaction.GasPrice < _minGasPriceForMining)
+                if (tx.SenderAddress == null)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Rejecting transaction - gas price ({transaction.GasPrice}) too low (min gas price: {_minGasPriceForMining}.");
+                    _transactionPool.RemoveTransaction(tx.Hash, 0);
+                    if (_logger.IsInfo) _logger.Info($"Rejecting (null sender) {tx.ToShortString()}");
                     continue;
                 }
 
-                if (GetCurrentNonce(nonces, transaction.SenderAddress) != transaction.Nonce)  
+                if (tx.GasPrice < _minGasPriceForMining)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Rejecting transaction based on nonce.");
+                    if (_logger.IsInfo) _logger.Info($"Rejecting (gas price too low - min gas price: {_minGasPriceForMining}) {tx.ToShortString()}");
                     continue;
                 }
 
-                if (transaction.GasLimit > gasRemaining)
+                UInt256 expectedNonce = GetCurrentNonce(nonces, tx.SenderAddress);
+                if (expectedNonce != tx.Nonce)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Rejecting transaction - gas limit ({transaction.GasLimit}) more than remaining gas ({gasRemaining}).");
-                    break;
-                }
-                
-                if (!HasEnoughFounds(remainingBalance, transaction))
-                {
+                    if (tx.Nonce < expectedNonce)
+                    {
+                        _transactionPool.RemoveTransaction(tx.Hash, 0);    
+                    }
+                    
+                    if (tx.Nonce > expectedNonce + 16)
+                    {
+                        _transactionPool.RemoveTransaction(tx.Hash, 0);    
+                    }
+                    
+                    if (_logger.IsInfo) _logger.Info($"Rejecting (invalid nonce - expected {expectedNonce}) {tx.ToShortString()}");
                     continue;
                 }
 
-                selected.Add(transaction);
-                nonces[transaction.SenderAddress] = transaction.Nonce + 1;
-                gasRemaining -= transaction.GasLimit;
+                if (!HasEnoughFounds(remainingBalance, tx))
+                {
+                    if (_logger.IsInfo) _logger.Info($"Rejecting (sender balance too low) {tx.ToShortString()}");
+                    continue;
+                }
+
+                selected.Add(tx);
+                nonces[tx.SenderAddress] = tx.Nonce + 1;
+                gasRemaining -= tx.GasLimit;
             }
-            
+
             if (_logger.IsDebug) _logger.Debug($"Collected {selected.Count} out of {pendingTransactions.Length} pending transactions.");
 
             return selected;

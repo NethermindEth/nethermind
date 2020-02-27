@@ -18,13 +18,16 @@ using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Abi;
-using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Evm;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Store;
 using NSubstitute;
 using NUnit.Framework;
@@ -49,7 +52,7 @@ namespace Nethermind.AuRa.Test
                 Substitute.For<IBlockTree>(),
                 Substitute.For<IReceiptStorage>(),
                 Substitute.For<IValidatorStore>(),
-                Substitute.For<ILogManager>());
+                LimboLogs.Instance);
 
             var validator = new AuRaParameters.Validator()
             {

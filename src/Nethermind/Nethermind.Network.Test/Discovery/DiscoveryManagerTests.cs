@@ -21,6 +21,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
@@ -56,7 +57,7 @@ namespace Nethermind.Network.Test.Discovery
             NetworkNodeDecoder.Init();
             var privateKey = new PrivateKey(TestPrivateKeyHex);
             _publicKey = privateKey.PublicKey;
-            var logManager = NullLogManager.Instance;
+            var logManager = LimboLogs.Instance;
 
             IDiscoveryConfig discoveryConfig = new DiscoveryConfig();
             discoveryConfig.PongTimeout = 100;

@@ -61,7 +61,7 @@ namespace Nethermind.Abi
             return (result, position);
         }
 
-        public override byte[] Encode(object arg, bool packed)
+        public override byte[] Encode(object? arg, bool packed)
         {
             if (arg is Array input)
             {
@@ -75,7 +75,7 @@ namespace Nethermind.Abi
                     byte[][] encodedItems = new byte[Length * 2 - 1][];
                     BigInteger currentOffset = (Length - 1) * UInt256.LengthInBytes;
                     int i = 0;
-                    foreach (object o in input)
+                    foreach (object? o in input)
                     {
                         encodedItems[Length + i - 1] = _elementType.Encode(o, packed);
                         if (i != 0)
@@ -93,7 +93,7 @@ namespace Nethermind.Abi
                 {
                     byte[][] encodedItems = new byte[Length][];
                     int i = 0;
-                    foreach (object o in input)
+                    foreach (object? o in input)
                     {
                         encodedItems[i++] = _elementType.Encode(o, packed);
                     }

@@ -19,7 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Abi;
-using Nethermind.AuRa.Contracts;
+using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Specs.ChainSpecStyle;

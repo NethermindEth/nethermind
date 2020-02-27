@@ -18,8 +18,8 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo
 {
     public class NdmMongoConfig : INdmMongoConfig
     {
-        public string ConnectionString { get; set; }
-        public string Database { get; set; }
-        public bool LogQueries { get; set; }
+        public string? ConnectionString { get; set; }
+        public string? Database { get; set; }
+        public bool? LogQueries { get; set; }
     }
 }

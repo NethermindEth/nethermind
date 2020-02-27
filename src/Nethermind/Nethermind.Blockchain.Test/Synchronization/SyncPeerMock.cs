@@ -25,6 +25,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Stats.Model;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Network;
 
 namespace Nethermind.Blockchain.Test.Synchronization
 {
@@ -147,6 +148,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             _sendQueue.Add(() => _remoteSyncServer?.HintBlock(blockHash, number, Node));
         }
+
+        public PublicKey Id => Node.Id;
 
         public void SendNewTransaction(Transaction transaction)
         {

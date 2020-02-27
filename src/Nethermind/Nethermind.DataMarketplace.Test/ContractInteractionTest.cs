@@ -20,8 +20,6 @@ using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.TxPools;
-using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -34,13 +32,18 @@ using Nethermind.Crypto;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Core.Services.Models;
+using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
+using Nethermind.State;
 using Nethermind.Store;
+using Nethermind.Trie;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Storages;
 using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
@@ -123,7 +126,7 @@ namespace Nethermind.DataMarketplace.Test
             TxReceipt receipt = DeployContract(Bytes.FromHexString(ContractData.GetInitCode(_feeAccount)));
             ((NdmConfig) _ndmConfig).ContractAddress = receipt.ContractAddress.ToString();
             _contractAddress = receipt.ContractAddress;
-            _txPool = new TxPool(new InMemoryTxStorage(), new Timestamper(),
+            _txPool = new TxPool.TxPool(new InMemoryTxStorage(), new Timestamper(),
                 new EthereumEcdsa(specProvider, _logManager), specProvider, new TxPoolConfig(), _state, _logManager);
             
             _ndmBridge = new NdmBlockchainBridge(_bridge, _txPool);
@@ -209,26 +212,18 @@ namespace Nethermind.DataMarketplace.Test
             public Keccak HeadHash => _headBlock.Hash;
             public Keccak GenesisHash => null;
             public Keccak PendingHash => null;
-            public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options)
-            {
-                return _headBlock.Hash == blockHash ? _headBlock : null;
-            }
+            public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options) => _headBlock.Hash == blockHash ? _headBlock : null;
 
-            public Block FindBlock(long blockNumber, BlockTreeLookupOptions options)
-            {
-                return _headBlock.Number == blockNumber ? _headBlock : null;
-            }
+            public Block FindBlock(long blockNumber, BlockTreeLookupOptions options) => _headBlock.Number == blockNumber ? _headBlock : null;
 
-            public BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options)
-            {
-                return _headBlock.Hash == blockHash ? _headBlock.Header : null;
-            }
+            public BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options) => _headBlock.Hash == blockHash ? _headBlock.Header : null;
 
-            public BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options)
-            {
-                return _headBlock.Number == blockNumber ? _headBlock.Header : null;
-            }
-            
+            public BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options) => _headBlock.Number == blockNumber ? _headBlock.Header : null;
+
+            public bool IsMainChain(BlockHeader blockHeader) => blockHeader.Number == _headBlock.Number;
+
+            public bool IsMainChain(Keccak blockHash) => _headBlock.Hash == blockHash;
+
             public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
             {
                 return (new TxReceipt(), new Transaction
@@ -267,7 +262,7 @@ namespace Nethermind.DataMarketplace.Test
                 return new Facade.BlockchainBridge.CallOutput(tracer.ReturnValue, tracer.GasSpent, tracer.Error);
             }
 
-            public long EstimateGas(BlockHeader header, Transaction transaction)
+            public Facade.BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction transaction)
             {
                 throw new NotImplementedException();
             }
@@ -380,7 +375,7 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
-            public FilterLog[] GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null)
+            public IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address, IEnumerable<object> topics)
             {
                 throw new NotImplementedException();
             }

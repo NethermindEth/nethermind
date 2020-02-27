@@ -17,25 +17,28 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Blockchain.Proofs;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.State.Proofs;
 
 namespace Nethermind.Blockchain.Synchronization
 {
     internal class BlockDownloadContext
     {
-        private Dictionary<int, int> _indexMapping;
-        private ISpecProvider _specProvider;
-        private PeerInfo _syncPeer;
-        private bool _downloadReceipts;
+        private readonly Dictionary<int, int> _indexMapping;
+        private readonly ISpecProvider _specProvider;
+        private readonly PeerInfo _syncPeer;
+        private readonly bool _downloadReceipts;
+        private readonly IReceiptsRecovery _receiptsRecovery;
 
-        public BlockDownloadContext(ISpecProvider specProvider, PeerInfo syncPeer, BlockHeader[] headers, bool downloadReceipts)
+        public BlockDownloadContext(ISpecProvider specProvider, PeerInfo syncPeer, BlockHeader[] headers, bool downloadReceipts, IReceiptsRecovery receiptsRecovery)
         {
             _indexMapping = new Dictionary<int, int>();
             _downloadReceipts = downloadReceipts;
+            _receiptsRecovery = receiptsRecovery;
             _specProvider = specProvider;
             _syncPeer = syncPeer;
 
@@ -117,44 +120,14 @@ namespace Nethermind.Blockchain.Synchronization
                 receipts = Array.Empty<TxReceipt>();
             }
 
-            if (block.Transactions.Length == receipts.Length)
+            if (_receiptsRecovery.TryRecover(block, receipts))
             {
-                long gasUsedBefore = 0;
-                for (int receiptIndex = 0; receiptIndex < block.Transactions.Length; receiptIndex++)
-                {
-                    Transaction transaction = block.Transactions[receiptIndex];
-                    if (receipts.Length > receiptIndex)
-                    {
-                        TxReceipt receipt = receipts[receiptIndex];
-                        RecoverReceiptData(receipt, block, transaction, receiptIndex, gasUsedBefore);
-                        gasUsedBefore = receipt.GasUsedTotal;
-                    }
-                }
-
                 ValidateReceipts(block, receipts);
                 ReceiptsForBlocks[mappedIndex] = receipts;
             }
             else
             {
                 throw new EthSynchronizationException($"Missing receipts for block {block.ToString(Block.Format.Short)}.");
-            }
-        }
-
-        private static void RecoverReceiptData(TxReceipt receipt, Block block, Transaction transaction, int transactionIndex, long gasUsedBefore)
-        {
-            receipt.BlockHash = block.Hash;
-            receipt.BlockNumber = block.Number;
-            receipt.TxHash = transaction.Hash;
-            receipt.Index = transactionIndex;
-            receipt.Sender = transaction.SenderAddress;
-            receipt.Recipient = transaction.IsContractCreation ? null : transaction.To;
-            
-            // how would it be in CREATE2?
-            receipt.ContractAddress = transaction.IsContractCreation ? ContractAddress.From(transaction.SenderAddress, transaction.Nonce) : null; 
-            receipt.GasUsed = receipt.GasUsedTotal - gasUsedBefore;
-            if (receipt.StatusCode != StatusCode.Success)
-            {
-                receipt.StatusCode = receipt.Logs.Length == 0 ? StatusCode.Failure : StatusCode.Success;
             }
         }
 

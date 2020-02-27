@@ -14,7 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Extensions;
+using System.IO;
+using Nethermind.Core;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
@@ -28,9 +29,13 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 
         public ConsumerAddressChangedMessage Deserialize(byte[] bytes)
         {
-            var context = bytes.AsRlpStream();
+            RlpStream context = bytes.AsRlpStream();
             context.ReadSequenceLength();
-            var address = context.DecodeAddress();
+            Address? address = context.DecodeAddress();
+            if (address == null)
+            {
+                throw new InvalidDataException($"{nameof(ConsumerAddressChangedMessage)}.{nameof(ConsumerAddressChangedMessage.Address)} cannot be null");
+            }
 
             return new ConsumerAddressChangedMessage(address);
         }

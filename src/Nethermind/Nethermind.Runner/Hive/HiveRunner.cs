@@ -64,7 +64,7 @@ namespace Nethermind.Runner.Hive
             return Task.CompletedTask;
         }
 
-        private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
+        private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
         {
             _logger.Info($"HIVE new head block {e.Block.ToString(Block.Format.Short)}");
         }

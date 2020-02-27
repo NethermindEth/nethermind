@@ -17,10 +17,10 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Logging;
-using Nethermind.Mining;
-using Nethermind.Store;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.Producers
 {

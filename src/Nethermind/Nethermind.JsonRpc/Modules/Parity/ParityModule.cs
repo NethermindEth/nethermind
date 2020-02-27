@@ -20,13 +20,13 @@ using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.TxPool;
 
 namespace Nethermind.JsonRpc.Modules.Parity
 {
@@ -53,7 +53,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
         public ResultWrapper<ReceiptForRpc[]> parity_getBlockReceipts(BlockParameter blockParameter)
         {
             Block block = _blockFinder.FindBlock(blockParameter);
-            TxReceipt[] receipts = _receiptStorage.FindForBlock(block);
+            TxReceipt[] receipts = _receiptStorage.FindForBlock(block, new ReceiptsRecovery());
             IEnumerable<ReceiptForRpc> result = receipts.Zip(block.Transactions, (r, t) => new ReceiptForRpc(t.Hash, r));
             return ResultWrapper<ReceiptForRpc[]>.Success(result.ToArray());
         }

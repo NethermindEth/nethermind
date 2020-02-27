@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -39,6 +40,7 @@ using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.DataMarketplace.Infrastructure.Rpc.Models;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -101,12 +103,20 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         }
 
         [Test]
-        public void given_null_personal_bridge_list_accounts_should_not_return_accounts()
+        public void given_null_personal_bridge_list_accounts_should_return_no_accounts()
         {
-            _personalBridge = null;
-            _rpc = new NdmRpcConsumerModule(_consumerService, _depositReportService, _jsonRpcNdmConsumerChannel,
-                _ethRequestService, _ethPriceService, _gasPriceService, _consumerTransactionsService, _gasLimitsService,
-                _personalBridge, _timestamper);
+            _personalBridge = NullPersonalBridge.Instance;
+            _rpc = new NdmRpcConsumerModule(
+                _consumerService,
+                _depositReportService,
+                _jsonRpcNdmConsumerChannel,
+                _ethRequestService,
+                _ethPriceService,
+                _gasPriceService,
+                _consumerTransactionsService,
+                _gasLimitsService,
+                _personalBridge,
+                _timestamper);
             var result = _rpc.ndm_listAccounts();
             result.Data.Should().BeEmpty();
         }
@@ -378,7 +388,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         {
             var query = new GetConsumerDepositApprovals();
             var approval = new DepositApproval(Keccak.Zero, TestItem.KeccakA, "test", "kyc",
-                TestItem.AddressA, TestItem.AddressB, 1);
+                TestItem.AddressA, TestItem.AddressB, 1, DepositApprovalState.Pending);
             _consumerService.GetDepositApprovalsAsync(query)
                 .Returns(PagedResult<DepositApproval>.Create(new[] {approval}, 1, 1, 1, 1));
             var result = await _rpc.ndm_getConsumerDepositApprovals(query);
@@ -682,16 +692,16 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             deposit.Id.Should().Be(Keccak.OfAnEmptyString);
             deposit.Deposit.Should().NotBeNull();
             deposit.Deposit.Id.Should().Be(Keccak.OfAnEmptyString);
-            deposit.Deposit.Units.Should().Be(1);
-            deposit.Deposit.Value.Should().Be(1);
-            deposit.Deposit.ExpiryTime.Should().Be(DepositExpiryTime);
+            deposit.Deposit.Units.Should().Be((uint?)1);
+            deposit.Deposit.Value.Should().Be((BigInteger?)BigInteger.One);
+            deposit.Deposit.ExpiryTime.Should().Be((uint?)DepositExpiryTime);
             deposit.Timestamp.Should().Be(1);
             deposit.Transaction.Hash.Should().Be(TestItem.KeccakA);
-            deposit.Transaction.Value.Should().Be(1);
-            deposit.Transaction.GasPrice.Should().Be(1);
-            deposit.Transaction.GasLimit.Should().Be(1);
+            deposit.Transaction.Value.Should().Be((UInt256?)UInt256.One);
+            deposit.Transaction.GasPrice.Should().Be((UInt256?)UInt256.One);
+            deposit.Transaction.GasLimit.Should().Be((ulong?)1);
             deposit.Transaction.MaxFee.Should().Be(deposit.Transaction.GasPrice * deposit.Transaction.GasLimit);
-            deposit.Transaction.Timestamp.Should().Be(1);
+            deposit.Transaction.Timestamp.Should().Be(deposit.Transaction.Timestamp);
             deposit.Confirmed.Should().Be(false);
             deposit.Expired.Should().Be(false);
             deposit.RefundClaimed.Should().Be(false);
@@ -707,7 +717,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             dataAsset.Id.Should().NotBeNull();
             dataAsset.Name.Should().Be("test");
             dataAsset.Description.Should().Be("test");
-            dataAsset.UnitPrice.Should().Be(1);
+            dataAsset.UnitPrice.Should().Be((BigInteger?)BigInteger.One);
             dataAsset.UnitType.Should().Be(DataAssetUnitType.Unit.ToString().ToLowerInvariant());
             dataAsset.QueryType.Should().Be(QueryType.Stream.ToString().ToLowerInvariant());
             dataAsset.MinUnits.Should().Be(0);

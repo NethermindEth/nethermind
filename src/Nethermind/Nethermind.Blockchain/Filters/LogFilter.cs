@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain.Filters
         public bool Accepts(LogEntry logEntry) =>
             AddressFilter.Accepts(logEntry.LoggersAddress) && TopicsFilter.Accepts(logEntry);
 
-        public bool Matches(Bloom bloom)
+        public bool Matches(Core.Bloom bloom)
         {
             return AddressFilter.Matches(bloom) && TopicsFilter.Matches(bloom);
         }

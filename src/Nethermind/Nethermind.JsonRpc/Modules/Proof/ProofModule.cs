@@ -19,7 +19,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Proofs;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
@@ -33,7 +32,7 @@ using Nethermind.Evm.Tracing.Proofs;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store.Proofs;
+using Nethermind.State.Proofs;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {
@@ -76,13 +75,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 sourceHeader.Hash,
                 Keccak.OfAnEmptySequenceRlp,
                 Address.Zero,
-                
                 0,
                 sourceHeader.Number + 1,
                 sourceHeader.GasLimit,
                 sourceHeader.Timestamp,
                 Bytes.Empty);
-            
+
             callHeader.TxRoot = Keccak.EmptyTreeHash;
             callHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
             callHeader.Author = Address.SystemUser;
@@ -91,12 +89,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             Transaction transaction = tx.ToTransaction();
             transaction.SenderAddress ??= Address.SystemUser;
+
             if (transaction.GasLimit == 0)
             {
                 transaction.GasLimit = callHeader.GasLimit;
             }
 
-            
             Block block = new Block(callHeader, new[] {transaction}, Enumerable.Empty<BlockHeader>());
 
             ProofBlockTracer proofBlockTracer = new ProofBlockTracer(null, transaction.SenderAddress == Address.SystemUser);

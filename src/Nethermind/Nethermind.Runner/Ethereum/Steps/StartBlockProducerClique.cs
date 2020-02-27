@@ -15,7 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Blockchain;
-using Nethermind.Clique;
+using Nethermind.Consensus.Clique;
+using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -31,7 +32,14 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected override void BuildProducer()
         {
-            if (_context.Logger.IsWarn) _context.Logger.Warn("Starting Clique block producer & sealer");
+            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
+            if (_context.SnapshotManager == null) throw new StepDependencyException(nameof(_context.SnapshotManager));
+            if (_context.NodeKey == null) throw new StepDependencyException(nameof(_context.NodeKey));
+            if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
+            if (_context.Sealer == null) throw new StepDependencyException(nameof(_context.Sealer));
+
+            ILogger logger = _context.LogManager.GetClassLogger();
+            if (logger.IsWarn) logger.Warn("Starting Clique block producer & sealer");
             BlockProducerContext producerChain = GetProducerChain();
             CliqueConfig cliqueConfig = new CliqueConfig {BlockPeriod = _context.ChainSpec.Clique.Period, Epoch = _context.ChainSpec.Clique.Epoch};
             _context.BlockProducer = new CliqueBlockProducer(

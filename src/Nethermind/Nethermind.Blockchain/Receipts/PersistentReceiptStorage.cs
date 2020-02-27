@@ -20,10 +20,11 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.Receipts
 {
@@ -54,9 +55,12 @@ namespace Nethermind.Blockchain.Receipts
                     receipt.TxHash = hash;
                     return receipt;
                 }
-                // During synchronization TxReceipt was inserted with RlpBehaviors.None but this transaction wasn't processed
-                // Will be fixed with future block receipts refactoring
-                catch (RlpException) { }
+                catch (RlpException)
+                {
+                    var receipt = Rlp.Decode<TxReceipt>(new Rlp(receiptData));
+                    receipt.TxHash = hash;
+                    return receipt;
+                }
             }
             return null;
         }

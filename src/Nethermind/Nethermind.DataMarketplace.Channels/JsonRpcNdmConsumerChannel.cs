@@ -23,7 +23,7 @@ namespace Nethermind.DataMarketplace.Channels
 {
     public class JsonRpcNdmConsumerChannel : IJsonRpcNdmConsumerChannel
     {
-        private const int MaxCapacity = 10000;
+        public const int MaxCapacity = 10000;
         private readonly ConcurrentDictionary<Keccak, ConcurrentQueue<string>> _data =
             new ConcurrentDictionary<Keccak, ConcurrentQueue<string>>();
         private readonly ILogger _logger;
@@ -60,7 +60,7 @@ namespace Nethermind.DataMarketplace.Channels
             return Task.CompletedTask;
         }
 
-        public string Pull(Keccak depositId)
+        public string? Pull(Keccak depositId)
         {
             if (!_data.TryGetValue(depositId, out var queue))
             {

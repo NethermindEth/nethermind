@@ -25,13 +25,13 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
 {
     public class DepositDetailsForRpc
     {
-        public Keccak Id { get; set; }
-        public DepositForRpc Deposit { get; set; }
-        public DataAssetForRpc DataAsset { get; set; }
-        public Address Consumer { get; set; }
+        public Keccak? Id { get; set; }
+        public DepositForRpc? Deposit { get; set; }
+        public DataAssetForRpc? DataAsset { get; set; }
+        public Address? Consumer { get; set; }
         public uint Timestamp { get; set; }
-        public IEnumerable<TransactionInfoForRpc> Transactions { get; set; }
-        public TransactionInfoForRpc Transaction { get; set; }
+        public IEnumerable<TransactionInfoForRpc>? Transactions { get; set; }
+        public TransactionInfoForRpc? Transaction { get; set; }
         public uint ConfirmationTimestamp { get; set; }
         public bool Confirmed { get; set; }
         public bool Rejected { get; set; }
@@ -39,10 +39,10 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
         public bool Expired { get; set; }
         public bool RefundClaimed { get; set; }
         public bool RefundCancelled { get; private set; }
-        public TransactionInfoForRpc ClaimedRefundTransaction { get; set; }
-        public IEnumerable<TransactionInfoForRpc> ClaimedRefundTransactions { get; set; }
+        public TransactionInfoForRpc? ClaimedRefundTransaction { get; set; }
+        public IEnumerable<TransactionInfoForRpc>? ClaimedRefundTransactions { get; set; }
         public uint ConsumedUnits { get; set; }
-        public string Kyc { get; set; }
+        public string? Kyc { get; set; }
         public uint Confirmations { get; set; }
         public uint RequiredConfirmations { get; set; }
 

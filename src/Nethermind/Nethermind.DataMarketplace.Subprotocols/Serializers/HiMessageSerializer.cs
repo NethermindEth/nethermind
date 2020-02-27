@@ -38,15 +38,15 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 
         public HiMessage Deserialize(byte[] bytes)
         {
-            try
-            {
+            // try
+            // {
                 return Deserialize(bytes.AsRlpStream());
-            }
-            catch (Exception)
-            {
-                // strange garbage from p2p
-                return Deserialize(bytes.Skip(3).ToArray().AsRlpStream());
-            }
+            // }
+            // catch (Exception)
+            // {
+            //     // strange garbage from p2p
+            //     return Deserialize(bytes.Skip(3).ToArray().AsRlpStream());
+            // }
         }
 
         private static HiMessage Deserialize(RlpStream rlpStream)

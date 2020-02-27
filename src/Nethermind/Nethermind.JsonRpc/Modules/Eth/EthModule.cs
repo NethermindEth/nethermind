@@ -22,7 +22,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.TxPools;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -32,8 +32,9 @@ using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Proofs;
 using Nethermind.Store;
-using Nethermind.Store.Proofs;
+using Nethermind.TxPool;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -329,8 +330,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
             BlockHeader head = _blockchainBridge.FindLatestHeader();
             FixCallTx(transactionCall, head);
 
-            long result = _blockchainBridge.EstimateGas(head, transactionCall.ToTransaction());
-            return ResultWrapper<UInt256?>.Success((UInt256) result);
+            BlockchainBridge.CallOutput result = _blockchainBridge.EstimateGas(head, transactionCall.ToTransaction());
+            if (result.Error == null)
+            {
+                return ResultWrapper<UInt256?>.Success((UInt256) result.GasSpent);
+            }
+
+            return ResultWrapper<UInt256?>.Fail(result.Error);
         }
 
         public ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects)
@@ -550,9 +556,19 @@ namespace Nethermind.JsonRpc.Modules.Eth
             BlockParameter fromBlock = filter.FromBlock;
             BlockParameter toBlock = filter.ToBlock;
 
-            return ResultWrapper<IEnumerable<FilterLog>>.Success(_blockchainBridge.GetLogs(fromBlock, toBlock,
-                filter.Address,
-                filter.Topics));
+            try
+            {
+                return ResultWrapper<IEnumerable<FilterLog>>.Success(_blockchainBridge.GetLogs(fromBlock, toBlock, filter.Address, filter.Topics));
+            }
+            catch (ArgumentException e)
+            {
+                switch (e.Message)
+                {
+                    case ILogFinder.NotFoundError: return ResultWrapper<IEnumerable<FilterLog>>.Fail(e.Message, ErrorCodes.ResourceNotFound);
+                    default:
+                        return ResultWrapper<IEnumerable<FilterLog>>.Fail(e.Message, ErrorCodes.InvalidParams);
+                }
+            }
         }
 
         public ResultWrapper<IEnumerable<byte[]>> eth_getWork()

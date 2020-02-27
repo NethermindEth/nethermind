@@ -23,6 +23,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Network;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Blockchain.Test.Synchronization
@@ -92,6 +93,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             throw new NotImplementedException();
         }
+
+        public PublicKey Id => Node.Id;
 
         public void SendNewTransaction(Transaction transaction)
         {

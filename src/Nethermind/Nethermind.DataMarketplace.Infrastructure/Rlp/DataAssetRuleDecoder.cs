@@ -16,11 +16,12 @@
 
 using System.IO;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
-    public class DataAssetRuleDecoder : IRlpDecoder<DataAssetRule>
+    public class DataAssetRuleDecoder : IRlpDecoder<DataAssetRule?>
     {
         public static void Init()
         {
@@ -36,21 +37,20 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             Serialization.Rlp.Rlp.Decoders[typeof(DataAssetRule)] = new DataAssetRuleDecoder();
         }
 
-        public DataAssetRule Decode(RlpStream rlpStream,
+        public DataAssetRule? Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = rlpStream.ReadSequenceLength();
+            int sequenceLength = rlpStream.ReadSequenceLength();
             if (sequenceLength == 0)
             {
                 return null;
             }
-
-            var value = rlpStream.DecodeUInt256();
-
+            
+            UInt256 value = rlpStream.DecodeUInt256();
             return new DataAssetRule(value);
         }
 
-        public Serialization.Rlp.Rlp Encode(DataAssetRule item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Serialization.Rlp.Rlp Encode(DataAssetRule? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
@@ -61,12 +61,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Serialization.Rlp.Rlp.Encode(item.Value));
         }
 
-        public void Encode(MemoryStream stream, DataAssetRule item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new System.NotImplementedException();
-        }
-
-        public int GetLength(DataAssetRule item, RlpBehaviors rlpBehaviors)
+        public int GetLength(DataAssetRule? item, RlpBehaviors rlpBehaviors)
         {
             throw new System.NotImplementedException();
         }

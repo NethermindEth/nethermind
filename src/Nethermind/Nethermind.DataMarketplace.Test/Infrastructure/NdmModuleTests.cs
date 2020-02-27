@@ -18,13 +18,10 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Specs;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Configs;
@@ -32,6 +29,7 @@ using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure;
 using Nethermind.DataMarketplace.Infrastructure.Modules;
 using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
+using Nethermind.Db;
 using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
@@ -41,6 +39,8 @@ using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Store;
+using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
@@ -82,6 +82,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
         private IEthJsonRpcClientProxy _ethJsonRpcClientProxy;
         private IHttpClient _httpClient;
         private IMonitoringService _monitoringService;
+        private IBloomStorage _bloomStorage;
 
         [SetUp]
         public void Setup()
@@ -92,7 +93,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
             _baseDbPath = "db";
             _rocksProvider = Substitute.For<IDbProvider>();
             _mongoProvider = Substitute.For<IMongoProvider>();
-            _logManager = Substitute.For<ILogManager>();
+            _logManager = LimboLogs.Instance;
             _blockTree = Substitute.For<IBlockTree>();
             _specProvider = Substitute.For<ISpecProvider>();
             _transactionPool = Substitute.For<ITxPool>();
@@ -119,6 +120,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
             _httpClient = Substitute.For<IHttpClient>();
             _monitoringService = Substitute.For<IMonitoringService>();
             _ndmModule = new NdmModule();
+            _bloomStorage = Substitute.For<IBloomStorage>();
         }
 
         [Test]
@@ -129,7 +131,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
                 _receiptStorage, _filterStore, _filterManager, _wallet, _timestamper, _ecdsa, _keyStore,
                 _rpcModuleProvider, _jsonSerializer, _cryptoRandom, _enode, _ndmConsumerChannelManager,
                 _ndmDataPublisher, _grpcServer, _ethRequestService, _notifier, _enableUnsecuredDevWallet,
-                _blockProcessor, _jsonRpcClientProxy, _ethJsonRpcClientProxy, _httpClient, _monitoringService));
+                _blockProcessor, _jsonRpcClientProxy, _ethJsonRpcClientProxy, _httpClient, _monitoringService, _bloomStorage));
             services.Should().NotBeNull();
             services.CreatedServices.Should().NotBeNull();
             services.RequiredServices.Should().NotBeNull();

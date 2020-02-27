@@ -15,12 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.TxPools;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Clique;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Store;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -44,7 +47,7 @@ namespace Nethermind.Clique.Test
                 Substitute.For<ITimestamper>(),
                 Substitute.For<ICryptoRandom>(),
                 Substitute.For<ISnapshotManager>(),
-                new CliqueSealer(new BasicWallet(TestItem.PrivateKeyA), cliqueConfig, Substitute.For<ISnapshotManager>(), TestItem.PrivateKeyA.Address, NullLogManager.Instance), TestItem.AddressA, cliqueConfig, NullLogManager.Instance);
+                new CliqueSealer(new BasicWallet(TestItem.PrivateKeyA), cliqueConfig, Substitute.For<ISnapshotManager>(), TestItem.PrivateKeyA.Address, LimboLogs.Instance), TestItem.AddressA, cliqueConfig, LimboLogs.Instance);
             
             SnapshotManager snapshotManager = new SnapshotManager(CliqueConfig.Default, new MemDb(), Substitute.For<IBlockTree>(), NullEthereumEcdsa.Instance, LimboLogs.Instance);
             
