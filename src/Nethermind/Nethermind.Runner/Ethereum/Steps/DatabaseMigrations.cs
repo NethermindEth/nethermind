@@ -206,7 +206,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                                 if (level.BlockInfos.Length > 0)
                                 {
                                     level.HasBlockOnMainChain = true;
-                                    chainLevelInfoRepository.PersistLevel(number, level);
+                                    chainLevelInfoRepository.PersistLevel(number, level, batch);
                                 }
                             }
                                 
