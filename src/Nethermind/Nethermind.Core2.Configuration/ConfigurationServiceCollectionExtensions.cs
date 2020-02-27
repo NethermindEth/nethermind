@@ -27,6 +27,8 @@ namespace Nethermind.Core2.Configuration
             services.AddSingleton<IClientVersion, ClientVersion>();
             
             services.AddSingleton<ChainConstants>();
+
+            services.AddSingleton(new DataDirectory(configuration.GetValue<string>(DataDirectory.Key)));
             
             services.Configure<MiscellaneousParameters>(x =>
             {
@@ -204,6 +206,7 @@ namespace Nethermind.Core2.Configuration
                         () => configuration.GetValue<ulong>("ETH1_FOLLOW_DISTANCE"));
                 });
             });
+            services.Configure<PeeringConfiguration>(x => configuration.Bind("Peering", x));
         }
     }
 }

@@ -48,10 +48,10 @@ namespace Nethermind.HonestValidator
         
         // 1bxx preliminary
 
-        public static readonly Action<ILogger, string, string, int, Exception?> HonestValidatorWorkerExecuteStarted =
-            LoggerMessage.Define<string, string, int>(LogLevel.Information,
+        public static readonly Action<ILogger, string, string, string, int, Exception?> HonestValidatorWorkerExecuteStarted =
+            LoggerMessage.Define<string, string, string, int>(LogLevel.Information,
                 new EventId(1450, nameof(HonestValidatorWorkerExecuteStarted)),
-                "Honest Validator {ProductTokenVersion} worker started; {Environment} environment [{ThreadId}]");
+                "Honest Validator {ProductTokenVersion} worker started; data directory '{DataDirectory}' (environment {Environment}) [{ThreadId}]");
 
         public static readonly Action<ILogger, string, ulong, Exception?> HonestValidatorWorkerConnected =
             LoggerMessage.Define<string, ulong>(LogLevel.Information,

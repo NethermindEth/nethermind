@@ -54,5 +54,5 @@ function convert($sourceYaml, $destinationJson) {
 }
 
 if (-not (Test-Path 'Output')) { mkdir 'Output'; }
-convert 'mainnet.yaml' 'Output\appsettings-config.Production.json';
-convert 'minimal.yaml' 'Output\appsettings-config.Development.json';
+convert 'mainnet.yaml' 'Output/Production/appsettings-config.json';
+convert 'minimal.yaml' 'Output/Development/appsettings-config.json';

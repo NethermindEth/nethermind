@@ -41,7 +41,7 @@ namespace Nethermind.Ssz
             Encode(span.Slice(offset), container.Body);
         }
 
-        public static BeaconBlock DecodeBeaconBlock(Span<byte> span)
+        public static BeaconBlock DecodeBeaconBlock(ReadOnlySpan<byte> span)
         {
             int offset = 0;
             var slot = DecodeSlot(span, ref offset);

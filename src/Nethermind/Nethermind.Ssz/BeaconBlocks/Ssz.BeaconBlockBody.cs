@@ -74,7 +74,7 @@ namespace Nethermind.Ssz
             Encode(span, container.VoluntaryExits.ToArray(), ref offset, ref dynamicOffset);
         }
         
-        public static BeaconBlockBody DecodeBeaconBlockBody(Span<byte> span)
+        public static BeaconBlockBody DecodeBeaconBlockBody(ReadOnlySpan<byte> span)
         {
             // static part
             

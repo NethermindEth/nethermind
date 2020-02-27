@@ -41,7 +41,7 @@ namespace Nethermind.Ssz
             Encode(span, container.Signature, ref offset);
         }
 
-        public static DepositData DecodeDepositData(Span<byte> span)
+        public static DepositData DecodeDepositData(ReadOnlySpan<byte> span)
         {
             if (span.Length != Ssz.DepositDataLength) ThrowSourceLength<DepositData>(span.Length, Ssz.DepositDataLength);
             int offset = 0;

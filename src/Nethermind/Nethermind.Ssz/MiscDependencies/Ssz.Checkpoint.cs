@@ -44,14 +44,14 @@ namespace Nethermind.Ssz
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static Checkpoint DecodeCheckpoint(Span<byte> span, ref int offset)
+        private static Checkpoint DecodeCheckpoint(ReadOnlySpan<byte> span, ref int offset)
         {
             Checkpoint checkpoint = DecodeCheckpoint(span.Slice(offset, Ssz.CheckpointLength));
             offset += Ssz.CheckpointLength;
             return checkpoint;
         }
         
-        public static Checkpoint DecodeCheckpoint(Span<byte> span)
+        public static Checkpoint DecodeCheckpoint(ReadOnlySpan<byte> span)
         {
             if (span.Length != Ssz.CheckpointLength) ThrowSourceLength<Checkpoint>(span.Length, Ssz.CheckpointLength);
             int offset = 0;

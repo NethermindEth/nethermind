@@ -26,7 +26,7 @@ namespace Nethermind.Ssz
     {
         public const int BeaconBlockHeaderLength = Ssz.SlotLength + 3 * Ssz.Hash32Length + Ssz.BlsSignatureLength;
         
-        private static BeaconBlockHeader DecodeBeaconBlockHeader(Span<byte> span, ref int offset)
+        private static BeaconBlockHeader DecodeBeaconBlockHeader(ReadOnlySpan<byte> span, ref int offset)
         {
             BeaconBlockHeader beaconBlockHeader = DecodeBeaconBlockHeader(span.Slice(offset, Ssz.BeaconBlockHeaderLength));
             offset += Ssz.BeaconBlockHeaderLength;
@@ -49,7 +49,7 @@ namespace Nethermind.Ssz
             Encode(span, container.Signature, ref offset);
         }
 
-        public static BeaconBlockHeader DecodeBeaconBlockHeader(Span<byte> span)
+        public static BeaconBlockHeader DecodeBeaconBlockHeader(ReadOnlySpan<byte> span)
         {
             if (span.Length != Ssz.BeaconBlockHeaderLength) ThrowSourceLength<BeaconBlockHeader>(span.Length, Ssz.BeaconBlockHeaderLength);
             int offset = 0;

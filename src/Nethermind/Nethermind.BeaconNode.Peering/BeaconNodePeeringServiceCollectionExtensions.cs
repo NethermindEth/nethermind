@@ -17,6 +17,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core2;
+using Nethermind.Peering.Mothra;
 
 namespace Nethermind.BeaconNode.Peering
 {
@@ -26,6 +27,7 @@ namespace Nethermind.BeaconNode.Peering
         {
             services.AddSingleton<INetworkPeering, NetworkPeering>();
             services.AddHostedService<PeeringWorker>();
+            services.AddSingleton<IMothraLibp2p, MothraLibp2p>();
         }
     }
 }

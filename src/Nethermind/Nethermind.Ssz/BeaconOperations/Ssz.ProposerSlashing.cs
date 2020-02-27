@@ -61,7 +61,7 @@ namespace Nethermind.Ssz
 
         private static byte[] _nullProposerSlashing = new byte[Ssz.ProposerSlashingLength];
 
-        public static ProposerSlashing? DecodeProposerSlashing(Span<byte> span)
+        public static ProposerSlashing? DecodeProposerSlashing(ReadOnlySpan<byte> span)
         {
             if (span.Length != Ssz.ProposerSlashingLength) ThrowSourceLength<ProposerSlashing>(span.Length, Ssz.ProposerSlashingLength);
             if (span.SequenceEqual(_nullProposerSlashing)) return null;
@@ -91,7 +91,7 @@ namespace Nethermind.Ssz
             }
         }
 
-        public static ProposerSlashing?[] DecodeProposerSlashings(Span<byte> span)
+        public static ProposerSlashing?[] DecodeProposerSlashings(ReadOnlySpan<byte> span)
         {
             if (span.Length % Ssz.ProposerSlashingLength != 0)
             {

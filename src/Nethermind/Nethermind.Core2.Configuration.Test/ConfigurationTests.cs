@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -35,7 +36,7 @@ namespace Nethermind.Core2.Configuration.Test
             var services = new ServiceCollection();
             services.AddLogging(configure => configure.AddConsole());
             var configuration = new ConfigurationBuilder()
-                .AddJsonFile("appsettings.Development.json")
+                .AddJsonFile("Development/appsettings.json")
                 .Build();
             services.ConfigureBeaconChain(configuration);
             var testServiceProvider = services.BuildServiceProvider();
