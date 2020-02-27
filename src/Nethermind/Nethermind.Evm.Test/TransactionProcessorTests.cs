@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Runtime.CompilerServices;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -25,6 +24,7 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
@@ -207,6 +207,30 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(StatusCode.Success, tracer.TxReceipts[0].StatusCode);
         }
 
+        [Test]
+        public void Balance_is_not_changed_on_call_and_restore()
+        {
+            long gasLimit = 100000;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithValue(1.Ether() - (UInt256)gasLimit).WithGasPrice(1).WithGasLimit(gasLimit).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
+
+            _transactionProcessor.CallAndRestore(tx, block.Header, NullTxTracer.Instance);
+
+            _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(1.Ether());
+        }
+        
+        [Test]
+        public void Nonce_is_not_changed_on_call_and_restore()
+        {
+            long gasLimit = 100000;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithValue(1.Ether() - (UInt256)gasLimit).WithGasPrice(1).WithGasLimit(gasLimit).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
+
+            _transactionProcessor.CallAndRestore(tx, block.Header, NullTxTracer.Instance);
+            _stateProvider.GetNonce(TestItem.PrivateKeyA.Address).Should().Be(0);
+        }
+
+        
         [Test]
         public void Can_estimate_simple()
         {
