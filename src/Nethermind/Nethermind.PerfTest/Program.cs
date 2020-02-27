@@ -203,9 +203,9 @@ namespace Nethermind.PerfTest
 
             public event EventHandler<BlockEventArgs> NewHeadBlock;
 
-            public void DeleteChainSlice(in long startNumber, long? endNumber)
+            public int DeleteChainSlice(in long startNumber, long? endNumber)
             {
-                _blockTree.DeleteChainSlice(startNumber, endNumber);
+                return _blockTree.DeleteChainSlice(startNumber, endNumber);
             }
         }
 

@@ -103,7 +103,7 @@ namespace Nethermind.Blockchain
             remove { }
         }
 
-        public void DeleteChainSlice(in long startNumber, long? endNumber = null)
+        public int DeleteChainSlice(in long startNumber, long? endNumber = null)
         {           
             if (endNumber == null)
             {
@@ -124,8 +124,7 @@ namespace Nethermind.Blockchain
                         
                         if (GetPotentiallyCorruptedBlocks(startNumber).Any(b => b == null))
                         {
-                            _wrapped.DeleteChainSlice(startNumber);
-                            return;
+                            return _wrapped.DeleteChainSlice(startNumber);
                         }
                         
                         throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} cannot {nameof(DeleteChainSlice)} if searched blocks [{startNumber}, {endSearch}] are not corrupted.");    
