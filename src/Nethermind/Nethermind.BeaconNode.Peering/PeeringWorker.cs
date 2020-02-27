@@ -79,9 +79,9 @@ namespace Nethermind.BeaconNode.Peering
 
             try
             {
-                _mothraLibp2p.PeerDiscovered += MothraLibp2pOnPeerDiscovered;
+                _mothraLibp2p.PeerDiscovered += OnPeerDiscovered;
                 _mothraLibp2p.GossipReceived += OnGossipReceived;
-                _mothraLibp2p.RpcReceived += MothraLibp2pOnRpcReceived;
+                _mothraLibp2p.RpcReceived += OnRpcReceived;
 
                 string mothraDataDirectory = Path.Combine(_dataDirectory.ResolvedPath, _mothraDirectory);
                 MothraSettings mothraSettings = new MothraSettings()
@@ -148,15 +148,15 @@ namespace Nethermind.BeaconNode.Peering
             }
         }
 
-        private void MothraLibp2pOnPeerDiscovered(object? sender, PeerDiscoveredEventArgs e)
+        private void OnPeerDiscovered(ReadOnlySpan<byte> peerUtf8)
         {
-            if (_logger.IsInfo()) Log.PeerDiscovered(_logger, e.Peer, null);
+            if (_logger.IsInfo()) Log.PeerDiscovered(_logger, Encoding.UTF8.GetString(peerUtf8), null);
         }
 
-        private void MothraLibp2pOnRpcReceived(object? sender, RpcReceivedEventArgs e)
+        private void OnRpcReceived(ReadOnlySpan<byte> methodUtf8, bool isResponse, ReadOnlySpan<byte> peerUtf8, ReadOnlySpan<byte> data)
         {
             if (_logger.IsDebug())
-                LogDebug.RpcReceived(_logger, e.IsResponse ? "Response" : "Request", e.Method, e.Peer, e.Data.Length,
+                LogDebug.RpcReceived(_logger, isResponse, Encoding.UTF8.GetString(methodUtf8), Encoding.UTF8.GetString(peerUtf8), data.Length,
                     null);
             // TODO: handle RPC
         }

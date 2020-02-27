@@ -54,11 +54,11 @@ namespace Nethermind.Peering.Mothra
             _receiveRpcHandle = GCHandle.Alloc(_receiveRpc);
         }
         
-        public event GossipReceived? GossipReceived;
+        public event GossipReceivedEventHandler? GossipReceived;
         
-        public event EventHandler<PeerDiscoveredEventArgs>? PeerDiscovered;
+        public event PeerDiscoveredEventHandler? PeerDiscovered;
 
-        public event EventHandler<RpcReceivedEventArgs>? RpcReceived;
+        public event RpcReceivedEventHandler? RpcReceived;
 
         public void SendGossip(ReadOnlySpan<byte> topicUtf8, ReadOnlySpan<byte> data)
         {
@@ -190,42 +190,24 @@ namespace Nethermind.Peering.Mothra
 
         private unsafe void DiscoveredPeerHandler(byte* peerUtf8Ptr, int peerLength)
         {
-            byte[] peerUtf8 = new byte[peerLength];
-            Marshal.Copy((IntPtr) peerUtf8Ptr, peerUtf8, 0, peerLength);
-            OnPeerDiscovered(new PeerDiscoveredEventArgs(peerUtf8));
+            ReadOnlySpan<byte> peerUtf8 = new ReadOnlySpan<byte>(peerUtf8Ptr, peerLength);
+            PeerDiscovered?.Invoke(peerUtf8);
         }
         
-        private void OnPeerDiscovered(PeerDiscoveredEventArgs e)
-        {
-            PeerDiscovered?.Invoke(this, e);
-        }
-
-        private void OnRpcReceived(RpcReceivedEventArgs e)
-        {
-            RpcReceived?.Invoke(this, e);
-        }
-
         private unsafe void ReceiveGossipHandler(byte* topicUtf8Ptr, int topicLength, byte* dataPtr, int dataLength)
         {
             ReadOnlySpan<byte> topicUtf8 = new ReadOnlySpan<byte>(topicUtf8Ptr, topicLength);
             ReadOnlySpan<byte> data = new ReadOnlySpan<byte>(dataPtr, dataLength);
-
-            // Faster, but non-standard signature
             GossipReceived?.Invoke(topicUtf8, data);
         }
 
         private unsafe void ReceiveRpcHandler(byte* methodUtf8Ptr, int methodLength, int requestResponseFlag,
-            byte* peerUtf8Ptr,
-            int peerLength, byte* dataPtr, int dataLength)
+            byte* peerUtf8Ptr, int peerLength, byte* dataPtr, int dataLength)
         {
-            byte[] methodUtf8 = new byte[methodLength];
-            Marshal.Copy((IntPtr) methodUtf8Ptr, methodUtf8, 0, methodLength);
-            bool isResponse = requestResponseFlag > 0;
-            byte[] peerUtf8 = new byte[peerLength];
-            Marshal.Copy((IntPtr) peerUtf8Ptr, peerUtf8, 0, peerLength);
-            byte[] data = new byte[dataLength];
-            Marshal.Copy((IntPtr) dataPtr, data, 0, dataLength);
-            OnRpcReceived(new RpcReceivedEventArgs(methodUtf8, isResponse, peerUtf8, data));
+            ReadOnlySpan<byte> methodUtf8 = new ReadOnlySpan<byte>(methodUtf8Ptr, methodLength);
+            ReadOnlySpan<byte> peerUtf8 = new ReadOnlySpan<byte>(peerUtf8Ptr, peerLength);
+            ReadOnlySpan<byte> data = new ReadOnlySpan<byte>(dataPtr, dataLength);
+            RpcReceived?.Invoke(methodUtf8, requestResponseFlag == 0, peerUtf8, data);
         }
     }
 }

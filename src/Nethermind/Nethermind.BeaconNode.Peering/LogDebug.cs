@@ -46,10 +46,10 @@ namespace Nethermind.BeaconNode.Peering
                 new EventId(6053, nameof(GossipReceived)),
                 "Gossip received, topic '{Topic}', {ByteCount} bytes.");
         
-        public static readonly Action<ILogger, string, string, string, int, Exception?> RpcReceived =
-            LoggerMessage.Define<string, string, string, int>(LogLevel.Debug,
+        public static readonly Action<ILogger, bool, string, string, int, Exception?> RpcReceived =
+            LoggerMessage.Define<bool, string, string, int>(LogLevel.Debug,
                 new EventId(6054, nameof(RpcReceived)),
-                "RPC {RpcType} received, method '{Method}', peer {Peer}, {ByteCount} bytes.");
+                "RPC (response {IsResponse}) received, method '{Method}', peer {Peer}, {ByteCount} bytes.");
         
         public static readonly Action<ILogger, string, int, Exception?> GossipSend =
             LoggerMessage.Define<string, int>(LogLevel.Debug,

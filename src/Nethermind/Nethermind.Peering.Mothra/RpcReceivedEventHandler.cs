@@ -15,8 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Text;
 
 namespace Nethermind.Peering.Mothra
 {
-    public delegate void GossipReceived(ReadOnlySpan<byte> topicUtf8, ReadOnlySpan<byte> data);
+    public delegate void RpcReceivedEventHandler(ReadOnlySpan<byte> methodUtf8, bool isResponse, ReadOnlySpan<byte> peerUtf8, ReadOnlySpan<byte> data);
 }
