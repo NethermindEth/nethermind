@@ -58,7 +58,13 @@ namespace Nethermind.Blockchain
                 {
                     try
                     {
+                        BlockHeader currentHeader = header;
                         header = _blockTree.FindHeader(number, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                        if (header == null)
+                        {
+                            isFastSyncSearch = true;
+                            header = currentHeader;
+                        }
                     }
                     catch (InvalidOperationException) // fast sync during the first 256 blocks after the transition
                     {
