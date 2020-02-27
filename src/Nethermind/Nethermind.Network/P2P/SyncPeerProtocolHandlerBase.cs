@@ -256,6 +256,15 @@ namespace Nethermind.Network.P2P
             Send(msg);
         }
 
+        public override void HandleMessage(Packet message)
+        {
+            ZeroPacket zeroPacket = new ZeroPacket(message);
+            HandleMessage(zeroPacket);
+            zeroPacket.Release();
+        }
+
+        public abstract void HandleMessage(ZeroPacket message);
+
         protected void Handle(GetBlockHeadersMessage getBlockHeadersMessage)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();

@@ -88,6 +88,9 @@ namespace Nethermind.Network
                     }
 
                     break;
+                case Protocol.Les:
+                      // todo validate session
+                    break;
             }
 
             return true;

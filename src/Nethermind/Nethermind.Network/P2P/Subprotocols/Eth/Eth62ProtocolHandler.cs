@@ -134,7 +134,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private readonly Random _random = new Random();
 
-        public virtual void HandleMessage(ZeroPacket message)
+        public override void HandleMessage(ZeroPacket message)
         {
             if (message.PacketType != Eth62MessageCode.Status && !_statusReceived)
             {
@@ -211,13 +211,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     Handle(newBlockMessage);
                     break;
             }
-        }
-
-        public override void HandleMessage(Packet message)
-        {
-            ZeroPacket zeroPacket = new ZeroPacket(message);
-            HandleMessage(zeroPacket);
-            zeroPacket.Release();
         }
 
         public override string Name => "eth62";

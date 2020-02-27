@@ -25,6 +25,7 @@ using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Network.P2P.Subprotocols.Les;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -183,6 +184,13 @@ namespace Nethermind.Network
                     InitEthProtocol(session, handler);
 
                     return handler;
+                },
+                [Protocol.Les] = (session, version) =>
+                {
+                    LesProtocolHandler handler = new LesProtocolHandler(session, _serializer, _stats, _syncServer, _logManager, _txPool);
+                    InitLesProtocol(session, handler);
+
+                    return handler;
                 }
             };
         
@@ -218,6 +226,11 @@ namespace Nethermind.Network
                 if (_logger.IsTrace) _logger.Trace($"Finalized P2P protocol initialization on {session}");
                 P2PProtocolInitialized?.Invoke(this, typedArgs);
             };
+        }
+
+        private void InitLesProtocol(ISession session, LesProtocolHandler handler)
+        {
+            // todo
         }
 
         private void InitEthProtocol(ISession session, Eth62ProtocolHandler handler)
