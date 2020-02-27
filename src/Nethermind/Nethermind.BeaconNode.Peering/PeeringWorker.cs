@@ -16,6 +16,7 @@
 
 using System;
 using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
@@ -79,7 +80,7 @@ namespace Nethermind.BeaconNode.Peering
             try
             {
                 _mothraLibp2p.PeerDiscovered += MothraLibp2pOnPeerDiscovered;
-                _mothraLibp2p.GossipReceived += MothraLibp2pOnGossipReceived;
+                _mothraLibp2p.GossipReceived += OnGossipReceived;
                 _mothraLibp2p.RpcReceived += MothraLibp2pOnRpcReceived;
 
                 string mothraDataDirectory = Path.Combine(_dataDirectory.ResolvedPath, _mothraDirectory);
@@ -120,7 +121,7 @@ namespace Nethermind.BeaconNode.Peering
             await base.StopAsync(cancellationToken);
         }
 
-        private void HandleBeaconBlock(byte[] data)
+        private void HandleBeaconBlock(ReadOnlySpan<byte> data)
         {
             BeaconBlock beaconBlock = Ssz.Ssz.DecodeBeaconBlock(data);
             if (!_storeProvider.TryGetStore(out IStore? retrievedStore))
@@ -132,19 +133,18 @@ namespace Nethermind.BeaconNode.Peering
             _forkChoice.OnBlockAsync(store, beaconBlock);
         }
 
-        private void MothraLibp2pOnGossipReceived(object? sender, GossipReceivedEventArgs e)
+        private void OnGossipReceived(ReadOnlySpan<byte> topicUtf8, ReadOnlySpan<byte> data)
         {
             // TODO: handle topic
-            ReadOnlySpan<byte> topicUtf8Span = e.TopicUtf8;
-            if (topicUtf8Span.SequenceEqual(TopicUtf8.BeaconBlock))
+            if (topicUtf8.SequenceEqual(TopicUtf8.BeaconBlock))
             {
                 if (_logger.IsDebug())
-                    LogDebug.GossipReceived(_logger, nameof(TopicUtf8.BeaconBlock), e.Data.Length, null);
-                HandleBeaconBlock(e.Data);
+                    LogDebug.GossipReceived(_logger, nameof(TopicUtf8.BeaconBlock), data.Length, null);
+                HandleBeaconBlock(data);
             }
             else
             {
-                if (_logger.IsDebug()) LogDebug.GossipReceived(_logger, e.Topic, e.Data.Length, null);
+                if (_logger.IsDebug()) LogDebug.GossipReceived(_logger, Encoding.UTF8.GetString(topicUtf8), data.Length, null);
             }
         }
 

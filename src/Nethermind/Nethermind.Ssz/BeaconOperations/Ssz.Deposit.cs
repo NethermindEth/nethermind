@@ -49,7 +49,7 @@ namespace Nethermind.Ssz
             }
         }
 
-        public static Deposit[] DecodeDeposits(Span<byte> span)
+        public static Deposit[] DecodeDeposits(ReadOnlySpan<byte> span)
         {
             if (span.Length % Ssz.DepositLength() != 0)
             {
@@ -88,7 +88,7 @@ namespace Nethermind.Ssz
             return new byte[Ssz.DepositLength()];
         }
 
-        public static Deposit? DecodeDeposit(Span<byte> span)
+        public static Deposit? DecodeDeposit(ReadOnlySpan<byte> span)
         {
             if (span.Length != Ssz.DepositLength()) ThrowSourceLength<Deposit>(span.Length, Ssz.DepositLength());
             if (span.SequenceEqual(NullDeposit())) return null;

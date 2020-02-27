@@ -58,7 +58,7 @@ namespace Nethermind.Ssz
             Encode(span.Slice(dynamicOffset, length2), container.Attestation2);
         }
 
-        public static AttesterSlashing? DecodeAttesterSlashing(Span<byte> span)
+        public static AttesterSlashing? DecodeAttesterSlashing(ReadOnlySpan<byte> span)
         {
             if (span.Length == 0)
             {
@@ -98,7 +98,7 @@ namespace Nethermind.Ssz
             }
         }
 
-        public static AttesterSlashing?[] DecodeAttesterSlashings(Span<byte> span)
+        public static AttesterSlashing?[] DecodeAttesterSlashings(ReadOnlySpan<byte> span)
         {
             if (span.Length == 0)
             {

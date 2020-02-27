@@ -57,19 +57,19 @@ namespace Nethermind.Ssz
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static Hash32 DecodeSha256(Span<byte> span, ref int offset)
+        private static Hash32 DecodeSha256(ReadOnlySpan<byte> span, ref int offset)
         {
             Hash32 hash32 = DecodeSha256(span.Slice(offset, Ssz.Hash32Length));
             offset += Ssz.Hash32Length;
             return hash32;
         }
         
-        public static Hash32 DecodeSha256(Span<byte> span)
+        public static Hash32 DecodeSha256(ReadOnlySpan<byte> span)
         {
-            return Bytes.AreEqual(Hash32.Zero.Bytes, span) ? Hash32.Zero : new Hash32(DecodeBytes(span).ToArray());
+            return Bytes.AreEqual(Hash32.Zero.Bytes, span) ? Hash32.Zero : new Hash32(span.ToArray());
         }
         
-        public static Hash32[] DecodeHashes(Span<byte> span)
+        public static Hash32[] DecodeHashes(ReadOnlySpan<byte> span)
         {
             if (span.Length == 0)
             {
@@ -80,7 +80,7 @@ namespace Nethermind.Ssz
             Hash32[] result = new Hash32[count];
             for (int i = 0; i < count; i++)
             {
-                Span<byte> current = span.Slice(i * Ssz.Hash32Length, Ssz.Hash32Length);
+                ReadOnlySpan<byte> current = span.Slice(i * Ssz.Hash32Length, Ssz.Hash32Length);
                 result[i] = DecodeSha256(current);
             }
 

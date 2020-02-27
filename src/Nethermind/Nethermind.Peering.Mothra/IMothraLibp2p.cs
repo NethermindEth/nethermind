@@ -20,7 +20,7 @@ namespace Nethermind.Peering.Mothra
 {
     public interface IMothraLibp2p
     {
-        event EventHandler<GossipReceivedEventArgs>? GossipReceived;
+        event GossipReceived GossipReceived;
         event EventHandler<PeerDiscoveredEventArgs>? PeerDiscovered;
         event EventHandler<RpcReceivedEventArgs>? RpcReceived;
         void SendGossip(ReadOnlySpan<byte> topicUtf8, ReadOnlySpan<byte> data);

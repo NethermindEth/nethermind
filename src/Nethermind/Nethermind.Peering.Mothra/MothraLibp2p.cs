@@ -53,9 +53,9 @@ namespace Nethermind.Peering.Mothra
             _receiveGossipHandle = GCHandle.Alloc(_receiveGossip);
             _receiveRpcHandle = GCHandle.Alloc(_receiveRpc);
         }
-
-        public event EventHandler<GossipReceivedEventArgs>? GossipReceived;
-
+        
+        public event GossipReceived? GossipReceived;
+        
         public event EventHandler<PeerDiscoveredEventArgs>? PeerDiscovered;
 
         public event EventHandler<RpcReceivedEventArgs>? RpcReceived;
@@ -194,12 +194,7 @@ namespace Nethermind.Peering.Mothra
             Marshal.Copy((IntPtr) peerUtf8Ptr, peerUtf8, 0, peerLength);
             OnPeerDiscovered(new PeerDiscoveredEventArgs(peerUtf8));
         }
-
-        private void OnGossipReceived(GossipReceivedEventArgs e)
-        {
-            GossipReceived?.Invoke(this, e);
-        }
-
+        
         private void OnPeerDiscovered(PeerDiscoveredEventArgs e)
         {
             PeerDiscovered?.Invoke(this, e);
@@ -212,11 +207,11 @@ namespace Nethermind.Peering.Mothra
 
         private unsafe void ReceiveGossipHandler(byte* topicUtf8Ptr, int topicLength, byte* dataPtr, int dataLength)
         {
-            byte[] topicUtf8 = new byte[topicLength];
-            Marshal.Copy((IntPtr) topicUtf8Ptr, topicUtf8, 0, topicLength);
-            byte[] data = new byte[dataLength];
-            Marshal.Copy((IntPtr) dataPtr, data, 0, dataLength);
-            OnGossipReceived(new GossipReceivedEventArgs(topicUtf8, data));
+            ReadOnlySpan<byte> topicUtf8 = new ReadOnlySpan<byte>(topicUtf8Ptr, topicLength);
+            ReadOnlySpan<byte> data = new ReadOnlySpan<byte>(dataPtr, dataLength);
+
+            // Faster, but non-standard signature
+            GossipReceived?.Invoke(topicUtf8, data);
         }
 
         private unsafe void ReceiveRpcHandler(byte* methodUtf8Ptr, int methodLength, int requestResponseFlag,

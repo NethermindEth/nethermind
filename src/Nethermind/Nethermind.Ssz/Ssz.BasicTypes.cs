@@ -244,7 +244,7 @@ namespace Nethermind.Ssz
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static uint DecodeUInt(Span<byte> span)
+        public static uint DecodeUInt(ReadOnlySpan<byte> span)
         {
             const int expectedLength = 4;
             if (span.Length != expectedLength)
@@ -256,7 +256,7 @@ namespace Nethermind.Ssz
         }
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ulong DecodeULong(Span<byte> span)
+        public static ulong DecodeULong(ReadOnlySpan<byte> span)
         {
             const int expectedLength = 8;
             if (span.Length != expectedLength)
@@ -371,14 +371,9 @@ namespace Nethermind.Ssz
             
             return MemoryMarshal.Cast<byte, ushort>(span);
         }
-        
-        public static Span<byte> DecodeBytes(Span<byte> span)
-        {
-            return span;
-        }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static byte[] DecodeBytes32(Span<byte> span, ref int offset)
+        private static byte[] DecodeBytes32(ReadOnlySpan<byte> span, ref int offset)
         {
             byte[] bytes = span.Slice(offset, 32).ToArray();
             offset += 32;

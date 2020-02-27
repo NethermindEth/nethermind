@@ -67,7 +67,7 @@ namespace Nethermind.Ssz
             }
         }
 
-        public static Attestation?[] DecodeAttestations(Span<byte> span)
+        public static Attestation?[] DecodeAttestations(ReadOnlySpan<byte> span)
         {
             if (span.Length == 0)
             {
@@ -93,7 +93,7 @@ namespace Nethermind.Ssz
             return containers;
         }
 
-        public static Attestation? DecodeAttestation(Span<byte> span)
+        public static Attestation? DecodeAttestation(ReadOnlySpan<byte> span)
         {
             if (span.Length == 0) return null;
             int offset = 0;

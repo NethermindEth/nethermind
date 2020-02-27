@@ -57,7 +57,7 @@ namespace Nethermind.Ssz
         }
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static Gwei DecodeGwei(Span<byte> span, ref int offset)
+        private static Gwei DecodeGwei(ReadOnlySpan<byte> span, ref int offset)
         {
             Gwei gwei = new Gwei(BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(offset)));
             offset += Ssz.GweiLength;

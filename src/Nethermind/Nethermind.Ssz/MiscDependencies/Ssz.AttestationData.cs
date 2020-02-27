@@ -58,7 +58,7 @@ namespace Nethermind.Ssz
             return container;
         }
 
-        private static AttestationData DecodeAttestationData(Span<byte> span, ref int offset)
+        private static AttestationData DecodeAttestationData(ReadOnlySpan<byte> span, ref int offset)
         {
             Slot slot = DecodeSlot(span, ref offset);
             CommitteeIndex index = DecodeCommitteeIndex(span, ref offset);

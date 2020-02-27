@@ -42,7 +42,7 @@ namespace Nethermind.Ssz
             return new BlsPublicKey(span.ToArray());
         }
 
-        private static BlsPublicKey DecodeBlsPublicKey(Span<byte> span, ref int offset)
+        private static BlsPublicKey DecodeBlsPublicKey(ReadOnlySpan<byte> span, ref int offset)
         {
             BlsPublicKey publicKey = new BlsPublicKey(span.Slice(offset, Ssz.BlsPublicKeyLength).ToArray());
             offset += Ssz.BlsPublicKeyLength;
