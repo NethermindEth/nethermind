@@ -95,8 +95,13 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.ReceiptStorage = new PersistentReceiptStorage(_context.DbProvider.ReceiptsDb, _context.SpecProvider, _context.LogManager);
 
             var bloomConfig = _context.Config<IBloomConfig>();
+            
+            var fileStoreFactory = initConfig.DiagnosticMode == DiagnosticMode.MemDb 
+                ? (IFileStoreFactory) new InMemoryDictionaryFileStoreFactory() 
+                : new FixedSizeFileStoreFactory(Path.Combine(initConfig.BaseDbPath, DbNames.Bloom), DbNames.Bloom, Bloom.ByteLength); 
+           
             _context.BloomStorage = bloomConfig.Index
-                ? new BloomStorage(bloomConfig, _context.DbProvider.BloomDb, new FixedSizeFileStoreFactory(Path.Combine(initConfig.BaseDbPath, DbNames.Bloom), DbNames.Bloom, Bloom.ByteLength))
+                ? new BloomStorage(bloomConfig, _context.DbProvider.BloomDb, fileStoreFactory)
                 : (IBloomStorage) NullBloomStorage.Instance;
 
             _context.DisposeStack.Push(_context.BloomStorage);

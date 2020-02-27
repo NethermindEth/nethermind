@@ -29,9 +29,9 @@ namespace Nethermind.Store.Bloom
         }
         
         public static NullBloomStorage Instance { get; } = new NullBloomStorage();
-        public long MinBlockNumber { get; } = 0;
+        public long MinBlockNumber { get; } = long.MaxValue;
         public long MaxBlockNumber { get; } = 0;
-        public long MigratedBlockNumber { get; } = 0;
+        public long MigratedBlockNumber { get; } = -1;
         public void Store(long blockNumber, Core.Bloom bloom) { }
         public void Migrate(IEnumerable<BlockHeader> blockHeaders) { }
 
