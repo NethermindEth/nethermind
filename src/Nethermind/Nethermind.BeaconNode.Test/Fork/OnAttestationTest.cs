@@ -40,6 +40,7 @@ namespace Nethermind.BeaconNode.Test.Fork
             IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
+            ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
             InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
@@ -57,12 +58,12 @@ namespace Nethermind.BeaconNode.Test.Fork
 
             Attestation attestation = TestAttestation.GetValidAttestation(testServiceProvider, state, block.Slot, CommitteeIndex.None, signed: true);
 
-            attestation.Data.Target.Epoch.ShouldBe(initialValues.GenesisEpoch);
+            attestation.Data.Target.Epoch.ShouldBe(chainConstants.GenesisEpoch);
 
             BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
             Slot currentSlot = forkChoice.GetCurrentSlot(store);
             Epoch currentEpoch = beaconChainUtility.ComputeEpochAtSlot(currentSlot);
-            currentEpoch.ShouldBe(initialValues.GenesisEpoch);
+            currentEpoch.ShouldBe(chainConstants.GenesisEpoch);
 
             await RunOnAttestation(testServiceProvider, state, store, attestation, expectValid: true);
         }
@@ -74,6 +75,7 @@ namespace Nethermind.BeaconNode.Test.Fork
             IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
+            ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
             InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
@@ -91,12 +93,12 @@ namespace Nethermind.BeaconNode.Test.Fork
 
             Attestation attestation = TestAttestation.GetValidAttestation(testServiceProvider, state, block.Slot, CommitteeIndex.None, signed: true);
 
-            attestation.Data.Target.Epoch.ShouldBe(initialValues.GenesisEpoch);
+            attestation.Data.Target.Epoch.ShouldBe(chainConstants.GenesisEpoch);
 
             BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
             Slot currentSlot = forkChoice.GetCurrentSlot(store);
             Epoch currentEpoch = beaconChainUtility.ComputeEpochAtSlot(currentSlot);
-            currentEpoch.ShouldBe(initialValues.GenesisEpoch + Epoch.One);
+            currentEpoch.ShouldBe(chainConstants.GenesisEpoch + Epoch.One);
 
             await RunOnAttestation(testServiceProvider, state, store, attestation, expectValid: true);
         }
@@ -108,6 +110,7 @@ namespace Nethermind.BeaconNode.Test.Fork
             IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
+            ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
             InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
@@ -127,12 +130,12 @@ namespace Nethermind.BeaconNode.Test.Fork
             // create attestation for past block
             Attestation attestation = TestAttestation.GetValidAttestation(testServiceProvider, state, state.Slot, CommitteeIndex.None, signed: true);
 
-            attestation.Data.Target.Epoch.ShouldBe(initialValues.GenesisEpoch);
+            attestation.Data.Target.Epoch.ShouldBe(chainConstants.GenesisEpoch);
 
             BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
             Slot currentSlot = forkChoice.GetCurrentSlot(store);
             Epoch currentEpoch = beaconChainUtility.ComputeEpochAtSlot(currentSlot);
-            currentEpoch.ShouldBe((Epoch)(initialValues.GenesisEpoch + 2UL));
+            currentEpoch.ShouldBe((Epoch)(chainConstants.GenesisEpoch + 2UL));
 
             await RunOnAttestation(testServiceProvider, state, store, attestation, expectValid: false);
         }

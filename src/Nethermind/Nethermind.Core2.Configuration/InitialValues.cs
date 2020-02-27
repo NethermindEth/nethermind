@@ -20,8 +20,7 @@ namespace Nethermind.Core2.Configuration
 {
     public class InitialValues
     {
-        public Epoch GenesisEpoch { get; set; }
-
         public byte BlsWithdrawalPrefix { get; set; }
+        public ForkVersion GenesisForkVersion { get; set; }
     }
 }

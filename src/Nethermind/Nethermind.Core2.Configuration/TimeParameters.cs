@@ -20,11 +20,11 @@ namespace Nethermind.Core2.Configuration
 {
     public class TimeParameters
     {
-        //public Epoch MaximumEpochsPerCrosslink { get; set; }
         public Epoch MaximumSeedLookahead { get; set; }
 
         public Slot MinimumAttestationInclusionDelay { get; set; }
         public Epoch MinimumEpochsToInactivityPenalty { get; set; }
+        public uint MinimumGenesisDelay { get; set; }
         public Epoch MinimumSeedLookahead { get; set; }
         public Epoch MinimumValidatorWithdrawabilityDelay { get; set; }
         public Epoch PersistentCommitteePeriod { get; set; }

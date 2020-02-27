@@ -64,7 +64,7 @@ namespace Nethermind.BeaconNode.Test
             BeaconChainUtility beaconChainUtility = new BeaconChainUtility(loggerFactory.CreateLogger<BeaconChainUtility>(),
                 miscellaneousParameterOptions, gweiValueOptions, timeParameterOptions,
                 cryptographyService);
-            BeaconStateAccessor beaconStateAccessor = new BeaconStateAccessor(miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, signatureDomainOptions,
+            BeaconStateAccessor beaconStateAccessor = new BeaconStateAccessor(chainConstants, miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, signatureDomainOptions,
                 cryptographyService, beaconChainUtility);
             BeaconStateMutator beaconStateMutator = new BeaconStateMutator(chainConstants, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions,
                 beaconChainUtility, beaconStateAccessor);
@@ -77,7 +77,7 @@ namespace Nethermind.BeaconNode.Test
                 cryptographyService,  beaconStateAccessor, beaconStateTransition);
             MemoryStoreProvider storeProvider = new MemoryStoreProvider(loggerFactory, timeParameterOptions);
             ForkChoice forkChoice = new ForkChoice(loggerFactory.CreateLogger<ForkChoice>(),
-                miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, forkChoiceConfigurationOptions, signatureDomainOptions,
+                chainConstants, miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, forkChoiceConfigurationOptions, signatureDomainOptions,
                 cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateTransition, storeProvider);
             ChainStart chainStart = new ChainStart(loggerFactory.CreateLogger<ChainStart>(), beaconChain, forkChoice);
 

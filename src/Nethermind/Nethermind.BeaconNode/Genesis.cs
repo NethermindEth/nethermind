@@ -71,12 +71,11 @@ namespace Nethermind.BeaconNode
             if (_logger.IsInfo()) Log.InitializeBeaconState(_logger, eth1BlockHash, eth1Timestamp, deposits.Count(), null);
 
             GweiValues gweiValues = _gweiValueOptions.CurrentValue;
-            InitialValues initialValues = _initialValueOptions.CurrentValue;
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             StateListLengths stateListLengths = _stateListLengthOptions.CurrentValue;
 
-            ulong genesisTime = eth1Timestamp - (eth1Timestamp % _chainConstants.SecondsPerDay)
-                + (2 * _chainConstants.SecondsPerDay);
+            ulong genesisTime = eth1Timestamp - (eth1Timestamp % timeParameters.MinimumGenesisDelay)
+                + (2 * timeParameters.MinimumGenesisDelay);
             Eth1Data eth1Data = new Eth1Data((ulong)deposits.Count(), eth1BlockHash);
             BeaconBlockBody emptyBlockBody = new BeaconBlockBody();
             
@@ -104,8 +103,8 @@ namespace Nethermind.BeaconNode
                 validator.SetEffectiveBalance(effectiveBalance);
                 if (validator.EffectiveBalance == gweiValues.MaximumEffectiveBalance)
                 {
-                    validator.SetEligible(initialValues.GenesisEpoch);
-                    validator.SetActive(initialValues.GenesisEpoch);
+                    validator.SetEligible(_chainConstants.GenesisEpoch);
+                    validator.SetActive(_chainConstants.GenesisEpoch);
                 }
             }
 
@@ -115,13 +114,12 @@ namespace Nethermind.BeaconNode
         public bool IsValidGenesisState(BeaconState state)
         {
             MiscellaneousParameters miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
-            InitialValues initialValues = _initialValueOptions.CurrentValue;
 
             if (state.GenesisTime < miscellaneousParameters.MinimumGenesisTime)
             {
                 return false;
             }
-            IList<ValidatorIndex> activeValidatorIndices = _beaconStateAccessor.GetActiveValidatorIndices(state, initialValues.GenesisEpoch);
+            IList<ValidatorIndex> activeValidatorIndices = _beaconStateAccessor.GetActiveValidatorIndices(state, _chainConstants.GenesisEpoch);
             if (activeValidatorIndices.Count < miscellaneousParameters.MinimumGenesisActiveValidatorCount)
             {
                 return false;

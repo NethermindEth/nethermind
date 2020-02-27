@@ -37,6 +37,7 @@ namespace Nethermind.BeaconNode
         private readonly IOptionsMonitor<ForkChoiceConfiguration> _forkChoiceConfigurationOptions;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly ILogger _logger;
+        private readonly ChainConstants _chainConstants;
         private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<SignatureDomains> _signatureDomainOptions;
@@ -47,6 +48,7 @@ namespace Nethermind.BeaconNode
 
         public ForkChoice(
             ILogger<ForkChoice> logger,
+            ChainConstants chainConstants,
             IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
             IOptionsMonitor<InitialValues> initialValueOptions,
             IOptionsMonitor<TimeParameters> timeParameterOptions,
@@ -61,6 +63,7 @@ namespace Nethermind.BeaconNode
             IStoreProvider storeProvider)
         {
             _logger = logger;
+            _chainConstants = chainConstants;
             _miscellaneousParameterOptions = miscellaneousParameterOptions;
             _initialValueOptions = initialValueOptions;
             _timeParameterOptions = timeParameterOptions;
@@ -111,16 +114,13 @@ namespace Nethermind.BeaconNode
 
         public IStore GetGenesisStore(BeaconState genesisState)
         {
-            MiscellaneousParameters miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
-            MaxOperationsPerBlock maxOperationsPerBlock = _maxOperationsPerBlockOptions.CurrentValue;
-
             Hash32 stateRoot = _cryptographyService.HashTreeRoot(genesisState);
             BeaconBlock genesisBlock = new BeaconBlock(stateRoot);
             
             Hash32 root = _cryptographyService.SigningRoot(genesisBlock);
 
-            Checkpoint justifiedCheckpoint = new Checkpoint(_initialValueOptions.CurrentValue.GenesisEpoch, root);
-            Checkpoint finalizedCheckpoint = new Checkpoint(_initialValueOptions.CurrentValue.GenesisEpoch, root);
+            Checkpoint justifiedCheckpoint = new Checkpoint(_chainConstants.GenesisEpoch, root);
+            Checkpoint finalizedCheckpoint = new Checkpoint(_chainConstants.GenesisEpoch, root);
 
             if (_logger.IsInfo())
                 Log.CreateGenesisStore(_logger, genesisBlock, genesisState, justifiedCheckpoint, root, null);
@@ -219,7 +219,6 @@ namespace Nethermind.BeaconNode
         {
             if (_logger.IsInfo()) Log.OnAttestation(_logger, attestation, null);
             
-            InitialValues initialValues = _initialValueOptions.CurrentValue;
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
 
             Checkpoint target = attestation.Data.Target;
@@ -229,9 +228,9 @@ namespace Nethermind.BeaconNode
             Epoch currentEpoch = _beaconChainUtility.ComputeEpochAtSlot(currentSlot);
 
             // Use GENESIS_EPOCH for previous when genesis to avoid underflow
-            Epoch previousEpoch = currentEpoch > initialValues.GenesisEpoch
+            Epoch previousEpoch = currentEpoch > _chainConstants.GenesisEpoch
                 ? currentEpoch - new Epoch(1)
-                : initialValues.GenesisEpoch;
+                : _chainConstants.GenesisEpoch;
 
             if (target.Epoch != currentEpoch && target.Epoch != previousEpoch)
             {

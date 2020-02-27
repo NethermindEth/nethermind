@@ -72,11 +72,12 @@ namespace Nethermind.BeaconNode.Test.Genesis
             // Arrange
             var testServiceProvider = TestSystem.BuildTestServiceProvider();
 
-            var chainConstants = testServiceProvider.GetService<ChainConstants>();
-            var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
+            ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
+            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            MiscellaneousParameters miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
 
             // Act
-            var state = CreateValidBeaconState(testServiceProvider, eth1TimestampOverride: (miscellaneousParameters.MinimumGenesisTime - 3 * chainConstants.SecondsPerDay));
+            var state = CreateValidBeaconState(testServiceProvider, eth1TimestampOverride: (miscellaneousParameters.MinimumGenesisTime - 3 * timeParameters.MinimumGenesisDelay));
 
             // Assert
             IsValidGenesisState(testServiceProvider, state, false);

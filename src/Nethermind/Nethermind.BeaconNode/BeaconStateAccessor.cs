@@ -32,6 +32,7 @@ namespace Nethermind.BeaconNode
     public class BeaconStateAccessor
     {
         private readonly BeaconChainUtility _beaconChainUtility;
+        private readonly ChainConstants _chainConstants;
         private readonly ICryptographyService _cryptographyService;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
@@ -39,7 +40,9 @@ namespace Nethermind.BeaconNode
         private readonly IOptionsMonitor<SignatureDomains> _signatureDomainOptions;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
-        public BeaconStateAccessor(IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
+        public BeaconStateAccessor(
+            ChainConstants chainConstants,
+            IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
             IOptionsMonitor<InitialValues> initialValueOptions,
             IOptionsMonitor<TimeParameters> timeParameterOptions,
             IOptionsMonitor<StateListLengths> stateListLengthOptions,
@@ -47,6 +50,7 @@ namespace Nethermind.BeaconNode
             ICryptographyService cryptographyService,
             BeaconChainUtility beaconChainUtility)
         {
+            _chainConstants = chainConstants;
             _cryptographyService = cryptographyService;
             _beaconChainUtility = beaconChainUtility;
             _miscellaneousParameterOptions = miscellaneousParameterOptions;
@@ -254,9 +258,9 @@ namespace Nethermind.BeaconNode
         public Epoch GetPreviousEpoch(BeaconState state)
         {
             Epoch currentEpoch = GetCurrentEpoch(state);
-            if (currentEpoch == _initialValueOptions.CurrentValue.GenesisEpoch)
+            if (currentEpoch == _chainConstants.GenesisEpoch)
             {
-                return _initialValueOptions.CurrentValue.GenesisEpoch;
+                return _chainConstants.GenesisEpoch;
             }
             return currentEpoch - new Epoch(1);
         }

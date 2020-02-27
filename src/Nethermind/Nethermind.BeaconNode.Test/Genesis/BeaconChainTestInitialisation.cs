@@ -37,9 +37,10 @@ namespace Nethermind.BeaconNode.Test.Genesis
             // Arrange
             var testServiceProvider = TestSystem.BuildTestServiceProvider(useBls);
 
-            var chainConstants = testServiceProvider.GetService<ChainConstants>();
-            var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
-            var gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
+            ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
+            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            MiscellaneousParameters miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
+            GweiValues gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
 
             var depositCount = miscellaneousParameters.MinimumGenesisActiveValidatorCount;
 
@@ -55,7 +56,7 @@ namespace Nethermind.BeaconNode.Test.Genesis
             var state = beaconChain.InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp, deposits);
 
             // Assert
-            state.GenesisTime.ShouldBe(eth1Timestamp - eth1Timestamp % chainConstants.SecondsPerDay + 2 * chainConstants.SecondsPerDay);
+            state.GenesisTime.ShouldBe(eth1Timestamp - eth1Timestamp % timeParameters.MinimumGenesisDelay + 2 * timeParameters.MinimumGenesisDelay);
             state.Validators.Count.ShouldBe(depositCount);
             state.Eth1Data.DepositRoot.ShouldBe(depositRoot);
             state.Eth1Data.DepositCount.ShouldBe((ulong)depositCount);

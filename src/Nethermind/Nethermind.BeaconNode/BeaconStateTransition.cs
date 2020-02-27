@@ -560,7 +560,7 @@ namespace Nethermind.BeaconNode
         {
             if (_logger.IsDebug()) LogDebug.ProcessJustificationAndFinalization(_logger, state, null);
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
-            if (currentEpoch <= _initialValueOptions.CurrentValue.GenesisEpoch + new Epoch(1))
+            if (currentEpoch <= _chainConstants.GenesisEpoch + new Epoch(1))
             {
                 return;
                 //throw new ArgumentOutOfRangeException(nameof(state), currentEpoch, "Current epoch of state must be more than one away from genesis epoch.");
@@ -778,7 +778,7 @@ namespace Nethermind.BeaconNode
             if (_logger.IsDebug()) LogDebug.ProcessRewardsAndPenalties(_logger, state, null);
 
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
-            if (currentEpoch == _initialValueOptions.CurrentValue.GenesisEpoch)
+            if (currentEpoch == _chainConstants.GenesisEpoch)
             {
                 return;
             }

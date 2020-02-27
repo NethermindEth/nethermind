@@ -51,13 +51,11 @@ namespace Nethermind.BeaconNode.Test.Helpers
 
         public static BeaconState CreateGenesisState(IServiceProvider testServiceProvider, ulong numberOfValidators)
         {
-            var chainConstants = testServiceProvider.GetService<ChainConstants>();
-            var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
-            var gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
-            var initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
-            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            var stateListLengths = testServiceProvider.GetService<IOptions<StateListLengths>>().Value;
-            var maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
+            ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
+            GweiValues gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
+            InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
+            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            StateListLengths stateListLengths = testServiceProvider.GetService<IOptions<StateListLengths>>().Value;
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
 
             var depositRoot = new Hash32(Enumerable.Repeat((byte)0x42, 32).ToArray());
@@ -85,8 +83,8 @@ namespace Nethermind.BeaconNode.Test.Helpers
             {
                 if (validator.EffectiveBalance >= gweiValues.MaximumEffectiveBalance)
                 {
-                    validator.SetEligible(initialValues.GenesisEpoch);
-                    validator.SetActive(initialValues.GenesisEpoch);
+                    validator.SetEligible(chainConstants.GenesisEpoch);
+                    validator.SetActive(chainConstants.GenesisEpoch);
                 }
             }
 
