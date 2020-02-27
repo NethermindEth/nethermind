@@ -381,6 +381,45 @@ namespace Nethermind.Evm.Test
 
             ConfirmEnoughEstimate(tx, block, estimate);
         }
+        
+        [Test]
+        public void Can_estimate_with_stipend_and_refund()
+        {
+            byte[] initByteCode = Prepare.EvmCode
+                .CallWithValue(Address.Zero, 0, 1)
+                .PushData(1)
+                .PushData(1)
+                .Op(Instruction.SSTORE)
+                .PushData(0)
+                .PushData(1)
+                .Op(Instruction.SSTORE)
+                .Op(Instruction.STOP)
+                .Done;
+
+            long gasLimit = 200000;
+
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithInit(initByteCode).WithGasLimit(gasLimit).TestObject;
+            Block block = Build.A.Block.WithNumber(MainNetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
+
+            IntrinsicGasCalculator gasCalculator = new IntrinsicGasCalculator();
+            long intrinsic = gasCalculator.Calculate(tx, MuirGlacier.Instance);
+
+            GethLikeTxTracer gethTracer = new GethLikeTxTracer(GethTraceOptions.Default);
+            _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
+            TestContext.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
+
+            EstimateGasTracer tracer = new EstimateGasTracer();
+            _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
+
+            long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
+            actualIntrinsic.Should().Be(intrinsic);
+            tracer.CalculateAdditionalGasRequired(tx).Should().Be(RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend);
+            tracer.GasSpent.Should().Be(87429L);
+            long estimate = tracer.CalculateEstimate(tx);
+            estimate.Should().Be(87429L + RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend);
+
+            ConfirmEnoughEstimate(tx, block, estimate);
+        }
 
         [Test]
         public void Can_estimate_with_single_call()
