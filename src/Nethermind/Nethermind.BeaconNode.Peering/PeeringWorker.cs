@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -33,25 +32,25 @@ namespace Nethermind.BeaconNode.Peering
 {
     public class PeeringWorker : BackgroundService
     {
-        private const string _mothraDirectory = "mothra";
         private readonly IClientVersion _clientVersion;
-        private readonly DataDirectory _dataDirectory;
-        private readonly IOptionsMonitor<PeeringConfiguration> _peeringConfigurationMonitor;
-        private readonly IHostEnvironment _environment;
         private readonly IConfiguration _configuration;
+        private readonly DataDirectory _dataDirectory;
+        private readonly IHostEnvironment _environment;
         private readonly ForkChoice _forkChoice;
         private readonly ILogger _logger;
+        private const string _mothraDirectory = "mothra";
         private readonly IMothraLibp2p _mothraLibp2p;
+        private readonly IOptionsMonitor<PeeringConfiguration> _peeringConfigurationMonitor;
         private readonly IStoreProvider _storeProvider;
 
-        public PeeringWorker(ILogger<PeeringWorker> logger, 
-            IHostEnvironment environment, 
-            IConfiguration configuration, 
-            IClientVersion clientVersion, 
+        public PeeringWorker(ILogger<PeeringWorker> logger,
+            IHostEnvironment environment,
+            IConfiguration configuration,
+            IClientVersion clientVersion,
             DataDirectory dataDirectory,
             IOptionsMonitor<PeeringConfiguration> peeringConfigurationMonitor,
-            IMothraLibp2p mothraLibp2p, 
-            ForkChoice forkChoice, 
+            IMothraLibp2p mothraLibp2p,
+            ForkChoice forkChoice,
             IStoreProvider storeProvider)
         {
             _logger = logger;
@@ -82,8 +81,6 @@ namespace Nethermind.BeaconNode.Peering
                 _mothraLibp2p.PeerDiscovered += MothraLibp2pOnPeerDiscovered;
                 _mothraLibp2p.GossipReceived += MothraLibp2pOnGossipReceived;
                 _mothraLibp2p.RpcReceived += MothraLibp2pOnRpcReceived;
-
-                //System.Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData) + "nethermind/mothra";
 
                 string mothraDataDirectory = Path.Combine(_dataDirectory.ResolvedPath, _mothraDirectory);
                 MothraSettings mothraSettings = new MothraSettings()
@@ -137,15 +134,17 @@ namespace Nethermind.BeaconNode.Peering
 
         private void MothraLibp2pOnGossipReceived(object? sender, GossipReceivedEventArgs e)
         {
-            if (_logger.IsDebug()) LogDebug.GossipReceived(_logger, e.Topic, e.Data.Length, null);
             // TODO: handle topic
-            switch (e.Topic)
+            ReadOnlySpan<byte> topicUtf8Span = e.TopicUtf8;
+            if (topicUtf8Span.SequenceEqual(TopicUtf8.BeaconBlock))
             {
-                case Topic.BeaconBlock:
-                {
-                    HandleBeaconBlock(e.Data);
-                    break;
-                }
+                if (_logger.IsDebug())
+                    LogDebug.GossipReceived(_logger, nameof(TopicUtf8.BeaconBlock), e.Data.Length, null);
+                HandleBeaconBlock(e.Data);
+            }
+            else
+            {
+                if (_logger.IsDebug()) LogDebug.GossipReceived(_logger, e.Topic, e.Data.Length, null);
             }
         }
 

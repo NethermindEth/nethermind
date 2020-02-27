@@ -14,10 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Text;
+
 namespace Nethermind.BeaconNode.Peering
 {
-    public static class Topic
+    public static class TopicUtf8
     {
-        public const string BeaconBlock = "/eth2/beacon_block/ssz";
+        public static readonly byte[] BeaconBlock = Encoding.UTF8.GetBytes("/eth2/beacon_block/ssz");
     }
 }

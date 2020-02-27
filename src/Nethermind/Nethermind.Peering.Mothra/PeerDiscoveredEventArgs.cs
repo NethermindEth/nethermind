@@ -15,16 +15,32 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Text;
 
 namespace Nethermind.Peering.Mothra
 {
     public class PeerDiscoveredEventArgs : EventArgs
     {
-        public PeerDiscoveredEventArgs(string peer)
+        private string? _peer;
+
+        public PeerDiscoveredEventArgs(byte[] peerUtf8)
         {
-            Peer = peer;
+            PeerUtf8 = peerUtf8;
         }
 
-        public string Peer { get; }
+        public string Peer
+        {
+            get
+            {
+                if (_peer == null)
+                {
+                    _peer = Encoding.UTF8.GetString(PeerUtf8);
+                }
+
+                return _peer;
+            }
+        }
+
+        public byte[] PeerUtf8 { get; }
     }
 }

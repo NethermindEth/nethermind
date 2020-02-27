@@ -23,9 +23,9 @@ namespace Nethermind.Peering.Mothra
         event EventHandler<GossipReceivedEventArgs>? GossipReceived;
         event EventHandler<PeerDiscoveredEventArgs>? PeerDiscovered;
         event EventHandler<RpcReceivedEventArgs>? RpcReceived;
-        void SendGossip(string topic, ReadOnlySpan<byte> data);
-        void SendRpcRequest(string method, string peer, ReadOnlySpan<byte> data);
-        void SendRpcResponse(string method, string peer, ReadOnlySpan<byte> data);
+        void SendGossip(ReadOnlySpan<byte> topicUtf8, ReadOnlySpan<byte> data);
+        void SendRpcRequest(ReadOnlySpan<byte> methodUtf8, ReadOnlySpan<byte> peerUtf8, ReadOnlySpan<byte> data);
+        void SendRpcResponse(ReadOnlySpan<byte> methodUtf8, ReadOnlySpan<byte> peerUtf8, ReadOnlySpan<byte> data);
         void Start(MothraSettings settings);
     }
 }

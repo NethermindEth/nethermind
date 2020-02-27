@@ -17,7 +17,6 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using System.Text;
 using Microsoft.Extensions.Logging;
 
 namespace Nethermind.Peering.Mothra
@@ -34,7 +33,6 @@ namespace Nethermind.Peering.Mothra
             [LogLevel.Critical] = "crit"
         };
 
-        private GCHandle _argsHandle;
         private readonly MothraInterop.DiscoveredPeer _discoveredPeer;
         private GCHandle _discoveredPeerHandle;
         private readonly MothraInterop.ReceiveGossip _receiveGossip;
@@ -62,9 +60,8 @@ namespace Nethermind.Peering.Mothra
 
         public event EventHandler<RpcReceivedEventArgs>? RpcReceived;
 
-        public void SendGossip(string topic, ReadOnlySpan<byte> data)
+        public void SendGossip(ReadOnlySpan<byte> topicUtf8, ReadOnlySpan<byte> data)
         {
-            byte[] topicUtf8 = Encoding.UTF8.GetBytes(topic);
             unsafe
             {
                 fixed (byte* topicUtf8Ptr = topicUtf8)
@@ -75,10 +72,8 @@ namespace Nethermind.Peering.Mothra
             }
         }
 
-        public void SendRpcRequest(string method, string peer, ReadOnlySpan<byte> data)
+        public void SendRpcRequest(ReadOnlySpan<byte> methodUtf8, ReadOnlySpan<byte> peerUtf8, ReadOnlySpan<byte> data)
         {
-            byte[] methodUtf8 = Encoding.UTF8.GetBytes(method);
-            byte[] peerUtf8 = Encoding.UTF8.GetBytes(peer);
             unsafe
             {
                 fixed (byte* methodUtf8Ptr = methodUtf8)
@@ -91,10 +86,8 @@ namespace Nethermind.Peering.Mothra
             }
         }
 
-        public void SendRpcResponse(string method, string peer, ReadOnlySpan<byte> data)
+        public void SendRpcResponse(ReadOnlySpan<byte> methodUtf8, ReadOnlySpan<byte> peerUtf8, ReadOnlySpan<byte> data)
         {
-            byte[] methodUtf8 = Encoding.UTF8.GetBytes(method);
-            byte[] peerUtf8 = Encoding.UTF8.GetBytes(peer);
             unsafe
             {
                 fixed (byte* methodUtf8Ptr = methodUtf8)
@@ -111,7 +104,6 @@ namespace Nethermind.Peering.Mothra
         {
             MothraInterop.RegisterHandlers(_discoveredPeer, _receiveGossip, _receiveRpc);
             string[] args = BuildArgs(settings);
-            _argsHandle = GCHandle.Alloc(args);
             MothraInterop.Start(args, args.Length);
         }
 
@@ -198,8 +190,9 @@ namespace Nethermind.Peering.Mothra
 
         private unsafe void DiscoveredPeerHandler(byte* peerUtf8Ptr, int peerLength)
         {
-            string peer = new String((sbyte*) peerUtf8Ptr, 0, peerLength, Encoding.UTF8);
-            OnPeerDiscovered(new PeerDiscoveredEventArgs(peer));
+            byte[] peerUtf8 = new byte[peerLength];
+            Marshal.Copy((IntPtr) peerUtf8Ptr, peerUtf8, 0, peerLength);
+            OnPeerDiscovered(new PeerDiscoveredEventArgs(peerUtf8));
         }
 
         private void OnGossipReceived(GossipReceivedEventArgs e)
@@ -219,22 +212,25 @@ namespace Nethermind.Peering.Mothra
 
         private unsafe void ReceiveGossipHandler(byte* topicUtf8Ptr, int topicLength, byte* dataPtr, int dataLength)
         {
-            string topic = new String((sbyte*) topicUtf8Ptr, 0, topicLength, Encoding.UTF8);
+            byte[] topicUtf8 = new byte[topicLength];
+            Marshal.Copy((IntPtr) topicUtf8Ptr, topicUtf8, 0, topicLength);
             byte[] data = new byte[dataLength];
             Marshal.Copy((IntPtr) dataPtr, data, 0, dataLength);
-            OnGossipReceived(new GossipReceivedEventArgs(topic, data));
+            OnGossipReceived(new GossipReceivedEventArgs(topicUtf8, data));
         }
 
         private unsafe void ReceiveRpcHandler(byte* methodUtf8Ptr, int methodLength, int requestResponseFlag,
             byte* peerUtf8Ptr,
             int peerLength, byte* dataPtr, int dataLength)
         {
-            string method = new String((sbyte*) methodUtf8Ptr, 0, methodLength, Encoding.UTF8);
+            byte[] methodUtf8 = new byte[methodLength];
+            Marshal.Copy((IntPtr) methodUtf8Ptr, methodUtf8, 0, methodLength);
             bool isResponse = requestResponseFlag > 0;
-            string peer = new String((sbyte*) peerUtf8Ptr, 0, peerLength, Encoding.UTF8);
+            byte[] peerUtf8 = new byte[peerLength];
+            Marshal.Copy((IntPtr) peerUtf8Ptr, peerUtf8, 0, peerLength);
             byte[] data = new byte[dataLength];
             Marshal.Copy((IntPtr) dataPtr, data, 0, dataLength);
-            OnRpcReceived(new RpcReceivedEventArgs(method, isResponse, peer, data));
+            OnRpcReceived(new RpcReceivedEventArgs(methodUtf8, isResponse, peerUtf8, data));
         }
     }
 }

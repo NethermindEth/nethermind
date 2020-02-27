@@ -22,12 +22,11 @@ namespace Nethermind.BeaconNode.Peering
         {
             // TODO: Validate signature before broadcasting
 
-            string topic = Topic.BeaconBlock;
-            Span<byte> encoded = new byte[Nethermind.Ssz.Ssz.BeaconBlockLength(beaconBlock)];
-            Nethermind.Ssz.Ssz.Encode(encoded, beaconBlock);
+            Span<byte> encoded = new byte[Ssz.Ssz.BeaconBlockLength(beaconBlock)];
+            Ssz.Ssz.Encode(encoded, beaconBlock);
 
-            LogDebug.GossipSend(_logger, topic, encoded.Length, null);
-            _mothraLibp2p.SendGossip(topic, encoded);
+            LogDebug.GossipSend(_logger, nameof(TopicUtf8.BeaconBlock), encoded.Length, null);
+            _mothraLibp2p.SendGossip(TopicUtf8.BeaconBlock, encoded);
 
             return Task.CompletedTask;
         }

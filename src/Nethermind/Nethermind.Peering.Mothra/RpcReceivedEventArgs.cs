@@ -15,25 +15,55 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Text;
 
 namespace Nethermind.Peering.Mothra
 {
     public class RpcReceivedEventArgs : EventArgs
     {
-        public RpcReceivedEventArgs(string method, bool isResponse, string peer, byte[] data)
+        private string? _method;
+        private string? _peer;
+
+        public RpcReceivedEventArgs(byte[] methodUtf8, bool isResponse, byte[] peerUtf8, byte[] data)
         {
-            Method = method;
+            MethodUtf8 = methodUtf8;
             IsResponse = isResponse;
-            Peer = peer;
+            PeerUtf8 = peerUtf8;
             Data = data;
         }
 
         public byte[] Data { get; }
 
         public bool IsResponse { get; }
-        
-        public string Method { get; }
 
-        public string Peer { get; }
+        public string Method
+        {
+            get
+            {
+                if (_method == null)
+                {
+                    _method = Encoding.UTF8.GetString(MethodUtf8);
+                }
+
+                return _method;
+            }
+        }
+
+        public byte[] MethodUtf8 { get; }
+
+        public string Peer
+        {
+            get
+            {
+                if (_peer == null)
+                {
+                    _peer = Encoding.UTF8.GetString(PeerUtf8);
+                }
+
+                return _peer;
+            }
+        }
+
+        public byte[] PeerUtf8 { get; }
     }
 }
