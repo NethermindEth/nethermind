@@ -14,15 +14,17 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Runtime.CompilerServices;
+
 namespace Nethermind.Evm
 {
-    public static class RefundOf
+    public static class RefundHelper
     {
-        public const long SSetReversedEip1283 = 19800;
-        public const long SClearReversedEip1283 = 4800;
-        public const long SSetReversedEip2200 = 19200;
-        public const long SClearReversedEip2200 = 4200;
-        public const long SClear = 15000;
-        public const long Destroy = 24000;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static long CalculateClaimableRefund(long spentGas, long totalRefund)
+        {
+            return Math.Min(spentGas / 2L, totalRefund);
+        }
     }
 }

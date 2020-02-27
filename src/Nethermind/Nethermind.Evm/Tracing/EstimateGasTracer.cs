@@ -37,6 +37,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingOpLevelStorage => false;
         public bool IsTracingMemory => false;
         public bool IsTracingInstructions => false;
+        public bool IsTracingRefunds => true;
         public bool IsTracingCode => false;
         public bool IsTracingStack => false;
         public bool IsTracingState => false;
@@ -44,11 +45,13 @@ namespace Nethermind.Evm.Tracing
 
         public byte[] ReturnValue { get; set; }
 
-        public long GasSpent { get; set; }
+        internal long NonIntrinsicGasSpentBeforeRefund { get; set; }
 
-        public long IntrinsicGasAt { get; set; }
+        internal long GasSpent { get; set; }
 
-        public long AdditionalGasRequired => _currentGasAndNesting.Peek().AdditionalGasRequired;
+        internal long IntrinsicGasAt { get; set; }
+
+        internal long TotalRefund { get; set; }
 
         public string Error { get; set; }
 
@@ -121,7 +124,6 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
         {
-            throw new NotSupportedException();
         }
 
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
@@ -166,7 +168,7 @@ namespace Nethermind.Evm.Tracing
             {
                 get
                 {
-                    long maxGasNeeded = GasOnStart - GasLeft + GasUsageFromChildren;
+                    long maxGasNeeded = GasOnStart + ExtraGasPressure - GasLeft + GasUsageFromChildren;
                     for (int i = 0; i < NestingLevel; i++)
                     {
                         maxGasNeeded = (long) Math.Ceiling(maxGasNeeded * 64m / 63);
@@ -177,6 +179,19 @@ namespace Nethermind.Evm.Tracing
             }
 
             public long AdditionalGasRequired => MaxGasNeeded - (GasOnStart - GasLeft);
+            public long ExtraGasPressure { get; set; }
+        }
+
+        internal long CalculateAdditionalGasRequired(Transaction tx)
+        {
+            long intrinsicGas = tx.GasLimit - IntrinsicGasAt;
+            return _currentGasAndNesting.Peek().AdditionalGasRequired + RefundHelper.CalculateClaimableRefund(intrinsicGas + NonIntrinsicGasSpentBeforeRefund, TotalRefund);
+        }
+
+        public long CalculateEstimate(Transaction tx)
+        {
+            long intrinsicGas = tx.GasLimit - IntrinsicGasAt;
+            return Math.Max(intrinsicGas, GasSpent + CalculateAdditionalGasRequired(tx));
         }
 
         private int _currentNestingLevel = -1;
@@ -215,18 +230,6 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        private void UpdateAdditionalGas(long gas)
-        {
-            var current = _currentGasAndNesting.Pop();
-            current.GasLeft = gas;
-            _currentGasAndNesting.Peek().GasUsageFromChildren += current.AdditionalGasRequired;
-        }
-
-        public void ReportActionError(EvmExceptionType exceptionType)
-        {
-            _currentNestingLevel--;
-        }
-
         public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
         {
             if (!_isInPrecompile)
@@ -236,6 +239,24 @@ namespace Nethermind.Evm.Tracing
             else
             {
                 _isInPrecompile = false;
+            }
+        }
+
+        public void ReportActionError(EvmExceptionType exceptionType)
+        {
+            UpdateAdditionalGas(_currentGasAndNesting.Peek().GasLeft);
+        }
+
+        private void UpdateAdditionalGas(long gas)
+        {
+            var current = _currentGasAndNesting.Pop();
+            current.GasLeft = gas;
+            _currentGasAndNesting.Peek().GasUsageFromChildren += current.AdditionalGasRequired;
+            _currentNestingLevel--;
+
+            if (_currentNestingLevel == -1)
+            {
+                NonIntrinsicGasSpentBeforeRefund = IntrinsicGasAt - current.GasLeft;
             }
         }
 
@@ -249,14 +270,19 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        public void ReportRefundForVmTrace(long refund, long gasAvailable)
+        public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
         {
             throw new NotSupportedException();
         }
 
         public void ReportRefund(long refund)
         {
-            throw new NotSupportedException();
+            TotalRefund += refund;
+        }
+
+        public void ReportExtraGasPressure(long extraGasPressure)
+        {
+            _currentGasAndNesting.Peek().ExtraGasPressure = Math.Max(_currentGasAndNesting.Peek().ExtraGasPressure, extraGasPressure);
         }
     }
 }

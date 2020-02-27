@@ -172,7 +172,7 @@ namespace Nethermind.Evm
 
                             if (currentState.IsTopLevel)
                             {
-                                return new TransactionSubstate("Error");
+                                return new TransactionSubstate(callResult.ExceptionType);
                             }
 
                             previousCallResult = StatusCode.FailureBytes;
@@ -352,7 +352,7 @@ namespace Nethermind.Evm
 
                     if (currentState.IsTopLevel)
                     {
-                        return new TransactionSubstate("Error");
+                        return new TransactionSubstate(ex is OverflowException ? EvmExceptionType.Other : (ex as EvmException).ExceptionType);
                     }
 
                     previousCallResult = StatusCode.FailureBytes;
@@ -418,7 +418,7 @@ namespace Nethermind.Evm
             return true;
         }
 
-        private void RefundGas(long refund, ref long gasAvailable)
+        private void UpdateGasUp(long refund, ref long gasAvailable)
         {
             gasAvailable += refund;
         }
@@ -1615,10 +1615,14 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        if (spec.IsEip2200Enabled && gasAvailable <= GasCostOf.CallStipend)
+                        if (spec.IsEip2200Enabled)
                         {
-                            EndInstructionTraceError(OutOfGasErrorText);
-                            return CallResult.OutOfGasException;
+                            if(_txTracer.IsTracingRefunds) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - GasCostOf.SStoreNetMeteredEip2200 + 1);
+                            if (gasAvailable <= GasCostOf.CallStipend)
+                            {
+                                EndInstructionTraceError(OutOfGasErrorText);
+                                return CallResult.OutOfGasException;
+                            }
                         }
 
                         stack.PopUInt256(out UInt256 storageIndex);
@@ -1638,7 +1642,7 @@ namespace Nethermind.Evm
                                 if (!newSameAsCurrent)
                                 {
                                     evmState.Refund += RefundOf.SClear;
-                                    if (_txTracer.IsTracingInstructions) _txTracer.ReportRefund(RefundOf.SClear);
+                                    if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(RefundOf.SClear);
                                 }
                             }
                             else if (currentIsZero)
@@ -1688,7 +1692,7 @@ namespace Nethermind.Evm
                                         if (newIsZero)
                                         {
                                             evmState.Refund += RefundOf.SClear;
-                                            if (_txTracer.IsTracingInstructions) _txTracer.ReportRefund(RefundOf.SClear);
+                                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(RefundOf.SClear);
                                         }
                                     }
                                 }
@@ -1706,13 +1710,13 @@ namespace Nethermind.Evm
                                         if (currentIsZero)
                                         {
                                             evmState.Refund -= RefundOf.SClear;
-                                            if (_txTracer.IsTracingInstructions) _txTracer.ReportRefund(-RefundOf.SClear);
+                                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(-RefundOf.SClear);
                                         }
 
                                         if (newIsZero)
                                         {
                                             evmState.Refund += RefundOf.SClear;
-                                            if (_txTracer.IsTracingInstructions) _txTracer.ReportRefund(RefundOf.SClear);
+                                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(RefundOf.SClear);
                                         }
                                     }
 
@@ -1730,7 +1734,7 @@ namespace Nethermind.Evm
                                         }
 
                                         evmState.Refund += refundFromReversal;
-                                        if (_txTracer.IsTracingInstructions) _txTracer.ReportRefund(refundFromReversal);
+                                        if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(refundFromReversal);
                                     }
                                 }
                             }
@@ -2257,6 +2261,7 @@ namespace Nethermind.Evm
 
                         if (!transferValue.IsZero)
                         {
+                            if(_txTracer.IsTracingRefunds) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
                             gasLimitUl += GasCostOf.CallStipend;
                         }
 
@@ -2276,8 +2281,8 @@ namespace Nethermind.Evm
                             if (_txTracer.IsTracingInstructions) _txTracer.ReportOperationRemainingGas(gasAvailable);
                             if (_txTracer.IsTracingInstructions) _txTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
 
-                            RefundGas(gasLimitUl, ref gasAvailable);
-                            if (_txTracer.IsTracingInstructions) _txTracer.ReportRefundForVmTrace(gasLimitUl, gasAvailable);
+                            UpdateGasUp(gasLimitUl, ref gasAvailable);
+                            if (_txTracer.IsTracingInstructions) _txTracer.ReportGasUpdateForVmTrace(gasLimitUl, gasAvailable);
                             break;
                         }
 
