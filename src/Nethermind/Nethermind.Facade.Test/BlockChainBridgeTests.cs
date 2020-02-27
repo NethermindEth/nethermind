@@ -139,10 +139,10 @@ namespace Nethermind.Facade.Test
         {
             BlockHeader header = Build.A.BlockHeader.WithNumber(10).TestObject;
             Transaction tx = new Transaction();
-            tx.GasLimit = 1000;
+            tx.GasLimit = Transaction.BaseTxGasCost;
             
             var gas = _blockchainBridge.EstimateGas(header, tx);
-            gas.GasSpent.Should().Be(0);
+            gas.GasSpent.Should().Be(Transaction.BaseTxGasCost);
             
             _transactionProcessor.Received().CallAndRestore(
                 tx,
