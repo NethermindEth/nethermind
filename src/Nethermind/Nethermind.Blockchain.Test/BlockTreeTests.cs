@@ -1601,7 +1601,7 @@ namespace Nethermind.Blockchain.Test
         public void Cannot_delete_too_many()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
-            Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(1000, 2001));
+            Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(1000, 52001));
         }
 
         static object[] SourceOfBSearchTestCases =
