@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -102,7 +103,43 @@ namespace Nethermind.Blockchain
             remove { }
         }
 
-        public void DeleteChainSlice(in long startNumber, in long endNumber) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteChainSlice)} calls");
+        public int DeleteChainSlice(in long startNumber, long? endNumber = null)
+        {
+            var bestKnownNumber = BestKnownNumber;
+            if (endNumber == null || endNumber == bestKnownNumber)
+            {
+                if (Head?.Number > 0)
+                {
+                    if (Head.Number < startNumber)
+                    {
+                        const long searchLimit = 2;
+                        long endSearch = Math.Min(bestKnownNumber, startNumber + searchLimit - 1);
+                        
+                        IEnumerable<BlockHeader> GetPotentiallyCorruptedBlocks(long start)
+                        {
+                            for (long i = start; i <= endSearch; i++)
+                            {
+                                yield return _wrapped.FindHeader(i, BlockTreeLookupOptions.None);
+                            }
+                        }
+                        
+                        if (GetPotentiallyCorruptedBlocks(startNumber).Any(b => b == null))
+                        {
+                            return _wrapped.DeleteChainSlice(startNumber);
+                        }
+                        
+                        throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} cannot {nameof(DeleteChainSlice)} if searched blocks [{startNumber}, {endSearch}] are not corrupted.");    
+                    }
+                    
+                    throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} cannot {nameof(DeleteChainSlice)} if {nameof(startNumber)} is not past {nameof(Head)}.");
+                }
+
+                throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} cannot {nameof(DeleteChainSlice)} if {nameof(Head)} is not past Genesis.");
+            }
+
+            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteChainSlice)} calls with {nameof(endNumber)} other than {nameof(BestKnownNumber)} specified.");
+
+        }
 
         public void UpdateMainChain(Block[] processedBlocks, bool wereProcessed) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateMainChain)} calls");
     }
