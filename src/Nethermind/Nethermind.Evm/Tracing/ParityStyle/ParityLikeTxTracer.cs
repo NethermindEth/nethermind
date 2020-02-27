@@ -80,10 +80,10 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public bool IsTracingOpLevelStorage => false;
         public bool IsTracingMemory => false;
         public bool IsTracingInstructions { get; }
+        public bool IsTracingRefunds => false;
         public bool IsTracingCode { get; }
         public bool IsTracingStack => false;
         public bool IsTracingState { get; }
-        
         public bool IsTracingBlockHash => false;
         
         private static string GetCallType(ExecutionType executionType)
@@ -463,13 +463,19 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _currentVmTrace.VmTrace.Code = byteCode;
         }
 
-        public void ReportRefundForVmTrace(long refund, long gasAvailable)
+        public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
         {
             _currentOperation.Used = gasAvailable;
         }
 
         public void ReportRefund(long refund)
         {
+            throw new NotSupportedException();
+        }
+
+        public void ReportExtraGasPressure(long extraGasPressure)
+        {
+            throw new NotSupportedException();
         }
     }
 }

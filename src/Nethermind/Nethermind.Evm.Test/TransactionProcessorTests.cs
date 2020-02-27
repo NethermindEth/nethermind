@@ -15,24 +15,23 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.Store;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -217,9 +216,146 @@ namespace Nethermind.Evm.Test
 
             EstimateGasTracer tracer = new EstimateGasTracer();
             _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
+
+            tracer.GasSpent.Should().Be(21000);
+            tracer.CalculateEstimate(tx).Should().Be(21000);
+        }
+
+        [Test]
+        public void Can_estimate_with_refund()
+        {
+            byte[] initByteCode = Prepare.EvmCode
+                .PushData(1)
+                .PushData(1)
+                .Op(Instruction.SSTORE)
+                .PushData(0)
+                .PushData(1)
+                .Op(Instruction.SSTORE)
+                .Op(Instruction.STOP)
+                .Done;
+
+            long gasLimit = 100000;
+
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithInit(initByteCode).WithGasLimit(gasLimit).TestObject;
+            Block block = Build.A.Block.WithNumber(MainNetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
+
+            IntrinsicGasCalculator gasCalculator = new IntrinsicGasCalculator();
+            long intrinsic = gasCalculator.Calculate(tx, MuirGlacier.Instance);
+
+            GethLikeTxTracer gethTracer = new GethLikeTxTracer(GethTraceOptions.Default);
+            _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
+            TestContext.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
+
+            EstimateGasTracer tracer = new EstimateGasTracer();
+            _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
+
+            long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
+            actualIntrinsic.Should().Be(intrinsic);
+            tracer.CalculateAdditionalGasRequired(tx).Should().Be(RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend - GasCostOf.SStoreNetMeteredEip2200 + 1);
+            tracer.GasSpent.Should().Be(54764L);
+            long estimate = tracer.CalculateEstimate(tx);
+            estimate.Should().Be(75465L);
+
+            ConfirmEnoughEstimate(tx, block, estimate);
+        }
+
+        [Test(Description = "Since the second call is a CREATE operation it has intrinsic gas of 21000 + 32000 + data")]
+        public void Can_estimate_with_destroy_refund_and_below_intrinsic()
+        {
+            byte[] initByteCode = Prepare.EvmCode.ForInitOf(Prepare.EvmCode.PushData(Address.Zero).Op(Instruction.SELFDESTRUCT).Done).Done;
+            Address contractAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
+
+            byte[] byteCode = Prepare.EvmCode
+                .Call(contractAddress, 46179)
+                .Op(Instruction.STOP).Done;
+
+            long gasLimit = 100000;
+
+            Transaction initTx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithInit(initByteCode).WithGasLimit(gasLimit).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithInit(byteCode).WithGasLimit(gasLimit).WithNonce(1).TestObject;
+            Block block = Build.A.Block.WithNumber(MainNetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
+
+            IntrinsicGasCalculator gasCalculator = new IntrinsicGasCalculator();
+            long intrinsic = gasCalculator.Calculate(tx, MuirGlacier.Instance);
+
+            _transactionProcessor.Execute(initTx, block.Header, NullTxTracer.Instance);
+
+            EstimateGasTracer tracer = new EstimateGasTracer();
+            GethLikeTxTracer gethTracer = new GethLikeTxTracer(GethTraceOptions.Default);
+            _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
+            _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
+            TestContext.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
+
+            long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
+            actualIntrinsic.Should().Be(intrinsic);
+            tracer.CalculateAdditionalGasRequired(tx).Should().Be(24080);
+            tracer.GasSpent.Should().Be(35228L);
+            long estimate = tracer.CalculateEstimate(tx);
+            estimate.Should().Be(59308);
+
+            ConfirmEnoughEstimate(tx, block, estimate);
+        }
+
+        private void ConfirmEnoughEstimate(Transaction tx, Block block, long estimate)
+        {
+            CallOutputTracer outputTracer = new CallOutputTracer();
+            tx.GasLimit = estimate;
+            TestContext.WriteLine(tx.GasLimit);
+
+            GethLikeTxTracer gethTracer = new GethLikeTxTracer(GethTraceOptions.Default);
+            _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
+            string traceEnoughGas = new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true);
+
+            _transactionProcessor.CallAndRestore(tx, block.Header, outputTracer);
+            traceEnoughGas.Should().NotContain("OutOfGas");
+
+            outputTracer = new CallOutputTracer();
+            tx.GasLimit = Math.Min(estimate - 1, estimate * 63 / 64);
+            TestContext.WriteLine(tx.GasLimit);
             
-            Assert.AreEqual(21000, tracer.GasSpent);
-            Assert.AreEqual(0, tracer.AdditionalGasRequired);
+            gethTracer = new GethLikeTxTracer(GethTraceOptions.Default);
+            _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
+
+            string traceOutOfGas = new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true);
+            TestContext.WriteLine(traceOutOfGas);
+            
+            _transactionProcessor.CallAndRestore(tx, block.Header, outputTracer);
+
+            bool failed = traceEnoughGas.Contains("failed") || traceEnoughGas.Contains("OutOfGas");
+            failed.Should().BeTrue();
+        }
+
+        [Test]
+        public void Can_estimate_with_stipend()
+        {
+            byte[] initByteCode = Prepare.EvmCode
+                .CallWithValue(Address.Zero, 0, 1)
+                .Op(Instruction.STOP)
+                .Done;
+
+            long gasLimit = 100000;
+
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithInit(initByteCode).WithGasLimit(gasLimit).TestObject;
+            Block block = Build.A.Block.WithNumber(MainNetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
+
+            IntrinsicGasCalculator gasCalculator = new IntrinsicGasCalculator();
+            long intrinsic = gasCalculator.Calculate(tx, MuirGlacier.Instance);
+
+            GethLikeTxTracer gethTracer = new GethLikeTxTracer(GethTraceOptions.Default);
+            _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
+            TestContext.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
+
+            EstimateGasTracer tracer = new EstimateGasTracer();
+            _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
+
+            long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
+            actualIntrinsic.Should().Be(intrinsic);
+            tracer.CalculateAdditionalGasRequired(tx).Should().Be(2300);
+            tracer.GasSpent.Should().Be(85669L);
+            long estimate = tracer.CalculateEstimate(tx);
+            estimate.Should().Be(87969L);
+
+            ConfirmEnoughEstimate(tx, block, estimate);
         }
 
         [Test]
@@ -246,13 +382,15 @@ namespace Nethermind.Evm.Test
 
             EstimateGasTracer tracer = new EstimateGasTracer();
             _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
-            
+
             long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
-            actualIntrinsic.Should().Be(53000);
-            tracer.AdditionalGasRequired.Should().Be(1);
-            tracer.GasSpent.Should().Be(53724);
-            long estimate = tracer.GasSpent + tracer.AdditionalGasRequired;
-            estimate.Should().Be(53725);
+            actualIntrinsic.Should().Be(intrinsic);
+            tracer.CalculateAdditionalGasRequired(tx).Should().Be(1);
+            tracer.GasSpent.Should().Be(54224L);
+            long estimate = tracer.CalculateEstimate(tx);
+            estimate.Should().Be(54225L);
+
+            ConfirmEnoughEstimate(tx, block, estimate);
         }
 
         [Test]

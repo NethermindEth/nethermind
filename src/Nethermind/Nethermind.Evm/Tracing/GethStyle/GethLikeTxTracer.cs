@@ -43,6 +43,7 @@ namespace Nethermind.Evm.Tracing.GethStyle
         public bool IsTracingOpLevelStorage { get; }
         public bool IsTracingMemory { get; }
         bool ITxTracer.IsTracingInstructions => true;
+        public bool IsTracingRefunds => false;
         public bool IsTracingCode => false;
         public bool IsTracingStack { get; }
         bool ITxTracer.IsTracingState => false;
@@ -210,12 +211,18 @@ namespace Nethermind.Evm.Tracing.GethStyle
             throw new NotSupportedException();
         }
 
-        public void ReportRefundForVmTrace(long refund, long gasAvailable)
+        public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
         {
         }
 
         public void ReportRefund(long refund)
         {
+            throw new NotSupportedException();
+        }
+
+        public void ReportExtraGasPressure(long extraGasPressure)
+        {
+            throw new NotImplementedException();
         }
 
         public void SetOperationStack(List<string> stackTrace)

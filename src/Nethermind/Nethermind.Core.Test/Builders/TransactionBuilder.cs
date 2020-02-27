@@ -58,12 +58,14 @@ namespace Nethermind.Core.Test.Builders
         
         public TransactionBuilder WithData(byte[] data)
         {
+            TestObjectInternal.Init = null;
             TestObjectInternal.Data = data;
             return this;
         }
         
         public TransactionBuilder WithInit(byte[] initCode)
         {
+            TestObjectInternal.Data = null;
             TestObjectInternal.Init = initCode;
             return this;
         }
