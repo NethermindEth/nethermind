@@ -25,17 +25,17 @@ namespace Nethermind.Cli.Modules
     [CliModule("debug")]
     public class DebugCliModule : CliModuleBase
     {
-        [CliFunction("debug", "getChainlevel")]
+        [CliFunction("debug", "getChainLevel")]
         public JsValue GetChainLevel(long number)
         {
             return NodeManager.PostJint("debug_getChainLevel", number).Result;
         }
 
-        // [CliFunction("debug", "deleteChainSlice")]
-        // public JsValue DeleteChainSlice(long startNumber, long endNumber)
-        // {
-        //     return NodeManager.PostJint("debug_deleteChainSlice", startNumber, endNumber).Result;
-        // }
+        [CliFunction("debug", "deleteChainSlice")]
+        public JsValue DeleteChainSlice(long startNumber)
+        {
+            return NodeManager.PostJint("debug_deleteChainSlice", startNumber).Result;
+        }
 
         [CliFunction("debug", "traceBlock")]
         public JsValue TraceBlock(string rlp, object options)

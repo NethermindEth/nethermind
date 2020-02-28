@@ -44,7 +44,7 @@ namespace Nethermind.Cli.Modules
                 uri = uri + ":8545";
             }
             
-            if (!uri.StartsWith("http://"))
+            if (!uri.StartsWith("http://") && !uri.StartsWith("https://" ))
             {
                 uri = "http://" + uri;
             }
