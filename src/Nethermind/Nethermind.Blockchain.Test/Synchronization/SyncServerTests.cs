@@ -111,15 +111,13 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             _synchronizer.SyncMode.Returns(SyncMode.Full);
 
+            _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock);
+            
             if (!accepted)
             {
-                Assert.Throws<EthSynchronizationException>(() => _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock));
+                _peerPool.ReceivedWithAnyArgs().ReportInvalid(null, null);
             }
-            else
-            {
-                _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock);
-            }
-            
+
             if (accepted)
             {
                 Assert.AreEqual(localBlockTree.BestSuggestedHeader, block.Header);
@@ -158,7 +156,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
             block.Header.TotalDifficulty *= 2;
 
             _synchronizer.SyncMode.Returns(SyncMode.Full);
-            Assert.Throws<EthSynchronizationException>(() => _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock));
+            _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock);
+            _peerPool.ReceivedWithAnyArgs().ReportInvalid(null, null);
         }
         
         [Test]
