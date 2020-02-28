@@ -30,25 +30,25 @@ namespace Nethermind.Core2.Crypto
         /// <returns>
         ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>
         /// </returns>
-        public static readonly Hash32 OfAnEmptyString = InternalCompute(new byte[] { });
+        public static readonly Bytes32 OfAnEmptyString = InternalCompute(new byte[] { });
 
         /// <returns>
         ///     <string>0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347</string>
         /// </returns>
-        public static readonly Hash32 OfAnEmptySequenceRlp = InternalCompute(new byte[] {192});
+        public static readonly Bytes32 OfAnEmptySequenceRlp = InternalCompute(new byte[] {192});
 
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
         /// </summary>
-        public static Hash32 EmptyTreeHash = InternalCompute(new byte[] {128});
+        public static Bytes32 EmptyTreeHash = InternalCompute(new byte[] {128});
 
         /// <returns>
         ///     <string>0x0000000000000000000000000000000000000000000000000000000000000000</string>
         /// </returns>
-        public static Hash32 Zero { get; } = Hash32.Zero;
+        public static Bytes32 Zero { get; } = Bytes32.Zero;
 
         [DebuggerStepThrough]
-        public static Hash32 Compute(byte[] input)
+        public static Bytes32 Compute(byte[] input)
         {
             if (input == null || input.Length == 0)
             {
@@ -59,7 +59,7 @@ namespace Nethermind.Core2.Crypto
         }
 
         [DebuggerStepThrough]
-        public static Hash32 Compute(Span<byte> input)
+        public static Bytes32 Compute(Span<byte> input)
         {
             if (input == null || input.Length == 0)
             {
@@ -73,20 +73,20 @@ namespace Nethermind.Core2.Crypto
         {
             if (input == null || input.Length == 0)
             {
-                OfAnEmptyString.Bytes.AsSpan().CopyTo(input);
+                OfAnEmptyString.AsSpan().CopyTo(input);
             }
 
             byte[] bytes = Hash.ComputeBytes(input.ToArray()).GetBytes();
             bytes.AsSpan().CopyTo(input);
         }
 
-        private static Hash32 InternalCompute(byte[] input)
+        private static Bytes32 InternalCompute(byte[] input)
         {
-            return new Hash32(Hash.ComputeBytes(input).GetBytes());
+            return new Bytes32(Hash.ComputeBytes(input).GetBytes());
         }
 
         [DebuggerStepThrough]
-        public static Hash32 Compute(string input)
+        public static Bytes32 Compute(string input)
         {
             if (string.IsNullOrWhiteSpace(input))
             {

@@ -19,30 +19,34 @@ using System.Collections.Generic;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using Hash32 = Nethermind.Core2.Crypto.Hash32;
 
 namespace Nethermind.Core2
 {
     public interface ICryptographyService
     {
         BlsPublicKey BlsAggregatePublicKeys(IEnumerable<BlsPublicKey> publicKeys);
+        
+        bool BlsAggregateVerify(IList<BlsPublicKey> publicKeys, IList<Root> messageHashes, BlsSignature signature);
 
-        bool BlsVerify(BlsPublicKey publicKey, Root signingRoot, BlsSignature signature, Domain domain);
+        bool BlsFastAggregateVerify(IList<BlsPublicKey> publicKey, Root signingRoot, BlsSignature signature);
+        
+        bool BlsVerify(BlsPublicKey publicKey, Root signingRoot, BlsSignature signature);
 
-        bool BlsVerifyMultiple(IEnumerable<BlsPublicKey> publicKeys, IEnumerable<Root> messageHashes, BlsSignature signature, Domain domain);
+        Bytes32 Hash(Bytes32 a, Bytes32 b);
 
-        Root Hash(Root a, Root b);
-
-        Root Hash(ReadOnlySpan<byte> bytes);
+        Bytes32 Hash(ReadOnlySpan<byte> bytes);
 
         Root HashTreeRoot(AttestationData attestationData);
         Root HashTreeRoot(BeaconBlock beaconBlock);
         Root HashTreeRoot(BeaconBlockBody beaconBlockBody);
+        Root HashTreeRoot(BeaconBlockHeader beaconBlockHeader);
         Root HashTreeRoot(BeaconState beaconState);
         Root HashTreeRoot(DepositData depositData);
+        Root HashTreeRoot(DepositMessage depositMessage);
         Root HashTreeRoot(IList<DepositData> depositData);
         Root HashTreeRoot(Epoch epoch);
         Root HashTreeRoot(HistoricalBatch historicalBatch);
+        Root HashTreeRoot(SigningRoot signingRoot);
         Root HashTreeRoot(VoluntaryExit voluntaryExit);
     }
 }

@@ -42,10 +42,6 @@ namespace Nethermind.Core2.Types
         
         public static Bytes32 Zero { get; } = new Bytes32(new byte[Length]);
         
-        public static explicit operator Bytes32(byte[] bytes) => new Bytes32(bytes);
-
-        public static explicit operator Bytes32(Span<byte> span) => new Bytes32(span);
-
         public static explicit operator Bytes32(ReadOnlySpan<byte> span) => new Bytes32(span);
 
         public static explicit operator ReadOnlySpan<byte>(Bytes32 value) => value.AsSpan();
@@ -75,5 +71,10 @@ namespace Nethermind.Core2.Types
         {
             return AsSpan().ToHexString(true);
         }
+        
+        public Bytes32 Xor(Bytes32 other)
+        {
+            return new Bytes32(other.AsSpan().Xor(AsSpan()));
+        }        
     }
 }

@@ -15,11 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
-using System.Linq;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Nethermind.Core2.Configuration;
 using Nethermind.Core2;
+using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -35,7 +34,6 @@ namespace Nethermind.BeaconNode
         private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly ILogger _logger;
-        private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
         private readonly ICryptographyService _cryptographyService;
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
@@ -48,7 +46,6 @@ namespace Nethermind.BeaconNode
             IOptionsMonitor<InitialValues> initialValueOptions,
             IOptionsMonitor<TimeParameters> timeParameterOptions,
             IOptionsMonitor<StateListLengths> stateListLengthOptions,
-            IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions,
             ICryptographyService cryptographyService,
             BeaconStateAccessor beaconStateAccessor,
             BeaconStateTransition beaconStateTransition)
@@ -62,34 +59,39 @@ namespace Nethermind.BeaconNode
             _initialValueOptions = initialValueOptions;
             _timeParameterOptions = timeParameterOptions;
             _stateListLengthOptions = stateListLengthOptions;
-            _maxOperationsPerBlockOptions = maxOperationsPerBlockOptions;
             _cryptographyService = cryptographyService;
         }
 
-        public BeaconState InitializeBeaconStateFromEth1(Hash32 eth1BlockHash, ulong eth1Timestamp, IEnumerable<Deposit> deposits)
+        public BeaconState InitializeBeaconStateFromEth1(Bytes32 eth1BlockHash, ulong eth1Timestamp, IList<Deposit> deposits)
         {
-            if (_logger.IsInfo()) Log.InitializeBeaconState(_logger, eth1BlockHash, eth1Timestamp, deposits.Count(), null);
+            if (_logger.IsInfo()) Log.InitializeBeaconState(_logger, eth1BlockHash, eth1Timestamp, deposits.Count, null);
 
+            InitialValues initialValues = _initialValueOptions.CurrentValue;
             GweiValues gweiValues = _gweiValueOptions.CurrentValue;
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             StateListLengths stateListLengths = _stateListLengthOptions.CurrentValue;
 
+            Fork fork = new Fork(initialValues.GenesisForkVersion, initialValues.GenesisForkVersion,
+                _chainConstants.GenesisEpoch);
+
             ulong genesisTime = eth1Timestamp - (eth1Timestamp % timeParameters.MinimumGenesisDelay)
                 + (2 * timeParameters.MinimumGenesisDelay);
-            Eth1Data eth1Data = new Eth1Data((ulong)deposits.Count(), eth1BlockHash);
+            Eth1Data eth1Data = new Eth1Data((ulong)deposits.Count, eth1BlockHash);
+            
             BeaconBlockBody emptyBlockBody = new BeaconBlockBody();
-            
-            Hash32 emptyBlockBodyRoot = _cryptographyService.HashTreeRoot(emptyBlockBody);
-            
+            Root emptyBlockBodyRoot = _cryptographyService.HashTreeRoot(emptyBlockBody);
             BeaconBlockHeader latestBlockHeader = new BeaconBlockHeader(emptyBlockBodyRoot);
-            BeaconState state = new BeaconState(genesisTime, 0, eth1Data, latestBlockHeader, timeParameters.SlotsPerHistoricalRoot, stateListLengths.EpochsPerHistoricalVector, stateListLengths.EpochsPerSlashingsVector, _chainConstants.JustificationBitsLength);
+
+            BeaconState state = new BeaconState(genesisTime, fork, eth1Data, latestBlockHeader,
+                timeParameters.SlotsPerHistoricalRoot, stateListLengths.EpochsPerHistoricalVector,
+                stateListLengths.EpochsPerSlashingsVector, _chainConstants.JustificationBitsLength);
 
             // Process deposits
             List<DepositData> depositDataList = new List<DepositData>();
             foreach (Deposit deposit in deposits)
             {
                 depositDataList.Add(deposit.Data);
-                Hash32 depositRoot = _cryptographyService.HashTreeRoot(depositDataList);
+                Root depositRoot = _cryptographyService.HashTreeRoot(depositDataList);
                 state.Eth1Data.SetDepositRoot(depositRoot);
                 _beaconStateTransition.ProcessDeposit(state, deposit);
             }

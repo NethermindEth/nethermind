@@ -45,7 +45,7 @@ namespace Nethermind.BeaconNode.MockedStart
                 {
                     x.GenesisTime = section.GetValue<ulong>("GenesisTime");
                     x.ValidatorCount = section.GetValue<ulong>("ValidatorCount");
-                    x.Eth1BlockHash = new Hash32(section.GetBytesFromPrefixedHex("Eth1BlockHash", () => s_defaultEth1BlockHash));
+                    x.Eth1BlockHash = new Bytes32(section.GetBytesFromPrefixedHex("Eth1BlockHash", () => s_defaultEth1BlockHash));
                     x.Eth1Timestamp = section.GetValue("Eth1Timestamp", DefaultEth1Timestamp);
                     x.UseSystemClock = section.GetValue<bool>("UseSystemClock");
                     x.ValidatorStartIndex = section.GetValue<ulong>("ValidatorStartIndex");

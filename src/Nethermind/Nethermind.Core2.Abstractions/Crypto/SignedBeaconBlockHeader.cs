@@ -14,11 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core2.Containers;
 
 namespace Nethermind.Core2.Crypto
 {
-    public class SignedBeaconBlockHeader
+    public class SignedBeaconBlockHeader : IEquatable<SignedBeaconBlockHeader>
     {
         public SignedBeaconBlockHeader(BeaconBlockHeader message, BlsSignature signature)
         {
@@ -28,5 +29,22 @@ namespace Nethermind.Core2.Crypto
 
         public BeaconBlockHeader Message { get; }
         public BlsSignature Signature { get; }
+
+        public bool Equals(SignedBeaconBlockHeader? other)
+        {
+            if (ReferenceEquals(null, other)) return false;
+            if (ReferenceEquals(this, other)) return true;
+            return Message.Equals(other.Message) && Signature.Equals(other.Signature);
+        }
+
+        public override bool Equals(object? obj)
+        {
+            return ReferenceEquals(this, obj) || obj is SignedBeaconBlockHeader other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(Message, Signature);
+        }
     }
 }

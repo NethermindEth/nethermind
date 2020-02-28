@@ -176,8 +176,8 @@ namespace Nethermind.BeaconNode
 
         // 62xx debug - fork choice
 
-        public static readonly Action<ILogger, BeaconBlock, BeaconState, Hash32, Exception?> AddedBlockToStore =
-            LoggerMessage.Define<BeaconBlock, BeaconState, Hash32>(LogLevel.Debug,
+        public static readonly Action<ILogger, BeaconBlock, BeaconState, Root, Exception?> AddedBlockToStore =
+            LoggerMessage.Define<BeaconBlock, BeaconState, Root>(LogLevel.Debug,
                 new EventId(6200, nameof(AddedBlockToStore)),
                 "Store added block {BeaconBlock} generating state {BeaconState}, with signing root {SigningRoot}");
         public static readonly Action<ILogger, Checkpoint, Exception?> UpdateJustifiedCheckpoint =
@@ -195,8 +195,8 @@ namespace Nethermind.BeaconNode
 
         // 63xx - chain start
 
-        public static readonly Action<ILogger, Hash32, ulong, int, Exception?> TryGenesis =
-            LoggerMessage.Define<Hash32, ulong, int>(LogLevel.Debug,
+        public static readonly Action<ILogger, Bytes32, ulong, int, Exception?> TryGenesis =
+            LoggerMessage.Define<Bytes32, ulong, int>(LogLevel.Debug,
                 new EventId(6300, nameof(TryGenesis)),
                 "Try genesis with ETH1 block {Eth1BlockHash}, time {Eth1Timestamp}, with {DepositCount} deposits.");
 

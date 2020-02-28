@@ -21,14 +21,14 @@ using Nethermind.Core2.Crypto;
 
 namespace Nethermind.Core2.Json
 {
-    public class JsonConverterHash32 : JsonConverter<Hash32>
+    public class JsonConverterRoot : JsonConverter<Root>
     {
-        public override Hash32 Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override Root Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            return new Hash32(reader.GetBytesFromPrefixedHex());
+            return new Root(reader.GetBytesFromPrefixedHex());
         }
 
-        public override void Write(Utf8JsonWriter writer, Hash32 value, JsonSerializerOptions options)
+        public override void Write(Utf8JsonWriter writer, Root value, JsonSerializerOptions options)
         {
             writer.WritePrefixedHexStringValue(value.AsSpan());
         }

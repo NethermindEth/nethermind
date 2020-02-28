@@ -85,7 +85,7 @@ namespace Nethermind.BeaconNode
             return slot - startSlot;
         }
 
-        public async Task<Hash32> GetAncestorAsync(IStore store, Hash32 root, Slot slot)
+        public async Task<Root> GetAncestorAsync(IStore store, Root root, Slot slot)
         {
             // NOTE: This method should probably live in IStore, for various efficient implementations.
 
@@ -102,7 +102,7 @@ namespace Nethermind.BeaconNode
             else
             {
                 // root is older than queried slot: no results.
-                return Hash32.Zero;
+                return Root.Zero;
             }
         }
 
@@ -114,10 +114,10 @@ namespace Nethermind.BeaconNode
 
         public IStore GetGenesisStore(BeaconState genesisState)
         {
-            Hash32 stateRoot = _cryptographyService.HashTreeRoot(genesisState);
+            Root stateRoot = _cryptographyService.HashTreeRoot(genesisState);
             BeaconBlock genesisBlock = new BeaconBlock(stateRoot);
             
-            Hash32 root = _cryptographyService.SigningRoot(genesisBlock);
+            Root root = _cryptographyService.HashTreeRoot(genesisBlock);
 
             Checkpoint justifiedCheckpoint = new Checkpoint(_chainConstants.GenesisEpoch, root);
             Checkpoint finalizedCheckpoint = new Checkpoint(_chainConstants.GenesisEpoch, root);
@@ -125,11 +125,11 @@ namespace Nethermind.BeaconNode
             if (_logger.IsInfo())
                 Log.CreateGenesisStore(_logger, genesisBlock, genesisState, justifiedCheckpoint, root, null);
 
-            Dictionary<Hash32, BeaconBlock> blocks = new Dictionary<Hash32, BeaconBlock>
+            Dictionary<Root, BeaconBlock> blocks = new Dictionary<Root, BeaconBlock>
             {
                 [root] = genesisBlock
             };
-            Dictionary<Hash32, BeaconState> blockStates = new Dictionary<Hash32, BeaconState>
+            Dictionary<Root, BeaconState> blockStates = new Dictionary<Root, BeaconState>
             {
                 [root] = BeaconState.Clone(genesisState)
             };
@@ -152,17 +152,17 @@ namespace Nethermind.BeaconNode
             return store;
         }
 
-        public async Task<Hash32> GetHeadAsync(IStore store)
+        public async Task<Root> GetHeadAsync(IStore store)
         {
             // NOTE: This method should probably live in a separate object, for different implementations, possibly part of Store (for efficiency).
 
             // Execute the LMD-GHOST fork choice
-            Hash32 head = store.JustifiedCheckpoint.Root;
+            Root head = store.JustifiedCheckpoint.Root;
             Slot justifiedSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(store.JustifiedCheckpoint.Epoch);
             while (true)
             {
-                List<Tuple<Hash32, Gwei>> childKeysWithBalances = new List<Tuple<Hash32, Gwei>>();
-                await foreach (Hash32 childKey in store.GetChildKeysAfterSlotAsync(head, justifiedSlot)
+                List<Tuple<Root, Gwei>> childKeysWithBalances = new List<Tuple<Root, Gwei>>();
+                await foreach (Root childKey in store.GetChildKeysAfterSlotAsync(head, justifiedSlot)
                     .ConfigureAwait(false))
                 {
                     Gwei balance = await GetLatestAttestingBalanceAsync(store, childKey).ConfigureAwait(false);
@@ -181,7 +181,7 @@ namespace Nethermind.BeaconNode
             }
         }
 
-        public async Task<Gwei> GetLatestAttestingBalanceAsync(IStore store, Hash32 root)
+        public async Task<Gwei> GetLatestAttestingBalanceAsync(IStore store, Root root)
         {
             // NOTE: This method should probably live in IStore, for various efficient implementations.
 
@@ -198,7 +198,7 @@ namespace Nethermind.BeaconNode
                 LatestMessage? latestMessage = await store.GetLatestMessageAsync(index, false);
                 if (latestMessage != null)
                 {
-                    Hash32 ancestor = await GetAncestorAsync(store, latestMessage.Root, rootSlot);
+                    Root ancestor = await GetAncestorAsync(store, latestMessage.Root, rootSlot);
                     if (ancestor == root)
                     {
                         Validator validator = state.Validators[(int)index];
@@ -305,7 +305,7 @@ namespace Nethermind.BeaconNode
             MiscellaneousParameters miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
             MaxOperationsPerBlock maxOperationsPerBlock = _maxOperationsPerBlockOptions.CurrentValue;
 
-            Hash32 signingRoot = _cryptographyService.SigningRoot(block);
+            Root signingRoot = _cryptographyService.HashTreeRoot(block);
             
             if (_logger.IsInfo()) Log.OnBlock(_logger, signingRoot, block, null);
             
@@ -325,7 +325,7 @@ namespace Nethermind.BeaconNode
 
             // Check block is a descendant of the finalized block
             BeaconBlock finalizedCheckpointBlock = await store.GetBlockAsync(store.FinalizedCheckpoint.Root).ConfigureAwait(false);
-            Hash32 ancestor = await GetAncestorAsync(store, signingRoot, finalizedCheckpointBlock!.Slot).ConfigureAwait(false);
+            Root ancestor = await GetAncestorAsync(store, signingRoot, finalizedCheckpointBlock!.Slot).ConfigureAwait(false);
             if (ancestor != store.FinalizedCheckpoint.Root)
             {
                 throw new Exception($"Block with signing root {signingRoot} is not a descendant of the finalized block {store.FinalizedCheckpoint.Root} at slot {finalizedCheckpointBlock.Slot}.");
@@ -339,7 +339,7 @@ namespace Nethermind.BeaconNode
             }
 
             // Check the block is valid and compute the post-state
-            BeaconState state = _beaconStateTransition.StateTransition(preState, block, validateStateRoot: true);
+            BeaconState state = _beaconStateTransition.StateTransition(preState, block, validateResult: true);
 
             // Add new state for this block to the store
             await store.SetBlockStateAsync(signingRoot, state).ConfigureAwait(false);
@@ -419,10 +419,10 @@ namespace Nethermind.BeaconNode
 
             BeaconBlock justifiedCheckPointBlock = await store.GetBlockAsync(store.JustifiedCheckpoint.Root).ConfigureAwait(false);
             
-            Hash32 ancestorOfNewCheckpointAtOldCheckpointSlot = await GetAncestorAsync(store, newJustifiedCheckpoint.Root, justifiedCheckPointBlock.Slot).ConfigureAwait(false);
+            Root ancestorOfNewCheckpointAtOldCheckpointSlot = await GetAncestorAsync(store, newJustifiedCheckpoint.Root, justifiedCheckPointBlock.Slot).ConfigureAwait(false);
             
             // i.e. new checkpoint is descendant of old checkpoint
-            return ancestorOfNewCheckpointAtOldCheckpointSlot == store.JustifiedCheckpoint.Root;
+            return ancestorOfNewCheckpointAtOldCheckpointSlot.Equals(store.JustifiedCheckpoint.Root);
         }
     }
 }

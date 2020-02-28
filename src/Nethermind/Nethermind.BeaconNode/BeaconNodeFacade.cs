@@ -174,7 +174,7 @@ namespace Nethermind.BeaconNode
             }
 
             IStore store = retrievedStore!;
-            Hash32 head = await _forkChoice.GetHeadAsync(store).ConfigureAwait(false);
+            Root head = await _forkChoice.GetHeadAsync(store).ConfigureAwait(false);
             BeaconState state = await store.GetBlockStateAsync(head).ConfigureAwait(false);
 
             return state;

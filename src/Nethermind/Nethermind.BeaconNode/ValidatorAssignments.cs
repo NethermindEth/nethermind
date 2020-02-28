@@ -117,7 +117,7 @@ namespace Nethermind.BeaconNode
             }
 
             IStore store = retrievedStore!;
-            Hash32 head = await _forkChoice.GetHeadAsync(store).ConfigureAwait(false);
+            Root head = await _forkChoice.GetHeadAsync(store).ConfigureAwait(false);
             BeaconState headState = await store.GetBlockStateAsync(head).ConfigureAwait(false);
 
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(headState);
@@ -161,7 +161,7 @@ namespace Nethermind.BeaconNode
             else if (epoch == currentEpoch)
             {
                 // Take block slot and roots before cloning (for historical checks)
-                IReadOnlyList<Hash32> historicalBlockRoots = headState.BlockRoots;
+                IReadOnlyList<Root> historicalBlockRoots = headState.BlockRoots;
                 Slot fromSlot = headState.Slot;
                 BeaconState state = BeaconState.Clone(headState);
                 
@@ -180,7 +180,7 @@ namespace Nethermind.BeaconNode
             }
             else
             {
-                Hash32 endRoot = await _forkChoice.GetAncestorAsync(store, head, endSlot - Slot.One);
+                Root endRoot = await _forkChoice.GetAncestorAsync(store, head, endSlot - Slot.One);
                 BeaconState state = await store.GetBlockStateAsync(endRoot).ConfigureAwait(false);
                 
                 // Check base state
@@ -188,7 +188,7 @@ namespace Nethermind.BeaconNode
                 duty = CheckStateDuty(state, validatorIndex, duty);
 
                 // Check historical states
-                IReadOnlyList<Hash32> historicalBlockRoots = state.BlockRoots;
+                IReadOnlyList<Root> historicalBlockRoots = state.BlockRoots;
                 if (duty.AttestationSlot == Slot.None || duty.BlockProposalSlot == Slot.None)
                 {
                     Slot fromSlot = state.Slot;
@@ -223,7 +223,7 @@ namespace Nethermind.BeaconNode
             return duty;
         }
 
-        private async Task<Duty> CheckHistoricalSlotsAsync(IStore store, IReadOnlyList<Hash32> historicalBlockRoots, Slot fromSlot, Slot startSlot, ValidatorIndex validatorIndex, Duty duty)
+        private async Task<Duty> CheckHistoricalSlotsAsync(IStore store, IReadOnlyList<Root> historicalBlockRoots, Slot fromSlot, Slot startSlot, ValidatorIndex validatorIndex, Duty duty)
         {
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             Slot previousSlot = fromSlot;
@@ -231,7 +231,7 @@ namespace Nethermind.BeaconNode
             {
                 previousSlot -= Slot.One;
                 int index = (int) (previousSlot % timeParameters.SlotsPerHistoricalRoot);
-                Hash32 previousRoot = historicalBlockRoots[index];
+                Root previousRoot = historicalBlockRoots[index];
                 BeaconState previousState = await store.GetBlockStateAsync(previousRoot).ConfigureAwait(false);
 
                 duty = CheckStateDuty(previousState, validatorIndex, duty);

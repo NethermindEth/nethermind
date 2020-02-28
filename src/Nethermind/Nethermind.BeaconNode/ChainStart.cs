@@ -39,7 +39,7 @@ namespace Nethermind.BeaconNode
             _forkChoice = forkChoice;
         }
 
-        public async Task<bool> TryGenesisAsync(Hash32 eth1BlockHash, ulong eth1Timestamp, IList<Deposit> deposits)
+        public async Task<bool> TryGenesisAsync(Bytes32 eth1BlockHash, ulong eth1Timestamp, IList<Deposit> deposits)
         {
             return await Task.Run(() =>
             {

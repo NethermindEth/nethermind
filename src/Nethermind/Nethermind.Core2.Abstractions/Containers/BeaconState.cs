@@ -85,14 +85,24 @@ namespace Nethermind.Core2.Containers
             FinalizedCheckpoint = finalizedCheckpoint;
         }
 
-        public BeaconState(ulong genesisTime, ulong eth1DepositIndex, Eth1Data eth1Data, BeaconBlockHeader latestBlockHeader,
-            uint slotsPerHistoricalRoot, ulong epochsPerHistoricalVector, ulong epochsPerSlashingsVector, int justificationBitsLength)
+        public BeaconState(
+            ulong genesisTime, 
+            //ulong eth1DepositIndex,
+            Fork fork,
+            Eth1Data eth1Data, 
+            BeaconBlockHeader latestBlockHeader,
+            uint slotsPerHistoricalRoot, 
+            ulong epochsPerHistoricalVector, 
+            ulong epochsPerSlashingsVector, 
+            int justificationBitsLength)
         {
             GenesisTime = genesisTime;
-            Eth1DepositIndex = eth1DepositIndex;
+            Fork = fork;
+            Eth1DepositIndex = eth1Data.DepositCount; // TODO: Check what this value should be / default to
             _eth1DataVotes = new List<Eth1Data>();
             Eth1Data = eth1Data;
             LatestBlockHeader = latestBlockHeader;
+            // Default/empty values:
             _validators = new List<Validator>();
             _balances = new List<Gwei>();
             _blockRoots = Enumerable.Repeat(Root.Zero, (int)slotsPerHistoricalRoot).ToArray();
@@ -103,7 +113,6 @@ namespace Nethermind.Core2.Containers
             _previousEpochAttestations = new List<PendingAttestation>();
             _currentEpochAttestations = new List<PendingAttestation>();
             JustificationBits = new BitArray(justificationBitsLength);
-            Fork = new Fork(new ForkVersion(), new ForkVersion(), Epoch.Zero);
             CurrentJustifiedCheckpoint = new Checkpoint(new Epoch(0), Root.Zero);
             PreviousJustifiedCheckpoint = new Checkpoint(new Epoch(0), Root.Zero);
             FinalizedCheckpoint = new Checkpoint(new Epoch(0), Root.Zero);

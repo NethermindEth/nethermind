@@ -86,16 +86,16 @@ namespace Nethermind.BeaconNode
             IStore store = retrievedStore!;
 
             Slot previousSlot = slot - Slot.One;
-            Hash32 head = await _forkChoice.GetHeadAsync(store).ConfigureAwait(false);
+            Root head = await _forkChoice.GetHeadAsync(store).ConfigureAwait(false);
             BeaconBlock headBlock = await store.GetBlockAsync(head).ConfigureAwait(false);
 
             BeaconBlock parentBlock;
             BeaconState parentState;
-            Hash32 parentRoot;
+            Root parentRoot;
             if (headBlock!.Slot > previousSlot)
             {
                 // Requesting a block for a past slot?
-                Hash32 ancestorSigningRoot = await _forkChoice.GetAncestorAsync(store, head, previousSlot);
+                Root ancestorSigningRoot = await _forkChoice.GetAncestorAsync(store, head, previousSlot);
                 parentBlock = await store.GetBlockAsync(ancestorSigningRoot).ConfigureAwait(false);
                 parentState = await store.GetBlockStateAsync(ancestorSigningRoot).ConfigureAwait(false);
                 parentRoot = ancestorSigningRoot;
@@ -123,7 +123,7 @@ namespace Nethermind.BeaconNode
             List<Deposit> deposits = new List<Deposit>();
             if (eth1Vote.DepositCount > state.Eth1DepositIndex)
             {
-                await foreach (Deposit deposit in _eth1DataProvider.GetDepositsAsync(eth1Vote.DepositRoot,
+                await foreach (Deposit deposit in _eth1DataProvider.GetDepositsAsync(eth1Vote.BlockHash,
                     state.Eth1DepositIndex, maxOperationsPerBlock.MaximumDeposits).ConfigureAwait(false))
                 {
                     deposits.Add(deposit);
@@ -152,11 +152,11 @@ namespace Nethermind.BeaconNode
                 proposerSlashings.Add(proposerSlashing);
             }
 
-            List<VoluntaryExit> voluntaryExits = new List<VoluntaryExit>();
-            await foreach (VoluntaryExit voluntaryExit in _operationPool.GetVoluntaryExits(
+            List<SignedVoluntaryExit> signedVoluntaryExits = new List<SignedVoluntaryExit>();
+            await foreach (SignedVoluntaryExit signedVoluntaryExit in _operationPool.GetSignedVoluntaryExits(
                 maxOperationsPerBlock.MaximumVoluntaryExits).ConfigureAwait(false))
             {
-                voluntaryExits.Add(voluntaryExit);
+                signedVoluntaryExits.Add(signedVoluntaryExit);
             }
             
             // Graffiti
@@ -166,11 +166,11 @@ namespace Nethermind.BeaconNode
 
             // Build block
             BeaconBlockBody body = new BeaconBlockBody(randaoReveal, eth1Vote, graffiti, proposerSlashings,
-                attesterSlashings, attestations, deposits, voluntaryExits);
-            BeaconBlock block = new BeaconBlock(slot, parentRoot, Hash32.Zero, body, BlsSignature.Empty);
+                attesterSlashings, attestations, deposits, signedVoluntaryExits);
+            BeaconBlock block = new BeaconBlock(slot, parentRoot, Root.Zero, body);
             
             // Apply block to state transition and calculate resulting state root
-            Hash32 stateRoot = ComputeNewStateRoot(state, block);
+            Root stateRoot = ComputeNewStateRoot(state, block);
             block.SetStateRoot(stateRoot);
 
             // Unsigned block
@@ -182,22 +182,22 @@ namespace Nethermind.BeaconNode
             return block;
         }
 
-        private Hash32 ComputeNewStateRoot(BeaconState state, BeaconBlock block)
+        private Root ComputeNewStateRoot(BeaconState state, BeaconBlock block)
         {
             _beaconStateTransition.ProcessSlots(state, block.Slot);
             _beaconStateTransition.ProcessBlock(state, block, validateStateRoot: false);
-            Hash32 stateRoot = _cryptographyService.HashTreeRoot(state);
+            Root stateRoot = _cryptographyService.HashTreeRoot(state);
             return stateRoot;
         }
         
-        private async Task<ulong> GetPreviousEth1Distance(IStore store, BeaconState state, Hash32 parentRoot)
+        private async Task<ulong> GetPreviousEth1Distance(IStore store, BeaconState state, Root parentRoot)
         {
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             Slot eth1VotingPeriodSlot = new Slot(state.Slot % timeParameters.SlotsPerEth1VotingPeriod);
             Slot startOfEth1VotingPeriodSlot = state.Slot - eth1VotingPeriodSlot;
-            Hash32 startOfEth1VotingPeriodSigningRoot = await _forkChoice.GetAncestorAsync(store, parentRoot, startOfEth1VotingPeriodSlot);
+            Root startOfEth1VotingPeriodSigningRoot = await _forkChoice.GetAncestorAsync(store, parentRoot, startOfEth1VotingPeriodSlot);
 
-            if (startOfEth1VotingPeriodSigningRoot == Hash32.Zero)
+            if (startOfEth1VotingPeriodSigningRoot == Root.Zero)
             {
                 // Don't have blocks for slot yet
                 // i.e. parent/head < eth1 vote start for new block < slot new block is for
@@ -211,12 +211,12 @@ namespace Nethermind.BeaconNode
 
             BeaconState startOfEth1VotingPeriodState =
                 await store.GetBlockStateAsync(startOfEth1VotingPeriodSigningRoot).ConfigureAwait(false);
-            Hash32 startOfEth1VotingPeriodBlockHash = startOfEth1VotingPeriodState.Eth1Data.BlockHash;
+            Bytes32 startOfEth1VotingPeriodBlockHash = startOfEth1VotingPeriodState.Eth1Data.BlockHash;
             ulong distance = await _eth1DataProvider.GetDistanceAsync(startOfEth1VotingPeriodBlockHash).ConfigureAwait(false);
             return distance;
         }
 
-        private async Task<Eth1Data> GetEth1VoteAsync(BeaconState state, IStore store, Hash32 parentRoot)
+        private async Task<Eth1Data> GetEth1VoteAsync(BeaconState state, IStore store, Root parentRoot)
         {
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             HonestValidatorConstants honestValidatorConstants = _honestValidatorConstantOptions.CurrentValue;
