@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
@@ -151,9 +152,9 @@ namespace Nethermind.Blockchain.Synchronization
             _sealValidator.HintValidationRange(_sealValidatorUserGuid, block.Number - 128, block.Number + 1024);
             if (!_sealValidator.ValidateSeal(block.Header, true))
             {
+                string message = $"Peer {peerInfo.SyncPeer?.Node:c} sent a block with an invalid seal";
                 if (_logger.IsDebug) _logger.Debug($"Peer {peerInfo.SyncPeer?.Node:c} sent a block with an invalid seal");
-                _pool.ReportInvalid(peerInfo, "New block message with invalid seal");
-                return;
+                throw new EthSynchronizationException(message);
             }
             
             if (block.Number <= _blockTree.BestKnownNumber + 1)
@@ -175,9 +176,9 @@ namespace Nethermind.Blockchain.Synchronization
                     {
                         if (!_blockValidator.ValidateSuggestedBlock(block))
                         {
-                            if (_logger.IsDebug) _logger.Debug($"Peer {peerInfo.SyncPeer?.Node:c} sent an invalid block");
-                            _pool.ReportInvalid(peerInfo, "New block message with invalid block or total diff");
-                            return;
+                            string message = $"Peer {peerInfo.SyncPeer?.Node:c} sent an invalid block";
+                            if (_logger.IsDebug) _logger.Debug(message);
+                            throw new EthSynchronizationException(message);
                         }
 
                         result = _blockTree.SuggestBlock(block, true);
