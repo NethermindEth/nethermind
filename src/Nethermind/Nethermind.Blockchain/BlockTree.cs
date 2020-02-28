@@ -1360,14 +1360,17 @@ namespace Nethermind.Blockchain
         /// <param name="startNumber">Start level of the slice to delete</param>
         /// <param name="endNumber">End level of the slice to delete</param>
         /// <exception cref="ArgumentException">Thrown when <paramref name="startNumber"/> ot <paramref name="endNumber"/> do not satisfy the slice position rules</exception>
-        public void DeleteChainSlice(in long startNumber, in long endNumber)
+        public int DeleteChainSlice(in long startNumber, long? endNumber)
         {
+            int deleted = 0;
+            endNumber ??= BestKnownNumber;
+            
             if (endNumber - startNumber < 0)
             {
                 throw new ArgumentException("Start number must be equal or greater end number.", nameof(startNumber));
             }
             
-            if (endNumber - startNumber > 1000)
+            if (endNumber - startNumber > 50000)
             {
                 throw new ArgumentException($"Cannot delete that many blocks at once (start: {startNumber}, end {endNumber}).", nameof(startNumber));
             }
@@ -1392,7 +1395,7 @@ namespace Nethermind.Blockchain
 
             using (_chainLevelInfoRepository.StartBatch())
             {
-                for (long i = endNumber; i >= startNumber; i--)
+                for (long i = endNumber.Value; i >= startNumber; i--)
                 {
                     ChainLevelInfo chainLevelInfo = _chainLevelInfoRepository.LoadLevel(i);
                     if (chainLevelInfo == null)
@@ -1401,6 +1404,7 @@ namespace Nethermind.Blockchain
                     }
                     
                     _chainLevelInfoRepository.Delete(i);
+                    deleted++;
 
                     foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
                     {
@@ -1416,6 +1420,8 @@ namespace Nethermind.Blockchain
             {
                 UpdateHeadBlock(newHeadBlock);
             }
+
+            return deleted;
         }
 
         public async Task FixFastSyncGaps(CancellationToken cancellationToken)
