@@ -178,6 +178,11 @@ namespace Nethermind.Blockchain.Synchronization
                         {
                             string message = $"Peer {peerInfo.SyncPeer?.Node:c} sent an invalid block";
                             if (_logger.IsDebug) _logger.Debug(message);
+                            lock (_recentlySuggested)
+                            {
+                                _recentlySuggested.Delete(block.Hash);
+                            }
+
                             throw new EthSynchronizationException(message);
                         }
 
