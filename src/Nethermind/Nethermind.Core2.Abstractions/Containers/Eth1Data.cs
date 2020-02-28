@@ -17,26 +17,27 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2.Containers
 {
     public class Eth1Data : IEquatable<Eth1Data>
     {
-        public Eth1Data(ulong depositCount, Hash32 eth1BlockHash)
-            : this(Hash32.Zero, depositCount, eth1BlockHash)
+        public Eth1Data(ulong depositCount, Bytes32 eth1BlockHash)
+            : this(Root.Zero, depositCount, eth1BlockHash)
         {
         }
 
-        public Eth1Data(Hash32 depositRoot, ulong depositCount, Hash32 blockHash)
+        public Eth1Data(Root depositRoot, ulong depositCount, Bytes32 blockHash)
         {
             DepositRoot = depositRoot;
             DepositCount = depositCount;
             BlockHash = blockHash;
         }
 
-        public Hash32 BlockHash { get; }
+        public Bytes32 BlockHash { get; }
         public ulong DepositCount { get; private set; }
-        public Hash32 DepositRoot { get; private set; }
+        public Root DepositRoot { get; private set; }
 
         public static Eth1Data Clone(Eth1Data other)
         {
@@ -65,7 +66,7 @@ namespace Nethermind.Core2.Containers
         public bool Equals(Eth1Data? other)
         {
             return !(other is null) &&
-                BlockHash == other.BlockHash &&
+                BlockHash.Equals(other.BlockHash) &&
                 DepositCount == other.DepositCount &&
                 DepositRoot.Equals(other.DepositRoot);
         }
@@ -80,7 +81,7 @@ namespace Nethermind.Core2.Containers
             DepositCount = depositCount;
         }
 
-        public void SetDepositRoot(Hash32 depositRoot)
+        public void SetDepositRoot(Root depositRoot)
         {
             if (depositRoot == null)
             {

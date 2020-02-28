@@ -24,7 +24,7 @@ namespace Nethermind.Core2.Containers
     [DebuggerDisplay("{Epoch}_{Root}")]
     public struct Checkpoint : IEquatable<Checkpoint>
     {
-        public Checkpoint(Epoch epoch, Hash32 root)
+        public Checkpoint(Epoch epoch, Root root)
         {
             Epoch = epoch;
             Root = root;
@@ -32,7 +32,7 @@ namespace Nethermind.Core2.Containers
 
         public Epoch Epoch { get; }
 
-        public Hash32 Root { get; private set; }
+        public Root Root { get; private set; }
 
         public static Checkpoint Clone(Checkpoint other)
         {

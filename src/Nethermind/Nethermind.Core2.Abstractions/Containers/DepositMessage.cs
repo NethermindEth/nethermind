@@ -17,64 +17,46 @@
 using System;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using Hash32 = Nethermind.Core2.Crypto.Hash32;
 
 namespace Nethermind.Core2.Containers
 {
-    public class DepositData : IEquatable<DepositData>
+    public class DepositMessage : IEquatable<DepositMessage>
     {
-        public DepositData(BlsPublicKey publicKey, Bytes32 withdrawalCredentials, Gwei amount)
-            : this(publicKey, withdrawalCredentials, amount, BlsSignature.Empty)
-        {
-        }
-
-        public DepositData(BlsPublicKey publicKey, Bytes32 withdrawalCredentials, Gwei amount, BlsSignature signature)
+        public DepositMessage(BlsPublicKey publicKey, Bytes32 withdrawalCredentials, Gwei amount)
         {
             PublicKey = publicKey;
             WithdrawalCredentials = withdrawalCredentials;
             Amount = amount;
-            Signature = signature; // Signing over DepositMessage
         }
 
         public Gwei Amount { get; }
 
         public BlsPublicKey PublicKey { get; }
 
-        /// <summary>
-        /// Signing over DepositMessage
-        /// </summary>
-        public BlsSignature Signature { get; private set; }
-
         public Bytes32 WithdrawalCredentials { get; }
 
-        public void SetSignature(BlsSignature signature)
-        {
-            Signature = signature;
-        }
-
-        public override string ToString()
-        {
-            return $"P:{PublicKey.ToString().Substring(0, 12)} A:{Amount}";
-        }
-
-        public bool Equals(DepositData other)
+        public bool Equals(DepositMessage other)
         {
             return Equals(PublicKey, other.PublicKey) &&
                    Equals(WithdrawalCredentials, other.WithdrawalCredentials) &&
-                   Amount == other.Amount &&
-                   Equals(Signature, other.Signature);
+                   Amount == other.Amount;
         }
 
         public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
-            return obj is DepositData other && Equals(other);
+            return obj is DepositMessage other && Equals(other);
         }
 
         public override int GetHashCode()
         {
-            return HashCode.Combine(PublicKey, WithdrawalCredentials, Amount, Signature);
+            return HashCode.Combine(PublicKey, WithdrawalCredentials, Amount);
+        }
+
+        public override string ToString()
+        {
+            return $"P:{PublicKey.ToString().Substring(0, 12)} A:{Amount}";
         }
     }
 }

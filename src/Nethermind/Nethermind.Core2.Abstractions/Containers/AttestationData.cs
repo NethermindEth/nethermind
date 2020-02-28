@@ -25,7 +25,7 @@ namespace Nethermind.Core2.Containers
         public AttestationData(
             Slot slot,
             CommitteeIndex index,
-            Hash32 beaconBlockRoot,
+            Root beaconBlockRoot,
             Checkpoint source,
             Checkpoint target)
         {
@@ -36,7 +36,7 @@ namespace Nethermind.Core2.Containers
             Index = index;
         }
 
-        public Hash32 BeaconBlockRoot { get; }
+        public Root BeaconBlockRoot { get; }
         public CommitteeIndex Index { get; }
         public Slot Slot { get; }
         public Checkpoint Source { get; }

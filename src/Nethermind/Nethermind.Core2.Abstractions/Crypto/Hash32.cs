@@ -19,6 +19,7 @@ using System.Buffers.Binary;
 
 namespace Nethermind.Core2.Crypto
 {
+    [Obsolete("Replaced by Root")]
     public struct Hash32 : IEquatable<Hash32>, IComparable<Hash32>
     {
         public const int Length = 32;

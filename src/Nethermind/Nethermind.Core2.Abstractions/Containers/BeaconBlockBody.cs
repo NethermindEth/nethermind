@@ -28,7 +28,7 @@ namespace Nethermind.Core2.Containers
         private readonly List<AttesterSlashing> _attesterSlashings;
         private readonly List<Deposit> _deposits;
         private readonly List<ProposerSlashing> _proposerSlashings;
-        private readonly List<VoluntaryExit> _voluntaryExits;
+        private readonly List<SignedVoluntaryExit> _voluntaryExits;
 
         public BeaconBlockBody(
             BlsSignature randaoReveal,
@@ -38,7 +38,7 @@ namespace Nethermind.Core2.Containers
             IEnumerable<AttesterSlashing> attesterSlashings,
             IEnumerable<Attestation> attestations,
             IEnumerable<Deposit> deposits,
-            IEnumerable<VoluntaryExit> voluntaryExits)
+            IEnumerable<SignedVoluntaryExit> voluntaryExits)
         {
             RandaoReveal = randaoReveal;
             Eth1Data = eth1Data;
@@ -47,19 +47,19 @@ namespace Nethermind.Core2.Containers
             _attesterSlashings = new List<AttesterSlashing>(attesterSlashings);
             _attestations = new List<Attestation>(attestations);
             _deposits = new List<Deposit>(deposits);
-            _voluntaryExits = new List<VoluntaryExit>(voluntaryExits);
+            _voluntaryExits = new List<SignedVoluntaryExit>(voluntaryExits);
         }
 
         public BeaconBlockBody()
         {
             RandaoReveal = BlsSignature.Empty;
-            Eth1Data = new Eth1Data(0, Hash32.Zero);
+            Eth1Data = new Eth1Data(0, Bytes32.Zero);
             Graffiti = new Bytes32();
             _proposerSlashings = new List<ProposerSlashing>();
             _attesterSlashings = new List<AttesterSlashing>();
             _attestations = new List<Attestation>();
             _deposits = new List<Deposit>();
-            _voluntaryExits = new List<VoluntaryExit>();
+            _voluntaryExits = new List<SignedVoluntaryExit>();
         }
 
         public IReadOnlyList<Attestation> Attestations { get { return _attestations; } }
@@ -70,7 +70,7 @@ namespace Nethermind.Core2.Containers
         public IReadOnlyList<ProposerSlashing> ProposerSlashings { get { return _proposerSlashings; } }
         public BlsSignature RandaoReveal { get; private set; }
 
-        public IReadOnlyList<VoluntaryExit> VoluntaryExits { get { return _voluntaryExits; } }
+        public IReadOnlyList<SignedVoluntaryExit> VoluntaryExits { get { return _voluntaryExits; } }
 
         public void AddAttestations(Attestation attestation) => _attestations.Add(attestation);
 
