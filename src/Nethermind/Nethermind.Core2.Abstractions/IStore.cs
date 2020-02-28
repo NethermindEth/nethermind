@@ -24,8 +24,8 @@ namespace Nethermind.Core2
 {
     public interface IStore
     {
-//        IReadOnlyDictionary<Hash32, BeaconBlock> Blocks { get; }
-//        IReadOnlyDictionary<Hash32, BeaconState> BlockStates { get; }
+//        IReadOnlyDictionary<Root, BeaconBlock> Blocks { get; }
+//        IReadOnlyDictionary<Root, BeaconState> BlockStates { get; }
 //        IReadOnlyDictionary<Checkpoint, BeaconState> CheckpointStates { get; }
 //        IReadOnlyDictionary<ValidatorIndex, LatestMessage> LatestMessages { get; }
 
@@ -37,9 +37,9 @@ namespace Nethermind.Core2
 
         Task SetBestJustifiedCheckpointAsync(Checkpoint checkpoint);
 
-        Task SetBlockAsync(Root signingRoot, BeaconBlock block);
+        Task SetBlockAsync(Root blockHashTreeRoot, BeaconBlock block);
 
-        Task SetBlockStateAsync(Root signingRoot, BeaconState state);
+        Task SetBlockStateAsync(Root blockHashTreeRoot, BeaconState state);
 
         Task SetCheckpointStateAsync(Checkpoint checkpoint, BeaconState state);
 
@@ -51,11 +51,13 @@ namespace Nethermind.Core2
 
         Task SetTimeAsync(ulong time);
 
-        ValueTask<BeaconBlock> GetBlockAsync(Root signingRoot);
+        ValueTask<BeaconBlock> GetBlockAsync(Root blockRoot);
 
-        ValueTask<BeaconState> GetBlockStateAsync(Root signingRoot);
+        ValueTask<BeaconState> GetBlockStateAsync(Root blockRoot);
 
         ValueTask<BeaconState?> GetCheckpointStateAsync(Checkpoint checkpoint, bool throwIfMissing);
+
+        IAsyncEnumerable<Root> GetChildKeysAsync(Root parent);
 
         IAsyncEnumerable<Root> GetChildKeysAfterSlotAsync(Root parent, Slot slot);
 

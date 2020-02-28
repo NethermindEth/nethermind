@@ -179,7 +179,7 @@ namespace Nethermind.BeaconNode
         public static readonly Action<ILogger, BeaconBlock, BeaconState, Root, Exception?> AddedBlockToStore =
             LoggerMessage.Define<BeaconBlock, BeaconState, Root>(LogLevel.Debug,
                 new EventId(6200, nameof(AddedBlockToStore)),
-                "Store added block {BeaconBlock} generating state {BeaconState}, with signing root {SigningRoot}");
+                "Store added block {BeaconBlock} generating state {BeaconState}, with block hash state root {BlockRoot}");
         public static readonly Action<ILogger, Checkpoint, Exception?> UpdateJustifiedCheckpoint =
             LoggerMessage.Define<Checkpoint>(LogLevel.Debug,
                 new EventId(6201, nameof(UpdateJustifiedCheckpoint)),

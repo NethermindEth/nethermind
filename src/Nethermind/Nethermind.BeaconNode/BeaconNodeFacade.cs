@@ -140,7 +140,7 @@ namespace Nethermind.BeaconNode
             }
         }
 
-        public async Task<bool> PublishBlockAsync(BeaconBlock signedBlock, CancellationToken cancellationToken)
+        public async Task<bool> PublishBlockAsync(SignedBeaconBlock signedBlock, CancellationToken cancellationToken)
         {
             if (!_storeProvider.TryGetStore(out IStore? retrievedStore))
             {
@@ -158,7 +158,7 @@ namespace Nethermind.BeaconNode
             }
             catch (Exception ex)
             {
-                if (_logger.IsWarn()) Log.BlockNotAcceptedLocally(_logger, signedBlock, ex);
+                if (_logger.IsWarn()) Log.BlockNotAcceptedLocally(_logger, signedBlock.Message, ex);
             }
             
             await _networkPeering.PublishBeaconBlockAsync(signedBlock).ConfigureAwait(false);

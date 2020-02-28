@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core2;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 using Nethermind.Peering.Mothra;
 
 namespace Nethermind.BeaconNode.Peering
@@ -18,12 +19,12 @@ namespace Nethermind.BeaconNode.Peering
             _mothraLibp2p = mothraLibp2p;
         }
 
-        public Task PublishBeaconBlockAsync(BeaconBlock beaconBlock)
+        public Task PublishBeaconBlockAsync(SignedBeaconBlock signedBlock)
         {
             // TODO: Validate signature before broadcasting
 
-            Span<byte> encoded = new byte[Ssz.Ssz.BeaconBlockLength(beaconBlock)];
-            Ssz.Ssz.Encode(encoded, beaconBlock);
+            Span<byte> encoded = new byte[Ssz.Ssz.BeaconBlockLength(signedBlock.Message)];
+            Ssz.Ssz.Encode(encoded, signedBlock.Message);
 
             LogDebug.GossipSend(_logger, nameof(TopicUtf8.BeaconBlock), encoded.Length, null);
             _mothraLibp2p.SendGossip(TopicUtf8.BeaconBlock, encoded);

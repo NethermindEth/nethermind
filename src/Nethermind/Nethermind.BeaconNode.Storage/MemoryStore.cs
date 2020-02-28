@@ -31,8 +31,8 @@ namespace Nethermind.BeaconNode.Storage
     // Data Class
     public class MemoryStore : IStore
     {
-        private readonly Dictionary<Hash32, BeaconBlock> _blocks;
-        private readonly Dictionary<Hash32, BeaconState> _blockStates;
+        private readonly Dictionary<Root, BeaconBlock> _blocks;
+        private readonly Dictionary<Root, BeaconState> _blockStates;
         private readonly Dictionary<Checkpoint, BeaconState> _checkpointStates;
         private readonly Dictionary<ValidatorIndex, LatestMessage> _latestMessages;
         private readonly ILogger _logger;
@@ -43,8 +43,8 @@ namespace Nethermind.BeaconNode.Storage
             Checkpoint justifiedCheckpoint,
             Checkpoint finalizedCheckpoint,
             Checkpoint bestJustifiedCheckpoint,
-            IDictionary<Hash32, BeaconBlock> blocks,
-            IDictionary<Hash32, BeaconState> blockStates,
+            IDictionary<Root, BeaconBlock> blocks,
+            IDictionary<Root, BeaconState> blockStates,
             IDictionary<Checkpoint, BeaconState> checkpointStates,
             IDictionary<ValidatorIndex, LatestMessage> latestMessages,
             ILogger<MemoryStore> logger,
@@ -55,8 +55,8 @@ namespace Nethermind.BeaconNode.Storage
             JustifiedCheckpoint = justifiedCheckpoint;
             FinalizedCheckpoint = finalizedCheckpoint;
             BestJustifiedCheckpoint = bestJustifiedCheckpoint;
-            _blocks = new Dictionary<Hash32, BeaconBlock>(blocks);
-            _blockStates = new Dictionary<Hash32, BeaconState>(blockStates);
+            _blocks = new Dictionary<Root, BeaconBlock>(blocks);
+            _blockStates = new Dictionary<Root, BeaconState>(blockStates);
             _checkpointStates = new Dictionary<Checkpoint, BeaconState>(checkpointStates);
             _latestMessages = new Dictionary<ValidatorIndex, LatestMessage>(latestMessages);
             _logger = logger;
@@ -75,15 +75,15 @@ namespace Nethermind.BeaconNode.Storage
             return Task.CompletedTask;
         }
 
-        public Task SetBlockAsync(Hash32 signingRoot, BeaconBlock block)
+        public Task SetBlockAsync(Root blockHashTreeRoot, BeaconBlock block)
         {
-            _blocks[signingRoot] = block;
+            _blocks[blockHashTreeRoot] = block;
             return Task.CompletedTask;
         }
 
-        public Task SetBlockStateAsync(Hash32 signingRoot, BeaconState state)
+        public Task SetBlockStateAsync(Root blockHashTreeRoot, BeaconState state)
         {
-            _blockStates[signingRoot] = state;
+            _blockStates[blockHashTreeRoot] = state;
             return Task.CompletedTask;
         }
 
@@ -117,20 +117,20 @@ namespace Nethermind.BeaconNode.Storage
             return Task.CompletedTask;
         }
 
-        public ValueTask<BeaconBlock> GetBlockAsync(Hash32 signingRoot)
+        public ValueTask<BeaconBlock> GetBlockAsync(Root blockRoot)
         {
-            if (!_blocks.TryGetValue(signingRoot, out BeaconBlock? block))
+            if (!_blocks.TryGetValue(blockRoot, out BeaconBlock? block))
             {
-                throw new ArgumentOutOfRangeException(nameof(signingRoot), signingRoot, "Block not found in store.");
+                throw new ArgumentOutOfRangeException(nameof(blockRoot), blockRoot, "Block not found in store.");
             }
             return new ValueTask<BeaconBlock>(block!);
         }
 
-        public ValueTask<BeaconState> GetBlockStateAsync(Hash32 signingRoot)
+        public ValueTask<BeaconState> GetBlockStateAsync(Root blockRoot)
         {
-            if (!_blockStates.TryGetValue(signingRoot, out BeaconState? state))
+            if (!_blockStates.TryGetValue(blockRoot, out BeaconState? state))
             {
-                throw new ArgumentOutOfRangeException(nameof(signingRoot), signingRoot, "State not found in store.");
+                throw new ArgumentOutOfRangeException(nameof(blockRoot), blockRoot, "State not found in store.");
             }
             return new ValueTask<BeaconState>(state!);
         }

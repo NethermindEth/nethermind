@@ -44,12 +44,12 @@ namespace Nethermind.BeaconNode.Storage
             Checkpoint justifiedCheckpoint,
             Checkpoint finalizedCheckpoint,
             Checkpoint bestJustifiedCheckpoint,
-            IDictionary<Hash32, BeaconBlock> blocks,
-            IDictionary<Hash32, BeaconState> blockStates,
+            IDictionary<Root, BeaconBlock> blocks,
+            IDictionary<Root, BeaconState> states,
             IDictionary<Checkpoint, BeaconState> checkpointStates,
             IDictionary<ValidatorIndex, LatestMessage> latestMessages)
         {
-            _store = new MemoryStore(time, genesisTime, justifiedCheckpoint, finalizedCheckpoint, bestJustifiedCheckpoint, blocks, blockStates, checkpointStates, latestMessages,
+            _store = new MemoryStore(time, genesisTime, justifiedCheckpoint, finalizedCheckpoint, bestJustifiedCheckpoint, blocks, states, checkpointStates, latestMessages,
                 _loggerFactory.CreateLogger<MemoryStore>(),
                 _timeParameterOptions);
             return _store;
