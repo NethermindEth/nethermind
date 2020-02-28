@@ -25,6 +25,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
+using Nethermind.Specs;
 using Nethermind.Stats.Model;
 using Nethermind.Store;
 using NSubstitute;
@@ -130,7 +131,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
         
         [Test]
-        public void Rejects_new_blocks_with_failing_seal()
+        public void Can_accept_blocks_that_are_fine()
         {
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
@@ -143,6 +144,21 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock);
 
             Assert.AreEqual(localBlockTree.BestSuggestedHeader, block.Header);
+        }
+        
+        [Test]
+        public void Will_reject_block_with_bad_total_diff()
+        {
+            BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
+            BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
+
+            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, new BlockValidator(TestTxValidator.AlwaysValid, new HeaderValidator(localBlockTree, TestSealValidator.AlwaysValid, MainNetSpecProvider.Instance, LimboLogs.Instance), AlwaysValidOmmersValidator.Instance, MainNetSpecProvider.Instance, LimboLogs.Instance), TestSealValidator.AlwaysValid, _peerPool, _synchronizer, new SyncConfig(), LimboLogs.Instance);
+            
+            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
+            block.Header.TotalDifficulty *= 2;
+
+            _synchronizer.SyncMode.Returns(SyncMode.Full);
+            Assert.Throws<EthSynchronizationException>(() => _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock));
         }
         
         [Test]
