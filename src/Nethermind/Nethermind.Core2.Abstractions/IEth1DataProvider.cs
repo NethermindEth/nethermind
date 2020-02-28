@@ -18,14 +18,15 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2
 {
     public interface IEth1DataProvider
     {
         // NOTE: Eth1Data.Deposit root is the deposit root of the contract
-        Task<ulong> GetDistanceAsync(Hash32 eth1BlockHash);
+        Task<ulong> GetDistanceAsync(Bytes32 eth1BlockHash);
         Task<Eth1Data> GetEth1DataAsync(ulong distance);
-        IAsyncEnumerable<Deposit> GetDepositsAsync(Hash32 eth1BlockHash, ulong startIndex, ulong maximum);
+        IAsyncEnumerable<Deposit> GetDepositsAsync(Bytes32 eth1BlockHash, ulong startIndex, ulong maximum);
     }
 }

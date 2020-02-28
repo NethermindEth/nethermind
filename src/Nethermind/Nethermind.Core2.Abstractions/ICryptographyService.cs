@@ -27,26 +27,22 @@ namespace Nethermind.Core2
     {
         BlsPublicKey BlsAggregatePublicKeys(IEnumerable<BlsPublicKey> publicKeys);
 
-        bool BlsVerify(BlsPublicKey publicKey, Hash32 signingRoot, BlsSignature signature, Domain domain);
+        bool BlsVerify(BlsPublicKey publicKey, Root signingRoot, BlsSignature signature, Domain domain);
 
-        bool BlsVerifyMultiple(IEnumerable<BlsPublicKey> publicKeys, IEnumerable<Hash32> messageHashes, BlsSignature signature, Domain domain);
+        bool BlsVerifyMultiple(IEnumerable<BlsPublicKey> publicKeys, IEnumerable<Root> messageHashes, BlsSignature signature, Domain domain);
 
-        Hash32 Hash(Hash32 a, Hash32 b);
+        Root Hash(Root a, Root b);
 
-        Hash32 Hash(ReadOnlySpan<byte> bytes);
+        Root Hash(ReadOnlySpan<byte> bytes);
 
-        Hash32 HashTreeRoot(AttestationData attestationData);
-        Hash32 HashTreeRoot(BeaconBlock beaconBlock);
-        Hash32 HashTreeRoot(BeaconBlockBody beaconBlockBody);
-        Hash32 HashTreeRoot(BeaconState beaconState);
-        Hash32 HashTreeRoot(DepositData depositData);
-        Hash32 HashTreeRoot(IList<DepositData> depositData);
-        Hash32 HashTreeRoot(Epoch epoch);
-        Hash32 HashTreeRoot(HistoricalBatch historicalBatch);
-
-        Hash32 SigningRoot(BeaconBlock beaconBlock);
-        Hash32 SigningRoot(BeaconBlockHeader beaconBlockHeader);
-        Hash32 SigningRoot(DepositData depositData);
-        Hash32 SigningRoot(VoluntaryExit voluntaryExit);
+        Root HashTreeRoot(AttestationData attestationData);
+        Root HashTreeRoot(BeaconBlock beaconBlock);
+        Root HashTreeRoot(BeaconBlockBody beaconBlockBody);
+        Root HashTreeRoot(BeaconState beaconState);
+        Root HashTreeRoot(DepositData depositData);
+        Root HashTreeRoot(IList<DepositData> depositData);
+        Root HashTreeRoot(Epoch epoch);
+        Root HashTreeRoot(HistoricalBatch historicalBatch);
+        Root HashTreeRoot(VoluntaryExit voluntaryExit);
     }
 }

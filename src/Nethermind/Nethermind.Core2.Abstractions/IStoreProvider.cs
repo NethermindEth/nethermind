@@ -23,7 +23,7 @@ namespace Nethermind.Core2
 {
     public interface IStoreProvider
     {
-        IStore CreateStore(ulong time, ulong genesisTime, Checkpoint justifiedCheckpoint, Checkpoint finalizedCheckpoint, Checkpoint bestJustifiedCheckpoint, IDictionary<Hash32, BeaconBlock> blocks, IDictionary<Hash32, BeaconState> blockStates, IDictionary<Checkpoint, BeaconState> checkpointStates, IDictionary<ValidatorIndex, LatestMessage> latestMessages);
+        IStore CreateStore(ulong time, ulong genesisTime, Checkpoint justifiedCheckpoint, Checkpoint finalizedCheckpoint, Checkpoint bestJustifiedCheckpoint, IDictionary<Root, BeaconBlock> blocks, IDictionary<Root, BeaconState> blockStates, IDictionary<Checkpoint, BeaconState> checkpointStates, IDictionary<ValidatorIndex, LatestMessage> latestMessages);
         bool TryGetStore(out IStore? store);
     }
 }

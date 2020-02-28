@@ -37,9 +37,9 @@ namespace Nethermind.Core2
 
         Task SetBestJustifiedCheckpointAsync(Checkpoint checkpoint);
 
-        Task SetBlockAsync(Hash32 signingRoot, BeaconBlock block);
+        Task SetBlockAsync(Root signingRoot, BeaconBlock block);
 
-        Task SetBlockStateAsync(Hash32 signingRoot, BeaconState state);
+        Task SetBlockStateAsync(Root signingRoot, BeaconState state);
 
         Task SetCheckpointStateAsync(Checkpoint checkpoint, BeaconState state);
 
@@ -51,13 +51,13 @@ namespace Nethermind.Core2
 
         Task SetTimeAsync(ulong time);
 
-        ValueTask<BeaconBlock> GetBlockAsync(Hash32 signingRoot);
+        ValueTask<BeaconBlock> GetBlockAsync(Root signingRoot);
 
-        ValueTask<BeaconState> GetBlockStateAsync(Hash32 signingRoot);
+        ValueTask<BeaconState> GetBlockStateAsync(Root signingRoot);
 
         ValueTask<BeaconState?> GetCheckpointStateAsync(Checkpoint checkpoint, bool throwIfMissing);
 
-        IAsyncEnumerable<Hash32> GetChildKeysAfterSlotAsync(Hash32 parent, Slot slot);
+        IAsyncEnumerable<Root> GetChildKeysAfterSlotAsync(Root parent, Slot slot);
 
         ValueTask<LatestMessage?> GetLatestMessageAsync(ValidatorIndex validatorIndex, bool throwIfMissing);
     }
