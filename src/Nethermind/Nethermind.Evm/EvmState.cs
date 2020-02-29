@@ -117,6 +117,8 @@ namespace Nethermind.Evm
                     case ExecutionType.CallCode:
                     case ExecutionType.Create:
                         return Env.Sender;
+                    case ExecutionType.Create2:
+                        return Env.Sender;
                     case ExecutionType.DelegateCall:
                         return Env.ExecutingAccount;
                     case ExecutionType.Transaction:

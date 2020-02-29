@@ -228,8 +228,6 @@ namespace Nethermind.PerfTest
 
         private static async Task RunBenchmarkBlocks()
         {
-            Rlp.RegisterDecoders(typeof(ParityTraceDecoder).Assembly);
-
             /* logging & instrumentation */
             _logManager = new NLogManager("perfTest.logs.txt", null);
             _logger = _logManager.GetClassLogger();
