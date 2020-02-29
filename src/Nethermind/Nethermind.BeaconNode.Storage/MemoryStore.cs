@@ -148,15 +148,28 @@ namespace Nethermind.BeaconNode.Storage
             return new ValueTask<BeaconState?>(state);
         }
 
-        public async IAsyncEnumerable<Hash32> GetChildKeysAfterSlotAsync(Hash32 parent, Slot slot)
+        public async IAsyncEnumerable<Root> GetChildKeysAsync(Root parent)
         {
             await Task.CompletedTask;
-            IEnumerable<Hash32> childKeys = _blocks
+            IEnumerable<Root> childKeys = _blocks
+                .Where(kvp =>
+                    kvp.Value.ParentRoot.Equals(parent))
+                .Select(kvp => kvp.Key);
+            foreach (Root childKey in childKeys)
+            {
+                yield return childKey;
+            }
+        }
+        
+        public async IAsyncEnumerable<Root> GetChildKeysAfterSlotAsync(Root parent, Slot slot)
+        {
+            await Task.CompletedTask;
+            IEnumerable<Root> childKeys = _blocks
                 .Where(kvp =>
                     kvp.Value.ParentRoot.Equals(parent)
                     && kvp.Value.Slot > slot)
                 .Select(kvp => kvp.Key);
-            foreach (Hash32 childKey in childKeys)
+            foreach (Root childKey in childKeys)
             {
                 yield return childKey;
             }
