@@ -94,10 +94,10 @@ namespace Nethermind.BeaconNode
                 new EventId(6104, nameof(ProcessEpoch)),
                 "Process end of epoch for state {BeaconState}");
 
-        public static readonly Action<ILogger, bool, BeaconBlock, BeaconState, Exception?> ProcessBlock =
-            LoggerMessage.Define<bool, BeaconBlock, BeaconState>(LogLevel.Debug,
+        public static readonly Action<ILogger, BeaconBlock, BeaconState, Exception?> ProcessBlock =
+            LoggerMessage.Define<BeaconBlock, BeaconState>(LogLevel.Debug,
                 new EventId(6105, nameof(ProcessBlock)),
-                "Process (validate {Validate}) block {BeaconBlock} for state {BeaconState}");
+                "Process block {BeaconBlock} for state {BeaconState}");
         
         public static readonly Action<ILogger, BeaconBlock,  Exception?> ProcessBlockHeader =
             LoggerMessage.Define<BeaconBlock>(LogLevel.Debug,

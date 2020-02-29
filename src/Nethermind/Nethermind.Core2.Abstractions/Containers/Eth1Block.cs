@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,19 +14,16 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Nethermind.Core2.Containers;
-using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Types;
-
-namespace Nethermind.Core2
+namespace Nethermind.Core2.Containers
 {
-    public interface IEth1DataProvider
+    public class Eth1Block
     {
-        // NOTE: Eth1Data.Deposit root is the deposit root of the contract
-        Task<ulong> GetDistanceAsync(Bytes32 eth1BlockHash);
-        IAsyncEnumerable<Eth1Data> GetEth1DataDescendingAsync(ulong maximumTimestampInclusive, ulong minimumTimestampInclusive);
-        IAsyncEnumerable<Deposit> GetDepositsAsync(Bytes32 eth1BlockHash, ulong startIndex, ulong maximum);
+        public ulong Timestamp { get; }
+
+        public Eth1Block(ulong timestamp)
+        {
+            Timestamp = timestamp;
+        }
+        
     }
 }

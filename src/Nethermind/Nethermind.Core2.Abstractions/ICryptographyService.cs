@@ -26,7 +26,7 @@ namespace Nethermind.Core2
     {
         BlsPublicKey BlsAggregatePublicKeys(IEnumerable<BlsPublicKey> publicKeys);
         
-        bool BlsAggregateVerify(IList<BlsPublicKey> publicKeys, IList<Root> messageHashes, BlsSignature signature);
+        bool BlsAggregateVerify(IList<BlsPublicKey> publicKeys, IList<Root> signingRoots, BlsSignature signature);
 
         bool BlsFastAggregateVerify(IList<BlsPublicKey> publicKey, Root signingRoot, BlsSignature signature);
         

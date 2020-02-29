@@ -58,7 +58,7 @@ namespace Nethermind.BeaconNode.MockedStart
             return Task.FromResult(distance);
         }
 
-        public async Task<Eth1Data> GetEth1DataAsync(ulong distance)
+        public async IAsyncEnumerable<Eth1Data> GetEth1DataDescendingAsync(ulong maximumTimestampInclusive, ulong minimumTimestampInclusive)
         {
             if (!_storeProvider.TryGetStore(out IStore? store))
             {
@@ -70,9 +70,9 @@ namespace Nethermind.BeaconNode.MockedStart
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state!);
             Eth1Data eth1Data = GetEth1DataStub(state!, currentEpoch);
             
-            return eth1Data;
+            yield return eth1Data;
         }
-
+        
         public IAsyncEnumerable<Deposit> GetDepositsAsync(Bytes32 eth1BlockHash, ulong startIndex, ulong maximum)
         {
             // Mocked data returns no extra deposits, but because count doesn't increase, then it won't actually be called. If it is called, there is a problem, so throw.

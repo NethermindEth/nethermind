@@ -24,6 +24,6 @@ namespace Nethermind.HonestValidator.Services
     public interface IValidatorKeyProvider
     {
         IEnumerable<BlsPublicKey> GetPublicKeys();
-        BlsSignature SignHashWithDomain(BlsPublicKey blsPublicKey, Hash32 hash, Domain domain);
+        BlsSignature SignRoot(BlsPublicKey blsPublicKey, Root root);
     }
 }

@@ -36,6 +36,7 @@ namespace Nethermind.HonestValidator
     {
         private readonly ILogger _logger;
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
+        private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
         private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
         private readonly IOptionsMonitor<SignatureDomains> _signatureDomainOptions;
@@ -47,6 +48,7 @@ namespace Nethermind.HonestValidator
 
         public ValidatorClient(ILogger<ValidatorClient> logger,
             IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
+            IOptionsMonitor<InitialValues> initialValueOptions,
             IOptionsMonitor<TimeParameters> timeParameterOptions,
             IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions,
             IOptionsMonitor<SignatureDomains> signatureDomainOptions,
@@ -57,6 +59,7 @@ namespace Nethermind.HonestValidator
         {
             _logger = logger;
             _miscellaneousParameterOptions = miscellaneousParameterOptions;
+            _initialValueOptions = initialValueOptions;
             _timeParameterOptions = timeParameterOptions;
             _maxOperationsPerBlockOptions = maxOperationsPerBlockOptions;
             _signatureDomainOptions = signatureDomainOptions;
@@ -125,9 +128,10 @@ namespace Nethermind.HonestValidator
 
                 BeaconBlock unsignedBlock = await _beaconNodeApi.NewBlockAsync(slot, randaoReveal, cancellationToken).ConfigureAwait(false);
 
-                BeaconBlock signedBlock = SignBlock(unsignedBlock, blsPublicKey);
+                BlsSignature blockSignature = GetBlockSignature(unsignedBlock, blsPublicKey);
+                SignedBeaconBlock signedBlock = new SignedBeaconBlock(unsignedBlock, blockSignature); 
 
-                if (_logger.IsDebug()) LogDebug.PublishingSignedBlock(_logger, slot, blsPublicKey.ToShortString(), randaoReveal.ToString().Substring(0, 10), signedBlock, signedBlock.Signature.ToString().Substring(0, 10), null);
+                if (_logger.IsDebug()) LogDebug.PublishingSignedBlock(_logger, slot, blsPublicKey.ToShortString(), randaoReveal.ToString().Substring(0, 10), signedBlock.Message, signedBlock.Signature.ToString().Substring(0, 10), null);
 
                 bool nodeAccepted = await _beaconNodeApi.PublishBlockAsync(signedBlock, cancellationToken).ConfigureAwait(false);
                 
@@ -135,7 +139,7 @@ namespace Nethermind.HonestValidator
             }
         }
 
-        public BeaconBlock SignBlock(BeaconBlock block, BlsPublicKey blsPublicKey)
+        public BlsSignature GetBlockSignature(BeaconBlock block, BlsPublicKey blsPublicKey)
         {
             var fork = _beaconChain.Fork;
             var epoch = ComputeEpochAtSlot(block.Slot);
@@ -153,19 +157,20 @@ namespace Nethermind.HonestValidator
             var domainType = _signatureDomainOptions.CurrentValue.BeaconProposer;
             var proposerDomain = ComputeDomain(domainType, forkVersion);
             
+            /*
             JsonSerializerOptions options = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
             options.ConfigureNethermindCore2();
             string blockJson = System.Text.Json.JsonSerializer.Serialize(block, options);
+            */
 
-            var signingRoot = _cryptographyService.SigningRoot(block);
+            var blockRoot = _cryptographyService.HashTreeRoot(block);
+            var signingRoot = ComputeSigningRoot(blockRoot, proposerDomain);
 
-            var signature = _validatorKeyProvider.SignHashWithDomain(blsPublicKey, signingRoot, proposerDomain);
-
-            block.SetSignature(signature);
+            var signature = _validatorKeyProvider.SignRoot(blsPublicKey, signingRoot);
             
-            return block;
+            return signature;
         }
-
+        
         public BlsSignature GetEpochSignature(Slot slot, BlsPublicKey blsPublicKey)
         {
             var fork = _beaconChain.Fork;
@@ -184,9 +189,10 @@ namespace Nethermind.HonestValidator
             var domainType = _signatureDomainOptions.CurrentValue.Randao;
             var randaoDomain = ComputeDomain(domainType, forkVersion);
             
-            var randaoRevealHash = _cryptographyService.HashTreeRoot(epoch);
+            var epochRoot = _cryptographyService.HashTreeRoot(epoch);
+            var signingRoot = ComputeSigningRoot(epochRoot, randaoDomain);
 
-            var randaoReveal = _validatorKeyProvider.SignHashWithDomain(blsPublicKey, randaoRevealHash, randaoDomain);
+            var randaoReveal = _validatorKeyProvider.SignRoot(blsPublicKey, signingRoot);
 
             return randaoReveal;
         }
@@ -238,18 +244,37 @@ namespace Nethermind.HonestValidator
         /// </summary>
         public Epoch ComputeEpochAtSlot(Slot slot)
         {
+            // TODO: Duplicate of BeaconChainUtility
+            
             return new Epoch(slot / _timeParameterOptions.CurrentValue.SlotsPerEpoch);
         }
 
         /// <summary>
         /// Returns the domain for the 'domain_type' and 'fork_version'
         /// </summary>
-        public Domain ComputeDomain(DomainType domainType, ForkVersion forkVersion = new ForkVersion())
+        public Domain ComputeDomain(DomainType domainType, ForkVersion? forkVersion)
         {
+            // TODO: Duplicate of BeaconChainUtility
+            
+            if (forkVersion == null)
+            {
+                forkVersion = _initialValueOptions.CurrentValue.GenesisForkVersion;
+            }
             Span<byte> combined = stackalloc byte[Domain.Length];
             domainType.AsSpan().CopyTo(combined);
-            forkVersion.AsSpan().CopyTo(combined.Slice(DomainType.Length));
+            forkVersion.Value.AsSpan().CopyTo(combined.Slice(DomainType.Length));
             return new Domain(combined);
+        }
+        
+        /// <summary>
+        /// Return the signing root of an object by calculating the root of the object-domain tree.
+        /// </summary>
+        public Root ComputeSigningRoot(Root objectRoot, Domain domain)
+        {
+            // TODO: Duplicate of BeaconChainUtility
+            
+            SigningRoot domainWrappedObject = new SigningRoot(objectRoot, domain);
+            return _cryptographyService.HashTreeRoot(domainWrappedObject);
         }
     }
 }

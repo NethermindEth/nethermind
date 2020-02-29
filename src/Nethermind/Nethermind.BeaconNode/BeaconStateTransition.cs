@@ -359,16 +359,16 @@ namespace Nethermind.BeaconNode
             }
         }
 
-        public void ProcessBlock(BeaconState state, BeaconBlock block, bool validateStateRoot)
+        public void ProcessBlock(BeaconState state, BeaconBlock block)
         {
-            if(_logger.IsDebug()) LogDebug.ProcessBlock(_logger, validateStateRoot, block, state, null);
-            ProcessBlockHeader(state, block, validateStateRoot);
+            if(_logger.IsDebug()) LogDebug.ProcessBlock(_logger, block, state, null);
+            ProcessBlockHeader(state, block);
             ProcessRandao(state, block.Body);
             ProcessEth1Data(state, block.Body);
             ProcessOperations(state, block.Body);
         }
 
-        public void ProcessBlockHeader(BeaconState state, BeaconBlock block, bool validateStateRoot)
+        public void ProcessBlockHeader(BeaconState state, BeaconBlock block)
         {
             if(_logger.IsDebug()) LogDebug.ProcessBlockHeader(_logger, block, null);
             // Verify that the slots match
@@ -920,7 +920,7 @@ namespace Nethermind.BeaconNode
             }
             
             // Process block
-            ProcessBlock(state, block, validateResult);
+            ProcessBlock(state, block);
             
             // Validate state root (True in production)
             if (validateResult)
