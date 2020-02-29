@@ -17,13 +17,14 @@
 using System;
 using Nethermind.Core2;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
-        public const int ProposerSlashingLength = Ssz.ValidatorIndexLength + 2 * Ssz.BeaconBlockHeaderLength;
+        public const int ProposerSlashingLength = Ssz.ValidatorIndexLength + 2 * Ssz.SignedBeaconBlockHeaderLength;
 
         private static void Encode(Span<byte> span, ProposerSlashing?[]? containers, ref int offset, ref int dynamicOffset)
         {
@@ -54,9 +55,9 @@ namespace Nethermind.Ssz
             int offset = 0;
             Encode(span.Slice(0, Ssz.ValidatorIndexLength), container.ProposerIndex);
             offset += Ssz.ValidatorIndexLength;
-            Encode(span.Slice(offset, Ssz.BeaconBlockHeaderLength), container.Header1);
-            offset += Ssz.BeaconBlockHeaderLength;
-            Encode(span.Slice(offset, Ssz.BeaconBlockHeaderLength), container.Header2);
+            Encode(span.Slice(offset, Ssz.SignedBeaconBlockHeaderLength), container.SignedHeader1);
+            offset += Ssz.SignedBeaconBlockHeaderLength;
+            Encode(span.Slice(offset, Ssz.SignedBeaconBlockHeaderLength), container.SignedHeader2);
         }
 
         private static byte[] _nullProposerSlashing = new byte[Ssz.ProposerSlashingLength];
@@ -67,9 +68,9 @@ namespace Nethermind.Ssz
             if (span.SequenceEqual(_nullProposerSlashing)) return null;
             int offset = 0;
             ValidatorIndex proposerIndex = DecodeValidatorIndex(span, ref offset);
-            BeaconBlockHeader header1 = DecodeBeaconBlockHeader(span, ref offset);
-            BeaconBlockHeader header2 = DecodeBeaconBlockHeader(span, ref offset);
-            ProposerSlashing container = new ProposerSlashing(proposerIndex, header1, header2);
+            SignedBeaconBlockHeader signedHeader1 = DecodeSignedBeaconBlockHeader(span, ref offset);
+            SignedBeaconBlockHeader signedHeader2 = DecodeSignedBeaconBlockHeader(span, ref offset);
+            ProposerSlashing container = new ProposerSlashing(proposerIndex, signedHeader1, signedHeader2);
             return container;
         }
 

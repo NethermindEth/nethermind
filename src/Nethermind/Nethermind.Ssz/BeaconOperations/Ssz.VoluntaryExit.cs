@@ -25,45 +25,6 @@ namespace Nethermind.Ssz
     public static partial class Ssz
     {
         public const int VoluntaryExitLength = Ssz.EpochLength + Ssz.ValidatorIndexLength + Ssz.BlsSignatureLength;
-
-        public static void Encode(Span<byte> span, VoluntaryExit[] containers)
-        {
-            if (span.Length != Ssz.VoluntaryExitLength * containers.Length)
-            {
-                ThrowTargetLength<VoluntaryExit>(span.Length, Ssz.VoluntaryExitLength);
-            }
-
-            for (int i = 0; i < containers.Length; i++)
-            {
-                Encode(span.Slice(i * Ssz.VoluntaryExitLength, Ssz.VoluntaryExitLength), containers[i]);
-            }
-        }
-
-        public static VoluntaryExit?[] DecodeVoluntaryExits(ReadOnlySpan<byte> span)
-        {
-            if (span.Length % Ssz.VoluntaryExitLength != 0)
-            {
-                ThrowInvalidSourceArrayLength<VoluntaryExit>(span.Length, Ssz.VoluntaryExitLength);
-            }
-
-            int count = span.Length / Ssz.VoluntaryExitLength;
-            VoluntaryExit?[] containers = new VoluntaryExit?[count];
-            for (int i = 0; i < count; i++)
-            {
-                containers[i] = DecodeVoluntaryExit(span.Slice(i * Ssz.VoluntaryExitLength, Ssz.VoluntaryExitLength));
-            }
-
-            return containers;
-        }
-        
-        private static void Encode(Span<byte> span, VoluntaryExit[] containers, ref int offset, ref int dynamicOffset)
-        {
-            int length = containers.Length * Ssz.VoluntaryExitLength;
-            Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
-            Encode(span.Slice(dynamicOffset, length), containers);
-            dynamicOffset += length;
-            offset += VarOffsetSize;
-        }
         
         public static void Encode(Span<byte> span, VoluntaryExit container)
         {
@@ -75,18 +36,29 @@ namespace Nethermind.Ssz
             Encode(span, container.Signature, ref offset);
         }
 
-        private static byte[] _nullVoluntaryExit = new byte[Ssz.VoluntaryExitLength];
-
-        public static VoluntaryExit? DecodeVoluntaryExit(ReadOnlySpan<byte> span)
+        public static VoluntaryExit DecodeVoluntaryExit(ReadOnlySpan<byte> span)
         {
             if (span.Length != Ssz.VoluntaryExitLength) ThrowSourceLength<VoluntaryExit>(span.Length, Ssz.VoluntaryExitLength);
-            if (span.SequenceEqual(_nullVoluntaryExit)) return null;
             int offset = 0;
             Epoch epoch = DecodeEpoch(span, ref offset);
             ValidatorIndex validatorIndex = DecodeValidatorIndex(span, ref offset);
             BlsSignature signature = DecodeBlsSignature(span, ref offset);
             VoluntaryExit container = new VoluntaryExit(epoch, validatorIndex, signature);
             return container;
+        }
+        
+        private static VoluntaryExit DecodeVoluntaryExit(ReadOnlySpan<byte> span, ref int offset)
+        {
+            VoluntaryExit container =
+                DecodeVoluntaryExit(span.Slice(offset, VoluntaryExitLength));
+            offset += VoluntaryExitLength;
+            return container;
+        }
+        
+        private static void Encode(Span<byte> span, VoluntaryExit value, ref int offset)
+        {
+            Encode(span.Slice(offset, VoluntaryExitLength), value);
+            offset += VoluntaryExitLength;
         }
     }
 }

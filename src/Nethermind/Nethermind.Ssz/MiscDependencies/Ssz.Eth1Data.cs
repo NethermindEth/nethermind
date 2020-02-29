@@ -24,7 +24,7 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
-        public const int Eth1DataLength = 2 * Ssz.Hash32Length + sizeof(ulong);
+        public const int Eth1DataLength = Ssz.RootLength + sizeof(ulong) + Ssz.Bytes32Length;
 
         private static Eth1Data DecodeEth1Data(ReadOnlySpan<byte> span, ref int offset)
         {
@@ -70,9 +70,9 @@ namespace Nethermind.Ssz
         public static Eth1Data DecodeEth1Data(ReadOnlySpan<byte> span)
         {
             if (span.Length != Ssz.Eth1DataLength) ThrowSourceLength<Eth1Data>(span.Length, Ssz.Eth1DataLength);
-            Hash32 depositRoot = DecodeSha256(span.Slice(0, Ssz.Hash32Length));
-            ulong depositCount = DecodeULong(span.Slice(Ssz.Hash32Length, sizeof(ulong)));
-            Hash32 blockHash = DecodeSha256(span.Slice(Ssz.Hash32Length + sizeof(ulong), Ssz.Hash32Length));
+            Root depositRoot = DecodeRoot(span.Slice(0, Ssz.RootLength));
+            ulong depositCount = DecodeULong(span.Slice(Ssz.RootLength, sizeof(ulong)));
+            Bytes32 blockHash = DecodeBytes32(span.Slice(Ssz.RootLength + sizeof(ulong), Ssz.Bytes32Length));
             Eth1Data container = new Eth1Data(depositRoot, depositCount, blockHash);
             return container;
         }

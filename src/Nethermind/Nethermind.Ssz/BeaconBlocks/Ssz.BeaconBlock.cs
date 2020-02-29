@@ -22,7 +22,7 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
-        public const int BeaconBlockDynamicOffset = Ssz.SlotLength + 2 * Ssz.Hash32Length + sizeof(uint) + Ssz.BlsSignatureLength;
+        public const int BeaconBlockDynamicOffset = Ssz.SlotLength + 2 * Ssz.RootLength + sizeof(uint);
 
         public static int BeaconBlockLength(BeaconBlock? container)
         {
@@ -37,7 +37,6 @@ namespace Nethermind.Ssz
             Encode(span, container.ParentRoot, ref offset);
             Encode(span, container.StateRoot, ref offset);
             Encode(span, Ssz.BeaconBlockDynamicOffset, ref offset);
-            Encode(span, container.Signature, ref offset);
             Encode(span.Slice(offset), container.Body);
         }
 
@@ -45,13 +44,12 @@ namespace Nethermind.Ssz
         {
             int offset = 0;
             var slot = DecodeSlot(span, ref offset);
-            var parentRoot = DecodeSha256(span, ref offset);
-            var stateRoot = DecodeSha256(span, ref offset);
+            var parentRoot = DecodeRoot(span, ref offset);
+            var stateRoot = DecodeRoot(span, ref offset);
             DecodeDynamicOffset(span, ref offset, out int dynamicOffset1);
-            var signature = DecodeBlsSignature(span, ref offset);
             var body = DecodeBeaconBlockBody(span.Slice(dynamicOffset1));
             
-            BeaconBlock beaconBlock = new BeaconBlock(slot, parentRoot, stateRoot, body, signature);
+            BeaconBlock beaconBlock = new BeaconBlock(slot, parentRoot, stateRoot, body);
             return beaconBlock;
         }
     }

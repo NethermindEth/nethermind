@@ -18,6 +18,7 @@ using System;
 using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.Ssz
 {
@@ -25,7 +26,7 @@ namespace Nethermind.Ssz
     {
         public static int DepositLengthOfProof()
         {
-            return (DepositContractTreeDepth + 1) * Ssz.Hash32Length;
+            return (DepositContractTreeDepth + 1) * Ssz.Bytes32Length;
         }
 
         public static int DepositLength()
@@ -92,7 +93,7 @@ namespace Nethermind.Ssz
         {
             if (span.Length != Ssz.DepositLength()) ThrowSourceLength<Deposit>(span.Length, Ssz.DepositLength());
             if (span.SequenceEqual(NullDeposit())) return null;
-            Hash32[] proof = DecodeHashes(span.Slice(0, Ssz.DepositLengthOfProof()));
+            Bytes32[] proof = DecodeBytes32s(span.Slice(0, Ssz.DepositLengthOfProof()));
             DepositData data = DecodeDepositData(span.Slice(Ssz.DepositLengthOfProof()));
             Deposit deposit = new Deposit(proof, data);
             return deposit;

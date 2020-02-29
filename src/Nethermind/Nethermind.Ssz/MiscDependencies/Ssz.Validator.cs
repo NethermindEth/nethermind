@@ -25,7 +25,7 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
-        public const int ValidatorLength = Ssz.BlsPublicKeyLength + Ssz.Hash32Length + Ssz.GweiLength + sizeof(bool) + 4 * Ssz.EpochLength;
+        public const int ValidatorLength = Ssz.BlsPublicKeyLength + Ssz.Bytes32Length + Ssz.GweiLength + sizeof(bool) + 4 * Ssz.EpochLength;
 
         public static void Encode(Span<byte> span, Validator container)
         {
@@ -47,7 +47,7 @@ namespace Nethermind.Ssz
             if (span.Length != Ssz.ValidatorLength) ThrowSourceLength<Validator>(span.Length, Ssz.ValidatorLength);
             int offset = 0;
             BlsPublicKey publicKey = DecodeBlsPublicKey(span, ref offset);
-            Hash32 withdrawalCredentials = DecodeSha256(span, ref offset);
+            Bytes32 withdrawalCredentials = DecodeBytes32(span, ref offset);
             Gwei effectiveBalance = DecodeGwei(span, ref offset);
             bool isSlashed = DecodeBool(span, ref offset);
             Epoch activationEligibilityEpoch = DecodeEpoch(span, ref offset);
