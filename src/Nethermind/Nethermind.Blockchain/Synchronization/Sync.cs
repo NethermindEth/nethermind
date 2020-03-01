@@ -16,13 +16,8 @@
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public enum SyncTriggerType
+    public static class Sync
     {
-        SyncTimer,
-        PeerChange,
-        NewDistantBlock,
-        Reorganization,
-        PeerRefresh,
-        PeerAdded
+        public static long MaxReorganizationLength = 512;
     }
 }
