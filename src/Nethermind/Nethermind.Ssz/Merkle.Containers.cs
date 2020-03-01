@@ -167,20 +167,13 @@ namespace Nethermind.Ssz
             merkleizer.CalculateRoot(out root);
         }
         
-        public static void Ize(out UInt256 root, BeaconBlock? container)
+        public static void Ize(out UInt256 root, BeaconBlock container)
         {
-            if (container is null)
-            {
-                root = RootOfNull;
-                return;
-            }
-
-            Merkleizer merkleizer = new Merkleizer(3);
+            Merkleizer merkleizer = new Merkleizer(2);
             merkleizer.Feed(container.Slot);
             merkleizer.Feed(container.ParentRoot);
             merkleizer.Feed(container.StateRoot);
             merkleizer.Feed(container.Body);
-            merkleizer.Feed(container.Signature);
             merkleizer.CalculateRoot(out root);
         }
         
@@ -260,18 +253,12 @@ namespace Nethermind.Ssz
 
         private static UInt256 RootOfNull;
 
-        public static void Ize(out UInt256 root, ProposerSlashing? container)
+        public static void Ize(out UInt256 root, ProposerSlashing container)
         {
-            if (container is null)
-            {
-                root = RootOfNull;
-                return;
-            }
-            
             Merkleizer merkleizer = new Merkleizer(2);
             merkleizer.Feed(container.ProposerIndex);
-            merkleizer.Feed(container.Header1);
-            merkleizer.Feed(container.Header2);
+            merkleizer.Feed(container.SignedHeader1);
+            merkleizer.Feed(container.SignedHeader2);
             merkleizer.CalculateRoot(out root);
         }
         
@@ -318,18 +305,19 @@ namespace Nethermind.Ssz
             merkleizer.CalculateRoot(out root);
         }
         
-        public static void Ize(out UInt256 root, VoluntaryExit? container)
+        public static void Ize(out UInt256 root, SignedVoluntaryExit container)
         {
-            if (container is null)
-            {
-                root = RootOfNull;
-                return;
-            }
-            
-            Merkleizer merkleizer = new Merkleizer(2);
+            Merkleizer merkleizer = new Merkleizer(1);
+            merkleizer.Feed(container.Message);
+            merkleizer.Feed(container.Signature);
+            merkleizer.CalculateRoot(out root);
+        }
+
+        public static void Ize(out UInt256 root, VoluntaryExit container)
+        {
+            Merkleizer merkleizer = new Merkleizer(1);
             merkleizer.Feed(container.Epoch);
             merkleizer.Feed(container.ValidatorIndex);
-            merkleizer.Feed(container.Signature);
             merkleizer.CalculateRoot(out root);
         }
         
@@ -353,19 +341,20 @@ namespace Nethermind.Ssz
             merkleizer.CalculateRoot(out root);
         }
         
-        public static void Ize(out UInt256 root, BeaconBlockHeader? container)
+        public static void Ize(out UInt256 root, BeaconBlockHeader container)
         {
-            if (container is null)
-            {
-                root = RootOfNull;
-                return;
-            }
-            
-            Merkleizer merkleizer = new Merkleizer(3);
+            Merkleizer merkleizer = new Merkleizer(2);
             merkleizer.Feed(container.Slot);
             merkleizer.Feed(container.ParentRoot);
             merkleizer.Feed(container.StateRoot);
             merkleizer.Feed(container.BodyRoot);
+            merkleizer.CalculateRoot(out root);
+        }
+        
+        public static void Ize(out UInt256 root, SignedBeaconBlockHeader container)
+        {
+            Merkleizer merkleizer = new Merkleizer(1);
+            merkleizer.Feed(container.Message);
             merkleizer.Feed(container.Signature);
             merkleizer.CalculateRoot(out root);
         }

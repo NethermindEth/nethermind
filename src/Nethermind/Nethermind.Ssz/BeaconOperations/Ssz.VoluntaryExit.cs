@@ -33,7 +33,6 @@ namespace Nethermind.Ssz
             int offset = 0;
             Encode(span, container.Epoch, ref offset);
             Encode(span, container.ValidatorIndex, ref offset);
-            Encode(span, container.Signature, ref offset);
         }
 
         public static VoluntaryExit DecodeVoluntaryExit(ReadOnlySpan<byte> span)
@@ -42,8 +41,7 @@ namespace Nethermind.Ssz
             int offset = 0;
             Epoch epoch = DecodeEpoch(span, ref offset);
             ValidatorIndex validatorIndex = DecodeValidatorIndex(span, ref offset);
-            BlsSignature signature = DecodeBlsSignature(span, ref offset);
-            VoluntaryExit container = new VoluntaryExit(epoch, validatorIndex, signature);
+            VoluntaryExit container = new VoluntaryExit(epoch, validatorIndex);
             return container;
         }
         

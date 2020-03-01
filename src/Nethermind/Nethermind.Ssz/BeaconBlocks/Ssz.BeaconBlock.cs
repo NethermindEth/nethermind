@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 
@@ -22,27 +23,30 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
-        public const int BeaconBlockDynamicOffset = Ssz.SlotLength + 2 * Ssz.RootLength + sizeof(uint);
+        private const int BeaconBlockDynamicOffset = Ssz.SlotLength + 2 * Ssz.RootLength + sizeof(uint);
 
         public static int BeaconBlockLength(BeaconBlock? container)
         {
             return container is null ? 0 : (BeaconBlockDynamicOffset + Ssz.BeaconBlockBodyLength(container.Body));
         }
 
-        public static void Encode(Span<byte> span, BeaconBlock container)
+        private static BeaconBlock DecodeBeaconBlock(ReadOnlySpan<byte> span)
         {
-            if (span.Length != Ssz.BeaconBlockLength(container)) ThrowTargetLength<BeaconBlock>(span.Length, Ssz.BeaconBlockLength(container));
             int offset = 0;
-            Encode(span, container.Slot, ref offset);
-            Encode(span, container.ParentRoot, ref offset);
-            Encode(span, container.StateRoot, ref offset);
-            Encode(span, Ssz.BeaconBlockDynamicOffset, ref offset);
-            Encode(span.Slice(offset), container.Body);
+            return DecodeBeaconBlock(span, ref offset);
         }
 
-        public static BeaconBlock DecodeBeaconBlock(ReadOnlySpan<byte> span)
+        private static void Encode(Span<byte> span, BeaconBlock container)
         {
+            if (span.Length != Ssz.BeaconBlockLength(container))
+                ThrowTargetLength<BeaconBlock>(span.Length, Ssz.BeaconBlockLength(container));
             int offset = 0;
+            Encode(span, container, ref offset);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static BeaconBlock DecodeBeaconBlock(ReadOnlySpan<byte> span, ref int offset)
+        {
             var slot = DecodeSlot(span, ref offset);
             var parentRoot = DecodeRoot(span, ref offset);
             var stateRoot = DecodeRoot(span, ref offset);
@@ -51,6 +55,16 @@ namespace Nethermind.Ssz
             
             BeaconBlock beaconBlock = new BeaconBlock(slot, parentRoot, stateRoot, body);
             return beaconBlock;
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void Encode(Span<byte> span, BeaconBlock container, ref int offset)
+        {
+            Encode(span, container.Slot, ref offset);
+            Encode(span, container.ParentRoot, ref offset);
+            Encode(span, container.StateRoot, ref offset);
+            Encode(span, Ssz.BeaconBlockDynamicOffset, ref offset);
+            Encode(span.Slice(offset), container.Body);
         }
     }
 }

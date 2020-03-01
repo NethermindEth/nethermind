@@ -30,76 +30,83 @@ namespace Nethermind.Ssz
             if (span.Length != SignedVoluntaryExitLength)
                 ThrowSourceLength<SignedVoluntaryExit>(span.Length, SignedVoluntaryExitLength);
             int offset = 0;
-            VoluntaryExit message = DecodeVoluntaryExit(span, ref offset);
-            BlsSignature signature = DecodeBlsSignature(span, ref offset);
-            return new SignedVoluntaryExit(message, signature);
+            return DecodeSignedVoluntaryExit(span, ref offset);
         }
 
-        public static SignedVoluntaryExit[] DecodeSignedVoluntaryExits(ReadOnlySpan<byte> span)
+        public static SignedVoluntaryExit[] DecodeSignedVoluntaryExitList(ReadOnlySpan<byte> span)
         {
-            if (span.Length % SignedVoluntaryExitLength != 0)
+            if ((span.Length - VarOffsetSize) % SignedVoluntaryExitLength != 0)
             {
                 ThrowInvalidSourceArrayLength<SignedVoluntaryExit>(span.Length, SignedVoluntaryExitLength);
             }
 
-            int count = span.Length / SignedVoluntaryExitLength;
-            SignedVoluntaryExit[] containers = new SignedVoluntaryExit[count];
-            for (int i = 0; i < count; i++)
-            {
-                containers[i] =
-                    DecodeSignedVoluntaryExit(span.Slice(i * SignedVoluntaryExitLength, SignedVoluntaryExitLength));
-            }
-
-            return containers;
+            int offset = 0;
+            DecodeDynamicOffset(span, ref offset, out int _);
+            return DecodeSignedVoluntaryExitVector(span, ref offset, span.Length);
         }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        
         public static void Encode(Span<byte> span, SignedVoluntaryExit container)
         {
             if (span.Length != SignedVoluntaryExitLength)
                 ThrowTargetLength<SignedVoluntaryExit>(span.Length, SignedVoluntaryExitLength);
             int offset = 0;
-            Encode(span, container.Message, ref offset);
-            Encode(span, container.Signature, ref offset);
+            Encode(span, container, ref offset);
         }
 
-        public static void Encode(Span<byte> span, SignedVoluntaryExit[] containers)
+        public static void EncodeList(Span<byte> span, SignedVoluntaryExit[] containers)
         {
-            if (span.Length != SignedVoluntaryExitLength * containers.Length)
-            {
-                ThrowTargetLength<SignedVoluntaryExit>(span.Length, SignedVoluntaryExitLength);
-            }
-
-            for (int i = 0; i < containers.Length; i++)
-            {
-                Encode(span.Slice(i * SignedVoluntaryExitLength, SignedVoluntaryExitLength), containers[i]);
-            }
+            // Encoded 
+            if (span.Length != VarOffsetSize + SignedVoluntaryExitLength * containers.Length)
+                ThrowTargetLength<SignedVoluntaryExit>(span.Length, VarOffsetSize + SignedVoluntaryExitLength * containers.Length);
+            int offset = 0;
+            int dynamicOffset = VarOffsetSize;
+            EncodeList(span, containers, ref offset, ref dynamicOffset);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static SignedVoluntaryExit DecodeSignedVoluntaryExit(ReadOnlySpan<byte> span, ref int offset)
         {
-            SignedVoluntaryExit container =
-                DecodeSignedVoluntaryExit(span.Slice(offset, SignedVoluntaryExitLength));
-            offset += SignedVoluntaryExitLength;
-            return container;
-        }
-
-        private static void Encode(Span<byte> span, SignedVoluntaryExit[] containers, ref int offset,
-            ref int dynamicOffset)
-        {
-            int length = containers.Length * SignedVoluntaryExitLength;
-            Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
-            Encode(span.Slice(dynamicOffset, length), containers);
-            dynamicOffset += length;
-            offset += VarOffsetSize;
+            VoluntaryExit message = DecodeVoluntaryExit(span, ref offset);
+            BlsSignature signature = DecodeBlsSignature(span, ref offset);
+            return new SignedVoluntaryExit(message, signature);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void Encode(Span<byte> span, SignedVoluntaryExit value, ref int offset)
+        private static SignedVoluntaryExit[] DecodeSignedVoluntaryExitVector(ReadOnlySpan<byte> span, ref int offset, int endingOffset)
         {
-            Encode(span.Slice(offset, SignedVoluntaryExitLength), value);
-            offset += SignedVoluntaryExitLength;
+            int count = (endingOffset - offset) / SignedVoluntaryExitLength;
+            SignedVoluntaryExit[] containers = new SignedVoluntaryExit[count];
+            for (int i = 0; i < count; i++)
+            {
+                containers[i] = DecodeSignedVoluntaryExit(span, ref offset);
+            }
+            return containers;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void Encode(Span<byte> span, SignedVoluntaryExit container, ref int offset)
+        {
+            Encode(span, container.Message, ref offset);
+            Encode(span, container.Signature, ref offset);
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void EncodeList(Span<byte> span, SignedVoluntaryExit[] containers, ref int offset,
+            ref int dynamicOffset)
+        {
+            // fixed parts
+            Encode(span, dynamicOffset, ref offset);
+            // variable parts
+            EncodeVector(span, containers, ref dynamicOffset);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void EncodeVector(Span<byte> span, SignedVoluntaryExit[] containers, ref int offset)
+        {
+            for (int i = 0; i < containers.Length; i++)
+            {
+                Encode(span, containers[i], ref offset);
+            }
         }
     }
 }

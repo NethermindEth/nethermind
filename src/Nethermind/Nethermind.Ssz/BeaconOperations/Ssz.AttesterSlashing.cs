@@ -58,13 +58,8 @@ namespace Nethermind.Ssz
             Encode(span.Slice(dynamicOffset, length2), container.Attestation2);
         }
 
-        public static AttesterSlashing? DecodeAttesterSlashing(ReadOnlySpan<byte> span)
+        public static AttesterSlashing DecodeAttesterSlashing(ReadOnlySpan<byte> span)
         {
-            if (span.Length == 0)
-            {
-                return null;
-            }
-
             int offset1 = (int) DecodeUInt(span.Slice(0, VarOffsetSize));
             int offset2 = (int) DecodeUInt(span.Slice(VarOffsetSize, VarOffsetSize));
 
@@ -98,7 +93,7 @@ namespace Nethermind.Ssz
             }
         }
 
-        public static AttesterSlashing?[] DecodeAttesterSlashings(ReadOnlySpan<byte> span)
+        public static AttesterSlashing[] DecodeAttesterSlashings(ReadOnlySpan<byte> span)
         {
             if (span.Length == 0)
             {
@@ -110,12 +105,12 @@ namespace Nethermind.Ssz
             offset += 4;
 
             int itemsCount = dynamicOffset / VarOffsetSize;
-            AttesterSlashing?[] containers = new AttesterSlashing?[itemsCount];
+            AttesterSlashing[] containers = new AttesterSlashing[itemsCount];
             for (int i = 0; i < itemsCount; i++)
             {
                 int nextDynamicOffset = i == itemsCount - 1 ? span.Length : BinaryPrimitives.ReadInt32LittleEndian(span.Slice(offset, VarOffsetSize));
                 int length = nextDynamicOffset - dynamicOffset;
-                AttesterSlashing? container = DecodeAttesterSlashing(span.Slice(dynamicOffset, length));
+                AttesterSlashing container = DecodeAttesterSlashing(span.Slice(dynamicOffset, length));
                 containers[i] = container;
                 dynamicOffset = nextDynamicOffset;
                 offset += VarOffsetSize;

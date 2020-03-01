@@ -16,6 +16,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core2.Types;
 using Nethermind.HashLib;
@@ -25,7 +26,7 @@ namespace Nethermind.Core2.Crypto
     [DebuggerStepThrough]
     public static class Sha256
     {
-        private static readonly IHash Hash = HashFactory.Crypto.CreateSHA256();  
+        private static readonly IHash Hash = HashFactory.Crypto.CreateSHA256();
 
         /// <returns>
         ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>
@@ -46,6 +47,25 @@ namespace Nethermind.Core2.Crypto
         ///     <string>0x0000000000000000000000000000000000000000000000000000000000000000</string>
         /// </returns>
         public static Bytes32 Zero { get; } = Bytes32.Zero;
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static byte[] ComputeBytes(ReadOnlySpan<byte> input)
+        {
+            // NOTE: API only supports bytes, so need allocation to copy to an array;
+            // the result is then a second array allocation.
+            // More efficient would be something like core TryComputeHash(ReadOnlySpan<byte> source, Span<byte> destination),
+            // which would allow zero allocation (if source and destination already allocated).
+            
+            // NOTE: Even for writeable Span<>, you still need to allocate an array: see https://docs.microsoft.com/en-us/dotnet/api/system.span-1.toarray
+            
+            return ComputeBytes(input.ToArray());
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static byte[] ComputeBytes(byte[] input)
+        {
+            return Hash.ComputeBytes(input).GetBytes();
+        }
 
         [DebuggerStepThrough]
         public static Bytes32 Compute(byte[] input)

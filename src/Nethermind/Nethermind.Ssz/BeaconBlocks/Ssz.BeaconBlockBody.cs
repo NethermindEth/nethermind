@@ -16,6 +16,7 @@
 
 using System;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
@@ -50,25 +51,23 @@ namespace Nethermind.Ssz
             return result;
         }
 
-        public static void Encode(Span<byte> span, BeaconBlockBody container)
+        private static BeaconBlockBody DecodeBeaconBlockBody(ReadOnlySpan<byte> span)
         {
             int offset = 0;
-            int dynamicOffset = Ssz.BeaconBlockBodyDynamicOffset;
-            Encode(span, container.RandaoReveal, ref offset);
-            Encode(span, container.Eth1Data, ref offset);
-            Encode(span, container.Graffiti.AsSpan().ToArray(), ref offset);
-            Encode(span, container.ProposerSlashings.ToArray(), ref offset, ref dynamicOffset);
-            Encode(span, container.AttesterSlashings.ToArray(), ref offset, ref dynamicOffset);
-            Encode(span, container.Attestations.ToArray(), ref offset, ref dynamicOffset);
-            Encode(span, container.Deposits.ToArray(), ref offset, ref dynamicOffset);
-            Encode(span, container.VoluntaryExits.ToArray(), ref offset, ref dynamicOffset);
+            return DecodeBeaconBlockBody(span, ref offset);
+        }
+
+        private static void Encode(Span<byte> span, BeaconBlockBody container)
+        {
+            int offset = 0;
+            Encode(span, container, ref offset);
         }
         
-        public static BeaconBlockBody DecodeBeaconBlockBody(ReadOnlySpan<byte> span)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static BeaconBlockBody DecodeBeaconBlockBody(ReadOnlySpan<byte> span, ref int offset)
         {
             // static part
             
-            int offset = 0;
             BlsSignature randaoReveal = DecodeBlsSignature(span, ref offset);
             Eth1Data eth1Data = DecodeEth1Data(span, ref offset);
             Bytes32 graffiti = DecodeBytes32(span, ref offset);
@@ -84,13 +83,13 @@ namespace Nethermind.Ssz
             int attesterSlashingsLength = dynamicOffset3 - dynamicOffset2;
             int attestationsLength = dynamicOffset4 - dynamicOffset3;
             int depositsLength = dynamicOffset5 - dynamicOffset4;
-            int signedVoluntaryExitsLength = span.Length - dynamicOffset5;
-
+            
             ProposerSlashing[] proposerSlashings = DecodeProposerSlashings(span.Slice(dynamicOffset1, proposerSlashingsLength));
             AttesterSlashing[] attesterSlashings = DecodeAttesterSlashings(span.Slice(dynamicOffset2, attesterSlashingsLength));
             Attestation[] attestations = DecodeAttestations(span.Slice(dynamicOffset3, attestationsLength));
             Deposit[] deposits = DecodeDeposits(span.Slice(dynamicOffset4, depositsLength));
-            SignedVoluntaryExit[] signedVoluntaryExits = DecodeSignedVoluntaryExits(span.Slice(dynamicOffset5, signedVoluntaryExitsLength));
+            offset = dynamicOffset5;
+            SignedVoluntaryExit[] signedVoluntaryExits = DecodeSignedVoluntaryExitVector(span, ref offset, span.Length);
             
             BeaconBlockBody container = new BeaconBlockBody(randaoReveal,
                 eth1Data,
@@ -101,6 +100,20 @@ namespace Nethermind.Ssz
                 deposits,
                 signedVoluntaryExits);
             return container;
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void Encode(Span<byte> span, BeaconBlockBody container, ref int offset)
+        {
+            int dynamicOffset = offset + Ssz.BeaconBlockBodyDynamicOffset;
+            Encode(span, container.RandaoReveal, ref offset);
+            Encode(span, container.Eth1Data, ref offset);
+            Encode(span, container.Graffiti.AsSpan().ToArray(), ref offset);
+            Encode(span, container.ProposerSlashings.ToArray(), ref offset, ref dynamicOffset);
+            Encode(span, container.AttesterSlashings.ToArray(), ref offset, ref dynamicOffset);
+            Encode(span, container.Attestations.ToArray(), ref offset, ref dynamicOffset);
+            Encode(span, container.Deposits.ToArray(), ref offset, ref dynamicOffset);
+            EncodeList(span, container.VoluntaryExits.ToArray(), ref offset, ref dynamicOffset);
         }
     }
 }

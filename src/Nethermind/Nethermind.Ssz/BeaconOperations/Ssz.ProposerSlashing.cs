@@ -60,12 +60,9 @@ namespace Nethermind.Ssz
             Encode(span.Slice(offset, Ssz.SignedBeaconBlockHeaderLength), container.SignedHeader2);
         }
 
-        private static byte[] _nullProposerSlashing = new byte[Ssz.ProposerSlashingLength];
-
-        public static ProposerSlashing? DecodeProposerSlashing(ReadOnlySpan<byte> span)
+        public static ProposerSlashing DecodeProposerSlashing(ReadOnlySpan<byte> span)
         {
             if (span.Length != Ssz.ProposerSlashingLength) ThrowSourceLength<ProposerSlashing>(span.Length, Ssz.ProposerSlashingLength);
-            if (span.SequenceEqual(_nullProposerSlashing)) return null;
             int offset = 0;
             ValidatorIndex proposerIndex = DecodeValidatorIndex(span, ref offset);
             SignedBeaconBlockHeader signedHeader1 = DecodeSignedBeaconBlockHeader(span, ref offset);
@@ -92,7 +89,7 @@ namespace Nethermind.Ssz
             }
         }
 
-        public static ProposerSlashing?[] DecodeProposerSlashings(ReadOnlySpan<byte> span)
+        public static ProposerSlashing[] DecodeProposerSlashings(ReadOnlySpan<byte> span)
         {
             if (span.Length % Ssz.ProposerSlashingLength != 0)
             {
@@ -100,7 +97,7 @@ namespace Nethermind.Ssz
             }
 
             int count = span.Length / Ssz.ProposerSlashingLength;
-            ProposerSlashing?[] containers = new ProposerSlashing[count];
+            ProposerSlashing[] containers = new ProposerSlashing[count];
             for (int i = 0; i < count; i++)
             {
                 containers[i] = DecodeProposerSlashing(span.Slice(i * Ssz.ProposerSlashingLength, Ssz.ProposerSlashingLength));

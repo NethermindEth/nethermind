@@ -27,18 +27,18 @@ namespace Nethermind.Core2.Containers
         /// </summary>
         public Epoch Epoch { get; }
         public ValidatorIndex ValidatorIndex { get; }
-        public BlsSignature Signature { get; private set; }
         
-        public VoluntaryExit(Epoch epoch, ValidatorIndex validatorIndex, BlsSignature signature)
+        public VoluntaryExit(Epoch epoch, ValidatorIndex validatorIndex)
         {
             Epoch = epoch;
             ValidatorIndex = validatorIndex;
-            Signature = signature;
         }
         
-        public bool Equals(VoluntaryExit other)
+        public bool Equals(VoluntaryExit? other)
         {
-            return Epoch == other.Epoch && ValidatorIndex == other.ValidatorIndex && Equals(Signature, other.Signature);
+            return other != null 
+                   && Epoch == other.Epoch 
+                   && ValidatorIndex == other.ValidatorIndex;
         }
 
         public override bool Equals(object? obj)
@@ -50,17 +50,12 @@ namespace Nethermind.Core2.Containers
 
         public override int GetHashCode()
         {
-            return HashCode.Combine(Epoch, ValidatorIndex, Signature);
+            return HashCode.Combine(Epoch, ValidatorIndex);
         }
         
         public override string ToString()
         {
             return $"V:{ValidatorIndex} E:{Epoch}";
-        }
-        
-        public void SetSignature(BlsSignature signature)
-        {
-            Signature = signature;
         }
     }
 }
