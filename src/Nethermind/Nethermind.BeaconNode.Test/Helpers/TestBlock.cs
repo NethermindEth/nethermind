@@ -54,7 +54,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
                 previousBlockSigningRoot,
                 Hash32.Zero,
                 new BeaconBlockBody(
-                    BlsSignature.Empty,
+                    BlsSignature.Zero,
                     eth1Data,
                     new Bytes32(),
                     Array.Empty<ProposerSlashing>(),
@@ -63,7 +63,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
                     Array.Empty<Deposit>(),
                     Array.Empty<VoluntaryExit>()
                 ),
-                BlsSignature.Empty);
+                BlsSignature.Zero);
 
             if (signed)
             {

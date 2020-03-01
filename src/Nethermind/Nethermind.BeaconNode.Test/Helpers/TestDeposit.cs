@@ -57,7 +57,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
 
         public static DepositData BuildDepositData(IServiceProvider testServiceProvider, BlsPublicKey publicKey, byte[] privateKey, Gwei amount, Hash32 withdrawalCredentials, BeaconState? state, bool signed)
         {
-            var depositData = new DepositData(publicKey, withdrawalCredentials, amount);
+            var depositData = new DepositData(publicKey, withdrawalCredentials, amount, BlsSignature.Zero);
             if (signed)
             {
                 SignDepositData(testServiceProvider, depositData, privateKey, state);

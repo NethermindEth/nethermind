@@ -97,7 +97,7 @@ namespace Nethermind.BeaconNode.Test
 
             public BlsPublicKey BlsAggregatePublicKeys(IEnumerable<BlsPublicKey> publicKeys)
             {
-                return BlsPublicKey.Empty;
+                return BlsPublicKey.Zero;
             }
 
             public bool BlsVerify(BlsPublicKey publicKey, Hash32 signingRoot, BlsSignature signature, Domain domain)

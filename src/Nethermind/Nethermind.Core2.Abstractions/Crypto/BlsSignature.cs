@@ -21,42 +21,27 @@ namespace Nethermind.Core2.Crypto
 {
     public class BlsSignature : IEquatable<BlsSignature>
     {
+        public const int Length = 96;
+
+        public static readonly BlsSignature Zero = new BlsSignature(new byte[Length]);
+
         public BlsSignature(byte[] bytes)
         {
             Bytes = bytes;
         }
 
-        public const int Length = 96;
-
         public byte[] Bytes { get; }
-
-        public static BlsSignature Empty = new BlsSignature(new byte[Length]);
-        
-        public bool Equals(BlsSignature? other)
-        {
-            return other != null && Core2.Bytes.AreEqual(Bytes, other.Bytes);
-        }
-        
-        public static bool operator !=(BlsSignature? left, BlsSignature? right)
-        {
-            return !(left == right);
-        }
-
-        public static bool operator ==(BlsSignature? left, BlsSignature? right)
-        {
-            if (left is null)
-            {
-                return right is null;
-            }
-            
-            return left.Equals(right);
-        }
 
         public ReadOnlySpan<byte> AsSpan()
         {
             return new ReadOnlySpan<byte>(Bytes);
         }
-        
+
+        public bool Equals(BlsSignature? other)
+        {
+            return other != null && Core2.Bytes.AreEqual(Bytes, other.Bytes);
+        }
+
         public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
@@ -67,6 +52,21 @@ namespace Nethermind.Core2.Crypto
         public override int GetHashCode()
         {
             return Bytes != null ? BinaryPrimitives.ReadInt32LittleEndian(Bytes) : 0;
+        }
+
+        public static bool operator ==(BlsSignature? left, BlsSignature? right)
+        {
+            if (left is null)
+            {
+                return right is null;
+            }
+
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(BlsSignature? left, BlsSignature? right)
+        {
+            return !(left == right);
         }
 
         public override string ToString()

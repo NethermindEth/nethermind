@@ -22,6 +22,9 @@ namespace Nethermind.Core2.Containers
 {
     public class AttestationData : IEquatable<AttestationData>
     {
+        public static readonly AttestationData Zero = new AttestationData(Slot.Zero, CommitteeIndex.Zero, Root.Zero,
+            Checkpoint.Zero, Checkpoint.Zero);
+
         public AttestationData(
             Slot slot,
             CommitteeIndex index,
@@ -50,18 +53,18 @@ namespace Nethermind.Core2.Containers
                 other.BeaconBlockRoot,
                 Checkpoint.Clone(other.Source),
                 Checkpoint.Clone(other.Target)
-                );
+            );
             return clone;
         }
 
         public bool Equals(AttestationData? other)
         {
             return !(other is null)
-                && BeaconBlockRoot.Equals(other.BeaconBlockRoot)
-                && Index == other.Index
-                && Slot == other.Slot
-                && Source.Equals(other.Source)
-                && Target.Equals(other.Target);
+                   && BeaconBlockRoot.Equals(other.BeaconBlockRoot)
+                   && Index == other.Index
+                   && Slot == other.Slot
+                   && Source.Equals(other.Source)
+                   && Target.Equals(other.Target);
         }
 
         public override bool Equals(object? obj)

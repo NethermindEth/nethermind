@@ -22,6 +22,8 @@ namespace Nethermind.Core2.Containers
 {
     public class VoluntaryExit
     {
+        public static readonly VoluntaryExit Zero = new VoluntaryExit(Epoch.Zero, ValidatorIndex.Zero);
+        
         /// <summary>
         /// The earliest epoch when voluntary exit can be processed
         /// </summary>

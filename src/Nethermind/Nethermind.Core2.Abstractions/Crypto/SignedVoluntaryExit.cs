@@ -20,6 +20,9 @@ namespace Nethermind.Core2.Crypto
 {
     public class SignedVoluntaryExit
     {
+        public static readonly SignedVoluntaryExit
+            Zero = new SignedVoluntaryExit(VoluntaryExit.Zero, BlsSignature.Zero);
+        
         public SignedVoluntaryExit(VoluntaryExit message, BlsSignature signature)
         {
             Message = message;

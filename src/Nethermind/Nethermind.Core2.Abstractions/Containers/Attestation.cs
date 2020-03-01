@@ -23,6 +23,8 @@ namespace Nethermind.Core2.Containers
 {
     public class Attestation
     {
+        public static readonly Attestation Zero = new Attestation(new BitArray(0), AttestationData.Zero, BlsSignature.Zero);
+        
         public Attestation(BitArray aggregationBits, AttestationData data, BlsSignature signature)
         {
             AggregationBits = aggregationBits;

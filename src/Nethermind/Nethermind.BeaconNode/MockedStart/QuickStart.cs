@@ -125,7 +125,7 @@ namespace Nethermind.BeaconNode.MockedStart
                 Bytes32 withdrawalCredentials = new Bytes32(withdrawalCredentialBytes);
 
                 // Build deposit data
-                DepositData depositData = new DepositData(publicKey, withdrawalCredentials, amount);
+                DepositData depositData = new DepositData(publicKey, withdrawalCredentials, amount, BlsSignature.Zero);
 
                 // Sign deposit data
                 Domain domain = _beaconChainUtility.ComputeDomain(signatureDomains.Deposit);

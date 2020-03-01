@@ -22,6 +22,9 @@ namespace Nethermind.Core2.Containers
 {
     public class ProposerSlashing
     {
+        public static readonly ProposerSlashing Zero = new ProposerSlashing(ValidatorIndex.Zero,
+            SignedBeaconBlockHeader.Zero, SignedBeaconBlockHeader.Zero);
+
         public ProposerSlashing(
             ValidatorIndex proposerIndex,
             SignedBeaconBlockHeader signedHeader1,

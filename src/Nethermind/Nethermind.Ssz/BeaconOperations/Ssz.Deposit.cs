@@ -76,10 +76,9 @@ namespace Nethermind.Ssz
             offset += VarOffsetSize;
         }
         
-        public static void Encode(Span<byte> span, Deposit? container)
+        public static void Encode(Span<byte> span, Deposit container)
         {
             if (span.Length != Ssz.DepositLength()) ThrowTargetLength<Deposit>(span.Length, Ssz.DepositLength());
-            if (container == null) return;
             Encode(span.Slice(0, Ssz.DepositLengthOfProof()), container.Proof);
             Encode(span.Slice(Ssz.DepositLengthOfProof()), container.Data);
         }

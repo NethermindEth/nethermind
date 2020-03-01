@@ -77,7 +77,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
 
             var committeeSize = beaconCommittee.Count;
             var aggregationBits = new BitArray(committeeSize);
-            var attestation = new Attestation(aggregationBits, attestationData, BlsSignature.Empty);
+            var attestation = new Attestation(aggregationBits, attestationData, BlsSignature.Zero);
 
             FillAggregateAttestation(state, attestation, beaconStateAccessor);
 

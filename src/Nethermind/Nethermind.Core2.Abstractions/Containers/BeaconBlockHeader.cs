@@ -22,6 +22,9 @@ namespace Nethermind.Core2.Containers
 {
     public class BeaconBlockHeader : IEquatable<BeaconBlockHeader>
     {
+        public static readonly BeaconBlockHeader Zero =
+            new BeaconBlockHeader(Slot.Zero, Root.Zero, Root.Zero, Root.Zero);
+
         public BeaconBlockHeader(
             Slot slot,
             Root parentRoot,

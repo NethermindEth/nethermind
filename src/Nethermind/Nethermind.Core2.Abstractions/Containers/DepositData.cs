@@ -22,11 +22,9 @@ namespace Nethermind.Core2.Containers
 {
     public class DepositData : IEquatable<DepositData>
     {
-        public DepositData(BlsPublicKey publicKey, Bytes32 withdrawalCredentials, Gwei amount)
-            : this(publicKey, withdrawalCredentials, amount, BlsSignature.Empty)
-        {
-        }
-
+        public static readonly DepositData Zero = new DepositData(BlsPublicKey.Zero, Bytes32.Zero, Gwei.Zero,
+            BlsSignature.Zero);
+        
         public DepositData(BlsPublicKey publicKey, Bytes32 withdrawalCredentials, Gwei amount, BlsSignature signature)
         {
             PublicKey = publicKey;

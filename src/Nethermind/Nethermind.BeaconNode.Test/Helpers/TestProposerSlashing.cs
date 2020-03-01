@@ -42,7 +42,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
                 new Hash32(Enumerable.Repeat((byte)0x33, 32).ToArray()),
                 new Hash32(Enumerable.Repeat((byte)0x44, 32).ToArray()),
                 new Hash32(Enumerable.Repeat((byte)0x45, 32).ToArray()),
-                BlsSignature.Empty
+                BlsSignature.Zero
                 );
 
             var header2 = new BeaconBlockHeader(
@@ -50,7 +50,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
                 new Hash32(Enumerable.Repeat((byte)0x99, 32).ToArray()),
                 new Hash32(Enumerable.Repeat((byte)0x44, 32).ToArray()),
                 new Hash32(Enumerable.Repeat((byte)0x45, 32).ToArray()),
-                BlsSignature.Empty
+                BlsSignature.Zero
                 );
 
             if (signed1)

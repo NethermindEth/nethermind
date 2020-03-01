@@ -45,7 +45,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
                         attestation1.Data.Target.Epoch,
                         targetRoot2
                         )), 
-                BlsSignature.Empty
+                BlsSignature.Zero
                 );
             if (signed2)
             {

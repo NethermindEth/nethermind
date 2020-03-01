@@ -400,19 +400,19 @@ namespace Nethermind.Ssz.Test
                 Sha256.RootOfAnEmptyString,
                 new Checkpoint(new Epoch(2), Sha256.RootOfAnEmptyString),
                 new Checkpoint(new Epoch(3), Sha256.RootOfAnEmptyString));
-
+            
             Attestation attestation = new Attestation(
                 new BitArray(new byte[5]),
                 data,
                 TestSig1);
-
+            
             DepositData depositData = new DepositData(
                 TestKey1,
                 Sha256.Bytes32OfAnEmptyString,
                 new Gwei(7),
                 TestSig1);
 
-            Deposit deposit = new Deposit(new Bytes32[Ssz.DepositContractTreeDepth + 1], depositData);
+            Deposit deposit = new Deposit(Enumerable.Repeat(Bytes32.Zero, Ssz.DepositContractTreeDepth + 1), depositData);
 
             IndexedAttestation indexedAttestation1 = new IndexedAttestation(
                 new ValidatorIndex[8],
@@ -431,19 +431,21 @@ namespace Nethermind.Ssz.Test
                 9,
                 Sha256.Bytes32OfAnEmptyString);
 
-            Attestation[] attestations = new Attestation[3];
+            Attestation[] attestations = Enumerable.Repeat(Attestation.Zero, 3).ToArray();
             attestations[1] = attestation;
 
-            Deposit[] deposits = new Deposit[3];
+            Deposit zeroDeposit = new Deposit(Enumerable.Repeat(Bytes32.Zero, Ssz.DepositContractTreeDepth + 1), DepositData.Zero);
+            Deposit[] deposits = Enumerable.Repeat(zeroDeposit, 3).ToArray();
             deposits[2] = deposit;
 
             Bytes32 graffiti = new Bytes32(new byte[32]);
             
-            AttesterSlashing[] attesterSlashings = new AttesterSlashing[3];
+            AttesterSlashing[] attesterSlashings = Enumerable.Repeat(AttesterSlashing.Zero, 3).ToArray();
             attesterSlashings[0] = slashing;
             
-            ProposerSlashing[] proposerSlashings = new ProposerSlashing[10];
-            SignedVoluntaryExit[] voluntaryExits = new SignedVoluntaryExit[11];
+            ProposerSlashing[] proposerSlashings = Enumerable.Repeat(ProposerSlashing.Zero, 10).ToArray();
+
+            SignedVoluntaryExit[] signedVoluntaryExits = Enumerable.Repeat(SignedVoluntaryExit.Zero, 11).ToArray();
             
             BeaconBlockBody body = new BeaconBlockBody(
                 TestSig1,
@@ -453,7 +455,7 @@ namespace Nethermind.Ssz.Test
                 attesterSlashings,
                 attestations,
                 deposits,
-                voluntaryExits
+                signedVoluntaryExits
             );
             
             byte[] encoded = new byte[Ssz.BeaconBlockBodyLength(body)];

@@ -183,7 +183,7 @@ namespace Nethermind.BeaconNode.OApiClient
                         )
                     )
                 ),
-                BlsSignature.Empty
+                BlsSignature.Zero
             );
 
             return beaconBlock;

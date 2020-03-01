@@ -24,6 +24,8 @@ namespace Nethermind.Core2.Containers
     [DebuggerDisplay("{Epoch}_{Root}")]
     public struct Checkpoint : IEquatable<Checkpoint>
     {
+        public static readonly Checkpoint Zero = new Checkpoint(Epoch.Zero, Root.Zero);
+
         public Checkpoint(Epoch epoch, Root root)
         {
             Epoch = epoch;
@@ -50,7 +52,7 @@ namespace Nethermind.Core2.Containers
         public bool Equals(Checkpoint other)
         {
             return Epoch == other.Epoch
-                && Root.Equals(other.Root);
+                   && Root.Equals(other.Root);
         }
 
         public override int GetHashCode()

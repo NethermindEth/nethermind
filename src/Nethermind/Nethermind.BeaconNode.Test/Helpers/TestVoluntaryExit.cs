@@ -28,7 +28,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
     {
         public static VoluntaryExit BuildVoluntaryExit(IServiceProvider testServiceProvider, BeaconState state, Epoch epoch, ValidatorIndex validatorIndex, byte[] privateKey, bool signed)
         {
-            var voluntaryExit = new VoluntaryExit(epoch, validatorIndex, BlsSignature.Empty);
+            var voluntaryExit = new VoluntaryExit(epoch, validatorIndex, BlsSignature.Zero);
             if (signed)
             {
                 SignVoluntaryExit(testServiceProvider, state, voluntaryExit, privateKey);
