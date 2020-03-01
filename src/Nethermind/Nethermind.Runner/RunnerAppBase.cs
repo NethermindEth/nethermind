@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -42,19 +41,12 @@ using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Metrics;
-using Nethermind.Logging;
 using Nethermind.Logging.NLog;
 using Nethermind.Monitoring.Config;
 using Nethermind.Runner.Ethereum;
-using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Runner.Ethereum.Steps;
 using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
-using Newtonsoft.Json;
-using NLog;
-using NLog.Config;
 using ILogger = Nethermind.Logging.ILogger;
-using Metrics = Nethermind.Trie.Metrics;
 
 namespace Nethermind.Runner
 {
