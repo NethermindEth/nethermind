@@ -19,25 +19,29 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using Cortex.Cryptography;
+using Microsoft.Extensions.Options;
 using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Types;
-using Microsoft.Extensions.Options;
 using Nethermind.Core2.Cryptography.Ssz;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2.Cryptography
 {
     /// <summary>
-    /// Implementation of ICryptographyService that uses the Cortex BLS nuget package
+    /// Implementation of ICryptographyService that uses the Cortex nuget packages (BLS and SSZ)
     /// </summary>
+    [Obsolete("Use CryptographyService, which has Cortex BLS with Nethermind SSZ")]
     public class CortexCryptographyService : ICryptographyService
     {
         private readonly ChainConstants _chainConstants;
-        private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
-        private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
-        private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
         private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
+        private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
+        private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
+        private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
+
+
+        private static readonly HashAlgorithm s_hashAlgorithm = SHA256.Create();
 
         public CortexCryptographyService(ChainConstants chainConstants,
             IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
@@ -51,11 +55,9 @@ namespace Nethermind.Core2.Cryptography
             _stateListLengthOptions = stateListLengthOptions;
             _maxOperationsPerBlockOptions = maxOperationsPerBlockOptions;
         }
-        
-        
-        private static readonly HashAlgorithm s_hashAlgorithm = SHA256.Create();
 
-        public Func<BLSParameters, BLS> SignatureAlgorithmFactory { get; set; } = blsParameters => BLS.Create(blsParameters);
+        public Func<BLSParameters, BLS> SignatureAlgorithmFactory { get; set; } =
+            blsParameters => BLS.Create(blsParameters);
 
         public BlsPublicKey BlsAggregatePublicKeys(IEnumerable<BlsPublicKey> publicKeys)
         {
@@ -72,24 +74,20 @@ namespace Nethermind.Core2.Cryptography
                 publicKey.AsSpan().CopyTo(publicKeysSpan.Slice(publicKeysSpanIndex));
                 publicKeysSpanIndex += BlsPublicKey.Length;
             }
+
             using BLS signatureAlgorithm = SignatureAlgorithmFactory(new BLSParameters());
             byte[] aggregatePublicKey = new byte[BlsPublicKey.Length];
-            bool success = signatureAlgorithm.TryAggregatePublicKeys(publicKeysSpan, aggregatePublicKey, out int bytesWritten);
+            bool success =
+                signatureAlgorithm.TryAggregatePublicKeys(publicKeysSpan, aggregatePublicKey, out int bytesWritten);
             if (!success || bytesWritten != BlsPublicKey.Length)
             {
                 throw new Exception("Error generating aggregate public key.");
             }
+
             return new BlsPublicKey(aggregatePublicKey);
         }
 
-        public bool BlsVerify(BlsPublicKey publicKey, Hash32 messageHash, BlsSignature signature, Domain domain)
-        {
-            BLSParameters blsParameters = new BLSParameters() { PublicKey = publicKey.AsSpan().ToArray() };
-            using BLS signatureAlgorithm = SignatureAlgorithmFactory(blsParameters);
-            return signatureAlgorithm.VerifyHash(messageHash.AsSpan(), signature.AsSpan(), domain.AsSpan());
-        }
-
-        public bool BlsVerifyMultiple(IEnumerable<BlsPublicKey> publicKeys, IEnumerable<Hash32> messageHashes, BlsSignature signature, Domain domain)
+        public bool BlsAggregateVerify(IList<BlsPublicKey> publicKeys, IList<Root> signingRoots, BlsSignature signature)
         {
             int count = publicKeys.Count();
 
@@ -101,43 +99,56 @@ namespace Nethermind.Core2.Cryptography
                 publicKeysSpanIndex += BlsPublicKey.Length;
             }
 
-            Span<byte> messageHashesSpan = new Span<byte>(new byte[count * Hash32.Length]);
-            int messageHashesSpanIndex = 0;
-            foreach (Hash32 messageHash in messageHashes)
+            Span<byte> signingRootsSpan = new Span<byte>(new byte[count * Root.Length]);
+            int signingRootsSpanIndex = 0;
+            foreach (Root signingRoot in signingRoots)
             {
-                messageHash.AsSpan().CopyTo(messageHashesSpan.Slice(messageHashesSpanIndex));
-                messageHashesSpanIndex += Hash32.Length;
+                signingRoot.AsSpan().CopyTo(signingRootsSpan.Slice(signingRootsSpanIndex));
+                signingRootsSpanIndex += Root.Length;
             }
 
             using BLS signatureAlgorithm = SignatureAlgorithmFactory(new BLSParameters());
-            return signatureAlgorithm.VerifyAggregate(publicKeysSpan, messageHashesSpan, signature.AsSpan(), domain.AsSpan());
+            return signatureAlgorithm.VerifyAggregate(publicKeysSpan, signingRootsSpan, signature.AsSpan());
         }
 
-        public Hash32 Hash(Hash32 a, Hash32 b)
+        public bool BlsFastAggregateVerify(IList<BlsPublicKey> publicKey, Root signingRoot, BlsSignature signature)
         {
-            Span<byte> input = new Span<byte>(new byte[Hash32.Length * 2]);
+            throw new NotImplementedException();
+        }
+
+        public bool BlsVerify(BlsPublicKey publicKey, Root signingRoot, BlsSignature signature)
+        {
+            BLSParameters blsParameters = new BLSParameters() {PublicKey = publicKey.AsSpan().ToArray()};
+            using BLS signatureAlgorithm = SignatureAlgorithmFactory(blsParameters);
+            return signatureAlgorithm.VerifyHash(signingRoot.AsSpan(), signature.AsSpan());
+        }
+
+        public Bytes32 Hash(Bytes32 a, Bytes32 b)
+        {
+            Span<byte> input = new Span<byte>(new byte[Bytes32.Length * 2]);
             a.AsSpan().CopyTo(input);
-            b.AsSpan().CopyTo(input.Slice(Hash32.Length));
+            b.AsSpan().CopyTo(input.Slice(Bytes32.Length));
             return Hash(input);
         }
 
-        public Hash32 Hash(ReadOnlySpan<byte> bytes)
+        public Bytes32 Hash(ReadOnlySpan<byte> bytes)
         {
-            Span<byte> result = new Span<byte>(new byte[Hash32.Length]);
+            Span<byte> result = new Span<byte>(new byte[Bytes32.Length]);
             bool success = s_hashAlgorithm.TryComputeHash(bytes, result, out int bytesWritten);
-            if (!success || bytesWritten != Hash32.Length)
+            if (!success || bytesWritten != Bytes32.Length)
             {
                 throw new Exception("Error generating hash value.");
             }
-            return new Hash32(result);
+
+            return new Bytes32(result);
         }
 
-        public Hash32 HashTreeRoot(AttestationData attestationData)
+        public Root HashTreeRoot(AttestationData attestationData)
         {
             return attestationData.HashTreeRoot();
         }
 
-        public Hash32 HashTreeRoot(BeaconBlock beaconBlock)
+        public Root HashTreeRoot(BeaconBlock beaconBlock)
         {
             MiscellaneousParameters miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
             MaxOperationsPerBlock maxOperationsPerBlock = _maxOperationsPerBlockOptions.CurrentValue;
@@ -147,7 +158,7 @@ namespace Nethermind.Core2.Cryptography
                 miscellaneousParameters.MaximumValidatorsPerCommittee);
         }
 
-        public Hash32 HashTreeRoot(BeaconBlockBody beaconBlockBody)
+        public Root HashTreeRoot(BeaconBlockBody beaconBlockBody)
         {
             MiscellaneousParameters miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
             MaxOperationsPerBlock maxOperationsPerBlock = _maxOperationsPerBlockOptions.CurrentValue;
@@ -157,61 +168,57 @@ namespace Nethermind.Core2.Cryptography
                 miscellaneousParameters.MaximumValidatorsPerCommittee);
         }
 
-        public Hash32 HashTreeRoot(IList<DepositData> depositData)
+        public Root HashTreeRoot(IList<DepositData> depositData)
         {
             return depositData.HashTreeRoot(_chainConstants.MaximumDepositContracts);
         }
 
-        public Hash32 HashTreeRoot(Epoch epoch)
+        public Root HashTreeRoot(Epoch epoch)
         {
             return epoch.HashTreeRoot();
         }
 
-        public Hash32 HashTreeRoot(HistoricalBatch historicalBatch)
+        public Root HashTreeRoot(HistoricalBatch historicalBatch)
         {
             return historicalBatch.HashTreeRoot();
         }
 
-        public Hash32 HashTreeRoot(BeaconState beaconState)
+        public Root HashTreeRoot(SigningRoot signingRoot)
+        {
+            return signingRoot.HashTreeRoot();
+        }
+
+        public Root HashTreeRoot(BeaconState beaconState)
         {
             MiscellaneousParameters miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
-            TimeParameters timeParameters =  _timeParameterOptions.CurrentValue;
-            StateListLengths stateListLengths =  _stateListLengthOptions.CurrentValue;
+            TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
+            StateListLengths stateListLengths = _stateListLengthOptions.CurrentValue;
             MaxOperationsPerBlock maxOperationsPerBlock = _maxOperationsPerBlockOptions.CurrentValue;
-            ulong maximumAttestationsPerEpoch = maxOperationsPerBlock.MaximumAttestations * (ulong) timeParameters.SlotsPerEpoch;
+            ulong maximumAttestationsPerEpoch =
+                maxOperationsPerBlock.MaximumAttestations * timeParameters.SlotsPerEpoch;
             return beaconState.HashTreeRoot(stateListLengths.HistoricalRootsLimit,
                 timeParameters.SlotsPerEth1VotingPeriod, stateListLengths.ValidatorRegistryLimit,
                 maximumAttestationsPerEpoch, miscellaneousParameters.MaximumValidatorsPerCommittee);
         }
 
-        public Hash32 HashTreeRoot(DepositData depositData)
+        public Root HashTreeRoot(DepositData depositData)
         {
             return depositData.HashTreeRoot();
         }
 
-        public Hash32 SigningRoot(BeaconBlock beaconBlock)
+        public Root HashTreeRoot(BeaconBlockHeader beaconBlockHeader)
         {
-            MiscellaneousParameters miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
-            MaxOperationsPerBlock maxOperationsPerBlock = _maxOperationsPerBlockOptions.CurrentValue;
-            return beaconBlock.SigningRoot(maxOperationsPerBlock.MaximumProposerSlashings,
-                maxOperationsPerBlock.MaximumAttesterSlashings, maxOperationsPerBlock.MaximumAttestations,
-                maxOperationsPerBlock.MaximumDeposits, maxOperationsPerBlock.MaximumVoluntaryExits,
-                miscellaneousParameters.MaximumValidatorsPerCommittee);
+            return beaconBlockHeader.HashTreeRoot();
         }
 
-        public Hash32 SigningRoot(BeaconBlockHeader beaconBlockHeader)
+        public Root HashTreeRoot(DepositMessage depositMessage)
         {
-            return beaconBlockHeader.SigningRoot();
+            return depositMessage.HashTreeRoot();
         }
 
-        public Hash32 SigningRoot(DepositData depositData)
+        public Root HashTreeRoot(VoluntaryExit voluntaryExit)
         {
-            return depositData.SigningRoot();
-        }
-
-        public Hash32 SigningRoot(VoluntaryExit voluntaryExit)
-        {
-            return voluntaryExit.SigningRoot();
+            return voluntaryExit.HashTreeRoot();
         }
     }
 }

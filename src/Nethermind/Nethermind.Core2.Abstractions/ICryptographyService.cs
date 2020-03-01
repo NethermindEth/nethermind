@@ -25,17 +25,11 @@ namespace Nethermind.Core2
     public interface ICryptographyService
     {
         BlsPublicKey BlsAggregatePublicKeys(IEnumerable<BlsPublicKey> publicKeys);
-        
         bool BlsAggregateVerify(IList<BlsPublicKey> publicKeys, IList<Root> signingRoots, BlsSignature signature);
-
         bool BlsFastAggregateVerify(IList<BlsPublicKey> publicKey, Root signingRoot, BlsSignature signature);
-        
         bool BlsVerify(BlsPublicKey publicKey, Root signingRoot, BlsSignature signature);
-
         Bytes32 Hash(Bytes32 a, Bytes32 b);
-
         Bytes32 Hash(ReadOnlySpan<byte> bytes);
-
         Root HashTreeRoot(AttestationData attestationData);
         Root HashTreeRoot(BeaconBlock beaconBlock);
         Root HashTreeRoot(BeaconBlockBody beaconBlockBody);

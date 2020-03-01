@@ -110,14 +110,7 @@ namespace Nethermind.Core2.Cryptography
             return new BlsPublicKey(aggregatePublicKey);
         }
 
-        public bool BlsVerify(BlsPublicKey publicKey, Hash32 messageHash, BlsSignature signature, Domain domain)
-        {
-            BLSParameters blsParameters = new BLSParameters() { PublicKey = publicKey.AsSpan().ToArray() };
-            using BLS signatureAlgorithm = SignatureAlgorithmFactory(blsParameters);
-            return signatureAlgorithm.VerifyHash(messageHash.AsSpan(), signature.AsSpan(), domain.AsSpan());
-        }
-
-        public bool BlsVerifyMultiple(IEnumerable<BlsPublicKey> publicKeys, IEnumerable<Hash32> messageHashes, BlsSignature signature, Domain domain)
+        public bool BlsAggregateVerify(IList<BlsPublicKey> publicKeys, IList<Root> signingRoots, BlsSignature signature)
         {
             int count = publicKeys.Count();
 
@@ -129,45 +122,57 @@ namespace Nethermind.Core2.Cryptography
                 publicKeysSpanIndex += BlsPublicKey.Length;
             }
 
-            Span<byte> messageHashesSpan = new Span<byte>(new byte[count * Hash32.Length]);
-            int messageHashesSpanIndex = 0;
-            foreach (Hash32 messageHash in messageHashes)
+            Span<byte> signingRootsSpan = new Span<byte>(new byte[count * Root.Length]);
+            int signingRootsSpanIndex = 0;
+            foreach (Root signingRoot in signingRoots)
             {
-                messageHash.AsSpan().CopyTo(messageHashesSpan.Slice(messageHashesSpanIndex));
-                messageHashesSpanIndex += Hash32.Length;
+                signingRoot.AsSpan().CopyTo(signingRootsSpan.Slice(signingRootsSpanIndex));
+                signingRootsSpanIndex += Root.Length;
             }
 
             using BLS signatureAlgorithm = SignatureAlgorithmFactory(new BLSParameters());
-            return signatureAlgorithm.VerifyAggregate(publicKeysSpan, messageHashesSpan, signature.AsSpan(), domain.AsSpan());
+            return signatureAlgorithm.VerifyAggregate(publicKeysSpan, signingRootsSpan, signature.AsSpan());
         }
 
-        public Hash32 Hash(Hash32 a, Hash32 b)
+        public bool BlsFastAggregateVerify(IList<BlsPublicKey> publicKey, Root signingRoot, BlsSignature signature)
         {
-            Span<byte> input = new Span<byte>(new byte[Hash32.Length * 2]);
+            throw new NotImplementedException();
+        }
+
+        public bool BlsVerify(BlsPublicKey publicKey, Root signingRoot, BlsSignature signature)
+        {
+            BLSParameters blsParameters = new BLSParameters() { PublicKey = publicKey.AsSpan().ToArray() };
+            using BLS signatureAlgorithm = SignatureAlgorithmFactory(blsParameters);
+            return signatureAlgorithm.VerifyHash(signingRoot.AsSpan(), signature.AsSpan());
+        }
+
+        public Bytes32 Hash(Bytes32 a, Bytes32 b)
+        {
+            Span<byte> input = new Span<byte>(new byte[Bytes32.Length * 2]);
             a.AsSpan().CopyTo(input);
-            b.AsSpan().CopyTo(input.Slice(Hash32.Length));
+            b.AsSpan().CopyTo(input.Slice(Bytes32.Length));
             return Hash(input);
         }
 
-        public Hash32 Hash(ReadOnlySpan<byte> bytes)
+        public Bytes32 Hash(ReadOnlySpan<byte> bytes)
         {
-            Span<byte> result = new Span<byte>(new byte[Hash32.Length]);
+            Span<byte> result = new Span<byte>(new byte[Bytes32.Length]);
             bool success = s_hashAlgorithm.TryComputeHash(bytes, result, out int bytesWritten);
-            if (!success || bytesWritten != Hash32.Length)
+            if (!success || bytesWritten != Bytes32.Length)
             {
                 throw new Exception("Error generating hash value.");
             }
-            return new Hash32(result);
+            return new Bytes32(result);
         }
 
-        public Hash32 HashTreeRoot(AttestationData attestationData)
+        Root ICryptographyService.HashTreeRoot(AttestationData attestationData)
         {
             Merkle.Ize(out UInt256 root, attestationData);
             Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
-            return new Hash32(bytes);
+            return new Root(bytes);
         }
 
-        public Hash32 HashTreeRoot(BeaconBlock beaconBlock)
+        Root ICryptographyService.HashTreeRoot(BeaconBlock beaconBlock)
         {
             MiscellaneousParameters miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
             MaxOperationsPerBlock maxOperationsPerBlock = _maxOperationsPerBlockOptions.CurrentValue;
@@ -177,7 +182,7 @@ namespace Nethermind.Core2.Cryptography
                 miscellaneousParameters.MaximumValidatorsPerCommittee);
         }
 
-        public Hash32 HashTreeRoot(BeaconBlockBody beaconBlockBody)
+        Root ICryptographyService.HashTreeRoot(BeaconBlockBody beaconBlockBody)
         {
             MiscellaneousParameters miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
             MaxOperationsPerBlock maxOperationsPerBlock = _maxOperationsPerBlockOptions.CurrentValue;
@@ -193,28 +198,12 @@ namespace Nethermind.Core2.Cryptography
 //            return new Hash32(bytes);
         }
 
-        public Hash32 HashTreeRoot(IList<DepositData> depositData)
+        public Root HashTreeRoot(BeaconBlockHeader beaconBlockHeader)
         {
-            Merkle.Ize(out UInt256 root, depositData);
-            Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
-            return new Hash32(bytes);
+            return beaconBlockHeader.HashTreeRoot();
         }
 
-        public Hash32 HashTreeRoot(Epoch epoch)
-        {
-            Merkle.Ize(out UInt256 root, epoch);
-            Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
-            return new Hash32(bytes);
-        }
-
-        public Hash32 HashTreeRoot(HistoricalBatch historicalBatch)
-        {
-            Merkle.Ize(out UInt256 root, historicalBatch);
-            Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
-            return new Hash32(bytes);
-        }
-
-        public Hash32 HashTreeRoot(BeaconState beaconState)
+        Root ICryptographyService.HashTreeRoot(BeaconState beaconState)
         {
             MiscellaneousParameters miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
             TimeParameters timeParameters =  _timeParameterOptions.CurrentValue;
@@ -230,38 +219,52 @@ namespace Nethermind.Core2.Cryptography
 //            return new Hash32(bytes);
         }
 
-        public Hash32 HashTreeRoot(DepositData depositData)
+        Root ICryptographyService.HashTreeRoot(DepositData depositData)
         {
             Merkle.Ize(out UInt256 root, depositData);
             Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
-            return new Hash32(bytes);
+            return new Root(bytes);
         }
 
-        public Hash32 SigningRoot(BeaconBlock beaconBlock)
+        public Root HashTreeRoot(DepositMessage depositMessage)
         {
-            // TODO: Signing root version of Nethermind SSZ; or are removed in later version of spec, so maybe just wait until then
-            
-            MiscellaneousParameters miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
-            MaxOperationsPerBlock maxOperationsPerBlock = _maxOperationsPerBlockOptions.CurrentValue;
-            return beaconBlock.SigningRoot(maxOperationsPerBlock.MaximumProposerSlashings,
-                maxOperationsPerBlock.MaximumAttesterSlashings, maxOperationsPerBlock.MaximumAttestations,
-                maxOperationsPerBlock.MaximumDeposits, maxOperationsPerBlock.MaximumVoluntaryExits,
-                miscellaneousParameters.MaximumValidatorsPerCommittee);
+            throw new NotImplementedException();
         }
 
-        public Hash32 SigningRoot(BeaconBlockHeader beaconBlockHeader)
+        Root ICryptographyService.HashTreeRoot(IList<DepositData> depositData)
         {
-            return beaconBlockHeader.SigningRoot();
+            Merkle.Ize(out UInt256 root, depositData);
+            Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
+            return new Root(bytes);
         }
 
-        public Hash32 SigningRoot(DepositData depositData)
+        Root ICryptographyService.HashTreeRoot(Epoch epoch)
         {
-            return depositData.SigningRoot();
+            Merkle.Ize(out UInt256 root, epoch);
+            Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
+            return new Root(bytes);
         }
 
-        public Hash32 SigningRoot(VoluntaryExit voluntaryExit)
+        Root ICryptographyService.HashTreeRoot(HistoricalBatch historicalBatch)
         {
-            return voluntaryExit.SigningRoot();
+            Merkle.Ize(out UInt256 root, historicalBatch);
+            Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
+            return new Root(bytes);
+        }
+
+        public Root HashTreeRoot(SigningRoot signingRoot)
+        {
+            return signingRoot.HashTreeRoot();
+            // Merkle.Ize(out UInt256 root, signingRoot);
+            // Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
+            // return new Root(bytes);
+        }
+
+        public Root HashTreeRoot(VoluntaryExit voluntaryExit)
+        {
+            Merkle.Ize(out UInt256 root, voluntaryExit);
+            Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
+            return new Root(bytes);
         }
     }
 }
