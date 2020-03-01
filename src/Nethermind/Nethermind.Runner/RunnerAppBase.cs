@@ -138,7 +138,7 @@ namespace Nethermind.Runner
         {
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
-            IMetricsConfig metricOptions = configProvider.GetConfig<IMetricsConfig>();
+            IMetricsConfig metricsConfig = configProvider.GetConfig<IMetricsConfig>();
             NLogManager logManager = new NLogManager(initConfig.LogFileName, initConfig.LogDirectory);
             IRpcModuleProvider rpcModuleProvider = jsonRpcConfig.Enabled
                 ? new RpcModuleProvider(configProvider.GetConfig<IJsonRpcConfig>(), logManager)
@@ -146,18 +146,19 @@ namespace Nethermind.Runner
             EthereumJsonSerializer jsonSerializer = new EthereumJsonSerializer();
             WebSocketsManager webSocketsManager = new WebSocketsManager();
 
-            if (metricOptions.Enabled)
+            if (metricsConfig.Enabled)
             {
-                int intervalSeconds = metricOptions.IntervalSeconds;
-                _monitoringService = new MonitoringService(new MetricsUpdater(intervalSeconds),
-                    metricOptions.PushGatewayUrl, ClientVersion.Description,
-                    metricOptions.NodeName, intervalSeconds, logManager);
-                _monitoringService.RegisterMetrics(typeof(Nethermind.JsonRpc.Metrics));
-                _monitoringService.RegisterMetrics(typeof(Metrics));
-                _monitoringService.RegisterMetrics(typeof(Nethermind.Evm.Metrics));
+                Metrics.Version = VersionToMetrics.ConvertToNumber(ClientVersion.Version);
+                MetricsUpdater metricsUpdater = new MetricsUpdater(metricsConfig);
+                _monitoringService = new MonitoringService(metricsUpdater, metricsConfig, logManager);
                 _monitoringService.RegisterMetrics(typeof(Nethermind.Blockchain.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Nethermind.Db.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Nethermind.Evm.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Nethermind.JsonRpc.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Nethermind.Trie.Metrics));
                 _monitoringService.RegisterMetrics(typeof(Nethermind.Network.Metrics));
                 _monitoringService.RegisterMetrics(typeof(Nethermind.TxPool.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Metrics));
 
                 await _monitoringService.StartAsync().ContinueWith(x =>
                 {
