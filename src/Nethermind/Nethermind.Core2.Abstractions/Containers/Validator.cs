@@ -22,6 +22,9 @@ namespace Nethermind.Core2.Containers
 {
     public class Validator
     {
+        public static readonly Validator Zero = new Validator(BlsPublicKey.Zero, Bytes32.Zero, Gwei.Zero, false,
+            Epoch.Zero, Epoch.Zero, Epoch.Zero, Epoch.Zero);
+
         public Validator(
             BlsPublicKey publicKey,
             Bytes32 withdrawalCredentials,

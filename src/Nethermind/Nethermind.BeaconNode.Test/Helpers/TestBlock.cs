@@ -40,7 +40,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
             MaxOperationsPerBlock maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
 
-            Eth1Data eth1Data = new Eth1Data(state.Eth1DepositIndex, Hash32.Zero);
+            Eth1Data eth1Data = new Eth1Data(Root.Zero, state.Eth1DepositIndex, Hash32.Zero);
 
             BeaconBlockHeader previousBlockHeader = BeaconBlockHeader.Clone(state.LatestBlockHeader);
             if (previousBlockHeader.StateRoot == Hash32.Zero)

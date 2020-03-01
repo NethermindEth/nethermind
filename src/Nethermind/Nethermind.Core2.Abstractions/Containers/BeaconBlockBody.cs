@@ -52,8 +52,8 @@ namespace Nethermind.Core2.Containers
         public BeaconBlockBody()
         {
             RandaoReveal = BlsSignature.Zero;
-            Eth1Data = new Eth1Data(0, Bytes32.Zero);
-            Graffiti = new Bytes32();
+            Eth1Data = Eth1Data.Zero;
+            Graffiti = Bytes32.Zero;
             _proposerSlashings = new List<ProposerSlashing>();
             _attesterSlashings = new List<AttesterSlashing>();
             _attestations = new List<Attestation>();

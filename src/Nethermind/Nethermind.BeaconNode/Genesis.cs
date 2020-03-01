@@ -76,7 +76,7 @@ namespace Nethermind.BeaconNode
 
             ulong genesisTime = eth1Timestamp - (eth1Timestamp % timeParameters.MinimumGenesisDelay)
                 + (2 * timeParameters.MinimumGenesisDelay);
-            Eth1Data eth1Data = new Eth1Data((ulong)deposits.Count, eth1BlockHash);
+            Eth1Data eth1Data = new Eth1Data(Root.Zero, (ulong)deposits.Count, eth1BlockHash);
             
             BeaconBlockBody emptyBlockBody = new BeaconBlockBody();
             Root emptyBlockBodyRoot = _cryptographyService.HashTreeRoot(emptyBlockBody);

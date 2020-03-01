@@ -23,10 +23,7 @@ namespace Nethermind.Core2.Containers
 {
     public class Eth1Data : IEquatable<Eth1Data>
     {
-        public Eth1Data(ulong depositCount, Bytes32 eth1BlockHash)
-            : this(Root.Zero, depositCount, eth1BlockHash)
-        {
-        }
+        public static readonly Eth1Data Zero = new Eth1Data(Root.Zero, 0, Bytes32.Zero);
 
         public Eth1Data(Root depositRoot, ulong depositCount, Bytes32 blockHash)
         {

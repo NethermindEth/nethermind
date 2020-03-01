@@ -62,7 +62,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
             var state = new BeaconState(
                 0,
                 numberOfValidators,
-                new Eth1Data(numberOfValidators, depositRoot),
+                new Eth1Data(Root.Zero, numberOfValidators, depositRoot),
                 new BeaconBlockHeader(cryptographyService.HashTreeRoot(new BeaconBlockBody())),
                 timeParameters.SlotsPerHistoricalRoot,
                 stateListLengths.EpochsPerHistoricalVector,
