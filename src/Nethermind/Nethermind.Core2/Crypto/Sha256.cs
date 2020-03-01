@@ -31,22 +31,28 @@ namespace Nethermind.Core2.Crypto
         /// <returns>
         ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>
         /// </returns>
-        public static readonly Bytes32 OfAnEmptyString = InternalCompute(new byte[] { });
+        public static readonly Root RootOfAnEmptyString = new Root(ComputeBytes(new byte[0]));
+
+        public static readonly Bytes32 Bytes32OfAnEmptyString = new Bytes32(ComputeBytes(new byte[0]));
 
         /// <returns>
         ///     <string>0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347</string>
         /// </returns>
         public static readonly Bytes32 OfAnEmptySequenceRlp = InternalCompute(new byte[] {192});
 
+        /*
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
         /// </summary>
         public static Bytes32 EmptyTreeHash = InternalCompute(new byte[] {128});
-
+        */
+        
+        /*
         /// <returns>
         ///     <string>0x0000000000000000000000000000000000000000000000000000000000000000</string>
         /// </returns>
         public static Bytes32 Zero { get; } = Bytes32.Zero;
+        */
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static byte[] ComputeBytes(ReadOnlySpan<byte> input)
@@ -67,53 +73,53 @@ namespace Nethermind.Core2.Crypto
             return Hash.ComputeBytes(input).GetBytes();
         }
 
-        [DebuggerStepThrough]
-        public static Bytes32 Compute(byte[] input)
-        {
-            if (input == null || input.Length == 0)
-            {
-                return OfAnEmptyString;
-            }
-
-            return Compute(input.AsSpan());
-        }
+        // [DebuggerStepThrough]
+        // public static Bytes32 Compute(byte[] input)
+        // {
+        //     if (input == null || input.Length == 0)
+        //     {
+        //         return Bytes32OfAnEmptyString;
+        //     }
+        //
+        //     return Compute(input.AsSpan());
+        // }
 
         [DebuggerStepThrough]
         public static Bytes32 Compute(Span<byte> input)
         {
             if (input == null || input.Length == 0)
             {
-                return OfAnEmptyString;
+                return Bytes32OfAnEmptyString;
             }
 
             return InternalCompute(input.ToArray());
         }
         
-        public static void ComputeInPlace(Span<byte> input)
-        {
-            if (input == null || input.Length == 0)
-            {
-                OfAnEmptyString.AsSpan().CopyTo(input);
-            }
-
-            byte[] bytes = Hash.ComputeBytes(input.ToArray()).GetBytes();
-            bytes.AsSpan().CopyTo(input);
-        }
+        // public static void ComputeInPlace(Span<byte> input)
+        // {
+        //     if (input == null || input.Length == 0)
+        //     {
+        //         RootOfAnEmptyString.AsSpan().CopyTo(input);
+        //     }
+        //
+        //     byte[] bytes = Hash.ComputeBytes(input.ToArray()).GetBytes();
+        //     bytes.AsSpan().CopyTo(input);
+        // }
 
         private static Bytes32 InternalCompute(byte[] input)
         {
             return new Bytes32(Hash.ComputeBytes(input).GetBytes());
         }
 
-        [DebuggerStepThrough]
-        public static Bytes32 Compute(string input)
-        {
-            if (string.IsNullOrWhiteSpace(input))
-            {
-                return OfAnEmptyString;
-            }
-
-            return InternalCompute(System.Text.Encoding.UTF8.GetBytes(input));
-        }
+        // [DebuggerStepThrough]
+        // public static Bytes32 Compute(string input)
+        // {
+        //     if (string.IsNullOrWhiteSpace(input))
+        //     {
+        //         return Bytes32OfAnEmptyString;
+        //     }
+        //
+        //     return InternalCompute(System.Text.Encoding.UTF8.GetBytes(input));
+        // }
     }
 }

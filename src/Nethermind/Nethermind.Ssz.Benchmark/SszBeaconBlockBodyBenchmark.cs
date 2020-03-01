@@ -27,6 +27,13 @@ namespace Nethermind.Ssz.Benchmarks
     [MemoryDiagnoser]
     public class SszBeaconBlockBodyBenchmark
     {
+        public static BlsPublicKey TestKey1 = new BlsPublicKey(
+            "0x000102030405060708090a0b0c0d0e0f" +
+            "101112131415161718191a1b1c1d1e1f" +
+            "202122232425262728292a2b2c2d2e2f");
+
+        public static BlsSignature TestSig1 = new BlsSignature(new byte[BlsSignature.Length]);
+        
         private BeaconBlockBody _body;
         private byte[] _encoded;
         
@@ -35,9 +42,9 @@ namespace Nethermind.Ssz.Benchmarks
             AttestationData data = new AttestationData(
                 new Slot(1),
                 new CommitteeIndex(4),
-                Sha256.OfAnEmptyString,
-                new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString),
-                new Checkpoint(new Epoch(3), Sha256.OfAnEmptyString));
+                Sha256.RootOfAnEmptyString,
+                new Checkpoint(new Epoch(2), Sha256.RootOfAnEmptyString),
+                new Checkpoint(new Epoch(3), Sha256.RootOfAnEmptyString));
             
             Attestation attestation = new Attestation(
                 new BitArray(new byte[5]),
@@ -47,7 +54,7 @@ namespace Nethermind.Ssz.Benchmarks
 
             DepositData depositData = new DepositData(
                 SszTest.TestKey1,
-                Sha256.OfAnEmptyString,
+                Sha256.RootOfAnEmptyString,
                 new Gwei(7),
                 SszTest.TestSig1);
 
@@ -68,9 +75,9 @@ namespace Nethermind.Ssz.Benchmarks
             AttesterSlashing slashing = new AttesterSlashing(indexedAttestation1, indexedAttestation2);
 
             Eth1Data eth1Data = new Eth1Data(
-                Sha256.OfAnEmptyString,
+                Sha256.RootOfAnEmptyString,
                 9,
-                Sha256.OfAnEmptyString);
+                Sha256.RootOfAnEmptyString);
             
             Attestation[] attestations = new Attestation[3];
             attestations[1] = attestation;

@@ -30,13 +30,13 @@ namespace Nethermind.Ssz
             return container is null ? 0 : (BeaconBlockDynamicOffset + Ssz.BeaconBlockBodyLength(container.Body));
         }
 
-        private static BeaconBlock DecodeBeaconBlock(ReadOnlySpan<byte> span)
+        public static BeaconBlock DecodeBeaconBlock(ReadOnlySpan<byte> span)
         {
             int offset = 0;
             return DecodeBeaconBlock(span, ref offset);
         }
 
-        private static void Encode(Span<byte> span, BeaconBlock container)
+        public static void Encode(Span<byte> span, BeaconBlock container)
         {
             if (span.Length != Ssz.BeaconBlockLength(container))
                 ThrowTargetLength<BeaconBlock>(span.Length, Ssz.BeaconBlockLength(container));

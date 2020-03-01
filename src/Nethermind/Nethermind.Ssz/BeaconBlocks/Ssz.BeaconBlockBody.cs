@@ -51,13 +51,13 @@ namespace Nethermind.Ssz
             return result;
         }
 
-        private static BeaconBlockBody DecodeBeaconBlockBody(ReadOnlySpan<byte> span)
+        public static BeaconBlockBody DecodeBeaconBlockBody(ReadOnlySpan<byte> span)
         {
             int offset = 0;
             return DecodeBeaconBlockBody(span, ref offset);
         }
 
-        private static void Encode(Span<byte> span, BeaconBlockBody container)
+        public static void Encode(Span<byte> span, BeaconBlockBody container)
         {
             int offset = 0;
             Encode(span, container, ref offset);

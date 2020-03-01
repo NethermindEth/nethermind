@@ -45,7 +45,7 @@ namespace Nethermind.Ssz
         static Merkle()
         {
             BuildZeroHashes();
-            UInt256.CreateFromBigEndian(out RootOfNull, Sha256.OfAnEmptyString.AsSpan().ToArray());
+            UInt256.CreateFromBigEndian(out RootOfNull, Sha256.RootOfAnEmptyString.AsSpan().ToArray());
         }
 
         public static uint NextPowerOfTwo(uint v)

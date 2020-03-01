@@ -26,6 +26,13 @@ namespace Nethermind.Ssz.Benchmarks
     [MemoryDiagnoser]
     public class SszBeaconBlockHeaderBenchmark
     {
+        public static BlsPublicKey TestKey1 = new BlsPublicKey(
+            "0x000102030405060708090a0b0c0d0e0f" +
+            "101112131415161718191a1b1c1d1e1f" +
+            "202122232425262728292a2b2c2d2e2f");
+
+        public static BlsSignature TestSig1 = new BlsSignature(new byte[BlsSignature.Length]);
+        
         private BeaconBlockHeader _header;
         private byte[] _encoded = new byte[Ssz.BeaconBlockHeaderLength];
         
