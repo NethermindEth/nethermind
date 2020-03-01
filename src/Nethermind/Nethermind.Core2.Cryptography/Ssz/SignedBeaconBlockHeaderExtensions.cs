@@ -15,27 +15,29 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
-using System.Linq;
 using Cortex.SimpleSerialize;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 
 namespace Nethermind.Core2.Cryptography.Ssz
 {
-    public static class Hash32Extensions
+    public static class SignedBeaconBlockHeaderExtensions
     {
-        public static SszBasicVector ToSszBasicVector(this Hash32 item)
+        public static Root HashTreeRoot(this SignedBeaconBlockHeader item)
         {
-            return new SszBasicVector(item.AsSpan());
+            var tree = new SszTree(new SszContainer(GetValues(item)));
+            return new Root(tree.HashTreeRoot());
         }
 
-        public static SszList ToSszList(this IEnumerable<Hash32> list, ulong limit)
+        public static SszContainer ToSszContainer(this SignedBeaconBlockHeader item)
         {
-            return new SszList(list.Select(x => ToSszBasicVector(x)), limit);
+            return new SszContainer(GetValues(item));
         }
 
-        public static SszVector ToSszVector(this IEnumerable<Hash32> vector)
+        private static IEnumerable<SszElement> GetValues(SignedBeaconBlockHeader item)
         {
-            return new SszVector(vector.Select(x => ToSszBasicVector(x)));
+            yield return item.Message.ToSszContainer();
+            yield return item.Signature.ToSszBasicVector();
         }
     }
 }

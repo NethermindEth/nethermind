@@ -14,23 +14,28 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
+using System.Linq;
 using Cortex.SimpleSerialize;
 using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2.Cryptography.Ssz
 {
-    public static class EpochExtensions
+    public static class RootExtensions
     {
-        public static Root HashTreeRoot(this Epoch item)
+        public static SszBasicVector ToSszBasicVector(this Root item)
         {
-            var tree = new SszTree(item.ToSszBasicElement());
-            return new Root(tree.HashTreeRoot());
+            return new SszBasicVector(item.AsSpan());
         }
 
-        public static SszElement ToSszBasicElement(this Epoch item)
+        public static SszList ToSszList(this IEnumerable<Root> list, ulong limit)
         {
-            return new SszBasicElement((ulong)item);
+            return new SszList(list.Select(x => ToSszBasicVector(x)), limit);
+        }
+
+        public static SszVector ToSszVector(this IEnumerable<Root> vector)
+        {
+            return new SszVector(vector.Select(x => ToSszBasicVector(x)));
         }
     }
 }

@@ -23,10 +23,10 @@ namespace Nethermind.Core2.Cryptography.Ssz
 {
     public static class BeaconBlockBodyExtensions
     {
-        public static Hash32 HashTreeRoot(this BeaconBlockBody item, ulong maximumProposerSlashings, ulong maximumAttesterSlashings, ulong maximumAttestations, ulong maximumDeposits, ulong maximumVoluntaryExits, ulong maximumValidatorsPerCommittee)
+        public static Root HashTreeRoot(this BeaconBlockBody item, ulong maximumProposerSlashings, ulong maximumAttesterSlashings, ulong maximumAttestations, ulong maximumDeposits, ulong maximumVoluntaryExits, ulong maximumValidatorsPerCommittee)
         {
             var tree = new SszTree(item.ToSszContainer(maximumProposerSlashings, maximumAttesterSlashings, maximumAttestations, maximumDeposits, maximumVoluntaryExits, maximumValidatorsPerCommittee));
-            return new Hash32(tree.HashTreeRoot());
+            return new Root(tree.HashTreeRoot());
         }
 
         public static SszContainer ToSszContainer(this BeaconBlockBody item, ulong maximumProposerSlashings, ulong maximumAttesterSlashings, ulong maximumAttestations, ulong maximumDeposits, ulong maximumVoluntaryExits, ulong maximumValidatorsPerCommittee)

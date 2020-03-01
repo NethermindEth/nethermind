@@ -23,18 +23,18 @@ namespace Nethermind.Core2.Cryptography.Ssz
 {
     public static class BeaconBlockHeaderExtensions
     {
-        public static Hash32 SigningRoot(this BeaconBlockHeader item)
+        public static Root HashTreeRoot(this BeaconBlockHeader item)
         {
-            var tree = new SszTree(new SszContainer(GetValues(item, true)));
-            return new Hash32(tree.HashTreeRoot());
+            var tree = new SszTree(new SszContainer(GetValues(item)));
+            return new Root(tree.HashTreeRoot());
         }
 
         public static SszContainer ToSszContainer(this BeaconBlockHeader item)
         {
-            return new SszContainer(GetValues(item, false));
+            return new SszContainer(GetValues(item));
         }
 
-        private static IEnumerable<SszElement> GetValues(BeaconBlockHeader item, bool forSigning)
+        private static IEnumerable<SszElement> GetValues(BeaconBlockHeader item)
         {
             //slot: Slot
             yield return new SszBasicElement((ulong)item.Slot);
@@ -44,11 +44,6 @@ namespace Nethermind.Core2.Cryptography.Ssz
             yield return item.StateRoot.ToSszBasicVector();
             //body_root: Hash
             yield return item.BodyRoot.ToSszBasicVector();
-            if (!forSigning)
-            {
-                //signature: BLSSignature
-                yield return item.Signature.ToSszBasicVector();
-            }
         }
     }
 }

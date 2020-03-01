@@ -22,35 +22,27 @@ using Nethermind.Core2.Crypto;
 
 namespace Nethermind.Core2.Cryptography.Ssz
 {
-    public static class DepositDataExtensions
+    public static class SignedVoluntaryExitExtensions
     {
-        public static Root HashTreeRoot(this IEnumerable<DepositData> list, ulong limit)
+        public static Root HashTreeRoot(this SignedVoluntaryExit item)
         {
-            var tree = new SszTree(list.ToSszList(limit));
+            var tree = new SszTree(new SszContainer(GetValues(item)));
             return new Root(tree.HashTreeRoot());
         }
 
-        public static Root HashTreeRoot(this DepositData item)
-        {
-            var tree = new SszTree(item.ToSszContainer());
-            return new Root(tree.HashTreeRoot());
-        }
-
-        public static SszContainer ToSszContainer(this DepositData item)
+        public static SszContainer ToSszContainer(this SignedVoluntaryExit item)
         {
             return new SszContainer(GetValues(item));
         }
 
-        public static SszList ToSszList(this IEnumerable<DepositData> list, ulong limit)
+        public static SszList ToSszList(this IEnumerable<SignedVoluntaryExit> list, ulong limit)
         {
             return new SszList(list.Select(x => ToSszContainer(x)), limit);
         }
 
-        private static IEnumerable<SszElement> GetValues(DepositData item)
+        private static IEnumerable<SszElement> GetValues(SignedVoluntaryExit item)
         {
-            yield return new SszBasicVector(item.PublicKey.AsSpan());
-            yield return new SszBasicVector(item.WithdrawalCredentials.AsSpan());
-            yield return new SszBasicElement(item.Amount);
+            yield return item.Message.ToSszContainer();
             yield return item.Signature.ToSszBasicVector();
         }
     }
