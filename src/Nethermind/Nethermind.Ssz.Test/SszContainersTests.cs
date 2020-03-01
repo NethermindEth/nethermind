@@ -371,15 +371,16 @@ namespace Nethermind.Ssz.Test
                 1,
                 Sha256.Bytes32OfAnEmptyString);
 
+            Deposit zeroDeposit = new Deposit(Enumerable.Repeat(Bytes32.Zero, Ssz.DepositContractTreeDepth + 1), DepositData.Zero);
             BeaconBlockBody container = new BeaconBlockBody(
                 TestSig1,
                 eth1Data,
                 new Bytes32(new byte[32]),
-                new ProposerSlashing[2],
-                new AttesterSlashing[3], 
-                new Attestation[4],
-                new Deposit[5],
-                new SignedVoluntaryExit[6]
+                Enumerable.Repeat(ProposerSlashing.Zero, 2).ToArray(),
+                Enumerable.Repeat(AttesterSlashing.Zero, 3).ToArray(), 
+                Enumerable.Repeat(Attestation.Zero, 4).ToArray(),
+                Enumerable.Repeat(zeroDeposit, 5).ToArray(),
+                Enumerable.Repeat(SignedVoluntaryExit.Zero, 6).ToArray() 
             );
 
             Span<byte> encoded = new byte[Ssz.BeaconBlockBodyLength(container)];
