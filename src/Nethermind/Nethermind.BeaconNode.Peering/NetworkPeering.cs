@@ -21,10 +21,10 @@ namespace Nethermind.BeaconNode.Peering
 
         public Task PublishBeaconBlockAsync(SignedBeaconBlock signedBlock)
         {
-            // TODO: Validate signature before broadcasting
+            // TODO: Validate signature before broadcasting (if not already validated)
 
-            Span<byte> encoded = new byte[Ssz.Ssz.BeaconBlockLength(signedBlock.Message)];
-            Ssz.Ssz.Encode(encoded, signedBlock.Message);
+            Span<byte> encoded = new byte[Ssz.Ssz.SignedBeaconBlockLength(signedBlock)];
+            Ssz.Ssz.Encode(encoded, signedBlock);
 
             LogDebug.GossipSend(_logger, nameof(TopicUtf8.BeaconBlock), encoded.Length, null);
             _mothraLibp2p.SendGossip(TopicUtf8.BeaconBlock, encoded);

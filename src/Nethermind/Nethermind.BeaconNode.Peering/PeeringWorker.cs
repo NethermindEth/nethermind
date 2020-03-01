@@ -26,6 +26,7 @@ using Microsoft.Extensions.Options;
 using Nethermind.Core2;
 using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 using Nethermind.Logging.Microsoft;
 using Nethermind.Peering.Mothra;
 
@@ -123,14 +124,14 @@ namespace Nethermind.BeaconNode.Peering
 
         private void HandleBeaconBlock(ReadOnlySpan<byte> data)
         {
-            BeaconBlock beaconBlock = Ssz.Ssz.DecodeBeaconBlock(data);
+            SignedBeaconBlock signedBeaconBlock = Ssz.Ssz.DecodeSignedBeaconBlock(data);
             if (!_storeProvider.TryGetStore(out IStore? retrievedStore))
             {
                 throw new Exception("Beacon chain is currently syncing or waiting for genesis.");
             }
 
             IStore store = retrievedStore!;
-            _forkChoice.OnBlockAsync(store, beaconBlock);
+            _forkChoice.OnBlockAsync(store, signedBeaconBlock);
         }
 
         private void OnGossipReceived(ReadOnlySpan<byte> topicUtf8, ReadOnlySpan<byte> data)

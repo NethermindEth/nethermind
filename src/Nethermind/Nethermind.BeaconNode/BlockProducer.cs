@@ -243,12 +243,12 @@ namespace Nethermind.BeaconNode
                 .Select(x => x.Key)
                 .FirstOrDefault();
 
-            if (bestEth1Data != null)
+            if (bestEth1Data is null)
             {
-                return bestEth1Data;
+                return votesToConsider.First();
             }
-
-            return votesToConsider.First();
+            
+            return bestEth1Data!;
         }
     }
 }
