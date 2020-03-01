@@ -34,7 +34,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
             // insecurely use pubkey as withdrawal key if no credentials provided
             var withdrawalCredentialBytes = TestSecurity.Hash(publicKey.AsSpan());
             withdrawalCredentialBytes[0] = initialValues.BlsWithdrawalPrefix;
-            var withdrawalCredentials = new Hash32(withdrawalCredentialBytes);
+            var withdrawalCredentials = new Bytes32(withdrawalCredentialBytes);
 
             var validator = new Validator(
                 publicKey,
@@ -58,11 +58,12 @@ namespace Nethermind.BeaconNode.Test.Helpers
             StateListLengths stateListLengths = testServiceProvider.GetService<IOptions<StateListLengths>>().Value;
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
 
-            var depositRoot = new Hash32(Enumerable.Repeat((byte)0x42, 32).ToArray());
+            var blockHash = new Bytes32(Enumerable.Repeat((byte)0x42, 32).ToArray());
             var state = new BeaconState(
                 0,
-                numberOfValidators,
-                new Eth1Data(Root.Zero, numberOfValidators, depositRoot),
+                new Core2.Containers.Fork(new ForkVersion(new byte[ForkVersion.Length]), new ForkVersion(new byte[ForkVersion.Length]), Epoch.Zero), 
+                new Eth1Data(Root.Zero, numberOfValidators, blockHash),
+                //numberOfValidators,
                 new BeaconBlockHeader(cryptographyService.HashTreeRoot(new BeaconBlockBody())),
                 timeParameters.SlotsPerHistoricalRoot,
                 stateListLengths.EpochsPerHistoricalVector,

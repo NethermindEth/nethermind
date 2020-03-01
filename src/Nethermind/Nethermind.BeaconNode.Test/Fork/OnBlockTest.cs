@@ -49,14 +49,14 @@ namespace Nethermind.BeaconNode.Test.Fork
             store.Time.ShouldBe(time);
 
             // On receiving a block of `GENESIS_SLOT + 1` slot
-            BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
+            BeaconBlock block = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, state, signed: true);
             TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
             await RunOnBlock(testServiceProvider, store, block, expectValid: true);
 
             //  On receiving a block of next epoch
             ulong time2 = time + timeParameters.SecondsPerSlot * (ulong)timeParameters.SlotsPerEpoch;
             await store.SetTimeAsync(time2);
-            BeaconBlock block2 = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
+            BeaconBlock block2 = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, state, signed: true);
             Slot slot2 = (Slot)(block.Slot + timeParameters.SlotsPerEpoch);
             block2.SetSlot(slot2);
             TestBlock.SignBlock(testServiceProvider, state, block2, ValidatorIndex.None);

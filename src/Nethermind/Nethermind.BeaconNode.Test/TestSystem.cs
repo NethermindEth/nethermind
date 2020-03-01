@@ -16,12 +16,10 @@
 
 using System;
 using System.Collections.Generic;
-using System.Xml.Serialization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.Core2;
 using Nethermind.Core2.Configuration;
@@ -30,7 +28,6 @@ using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Cryptography;
 using Nethermind.Core2.Types;
 using NSubstitute;
-using Hash32 = Nethermind.Core2.Crypto.Hash32;
 
 namespace Nethermind.BeaconNode.Test
 {
@@ -100,87 +97,90 @@ namespace Nethermind.BeaconNode.Test
                 return BlsPublicKey.Zero;
             }
 
-            public bool BlsVerify(BlsPublicKey publicKey, Hash32 signingRoot, BlsSignature signature, Domain domain)
+            public bool BlsAggregateVerify(IList<BlsPublicKey> publicKeys, IList<Root> signingRoots, BlsSignature signature)
+            {
+                throw new NotImplementedException();
+            }
+
+            public bool BlsFastAggregateVerify(IList<BlsPublicKey> publicKey, Root signingRoot, BlsSignature signature)
             {
                 return true;
             }
 
-            public bool BlsVerifyMultiple(IEnumerable<BlsPublicKey> publicKeys, IEnumerable<Hash32> messageHashes, BlsSignature signature, Domain domain)
+            public bool BlsVerify(BlsPublicKey publicKey, Root signingRoot, BlsSignature signature)
             {
                 return true;
             }
 
-            public Hash32 Hash(Hash32 a, Hash32 b)
+            public Bytes32 Hash(Bytes32 a, Bytes32 b)
             {
                 return _cryptographyService.Hash(a, b);
             }
 
-            public Hash32 Hash(ReadOnlySpan<byte> bytes)
+            public Bytes32 Hash(ReadOnlySpan<byte> bytes)
             {
                 return _cryptographyService.Hash(bytes);
             }
 
-            public Hash32 HashTreeRoot(AttestationData attestationData)
+            public Root HashTreeRoot(AttestationData attestationData)
             {
                 throw new NotImplementedException();
             }
 
-            public Hash32 HashTreeRoot(BeaconBlock beaconBlock)
+            public Root HashTreeRoot(BeaconBlock beaconBlock)
             {
                 throw new NotImplementedException();
             }
 
-            public Hash32 HashTreeRoot(BeaconBlockBody beaconBlockBody)
+            public Root HashTreeRoot(BeaconBlockBody beaconBlockBody)
             {
                 throw new NotImplementedException();
             }
 
-            public Hash32 HashTreeRoot(IList<DepositData> depositData)
+            public Root HashTreeRoot(BeaconBlockHeader beaconBlockHeader)
             {
                 throw new NotImplementedException();
             }
 
-            public Hash32 HashTreeRoot(Epoch epoch)
+            public Root HashTreeRoot(BeaconState beaconState)
             {
                 throw new NotImplementedException();
             }
 
-            public Hash32 HashTreeRoot(HistoricalBatch historicalBatch)
+            public Root HashTreeRoot(DepositData depositData)
             {
                 throw new NotImplementedException();
             }
 
-            public Hash32 HashTreeRoot(BeaconState beaconState)
+            public Root HashTreeRoot(DepositMessage depositMessage)
             {
                 throw new NotImplementedException();
             }
 
-            public Hash32 HashTreeRoot(DepositData depositData)
+            public Root HashTreeRoot(IList<DepositData> depositData)
             {
                 throw new NotImplementedException();
             }
 
-            public Hash32 SigningRoot(BeaconBlock beaconBlock)
+            public Root HashTreeRoot(Epoch epoch)
             {
                 throw new NotImplementedException();
             }
 
-
-            public Hash32 SigningRoot(BeaconBlockHeader beaconBlockHeader)
+            public Root HashTreeRoot(HistoricalBatch historicalBatch)
             {
                 throw new NotImplementedException();
             }
 
-            public Hash32 SigningRoot(DepositData depositData)
+            public Root HashTreeRoot(SigningRoot signingRoot)
             {
                 throw new NotImplementedException();
             }
 
-            public Hash32 SigningRoot(VoluntaryExit voluntaryExit)
+            public Root HashTreeRoot(VoluntaryExit voluntaryExit)
             {
                 throw new NotImplementedException();
             }
         }
-
     }
 }

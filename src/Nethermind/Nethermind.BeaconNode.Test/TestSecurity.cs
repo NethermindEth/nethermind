@@ -20,7 +20,6 @@ using System.Security.Cryptography;
 using Cortex.Cryptography;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using Hash32 = Nethermind.Core2.Crypto.Hash32;
 
 namespace Nethermind.BeaconNode.Test
 {
@@ -55,30 +54,30 @@ namespace Nethermind.BeaconNode.Test
             return aggregateSignature;
         }
 
-        public static BlsSignature BlsSign(Hash32 messageHash, byte[] privateKey, Domain domain)
+        public static BlsSignature BlsSign(Root messageHash, byte[] privateKey)
         {
             var parameters = new BLSParameters() { PrivateKey = privateKey };
             using var signingAlgorithm = SignatureAlgorithmFactory(parameters);
             var destination = new byte[96];
-            var success = signingAlgorithm.TrySignHash(messageHash.AsSpan(), destination, out var bytesWritten, domain.AsSpan().ToArray());
+            var success = signingAlgorithm.TrySignHash(messageHash.AsSpan(), destination, out var bytesWritten);
             return new BlsSignature(destination);
         }
 
-        public static IList<IList<Hash32>> CalculateMerkleTreeFromLeaves(IEnumerable<Hash32> values, int layerCount = 32)
+        public static IList<IList<Bytes32>> CalculateMerkleTreeFromLeaves(IEnumerable<Bytes32> values, int layerCount = 32)
         {
-            var workingValues = new List<Hash32>(values);
-            var tree = new List<IList<Hash32>>(new[] { workingValues.ToArray() });
+            var workingValues = new List<Bytes32>(values);
+            var tree = new List<IList<Bytes32>>(new[] { workingValues.ToArray() });
             for (var height = 0; height < layerCount; height++)
             {
                 if (workingValues.Count % 2 == 1)
                 {
-                    workingValues.Add(new Hash32(s_zeroHashes[height]));
+                    workingValues.Add(new Bytes32(s_zeroHashes[height]));
                 }
-                var hashes = new List<Hash32>();
+                var hashes = new List<Bytes32>();
                 for (var index = 0; index < workingValues.Count; index += 2)
                 {
                     var hash = Hash(workingValues[index].AsSpan(), workingValues[index + 1].AsSpan());
-                    hashes.Add(new Hash32(hash));
+                    hashes.Add(new Bytes32(hash));
                 }
                 tree.Add(hashes.ToArray());
                 workingValues = hashes;
@@ -86,15 +85,15 @@ namespace Nethermind.BeaconNode.Test
             return tree;
         }
 
-        public static IList<Hash32> GetMerkleProof(IList<IList<Hash32>> tree, int itemIndex, int? treeLength = null)
+        public static IList<Bytes32> GetMerkleProof(IList<IList<Bytes32>> tree, int itemIndex, int? treeLength = null)
         {
-            var proof = new List<Hash32>();
+            var proof = new List<Bytes32>();
             for (var height = 0; height < (treeLength ?? tree.Count); height++)
             {
                 var subindex = (itemIndex / (1 << height)) ^ 1;
                 var value = subindex < tree[height].Count
                     ? tree[height][subindex]
-                    : new Hash32(s_zeroHashes[height]);
+                    : new Bytes32(s_zeroHashes[height]);
                 proof.Add(value);
             }
             return proof;

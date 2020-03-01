@@ -39,30 +39,31 @@ namespace Nethermind.BeaconNode.Test.Helpers
 
             var header1 = new BeaconBlockHeader(
                 slot,
-                new Hash32(Enumerable.Repeat((byte)0x33, 32).ToArray()),
-                new Hash32(Enumerable.Repeat((byte)0x44, 32).ToArray()),
-                new Hash32(Enumerable.Repeat((byte)0x45, 32).ToArray()),
-                BlsSignature.Zero
+                new Root(Enumerable.Repeat((byte)0x33, 32).ToArray()),
+                new Root(Enumerable.Repeat((byte)0x44, 32).ToArray()),
+                new Root(Enumerable.Repeat((byte)0x45, 32).ToArray())
                 );
 
             var header2 = new BeaconBlockHeader(
                 slot,
-                new Hash32(Enumerable.Repeat((byte)0x99, 32).ToArray()),
-                new Hash32(Enumerable.Repeat((byte)0x44, 32).ToArray()),
-                new Hash32(Enumerable.Repeat((byte)0x45, 32).ToArray()),
-                BlsSignature.Zero
+                new Root(Enumerable.Repeat((byte)0x99, 32).ToArray()),
+                new Root(Enumerable.Repeat((byte)0x44, 32).ToArray()),
+                new Root(Enumerable.Repeat((byte)0x45, 32).ToArray())
                 );
 
+            SignedBeaconBlockHeader signedHeader1 = new SignedBeaconBlockHeader(header1, BlsSignature.Zero);
             if (signed1)
             {
-                TestBlockHeader.SignBlockHeader(testServiceProvider, state, header1, privateKey);
+                signedHeader1 = TestBlockHeader.SignBlockHeader(testServiceProvider, state, header1, privateKey);
             }
+            
+            SignedBeaconBlockHeader signedHeader2 = new SignedBeaconBlockHeader(header2, BlsSignature.Zero);
             if (signed2)
             {
-                TestBlockHeader.SignBlockHeader(testServiceProvider, state, header2, privateKey);
+                signedHeader2 = TestBlockHeader.SignBlockHeader(testServiceProvider, state, header2, privateKey);
             }
 
-            var proposerSlashing = new ProposerSlashing(validatorIndex, header1, header2);
+            var proposerSlashing = new ProposerSlashing(validatorIndex, signedHeader1, signedHeader2);
 
             return proposerSlashing;
         }

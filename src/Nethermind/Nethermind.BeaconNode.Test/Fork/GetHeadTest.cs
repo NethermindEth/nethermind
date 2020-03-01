@@ -84,12 +84,12 @@ namespace Nethermind.BeaconNode.Test.Fork
             IStore store = forkChoice.GetGenesisStore(state);
 
             // On receiving a block of `GENESIS_SLOT + 1` slot
-            BeaconBlock block1 = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
+            BeaconBlock block1 = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, state, signed: true);
             TestState.StateTransitionAndSignBlock(testServiceProvider, state, block1);
             await AddBlockToStore(testServiceProvider, store, block1);
 
             // On receiving a block of next epoch
-            BeaconBlock block2 = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
+            BeaconBlock block2 = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, state, signed: true);
             TestState.StateTransitionAndSignBlock(testServiceProvider, state, block2);
             await AddBlockToStore(testServiceProvider, store, block2);
 
@@ -119,14 +119,14 @@ namespace Nethermind.BeaconNode.Test.Fork
 
             // block at slot 1
             BeaconState block1State = BeaconState.Clone(genesisState);
-            BeaconBlock block1 = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, block1State, signed: true);
+            BeaconBlock block1 = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, block1State, signed: true);
             TestState.StateTransitionAndSignBlock(testServiceProvider, block1State, block1);
             await AddBlockToStore(testServiceProvider, store, block1);
             Hash32 block1Root = cryptographyService.SigningRoot(block1);
 
             // build short tree
             BeaconState block2State = BeaconState.Clone(genesisState);
-            BeaconBlock block2 = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, block2State, signed: true);
+            BeaconBlock block2 = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, block2State, signed: true);
             block2.Body.SetGraffiti(new Bytes32(Enumerable.Repeat((byte)0x42, 32).ToArray()));
             TestBlock.SignBlock(testServiceProvider, block2State, block2, ValidatorIndex.None);
             TestState.StateTransitionAndSignBlock(testServiceProvider, block2State, block2);
@@ -165,7 +165,7 @@ namespace Nethermind.BeaconNode.Test.Fork
             BeaconState longState = BeaconState.Clone(genesisState);
             for (int i = 0; i < 3; i++)
             {
-                BeaconBlock longBlock = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, longState, signed: true);
+                BeaconBlock longBlock = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, longState, signed: true);
                 TestState.StateTransitionAndSignBlock(testServiceProvider, longState, longBlock);
                 await AddBlockToStore(testServiceProvider, store, longBlock);
                 if (i == 2)
@@ -176,7 +176,7 @@ namespace Nethermind.BeaconNode.Test.Fork
 
             // build short tree
             BeaconState shortState = BeaconState.Clone(genesisState);
-            BeaconBlock shortBlock = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, shortState, signed: true);
+            BeaconBlock shortBlock = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, shortState, signed: true);
             shortBlock.Body.SetGraffiti(new Bytes32(Enumerable.Repeat((byte)0x42, 32).ToArray()));
             TestBlock.SignBlock(testServiceProvider, shortState, shortBlock, ValidatorIndex.None);
             TestState.StateTransitionAndSignBlock(testServiceProvider, shortState, shortBlock);

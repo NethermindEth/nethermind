@@ -25,7 +25,6 @@ using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Cryptography.Ssz;
 using Nethermind.Core2.Types;
-using Hash32 = Nethermind.Core2.Crypto.Hash32;
 
 namespace Nethermind.BeaconNode.Test.Helpers
 {
@@ -35,25 +34,28 @@ namespace Nethermind.BeaconNode.Test.Helpers
         {
             var beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
 
-            var block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, false);
+            var block = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, state);
             block.SetSlot(slot);
             foreach (var attestation in attestations)
             {
                 block.Body.AddAttestations(attestation);
             }
             beaconStateTransition.ProcessSlots(state, block.Slot);
-            TestBlock.SignBlock(testServiceProvider, state, block, ValidatorIndex.None);
-            beaconStateTransition.StateTransition(state, block, validateStateRoot: false);
+            
+            SignedBeaconBlock signedBlock = TestBlock.SignBlock(testServiceProvider, state, block, ValidatorIndex.None);
+            beaconStateTransition.StateTransition(state, signedBlock, validateResult: false);
         }
 
         public static BlsSignature GetAttestationSignature(IServiceProvider testServiceProvider, BeaconState state, AttestationData attestationData, byte[] privateKey)
         {
             var signatureDomains = testServiceProvider.GetService<IOptions<SignatureDomains>>().Value;
+            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
             var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
-            var messageHash = attestationData.HashTreeRoot();
+            var attestationDataRoot = attestationData.HashTreeRoot();
             var domain = beaconStateAccessor.GetDomain(state, signatureDomains.BeaconAttester, attestationData.Target.Epoch);
-            var signature = TestSecurity.BlsSign(messageHash, privateKey, domain);
+            var signingRoot = beaconChainUtility.ComputeSigningRoot(attestationDataRoot, domain);
+            var signature = TestSecurity.BlsSign(signingRoot, privateKey);
             return signature;
         }
 
@@ -124,10 +126,10 @@ namespace Nethermind.BeaconNode.Test.Helpers
                 throw new ArgumentOutOfRangeException(nameof(slot), slot, $"Slot cannot be greater than state slot {state.Slot}.");
             }
 
-            Hash32 blockRoot;
+            Root blockRoot;
             if (slot == state.Slot)
             {
-                var nextBlock = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, false);
+                var nextBlock = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, state);
                 blockRoot = nextBlock.ParentRoot;
             }
             else
@@ -135,7 +137,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
                 blockRoot = beaconStateAccessor.GetBlockRootAtSlot(state, slot);
             }
 
-            Hash32 epochBoundaryRoot;
+            Root epochBoundaryRoot;
             var currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
             var currentEpochStartSlot = beaconChainUtility.ComputeStartSlotOfEpoch(currentEpoch);
             if (slot < currentEpochStartSlot)
@@ -153,7 +155,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
             }
 
             Epoch sourceEpoch;
-            Hash32 sourceRoot;
+            Root sourceRoot;
             if (slot < currentEpochStartSlot)
             {
                 sourceEpoch = state.PreviousJustifiedCheckpoint.Epoch;

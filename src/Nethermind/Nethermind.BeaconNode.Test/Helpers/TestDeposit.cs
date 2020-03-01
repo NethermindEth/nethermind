@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Nethermind.Core2;
 using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
@@ -28,36 +29,37 @@ namespace Nethermind.BeaconNode.Test.Helpers
 {
     public static class TestDeposit
     {
-        public static (Deposit, Hash32) BuildDeposit(IServiceProvider testServiceProvider, BeaconState? state, IList<DepositData> depositDataList, BlsPublicKey publicKey, byte[] privateKey, Gwei amount, Hash32 withdrawalCredentials, bool signed)
+        public static (Deposit, Root) BuildDeposit(IServiceProvider testServiceProvider, BeaconState? state, IList<DepositData> depositDataList, BlsPublicKey publicKey, byte[] privateKey, Gwei amount, Bytes32 withdrawalCredentials, bool signed)
         {
-            var chainConstants = testServiceProvider.GetService<ChainConstants>();
-            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
+            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
 
-            var depositData = BuildDepositData(testServiceProvider, publicKey, privateKey, amount, withdrawalCredentials, state, signed);
-            var index = depositDataList.Count;
+            DepositData depositData = BuildDepositData(testServiceProvider, publicKey, privateKey, amount, withdrawalCredentials, state, signed);
+            int index = depositDataList.Count;
             depositDataList.Add(depositData);
-            Hash32 root = depositDataList.HashTreeRoot((ulong)1 << chainConstants.DepositContractTreeDepth);
-            var allLeaves = depositDataList.Select(x => x.HashTreeRoot());
-            var tree = TestSecurity.CalculateMerkleTreeFromLeaves(allLeaves);
-            var merkleProof = TestSecurity.GetMerkleProof(tree, index, 32);
-            var proof = new List<Hash32>(merkleProof);
-            var indexBytes = new Span<byte>(new byte[32]);
+            Root root = cryptographyService.HashTreeRoot(depositDataList);
+            IEnumerable<Bytes32> allLeaves = depositDataList.Select(x => new Bytes32(cryptographyService.HashTreeRoot(x).AsSpan()));
+            IList<IList<Bytes32>> tree = TestSecurity.CalculateMerkleTreeFromLeaves(allLeaves);
+            IList<Bytes32> merkleProof = TestSecurity.GetMerkleProof(tree, index, 32);
+            List<Bytes32> proof = new List<Bytes32>(merkleProof);
+            Span<byte> indexBytes = new Span<byte>(new byte[32]);
             BitConverter.TryWriteBytes(indexBytes, (ulong)index + 1);
             if (!BitConverter.IsLittleEndian)
             {
                 indexBytes.Slice(0, 8).Reverse();
             }
-            var indexHash = new Hash32(indexBytes);
+            Bytes32 indexHash = new Bytes32(indexBytes);
             proof.Add(indexHash);
-            var leaf = depositData.HashTreeRoot();
+            Bytes32 leaf = new Bytes32(cryptographyService.HashTreeRoot(depositData).AsSpan());
             beaconChainUtility.IsValidMerkleBranch(leaf, proof, chainConstants.DepositContractTreeDepth + 1, (ulong)index, root);
-            var deposit = new Deposit(proof, depositData);
+            Deposit deposit = new Deposit(proof, depositData);
             return (deposit, root);
         }
 
-        public static DepositData BuildDepositData(IServiceProvider testServiceProvider, BlsPublicKey publicKey, byte[] privateKey, Gwei amount, Hash32 withdrawalCredentials, BeaconState? state, bool signed)
+        public static DepositData BuildDepositData(IServiceProvider testServiceProvider, BlsPublicKey publicKey, byte[] privateKey, Gwei amount, Bytes32 withdrawalCredentials, BeaconState? state, bool signed)
         {
-            var depositData = new DepositData(publicKey, withdrawalCredentials, amount, BlsSignature.Zero);
+            DepositData depositData = new DepositData(publicKey, withdrawalCredentials, amount, BlsSignature.Zero);
             if (signed)
             {
                 SignDepositData(testServiceProvider, depositData, privateKey, state);
@@ -65,19 +67,19 @@ namespace Nethermind.BeaconNode.Test.Helpers
             return depositData;
         }
 
-        public static (IEnumerable<Deposit>, Hash32) PrepareGenesisDeposits(IServiceProvider testServiceProvider, int genesisValidatorCount, Gwei amount, bool signed)
+        public static (IEnumerable<Deposit>, Root) PrepareGenesisDeposits(IServiceProvider testServiceProvider, int genesisValidatorCount, Gwei amount, bool signed)
         {
-            var chainConstants = testServiceProvider.GetService<ChainConstants>();
-            var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
-            var initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
-            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            var maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
+            ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
+            MiscellaneousParameters miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
+            InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
+            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            MaxOperationsPerBlock maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
 
-            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
-            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
-            var beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
+            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+            BeaconStateTransition beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
 
-            var privateKeys = TestKeys.PrivateKeys(timeParameters).ToArray();
+            byte[][] privateKeys = TestKeys.PrivateKeys(timeParameters).ToArray();
             BlsPublicKey[] publicKeys;
             if (signed)
             {
@@ -87,18 +89,18 @@ namespace Nethermind.BeaconNode.Test.Helpers
             {
                 publicKeys = privateKeys.Select(x => new BlsPublicKey(x)).ToArray();
             }
-            var depositDataList = new List<DepositData>();
-            var genesisDeposits = new List<Deposit>();
-            var root = Hash32.Zero;
-            for (var validatorIndex = 0; validatorIndex < genesisValidatorCount; validatorIndex++)
+            List<DepositData> depositDataList = new List<DepositData>();
+            List<Deposit> genesisDeposits = new List<Deposit>();
+            Root root = Root.Zero;
+            for (int validatorIndex = 0; validatorIndex < genesisValidatorCount; validatorIndex++)
             {
-                var publicKey = publicKeys[validatorIndex];
-                var privateKey = privateKeys[validatorIndex];
+                BlsPublicKey publicKey = publicKeys[validatorIndex];
+                byte[] privateKey = privateKeys[validatorIndex];
                 // insecurely use pubkey as withdrawal key if no credentials provided
-                var withdrawalCredentialBytes = TestSecurity.Hash(publicKey.AsSpan());
+                byte[] withdrawalCredentialBytes = TestSecurity.Hash(publicKey.AsSpan());
                 withdrawalCredentialBytes[0] = initialValues.BlsWithdrawalPrefix;
-                var withdrawalCredentials = new Hash32(withdrawalCredentialBytes);
-                (var deposit, var depositRoot) = BuildDeposit(testServiceProvider, null, depositDataList, publicKey, privateKey, amount, withdrawalCredentials, signed);
+                Bytes32 withdrawalCredentials = new Bytes32(withdrawalCredentialBytes);
+                (Deposit deposit, Root depositRoot) = BuildDeposit(testServiceProvider, null, depositDataList, publicKey, privateKey, amount, withdrawalCredentials, signed);
                 root = depositRoot;
                 genesisDeposits.Add(deposit);
             }
@@ -108,30 +110,30 @@ namespace Nethermind.BeaconNode.Test.Helpers
         /// <summary>
         /// Prepare the state for the deposit, and create a deposit for the given validator, depositing the given amount.
         /// </summary>
-        public static Deposit PrepareStateAndDeposit(IServiceProvider testServiceProvider, BeaconState state, ValidatorIndex validatorIndex, Gwei amount, Hash32 withdrawalCredentials, bool signed)
+        public static Deposit PrepareStateAndDeposit(IServiceProvider testServiceProvider, BeaconState state, ValidatorIndex validatorIndex, Gwei amount, Bytes32 withdrawalCredentials, bool signed)
         {
-            var chainConstants = testServiceProvider.GetService<ChainConstants>();
-            var initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
-            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
+            InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
+            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
 
-            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
-            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
-            var privateKeys = TestKeys.PrivateKeys(timeParameters).ToArray();
-            var publicKeys = TestKeys.PublicKeys(timeParameters).ToArray();
-            var privateKey = privateKeys[(int)(ulong)validatorIndex];
-            var publicKey = publicKeys[(int)(ulong)validatorIndex];
+            byte[][] privateKeys = TestKeys.PrivateKeys(timeParameters).ToArray();
+            BlsPublicKey[] publicKeys = TestKeys.PublicKeys(timeParameters).ToArray();
+            byte[] privateKey = privateKeys[(int)(ulong)validatorIndex];
+            BlsPublicKey publicKey = publicKeys[(int)(ulong)validatorIndex];
 
-            if (withdrawalCredentials == Hash32.Zero)
+            if (withdrawalCredentials == Bytes32.Zero)
             {
                 // insecurely use pubkey as withdrawal key if no credentials provided
-                var withdrawalCredentialBytes = TestSecurity.Hash(publicKey.AsSpan());
+                byte[] withdrawalCredentialBytes = TestSecurity.Hash(publicKey.AsSpan());
                 withdrawalCredentialBytes[0] = initialValues.BlsWithdrawalPrefix;
-                withdrawalCredentials = new Hash32(withdrawalCredentialBytes);
+                withdrawalCredentials = new Bytes32(withdrawalCredentialBytes);
             }
 
-            var depositDataList = new List<DepositData>();
-            (var deposit, var depositRoot) = BuildDeposit(testServiceProvider, state, depositDataList, publicKey, privateKey, amount, withdrawalCredentials, signed);
+            List<DepositData> depositDataList = new List<DepositData>();
+            (Deposit deposit, Root depositRoot) = BuildDeposit(testServiceProvider, state, depositDataList, publicKey, privateKey, amount, withdrawalCredentials, signed);
 
             state.SetEth1DepositIndex(0);
             state.Eth1Data.SetDepositRoot(depositRoot);
@@ -142,22 +144,26 @@ namespace Nethermind.BeaconNode.Test.Helpers
 
         public static void SignDepositData(IServiceProvider testServiceProvider, DepositData depositData, byte[] privateKey, BeaconState? state)
         {
-            var signatureDomains = testServiceProvider.GetService<IOptions<SignatureDomains>>().Value;
+            SignatureDomains signatureDomains = testServiceProvider.GetService<IOptions<SignatureDomains>>().Value;
+            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
 
             Domain domain;
             if (state == null)
             {
                 // Genesis
-                var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
                 domain = beaconChainUtility.ComputeDomain(signatureDomains.Deposit);
             }
             else
             {
-                var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+                BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
                 domain = beaconStateAccessor.GetDomain(state, signatureDomains.Deposit, Epoch.None);
             }
 
-            var signature = TestSecurity.BlsSign(depositData.SigningRoot(), privateKey, domain);
+            DepositMessage depositMessage = new DepositMessage(depositData.PublicKey, depositData.WithdrawalCredentials, depositData.Amount);
+            Root depositMessageRoot = cryptographyService.HashTreeRoot(depositMessage);
+            Root signingRoot = beaconChainUtility.ComputeSigningRoot(depositMessageRoot, domain);
+            BlsSignature signature = TestSecurity.BlsSign(signingRoot, privateKey);
             depositData.SetSignature(signature);
         }
     }

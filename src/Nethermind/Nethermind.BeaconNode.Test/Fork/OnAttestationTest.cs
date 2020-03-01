@@ -50,7 +50,7 @@ namespace Nethermind.BeaconNode.Test.Fork
             ulong time = store.Time + timeParameters.SecondsPerSlot * 2;
             await forkChoice.OnTickAsync(store, time);
 
-            BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
+            BeaconBlock block = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, state, signed: true);
             TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
 
             // Store block in store
@@ -85,7 +85,7 @@ namespace Nethermind.BeaconNode.Test.Fork
             ulong time = store.Time + timeParameters.SecondsPerSlot * (ulong)timeParameters.SlotsPerEpoch;
             await forkChoice.OnTickAsync(store, time);
 
-            BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
+            BeaconBlock block = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, state, signed: true);
             TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
 
             // Store block in store
@@ -123,7 +123,7 @@ namespace Nethermind.BeaconNode.Test.Fork
             await forkChoice.OnTickAsync(store, time);
 
             // create and store block from 3 epochs ago
-            BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
+            BeaconBlock block = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, state, signed: true);
             TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
             await forkChoice.OnBlockAsync(store, block);
 

@@ -42,22 +42,30 @@ namespace Nethermind.Core2.Containers
         private readonly List<Validator> _validators;
 
         public BeaconState(
+            // Versioning
             ulong genesisTime,
             Slot slot,
             Fork fork,
+            // History
             BeaconBlockHeader latestBlockHeader,
             Root[] blockRoots,
             Root[] stateRoots,
             IList<Root> historicalRoots,
+            // Eth1
             Eth1Data eth1Data,
             IList<Eth1Data> eth1DataVotes,
             ulong eth1DepositIndex,
+            // Registry
             IList<Validator> validators,
             IList<Gwei> balances,
+            // Randomness
             Bytes32[] randaoMixes,
+            // Slashings
             Gwei[] slashings,
+            // Attestations
             IList<PendingAttestation> previousEpochAttestations,
             IList<PendingAttestation> currentEpochAttestations,
+            // Finality
             BitArray justificationBits,
             Checkpoint previousJustifiedCheckpoint,
             Checkpoint currentJustifiedCheckpoint,
@@ -87,9 +95,9 @@ namespace Nethermind.Core2.Containers
 
         public BeaconState(
             ulong genesisTime, 
-            //ulong eth1DepositIndex,
             Fork fork,
             Eth1Data eth1Data, 
+            //ulong eth1DepositIndex,
             BeaconBlockHeader latestBlockHeader,
             uint slotsPerHistoricalRoot, 
             ulong epochsPerHistoricalVector, 

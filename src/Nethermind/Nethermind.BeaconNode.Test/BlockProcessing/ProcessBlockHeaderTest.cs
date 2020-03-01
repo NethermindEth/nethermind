@@ -34,7 +34,7 @@ namespace Nethermind.BeaconNode.Test.BlockProcessing
             var testServiceProvider = TestSystem.BuildTestServiceProvider();
             var state = TestState.PrepareTestState(testServiceProvider);
 
-            var block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
+            var block = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, state, signed: true);
 
             RunBlockHeaderProcessing(testServiceProvider, state, block, expectValid: true);
         }
@@ -46,7 +46,7 @@ namespace Nethermind.BeaconNode.Test.BlockProcessing
             var testServiceProvider = TestSystem.BuildTestServiceProvider();
             var state = TestState.PrepareTestState(testServiceProvider);
 
-            var block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: false);
+            var block = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, state, signed: false);
 
             RunBlockHeaderProcessing(testServiceProvider, state, block, expectValid: false);
         }
