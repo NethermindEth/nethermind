@@ -153,6 +153,7 @@ namespace Nethermind.Blockchain.Synchronization
             ValidateSeal(block, peerInfo);
             if (_synchronizer.SyncMode == SyncMode.Full)
             {
+                LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
                 SyncBlock(block, peerInfo);
             }
         }
@@ -187,7 +188,6 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void SyncBlock(Block block, PeerInfo peerInfo)
         {
-            LogBlockAuthorNicely(block);
             if (_logger.IsTrace) _logger.Trace($"{block}");
 
             // we do not trust total difficulty from peers
@@ -223,7 +223,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        private void LogBlockAuthorNicely(Block block)
+        private void LogBlockAuthorNicely(Block block, Node nodeWhoSentTheBlock)
         {
             // This line is not particularly important (just for logging)
             // and somehow it got refactored by ReSharper into some nightmare line.
