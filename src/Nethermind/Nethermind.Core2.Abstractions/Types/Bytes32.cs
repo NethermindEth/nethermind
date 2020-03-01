@@ -35,46 +35,59 @@ namespace Nethermind.Core2.Types
         {
             if (span.Length != Length)
             {
-                throw new ArgumentOutOfRangeException(nameof(span), span.Length, $"{nameof(Bytes32)} must have exactly {Length} bytes");
+                throw new ArgumentOutOfRangeException(nameof(span), span.Length,
+                    $"{nameof(Bytes32)} must have exactly {Length} bytes");
             }
+
             _bytes = span.ToArray();
         }
-        
-        public static Bytes32 Zero { get; } = new Bytes32(new byte[Length]);
-        
-        public static explicit operator Bytes32(ReadOnlySpan<byte> span) => new Bytes32(span);
 
-        public static explicit operator ReadOnlySpan<byte>(Bytes32 value) => value.AsSpan();
+        public static Bytes32 Zero { get; } = new Bytes32(new byte[Length]);
 
         public ReadOnlySpan<byte> AsSpan()
         {
             return new ReadOnlySpan<byte>(_bytes);
         }
 
-        public override bool Equals(object? obj)
+        public static bool operator ==(Bytes32 left, Bytes32 right)
         {
-            return Equals(obj as Bytes32);
+            return left.Equals(right);
         }
 
-        public bool Equals(Bytes32? other)
-        {
-            return other != null &&
-                _bytes.SequenceEqual(other._bytes);
-        }
+        public static explicit operator Bytes32(ReadOnlySpan<byte> span) => new Bytes32(span);
 
-        public override int GetHashCode()
+        public static explicit operator ReadOnlySpan<byte>(Bytes32 value) => value.AsSpan();
+
+        public static bool operator !=(Bytes32 left, Bytes32 right)
         {
-            return BinaryPrimitives.ReadInt32LittleEndian(AsSpan().Slice(0, 4));
+            return !(left == right);
         }
 
         public override string ToString()
         {
             return AsSpan().ToHexString(true);
         }
-        
+
         public Bytes32 Xor(Bytes32 other)
         {
             return new Bytes32(other.AsSpan().Xor(AsSpan()));
-        }        
+        }
+
+        public bool Equals(Bytes32? other)
+        {
+            if (ReferenceEquals(null, other)) return false;
+            if (ReferenceEquals(this, other)) return true;
+            return _bytes.SequenceEqual(other._bytes);
+        }
+
+        public override bool Equals(object? obj)
+        {
+            return ReferenceEquals(this, obj) || obj is Bytes32 other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            return BinaryPrimitives.ReadInt32LittleEndian(AsSpan().Slice(0, 4));
+        }
     }
 }

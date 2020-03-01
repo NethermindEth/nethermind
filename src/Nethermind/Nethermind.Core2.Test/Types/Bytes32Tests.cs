@@ -22,13 +22,13 @@ using NUnit.Framework;
 namespace Nethermind.Core2.Test.Types
 {
     [TestFixture]
-    public class Hash32Tests
+    public class Bytes32Tests
     {
         [Test]
         public void Zero_is_zero()
         {
-            Hash32 a = new Hash32(new byte[32]);
-            Assert.AreEqual(a, Hash32.Zero);
+            Bytes32 a = new Bytes32(new byte[32]);
+            Assert.AreEqual(a, Bytes32.Zero);
         }
         
         [Test]
@@ -38,8 +38,8 @@ namespace Nethermind.Core2.Test.Types
             new Random(42).NextBytes(bytesA);
             byte[] bytesB = new byte[32];
             bytesA.AsSpan().CopyTo(bytesB);
-            Hash32 a = new Hash32(bytesA);
-            Hash32 b = new Hash32(bytesB);
+            Bytes32 a = new Bytes32(bytesA);
+            Bytes32 b = new Bytes32(bytesB);
             Assert.AreEqual(a, b);
             Assert.True(a.Equals(b));
             Assert.True(b.Equals(a));
@@ -49,7 +49,6 @@ namespace Nethermind.Core2.Test.Types
             Assert.True(a.Equals(b));
             Assert.AreEqual(a.GetHashCode(), b.GetHashCode());
             Assert.AreEqual(a.ToString(), b.ToString());
-            Assert.AreEqual(0, a.CompareTo(b));
         }
         
         [Test]
@@ -60,8 +59,8 @@ namespace Nethermind.Core2.Test.Types
             random.NextBytes(bytesA);
             byte[] bytesB = new byte[32];
             random.NextBytes(bytesB);
-            Hash32 a = new Hash32(bytesA);
-            Hash32 b = new Hash32(bytesB);
+            Bytes32 a = new Bytes32(bytesA);
+            Bytes32 b = new Bytes32(bytesB);
             var c = a.Xor(b);
             Assert.AreEqual("0xf1c1929d1dc3cae03774ee8a65a8b65408dcaad4585185ebd4662e36ac2354c8", c.ToString());
         }
@@ -72,8 +71,8 @@ namespace Nethermind.Core2.Test.Types
             byte[] bytesA = new byte[32];
             new Random(42).NextBytes(bytesA);
             byte[] bytesB = new byte[32];
-            Hash32 a = new Hash32(bytesA);
-            Hash32 b = new Hash32(bytesB);
+            Bytes32 a = new Bytes32(bytesA);
+            Bytes32 b = new Bytes32(bytesB);
             Assert.AreNotEqual(a, b);
             Assert.False(a.Equals(b));
             Assert.False(b.Equals(a));
@@ -90,7 +89,7 @@ namespace Nethermind.Core2.Test.Types
         {
             byte[] bytesA = new byte[32];
             new Random(42).NextBytes(bytesA);
-            Hash32 a = new Hash32(bytesA);
+            Bytes32 a = new Bytes32(bytesA);
             Assert.AreEqual(bytesA.ToHexString(true), a.ToString());
         }
     }

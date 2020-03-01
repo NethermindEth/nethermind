@@ -48,30 +48,42 @@ namespace Nethermind.Core2.Crypto
         {
             return new ReadOnlySpan<byte>(_bytes);
         }
-
-        public override bool Equals(object? obj)
-        {
-            return Equals(obj as Root);
-        }
-
-        public bool Equals(Root? other)
-        {
-            return other != null &&
-                   _bytes.SequenceEqual(other._bytes);
-        }
+        
 
         public override int GetHashCode()
         {
             return BinaryPrimitives.ReadInt32LittleEndian(AsSpan().Slice(0, 4));
         }
 
+        public static bool operator ==(Root left, Root right)
+        {
+            return left.Equals(right);
+        }
+
         public static explicit operator Root(ReadOnlySpan<byte> span) => new Root(span);
 
         public static explicit operator ReadOnlySpan<byte>(Root value) => value.AsSpan();
 
+        public static bool operator !=(Root left, Root right)
+        {
+            return !(left == right);
+        }
+
         public override string ToString()
         {
             return AsSpan().ToHexString(true);
+        }
+
+        public bool Equals(Root? other)
+        {
+            if (ReferenceEquals(null, other)) return false;
+            if (ReferenceEquals(this, other)) return true;
+            return _bytes.Equals(other._bytes);
+        }
+
+        public override bool Equals(object? obj)
+        {
+            return ReferenceEquals(this, obj) || obj is Root other && Equals(other);
         }
     }
 }
