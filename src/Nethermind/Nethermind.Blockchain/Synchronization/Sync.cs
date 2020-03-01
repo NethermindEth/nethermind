@@ -18,6 +18,6 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public static class Sync
     {
-        public static long MaxReorganizationLength = 512;
+        public static long MaxReorgLength = 512;
     }
 }
