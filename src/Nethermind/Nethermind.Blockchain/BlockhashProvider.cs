@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -45,7 +47,12 @@ namespace Nethermind.Blockchain
 
             bool isFastSyncSearch = false;
 
-            BlockHeader header = _blockTree.FindHeader(currentBlock.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            BlockHeader header = _blockTree.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (header == null)
+            {
+                throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
+            }
+            
             for (var i = 0; i < _maxDepth; i++)
             {
                 if (number == header.Number)
@@ -53,7 +60,12 @@ namespace Nethermind.Blockchain
                     return header.Hash;
                 }
 
-                header = _blockTree.FindHeader(header.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                header = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                if (header == null)
+                {
+                    throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
+                }
+                
                 if (_blockTree.IsMainChain(header.Hash) && !isFastSyncSearch)
                 {
                     try

@@ -148,7 +148,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
         [Test]
-        public void Will_reject_block_with_bad_total_diff()
+        public void Will_not_reject_block_with_bad_total_diff_but_will_reset_diff_to_null()
         {
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
@@ -159,28 +159,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
             block.Header.TotalDifficulty *= 2;
 
             _synchronizer.SyncMode.Returns(SyncMode.Full);
-            Assert.Throws<EthSynchronizationException>(() => _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock));
-        }
-        
-        [Test]
-        public void Will_reject_block_with_bad_total_diff_and_accept_same_valid_block_after()
-        {
-            BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
-            BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
-
-            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, new BlockValidator(TestTxValidator.AlwaysValid, new HeaderValidator(localBlockTree, TestSealValidator.AlwaysValid, MainNetSpecProvider.Instance, LimboLogs.Instance), AlwaysValidOmmersValidator.Instance, MainNetSpecProvider.Instance, LimboLogs.Instance), TestSealValidator.AlwaysValid, _peerPool, _synchronizer, new SyncConfig(), LimboLogs.Instance);
-            
-            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
-            UInt256? originalTotalDiff = block.Header.TotalDifficulty; 
-            block.Header.TotalDifficulty *= 2;
-
-            _synchronizer.SyncMode.Returns(SyncMode.Full);
-            Assert.Throws<EthSynchronizationException>(() => _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock));
-
-            block.Header.TotalDifficulty = originalTotalDiff;
             _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock);
+            Assert.AreEqual(localBlockTree.BestSuggestedHeader.Hash, block.Header.Hash);
             
-            Assert.AreEqual(localBlockTree.BestSuggestedHeader, block.Header);
+            Block parentBlock = remoteBlockTree.FindBlock(8, BlockTreeLookupOptions.None);
+            Assert.AreEqual(parentBlock.TotalDifficulty + block.Difficulty, localBlockTree.BestSuggestedHeader.TotalDifficulty);
         }
 
         [Test]
