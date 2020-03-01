@@ -49,35 +49,35 @@ namespace Nethermind.Ssz.Benchmarks
             Attestation attestation = new Attestation(
                 new BitArray(new byte[5]),
                 data,
-                SszTest.TestSig1
+                TestSig1
                 );
 
             DepositData depositData = new DepositData(
-                SszTest.TestKey1,
-                Sha256.RootOfAnEmptyString,
+                TestKey1,
+                Sha256.Bytes32OfAnEmptyString,
                 new Gwei(7),
-                SszTest.TestSig1);
+                TestSig1);
 
             Deposit deposit = new Deposit(
-                new Hash32[Ssz.DepositContractTreeDepth + 1],
+                new Bytes32[Ssz.DepositContractTreeDepth + 1],
                 depositData);
 
             IndexedAttestation indexedAttestation1 = new IndexedAttestation(
                 new ValidatorIndex[8],
                 data,
-                SszTest.TestSig1);
+                TestSig1);
 
             IndexedAttestation indexedAttestation2 = new IndexedAttestation(
                 new ValidatorIndex[8],
                 data,
-                SszTest.TestSig1);
+                TestSig1);
 
             AttesterSlashing slashing = new AttesterSlashing(indexedAttestation1, indexedAttestation2);
 
             Eth1Data eth1Data = new Eth1Data(
                 Sha256.RootOfAnEmptyString,
                 9,
-                Sha256.RootOfAnEmptyString);
+                Sha256.Bytes32OfAnEmptyString);
             
             Attestation[] attestations = new Attestation[3];
             attestations[1] = attestation;
@@ -92,9 +92,9 @@ namespace Nethermind.Ssz.Benchmarks
             
             ProposerSlashing[] proposerSlashings = new ProposerSlashing[10];
 
-            BlsSignature randaoReveal = SszTest.TestSig1;
+            BlsSignature randaoReveal = TestSig1;
             
-            VoluntaryExit[] voluntaryExits = new VoluntaryExit[11];
+            SignedVoluntaryExit[] signedVoluntaryExits = new SignedVoluntaryExit[11];
 
             _body = new BeaconBlockBody(randaoReveal,
                 eth1Data,
@@ -103,7 +103,7 @@ namespace Nethermind.Ssz.Benchmarks
                 attesterSlashings,
                 attestations,
                 deposits,
-                voluntaryExits);
+                signedVoluntaryExits);
 
             _encoded = new byte[Ssz.BeaconBlockBodyLength(_body)];
         }

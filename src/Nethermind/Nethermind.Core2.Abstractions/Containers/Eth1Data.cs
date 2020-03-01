@@ -80,10 +80,6 @@ namespace Nethermind.Core2.Containers
 
         public void SetDepositRoot(Root depositRoot)
         {
-            if (depositRoot == null)
-            {
-                throw new ArgumentNullException(nameof(depositRoot));
-            }
             DepositRoot = depositRoot;
         }
     }
