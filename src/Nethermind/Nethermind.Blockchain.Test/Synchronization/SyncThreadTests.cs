@@ -238,8 +238,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
         private SyncTestContext CreateSyncManager(int index)
         {
-            Rlp.RegisterDecoders(typeof(ParityTraceDecoder).Assembly);
-
             var logManager = NoErrorLimboLogs.Instance;
             ConsoleAsyncLogger logger = new ConsoleAsyncLogger(LogLevel.Debug, "PEER " + index + " ");
 //            var logManager = new OneLoggerLogManager(logger);

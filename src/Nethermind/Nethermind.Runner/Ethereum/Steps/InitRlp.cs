@@ -35,7 +35,6 @@ namespace Nethermind.Runner.Ethereum.Steps
         [Todo(Improve.Refactor, "Automatically scan all the references solutions?")]
         public virtual Task Execute()
         {
-            Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(ParityTraceDecoder)));
             Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(NetworkNodeDecoder)));
             return Task.CompletedTask;
         }

@@ -62,8 +62,6 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         private void Initialize(bool auRa = false)
         {
-            Rlp.RegisterDecoders(typeof(ParityTraceDecoder).Assembly);
-
             _ethSerializer = new EthereumJsonSerializer();
             ISpecProvider specProvider = MainNetSpecProvider.Instance;
             IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider, LimboLogs.Instance);
