@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -42,19 +41,12 @@ using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Metrics;
-using Nethermind.Logging;
 using Nethermind.Logging.NLog;
 using Nethermind.Monitoring.Config;
 using Nethermind.Runner.Ethereum;
-using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Runner.Ethereum.Steps;
 using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
-using Newtonsoft.Json;
-using NLog;
-using NLog.Config;
 using ILogger = Nethermind.Logging.ILogger;
-using Metrics = Nethermind.Trie.Metrics;
 
 namespace Nethermind.Runner
 {
@@ -138,7 +130,7 @@ namespace Nethermind.Runner
         {
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
-            IMetricsConfig metricOptions = configProvider.GetConfig<IMetricsConfig>();
+            IMetricsConfig metricsConfig = configProvider.GetConfig<IMetricsConfig>();
             NLogManager logManager = new NLogManager(initConfig.LogFileName, initConfig.LogDirectory);
             IRpcModuleProvider rpcModuleProvider = jsonRpcConfig.Enabled
                 ? new RpcModuleProvider(configProvider.GetConfig<IJsonRpcConfig>(), logManager)
@@ -146,18 +138,19 @@ namespace Nethermind.Runner
             EthereumJsonSerializer jsonSerializer = new EthereumJsonSerializer();
             WebSocketsManager webSocketsManager = new WebSocketsManager();
 
-            if (metricOptions.Enabled)
+            if (metricsConfig.Enabled)
             {
-                int intervalSeconds = metricOptions.IntervalSeconds;
-                _monitoringService = new MonitoringService(new MetricsUpdater(intervalSeconds),
-                    metricOptions.PushGatewayUrl, ClientVersion.Description,
-                    metricOptions.NodeName, intervalSeconds, logManager);
-                _monitoringService.RegisterMetrics(typeof(Nethermind.JsonRpc.Metrics));
-                _monitoringService.RegisterMetrics(typeof(Metrics));
-                _monitoringService.RegisterMetrics(typeof(Nethermind.Evm.Metrics));
+                Metrics.Version = VersionToMetrics.ConvertToNumber(ClientVersion.Version);
+                MetricsUpdater metricsUpdater = new MetricsUpdater(metricsConfig);
+                _monitoringService = new MonitoringService(metricsUpdater, metricsConfig, logManager);
                 _monitoringService.RegisterMetrics(typeof(Nethermind.Blockchain.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Nethermind.Db.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Nethermind.Evm.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Nethermind.JsonRpc.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Nethermind.Trie.Metrics));
                 _monitoringService.RegisterMetrics(typeof(Nethermind.Network.Metrics));
                 _monitoringService.RegisterMetrics(typeof(Nethermind.TxPool.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Metrics));
 
                 await _monitoringService.StartAsync().ContinueWith(x =>
                 {

@@ -14,29 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Reflection;
-using System.Threading.Tasks;
-using Nethermind.Core.Attributes;
-using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.ParityStyle;
-using Nethermind.Network;
-using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Serialization.Rlp;
+using System.ComponentModel;
 
-namespace Nethermind.Runner.Ethereum.Steps
+namespace Nethermind.Runner
 {
-    [RunnerStepDependencies]
-    public class InitRlp : IStep
+    public static class Metrics
     {
-        public InitRlp(EthereumRunnerContext context)
-        {
-        }
-
-        [Todo(Improve.Refactor, "Automatically scan all the references solutions?")]
-        public virtual Task Execute()
-        {
-            Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(NetworkNodeDecoder)));
-            return Task.CompletedTask;
-        }
+        [Description("Version number")]
+        public static long Version { get; set; }
     }
 }

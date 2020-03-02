@@ -556,7 +556,7 @@ namespace Nethermind.Blockchain
 
                 return AddBlockResult.UnknownParent;
             }
-
+            
             SetTotalDifficulty(header);
 
             if (block != null && !isKnown)
@@ -765,7 +765,7 @@ namespace Nethermind.Blockchain
                     break;
                 }
 
-                current = FindHeader(current.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                current = this.FindParentHeader(current, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             } while (current != null && responseIndex < numberOfBlocks);
 
             return result;

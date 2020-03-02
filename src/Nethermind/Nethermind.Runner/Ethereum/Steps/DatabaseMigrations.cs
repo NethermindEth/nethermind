@@ -195,7 +195,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 IEnumerable<BlockHeader> GetHeadersForMigration()
                 {
-                    bool TryGetMainChainBlockHashFromLevel(long number, out Keccak blockHash)
+                    bool TryGetMainChainBlockHashFromLevel(long number, out Keccak? blockHash)
                     {
                         using var batch = chainLevelInfoRepository.StartBatch();
                         var level = chainLevelInfoRepository.LoadLevel(number);
