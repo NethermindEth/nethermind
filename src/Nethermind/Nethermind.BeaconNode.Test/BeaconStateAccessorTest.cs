@@ -75,9 +75,9 @@ namespace Nethermind.BeaconNode.Test
 
                 await forkChoice.OnTickAsync(store, time);
                 time++;
-                BeaconBlock block = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, state, signed: true);
-                TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
-                await forkChoice.OnBlockAsync(store, block);
+                BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state);
+                SignedBeaconBlock signedBlock = TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
+                await forkChoice.OnBlockAsync(store, signedBlock);
                 await forkChoice.OnTickAsync(store, time);
                 time++;
 

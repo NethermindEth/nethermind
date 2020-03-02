@@ -67,7 +67,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
             return depositData;
         }
 
-        public static (IEnumerable<Deposit>, Root) PrepareGenesisDeposits(IServiceProvider testServiceProvider, int genesisValidatorCount, Gwei amount, bool signed)
+        public static (IList<Deposit>, Root) PrepareGenesisDeposits(IServiceProvider testServiceProvider, int genesisValidatorCount, Gwei amount, bool signed)
         {
             ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
             MiscellaneousParameters miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;

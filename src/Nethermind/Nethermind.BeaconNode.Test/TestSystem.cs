@@ -89,7 +89,7 @@ namespace Nethermind.BeaconNode.Test
                 IOptionsMonitor<StateListLengths> stateListLengthOptions,
                 IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions)
             {
-                _cryptographyService = new CortexCryptographyService(chainConstants, miscellaneousParameterOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions);
+                _cryptographyService = new CryptographyService(chainConstants, miscellaneousParameterOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions);
             }
 
             public BlsPublicKey BlsAggregatePublicKeys(IEnumerable<BlsPublicKey> publicKeys)

@@ -18,7 +18,9 @@ using System;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.BeaconNode.Test.Helpers;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Shouldly;
 
@@ -31,10 +33,10 @@ namespace Nethermind.BeaconNode.Test.BlockProcessing
         public void SuccessBlockHeader()
         {
             // Arrange
-            var testServiceProvider = TestSystem.BuildTestServiceProvider();
-            var state = TestState.PrepareTestState(testServiceProvider);
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
+            BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            var block = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, state, signed: true);
+            BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state);
 
             RunBlockHeaderProcessing(testServiceProvider, state, block, expectValid: true);
         }
@@ -43,10 +45,10 @@ namespace Nethermind.BeaconNode.Test.BlockProcessing
         public void InvalidSignatureBlockHeader()
         {
             // Arrange
-            var testServiceProvider = TestSystem.BuildTestServiceProvider();
-            var state = TestState.PrepareTestState(testServiceProvider);
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
+            BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            var block = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, state, signed: false);
+            BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state);
 
             RunBlockHeaderProcessing(testServiceProvider, state, block, expectValid: false);
         }
@@ -58,21 +60,23 @@ namespace Nethermind.BeaconNode.Test.BlockProcessing
         // If ``valid == False``, run expecting ``AssertionError``
         private void RunBlockHeaderProcessing(IServiceProvider testServiceProvider, BeaconState state, BeaconBlock block, bool expectValid)
         {
-            var beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
+            ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
+            BeaconStateTransition beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
 
             PrepareStateForHeaderProcessing(state,
                 beaconStateTransition);
 
             if (expectValid)
             {
-                beaconStateTransition.ProcessBlockHeader(state, block, validateStateRoot: true);
+                beaconStateTransition.ProcessBlockHeader(state, block);
+                Root checkStateRoot = cryptographyService.HashTreeRoot(state);
+                block.StateRoot.ShouldBe(checkStateRoot);
             }
             else
             {
-                Should.Throw<Exception>(() =>
-                {
-                    beaconStateTransition.ProcessBlockHeader(state, block, validateStateRoot: true);
-                });
+                beaconStateTransition.ProcessBlockHeader(state, block);
+                Root checkStateRoot = cryptographyService.HashTreeRoot(state);
+                block.StateRoot.ShouldNotBe(checkStateRoot);
             }
         }
 

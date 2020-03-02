@@ -67,7 +67,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
             return emptyBlock;
         }
 
-        public static BeaconBlock BuildEmptySignedBlockForNextSlot(IServiceProvider testServiceProvider, BeaconState state)
+        public static BeaconBlock BuildEmptyBlockForNextSlot(IServiceProvider testServiceProvider, BeaconState state)
         {
             return BuildEmptyBlock(testServiceProvider, state, state.Slot + new Slot(1));
         }

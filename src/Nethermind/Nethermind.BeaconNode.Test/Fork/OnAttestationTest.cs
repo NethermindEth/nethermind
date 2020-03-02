@@ -26,6 +26,7 @@ using Nethermind.BeaconNode.Storage;
 using Nethermind.BeaconNode.Test.Helpers;
 using Nethermind.Core2;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Shouldly;
 namespace Nethermind.BeaconNode.Test.Fork
@@ -50,11 +51,11 @@ namespace Nethermind.BeaconNode.Test.Fork
             ulong time = store.Time + timeParameters.SecondsPerSlot * 2;
             await forkChoice.OnTickAsync(store, time);
 
-            BeaconBlock block = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, state, signed: true);
-            TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
+            BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state);
+            SignedBeaconBlock signedBlock = TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
 
             // Store block in store
-            await forkChoice.OnBlockAsync(store, block);
+            await forkChoice.OnBlockAsync(store, signedBlock);
 
             Attestation attestation = TestAttestation.GetValidAttestation(testServiceProvider, state, block.Slot, CommitteeIndex.None, signed: true);
 
@@ -85,11 +86,11 @@ namespace Nethermind.BeaconNode.Test.Fork
             ulong time = store.Time + timeParameters.SecondsPerSlot * (ulong)timeParameters.SlotsPerEpoch;
             await forkChoice.OnTickAsync(store, time);
 
-            BeaconBlock block = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, state, signed: true);
-            TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
+            BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state);
+            SignedBeaconBlock signedBlock = TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
 
             // Store block in store
-            await forkChoice.OnBlockAsync(store, block);
+            await forkChoice.OnBlockAsync(store, signedBlock);
 
             Attestation attestation = TestAttestation.GetValidAttestation(testServiceProvider, state, block.Slot, CommitteeIndex.None, signed: true);
 
@@ -123,9 +124,9 @@ namespace Nethermind.BeaconNode.Test.Fork
             await forkChoice.OnTickAsync(store, time);
 
             // create and store block from 3 epochs ago
-            BeaconBlock block = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, state, signed: true);
-            TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
-            await forkChoice.OnBlockAsync(store, block);
+            BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state);
+            SignedBeaconBlock signedBlock = TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
+            await forkChoice.OnBlockAsync(store, signedBlock);
 
             // create attestation for past block
             Attestation attestation = TestAttestation.GetValidAttestation(testServiceProvider, state, state.Slot, CommitteeIndex.None, signed: true);

@@ -49,34 +49,35 @@ namespace Nethermind.BeaconNode.Test.Fork
             store.Time.ShouldBe(time);
 
             // On receiving a block of `GENESIS_SLOT + 1` slot
-            BeaconBlock block = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, state, signed: true);
-            TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
-            await RunOnBlock(testServiceProvider, store, block, expectValid: true);
+            BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state);
+            SignedBeaconBlock signedBlock = TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
+            await RunOnBlock(testServiceProvider, store, signedBlock, expectValid: true);
 
             //  On receiving a block of next epoch
             ulong time2 = time + timeParameters.SecondsPerSlot * (ulong)timeParameters.SlotsPerEpoch;
             await store.SetTimeAsync(time2);
-            BeaconBlock block2 = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, state, signed: true);
+            BeaconBlock block2 = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state);
             Slot slot2 = (Slot)(block.Slot + timeParameters.SlotsPerEpoch);
             block2.SetSlot(slot2);
             TestBlock.SignBlock(testServiceProvider, state, block2, ValidatorIndex.None);
-            TestState.StateTransitionAndSignBlock(testServiceProvider, state, block2);
+            SignedBeaconBlock signedBlock2 = TestState.StateTransitionAndSignBlock(testServiceProvider, state, block2);
 
             //var options = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
             //options.AddCortexContainerConverters();
             //var debugState = System.Text.Json.JsonSerializer.Serialize(state, options);
 
-            await RunOnBlock(testServiceProvider, store, block2, expectValid: true);
+            await RunOnBlock(testServiceProvider, store, signedBlock2, expectValid: true);
 
             // Assert
             // TODO: add tests for justified_root and finalized_root
         }
 
-        private async Task RunOnBlock(IServiceProvider testServiceProvider, IStore store, BeaconBlock block, bool expectValid)
+        private async Task RunOnBlock(IServiceProvider testServiceProvider, IStore store, SignedBeaconBlock signedBlock, bool expectValid)
         {
-            MiscellaneousParameters miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
-            MaxOperationsPerBlock maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
+            InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
+            SignatureDomains signatureDomains = testServiceProvider.GetService<IOptions<SignatureDomains>>().Value;
 
+            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
 
@@ -84,15 +85,18 @@ namespace Nethermind.BeaconNode.Test.Fork
             {
                 Should.Throw<Exception>(async () =>
                 {
-                    await forkChoice.OnBlockAsync(store, block);
+                    await forkChoice.OnBlockAsync(store, signedBlock);
                 });
                 return;
             }
 
-            await forkChoice.OnBlockAsync(store, block);
-            Hash32 signingRoot = cryptographyService.SigningRoot(block);
+            await forkChoice.OnBlockAsync(store, signedBlock);
+
+            Domain domain =
+                beaconChainUtility.ComputeDomain(signatureDomains.BeaconProposer, initialValues.GenesisForkVersion);
+            Root signingRoot = beaconChainUtility.ComputeSigningRoot(cryptographyService.HashTreeRoot(signedBlock.Message), domain);
             BeaconBlock storedBlock = await store.GetBlockAsync(signingRoot);
-            storedBlock.ShouldBe(block);
+            storedBlock.ShouldBe(signedBlock.Message);
         }
     }
 }

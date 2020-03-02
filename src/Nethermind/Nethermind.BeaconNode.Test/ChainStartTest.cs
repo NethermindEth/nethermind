@@ -62,18 +62,17 @@ namespace Nethermind.BeaconNode.Test
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
             
             BeaconChainUtility beaconChainUtility = new BeaconChainUtility(loggerFactory.CreateLogger<BeaconChainUtility>(),
-                miscellaneousParameterOptions, gweiValueOptions, timeParameterOptions,
+                chainConstants, miscellaneousParameterOptions, initialValueOptions, gweiValueOptions, timeParameterOptions,
                 cryptographyService);
-            BeaconStateAccessor beaconStateAccessor = new BeaconStateAccessor(chainConstants, miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, signatureDomainOptions,
+            BeaconStateAccessor beaconStateAccessor = new BeaconStateAccessor(chainConstants, miscellaneousParameterOptions, timeParameterOptions, stateListLengthOptions, signatureDomainOptions,
                 cryptographyService, beaconChainUtility);
             BeaconStateMutator beaconStateMutator = new BeaconStateMutator(chainConstants, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions,
                 beaconChainUtility, beaconStateAccessor);
             BeaconStateTransition beaconStateTransition = new BeaconStateTransition(loggerFactory.CreateLogger<BeaconStateTransition>(),
-                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions, signatureDomainOptions,
+                chainConstants, gweiValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions, signatureDomainOptions,
                 cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator);
             BeaconNode.Genesis beaconChain = new BeaconNode.Genesis(loggerFactory.CreateLogger<BeaconNode.Genesis>(),
-                chainConstants, miscellaneousParameterOptions,
-                gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
+                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions,
                 cryptographyService,  beaconStateAccessor, beaconStateTransition);
             MemoryStoreProvider storeProvider = new MemoryStoreProvider(loggerFactory, timeParameterOptions);
             ForkChoice forkChoice = new ForkChoice(loggerFactory.CreateLogger<ForkChoice>(),
@@ -82,7 +81,7 @@ namespace Nethermind.BeaconNode.Test
             ChainStart chainStart = new ChainStart(loggerFactory.CreateLogger<ChainStart>(), beaconChain, forkChoice);
 
             // Act
-            Hash32 eth1BlockHash = Hash32.Zero;
+            Bytes32 eth1BlockHash = Bytes32.Zero;
             ulong eth1Timestamp = 106185600uL; // 1973-05-14
             Deposit[] deposits = Array.Empty<Deposit>();
             bool success = await chainStart.TryGenesisAsync(eth1BlockHash, eth1Timestamp, deposits);

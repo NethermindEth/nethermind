@@ -65,7 +65,7 @@ namespace Nethermind.BeaconNode.Test.Fork
             var secondsPerEpoch = timeParameters.SecondsPerSlot * (ulong)timeParameters.SlotsPerEpoch;
             var checkpoint = new Checkpoint(
                 store.JustifiedCheckpoint.Epoch + Epoch.One,
-                new Hash32(Enumerable.Repeat((byte)0x55, 32).ToArray()));
+                new Root(Enumerable.Repeat((byte)0x55, 32).ToArray()));
             await store.SetBestJustifiedCheckpointAsync(checkpoint);
 
             // Act

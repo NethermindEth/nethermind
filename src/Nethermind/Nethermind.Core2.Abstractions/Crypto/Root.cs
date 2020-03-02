@@ -20,7 +20,7 @@ using System.Linq;
 
 namespace Nethermind.Core2.Crypto
 {
-    public class Root : IEquatable<Root>
+    public class Root : IEquatable<Root>, IComparable<Root>
     {
         public const int Length = 32;
 
@@ -42,6 +42,16 @@ namespace Nethermind.Core2.Crypto
             _bytes = span.ToArray();
         }
 
+        public Root(string hex)
+        {
+            byte[] bytes = Bytes.FromHexString(hex);
+            if (bytes.Length != Length)
+            {
+                throw new ArgumentOutOfRangeException(nameof(hex), bytes.Length, $"{nameof(Root)} must have exactly {Length} bytes");
+            }
+            _bytes = bytes;
+        }
+        
         public static Root Zero { get; } = new Root(new byte[Length]);
 
         public ReadOnlySpan<byte> AsSpan()
@@ -49,7 +59,6 @@ namespace Nethermind.Core2.Crypto
             return new ReadOnlySpan<byte>(_bytes);
         }
         
-
         public override int GetHashCode()
         {
             return BinaryPrimitives.ReadInt32LittleEndian(AsSpan().Slice(0, 4));
@@ -85,5 +94,12 @@ namespace Nethermind.Core2.Crypto
         {
             return ReferenceEquals(this, obj) || obj is Root other && Equals(other);
         }
+
+        public int CompareTo(Root? other)
+        {
+            // lexicographic compare
+            return other is null ? 1 : AsSpan().SequenceCompareTo(other.AsSpan());
+        }
+
     }
 }

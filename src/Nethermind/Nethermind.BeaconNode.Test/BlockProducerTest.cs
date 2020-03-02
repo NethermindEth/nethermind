@@ -65,18 +65,16 @@ namespace Nethermind.BeaconNode.Test
             newBlock.Slot.ShouldBe(targetSlot);
             newBlock.Body.RandaoReveal.ShouldBe(randaoReveal);
             
-            Hash32 expectedParentRoot = new Hash32("0x91b06cbcd6dc97b89dc8b95e0b01a497932683b182e6c722ddfa10cd005b2180");
+            Root expectedParentRoot = new Root("0x91b06cbcd6dc97b89dc8b95e0b01a497932683b182e6c722ddfa10cd005b2180");
             newBlock.ParentRoot.ShouldBe(expectedParentRoot);
             
             newBlock.Body.Eth1Data.DepositCount.ShouldBe((ulong)numberOfValidators);
             
-            Hash32 expectedEth1DataDepositRoot = new Hash32("0x66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925");
+            Root expectedEth1DataDepositRoot = new Root("0x66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925");
             newBlock.Body.Eth1Data.DepositRoot.ShouldBe(expectedEth1DataDepositRoot);
             
-            Hash32 expectedStateRoot = new Hash32("0xe05ccf6347cac0b0dab0ad0d5c941fe7c7e2ed4c69550ed9a628bc9d62914242");
+            Root expectedStateRoot = new Root("0xe05ccf6347cac0b0dab0ad0d5c941fe7c7e2ed4c69550ed9a628bc9d62914242");
             newBlock.StateRoot.ShouldBe(expectedStateRoot);
-            
-            newBlock.Signature.ShouldBe(new BlsSignature(new byte[96])); // signature should be empty
             
             newBlock.Body.Attestations.Count.ShouldBe(0);
             newBlock.Body.Deposits.Count.ShouldBe(0);

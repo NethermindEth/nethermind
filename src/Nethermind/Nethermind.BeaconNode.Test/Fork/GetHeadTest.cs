@@ -43,27 +43,29 @@ namespace Nethermind.BeaconNode.Test.Fork
             IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            MiscellaneousParameters miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
-            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            StateListLengths stateListLengths = testServiceProvider.GetService<IOptions<StateListLengths>>().Value;
-            MaxOperationsPerBlock maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
+            InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
+            SignatureDomains signatureDomains = testServiceProvider.GetService<IOptions<SignatureDomains>>().Value;
 
             JsonSerializerOptions options = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
             options.ConfigureNethermindCore2();
             string debugState = System.Text.Json.JsonSerializer.Serialize(state, options);
             
             // Initialization
+            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
             IStore store = forkChoice.GetGenesisStore(state);
 
             // Act
-            Hash32 headRoot = await forkChoice.GetHeadAsync(store);
+            Root headRoot = await forkChoice.GetHeadAsync(store);
 
             // Assert
-            Hash32 stateRoot = cryptographyService.HashTreeRoot(state);
+            Domain domain =
+                beaconChainUtility.ComputeDomain(signatureDomains.BeaconProposer, initialValues.GenesisForkVersion);
+            Root stateRoot = cryptographyService.HashTreeRoot(state);
             BeaconBlock genesisBlock = new BeaconBlock(stateRoot);
-            Hash32 expectedRoot = cryptographyService.SigningRoot(genesisBlock);
+            Root expectedRoot =
+                beaconChainUtility.ComputeSigningRoot(cryptographyService.HashTreeRoot(genesisBlock), domain);
             
             headRoot.ShouldBe(expectedRoot);
         }
@@ -75,29 +77,33 @@ namespace Nethermind.BeaconNode.Test.Fork
             IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            MiscellaneousParameters miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
-            MaxOperationsPerBlock maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
+            InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
+            SignatureDomains signatureDomains = testServiceProvider.GetService<IOptions<SignatureDomains>>().Value;
 
             // Initialization
+            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
             IStore store = forkChoice.GetGenesisStore(state);
 
             // On receiving a block of `GENESIS_SLOT + 1` slot
-            BeaconBlock block1 = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, state, signed: true);
-            TestState.StateTransitionAndSignBlock(testServiceProvider, state, block1);
-            await AddBlockToStore(testServiceProvider, store, block1);
+            BeaconBlock block1 = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state);
+            SignedBeaconBlock signedBlock1 = TestState.StateTransitionAndSignBlock(testServiceProvider, state, block1);
+            await AddBlockToStore(testServiceProvider, store, signedBlock1);
 
             // On receiving a block of next epoch
-            BeaconBlock block2 = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, state, signed: true);
-            TestState.StateTransitionAndSignBlock(testServiceProvider, state, block2);
-            await AddBlockToStore(testServiceProvider, store, block2);
+            BeaconBlock block2 = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state);
+            SignedBeaconBlock signedBlock2 = TestState.StateTransitionAndSignBlock(testServiceProvider, state, block2);
+            await AddBlockToStore(testServiceProvider, store, signedBlock2);
 
             // Act
-            Hash32 headRoot = await forkChoice.GetHeadAsync(store);
+            Root headRoot = await forkChoice.GetHeadAsync(store);
 
             // Assert
-            Hash32 expectedRoot = cryptographyService.SigningRoot(block2);
+            Domain domain =
+                beaconChainUtility.ComputeDomain(signatureDomains.BeaconProposer, initialValues.GenesisForkVersion);
+            Root expectedRoot =
+                beaconChainUtility.ComputeSigningRoot(cryptographyService.HashTreeRoot(block2), domain);
             headRoot.ShouldBe(expectedRoot);
         }
 
@@ -108,38 +114,42 @@ namespace Nethermind.BeaconNode.Test.Fork
             IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            MiscellaneousParameters miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
-            MaxOperationsPerBlock maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
+            InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
+            SignatureDomains signatureDomains = testServiceProvider.GetService<IOptions<SignatureDomains>>().Value;
 
             // Initialization
+            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
             IStore store = forkChoice.GetGenesisStore(state);
             BeaconState genesisState = BeaconState.Clone(state);
 
+            Domain domain =
+                beaconChainUtility.ComputeDomain(signatureDomains.BeaconProposer, initialValues.GenesisForkVersion);
+
             // block at slot 1
             BeaconState block1State = BeaconState.Clone(genesisState);
-            BeaconBlock block1 = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, block1State, signed: true);
-            TestState.StateTransitionAndSignBlock(testServiceProvider, block1State, block1);
-            await AddBlockToStore(testServiceProvider, store, block1);
-            Hash32 block1Root = cryptographyService.SigningRoot(block1);
+            BeaconBlock block1 = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, block1State);
+            SignedBeaconBlock signedBlock1 = TestState.StateTransitionAndSignBlock(testServiceProvider, block1State, block1);
+            await AddBlockToStore(testServiceProvider, store, signedBlock1);
+            Root block1Root = beaconChainUtility.ComputeSigningRoot(cryptographyService.HashTreeRoot(block1), domain);
 
             // build short tree
             BeaconState block2State = BeaconState.Clone(genesisState);
-            BeaconBlock block2 = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, block2State, signed: true);
+            BeaconBlock block2 = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, block2State);
             block2.Body.SetGraffiti(new Bytes32(Enumerable.Repeat((byte)0x42, 32).ToArray()));
             TestBlock.SignBlock(testServiceProvider, block2State, block2, ValidatorIndex.None);
-            TestState.StateTransitionAndSignBlock(testServiceProvider, block2State, block2);
-            await AddBlockToStore(testServiceProvider, store, block2);
-            Hash32 block2Root = cryptographyService.SigningRoot(block2);
+            SignedBeaconBlock signedBlock2 = TestState.StateTransitionAndSignBlock(testServiceProvider, block2State, block2);
+            await AddBlockToStore(testServiceProvider, store, signedBlock2);
+            Root block2Root = beaconChainUtility.ComputeSigningRoot(cryptographyService.HashTreeRoot(block2), domain);
 
             // Act
-            Hash32 headRoot = await forkChoice.GetHeadAsync(store);
+            Root headRoot = await forkChoice.GetHeadAsync(store);
 
             // Assert
             Console.WriteLine("block1 {0}", block1Root);
             Console.WriteLine("block2 {0}", block2Root);
-            Hash32 highestRoot = block1Root.CompareTo(block2Root) > 0 ? block1Root : block2Root;
+            Root highestRoot = block1Root.CompareTo(block2Root) > 0 ? block1Root : block2Root;
             Console.WriteLine("highest {0}", highestRoot);
             headRoot.ShouldBe(highestRoot);
         }
@@ -151,45 +161,49 @@ namespace Nethermind.BeaconNode.Test.Fork
             IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            MiscellaneousParameters miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
-            MaxOperationsPerBlock maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
+            InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
+            SignatureDomains signatureDomains = testServiceProvider.GetService<IOptions<SignatureDomains>>().Value;
 
             // Initialization
+            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
             IStore store = forkChoice.GetGenesisStore(state);
             BeaconState genesisState = BeaconState.Clone(state);
 
+            Domain domain =
+                beaconChainUtility.ComputeDomain(signatureDomains.BeaconProposer, initialValues.GenesisForkVersion);
+
             // build longer tree
-            Hash32 longRoot = default;
+            Root longRoot = Root.Zero;
             BeaconState longState = BeaconState.Clone(genesisState);
             for (int i = 0; i < 3; i++)
             {
-                BeaconBlock longBlock = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, longState, signed: true);
-                TestState.StateTransitionAndSignBlock(testServiceProvider, longState, longBlock);
-                await AddBlockToStore(testServiceProvider, store, longBlock);
+                BeaconBlock longBlock = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, longState);
+                SignedBeaconBlock signedLongBlock = TestState.StateTransitionAndSignBlock(testServiceProvider, longState, longBlock);
+                await AddBlockToStore(testServiceProvider, store, signedLongBlock);
                 if (i == 2)
                 {
-                    longRoot = cryptographyService.SigningRoot(longBlock);
+                    longRoot = beaconChainUtility.ComputeSigningRoot(cryptographyService.HashTreeRoot(longBlock), domain);
                 }
             }
 
             // build short tree
             BeaconState shortState = BeaconState.Clone(genesisState);
-            BeaconBlock shortBlock = TestBlock.BuildEmptySignedBlockForNextSlot(testServiceProvider, shortState, signed: true);
+            BeaconBlock shortBlock = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, shortState);
             shortBlock.Body.SetGraffiti(new Bytes32(Enumerable.Repeat((byte)0x42, 32).ToArray()));
             TestBlock.SignBlock(testServiceProvider, shortState, shortBlock, ValidatorIndex.None);
-            TestState.StateTransitionAndSignBlock(testServiceProvider, shortState, shortBlock);
-            await AddBlockToStore(testServiceProvider, store, shortBlock);
+            SignedBeaconBlock signedShortBlock = TestState.StateTransitionAndSignBlock(testServiceProvider, shortState, shortBlock);
+            await AddBlockToStore(testServiceProvider, store, signedShortBlock);
 
             Attestation shortAttestation = TestAttestation.GetValidAttestation(testServiceProvider, shortState, shortBlock.Slot, CommitteeIndex.None, signed: true);
             await AddAttestationToStore(testServiceProvider, store, shortAttestation);
 
             // Act
-            Hash32 headRoot = await forkChoice.GetHeadAsync(store);
+            Root headRoot = await forkChoice.GetHeadAsync(store);
 
             // Assert
-            Hash32 expectedRoot = cryptographyService.SigningRoot(shortBlock);
+            Root expectedRoot = beaconChainUtility.ComputeSigningRoot(cryptographyService.HashTreeRoot(shortBlock), domain);
             headRoot.ShouldBe(expectedRoot);
             headRoot.ShouldNotBe(longRoot);
         }
@@ -197,14 +211,18 @@ namespace Nethermind.BeaconNode.Test.Fork
         private async Task AddAttestationToStore(IServiceProvider testServiceProvider, IStore store, Attestation attestation)
         {
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            MiscellaneousParameters miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
-            MaxOperationsPerBlock maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
+            InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
+            SignatureDomains signatureDomains = testServiceProvider.GetService<IOptions<SignatureDomains>>().Value;
+
+            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
 
             BeaconBlock parentBlock = await store.GetBlockAsync(attestation.Data.BeaconBlockRoot);
 
-            Hash32 parentSigningRoot = cryptographyService.SigningRoot(parentBlock);
+            Domain domain =
+                beaconChainUtility.ComputeDomain(signatureDomains.BeaconProposer, initialValues.GenesisForkVersion);
+            Root parentSigningRoot = beaconChainUtility.ComputeSigningRoot(cryptographyService.HashTreeRoot(parentBlock), domain);
             BeaconState preState = await store.GetBlockStateAsync(parentSigningRoot);
             
             ulong blockTime = preState.GenesisTime + (ulong)parentBlock.Slot * timeParameters.SecondsPerSlot;
@@ -218,21 +236,21 @@ namespace Nethermind.BeaconNode.Test.Fork
             await forkChoice.OnAttestationAsync(store, attestation);
         }
 
-        private async Task AddBlockToStore(IServiceProvider testServiceProvider, IStore store, BeaconBlock block)
+        private async Task AddBlockToStore(IServiceProvider testServiceProvider, IStore store, SignedBeaconBlock signedBlock)
         {
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
 
-            BeaconState preState = await store.GetBlockStateAsync(block.ParentRoot);
+            BeaconState preState = await store.GetBlockStateAsync(signedBlock.Message.ParentRoot);
             
-            ulong blockTime = preState!.GenesisTime + (ulong)block.Slot * timeParameters.SecondsPerSlot;
+            ulong blockTime = preState!.GenesisTime + (ulong)signedBlock.Message.Slot * timeParameters.SecondsPerSlot;
 
             if (store.Time < blockTime)
             {
                 await forkChoice.OnTickAsync(store, blockTime);
             }
 
-            await forkChoice.OnBlockAsync(store, block);
+            await forkChoice.OnBlockAsync(store, signedBlock);
         }
     }
 }
