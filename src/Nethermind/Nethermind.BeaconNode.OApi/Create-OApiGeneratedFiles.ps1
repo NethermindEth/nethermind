@@ -16,6 +16,16 @@
 #   - To fix, replace the section in ConvertToString() for byte[] with the correct encoding. 
 #
 
+Install-Module -Name powershell-yaml -Force -Repository PSGallery -Scope CurrentUser
+
+$files = @('apis/validator/beacon-node-oapi', `
+    'types/block', 'types/eth1', 'types/http', 'types/misc', 'types/network', 'types/validator', `
+    'types/operations/attestation', 'types/operations/attester_slashing', 'types/operations/deposit', `
+    'types/operations/proposer_slashing', 'types/operations/transfer', 'types/operations/voluntary_exit')
+$files | ForEach-Object { $f = $_; Get-Content -Raw -Path "$($f).yaml" | ConvertFrom-Yaml | ConvertTo-Json | Set-Content -Path "$($f).json" }
+
+# NOTE: nswag 13.2.3 requires dotnet 2.1
+
 dotnet restore # ensure the tool is installed
-dotnet nswag openapi2cscontroller /input:oapi/beacon-node-oapi.yaml /classname:BeaconNodeOApi /namespace:Nethermind.BeaconNode.OApi /output:BeaconNodeOApi-generated.cs /UseLiquidTemplates:true /AspNetNamespace:"Microsoft.AspNetCore.Mvc" /ControllerBaseClass:"Microsoft.AspNetCore.Mvc.Controller"
+dotnet nswag openapi2cscontroller /input:apis/validator/beacon-node-oapi.json /classname:BeaconNodeOApi /namespace:Nethermind.BeaconNode.OApi /output:BeaconNodeOApi-generated.cs /UseLiquidTemplates:true /AspNetNamespace:"Microsoft.AspNetCore.Mvc" /ControllerBaseClass:"Microsoft.AspNetCore.Mvc.Controller"
 dotnet nswag openapi2csclient /input:oapi/beacon-node-oapi.yaml /classname:BeaconNodeOApiClient /namespace:Nethermind.BeaconNode.OApiClient /ContractsNamespace:Nethermind.BeaconNode.OApiClient.Contracts /output:../Nethermind.BeaconNode.OApiClient/BeaconNodeOApiClient-generated.cs
