@@ -158,7 +158,7 @@ namespace Nethermind.Store.Bloom
         {
             for (int i = 0; i < _storageLevels.Length; i++)
             {
-                _storageLevels[i].Store(blockNumber, bloom);
+                _storageLevels[i].Store(blockNumber, bloom, true);
             }
 
             if (blockNumber < MinBlockNumber)
@@ -219,6 +219,12 @@ namespace Nethermind.Store.Bloom
                 MigratedBlockNumber += i;
             }
             
+            for (var index = 0; index < levelBlooms.Length; index++)
+            {
+                var levelBloom = levelBlooms[index];
+                levelBloom.Level.Flush();
+            }
+            
             if (MigratedBlockNumber >= MinBlockNumber - 1)
             {
                 MinBlockNumber = 0;
@@ -262,7 +268,7 @@ namespace Nethermind.Store.Bloom
                 _cache = new LruCache<long, Core.Bloom>(levelMultiplier);
             }
 
-            public void Store(long blockNumber, Core.Bloom bloom)
+            public void Store(long blockNumber, Core.Bloom bloom, bool flush = false)
             {
                 long bucket = GetBucket(blockNumber);
                 
@@ -275,8 +281,13 @@ namespace Nethermind.Store.Bloom
                 }
 
                 existingBloom.Accumulate(bloom);
-
+                
                 _fileStore.Write(bucket, existingBloom.Bytes);
+                if (flush)
+                {
+                    _fileStore.Flush();
+                }
+                
                 _cache.Set(bucket, existingBloom);
             }
             
@@ -300,6 +311,11 @@ namespace Nethermind.Store.Bloom
             public void Dispose()
             {
                 _fileStore?.Dispose();
+            }
+
+            public void Flush()
+            {
+                _fileStore?.Flush();
             }
         }
         
@@ -424,14 +440,13 @@ namespace Nethermind.Store.Bloom
 
             public bool TryGetBlockNumber(out long blockNumber)
             {
+                blockNumber = _currentPosition;
                 if (CurrentLevel == _maxLevel)
                 {
-                    blockNumber = _currentPosition;
                     return true;
                 }
 
                 CurrentLevel++;
-                blockNumber = default;
                 return false;
             }
             
