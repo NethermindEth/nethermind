@@ -16,6 +16,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Producers;
+using Nethermind.Consensus;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 
@@ -45,5 +46,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.Timestamper,
                 _context.LogManager);
         }
+
+        protected override IPendingTxSelector GetPendingTxSelector() => new SinglePendingTxSelectorDecorator(base.GetPendingTxSelector());
     }
 }
