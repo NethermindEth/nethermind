@@ -53,7 +53,7 @@ namespace Nethermind.Core
             Body = new BlockBody(transactions.ToArray(), ommers.ToArray());
         }
 
-        public Block(BlockHeader blockHeader, params BlockHeader[] ommers)
+        public Block(BlockHeader blockHeader)
             : this(blockHeader, BlockBody.Empty)
         {
         }
