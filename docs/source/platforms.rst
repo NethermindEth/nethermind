@@ -7,7 +7,7 @@ Supported Platforms
     - Vista
     - 7
  - macOS `Details <https://docs.microsoft.com/en-us/dotnet/core/install/dependencies?tabs=netcore31&pivots=os-macos/>`_
-    - High Sierra (10.13+)
+    - Mojave+ (10.14+)
  - Linux `Details <https://docs.microsoft.com/en-us/dotnet/core/install/dependencies?tabs=netcore31&pivots=os-linux/>`_
     - Red Hat Enterprise Linux	6, 7, 8	x64 (not tested by us)
     - CentOS	8+	x64
