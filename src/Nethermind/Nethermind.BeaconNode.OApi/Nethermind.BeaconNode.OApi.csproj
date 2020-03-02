@@ -36,7 +36,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <DotNetCliToolReference Include="NSwag.ConsoleCore" Version="13.1.6" />
+    <DotNetCliToolReference Include="NSwag.ConsoleCore" Version="13.2.3" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Core2.Abstractions\Nethermind.Core2.Abstractions.csproj" />
