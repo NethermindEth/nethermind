@@ -77,6 +77,8 @@ dotnet run --no-build --project src/Nethermind/Nethermind.BeaconNode.Host -- --D
 
 ### Test with separate processes for node and validator
 
+**NOTE: REST API is currently broken (from spec updated to 0.10.1), so can't run in separate processes**
+
 This will run the Beacon Node and Honest Validator in separate host processes, communicating via the REST API.
 
 When using the quick start clock (to mock a specific genesis time), you need to synchronise the clock offset of the node and validator. The following will set genesis to occur at the next full minute. 
