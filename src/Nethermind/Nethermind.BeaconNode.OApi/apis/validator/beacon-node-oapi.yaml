@@ -1,0 +1,311 @@
+openapi: "3.0.2"
+info:
+  title: "Minimal Beacon Node API for Validator"
+  description: "A minimal API specification for the beacon node, which enables a validator to connect and perform its obligations on the Ethereum 2.0 phase 0 beacon chain."
+  version: "0.3.0"
+  license:
+    name: "Apache 2.0"
+    url: "https://www.apache.org/licenses/LICENSE-2.0.html"
+tags:
+  - name: MinimalSet
+    description: The minimal set of endpoints to enable a working validator implementation.
+  - name: OptionalSet
+    description: Extra endpoints which are nice-to-haves.
+paths:
+  /node/version:
+    get:
+      tags:
+        - MinimalSet
+      summary: "Get version string of the running beacon node."
+      description: "Requests that the beacon node identify information about its implementation in a format similar to a  [HTTP User-Agent](https://tools.ietf.org/html/rfc7231#section-5.5.3) field."
+      responses:
+        200:
+          description: Request successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Version'
+        500:
+          $ref: '#/components/responses/InternalError'
+  /node/genesis_time:
+    get:
+      tags:
+        - MinimalSet
+      summary: "Get the genesis_time parameter from beacon node configuration."
+      description: "Requests the genesis_time parameter from the beacon node, which should be consistent across all beacon nodes that follow the same beacon chain."
+      responses:
+        200:
+          description: Request successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenesisTime'
+        500:
+          $ref: '#/components/responses/InternalError'
+
+  /node/syncing:
+    get:
+      tags:
+        - MinimalSet
+      summary: "Poll to see if the the beacon node is syncing."
+      description: "Requests the beacon node to describe if it's currently syncing or not, and if it is, what block it is up to. This is modelled after the Eth1.0 JSON-RPC eth_syncing call.."
+      responses:
+        200:
+          description: Request successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  is_syncing:
+                    type: boolean
+                    description: "A boolean of whether the node is currently syncing or not."
+                  sync_status:
+                    $ref: '#/components/schemas/SyncingStatus'
+        500:
+          $ref: '#/components/responses/InternalError'
+  /node/fork:
+    get:
+      tags:
+        - OptionalSet
+      summary: "Get fork information from running beacon node."
+      description: "Requests the beacon node to provide which fork version it is currently on."
+      responses:
+        200:
+          description: Request successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fork:
+                    $ref: '#/components/schemas/Fork'
+                  chain_id:
+                    type: integer
+                    format: uint64
+                    description: "Sometimes called the network id, this number discerns the active chain for the beacon node. Analogous to Eth1.0 JSON-RPC net_version."
+        500:
+          $ref: '#/components/responses/InternalError'
+
+  /validator/{pubkey}:
+    get:
+      tags:
+        - MinimalSet
+      summary: "Get validator details."
+      description: "Requests the beacon node to provide details about validator or 404 if validator is not present in validator registry"
+      parameters:
+        - name: pubkey
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/PublicKey'
+      responses:
+        200:
+          description: Success response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Validator'
+        400:
+          $ref: '#/components/responses/InvalidRequest'
+        404:
+          description: "Validator not found in registry"
+        500:
+          $ref: '#/components/responses/InternalError'
+
+  /validator/duties:
+    get:
+      tags:
+        - MinimalSet
+      summary: "Get validator duties for the requested validators."
+      description: "Requests the beacon node to provide a set of _duties_, which are actions that should be performed by validators, for a particular epoch. Duties should only need to be checked once per epoch, however a chain reorganization (of > MIN_SEED_LOOKAHEAD epochs) could occur, resulting in a change of duties. For full safety, this API call should be polled at every slot to ensure that chain reorganizations are recognized, and to ensure that the beacon node is properly synchronized."
+      parameters:
+      - name: validator_pubkeys
+        in: query
+        required: true
+        description: "An array of hex-encoded BLS public keys"
+        schema:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicKey'
+          minItems: 1
+      - name: epoch
+        in: query
+        required: false
+        schema:
+            type: integer
+      responses:
+        200:
+          description: Success response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ValidatorDuty'
+        400:
+          $ref: '#/components/responses/InvalidRequest'
+        406:
+          description: "Duties cannot be provided for the requested epoch."
+        500:
+          $ref: '#/components/responses/InternalError'
+        503:
+          $ref: '#/components/responses/CurrentlySyncing'
+
+  /validator/block:
+    get:
+      tags:
+        - MinimalSet
+      summary: "Produce a new block, without signature."
+      description: "Requests a beacon node to produce a valid block, which can then be signed by a validator."
+      parameters:
+      - name: slot
+        in: query
+        required: true
+        description: "The slot for which the block should be proposed."
+        schema:
+          type: integer
+          format: uint64
+      - name: randao_reveal
+        in: query
+        required: true
+        description: "The validator's randao reveal value."
+        schema:
+          $ref: '#/components/schemas/Signature'
+      responses:
+        200:
+          description: Success response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BeaconBlock'
+        400:
+          $ref: '#/components/responses/InvalidRequest'
+        500:
+          $ref: '#/components/responses/InternalError'
+        503:
+          $ref: '#/components/responses/CurrentlySyncing'
+    post:
+      tags:
+        - MinimalSet
+      summary: "Publish a signed block."
+      description: "Instructs the beacon node to broadcast a newly signed beacon block to the beacon network, to be included in the beacon chain. The beacon node is not required to validate the signed `BeaconBlock`, and a successful response (20X) only indicates that the broadcast has been successful. The beacon node is expected to integrate the new block into its state, and therefore validate the block internally, however blocks which fail the validation are still broadcast but a different status code is returned (202)"
+      requestBody:
+        description: "The `BeaconBlock` object, as sent from the beacon node originally, but now with the signature field completed. Must be sent in JSON format in the body of the request."
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BeaconBlock'
+      responses:
+        200:
+          description: "The block was validated successfully and has been broadcast. It has also been integrated into the beacon node's database."
+        202:
+          description: "The block failed validation, but was successfully broadcast anyway. It was not integrated into the beacon node's database."
+        400:
+          $ref: '#/components/responses/InvalidRequest'
+        500:
+          $ref: '#/components/responses/InternalError'
+        503:
+          $ref: '#/components/responses/CurrentlySyncing'
+
+  /validator/attestation:
+    get:
+      tags:
+        - MinimalSet
+      summary: "Produce an attestation, without signature."
+      description: "Requests that the beacon node produce an Attestation, with a blank signature field, which the validator will then sign."
+      parameters:
+      - name: validator_pubkey
+        in: query
+        required: true
+        description: "Uniquely identifying which validator this attestation is to be produced for."
+        schema:
+          $ref: '#/components/schemas/PublicKey'
+      - name: poc_bit
+        in: query
+        required: true
+        description: "The proof-of-custody bit that is to be reported by the requesting validator. This bit will be inserted into the appropriate location in the returned `Attestation`."
+        schema:
+            type: integer
+            format: uint32
+            minimum: 0
+            maximum: 1
+      - name: slot
+        in: query
+        required: true
+        description: "The slot for which the attestation should be proposed."
+        schema:
+          type: integer
+      - name: shard
+        in: query
+        required: true
+        description: "The shard number for which the attestation is to be proposed."
+        schema:
+          type: integer
+      responses:
+        200:
+          description: Success response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Attestation'
+        400:
+          $ref: '#/components/responses/InvalidRequest'
+        500:
+          $ref: '#/components/responses/InternalError'
+        503:
+          $ref: '#/components/responses/CurrentlySyncing'
+    post:
+      tags:
+        - MinimalSet
+      summary: "Publish a signed attestation."
+      description: "Instructs the beacon node to broadcast a newly signed Attestation object to the intended shard subnet. The beacon node is not required to validate the signed Attestation, and a successful response (20X) only indicates that the broadcast has been successful. The beacon node is expected to integrate the new attestation into its state, and therefore validate the attestation internally, however attestations which fail the validation are still broadcast but a different status code is returned (202)"
+      requestBody:
+        description: "An `Attestation` structure, as originally provided by the beacon node, but now with the signature field completed. Must be sent in JSON format in the body of the request."
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Attestation'
+      responses:
+        200:
+          description: "The attestation was validated successfully and has been broadcast. It has also been integrated into the beacon node's database."
+        202:
+          description: "The attestation failed validation, but was successfully broadcast anyway. It was not integrated into the beacon node's database."
+        400:
+          $ref: '#/components/responses/InvalidRequest'
+        500:
+          $ref: '#/components/responses/InternalError'
+        503:
+          $ref: '#/components/responses/CurrentlySyncing'
+
+components:
+  schemas:
+    BeaconBlock:
+      $ref: '../../types/block.yaml#/schemas/BeaconBlock'
+    Validator:
+      $ref: '../../types/validator.yaml#/schemas/Validator'
+    Attestation:
+      $ref: '../../types/operations/attestation.yaml#/schemas/Attestation'
+    ValidatorDuty:
+      $ref: '../../types/validator.yaml#/schemas/ValidatorDuty'
+    Fork:
+      $ref: '../../types/network.yaml#/schemas/Fork'
+    PublicKey:
+      $ref: '../../types/misc.yaml#/schemas/PublicKey'
+    SyncingStatus:
+      $ref: '../../types/network.yaml#/schemas/SyncingStatus'
+    GenesisTime:
+      $ref: '../../types/misc.yaml#/schemas/GenesisTime'
+    Version:
+      $ref: '../../types/misc.yaml#/schemas/Version'
+    Signature:
+      $ref: '../../types/misc.yaml#/schemas/Signature'
+  responses:
+    InvalidRequest:
+      $ref: '../../types/http.yaml#/responses/InvalidRequest'
+    InternalError:
+      $ref: '../../types/http.yaml#/responses/InternalError'
+    CurrentlySyncing:
+      $ref: '../../types/http.yaml#/responses/CurrentlySyncing'

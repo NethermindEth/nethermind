@@ -1,0 +1,17 @@
+schemas:
+  VoluntaryExit:
+    type: object
+    description: "The [`VoluntaryExit`](https://github.com/ethereum/eth2.0-specs/blob/master/specs/core/0_beacon-chain.md#voluntaryexit) object from the Eth2.0 spec."
+    properties:
+      epoch:
+        type: integer
+        format: uint64
+        description: "Minimum epoch for processing exit."
+      validator_index:
+        type: integer
+        format: uint64
+        description: "Index of the exiting validator."
+      signature:
+        allOf:
+          - $ref: '../misc.yaml#/schemas/Signature'
+          - description: "Validator signature."
