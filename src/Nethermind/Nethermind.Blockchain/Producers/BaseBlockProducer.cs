@@ -162,7 +162,6 @@ namespace Nethermind.Blockchain.Producers
             if (Logger.IsDebug) Logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
 
             var transactions = _pendingTxSelector.SelectTransactions(header.GasLimit);
-            Logger.Info($"Transactions taken: {string.Join("; ", transactions.Select(t => t.Hash.ToString()))}");
             Block block = new Block(header, transactions, new BlockHeader[0]);
             header.TxRoot = new TxTrie(block.Transactions).RootHash;
             return block;

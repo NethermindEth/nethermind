@@ -83,7 +83,10 @@ namespace Nethermind.Blockchain.Producers
 
         private void OnNewHeadBlock(object sender, BlockEventArgs e)
         {
-            _newBlockLock.Release();
+            if (_newBlockLock.CurrentCount == 0)
+            {
+                _newBlockLock.Release();
+            }
         }
     }
     
