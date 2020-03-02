@@ -130,6 +130,8 @@ namespace Nethermind.Blockchain
         BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse);
         
         void DeleteInvalidBlock(Block invalidBlock);
+
+        void Flush();
         
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
         event EventHandler<BlockEventArgs> BlockAddedToMain;

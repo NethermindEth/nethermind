@@ -157,6 +157,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (headersSynced > 0)
                 {
+                    _blockTree.Flush();
                     _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
                     _syncReport.FullSyncBlocksKnown = bestPeer.HeadNumber;
                 }

@@ -78,6 +78,10 @@ namespace Nethermind.Blockchain
         public Block FindBlock(long blockNumber, BlockTreeLookupOptions options) => _wrapped.FindBlock(blockNumber, options);
 
         public void DeleteInvalidBlock(Block invalidBlock) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteInvalidBlock)} calls");
+        public void Flush()
+        {
+            _wrapped.Flush();
+        }
 
         public bool IsMainChain(Keccak blockHash) => _wrapped.IsMainChain(blockHash);
 

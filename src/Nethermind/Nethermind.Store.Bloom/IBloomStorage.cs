@@ -37,5 +37,7 @@ namespace Nethermind.Store.Bloom
         IEnumerable<Average> Averages { get; }
         
         long MigratedBlockNumber { get; }
+
+        void Flush();
     }
 }

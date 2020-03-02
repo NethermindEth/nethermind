@@ -158,7 +158,7 @@ namespace Nethermind.Store.Bloom
         {
             for (int i = 0; i < _storageLevels.Length; i++)
             {
-                _storageLevels[i].Store(blockNumber, bloom, true);
+                _storageLevels[i].Store(blockNumber, bloom);
             }
 
             if (blockNumber < MinBlockNumber)
@@ -169,6 +169,14 @@ namespace Nethermind.Store.Bloom
             if (blockNumber > MaxBlockNumber)
             {
                 MaxBlockNumber = blockNumber;
+            }
+        }
+        
+        public void Flush()
+        {
+            for (int i = 0; i < _storageLevels.Length; i++)
+            {
+                _storageLevels[i].Flush();
             }
         }
 
@@ -268,7 +276,7 @@ namespace Nethermind.Store.Bloom
                 _cache = new LruCache<long, Core.Bloom>(levelMultiplier);
             }
 
-            public void Store(long blockNumber, Core.Bloom bloom, bool flush = false)
+            public void Store(long blockNumber, Core.Bloom bloom)
             {
                 long bucket = GetBucket(blockNumber);
                 
@@ -283,11 +291,7 @@ namespace Nethermind.Store.Bloom
                 existingBloom.Accumulate(bloom);
                 
                 _fileStore.Write(bucket, existingBloom.Bytes);
-                if (flush)
-                {
-                    _fileStore.Flush();
-                }
-                
+
                 _cache.Set(bucket, existingBloom);
             }
             
