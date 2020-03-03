@@ -101,7 +101,7 @@ namespace Ethereum.Test.Base
         {
             BlockHeader header = Convert(testBlockJson.BlockHeader);
             BlockHeader[] ommers = testBlockJson.UncleHeaders?.Select(Convert).ToArray() ?? new BlockHeader[0];
-            Block block = new Block(header, ommers);
+            Block block = new Block(header, Enumerable.Empty<Transaction>(), ommers);
             block.Body = block.Body.WithChangedTransactions(testBlockJson.Transactions?.Select(Convert).ToArray());
             return block;
         }
