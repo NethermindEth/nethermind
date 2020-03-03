@@ -20,7 +20,7 @@ using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shouldly;
 
-namespace Nethermind.Cryptography.Tests
+namespace Nethermind.Cryptography.Bls.Test
 {
     [TestClass]
     public class BlsTest
