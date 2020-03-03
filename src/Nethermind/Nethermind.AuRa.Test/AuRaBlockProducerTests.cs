@@ -75,7 +75,10 @@ namespace Nethermind.AuRa.Test
                 _blockTree,
                 _blockProcessingQueue,
                 _timestamper,
-                LimboLogs.Instance, _auRaStepCalculator, _auraConfig, _nodeAddress);
+                LimboLogs.Instance, 
+                _auRaStepCalculator,
+                _auraConfig, 
+                _nodeAddress);
 
             _auraConfig.ForceSealing.Returns(true);
             _pendingTxSelector.SelectTransactions(Arg.Any<long>()).Returns(Array.Empty<Transaction>());
@@ -121,7 +124,7 @@ namespace Nethermind.AuRa.Test
             (await StartStop()).ShouldProduceBlocks(Quantity.None());
         }
         
-        [Test, Retry(10)] // TODO: fix the need for retry
+        [Test]
         public async Task Produces_block_when_ForceSealing_is_false_and_there_are_transactions()
         {
             _auraConfig.ForceSealing.Returns(false);
@@ -164,7 +167,7 @@ namespace Nethermind.AuRa.Test
         }
 
 
-        private async Task<TestResult> StartStop(bool processingQueueEmpty = true, bool newBestSuggestedBlock = false, int stepDelayMultiplier = 50)
+        private async Task<TestResult> StartStop(bool processingQueueEmpty = true, bool newBestSuggestedBlock = false, int stepDelayMultiplier = 100)
         {
             ManualResetEvent processedEvent = new ManualResetEvent(false);
             _blockTree.SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>())
@@ -173,20 +176,27 @@ namespace Nethermind.AuRa.Test
 
             _auRaBlockProducer.Start();
 
-            await Task.Delay(_stepDelay);
-            if (processingQueueEmpty)
+            try
             {
-                _blockProcessingQueue.ProcessingQueueEmpty += Raise.Event();
-            }
+                await Task.Delay(_stepDelay);
+                if (processingQueueEmpty)
+                {
+                    _blockProcessingQueue.ProcessingQueueEmpty += Raise.Event();
+                }
 
-            if (newBestSuggestedBlock)
+                if (newBestSuggestedBlock)
+                {
+                    _blockTree.NewBestSuggestedBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.TestObject));
+                }
+
+                await processedEvent.WaitOneAsync(_stepDelay * stepDelayMultiplier, CancellationToken.None);
+
+            }
+            finally
             {
-                _blockTree.NewBestSuggestedBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.TestObject));
+                await _auRaBlockProducer.StopAsync();
             }
-
-            await processedEvent.WaitOneAsync(_stepDelay * stepDelayMultiplier, CancellationToken.None);
-            await _auRaBlockProducer.StopAsync();
-
+            
             return new TestResult(q => _blockTree.Received(q).SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>()));
         }
         

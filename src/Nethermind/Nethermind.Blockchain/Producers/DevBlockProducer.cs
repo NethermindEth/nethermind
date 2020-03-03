@@ -29,6 +29,7 @@ namespace Nethermind.Blockchain.Producers
     public class DevBlockProducer : BaseBlockProducer
     {
         private readonly ITxPool _txPool;
+        private readonly SemaphoreSlim _newBlockLock = new SemaphoreSlim(1, 1);
 
         public DevBlockProducer(IPendingTxSelector pendingTxSelector,
             IBlockchainProcessor processor,
@@ -46,11 +47,13 @@ namespace Nethermind.Blockchain.Producers
         public override void Start()
         {
             _txPool.NewPending += OnNewPendingTx;
+            BlockTree.NewHeadBlock += OnNewHeadBlock;
         }
-
+        
         public override async Task StopAsync()
         {
             _txPool.NewPending -= OnNewPendingTx;
+            BlockTree.NewHeadBlock -= OnNewHeadBlock;
             await Task.CompletedTask;
         }
 
@@ -58,13 +61,33 @@ namespace Nethermind.Blockchain.Producers
 
         private void OnNewPendingTx(object sender, TxEventArgs e)
         {
-            TryProduceNewBlock(CancellationToken.None).ContinueWith(t =>
+            OnNewPendingTxAsync(e);
+        }
+
+        private async void OnNewPendingTxAsync(TxEventArgs e)
+        {
+            _newBlockLock.Wait(TimeSpan.FromSeconds(1));
+            try
             {
-                if (t.IsFaulted)
+                if (!await TryProduceNewBlock(CancellationToken.None))
                 {
-                    if(Logger.IsError) Logger.Error($"Failed to produce block after receiving transaction {e.Transaction}", t.Exception);
+                    _newBlockLock.Release();
                 }
-            });
+            }
+            catch (Exception exception)
+            {
+                if (Logger.IsError) Logger.Error($"Failed to produce block after receiving transaction {e.Transaction}", exception);
+                _newBlockLock.Release();
+            }
+        }
+
+        private void OnNewHeadBlock(object sender, BlockEventArgs e)
+        {
+            if (_newBlockLock.CurrentCount == 0)
+            {
+                _newBlockLock.Release();
+            }
         }
     }
+    
 }

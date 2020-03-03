@@ -323,7 +323,11 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.StaticNodesManager = new StaticNodesManager(initConfig.StaticNodesPath, _context.LogManager);
             await _context.StaticNodesManager.InitAsync();
 
-            SimpleFilePublicKeyDb peersDb = new SimpleFilePublicKeyDb("PeersDB", PeersDbPath.GetApplicationResourcePath(initConfig.BaseDbPath), _context.LogManager);
+            var dbName = "PeersDB";
+            IFullDb peersDb = initConfig.DiagnosticMode == DiagnosticMode.MemDb 
+                ? (IFullDb) new MemDb(dbName)
+                : new SimpleFilePublicKeyDb(dbName, PeersDbPath.GetApplicationResourcePath(initConfig.BaseDbPath), _context.LogManager);
+            
             NetworkStorage peerStorage = new NetworkStorage(peersDb, _context.LogManager);
 
             ProtocolValidator protocolValidator = new ProtocolValidator(_context.NodeStatsManager, _context.BlockTree, _context.LogManager);
