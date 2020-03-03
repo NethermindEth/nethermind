@@ -21,6 +21,8 @@ using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using NLog;
+using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Runner.Ethereum
 {
@@ -39,6 +41,10 @@ namespace Nethermind.Runner.Ethereum
             if (logger.IsInfo) logger.Info($"Loading chain spec from {initConfig.ChainSpecPath}");
             IChainSpecLoader loader = new ChainSpecLoader(ethereumJsonSerializer);
             ChainSpec chainSpec = loader.LoadFromFile(initConfig.ChainSpecPath);
+            
+            logManager.SetGlobalVariable("chain", chainSpec.Name);
+            logManager.SetGlobalVariable("chainId", chainSpec.ChainId);
+            logManager.SetGlobalVariable("engine", chainSpec.SealEngineType);
 
             Context = Create(chainSpec.SealEngineType);
             Context.ChainSpec = chainSpec;

@@ -65,6 +65,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 INodeKeyManager nodeKeyManager = new NodeKeyManager(_context.CryptoRandom, _context.KeyStore, keyStoreConfig, _context.LogManager);
                 _context.NodeKey = nodeKeyManager.LoadNodeKey();
                 _context.Enode = new Enode(_context.NodeKey.PublicKey, IPAddress.Parse(networkConfig.ExternalIp), networkConfig.P2PPort);
+                
+                _context.LogManager.SetGlobalVariable("enode", _context.Enode);
             });
         }
     }
