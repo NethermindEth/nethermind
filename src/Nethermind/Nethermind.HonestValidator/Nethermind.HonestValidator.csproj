@@ -11,7 +11,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Cortex.Cryptography.Bls" Version="0.4.0" />
         <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="3.0.1" />
         <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="3.0.1" />
         <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="3.0.1" />
@@ -29,6 +28,7 @@
         <ProjectReference Include="..\Nethermind.Core2\Nethermind.Core2.csproj" />
         <ProjectReference Include="..\Nethermind.Core2.Configuration\Nethermind.Core2.Configuration.csproj" />
         <ProjectReference Include="..\Nethermind.Core2.Json\Nethermind.Core2.Json.csproj" />
+        <ProjectReference Include="..\Nethermind.Cryptography.Bls\Nethermind.Cryptography.Bls.csproj" />
         <ProjectReference Include="..\Nethermind.Logging.Microsoft\Nethermind.Logging.Microsoft.csproj" />
     </ItemGroup>
 
