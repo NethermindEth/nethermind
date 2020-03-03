@@ -1,5 +1,7 @@
 ﻿using System.Runtime.InteropServices;
 
+//[assembly: DefaultDllImportSearchPaths(DllImportSearchPath.ApplicationDirectory|DllImportSearchPath.AssemblyDirectory)]
+
 namespace Cortex.Cryptography
 {
     internal static class Bls384Interop

@@ -6,6 +6,7 @@
     <Copyright>Copyright © 2019 Demerzel Solutions Limited</Copyright>
     <Authors>sgryphon</Authors>
     <Version>0.0.1</Version>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <Description>Cryptography library that implements the ETH 2.0 version of the Boneh–Lynn–Shacham (BLS) signature scheme, for .NET Core.
@@ -36,20 +37,26 @@ Based on the Herumi cryptography library.
   </ItemGroup>
   
   <ItemGroup>
-    <None Update="runtimes\linux-x64\native\libbls384_256.so">
+    <Content Include="runtimes\linux-x64\native\libbls384_256.so" Link="libbls384_256.so">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Pack>true</Pack>
+      <PackagePath>runtimes/linux-x64/native/libbls384_256.so</PackagePath>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="runtimes\win-x64\native\bls384_256.dll" Link="bls384_256.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Pack>true</Pack>
+      <PackagePath>runtimes/linux-x64/native/libbls384_256.dll</PackagePath>
     </None>
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="runtimes\win-x64\native\bls384_256.dll">
+    <None Include="runtimes\osx-x64\native\libbls384_256.dylib" Link="libbls384_256.dylib">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Update="runtimes\osx-x64\native\libbls384_256.dylib">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Pack>true</Pack>
+      <PackagePath>runtimes/linux-x64/native/libbls384_256.dylib</PackagePath>
     </None>
   </ItemGroup>
 
