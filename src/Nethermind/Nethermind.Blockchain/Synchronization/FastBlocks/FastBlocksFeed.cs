@@ -889,11 +889,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
             added = Math.Max(0, added);
 
-            if (added > 0)
-            {
-                _blockTree.Flush();
-            }
-
             if (added < batch.Headers.RequestSize)
             {
                 if (added <= 0)

@@ -131,8 +131,6 @@ namespace Nethermind.Blockchain
         
         void DeleteInvalidBlock(Block invalidBlock);
 
-        void Flush();
-        
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
         event EventHandler<BlockEventArgs> BlockAddedToMain;
         event EventHandler<BlockEventArgs> NewHeadBlock;

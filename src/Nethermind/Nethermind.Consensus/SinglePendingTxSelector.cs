@@ -14,15 +14,25 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Db
+using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Core;
+
+namespace Nethermind.Consensus
 {
-    public class FullMemDb : MemDb, IFullDb
+    public class SinglePendingTxSelector : IPendingTxSelector
     {
-        public FullMemDb(string description)
+        private readonly IPendingTxSelector _innerPendingTxSelector;
+
+        public SinglePendingTxSelector(IPendingTxSelector innerPendingTxSelector)
         {
-            Description = description;
+            _innerPendingTxSelector = innerPendingTxSelector;
         }
         
-        public string Description { get; }
+        public IEnumerable<Transaction> SelectTransactions(long gasLimit) => 
+            _innerPendingTxSelector.SelectTransactions(gasLimit)
+                .OrderBy(t => t.Nonce)
+                .ThenByDescending(t => t.Timestamp)
+                .Take(1);
     }
 }

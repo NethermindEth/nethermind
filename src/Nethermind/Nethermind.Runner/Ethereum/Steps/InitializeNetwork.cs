@@ -325,7 +325,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             var dbName = "PeersDB";
             IFullDb peersDb = initConfig.DiagnosticMode == DiagnosticMode.MemDb 
-                ? (IFullDb) new FullMemDb(dbName)
+                ? (IFullDb) new MemDb(dbName)
                 : new SimpleFilePublicKeyDb(dbName, PeersDbPath.GetApplicationResourcePath(initConfig.BaseDbPath), _context.LogManager);
             
             NetworkStorage peerStorage = new NetworkStorage(peersDb, _context.LogManager);

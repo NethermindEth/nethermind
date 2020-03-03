@@ -124,7 +124,7 @@ namespace Nethermind.AuRa.Test
             (await StartStop()).ShouldProduceBlocks(Quantity.None());
         }
         
-        [Test] // TODO: fix the need for retry
+        [Test]
         public async Task Produces_block_when_ForceSealing_is_false_and_there_are_transactions()
         {
             _auraConfig.ForceSealing.Returns(false);

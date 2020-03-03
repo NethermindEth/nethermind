@@ -47,6 +47,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.LogManager);
         }
 
-        protected override IPendingTxSelector GetPendingTxSelector() => new SinglePendingTxSelectorDecorator(base.GetPendingTxSelector());
+        protected override IPendingTxSelector CreatePendingTxSelector() => new SinglePendingTxSelector(base.CreatePendingTxSelector());
     }
 }

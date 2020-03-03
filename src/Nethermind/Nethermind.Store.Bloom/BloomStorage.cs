@@ -18,6 +18,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -171,14 +172,6 @@ namespace Nethermind.Store.Bloom
                 MaxBlockNumber = blockNumber;
             }
         }
-        
-        public void Flush()
-        {
-            for (int i = 0; i < _storageLevels.Length; i++)
-            {
-                _storageLevels[i].Flush();
-            }
-        }
 
         public void Migrate(IEnumerable<BlockHeader> headers)
         {
@@ -226,13 +219,7 @@ namespace Nethermind.Store.Bloom
                 
                 MigratedBlockNumber += i;
             }
-            
-            for (var index = 0; index < levelBlooms.Length; index++)
-            {
-                var levelBloom = levelBlooms[index];
-                levelBloom.Level.Flush();
-            }
-            
+
             if (MigratedBlockNumber >= MinBlockNumber - 1)
             {
                 MinBlockNumber = 0;
@@ -265,6 +252,7 @@ namespace Nethermind.Store.Bloom
             private readonly bool _migrationStatistics;
             private readonly LruCache<long, Core.Bloom> _cache;
             private readonly byte[] _bytes = new byte[Core.Bloom.ByteLength];
+            private int _needsFlush = 0;
 
             public BloomStorageLevel(IFileStore fileStore, in byte level, in int levelElementSize, in int levelMultiplier, bool migrationStatistics)
             {
@@ -291,16 +279,23 @@ namespace Nethermind.Store.Bloom
                 existingBloom.Accumulate(bloom);
                 
                 _fileStore.Write(bucket, existingBloom.Bytes);
-
+                Interlocked.Exchange(ref _needsFlush, 1);
                 _cache.Set(bucket, existingBloom);
             }
             
-
             private static uint CountBits(Core.Bloom bloom) => (uint) bloom.Bytes.AsSpan().CountBits();
 
             public long GetBucket(long blockNumber) => blockNumber / LevelElementSize;
 
-            public IFileReader GetReader() => _fileStore.GetFileReader();
+            public IFileReader GetReader()
+            {
+                if (Interlocked.CompareExchange(ref _needsFlush, 0, 1) == 1)
+                {
+                    _fileStore.Flush();
+                }
+
+                return _fileStore.GetFileReader();
+            }
 
             public void Migrate(in long blockNumber, Core.Bloom bloom)
             {
@@ -315,11 +310,6 @@ namespace Nethermind.Store.Bloom
             public void Dispose()
             {
                 _fileStore?.Dispose();
-            }
-
-            public void Flush()
-            {
-                _fileStore?.Flush();
             }
         }
         

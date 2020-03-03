@@ -827,11 +827,6 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public void Flush()
-        {
-            _bloomStorage.Flush();
-        }
-
         private void DeleteBlocks(Keccak deletePointer)
         {
             BlockHeader deleteHeader = FindHeader(deletePointer, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
@@ -1006,8 +1001,6 @@ namespace Nethermind.Blockchain
 
                 MoveToMain(processedBlocks[i], batch, wereProcessed);
             }
-            
-            _bloomStorage.Flush();
         }
 
         private TaskCompletionSource<object> _dbBatchProcessed;
