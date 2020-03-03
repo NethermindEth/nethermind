@@ -4,7 +4,7 @@ using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shouldly;
 
-namespace Cortex.Cryptography.Tests
+namespace Nethermind.Cryptography.Tests
 {
     [TestClass]
     public class BlsTest

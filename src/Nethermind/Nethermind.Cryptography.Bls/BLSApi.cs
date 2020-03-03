@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Cortex.Cryptography
+namespace Nethermind.Cryptography
 {
     /// <summary>
     /// BLS signature scheme API as defined in specifications. 

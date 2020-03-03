@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace Cortex.Cryptography
+namespace Nethermind.Cryptography
 {
     public enum BlsVariant
     {

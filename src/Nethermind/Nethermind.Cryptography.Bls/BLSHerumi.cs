@@ -2,7 +2,7 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 
-namespace Cortex.Cryptography
+namespace Nethermind.Cryptography
 {
     /// <summary>
     /// Implementation of BLS that supports Eth 2.0, using the Herumi library.

@@ -17,7 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Security.Cryptography;
-using Cortex.Cryptography;
+using Nethermind.Cryptography;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 

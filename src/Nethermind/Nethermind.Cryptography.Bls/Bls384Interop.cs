@@ -2,7 +2,7 @@
 
 //[assembly: DefaultDllImportSearchPaths(DllImportSearchPath.ApplicationDirectory|DllImportSearchPath.AssemblyDirectory)]
 
-namespace Cortex.Cryptography
+namespace Nethermind.Cryptography
 {
     internal static class Bls384Interop
     //public static class Bls384Interop

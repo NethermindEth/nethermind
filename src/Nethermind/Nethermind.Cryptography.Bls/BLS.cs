@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Security.Cryptography;
 
-namespace Cortex.Cryptography
+namespace Nethermind.Cryptography
 {
     /// <summary>
     /// Boneh–Lynn–Shacham (BLS) signature scheme, draft standard https://github.com/cfrg/draft-irtf-cfrg-bls-signature

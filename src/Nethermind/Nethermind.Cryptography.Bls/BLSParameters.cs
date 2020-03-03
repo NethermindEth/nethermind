@@ -1,4 +1,4 @@
-﻿namespace Cortex.Cryptography
+﻿namespace Nethermind.Cryptography
 {
     public struct BLSParameters
     {
