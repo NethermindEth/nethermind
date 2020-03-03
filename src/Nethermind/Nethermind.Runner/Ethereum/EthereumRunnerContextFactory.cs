@@ -43,8 +43,8 @@ namespace Nethermind.Runner.Ethereum
             ChainSpec chainSpec = loader.LoadFromFile(initConfig.ChainSpecPath);
             
             logManager.SetGlobalVariable("chain", chainSpec.Name);
-            logManager.SetGlobalVariable("chainId", chainSpec.ChainId);
-            logManager.SetGlobalVariable("engine", chainSpec.SealEngineType);
+            logManager.SetGlobalVariable("chainId", chainSpec.ChainId.ToString());
+            logManager.SetGlobalVariable("engine", chainSpec.SealEngineType.ToString());
 
             Context = Create(chainSpec.SealEngineType);
             Context.ChainSpec = chainSpec;
