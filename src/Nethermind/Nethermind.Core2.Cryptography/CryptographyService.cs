@@ -82,17 +82,8 @@ namespace Nethermind.Core2.Cryptography
 
         public Func<BLSParameters, BLS> SignatureAlgorithmFactory { get; set; } = blsParameters => BLS.Create(blsParameters);
 
-        public BlsPublicKey BlsAggregatePublicKeys(IEnumerable<BlsPublicKey> publicKeys)
+        public BlsPublicKey BlsAggregatePublicKeys(IList<BlsPublicKey> publicKeys)
         {
-            // TKS: added an extension here as an example to discuss - I have been avoiding passing IEnumerable
-            // for the performance reasons - to avoid multiple runs
-            // and opted for passing either arrays or lists and keep it consistent
-            // it sometimes / very rarely has an issue of having to cast list to an array
-            // but usually we have a full control over the flow so it ends up being much better
-            // what do you think?
-            
-            // TODO: [SG] yes. Change IEnumerable to IList in most places to avoid double-enumeration.
-            
             Span<byte> publicKeysSpan = new Span<byte>(new byte[publicKeys.Count() * BlsPublicKey.Length]);
             int publicKeysSpanIndex = 0;
             foreach (BlsPublicKey publicKey in publicKeys)
@@ -143,7 +134,7 @@ namespace Nethermind.Core2.Cryptography
         {
             BLSParameters blsParameters = new BLSParameters() { PublicKey = publicKey.AsSpan().ToArray() };
             using BLS signatureAlgorithm = SignatureAlgorithmFactory(blsParameters);
-            return signatureAlgorithm.VerifyHash(signingRoot.AsSpan(), signature.AsSpan());
+            return signatureAlgorithm.VerifyData(signingRoot.AsSpan(), signature.AsSpan());
         }
 
         public Bytes32 Hash(Bytes32 a, Bytes32 b)

@@ -59,7 +59,7 @@ namespace Nethermind.BeaconNode.Test
             var parameters = new BLSParameters() { PrivateKey = privateKey };
             using var signingAlgorithm = SignatureAlgorithmFactory(parameters);
             var destination = new byte[96];
-            var success = signingAlgorithm.TrySignHash(messageHash.AsSpan(), destination, out var bytesWritten);
+            var success = signingAlgorithm.TrySignData(messageHash.AsSpan(), destination, out var bytesWritten);
             return new BlsSignature(destination);
         }
 

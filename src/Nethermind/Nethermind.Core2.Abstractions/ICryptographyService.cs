@@ -24,7 +24,7 @@ namespace Nethermind.Core2
 {
     public interface ICryptographyService
     {
-        BlsPublicKey BlsAggregatePublicKeys(IEnumerable<BlsPublicKey> publicKeys);
+        BlsPublicKey BlsAggregatePublicKeys(IList<BlsPublicKey> publicKeys);
         bool BlsAggregateVerify(IList<BlsPublicKey> publicKeys, IList<Root> signingRoots, BlsSignature signature);
         bool BlsFastAggregateVerify(IList<BlsPublicKey> publicKey, Root signingRoot, BlsSignature signature);
         bool BlsVerify(BlsPublicKey publicKey, Root signingRoot, BlsSignature signature);

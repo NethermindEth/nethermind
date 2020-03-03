@@ -92,7 +92,7 @@ namespace Nethermind.BeaconNode.Test
                 _cryptographyService = new CryptographyService(chainConstants, miscellaneousParameterOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions);
             }
 
-            public BlsPublicKey BlsAggregatePublicKeys(IEnumerable<BlsPublicKey> publicKeys)
+            public BlsPublicKey BlsAggregatePublicKeys(IList<BlsPublicKey> publicKeys)
             {
                 return BlsPublicKey.Zero;
             }
