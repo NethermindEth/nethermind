@@ -1,0 +1,56 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <Product>Nethermind Eth2.0 blockchain</Product>
+    <Copyright>Copyright © 2019 Demerzel Solutions Limited</Copyright>
+    <Authors>sgryphon</Authors>
+    <Version>0.0.1</Version>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <Description>Cryptography library that implements the ETH 2.0 version of the Boneh–Lynn–Shacham (BLS) signature scheme, for .NET Core.
+
+Supports converting private keys to public keys, signing and verifying ETH 2.0 message hash with domain, aggregating public keys and signatures, and verification of multiple public key/hash pairs against an aggregate signature.
+
+Cross platform for Windows, Linux, and OSX. On Linux and OSX it also requires the GMP library to be installed.
+
+Does not yet support signing (or verifying) unhashed data, or variants or schemes other than that used by ETH 2.0.
+
+Based on the Herumi cryptography library.
+    </Description>
+    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+    <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/NethermindEth/Nethermind</PackageProjectUrl>
+    <PackageTags>BLS;Boneh-Lynn-Shacham;"Eth 2.0";Cryptography</PackageTags>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="GitVersionTask" Version="5.1.3">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+  
+  <ItemGroup>
+    <None Update="runtimes\linux-x64\native\libbls384_256.so">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="runtimes\win-x64\native\bls384_256.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="runtimes\osx-x64\native\libbls384_256.dylib">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
