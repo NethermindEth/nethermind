@@ -138,6 +138,11 @@ namespace Nethermind.Runner
             EthereumJsonSerializer jsonSerializer = new EthereumJsonSerializer();
             WebSocketsManager webSocketsManager = new WebSocketsManager();
 
+            if (!string.IsNullOrEmpty(metricsConfig.NodeName))
+            {
+                logManager.SetGlobalVariable("nodeName", metricsConfig.NodeName);
+            }
+            
             if (metricsConfig.Enabled)
             {
                 Metrics.Version = VersionToMetrics.ConvertToNumber(ClientVersion.Version);

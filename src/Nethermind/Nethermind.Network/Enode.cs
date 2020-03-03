@@ -44,5 +44,7 @@ namespace Nethermind.Network
         public IPAddress HostIp { get; }
         public int Port { get; }
         public string Info => $"enode://{_nodeKey.ToString(false)}@{HostIp}:{Port}";
+
+        public override string ToString() => Info;
     }
 }
