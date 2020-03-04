@@ -75,7 +75,7 @@ jobs:
         name: darwin_artifact
         path: bls/lib/libbls384_256.dylib
     - name: Create Pull Request
-      uses: peter-evans/create-pull-request@v2.4.2
+      uses: peter-evans/create-pull-request@v2.4.4
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         commit-message: Update BLS
