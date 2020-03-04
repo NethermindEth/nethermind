@@ -82,129 +82,117 @@ namespace Nethermind.Cryptography.Bls.Test
             verifySuccess2.ShouldBeTrue();
         }
 
-        // [TestMethod]
-        // public void BlsRoundtripSignAndAggregateVerify()
-        // {
-        //     // Arrange
-        //     var privateKey1 = HexMate.Convert.FromHexString(PrivateKeys[1]);
-        //     var privateKey2 = HexMate.Convert.FromHexString(PrivateKeys[2]);
-        //     var messageHash1 = MessageHashes[1];
-        //     var messageHash2 = MessageHashes[2];
-        //     var domain1 = Domains[1];
-        //
-        //     Console.WriteLine("Input:");
-        //     Console.WriteLine("Private Key 1: [{0}] {1}", privateKey1.Length, HexMate.Convert.ToHexString(privateKey1));
-        //     Console.WriteLine("MessageHash 1: [{0}] {1}", messageHash1.Length, HexMate.Convert.ToHexString(messageHash1));
-        //     Console.WriteLine("Private Key 2: [{0}] {1}", privateKey2.Length, HexMate.Convert.ToHexString(privateKey2));
-        //     Console.WriteLine("MessageHash 2: [{0}] {1}", messageHash2.Length, HexMate.Convert.ToHexString(messageHash2));
-        //     Console.WriteLine("Domain: [{0}] {1}", domain1.Length, HexMate.Convert.ToHexString(domain1));
-        //
-        //     // Sign 1
-        //     using var bls1 = new BLSHerumi(new BLSParameters() { PrivateKey = privateKey1 });
-        //     var signature1 = new byte[96];
-        //     _ = bls1.TrySignHash(messageHash1, signature1.AsSpan(), out var _, domain1);
-        //     Console.WriteLine("Signature 1: [{0}] {1}", signature1.Length, HexMate.Convert.ToHexString(signature1));
-        //     var publicKey1 = new byte[48];
-        //     _ = bls1.TryExportBlsPublicKey(publicKey1, out var _);
-        //     Console.WriteLine("Public Key 1: [{0}] {1}", publicKey1.Length, HexMate.Convert.ToHexString(publicKey1));
-        //
-        //     // Sign 2
-        //     using var bls2 = new BLSHerumi(new BLSParameters() { PrivateKey = privateKey2 });
-        //     var signature2 = new byte[96];
-        //     _ = bls2.TrySignHash(messageHash2, signature2.AsSpan(), out var _, domain1);
-        //     Console.WriteLine("Signature 2: [{0}] {1}", signature2.Length, HexMate.Convert.ToHexString(signature2));
-        //     var publicKey2 = new byte[48];
-        //     _ = bls2.TryExportBlsPublicKey(publicKey2, out var _);
-        //     Console.WriteLine("Public Key 2: [{0}] {1}", publicKey2.Length, HexMate.Convert.ToHexString(publicKey2));
-        //
-        //     // Aggregate signatures
-        //     var signatures = new Span<byte>(new byte[96 * 2]);
-        //     signature1.CopyTo(signatures);
-        //     signature2.CopyTo(signatures.Slice(96));
-        //     using var blsAggregate = new BLSHerumi(new BLSParameters());
-        //     var aggregateSignature = new byte[96];
-        //     blsAggregate.TryAggregateSignatures(signatures, aggregateSignature, out var _);
-        //     Console.WriteLine("Aggregate Signature: [{0}] {1}", aggregateSignature.Length, HexMate.Convert.ToHexString(aggregateSignature));
-        //
-        //     // Aggregate verify
-        //     using var blsVerify = new BLSHerumi(new BLSParameters());
-        //     var publicKeys = new Span<byte>(new byte[48 * 2]);
-        //     publicKey1.CopyTo(publicKeys);
-        //     publicKey2.CopyTo(publicKeys.Slice(48));
-        //     var hashes = new Span<byte>(new byte[32 * 2]);
-        //     messageHash1.CopyTo(hashes);
-        //     messageHash2.CopyTo(hashes.Slice(32));
-        //     var verifySuccess = blsVerify.VerifyAggregateHashes(publicKeys, hashes, aggregateSignature, domain1);
-        //     Console.WriteLine("Verify: {0}", verifySuccess);
-        //
-        //     verifySuccess.ShouldBeTrue();
-        // }
-        //
-        //
-        // [TestMethod]
-        // public void BlsRoundtripAggregatePublicKeyVerifySharedHash()
-        // {
-        //     // Arrange
-        //     var privateKey1 = HexMate.Convert.FromHexString(PrivateKeys[1]);
-        //     var privateKey2 = HexMate.Convert.FromHexString(PrivateKeys[2]);
-        //     var sharedMessageHash = MessageHashes[1];
-        //     var domain1 = Domains[1];
-        //
-        //     Console.WriteLine("Input:");
-        //     Console.WriteLine("Private Key 1: [{0}] {1}", privateKey1.Length, HexMate.Convert.ToHexString(privateKey1));
-        //     Console.WriteLine("Private Key 2: [{0}] {1}", privateKey2.Length, HexMate.Convert.ToHexString(privateKey2));
-        //     Console.WriteLine("MessageHash 1: [{0}] {1}", sharedMessageHash.Length, HexMate.Convert.ToHexString(sharedMessageHash));
-        //     Console.WriteLine("Domain: [{0}] {1}", domain1.Length, HexMate.Convert.ToHexString(domain1));
-        //
-        //     // Sign 1
-        //     using var bls1 = new BLSHerumi(new BLSParameters() { PrivateKey = privateKey1 });
-        //     var signature1 = new byte[96];
-        //     _ = bls1.TrySignHash(sharedMessageHash, signature1.AsSpan(), out var _, domain1);
-        //     Console.WriteLine("Signature 1: [{0}] {1}", signature1.Length, HexMate.Convert.ToHexString(signature1));
-        //     var publicKey1 = new byte[48];
-        //     _ = bls1.TryExportBlsPublicKey(publicKey1, out var _);
-        //     Console.WriteLine("Public Key 1: [{0}] {1}", publicKey1.Length, HexMate.Convert.ToHexString(publicKey1));
-        //
-        //     // Sign 2
-        //     using var bls2 = new BLSHerumi(new BLSParameters() { PrivateKey = privateKey2 });
-        //     var signature2 = new byte[96];
-        //     _ = bls2.TrySignHash(sharedMessageHash, signature2.AsSpan(), out var _, domain1);
-        //     Console.WriteLine("Signature 2: [{0}] {1}", signature2.Length, HexMate.Convert.ToHexString(signature2));
-        //     var publicKey2 = new byte[48];
-        //     _ = bls2.TryExportBlsPublicKey(publicKey2, out var _);
-        //     Console.WriteLine("Public Key 2: [{0}] {1}", publicKey2.Length, HexMate.Convert.ToHexString(publicKey2));
-        //
-        //     // Aggregate public keys
-        //     var publicKeys = new Span<byte>(new byte[48 * 2]);
-        //     publicKey1.CopyTo(publicKeys);
-        //     publicKey2.CopyTo(publicKeys.Slice(48));
-        //     using var blsAggregateKeys = new BLSHerumi(new BLSParameters());
-        //     var aggregatePublicKey = new byte[48];
-        //     blsAggregateKeys.TryAggregatePublicKeys(publicKeys, aggregatePublicKey, out var _);
-        //     Console.WriteLine("Aggregate Public Key: [{0}] {1}", aggregatePublicKey.Length, HexMate.Convert.ToHexString(aggregatePublicKey));
-        //
-        //     // Aggregate signatures
-        //     var signatures = new Span<byte>(new byte[96 * 2]);
-        //     signature1.CopyTo(signatures);
-        //     signature2.CopyTo(signatures.Slice(96));
-        //     using var blsAggregate = new BLSHerumi(new BLSParameters());
-        //     var aggregateSignature = new byte[96];
-        //     blsAggregate.TryAggregateSignatures(signatures, aggregateSignature, out var _);
-        //     Console.WriteLine("Aggregate Signature: [{0}] {1}", aggregateSignature.Length, HexMate.Convert.ToHexString(aggregateSignature));
-        //
-        //     // Verify aggregates
-        //     // i.e. the combined aggregatePublicKey / aggregateSignature are a valid pair
-        //     var aggregatePublicKeyParameters = new BLSParameters()
-        //     {
-        //         PublicKey = aggregatePublicKey
-        //     };
-        //     using var blsVerify = new BLSHerumi(aggregatePublicKeyParameters);
-        //     var verifySuccess = blsVerify.VerifyHash(sharedMessageHash, aggregateSignature, domain1);
-        //     Console.WriteLine("Verify: {0}", verifySuccess);
-        //
-        //     verifySuccess.ShouldBeTrue();
-        // }
+        [TestMethod]
+        public void SignTwoDataAndAggregateVerify()
+        {
+            // Arrange
+            var privateKey1 = HexMate.Convert.FromHexString(PrivateKeys[1]);
+            var privateKey2 = HexMate.Convert.FromHexString(PrivateKeys[2]);
+            var messageData1 = MessageData[1];
+            var messageData2 = MessageData[2];
+        
+            Console.WriteLine("Input:");
+            Console.WriteLine("Private Key 1: [{0}] {1}", privateKey1.Length, HexMate.Convert.ToHexString(privateKey1));
+            Console.WriteLine("MessageData 1: [{0}] {1}", messageData1.Length, HexMate.Convert.ToHexString(messageData1));
+            Console.WriteLine("Private Key 2: [{0}] {1}", privateKey2.Length, HexMate.Convert.ToHexString(privateKey2));
+            Console.WriteLine("MessageData 2: [{0}] {1}", messageData2.Length, HexMate.Convert.ToHexString(messageData2));
+        
+            // Sign 1
+            using var bls1 = new BLSHerumi(new BLSParameters() { PrivateKey = privateKey1 });
+            var signature1 = new byte[96];
+            _ = bls1.TrySignData(messageData1, signature1.AsSpan(), out var _);
+            Console.WriteLine("Signature 1: [{0}] {1}", signature1.Length, HexMate.Convert.ToHexString(signature1));
+            var publicKey1 = new byte[48];
+            _ = bls1.TryExportBlsPublicKey(publicKey1, out var _);
+            Console.WriteLine("Public Key 1: [{0}] {1}", publicKey1.Length, HexMate.Convert.ToHexString(publicKey1));
+        
+            // Sign 2
+            using var bls2 = new BLSHerumi(new BLSParameters() { PrivateKey = privateKey2 });
+            var signature2 = new byte[96];
+            _ = bls2.TrySignData(messageData2, signature2.AsSpan(), out var _);
+            Console.WriteLine("Signature 2: [{0}] {1}", signature2.Length, HexMate.Convert.ToHexString(signature2));
+            var publicKey2 = new byte[48];
+            _ = bls2.TryExportBlsPublicKey(publicKey2, out var _);
+            Console.WriteLine("Public Key 2: [{0}] {1}", publicKey2.Length, HexMate.Convert.ToHexString(publicKey2));
 
+            // Concatenate public keys
+            var publicKeys = new Span<byte>(new byte[48 * 2]);
+            publicKey1.CopyTo(publicKeys);
+            publicKey2.CopyTo(publicKeys.Slice(48));
 
+            // Aggregate signatures
+            var signatures = new Span<byte>(new byte[96 * 2]);
+            signature1.CopyTo(signatures);
+            signature2.CopyTo(signatures.Slice(96));
+            using var blsAggregate = new BLSHerumi(new BLSParameters());
+            var aggregateSignature = new byte[96];
+            blsAggregate.TryAggregateSignatures(signatures, aggregateSignature, out var _);
+            Console.WriteLine("Aggregate Signature: [{0}] {1}", aggregateSignature.Length, HexMate.Convert.ToHexString(aggregateSignature));
+
+            // Concatenate data
+            var data = new Span<byte>(new byte[32 * 2]);
+            messageData1.CopyTo(data);
+            messageData2.CopyTo(data.Slice(32));
+
+            // Aggregate verify
+            using var blsVerify = new BLSHerumi(new BLSParameters());
+            var verifySuccess = blsVerify.AggregateVerifyData(publicKeys, data, aggregateSignature);
+            Console.WriteLine("Verify: {0}", verifySuccess);
+        
+            verifySuccess.ShouldBeTrue();
+        }
+        
+        [TestMethod]
+        public void SignSharedDataAndFastAggregateVerify()
+        {
+            // Arrange
+            var privateKey1 = HexMate.Convert.FromHexString(PrivateKeys[1]);
+            var privateKey2 = HexMate.Convert.FromHexString(PrivateKeys[2]);
+            var sharedMessageData = MessageData[2];
+        
+            Console.WriteLine("Input:");
+            Console.WriteLine("Private Key 1: [{0}] {1}", privateKey1.Length, HexMate.Convert.ToHexString(privateKey1));
+            Console.WriteLine("Private Key 2: [{0}] {1}", privateKey2.Length, HexMate.Convert.ToHexString(privateKey2));
+            Console.WriteLine("MessageData 2: [{0}] {1}", sharedMessageData.Length, HexMate.Convert.ToHexString(sharedMessageData));
+        
+            // Sign 1
+            using var bls1 = new BLSHerumi(new BLSParameters() { PrivateKey = privateKey1 });
+            var signature1 = new byte[96];
+            _ = bls1.TrySignData(sharedMessageData, signature1.AsSpan(), out var _);
+            Console.WriteLine("Signature 1: [{0}] {1}", signature1.Length, HexMate.Convert.ToHexString(signature1));
+            var publicKey1 = new byte[48];
+            _ = bls1.TryExportBlsPublicKey(publicKey1, out var _);
+            Console.WriteLine("Public Key 1: [{0}] {1}", publicKey1.Length, HexMate.Convert.ToHexString(publicKey1));
+        
+            // Sign 2
+            using var bls2 = new BLSHerumi(new BLSParameters() { PrivateKey = privateKey2 });
+            var signature2 = new byte[96];
+            _ = bls2.TrySignData(sharedMessageData, signature2.AsSpan(), out var _);
+            Console.WriteLine("Signature 2: [{0}] {1}", signature2.Length, HexMate.Convert.ToHexString(signature2));
+            var publicKey2 = new byte[48];
+            _ = bls2.TryExportBlsPublicKey(publicKey2, out var _);
+            Console.WriteLine("Public Key 2: [{0}] {1}", publicKey2.Length, HexMate.Convert.ToHexString(publicKey2));
+        
+            // Concatenate public keys
+            var publicKeys = new Span<byte>(new byte[48 * 2]);
+            publicKey1.CopyTo(publicKeys);
+            publicKey2.CopyTo(publicKeys.Slice(48));
+        
+            // Aggregate signatures
+            var signatures = new Span<byte>(new byte[96 * 2]);
+            signature1.CopyTo(signatures);
+            signature2.CopyTo(signatures.Slice(96));
+            using var blsAggregate = new BLSHerumi(new BLSParameters());
+            var aggregateSignature = new byte[96];
+            blsAggregate.TryAggregateSignatures(signatures, aggregateSignature, out var _);
+            Console.WriteLine("Aggregate Signature: [{0}] {1}", aggregateSignature.Length, HexMate.Convert.ToHexString(aggregateSignature));
+        
+            // Fast aggregate verify
+            using var blsVerify = new BLSHerumi(new BLSParameters());
+            var verifySuccess = blsVerify.FastAggregateVerifyData(publicKeys, sharedMessageData, aggregateSignature);
+            Console.WriteLine("Verify: {0}", verifySuccess);
+        
+            verifySuccess.ShouldBeTrue();
+        }
     }
 }
