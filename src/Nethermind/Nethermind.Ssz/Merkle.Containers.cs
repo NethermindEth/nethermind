@@ -76,15 +76,18 @@ namespace Nethermind.Ssz
             merkleizer.Feed(container.BlockHash);
             merkleizer.CalculateRoot(out root);
         }
-        
-        public static void Ize(out UInt256 root, DepositData? container)
+
+        public static void Ize(out UInt256 root, DepositMessage container)
         {
-            if (container is null)
-            {
-                root = RootOfNull;
-                return;
-            }
-            
+            Merkleizer merkleizer = new Merkleizer(2);
+            merkleizer.Feed(container.PublicKey);
+            merkleizer.Feed(container.WithdrawalCredentials);
+            merkleizer.Feed(container.Amount);
+            merkleizer.CalculateRoot(out root);
+        }
+
+        public static void Ize(out UInt256 root, DepositData container)
+        {
             Merkleizer merkleizer = new Merkleizer(2);
             merkleizer.Feed(container.PublicKey);
             merkleizer.Feed(container.WithdrawalCredentials);

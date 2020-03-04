@@ -36,6 +36,7 @@ namespace Nethermind.Core2.Cryptography
     /// </summary>
     public class CryptographyService : ICryptographyService
     {
+        private readonly BLS _bls;
         private readonly ChainConstants _chainConstants;
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
@@ -58,6 +59,9 @@ namespace Nethermind.Core2.Cryptography
             TimeParameters timeParameters = timeParameterOptions.CurrentValue;
             StateListLengths stateListLengths = stateListLengthOptions.CurrentValue;
             MaxOperationsPerBlock maxOperationsPerBlock = maxOperationsPerBlockOptions.CurrentValue;
+            
+            BLSParameters blsParameters = new BLSParameters();
+            _bls = BLS.Create(blsParameters);
             
             Nethermind.Ssz.Ssz.Init(
                 chainConstants.DepositContractTreeDepth, 
@@ -91,9 +95,8 @@ namespace Nethermind.Core2.Cryptography
                 publicKey.AsSpan().CopyTo(publicKeysSpan.Slice(publicKeysSpanIndex));
                 publicKeysSpanIndex += BlsPublicKey.Length;
             }
-            using BLS signatureAlgorithm = SignatureAlgorithmFactory(new BLSParameters());
             byte[] aggregatePublicKey = new byte[BlsPublicKey.Length];
-            bool success = signatureAlgorithm.TryAggregatePublicKeys(publicKeysSpan, aggregatePublicKey, out int bytesWritten);
+            bool success = _bls.TryAggregatePublicKeys(publicKeysSpan, aggregatePublicKey, out int bytesWritten);
             if (!success || bytesWritten != BlsPublicKey.Length)
             {
                 throw new Exception("Error generating aggregate public key.");
@@ -121,20 +124,27 @@ namespace Nethermind.Core2.Cryptography
                 signingRootsSpanIndex += Root.Length;
             }
 
-            using BLS signatureAlgorithm = SignatureAlgorithmFactory(new BLSParameters());
-            return signatureAlgorithm.AggregateVerifyHashes(publicKeysSpan, signingRootsSpan, signature.AsSpan());
+            return _bls.AggregateVerifyData(publicKeysSpan, signingRootsSpan, signature.AsSpan());
         }
 
-        public bool BlsFastAggregateVerify(IList<BlsPublicKey> publicKey, Root signingRoot, BlsSignature signature)
+        public bool BlsFastAggregateVerify(IList<BlsPublicKey> publicKeys, Root signingRoot, BlsSignature signature)
         {
-            throw new NotImplementedException();
+            int count = publicKeys.Count();
+
+            Span<byte> publicKeysSpan = new Span<byte>(new byte[count * BlsPublicKey.Length]);
+            int publicKeysSpanIndex = 0;
+            foreach (BlsPublicKey publicKey in publicKeys)
+            {
+                publicKey.AsSpan().CopyTo(publicKeysSpan.Slice(publicKeysSpanIndex));
+                publicKeysSpanIndex += BlsPublicKey.Length;
+            }
+
+            return _bls.FastAggregateVerifyData(publicKeysSpan, signingRoot.AsSpan(), signature.AsSpan());
         }
 
         public bool BlsVerify(BlsPublicKey publicKey, Root signingRoot, BlsSignature signature)
         {
-            BLSParameters blsParameters = new BLSParameters() { PublicKey = publicKey.AsSpan().ToArray() };
-            using BLS signatureAlgorithm = SignatureAlgorithmFactory(blsParameters);
-            return signatureAlgorithm.VerifyData(signingRoot.AsSpan(), signature.AsSpan());
+            return _bls.VerifyData(publicKey.AsSpan(), signingRoot.AsSpan(), signature.AsSpan());
         }
 
         public Bytes32 Hash(Bytes32 a, Bytes32 b)
@@ -219,7 +229,9 @@ namespace Nethermind.Core2.Cryptography
 
         public Root HashTreeRoot(DepositMessage depositMessage)
         {
-            throw new NotImplementedException();
+            Merkle.Ize(out UInt256 root, depositMessage);
+            Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
+            return new Root(bytes);
         }
 
         Root ICryptographyService.HashTreeRoot(IList<DepositData> depositData)
