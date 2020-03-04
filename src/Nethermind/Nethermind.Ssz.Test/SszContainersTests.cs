@@ -321,7 +321,7 @@ namespace Nethermind.Ssz.Test
 
             Span<byte> encoded = new byte[Ssz.AttestationLength(container)];
             Ssz.Encode(encoded, container);
-            Attestation? decoded = Ssz.DecodeAttestation(encoded);
+            Attestation decoded = Ssz.DecodeAttestation(encoded);
             Assert.AreEqual(container, decoded);
             
             Merkle.Ize(out UInt256 root, container);

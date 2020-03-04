@@ -102,7 +102,7 @@ namespace Nethermind.Core2.Cryptography
             }
 
             using BLS signatureAlgorithm = SignatureAlgorithmFactory(new BLSParameters());
-            return signatureAlgorithm.VerifyAggregate(publicKeysSpan, signingRootsSpan, signature.AsSpan());
+            return signatureAlgorithm.VerifyAggregateHashes(publicKeysSpan, signingRootsSpan, signature.AsSpan());
         }
 
         public bool BlsFastAggregateVerify(IList<BlsPublicKey> publicKey, Root signingRoot, BlsSignature signature)

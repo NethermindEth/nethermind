@@ -21,7 +21,7 @@ using Nethermind.Core2.Crypto;
 
 namespace Nethermind.Core2.Containers
 {
-    public class Attestation
+    public class Attestation : IEquatable<Attestation>
     {
         public static readonly Attestation Zero = new Attestation(new BitArray(0), AttestationData.Zero, BlsSignature.Zero);
         
@@ -48,7 +48,7 @@ namespace Nethermind.Core2.Containers
             return $"C:{Data.Index} S:{Data.Slot} Sig:{Signature.ToString().Substring(0, 12)}";
         }
         
-        public bool Equals(Attestation other)
+        public bool Equals(Attestation? other)
         {
             if (!Equals(Data, other.Data) ||
                 !Equals(Signature, other.Signature) ||

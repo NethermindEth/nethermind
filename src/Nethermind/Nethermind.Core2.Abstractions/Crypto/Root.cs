@@ -87,7 +87,7 @@ namespace Nethermind.Core2.Crypto
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;
-            return _bytes.Equals(other._bytes);
+            return _bytes.SequenceEqual(other._bytes);
         }
 
         public override bool Equals(object? obj)
