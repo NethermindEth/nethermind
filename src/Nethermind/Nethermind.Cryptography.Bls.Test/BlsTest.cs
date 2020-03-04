@@ -78,7 +78,7 @@ namespace Nethermind.Cryptography.Bls.Test
             using var bls = new BLSHerumi(parameters);
 
             var publicKey = new byte[48];
-            _ = bls.TryExportBLSPublicKey(publicKey, out var _);
+            _ = bls.TryExportBlsPublicKey(publicKey, out var _);
 
             Console.WriteLine("Public Key: [{0}] {1}", publicKey.Length, HexMate.Convert.ToHexString(publicKey));
 
@@ -133,7 +133,7 @@ namespace Nethermind.Cryptography.Bls.Test
             _ = bls1.TrySignHash(messageHash1, signature1.AsSpan(), out var _, domain1);
             Console.WriteLine("Signature 1: [{0}] {1}", signature1.Length, HexMate.Convert.ToHexString(signature1));
             var publicKey1 = new byte[48];
-            _ = bls1.TryExportBLSPublicKey(publicKey1, out var _);
+            _ = bls1.TryExportBlsPublicKey(publicKey1, out var _);
             Console.WriteLine("Public Key 1: [{0}] {1}", publicKey1.Length, HexMate.Convert.ToHexString(publicKey1));
 
             // Sign 2
@@ -142,7 +142,7 @@ namespace Nethermind.Cryptography.Bls.Test
             _ = bls2.TrySignHash(messageHash2, signature2.AsSpan(), out var _, domain1);
             Console.WriteLine("Signature 2: [{0}] {1}", signature2.Length, HexMate.Convert.ToHexString(signature2));
             var publicKey2 = new byte[48];
-            _ = bls2.TryExportBLSPublicKey(publicKey2, out var _);
+            _ = bls2.TryExportBlsPublicKey(publicKey2, out var _);
             Console.WriteLine("Public Key 2: [{0}] {1}", publicKey2.Length, HexMate.Convert.ToHexString(publicKey2));
 
             // Aggregate signatures
@@ -162,7 +162,7 @@ namespace Nethermind.Cryptography.Bls.Test
             var hashes = new Span<byte>(new byte[32 * 2]);
             messageHash1.CopyTo(hashes);
             messageHash2.CopyTo(hashes.Slice(32));
-            var verifySuccess = blsVerify.VerifyAggregate(publicKeys, hashes, aggregateSignature, domain1);
+            var verifySuccess = blsVerify.VerifyAggregateHashes(publicKeys, hashes, aggregateSignature, domain1);
             Console.WriteLine("Verify: {0}", verifySuccess);
 
             verifySuccess.ShouldBeTrue();
@@ -190,7 +190,7 @@ namespace Nethermind.Cryptography.Bls.Test
             _ = bls1.TrySignHash(sharedMessageHash, signature1.AsSpan(), out var _, domain1);
             Console.WriteLine("Signature 1: [{0}] {1}", signature1.Length, HexMate.Convert.ToHexString(signature1));
             var publicKey1 = new byte[48];
-            _ = bls1.TryExportBLSPublicKey(publicKey1, out var _);
+            _ = bls1.TryExportBlsPublicKey(publicKey1, out var _);
             Console.WriteLine("Public Key 1: [{0}] {1}", publicKey1.Length, HexMate.Convert.ToHexString(publicKey1));
 
             // Sign 2
@@ -199,7 +199,7 @@ namespace Nethermind.Cryptography.Bls.Test
             _ = bls2.TrySignHash(sharedMessageHash, signature2.AsSpan(), out var _, domain1);
             Console.WriteLine("Signature 2: [{0}] {1}", signature2.Length, HexMate.Convert.ToHexString(signature2));
             var publicKey2 = new byte[48];
-            _ = bls2.TryExportBLSPublicKey(publicKey2, out var _);
+            _ = bls2.TryExportBlsPublicKey(publicKey2, out var _);
             Console.WriteLine("Public Key 2: [{0}] {1}", publicKey2.Length, HexMate.Convert.ToHexString(publicKey2));
 
             // Aggregate public keys
@@ -248,7 +248,7 @@ namespace Nethermind.Cryptography.Bls.Test
             // Act
             using var bls = new BLSHerumi(parameters);
             var result = new byte[48];
-            var success = bls.TryExportBLSPublicKey(result.AsSpan(), out var bytesWritten);
+            var success = bls.TryExportBlsPublicKey(result.AsSpan(), out var bytesWritten);
 
             Console.WriteLine("Output:");
             Console.WriteLine("Public Key: [{0}] {1}", result.Length, HexMate.Convert.ToHexString(result));

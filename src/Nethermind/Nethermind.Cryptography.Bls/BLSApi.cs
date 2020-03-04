@@ -33,7 +33,7 @@ namespace Nethermind.Cryptography
             _bls = bls;
         }
 
-        public byte[] Aggregate(IEnumerable<byte[]> signatures)
+        public byte[] Aggregate(IList<byte[]> signatures)
         {
             var signatureLength = signatures.First().Length;
             var signaturesSpan = new Span<byte>(new byte[signatures.Count() * signatureLength]);
@@ -47,7 +47,7 @@ namespace Nethermind.Cryptography
             return aggregate.ToArray();
         }
 
-        public bool AggregateVerify(IEnumerable<Tuple<byte, byte>> publicKeysAndMessages, ReadOnlySpan<byte> signature)
+        public bool AggregateVerify(IList<Tuple<byte, byte>> publicKeysAndMessages, ReadOnlySpan<byte> signature)
         {
             // Aggregate verify is across multiple public keys...
             // (.NET crypto AsymmetricAlgorithm usually represents one key only)

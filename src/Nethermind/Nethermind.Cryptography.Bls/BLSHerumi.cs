@@ -46,13 +46,42 @@ namespace Nethermind.Cryptography
         public override string CurveName => "BLS12381";
 
         /// <inheritdoc />
-        public override string HashToPointName => "ETH2-";
+        public override string HashToPointName => "SSWU-RO-";
 
         /// <inheritdoc />
-        public override BlsScheme Scheme => BlsScheme.Basic;
+        public override BlsScheme Scheme => BlsScheme.ProofOfPossession;
 
         /// <inheritdoc />
         public override BlsVariant Variant => BlsVariant.MinimalPublicKeySize;
+
+        
+        /// <inheritdoc />
+        public override ReadOnlySpan<byte> ExportBlsPrivateKey()
+        {
+            if (_privateKey == null)
+            {
+                throw new CryptographicException("The key could not be exported.");
+            }
+
+            return _privateKey;
+        }
+
+        /// <inheritdoc />
+        public override ReadOnlySpan<byte> ExportBlsPublicKey()
+        {
+            EnsurePublicKey();
+            if (_publicKey == null)
+            {
+                throw new CryptographicException("The key could not be exported.");
+            }
+
+            return _publicKey;
+        }
+
+        public override bool FastVerifyAggregateData(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> data, ReadOnlySpan<byte> aggregateSignature)
+        {
+            throw new NotImplementedException();
+        }
 
         /// <inheritdoc />
         public override void ImportParameters(BLSParameters parameters)
@@ -75,14 +104,14 @@ namespace Nethermind.Cryptography
             if (parameters.Variant != BlsVariant.Unknown
                 && parameters.Variant != BlsVariant.MinimalPublicKeySize)
             {
-                throw new NotSupportedException($"BLS variant {parameters.Variant} not supported.");
+                throw new NotSupportedException($"BLS variant {parameters.Variant} not supported. Must be {BlsVariant.MinimalPublicKeySize}, or leave unset.");
             }
 
             // Only supports basic (or unspecified)
             if (parameters.Scheme != BlsScheme.Unknown
-               && parameters.Scheme != BlsScheme.Basic)
+               && parameters.Scheme != BlsScheme.ProofOfPossession)
             {
-                throw new NotSupportedException($"BLS scheme {parameters.Scheme} not supported.");
+                throw new NotSupportedException($"BLS scheme {parameters.Scheme} not supported. Must be {BlsScheme.ProofOfPossession}, or leave unset.");
             }
 
             // TODO: If both are null, generate random key??
@@ -93,7 +122,7 @@ namespace Nethermind.Cryptography
 
         public override bool TryAggregatePublicKeys(ReadOnlySpan<byte> publicKeys, Span<byte> destination, out int bytesWritten)
         {
-            // This is independent of the keys set, although other parameters (type of curve, variant, scheme, etc) are relevant.
+            // This is independent of the keys set (it uses multiple keys), although other parameters (type of curve, variant, scheme, etc) are relevant.
 
             if (publicKeys.Length % PublicKeyLength != 0)
             {
@@ -246,50 +275,9 @@ namespace Nethermind.Cryptography
             bytesWritten = 2 * InitialXPartLength;
             return true;
         }
-
+        
         /// <inheritdoc />
-        public override bool TryExportBLSPrivateKey(Span<byte> destination, out int bytesWritten)
-        {
-            if (_privateKey == null)
-            {
-                throw new CryptographicException("The key could not be exported.");
-            }
-            if (destination.Length < _privateKey.Length)
-            {
-                bytesWritten = 0;
-                return false;
-            }
-            _privateKey.CopyTo(destination);
-            bytesWritten = _privateKey.Length;
-            return true;
-        }
-
-        /// <inheritdoc />
-        public override bool TryExportBLSPublicKey(Span<byte> destination, out int bytesWritten)
-        {
-            EnsurePublicKey();
-            if (_publicKey == null)
-            {
-                throw new CryptographicException("The key could not be exported.");
-            }
-            if (destination.Length < _publicKey.Length)
-            {
-                bytesWritten = 0;
-                return false;
-            }
-            _publicKey.CopyTo(destination);
-            bytesWritten = _publicKey.Length;
-            return true;
-        }
-
-        /// <inheritdoc />
-        public override bool TrySignData(ReadOnlySpan<byte> data, Span<byte> destination, out int bytesWritten, ReadOnlySpan<byte> domain = default)
-        {
-            throw new NotImplementedException();
-        }
-
-        /// <inheritdoc />
-        public override bool TrySignHash(ReadOnlySpan<byte> hash, Span<byte> destination, out int bytesWritten, ReadOnlySpan<byte> domain = default)
+        public override bool TrySignData(ReadOnlySpan<byte> privateKey, ReadOnlySpan<byte> data, Span<byte> destination, out int bytesWritten)
         {
             if (destination.Length < SignatureLength)
             {
@@ -306,12 +294,70 @@ namespace Nethermind.Cryptography
             int bytesRead;
             unsafe
             {
-                fixed (byte* privateKeyPtr = _privateKey)
+                fixed (byte* privateKeyPtr = privateKey)
                 {
-                    bytesRead = Bls384Interop.SecretKeyDeserialize(ref blsSecretKey, privateKeyPtr, _privateKey!.Length);
+                    bytesRead = Bls384Interop.SecretKeyDeserialize(ref blsSecretKey, privateKeyPtr, privateKey!.Length);
                 }
             }
-            if (bytesRead != _privateKey.Length)
+            if (bytesRead != privateKey.Length)
+            {
+                throw new Exception($"Error deserializing BLS private key, length: {bytesRead}");
+            }
+
+            var blsSignature = default(Bls384Interop.BlsSignature);
+            int result;
+
+            unsafe
+            {
+                fixed (byte* dataPtr = data)
+                {
+                    result = Bls384Interop.Sign(ref blsSignature, ref blsSecretKey, dataPtr, data.Length);
+                }
+            }
+
+            if (result != 0)
+            {
+                throw new Exception($"Error generating BLS signature for hash. Error: {result}");
+            }
+
+            unsafe
+            {
+                fixed (byte* destinationPtr = destination)
+                {
+                    bytesWritten = Bls384Interop.SignatureSerialize(destinationPtr, SignatureLength, ref blsSignature);
+                }
+            }
+            if (bytesWritten != SignatureLength)
+            {
+                throw new Exception($"Error serializing BLS signature, length: {bytesWritten}");
+            }
+            return true;
+        }
+
+        /// <inheritdoc />
+        public override bool TrySignHash(ReadOnlySpan<byte> privateKey, ReadOnlySpan<byte> hash, Span<byte> destination, out int bytesWritten, ReadOnlySpan<byte> domain = default)
+        {
+            if (destination.Length < SignatureLength)
+            {
+                bytesWritten = 0;
+                return false;
+            }
+
+            EnsureInitialised();
+
+            // TODO: Generate random key if null
+            // EnsurePrivateKey();
+
+            var blsSecretKey = default(Bls384Interop.BlsSecretKey);
+            int bytesRead;
+            unsafe
+            {
+                fixed (byte* privateKeyPtr = privateKey)
+                {
+                    bytesRead = Bls384Interop.SecretKeyDeserialize(ref blsSecretKey, privateKeyPtr, privateKey!.Length);
+                }
+            }
+            if (bytesRead != privateKey.Length)
             {
                 throw new Exception($"Error deserializing BLS private key, length: {bytesRead}");
             }
@@ -395,8 +441,15 @@ namespace Nethermind.Cryptography
             return true;
         }
 
+        public override bool VerifyAggregateData(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> data, ReadOnlySpan<int> dataLengths,
+            ReadOnlySpan<byte> aggregateSignature)
+        {
+            throw new NotImplementedException();
+        }
+
         /// <inheritdoc />
-        public override bool VerifyAggregate(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> hashes, ReadOnlySpan<byte> aggregateSignature, ReadOnlySpan<byte> domain = default)
+        public override bool VerifyAggregateHashes(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> hashes, ReadOnlySpan<byte> aggregateSignature,
+            ReadOnlySpan<byte> domain = default)
         {
             // This is independent of the keys set, although other parameters (type of curve, variant, scheme, etc) are relevant.
 
@@ -496,15 +549,9 @@ namespace Nethermind.Cryptography
 
             return (result == 1);
         }
-
+        
         /// <inheritdoc />
-        public override bool VerifyData(ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> domain = default)
-        {
-            throw new NotImplementedException();
-        }
-
-        /// <inheritdoc />
-        public override bool VerifyHash(ReadOnlySpan<byte> hash, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> domain = default)
+        public override bool VerifyData(ReadOnlySpan<byte> publicKey, ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature)
         {
             if (signature.Length != SignatureLength)
             {
@@ -512,18 +559,69 @@ namespace Nethermind.Cryptography
             }
 
             EnsureInitialised();
-            EnsurePublicKey();
+
+            // TODO: Maybe cache BlsPublicKey struct conversion?
+            var blsPublicKey = default(Bls384Interop.BlsPublicKey);
+            int publicKeyBytesRead;
+            unsafe
+            {
+                fixed (byte* publicKeyPtr = publicKey)
+                {
+                    publicKeyBytesRead = Bls384Interop.PublicKeyDeserialize(ref blsPublicKey, publicKeyPtr, publicKey!.Length);
+                }
+            }
+            if (publicKeyBytesRead != publicKey.Length)
+            {
+                throw new Exception($"Error deserializing BLS public key, length: {publicKeyBytesRead}");
+            }
+
+            var blsSignature = default(Bls384Interop.BlsSignature);
+            int signatureBytesRead;
+            unsafe
+            {
+                fixed (byte* signaturePtr = signature)
+                {
+                    signatureBytesRead = Bls384Interop.SignatureDeserialize(ref blsSignature, signaturePtr, SignatureLength);
+                }
+            }
+            if (signatureBytesRead != signature.Length)
+            {
+                throw new Exception($"Error deserializing BLS signature, length: {signatureBytesRead}");
+            }
+
+            int result;
+
+            unsafe
+            {
+                fixed (byte* dataPtr = data)
+                {
+                    result = Bls384Interop.Verify(ref blsSignature, ref blsPublicKey, dataPtr, data.Length);
+                }
+            }
+
+            return (result == 1);
+        }
+
+        /// <inheritdoc />
+        public override bool VerifyHash(ReadOnlySpan<byte> publicKey, ReadOnlySpan<byte> hash, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> domain = default)
+        {
+            if (signature.Length != SignatureLength)
+            {
+                throw new ArgumentOutOfRangeException(nameof(signature), signature.Length, $"Signature must be {SignatureLength} bytes long.");
+            }
+
+            EnsureInitialised();
 
             var blsPublicKey = default(Bls384Interop.BlsPublicKey);
             int publicKeyBytesRead;
             unsafe
             {
-                fixed (byte* publicKeyPtr = _publicKey)
+                fixed (byte* publicKeyPtr = publicKey)
                 {
-                    publicKeyBytesRead = Bls384Interop.PublicKeyDeserialize(ref blsPublicKey, publicKeyPtr, _publicKey!.Length);
+                    publicKeyBytesRead = Bls384Interop.PublicKeyDeserialize(ref blsPublicKey, publicKeyPtr, publicKey!.Length);
                 }
             }
-            if (publicKeyBytesRead != _publicKey.Length)
+            if (publicKeyBytesRead != publicKey.Length)
             {
                 throw new Exception($"Error deserializing BLS public key, length: {publicKeyBytesRead}");
             }

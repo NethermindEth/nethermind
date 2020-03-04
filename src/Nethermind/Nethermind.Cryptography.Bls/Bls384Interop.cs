@@ -57,6 +57,17 @@ namespace Nethermind.Cryptography
 
         private const int MCLBN_FR_UNIT_SIZE = 4;
 
+        /*
+            all msg[i] has the same msgSize byte, so msgVec must have (msgSize * n) byte area
+            verify prod e(H(pubVec[i], msgToG2[i]) == e(P, sig)
+            @note CHECK that sig has the valid order, all msg are different each other before calling this
+        */
+        //BLS_DLL_API int blsAggregateVerifyNoCheck(const blsSignature *sig, const blsPublicKey *pubVec, const void *msgVec, mclSize msgSize, mclSize n);
+        
+        // verify(sig, sum of pubVec[0..n], msg)
+        //BLS_DLL_API int blsFastAggregateVerify(const blsSignature *sig, const blsPublicKey *pubVec, mclSize n, const void *msg, mclSize msgSize);
+
+
         // BLS_DLL_API void blsGetPublicKey(blsPublicKey* pub, const blsSecretKey* sec);
         [DllImport(DllName, EntryPoint = "blsGetPublicKey")]
         public static extern void GetPublicKey([In, Out] ref BlsPublicKey pub, ref BlsSecretKey sec);
@@ -114,6 +125,7 @@ namespace Nethermind.Cryptography
         // BLS_DLL_API int blsSecretKeySetByCSPRNG(blsSecretKey* sec);
         //[DllImport(DllName, EntryPoint = "blsSecretKeySetByCSPRNG")]
         //public static extern int SecretKeySetByCSPRNG(out BlsSecretKey sec);
+        
         // calculate the has of m and sign the hash
         // BLS_DLL_API void blsSign(blsSignature* sig, const blsSecretKey* sec, const void* m, mclSize size);
         [DllImport(DllName, EntryPoint = "blsSign")]
@@ -153,13 +165,7 @@ namespace Nethermind.Cryptography
         // BLS_DLL_API int blsVerify(const blsSignature* sig, const blsPublicKey* pub, const void* m, mclSize size);
         [DllImport(DllName, EntryPoint = "blsVerify")]
         public static extern unsafe int Verify(ref BlsSignature sig, ref BlsPublicKey pub, byte* m, int size);
-
-        //pubVec is an array of size n
-        //hashWithDomain is an array of size (40 * n)
-        //BLS_DLL_API int blsVerifyAggregatedHashWithDomain(const blsSignature *aggSig, const blsPublicKey *pubVec, const unsigned char hashWithDomain[][40], mclSize n);
-        [DllImport(DllName, EntryPoint = "blsVerifyAggregatedHashWithDomain")]
-        public static extern unsafe int VerifyAggregatedHashWithDomain(ref BlsSignature aggSig, BlsPublicKey[] pubVec, byte* hashWithDomain, int n);
-
+        
         //verify aggSig with pubVec[0, n) and hVec[0, n)
         //e(aggSig, Q) = prod_i e(hVec[i], pubVec[i])
         //return 1 if valid
@@ -167,6 +173,12 @@ namespace Nethermind.Cryptography
         //BLS_DLL_API int blsVerifyAggregatedHashes(const blsSignature* aggSig, const blsPublicKey* pubVec, const void* hVec, size_t sizeofHash, mclSize n);
         [DllImport(DllName, EntryPoint = "blsVerifyAggregatedHashes")]
         public static extern unsafe int VerifyAggregateHashes(ref BlsSignature aggSig, BlsPublicKey[] pubVec, byte* hVec, int sizeofHash, int n);
+        
+        //pubVec is an array of size n
+        //hashWithDomain is an array of size (40 * n)
+        //BLS_DLL_API int blsVerifyAggregatedHashWithDomain(const blsSignature *aggSig, const blsPublicKey *pubVec, const unsigned char hashWithDomain[][40], mclSize n);
+        [DllImport(DllName, EntryPoint = "blsVerifyAggregatedHashWithDomain")]
+        public static extern unsafe int VerifyAggregatedHashWithDomain(ref BlsSignature aggSig, BlsPublicKey[] pubVec, byte* hashWithDomain, int n);
 
         // return 1 if valid
         //BLS_DLL_API int blsVerifyHash(const blsSignature* sig, const blsPublicKey* pub, const void* h, mclSize size);

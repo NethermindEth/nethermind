@@ -58,7 +58,7 @@ namespace Nethermind.HonestValidator.MockedStart
                 };
                 BLS bls = BLS.Create(blsParameters);
                 byte[] publicKeyBytes = new byte[BlsPublicKey.Length];
-                bls.TryExportBLSPublicKey(publicKeyBytes, out int publicKeyBytesWritten);
+                bls.TryExportBlsPublicKey(publicKeyBytes, out int publicKeyBytesWritten);
                 BlsPublicKey publicKey = new BlsPublicKey(publicKeyBytes);
 
                 // Cache the BLS class, for easy signing
