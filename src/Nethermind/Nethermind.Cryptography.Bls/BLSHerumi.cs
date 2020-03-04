@@ -80,7 +80,65 @@ namespace Nethermind.Cryptography
 
         public override bool FastVerifyAggregateData(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> data, ReadOnlySpan<byte> aggregateSignature)
         {
-            throw new NotImplementedException();
+            // This is independent of the keys set, although other parameters (type of curve, variant, scheme, etc) are relevant.
+
+            if (aggregateSignature.Length != SignatureLength)
+            {
+                throw new ArgumentOutOfRangeException(nameof(aggregateSignature), aggregateSignature.Length, $"Signature must be {SignatureLength} bytes long.");
+            }
+            if (publicKeys.Length % PublicKeyLength != 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(publicKeys), publicKeys.Length, $"Public key data must be a multiple of the public key length {PublicKeyLength}.");
+            }
+            var publicKeyCount = publicKeys.Length / PublicKeyLength;
+
+            EnsureInitialised();
+
+            var blsPublicKeys = new Bls384Interop.BlsPublicKey[publicKeyCount];
+            var publicKeysIndex = 0;
+            for (var blsPublicKeyIndex = 0; blsPublicKeyIndex < publicKeyCount; blsPublicKeyIndex++)
+            {
+                var publicKey = publicKeys.Slice(publicKeysIndex, PublicKeyLength);
+                int publicKeyBytesRead;
+                unsafe
+                {
+                    fixed (byte* publicKeyPtr = publicKey)
+                    {
+                        publicKeyBytesRead = Bls384Interop.PublicKeyDeserialize(ref blsPublicKeys[blsPublicKeyIndex], publicKeyPtr, PublicKeyLength);
+                    }
+                }
+                if (publicKeyBytesRead != PublicKeyLength)
+                {
+                    throw new Exception($"Error deserializing BLS public key {blsPublicKeyIndex}, length: {publicKeyBytesRead}");
+                }
+                publicKeysIndex += PublicKeyLength;
+            }
+
+            var aggregateBlsSignature = default(Bls384Interop.BlsSignature);
+            int signatureBytesRead;
+            unsafe
+            {
+                fixed (byte* signaturePtr = aggregateSignature)
+                {
+                    signatureBytesRead = Bls384Interop.SignatureDeserialize(ref aggregateBlsSignature, signaturePtr, SignatureLength);
+                }
+            }
+            if (signatureBytesRead != aggregateSignature.Length)
+            {
+                throw new Exception($"Error deserializing BLS signature, length: {signatureBytesRead}");
+            }
+
+            int result;
+
+            unsafe
+            {
+                fixed (byte* dataPtr = data)
+                {
+                    result = Bls384Interop.FastAggregateVerify(ref aggregateBlsSignature, blsPublicKeys, publicKeyCount, dataPtr, data.Length);
+                }
+            }
+
+            return (result == 1);
         }
 
         /// <inheritdoc />
@@ -441,10 +499,75 @@ namespace Nethermind.Cryptography
             return true;
         }
 
-        public override bool VerifyAggregateData(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> data, ReadOnlySpan<int> dataLengths,
-            ReadOnlySpan<byte> aggregateSignature)
+        public override bool VerifyAggregateData(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> data, ReadOnlySpan<byte> aggregateSignature)
         {
-            throw new NotImplementedException();
+            // NOTE: all msg[i] has the same msgSize byte, so msgVec must have (msgSize * n) byte area
+            // TODO: CHECK that sig has the valid order, all msg are different each other before calling this
+
+            // This is independent of the keys set, although other parameters (type of curve, variant, scheme, etc) are relevant.
+
+            if (aggregateSignature.Length != SignatureLength)
+            {
+                throw new ArgumentOutOfRangeException(nameof(aggregateSignature), aggregateSignature.Length, $"Signature must be {SignatureLength} bytes long.");
+            }
+            if (publicKeys.Length % PublicKeyLength != 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(publicKeys), publicKeys.Length, $"Public key data must be a multiple of the public key length {PublicKeyLength}.");
+            }
+            var publicKeyCount = publicKeys.Length / PublicKeyLength;
+            if (data.Length % publicKeyCount != 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(data), data.Length, $"Data must all be the same length, with total bytes evenly divisible by the number of public keys, {publicKeyCount}.");
+            }
+
+            EnsureInitialised();
+
+            var blsPublicKeys = new Bls384Interop.BlsPublicKey[publicKeyCount];
+            var publicKeysIndex = 0;
+            for (var blsPublicKeyIndex = 0; blsPublicKeyIndex < publicKeyCount; blsPublicKeyIndex++)
+            {
+                var publicKey = publicKeys.Slice(publicKeysIndex, PublicKeyLength);
+                int publicKeyBytesRead;
+                unsafe
+                {
+                    fixed (byte* publicKeyPtr = publicKey)
+                    {
+                        publicKeyBytesRead = Bls384Interop.PublicKeyDeserialize(ref blsPublicKeys[blsPublicKeyIndex], publicKeyPtr, PublicKeyLength);
+                    }
+                }
+                if (publicKeyBytesRead != PublicKeyLength)
+                {
+                    throw new Exception($"Error deserializing BLS public key {blsPublicKeyIndex}, length: {publicKeyBytesRead}");
+                }
+                publicKeysIndex += PublicKeyLength;
+            }
+
+            var aggregateBlsSignature = default(Bls384Interop.BlsSignature);
+            int signatureBytesRead;
+            unsafe
+            {
+                fixed (byte* signaturePtr = aggregateSignature)
+                {
+                    signatureBytesRead = Bls384Interop.SignatureDeserialize(ref aggregateBlsSignature, signaturePtr, SignatureLength);
+                }
+            }
+            if (signatureBytesRead != aggregateSignature.Length)
+            {
+                throw new Exception($"Error deserializing BLS signature, length: {signatureBytesRead}");
+            }
+
+            int result;
+            var dataItemLength = data.Length / publicKeyCount;
+
+            unsafe
+            {
+                fixed (byte* dataPtr = data)
+                {
+                    result = Bls384Interop.AggregateVerifyNoCheck(ref aggregateBlsSignature, blsPublicKeys, dataPtr, dataItemLength, publicKeyCount);
+                }
+            }
+
+            return (result == 1);
         }
 
         /// <inheritdoc />
@@ -464,7 +587,7 @@ namespace Nethermind.Cryptography
             var publicKeyCount = publicKeys.Length / PublicKeyLength;
             if (hashes.Length % publicKeyCount != 0)
             {
-                throw new ArgumentOutOfRangeException(nameof(hashes), hashes.Length, $"Hashes must all be the same length, with total bytes evenly divisble by the number of public keys, {publicKeyCount}.");
+                throw new ArgumentOutOfRangeException(nameof(hashes), hashes.Length, $"Hashes must all be the same length, with total bytes evenly divisible by the number of public keys, {publicKeyCount}.");
             }
 
             EnsureInitialised();

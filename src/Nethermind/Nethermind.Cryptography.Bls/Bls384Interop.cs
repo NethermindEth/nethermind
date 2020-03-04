@@ -63,10 +63,13 @@ namespace Nethermind.Cryptography
             @note CHECK that sig has the valid order, all msg are different each other before calling this
         */
         //BLS_DLL_API int blsAggregateVerifyNoCheck(const blsSignature *sig, const blsPublicKey *pubVec, const void *msgVec, mclSize msgSize, mclSize n);
+        [DllImport(DllName, EntryPoint = "blsAggregateVerifyNoCheck")]
+        public static extern unsafe int AggregateVerifyNoCheck(ref BlsSignature sig, BlsPublicKey[] pubVec, byte* msgVec, int msgSize, int n);
         
         // verify(sig, sum of pubVec[0..n], msg)
         //BLS_DLL_API int blsFastAggregateVerify(const blsSignature *sig, const blsPublicKey *pubVec, mclSize n, const void *msg, mclSize msgSize);
-
+        [DllImport(DllName, EntryPoint = "blsFastAggregateVerify")]
+        public static extern unsafe int FastAggregateVerify(ref BlsSignature sig, BlsPublicKey[] pubVec, int n, byte* msg, int msgSize);
 
         // BLS_DLL_API void blsGetPublicKey(blsPublicKey* pub, const blsSecretKey* sec);
         [DllImport(DllName, EntryPoint = "blsGetPublicKey")]

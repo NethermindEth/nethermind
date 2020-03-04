@@ -285,11 +285,10 @@ namespace Nethermind.Cryptography
         /// Checks the provided aggregate signature matches the combined provided public keys and individual messages.
         /// </summary>
         /// <param name="publicKeys">Span of concatenated public key bytes; must be a multiple of the public key length.</param>
-        /// <param name="data">Span of concatenated data.</param>
-        /// <param name="dataLengths">Span of data lengths; values must be the same as the number of public keys and be valid for the data.</param>
+        /// <param name="data">Span of concatenated data; length divided evenly by the number of public keys, so all messages must be the same length.</param>
         /// <param name="aggregateSignature">The aggregate signature to check against the data.</param>
         /// <returns>true if the aggregate signature is valid; false if invalid</returns>
-        public abstract bool VerifyAggregateData(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> data, ReadOnlySpan<int> dataLengths, ReadOnlySpan<byte> aggregateSignature);
+        public abstract bool VerifyAggregateData(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> data, ReadOnlySpan<byte> aggregateSignature);
 
         /// <summary>
         /// Checks the provided aggregate signature matches the combined provided public keys and messages (with optional domain).
