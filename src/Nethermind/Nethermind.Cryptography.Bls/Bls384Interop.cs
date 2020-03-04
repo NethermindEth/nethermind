@@ -23,6 +23,12 @@ namespace Nethermind.Cryptography
     internal static class Bls384Interop
     //public static class Bls384Interop
     {
+        //#define BLS_ETH_MODE_OLD 0
+        //#define BLS_ETH_MODE_LATEST 1
+        
+        public const int BLS_ETH_MODE_OLD = 0;
+        public const int BLS_ETH_MODE_LATEST = 1;
+        
         // 	MCL_BLS12_381 = 5,
         public const int MCL_BLS12_381 = 5;
 
@@ -57,6 +63,7 @@ namespace Nethermind.Cryptography
 
         private const int MCLBN_FR_UNIT_SIZE = 4;
 
+        
         /*
             all msg[i] has the same msgSize byte, so msgVec must have (msgSize * n) byte area
             verify prod e(H(pubVec[i], msgToG2[i]) == e(P, sig)
@@ -116,12 +123,23 @@ namespace Nethermind.Cryptography
         [DllImport(DllName, EntryPoint = "blsSecretKeySerialize")]
         public static extern unsafe int SecretKeySerialize(byte* buf, int maxBufSize, ref BlsSecretKey sec);
 
+	    // use new eth 2.0 spec
+	    // @return 0 if success
+	    // @remark
+	    // this functions and the spec may change until it is fixed
+	    // the size of message <= 32
+        //#define BLS_ETH_MODE_OLD 0
+        //#define BLS_ETH_MODE_LATEST 1
+        //        BLS_DLL_API int blsSetETHmode(int mode);
+        [DllImport(DllName, EntryPoint = "blsSetETHmode")]
+        public static extern void SetEthMode(int mode);
+
         //set ETH serialization mode for BLS12-381
         //@param ETHserialization [in] 1:enable,  0:disable
         //@note ignore the flag if curve is not BLS12-381
         //BLS_DLL_API void blsSetETHserialization(int ETHserialization);
         [DllImport(DllName, EntryPoint = "blsSetETHserialization")]
-        public static extern void SetETHserialization(int ETHserialization);
+        public static extern void SetEthSerialization(int ETHserialization);
 
         // set secretKey if system has /dev/urandom or CryptGenRandom
         // return 0 if success else -1

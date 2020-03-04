@@ -907,7 +907,8 @@ namespace Nethermind.Cryptography
                     throw new Exception($"Error initialising BLS algorithm. Error: {result}");
                 }
 
-                Bls384Interop.SetETHserialization(1);
+                Bls384Interop.SetEthSerialization(1);
+                Bls384Interop.SetEthMode(Bls384Interop.BLS_ETH_MODE_LATEST);
                 _initialised = true;
             }
         }
