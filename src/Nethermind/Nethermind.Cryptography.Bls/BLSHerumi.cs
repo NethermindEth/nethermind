@@ -53,6 +53,7 @@ namespace Nethermind.Cryptography
         /// <inheritdoc />
         public override BlsVariant Variant => BlsVariant.MinimalPublicKeySize;
 
+        /// <inheritdoc />
         public override bool AggregateVerifyData(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> data,
             ReadOnlySpan<byte> aggregateSignature)
         {
