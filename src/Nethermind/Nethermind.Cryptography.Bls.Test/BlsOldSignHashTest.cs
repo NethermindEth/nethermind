@@ -33,30 +33,6 @@ namespace Nethermind.Cryptography.Bls.Test
         // Older results (seem to be different):
         // https://gist.github.com/ChihChengLiang/328bc1db5d2a47950e5364c11f23052a
 
-        private static IList<byte[]> Domains => new List<byte[]>
-        {
-            new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 },
-            new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01 },
-            new byte[] { 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 },
-            new byte[] { 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 },
-            new byte[] { 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef },
-            new byte[] { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff },
-        };
-
-        private static IList<byte[]> MessageHashes => new List<byte[]>
-        {
-            Enumerable.Repeat((byte)0x00, 32).ToArray(),
-            Enumerable.Repeat((byte)0x56, 32).ToArray(),
-            Enumerable.Repeat((byte)0xab, 32).ToArray(),
-        };
-
-        private static IList<string> PrivateKeys => new List<string>
-        {
-            "263dbd792f5b1be47ed85f8938c0f29586af0d3ac7b977f21c278fe1462040e3",
-            "47b8192d77bf871b62e87859d653922725724a5c031afeabc60bcef5ff665138",
-            "328388aff0d4a5b7dc9205abd374e7e98f3cd9f3418edb4eafda5fb16473d216",
-        };
-
         [DataTestMethod]
         [DynamicData(nameof(Case04SignHashData), DynamicDataSourceType.Method)]
         public void Case04SignHash(byte[] privateKey, byte[] messageHash, byte[] domain, byte[] expected)
