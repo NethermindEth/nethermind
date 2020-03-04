@@ -22,13 +22,13 @@ namespace Nethermind.Cryptography
 {
     /// <summary>
     /// BLS signature scheme API as defined in specifications. 
-    /// Note that it does not suppor the additional domain parameter for hash-to-point used in some implementation (e.g. Ethereum 2.0).
+    /// Note that it does not support the additional domain parameter for hash-to-point used in some implementation (e.g. Ethereum 2.0).
     /// </summary>
-    public class BLSApi
+    public class BlsApi
     {
         private readonly BLS _bls;
 
-        public BLSApi(BLS bls)
+        public BlsApi(BLS bls)
         {
             _bls = bls;
         }

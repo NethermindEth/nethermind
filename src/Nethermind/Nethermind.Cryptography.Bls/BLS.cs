@@ -41,7 +41,7 @@ namespace Nethermind.Cryptography
             // https://datatracker.ietf.org/doc/draft-irtf-cfrg-bls-signature
 
             // Example algorithm name "BLS_SIG_BLS12381G2-SHA256-_NUL_";
-            
+
             // ETH2.0 specification mandates cybersuite "BLS_SIG_BLS12381G2-SHA256-SSWU-RO-_POP_"
 
             // BLS_SIG_<h2c>_<scheme>_
@@ -69,10 +69,10 @@ namespace Nethermind.Cryptography
             // Simplified SWU for pairing-friendly curves
             // -RO uses hash_to_curve, required for random oracle
             // -NU uses non-unniform, encode_to_curve
-            
+
             // _POP_ = proof of possession
 
-            LegalKeySizesValue = new[] { new KeySizes(32 * 8, 32 * 8, 0) };
+            LegalKeySizesValue = new[] {new KeySizes(32 * 8, 32 * 8, 0)};
         }
 
         /// <summary>
@@ -85,14 +85,8 @@ namespace Nethermind.Cryptography
         /// </summary>
         public HashAlgorithm HashAlgorithm
         {
-            get
-            {
-                return _hashAlgorithm;
-            }
-            set
-            {
-                throw new NotImplementedException();
-            }
+            get { return _hashAlgorithm; }
+            set { throw new NotImplementedException(); }
         }
 
         /// <summary>
@@ -104,6 +98,16 @@ namespace Nethermind.Cryptography
         /// Gets the scheme used to defend against rogue key attacks (basic, message augmentation, or poof of possession).
         /// </summary>
         public abstract BlsScheme Scheme { get; }
+
+        /// <summary>
+        /// Gets the tags used in the name to represent the scheme.
+        /// </summary>
+        protected static IReadOnlyDictionary<BlsScheme, string> SchemeTags => new Dictionary<BlsScheme, string>
+        {
+            {BlsScheme.Basic, "NUL"},
+            {BlsScheme.MessageAugmentation, "AUG"},
+            {BlsScheme.ProofOfPossession, "POP"},
+        };
 
         /// <inheritdoc />
         public override string SignatureAlgorithm
@@ -124,21 +128,34 @@ namespace Nethermind.Cryptography
         public abstract BlsVariant Variant { get; }
 
         /// <summary>
-        /// Gets the tags used in the name to represent the scheme.
+        /// Gets the tags used in the name to represent the variant.
         /// </summary>
-        protected static IReadOnlyDictionary<BlsScheme, string> SchemeTags => new Dictionary<BlsScheme, string> {
-            { BlsScheme.Basic, "NUL"},
-            { BlsScheme.MessageAugmentation, "AUG"},
-            { BlsScheme.ProofOfPossession, "POP"},
+        protected static IReadOnlyDictionary<BlsVariant, string> VariantTags => new Dictionary<BlsVariant, string>
+        {
+            {BlsVariant.MinimalSignatureSize, "G1"},
+            {BlsVariant.MinimalPublicKeySize, "G2"},
         };
 
         /// <summary>
-        /// Gets the tags used in the name to represent the variant.
+        /// Checks the provided aggregate signature matches the combined provided public keys and individual messages.
         /// </summary>
-        protected static IReadOnlyDictionary<BlsVariant, string> VariantTags => new Dictionary<BlsVariant, string> {
-            { BlsVariant.MinimalSignatureSize, "G1"},
-            { BlsVariant.MinimalPublicKeySize, "G2"},
-        };
+        /// <param name="publicKeys">Span of concatenated public key bytes; must be a multiple of the public key length.</param>
+        /// <param name="data">Span of concatenated data; length divided evenly by the number of public keys, so all messages must be the same length.</param>
+        /// <param name="aggregateSignature">The aggregate signature to check against the data.</param>
+        /// <returns>true if the aggregate signature is valid; false if invalid</returns>
+        public abstract bool AggregateVerifyData(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> data,
+            ReadOnlySpan<byte> aggregateSignature);
+
+        /// <summary>
+        /// Checks the provided aggregate signature matches the combined provided public keys and messages (with optional domain).
+        /// </summary>
+        /// <param name="publicKeys">Span of concatenated public key bytes; must be a multiple of the public key length.</param>
+        /// <param name="hashes">Span of concatenated hashes; length divided evenly by the number of public keys, so all hashes must be the same length.</param>
+        /// <param name="aggregateSignature">The aggregate signature to check against the data.</param>
+        /// <param name="domain">Optional additional data for the hash to point function (if needed).</param>
+        /// <returns>true if the aggregate signature is valid; false if invalid</returns>
+        public abstract bool AggregateVerifyHashes(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> hashes,
+            ReadOnlySpan<byte> aggregateSignature, ReadOnlySpan<byte> domain = default);
 
         /// <summary>
         /// Creates a new BLS asymmetric algorithm with the specified parameters.
@@ -168,8 +185,9 @@ namespace Nethermind.Cryptography
         /// <param name="data">The shared data that was signed.</param>
         /// <param name="aggregateSignature">The aggregate signature to check against the data.</param>
         /// <returns>true if the aggregate signature is valid; false if invalid</returns>
-        public abstract bool FastVerifyAggregateData(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> data, ReadOnlySpan<byte> aggregateSignature);
-        
+        public abstract bool FastAggregateVerifyData(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> data,
+            ReadOnlySpan<byte> aggregateSignature);
+
         /// <summary>
         /// Imports the specified parameters into the current BLS asymmetric algorithm.
         /// </summary>
@@ -182,7 +200,8 @@ namespace Nethermind.Cryptography
         /// <param name="destination">Span to write the combined public key to.</param>
         /// <param name="bytesWritten">Output the number of bytes written.</param>
         /// <returns>true if the public key aggregation was successful; false if the destination is not large enough to hold the result</returns>
-        public abstract bool TryAggregatePublicKeys(ReadOnlySpan<byte> publicKeys, Span<byte> destination, out int bytesWritten);
+        public abstract bool TryAggregatePublicKeys(ReadOnlySpan<byte> publicKeys, Span<byte> destination,
+            out int bytesWritten);
 
         /// <summary>
         /// Combines the provided signatures into a single signature value.
@@ -191,7 +210,8 @@ namespace Nethermind.Cryptography
         /// <param name="destination">Span to write the combined signature to.</param>
         /// <param name="bytesWritten">Output the number of bytes written.</param>
         /// <returns>true if the signature aggregation was successful; false if the destination is not large enough to hold the result</returns>
-        public abstract bool TryAggregateSignatures(ReadOnlySpan<byte> signatures, Span<byte> destination, out int bytesWritten);
+        public abstract bool TryAggregateSignatures(ReadOnlySpan<byte> signatures, Span<byte> destination,
+            out int bytesWritten);
 
         /// <summary>
         /// Gets the serialized private (secret) key, if available.
@@ -208,6 +228,7 @@ namespace Nethermind.Cryptography
                 bytesWritten = 0;
                 return false;
             }
+
             privateKey.CopyTo(destination);
             bytesWritten = privateKey.Length;
             return true;
@@ -228,11 +249,12 @@ namespace Nethermind.Cryptography
                 bytesWritten = 0;
                 return false;
             }
+
             publicKey.CopyTo(destination);
             bytesWritten = publicKey.Length;
             return true;
         }
-        
+
         /// <summary>
         /// Hash and then sign the data, using the current private (secret) key.
         /// </summary>
@@ -245,7 +267,7 @@ namespace Nethermind.Cryptography
             ReadOnlySpan<byte> privateKey = ExportBlsPrivateKey();
             return TrySignData(privateKey, data, destination, out bytesWritten);
         }
-        
+
         /// <summary>
         /// Hash and then sign the data, with the specified private (secret) key.
         /// </summary>
@@ -254,7 +276,8 @@ namespace Nethermind.Cryptography
         /// <param name="destination">Span to write the signature to.</param>
         /// <param name="bytesWritten">Output the number of bytes written.</param>
         /// <returns>true if the signing was successful; false if the destination is not large enough to hold the result</returns>
-        public abstract bool TrySignData(ReadOnlySpan<byte> privateKey, ReadOnlySpan<byte> data, Span<byte> destination, out int bytesWritten);
+        public abstract bool TrySignData(ReadOnlySpan<byte> privateKey, ReadOnlySpan<byte> data, Span<byte> destination,
+            out int bytesWritten);
 
         /// <summary>
         /// Sign the specified hash (with optional domain), using the current private (secret) key.
@@ -264,7 +287,8 @@ namespace Nethermind.Cryptography
         /// <param name="bytesWritten">Output the number of bytes written.</param>
         /// <param name="domain">Optional additional data for the hash to point function (if needed).</param>
         /// <returns>true if the signing was successful; false if the destination is not large enough to hold the result</returns>
-        public bool TrySignHash(ReadOnlySpan<byte> hash, Span<byte> destination, out int bytesWritten, ReadOnlySpan<byte> domain = default)
+        public bool TrySignHash(ReadOnlySpan<byte> hash, Span<byte> destination, out int bytesWritten,
+            ReadOnlySpan<byte> domain = default)
         {
             ReadOnlySpan<byte> privateKey = ExportBlsPrivateKey();
             return TrySignHash(privateKey, hash, destination, out bytesWritten, domain);
@@ -279,26 +303,8 @@ namespace Nethermind.Cryptography
         /// <param name="bytesWritten">Output the number of bytes written.</param>
         /// <param name="domain">Optional additional data for the hash to point function (if needed).</param>
         /// <returns>true if the signing was successful; false if the destination is not large enough to hold the result</returns>
-        public abstract bool TrySignHash(ReadOnlySpan<byte> privateKey, ReadOnlySpan<byte> hash, Span<byte> destination, out int bytesWritten, ReadOnlySpan<byte> domain = default);
-
-        /// <summary>
-        /// Checks the provided aggregate signature matches the combined provided public keys and individual messages.
-        /// </summary>
-        /// <param name="publicKeys">Span of concatenated public key bytes; must be a multiple of the public key length.</param>
-        /// <param name="data">Span of concatenated data; length divided evenly by the number of public keys, so all messages must be the same length.</param>
-        /// <param name="aggregateSignature">The aggregate signature to check against the data.</param>
-        /// <returns>true if the aggregate signature is valid; false if invalid</returns>
-        public abstract bool VerifyAggregateData(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> data, ReadOnlySpan<byte> aggregateSignature);
-
-        /// <summary>
-        /// Checks the provided aggregate signature matches the combined provided public keys and messages (with optional domain).
-        /// </summary>
-        /// <param name="publicKeys">Span of concatenated public key bytes; must be a multiple of the public key length.</param>
-        /// <param name="hashes">Span of concatenated hashes; length divided evenly by the number of public keys, so all hashes must be the same length.</param>
-        /// <param name="aggregateSignature">The aggregate signature to check against the data.</param>
-        /// <param name="domain">Optional additional data for the hash to point function (if needed).</param>
-        /// <returns>true if the aggregate signature is valid; false if invalid</returns>
-        public abstract bool VerifyAggregateHashes(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> hashes, ReadOnlySpan<byte> aggregateSignature, ReadOnlySpan<byte> domain = default);
+        public abstract bool TrySignHash(ReadOnlySpan<byte> privateKey, ReadOnlySpan<byte> hash, Span<byte> destination,
+            out int bytesWritten, ReadOnlySpan<byte> domain = default);
 
         /// <summary>
         /// Checks the provided signature matches the hash of the specified data (with optional domain), using the current public key.
@@ -319,7 +325,8 @@ namespace Nethermind.Cryptography
         /// <param name="data">The data that was signed.</param>
         /// <param name="signature">The signature to check against the data.</param>
         /// <returns>true if the signature is valid; false if invalid</returns>
-        public abstract bool VerifyData(ReadOnlySpan<byte> publicKey, ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature);
+        public abstract bool VerifyData(ReadOnlySpan<byte> publicKey, ReadOnlySpan<byte> data,
+            ReadOnlySpan<byte> signature);
 
         /// <summary>
         /// Checks the provided signature matches the specified hash (with optional domain), using the current public key.
@@ -328,7 +335,8 @@ namespace Nethermind.Cryptography
         /// <param name="signature">The signature to check against the data.</param>
         /// <param name="domain">Optional additional data for the hash to point function (if needed).</param>
         /// <returns>true if the signature is valid; false if invalid</returns>
-        public bool VerifyHash(ReadOnlySpan<byte> hash, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> domain = default)
+        public bool VerifyHash(ReadOnlySpan<byte> hash, ReadOnlySpan<byte> signature,
+            ReadOnlySpan<byte> domain = default)
         {
             ReadOnlySpan<byte> publicKey = ExportBlsPublicKey();
             return VerifyHash(publicKey, hash, signature, domain);
@@ -342,6 +350,7 @@ namespace Nethermind.Cryptography
         /// <param name="signature">The signature to check against the data.</param>
         /// <param name="domain">Optional additional data for the hash to point function (if needed).</param>
         /// <returns>true if the signature is valid; false if invalid</returns>
-        public abstract bool VerifyHash(ReadOnlySpan<byte> publicKey, ReadOnlySpan<byte> hash, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> domain = default);
+        public abstract bool VerifyHash(ReadOnlySpan<byte> publicKey, ReadOnlySpan<byte> hash,
+            ReadOnlySpan<byte> signature, ReadOnlySpan<byte> domain = default);
     }
 }
