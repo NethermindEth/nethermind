@@ -217,7 +217,7 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public bool IsEligibleForActivation(BeaconState state, Validator validator)
         {
-            // Placement in queu is finalized            
+            // Placement in queue is finalized            
             return validator.ActivationEligibilityEpoch <= state.FinalizedCheckpoint.Epoch
                    // Has not yet been activated
                    && validator.ActivationEpoch == _chainConstants.FarFutureEpoch;

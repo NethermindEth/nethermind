@@ -42,13 +42,13 @@ namespace Nethermind.BeaconNode.Test.BlockProcessing
         }
 
         [TestMethod]
-        public void InvalidSignatureBlockHeader()
+        public void WrongSlotNotMatchBlockHeader()
         {
             // Arrange
             IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state);
+            BeaconBlock block = TestBlock.BuildEmptyBlock(testServiceProvider, state, state.Slot + new Slot(2));
 
             RunBlockHeaderProcessing(testServiceProvider, state, block, expectValid: false);
         }
@@ -69,14 +69,15 @@ namespace Nethermind.BeaconNode.Test.BlockProcessing
             if (expectValid)
             {
                 beaconStateTransition.ProcessBlockHeader(state, block);
-                Root checkStateRoot = cryptographyService.HashTreeRoot(state);
-                block.StateRoot.ShouldBe(checkStateRoot);
             }
             else
             {
-                beaconStateTransition.ProcessBlockHeader(state, block);
-                Root checkStateRoot = cryptographyService.HashTreeRoot(state);
-                block.StateRoot.ShouldNotBe(checkStateRoot);
+                Should.Throw<Exception>(() =>
+                {
+                    beaconStateTransition.ProcessBlockHeader(state, block);
+                });
+                return;
+
             }
         }
 

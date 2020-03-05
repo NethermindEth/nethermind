@@ -172,8 +172,12 @@ namespace Nethermind.BeaconNode
         {
             Root stateHashTreeRoot = _cryptographyService.HashTreeRoot(genesisState);
             BeaconBlock genesisBlock = new BeaconBlock(stateHashTreeRoot);
+
+            Domain domain =
+                _beaconChainUtility.ComputeDomain(_signatureDomainOptions.CurrentValue.BeaconProposer, _initialValueOptions.CurrentValue.GenesisForkVersion);
             
-            Root blockRoot = _cryptographyService.HashTreeRoot(genesisBlock);
+            Root blockHashTreeRoot = _cryptographyService.HashTreeRoot(genesisBlock);
+            Root blockRoot = _beaconChainUtility.ComputeSigningRoot(blockHashTreeRoot, domain);
 
             Checkpoint justifiedCheckpoint = new Checkpoint(_chainConstants.GenesisEpoch, blockRoot);
             Checkpoint finalizedCheckpoint = new Checkpoint(_chainConstants.GenesisEpoch, blockRoot);

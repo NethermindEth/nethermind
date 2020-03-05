@@ -35,5 +35,9 @@ namespace Nethermind.Core2.Configuration
         public int ShuffleRoundCount { get; set; }
 
         public ulong TargetCommitteeSize { get; set; }
+        
+        public ulong HysteresisQuotient { get; set; }
+        public ulong HysteresisDownwardMultiplier { get; set; }
+        public ulong HysteresisUpwardMultiplier { get; set; }
     }
 }
