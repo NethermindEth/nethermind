@@ -189,6 +189,16 @@ namespace Nethermind.Cryptography
             ReadOnlySpan<byte> aggregateSignature);
 
         /// <summary>
+        /// Checks the provided aggregate signature matches the combined provided public keys and shared signed data.
+        /// </summary>
+        /// <param name="publicKeys">List of public key byte arrays; all keys must be the correct length.</param>
+        /// <param name="data">The shared data that was signed.</param>
+        /// <param name="aggregateSignature">The aggregate signature to check against the data.</param>
+        /// <returns>true if the aggregate signature is valid; false if invalid</returns>
+        public abstract bool FastAggregateVerifyData(IList<byte[]> publicKeys, ReadOnlySpan<byte> data,
+            ReadOnlySpan<byte> aggregateSignature);
+        
+        /// <summary>
         /// Imports the specified parameters into the current BLS asymmetric algorithm.
         /// </summary>
         public abstract void ImportParameters(BLSParameters parameters);

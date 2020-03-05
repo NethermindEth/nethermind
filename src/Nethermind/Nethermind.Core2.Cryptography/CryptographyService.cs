@@ -129,17 +129,13 @@ namespace Nethermind.Core2.Cryptography
 
         public bool BlsFastAggregateVerify(IList<BlsPublicKey> publicKeys, Root signingRoot, BlsSignature signature)
         {
-            int count = publicKeys.Count();
-
-            Span<byte> publicKeysSpan = new Span<byte>(new byte[count * BlsPublicKey.Length]);
-            int publicKeysSpanIndex = 0;
+            List<byte[]> publicKeysList = new List<byte[]>();
             foreach (BlsPublicKey publicKey in publicKeys)
             {
-                publicKey.AsSpan().CopyTo(publicKeysSpan.Slice(publicKeysSpanIndex));
-                publicKeysSpanIndex += BlsPublicKey.Length;
+                publicKeysList.Add(publicKey.Bytes);
             }
 
-            return _bls.FastAggregateVerifyData(publicKeysSpan, signingRoot.AsSpan(), signature.AsSpan());
+            return _bls.FastAggregateVerifyData(publicKeysList, signingRoot.AsSpan(), signature.AsSpan());
         }
 
         public bool BlsVerify(BlsPublicKey publicKey, Root signingRoot, BlsSignature signature)

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Security.Cryptography;
 
 namespace Nethermind.Cryptography
@@ -285,6 +286,18 @@ namespace Nethermind.Cryptography
         public override bool FastAggregateVerifyData(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> data,
             ReadOnlySpan<byte> aggregateSignature)
         {
+            return FastAggregateVerifyData(null, publicKeys, data, aggregateSignature);
+        }
+
+        public override bool FastAggregateVerifyData(IList<byte[]> publicKeys, ReadOnlySpan<byte> data,
+            ReadOnlySpan<byte> aggregateSignature)
+        {
+            return FastAggregateVerifyData(publicKeys, new byte[0], data, aggregateSignature);
+        }
+
+        private bool FastAggregateVerifyData(IList<byte[]>? publicKeyList, ReadOnlySpan<byte> publicKeysSpan, ReadOnlySpan<byte> data,
+            ReadOnlySpan<byte> aggregateSignature)
+        {
             // This is independent of the keys set, although other parameters (type of curve, variant, scheme, etc) are relevant.
 
             if (aggregateSignature.Length != SignatureLength)
@@ -293,27 +306,35 @@ namespace Nethermind.Cryptography
                     $"Signature must be {SignatureLength} bytes long.");
             }
 
-            if (publicKeys.Length % PublicKeyLength != 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(publicKeys), publicKeys.Length,
-                    $"Public key data must be a multiple of the public key length {PublicKeyLength}.");
-            }
-
-            var publicKeyCount = publicKeys.Length / PublicKeyLength;
-
             EnsureInitialised();
 
+            var publicKeyCount = publicKeyList?.Count ?? publicKeysSpan.Length / PublicKeyLength;
+
             var blsPublicKeys = new Bls384Interop.BlsPublicKey[publicKeyCount];
+
+            if (publicKeyList == null)
+            {
+                if (publicKeysSpan.Length % PublicKeyLength != 0)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(publicKeysSpan), publicKeysSpan.Length,
+                        $"Public key data must be a multiple of the public key length {PublicKeyLength}.");
+                }
+            }
+
             var publicKeysIndex = 0;
             for (var blsPublicKeyIndex = 0; blsPublicKeyIndex < publicKeyCount; blsPublicKeyIndex++)
             {
-                var publicKey = publicKeys.Slice(publicKeysIndex, PublicKeyLength);
+                var publicKey = (publicKeyList != null) 
+                    ? publicKeyList[blsPublicKeyIndex] 
+                    : publicKeysSpan.Slice(publicKeysIndex, PublicKeyLength);
+                
                 int publicKeyBytesRead;
                 unsafe
                 {
                     fixed (byte* publicKeyPtr = publicKey)
                     {
-                        publicKeyBytesRead = Bls384Interop.PublicKeyDeserialize(ref blsPublicKeys[blsPublicKeyIndex],
+                        publicKeyBytesRead = Bls384Interop.PublicKeyDeserialize(
+                            ref blsPublicKeys[blsPublicKeyIndex],
                             publicKeyPtr, PublicKeyLength);
                     }
                 }
