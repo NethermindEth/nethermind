@@ -249,7 +249,7 @@ namespace Nethermind.BeaconNode.OApiClient
             
             await ClientOperationWithRetry(async (oapiClient, innerCancellationToken) =>
             {
-                await oapiClient.Block2Async(data, innerCancellationToken).ConfigureAwait(false);
+                await oapiClient.Block2Async(data, signedBlock.Signature, innerCancellationToken).ConfigureAwait(false);
             }, cancellationToken).ConfigureAwait(false);
 
             // TODO: Parse 202 result separate from 200 result
