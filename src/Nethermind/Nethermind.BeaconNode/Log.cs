@@ -75,7 +75,7 @@ namespace Nethermind.BeaconNode
         public static readonly Action<ILogger, BeaconBlock, BeaconState, Checkpoint, Root, Exception?> CreateGenesisStore =
             LoggerMessage.Define<BeaconBlock, BeaconState, Checkpoint, Root>(LogLevel.Information,
                 new EventId(2200, nameof(CreateGenesisStore)),
-                "Creating genesis store with block {BeaconBlock} for state {BeaconState}, with checkpoint {JustifiedCheckpoint}, with signing root {SigningRoot}");
+                "Creating genesis store with block {BeaconBlock} for state {BeaconState}, with checkpoint {JustifiedCheckpoint}, with block hash tree root {BlockRoot}");
 
         public static readonly Action<ILogger, Attestation, Exception?> OnAttestation =
             LoggerMessage.Define<Attestation>(LogLevel.Information,
@@ -85,7 +85,7 @@ namespace Nethermind.BeaconNode
         public static readonly Action<ILogger, Root, BeaconBlock, Exception?> OnBlock =
             LoggerMessage.Define<Root, BeaconBlock>(LogLevel.Information,
                 new EventId(2202, nameof(OnBlock)),
-                "Fork choice received block {BlockSigningRoot} ({BeaconBlock})");
+                "Fork choice received block {BlockRoot} ({BeaconBlock})");
 
         public static readonly Action<ILogger, Epoch, Slot, ulong, Exception?> OnTickNewEpoch =
             LoggerMessage.Define<Epoch, Slot, ulong>(LogLevel.Information,

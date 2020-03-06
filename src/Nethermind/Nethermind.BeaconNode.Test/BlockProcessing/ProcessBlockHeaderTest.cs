@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.BeaconNode.Test.Helpers;
@@ -36,19 +37,19 @@ namespace Nethermind.BeaconNode.Test.BlockProcessing
             IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state);
+            BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, BlsSignature.Zero);
 
             RunBlockHeaderProcessing(testServiceProvider, state, block, expectValid: true);
         }
 
         [TestMethod]
-        public void WrongSlotNotMatchBlockHeader()
+        public void InvalidSlotBlockHeader()
         {
             // Arrange
             IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            BeaconBlock block = TestBlock.BuildEmptyBlock(testServiceProvider, state, state.Slot + new Slot(2));
+            BeaconBlock block = TestBlock.BuildEmptyBlock(testServiceProvider, state, state.Slot + new Slot(2), BlsSignature.Zero);
 
             RunBlockHeaderProcessing(testServiceProvider, state, block, expectValid: false);
         }
@@ -76,8 +77,6 @@ namespace Nethermind.BeaconNode.Test.BlockProcessing
                 {
                     beaconStateTransition.ProcessBlockHeader(state, block);
                 });
-                return;
-
             }
         }
 

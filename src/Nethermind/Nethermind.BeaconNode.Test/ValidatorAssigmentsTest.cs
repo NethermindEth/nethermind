@@ -179,7 +179,7 @@ namespace Nethermind.BeaconNode.Test
                 await forkChoice.OnTickAsync(store, time);
                 if (timeSinceGenesis % timeParameters.SecondsPerSlot == 0)
                 {
-                    BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state);
+                    BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, BlsSignature.Zero);
                     SignedBeaconBlock signedBlock = TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
                     await forkChoice.OnBlockAsync(store, signedBlock);
                 }
@@ -241,7 +241,7 @@ namespace Nethermind.BeaconNode.Test
 //                Hash32 head = await forkChoice.GetHeadAsync(store);
 //                store.TryGetBlockState(head, out BeaconState headState);
                 BeaconState headState = state;
-                BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, headState);
+                BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, headState, BlsSignature.Zero);
                 SignedBeaconBlock signedBlock = TestState.StateTransitionAndSignBlock(testServiceProvider, headState, block);
                 await forkChoice.OnBlockAsync(store, signedBlock);
                 nextSlotTime = nextSlotTime + timeParameters.SecondsPerSlot;

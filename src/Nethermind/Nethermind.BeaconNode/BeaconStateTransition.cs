@@ -377,10 +377,10 @@ namespace Nethermind.BeaconNode
                 throw new ArgumentOutOfRangeException("block.Slot", block.Slot, $"Block slot must match state slot {state.Slot}.");
             }
             // Verify that the parent matches
-            Root latestBlockRoot = _cryptographyService.HashTreeRoot(state.LatestBlockHeader);
-            if (!block.ParentRoot.Equals(latestBlockRoot))
+            Root latestBlockHashTreeRoot = _cryptographyService.HashTreeRoot(state.LatestBlockHeader);
+            if (!block.ParentRoot.Equals(latestBlockHashTreeRoot))
             {
-                throw new ArgumentOutOfRangeException("block.ParentRoot", block.ParentRoot, $"Block parent root must match latest block header root {latestBlockRoot}.");
+                throw new ArgumentOutOfRangeException("block.ParentRoot", block.ParentRoot, $"Block parent root must match latest block header root {latestBlockHashTreeRoot}.");
             }
 
             // Cache current block as the new latest block

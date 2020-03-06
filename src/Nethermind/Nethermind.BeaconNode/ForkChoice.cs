@@ -173,25 +173,21 @@ namespace Nethermind.BeaconNode
             Root stateHashTreeRoot = _cryptographyService.HashTreeRoot(genesisState);
             BeaconBlock genesisBlock = new BeaconBlock(stateHashTreeRoot);
 
-            Domain domain =
-                _beaconChainUtility.ComputeDomain(_signatureDomainOptions.CurrentValue.BeaconProposer, _initialValueOptions.CurrentValue.GenesisForkVersion);
-            
-            Root blockHashTreeRoot = _cryptographyService.HashTreeRoot(genesisBlock);
-            Root blockRoot = _beaconChainUtility.ComputeSigningRoot(blockHashTreeRoot, domain);
+            Root anchorRoot = _cryptographyService.HashTreeRoot(genesisBlock);
 
-            Checkpoint justifiedCheckpoint = new Checkpoint(_chainConstants.GenesisEpoch, blockRoot);
-            Checkpoint finalizedCheckpoint = new Checkpoint(_chainConstants.GenesisEpoch, blockRoot);
+            Checkpoint justifiedCheckpoint = new Checkpoint(_chainConstants.GenesisEpoch, anchorRoot);
+            Checkpoint finalizedCheckpoint = new Checkpoint(_chainConstants.GenesisEpoch, anchorRoot);
 
             if (_logger.IsInfo())
-                Log.CreateGenesisStore(_logger, genesisBlock, genesisState, justifiedCheckpoint, blockRoot, null);
+                Log.CreateGenesisStore(_logger, genesisBlock, genesisState, justifiedCheckpoint, anchorRoot, null);
 
             Dictionary<Root, BeaconBlock> blocks = new Dictionary<Root, BeaconBlock>
             {
-                [blockRoot] = genesisBlock
+                [anchorRoot] = genesisBlock
             };
             Dictionary<Root, BeaconState> blockStates = new Dictionary<Root, BeaconState>
             {
-                [blockRoot] = BeaconState.Clone(genesisState)
+                [anchorRoot] = BeaconState.Clone(genesisState)
             };
             Dictionary<Checkpoint, BeaconState> checkpointStates = new Dictionary<Checkpoint, BeaconState>
             {
@@ -392,7 +388,7 @@ namespace Nethermind.BeaconNode
 
             // Blocks cannot be in the future. If they are, their consideration must be delayed until the are in the past.
             Slot storeCurrentSlot = GetCurrentSlot(store);
-            if (storeCurrentSlot >= block.Slot)
+            if (storeCurrentSlot < block.Slot)
             {
                 throw new ArgumentOutOfRangeException(nameof(block), block.Slot, $"Block slot time cannot be in the future, compared to store time {storeCurrentSlot}.");
             }

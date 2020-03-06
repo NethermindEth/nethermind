@@ -54,7 +54,7 @@ namespace Nethermind.BeaconNode.Test.Storage
                 await forkChoice.OnTickAsync(store, time);
                 if (timeSinceGenesis % timeParameters.SecondsPerSlot == 0)
                 {
-                    BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state);
+                    BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, BlsSignature.Zero);
                     SignedBeaconBlock signedBlock = TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
                     await forkChoice.OnBlockAsync(store, signedBlock);
                 }
@@ -118,15 +118,15 @@ namespace Nethermind.BeaconNode.Test.Storage
                 cryptographyService.HashTreeRoot(block2State!));
             TestContext.WriteLine("");
 
-            TestContext.WriteLine("Genesis state last block root: {0}, latest block header parent {1}, signing root {2}",
+            TestContext.WriteLine("Genesis state last block root: {0}, latest block header parent {1}, hash tree root {2}",
                 genesisState!.BlockRoots.Last(), genesisState!.LatestBlockHeader.ParentRoot, 
-                beaconChainUtility.ComputeSigningRoot(cryptographyService.HashTreeRoot(genesisState!.LatestBlockHeader), domain));
-            TestContext.WriteLine("State 1 last block root: {0}, latest block header parent {1}, signing root {2}",
+                cryptographyService.HashTreeRoot(genesisState!.LatestBlockHeader));
+            TestContext.WriteLine("State 1 last block root: {0}, latest block header parent {1}, hash tree root {2}",
                 block1State!.BlockRoots.Last(), block1State!.LatestBlockHeader.ParentRoot, 
-                beaconChainUtility.ComputeSigningRoot(cryptographyService.HashTreeRoot(block1State!.LatestBlockHeader), domain));
-            TestContext.WriteLine("State 2 last block root: {0}, latest block header parent {1}, signing root {2}",
+                cryptographyService.HashTreeRoot(block1State!.LatestBlockHeader));
+            TestContext.WriteLine("State 2 last block root: {0}, latest block header parent {1}, hash tree root {2}",
                 block2State!.BlockRoots.Last(), block2State!.LatestBlockHeader.ParentRoot, 
-                beaconChainUtility.ComputeSigningRoot(cryptographyService.HashTreeRoot(block2State!.LatestBlockHeader), domain));
+                cryptographyService.HashTreeRoot(block2State!.LatestBlockHeader));
             TestContext.WriteLine("");
 
             TestContext.WriteLine("Genesis state last state root: {0}, last historical root {1}",
@@ -141,16 +141,18 @@ namespace Nethermind.BeaconNode.Test.Storage
 
             BeaconBlockHeader state1LatestHeader = block1State!.LatestBlockHeader;
             TestContext.WriteLine(
-                "State 1 latest header, slot: {0}, parent {1}, body root {2}, state root {3}, signature {4}, signing root {5}",
+                "State 1 latest header, slot: {0}, parent {1}, body root {2}, state root {3}, signature {4}, hash tree root {5}, signing root {6}",
                 state1LatestHeader.Slot, state1LatestHeader.ParentRoot, state1LatestHeader.BodyRoot,
                 state1LatestHeader.StateRoot, state1LatestHeader,
+                cryptographyService.HashTreeRoot(state1LatestHeader),
                 beaconChainUtility.ComputeSigningRoot(cryptographyService.HashTreeRoot(state1LatestHeader), domain));
             
             // NOTE: cryptographyService.HashTreeRoot(beaconBlockHeader) == cryptographyService.HashTreeRoot(beaconBlock)
             //       likewise, the ComputeSigningRoot() of both will be the same
             
             Root block1BodyHashTreeRootResult = cryptographyService.HashTreeRoot(block1!.Body);
-            Root block1SigningRootResult = beaconChainUtility.ComputeSigningRoot(cryptographyService.HashTreeRoot(block1!), domain);
+            Root block1HashTreeRootResult = cryptographyService.HashTreeRoot(block1!);
+            Root block1SigningRootResult = beaconChainUtility.ComputeSigningRoot(block1HashTreeRootResult, domain);
 //            Hash32 block1HashTreeRootResult = cryptographyService.HashTreeRoot(block1!,
 //                maxOperationsPerBlock.MaximumProposerSlashings,
 //                maxOperationsPerBlock.MaximumAttesterSlashings, maxOperationsPerBlock.MaximumAttestations,
@@ -158,20 +160,22 @@ namespace Nethermind.BeaconNode.Test.Storage
 //                miscellaneousParameters.MaximumValidatorsPerCommittee);
 
             TestContext.WriteLine(
-                "-- compare to Block 1, slot: {0}, parent {1}, body root {2}, state root {3}, signing root {4}",
+                "-- compare to Block 1, slot: {0}, parent {1}, body root {2}, state root {3}, hash tree root {4}, signing root {5}",
                 block1!.Slot, block1!.ParentRoot, block1BodyHashTreeRootResult,
                 block1!.StateRoot, 
+                block1HashTreeRootResult,
                 block1SigningRootResult);
 
             // Assert
             block2!.ParentRoot.ShouldBe(block1Root);
             
-            block1SigningRootResult.ShouldBe(block1Root);
+            block1HashTreeRootResult.ShouldBe(block1Root);
             
-            block1.ParentRoot.ToString().ShouldStartWith("0x89e36b63");
-            block1.StateRoot.ToString().ShouldStartWith("0x35c6537a");
-            block1SigningRootResult.ToString().ShouldStartWith("0xcdaa0640");
-            block1State.LatestBlockHeader.BodyRoot.ToString().ShouldStartWith("0xaea12492");
+            block1.ParentRoot.ToString().ShouldStartWith("0x60ba6939");
+            block1.StateRoot.ToString().ShouldStartWith("0x2e65d4e3b47779");
+            block1HashTreeRootResult.ToString().ShouldStartWith("0x753e0cb57a946a");
+            block1SigningRootResult.ToString().ShouldStartWith("0x80660707");
+            block1State.LatestBlockHeader.BodyRoot.ToString().ShouldStartWith("0xc8e276bfffd1");
         }
     }
 }

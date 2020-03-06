@@ -34,7 +34,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
         {
             BeaconStateTransition beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
 
-            BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state);
+            BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, BlsSignature.Zero);
             block.SetSlot(slot);
             foreach (Attestation attestation in attestations)
             {
@@ -129,7 +129,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
             Root blockRoot;
             if (slot == state.Slot)
             {
-                BeaconBlock nextBlock = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state);
+                BeaconBlock nextBlock = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, BlsSignature.Zero);
                 blockRoot = nextBlock.ParentRoot;
             }
             else
