@@ -70,7 +70,7 @@ namespace Nethermind.Blockchain
 
                 if (balance < transactionPotentialCost)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Rejecting transaction - transaction cost ({transactionPotentialCost}) is higher than sender balance ({balance}).");
+                    if (_logger.IsDebug) _logger.Debug($"Rejecting transaction - transaction cost ({transactionPotentialCost}) is higher than sender balance ({balance}).");
                     return false;
                 }
 
@@ -96,20 +96,20 @@ namespace Nethermind.Blockchain
 
                 if (tx.GasLimit > gasRemaining)
                 {
-                    if (_logger.IsInfo) _logger.Info($"Rejecting (tx gas limit {tx.GasLimit} above remaining block gas {gasRemaining}) {tx.ToShortString()}");
+                    if (_logger.IsDebug) _logger.Debug($"Rejecting (tx gas limit {tx.GasLimit} above remaining block gas {gasRemaining}) {tx.ToShortString()}");
                     continue;
                 }
                 
                 if (tx.SenderAddress == null)
                 {
                     _transactionPool.RemoveTransaction(tx.Hash, 0);
-                    if (_logger.IsInfo) _logger.Info($"Rejecting (null sender) {tx.ToShortString()}");
+                    if (_logger.IsDebug) _logger.Debug($"Rejecting (null sender) {tx.ToShortString()}");
                     continue;
                 }
 
                 if (tx.GasPrice < _minGasPriceForMining)
                 {
-                    if (_logger.IsInfo) _logger.Info($"Rejecting (gas price too low - min gas price: {_minGasPriceForMining}) {tx.ToShortString()}");
+                    if (_logger.IsDebug) _logger.Debug($"Rejecting (gas price too low - min gas price: {_minGasPriceForMining}) {tx.ToShortString()}");
                     continue;
                 }
 
@@ -126,13 +126,13 @@ namespace Nethermind.Blockchain
                         _transactionPool.RemoveTransaction(tx.Hash, 0);    
                     }
                     
-                    if (_logger.IsInfo) _logger.Info($"Rejecting (invalid nonce - expected {expectedNonce}) {tx.ToShortString()}");
+                    if (_logger.IsDebug) _logger.Debug($"Rejecting (invalid nonce - expected {expectedNonce}) {tx.ToShortString()}");
                     continue;
                 }
 
                 if (!HasEnoughFounds(remainingBalance, tx))
                 {
-                    if (_logger.IsInfo) _logger.Info($"Rejecting (sender balance too low) {tx.ToShortString()}");
+                    if (_logger.IsDebug) _logger.Debug($"Rejecting (sender balance too low) {tx.ToShortString()}");
                     continue;
                 }
 
