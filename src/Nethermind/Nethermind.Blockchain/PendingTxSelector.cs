@@ -17,11 +17,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain
@@ -43,11 +46,30 @@ namespace Nethermind.Blockchain
 
         public IEnumerable<Transaction> SelectTransactions(long gasLimit)
         {
+            T GetFromState<T>(Func<Address, T> stateGetter, Address address, T defaultValue)
+            {
+                T value = defaultValue;
+                try
+                {
+                    value = stateGetter(address);
+                }
+                catch (TrieException e)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Couldn't get state for address {address}.{Environment.NewLine}{e}");
+                }
+                catch (RlpException e)
+                {
+                    if (_logger.IsError) _logger.Error($"Couldn't deserialize state for address {address}.", e);
+                }
+
+                return value;
+            }
+
             UInt256 GetCurrentNonce(IDictionary<Address, UInt256> noncesDictionary, Address address)
             {
                 if (!noncesDictionary.TryGetValue(address, out var nonce))
                 {
-                    noncesDictionary[address] = nonce = _stateProvider.GetNonce(address);
+                    noncesDictionary[address] = nonce = GetFromState(_stateProvider.GetNonce, address, UInt256.Zero);
                 }
                 
                 return nonce;
@@ -57,7 +79,7 @@ namespace Nethermind.Blockchain
             {
                 if (!balances.TryGetValue(address, out var balance))
                 {
-                    balances[address] = balance = _stateProvider.GetBalance(address);
+                    balances[address] = balance = GetFromState(_stateProvider.GetBalance, address, UInt256.Zero);
                 }
 
                 return balance;
