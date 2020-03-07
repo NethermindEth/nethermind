@@ -77,6 +77,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
             {
                 var validator = BuildMockValidator(chainConstants, initialValues, gweiValues, timeParameters, index, gweiValues.MaximumEffectiveBalance);
                 state.AddValidatorWithBalance(validator, gweiValues.MaximumEffectiveBalance);
+                state.IncreaseEth1DepositIndex();
             }
 
             // Process genesis activations
