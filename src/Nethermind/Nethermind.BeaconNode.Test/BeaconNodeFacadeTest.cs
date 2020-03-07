@@ -120,9 +120,9 @@ namespace Nethermind.BeaconNode.Test
             groupsByProposalSlot[new Slot(3)].Count().ShouldBe(1);
             groupsByProposalSlot[new Slot(4)].Count().ShouldBe(1);
             groupsByProposalSlot[new Slot(5)].Count().ShouldBe(1);
-            //groupsByProposalSlot[new Slot(6)].Count().ShouldBe(1);
-            groupsByProposalSlot[new Slot(7)].Count().ShouldBe(1);
-            //groupsByProposalSlot[Slot.None].Count().ShouldBe(numberOfValidators - 7);
+            groupsByProposalSlot[new Slot(6)].Count().ShouldBe(1);
+            //groupsByProposalSlot[new Slot(7)].Count().ShouldBe(1);
+            groupsByProposalSlot[Slot.None].Count().ShouldBe(numberOfValidators - 7);
         }
         
         [TestMethod]
@@ -170,11 +170,11 @@ namespace Nethermind.BeaconNode.Test
             groupsByProposalSlot[new Slot(9)].Count().ShouldBe(1);
             groupsByProposalSlot[new Slot(10)].Count().ShouldBe(1);
             groupsByProposalSlot[new Slot(11)].Count().ShouldBe(1);
-            //groupsByProposalSlot[new Slot(12)].Count().ShouldBe(1);
+            groupsByProposalSlot[new Slot(12)].Count().ShouldBe(1);
             groupsByProposalSlot[new Slot(13)].Count().ShouldBe(1);
             groupsByProposalSlot[new Slot(14)].Count().ShouldBe(1);
-            groupsByProposalSlot[new Slot(15)].Count().ShouldBe(1);
-            //groupsByProposalSlot[Slot.None].Count().ShouldBe(numberOfValidators - 8);
+            //groupsByProposalSlot[new Slot(15)].Count().ShouldBe(1);
+            groupsByProposalSlot[Slot.None].Count().ShouldBe(numberOfValidators - 7);
         }
         
         [TestMethod]
