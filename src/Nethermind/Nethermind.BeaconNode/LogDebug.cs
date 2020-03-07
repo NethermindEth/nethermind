@@ -72,92 +72,92 @@ namespace Nethermind.BeaconNode
         public static readonly Action<ILogger, Deposit, BeaconState, Exception?> ProcessDeposit =
             LoggerMessage.Define<Deposit, BeaconState>(LogLevel.Debug,
                 new EventId(6100, nameof(ProcessDeposit)),
-                "Process block operation deposit {Deposit} for state {BeaconState}.");
+                "Process operation deposit {Deposit} for state {BeaconState}.");
 
-        public static readonly Action<ILogger, Slot, BeaconState, Exception?> ProcessSlots =
-            LoggerMessage.Define<Slot, BeaconState>(LogLevel.Debug,
+        public static readonly Action<ILogger, BeaconState, Slot, Exception?> ProcessSlots =
+            LoggerMessage.Define<BeaconState, Slot>(LogLevel.Debug,
                 new EventId(6101, nameof(ProcessSlots)),
-                "Process slots to {Slot} for state {BeaconState}");
+                "Process slots for state {BeaconState} to {Slot}");
         
         public static readonly Action<ILogger, Slot, BeaconState, Exception?> ProcessSlot =
             LoggerMessage.Define<Slot, BeaconState>(LogLevel.Debug,
                 new EventId(6102, nameof(ProcessSlot)),
-                "Process current slot {Slot} for state {BeaconState}");
+                "Process slot {Slot} for state {BeaconState}");
         
-        public static readonly Action<ILogger, BeaconState, Exception?> ProcessJustificationAndFinalization =
-            LoggerMessage.Define<BeaconState>(LogLevel.Debug,
+        public static readonly Action<ILogger, ulong, Exception?> ProcessJustificationAndFinalization =
+            LoggerMessage.Define<ulong>(LogLevel.Debug,
                 new EventId(6103, nameof(ProcessJustificationAndFinalization)),
-                "Process epoch justification and finalization state {BeaconState}");
+                "Process slot {Slot} epoch justification and finalization");
 
-        public static readonly Action<ILogger,  BeaconState, Exception?> ProcessEpoch =
-            LoggerMessage.Define<BeaconState>(LogLevel.Debug,
+        public static readonly Action<ILogger, ulong, Exception?> ProcessEpoch =
+            LoggerMessage.Define<ulong>(LogLevel.Debug,
                 new EventId(6104, nameof(ProcessEpoch)),
-                "Process end of epoch for state {BeaconState}");
+                "Process slot {Slot} end of epoch");
 
         public static readonly Action<ILogger, BeaconBlock, BeaconState, Exception?> ProcessBlock =
             LoggerMessage.Define<BeaconBlock, BeaconState>(LogLevel.Debug,
                 new EventId(6105, nameof(ProcessBlock)),
                 "Process block {BeaconBlock} for state {BeaconState}");
         
-        public static readonly Action<ILogger, BeaconBlock,  Exception?> ProcessBlockHeader =
-            LoggerMessage.Define<BeaconBlock>(LogLevel.Debug,
-                new EventId(6106, nameof(ProcessBlockHeader)),
-                "Process block header for block {BeaconBlock}");
+        public static readonly Action<ILogger, ulong, BeaconBlockHeader,  Exception?> ProcessingBlockHeader =
+            LoggerMessage.Define<ulong, BeaconBlockHeader>(LogLevel.Debug,
+                new EventId(6106, nameof(ProcessingBlockHeader)),
+                "Processing block header for slot {Slot} setting header {BeaconBlockHeader}");
 
-        public static readonly Action<ILogger,  BeaconBlockBody, Exception?> ProcessRandao =
-            LoggerMessage.Define<BeaconBlockBody>(LogLevel.Debug,
+        public static readonly Action<ILogger, Slot, BlsSignature, Exception?> ProcessRandao =
+            LoggerMessage.Define<Slot, BlsSignature>(LogLevel.Debug,
                 new EventId(6107, nameof(ProcessRandao)),
-                "Process block randao for block body {BeaconBlockBody}");
+                "Process block randao for slot {Slot}, randao reveal {RandaoReveal}");
 
-        public static readonly Action<ILogger,  BeaconBlockBody, Exception?> ProcessEth1Data =
-            LoggerMessage.Define<BeaconBlockBody>(LogLevel.Debug,
+        public static readonly Action<ILogger, ulong, Eth1Data, Exception?> ProcessEth1Data =
+            LoggerMessage.Define<ulong, Eth1Data>(LogLevel.Debug,
                 new EventId(6108, nameof(ProcessEth1Data)),
-                "Process block ETH1 data for block body {BeaconBlockBody}");
+                "Process block ETH1 data for slot {Slot}, data {Eth1Data}");
 
-        public static readonly Action<ILogger,  BeaconBlockBody, Exception?> ProcessOperations =
-            LoggerMessage.Define<BeaconBlockBody>(LogLevel.Debug,
+        public static readonly Action<ILogger, ulong, BeaconBlockBody, Exception?> ProcessOperations =
+            LoggerMessage.Define<ulong, BeaconBlockBody>(LogLevel.Debug,
                 new EventId(6109, nameof(ProcessOperations)),
-                "Process block operations for block body {BeaconBlockBody}");
+                "Process block operations for slot {Slot} from block body {BeaconBlockBody}");
         
         public static readonly Action<ILogger, ProposerSlashing, Exception?> ProcessProposerSlashing =
             LoggerMessage.Define<ProposerSlashing>(LogLevel.Debug,
                 new EventId(6110, nameof(ProcessProposerSlashing)),
-                "Process block operation proposer slashing {ProposerSlashing}");
+                "Process operation proposer slashing {ProposerSlashing}");
         
         public static readonly Action<ILogger, AttesterSlashing, Exception?> ProcessAttesterSlashing =
             LoggerMessage.Define<AttesterSlashing>(LogLevel.Debug,
                 new EventId(6111, nameof(ProcessAttesterSlashing)),
-                "Process block operation attester slashing {AttesterSlashing}");
+                "Process operation attester slashing {AttesterSlashing}");
         
-        public static readonly Action<ILogger, Attestation, BeaconState, Exception?> ProcessAttestation =
-            LoggerMessage.Define<Attestation, BeaconState>(LogLevel.Debug,
+        public static readonly Action<ILogger, Attestation, Exception?> ProcessAttestation =
+            LoggerMessage.Define<Attestation>(LogLevel.Debug,
                 new EventId(6112, nameof(ProcessAttestation)),
-                "Process block operation attestation {Attestation} for state {BeaconState}.");
+                "Process operation attestation {Attestation}.");
         
-        public static readonly Action<ILogger, VoluntaryExit, BeaconState, Exception?> ProcessVoluntaryExit =
-            LoggerMessage.Define<VoluntaryExit, BeaconState>(LogLevel.Debug,
+        public static readonly Action<ILogger, VoluntaryExit, Exception?> ProcessVoluntaryExit =
+            LoggerMessage.Define<VoluntaryExit>(LogLevel.Debug,
                 new EventId(6113, nameof(ProcessVoluntaryExit)),
-                "Process block operation voluntary exit {VoluntaryExit} for state {BeaconState}.");
+                "Process operation voluntary exit {VoluntaryExit}.");
         
-        public static readonly Action<ILogger,  BeaconState, Exception?> ProcessRewardsAndPenalties =
-            LoggerMessage.Define<BeaconState>(LogLevel.Debug,
+        public static readonly Action<ILogger, ulong, Exception?> ProcessRewardsAndPenalties =
+            LoggerMessage.Define<ulong>(LogLevel.Debug,
                 new EventId(6114, nameof(ProcessRewardsAndPenalties)),
-                "Process epoch rewards and penalties state {BeaconState}");
+                "Process epoch rewards and penalties state slot {Slot}");
 
-        public static readonly Action<ILogger,  BeaconState, Exception?> ProcessFinalUpdates =
-            LoggerMessage.Define<BeaconState>(LogLevel.Debug,
+        public static readonly Action<ILogger, ulong, Exception?> ProcessFinalUpdates =
+            LoggerMessage.Define<ulong>(LogLevel.Debug,
                 new EventId(6115, nameof(ProcessFinalUpdates)),
-                "Process epoch final updates state {BeaconState}");
+                "Process epoch final updates slot {Slot}");
 
-        public static readonly Action<ILogger,  BeaconState, Exception?> ProcessRegistryUpdates =
-            LoggerMessage.Define<BeaconState>(LogLevel.Debug,
+        public static readonly Action<ILogger, ulong, Exception?> ProcessRegistryUpdates =
+            LoggerMessage.Define<ulong>(LogLevel.Debug,
                 new EventId(6116, nameof(ProcessRegistryUpdates)),
-                "Process epoch registry updates state {BeaconState}");
+                "Process epoch registry updates slot {Slot}");
 
-        public static readonly Action<ILogger,  BeaconState, Exception?> ProcessSlashings =
-            LoggerMessage.Define<BeaconState>(LogLevel.Debug,
+        public static readonly Action<ILogger, ulong, Exception?> ProcessSlashings =
+            LoggerMessage.Define<ulong>(LogLevel.Debug,
                 new EventId(6117, nameof(ProcessSlashings)),
-                "Process epoch slashings state {BeaconState}");
+                "Process epoch slashings slot {Slot}");
 
         public static readonly Action<ILogger, bool, BeaconState, BeaconBlock, Exception?> StateTransition =
             LoggerMessage.Define<bool, BeaconState, BeaconBlock>(LogLevel.Debug,
@@ -174,12 +174,18 @@ namespace Nethermind.BeaconNode
                 new EventId(6120, nameof(PenaltyForValidator)),
                 "Penalty for validator {ValidatorIndex}: {PenaltyName} -{Penalty}.");
 
+        
+        public static readonly Action<ILogger, Root, BeaconBlock, Root, ValidatorIndex, bool, Exception?> VerifiedBlockSignature =
+            LoggerMessage.Define<Root, BeaconBlock, Root, ValidatorIndex, bool>(LogLevel.Debug,
+                new EventId(6121, nameof(VerifiedBlockSignature)),
+                "Verified signature block {BlockRoot} ({BeaconBlock}), signing root {SigningRoot} by proposer {ValidatorIndex}: {IsValid}.");
+
         // 62xx debug - fork choice
 
         public static readonly Action<ILogger, BeaconBlock, BeaconState, Root, Exception?> AddedBlockToStore =
             LoggerMessage.Define<BeaconBlock, BeaconState, Root>(LogLevel.Debug,
                 new EventId(6200, nameof(AddedBlockToStore)),
-                "Store added block {BeaconBlock} generating state {BeaconState}, with block hash state root {BlockRoot}");
+                "Store added block {BlockRoot} ({BeaconBlock}) generating state {BeaconState}.");
         public static readonly Action<ILogger, Checkpoint, Exception?> UpdateJustifiedCheckpoint =
             LoggerMessage.Define<Checkpoint>(LogLevel.Debug,
                 new EventId(6201, nameof(UpdateJustifiedCheckpoint)),
@@ -210,7 +216,7 @@ namespace Nethermind.BeaconNode
         public static readonly Action<ILogger, ulong, string, BeaconBlock, string, Exception?> NewBlockProduced
             = LoggerMessage.Define<ulong, string, BeaconBlock, string>(LogLevel.Debug,
                 new EventId(6401, nameof(NewBlockProduced)),
-                "New block produced for slot {Slot} with RANDAO reveal {RandaoReveal}, block details {BeaconBlock}, and graffiti {Graffiti}");
+                "New block produced for slot {Slot} with RANDAO reveal {RandaoReveal}, block {BeaconBlock}, and graffiti {Graffiti}");
 
         // 7bxx - mock
 

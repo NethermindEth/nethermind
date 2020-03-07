@@ -383,7 +383,7 @@ namespace Nethermind.BeaconNode
             BeaconBlock block = signedBlock.Message;
             Root blockRoot = _cryptographyService.HashTreeRoot(block);
             
-            if (_logger.IsInfo()) Log.OnBlock(_logger, blockRoot, block, null);
+            if (_logger.IsInfo()) Log.OnBlock(_logger, blockRoot, block, signedBlock.Signature, null);
             
             // Make a copy of the state to avoid mutability issues
             BeaconState parentState = await store.GetBlockStateAsync(block.ParentRoot).ConfigureAwait(false);

@@ -152,7 +152,7 @@ namespace Nethermind.BeaconNode
             
             // Graffiti
             var graffitiBytes = new byte[32];
-            graffitiBytes[0] = 0x4e; // 'N'
+            //graffitiBytes[0] = 0x4e; // 'N'
             Bytes32 graffiti = new Bytes32(graffitiBytes);
 
             // Build block

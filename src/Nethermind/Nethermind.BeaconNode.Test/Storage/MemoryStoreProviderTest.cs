@@ -171,11 +171,12 @@ namespace Nethermind.BeaconNode.Test.Storage
             
             block1HashTreeRootResult.ShouldBe(block1Root);
             
-            block1.ParentRoot.ToString().ShouldStartWith("0x60ba6939");
-            block1.StateRoot.ToString().ShouldStartWith("0x2e65d4e3b47779");
-            block1HashTreeRootResult.ToString().ShouldStartWith("0x753e0cb57a946a");
-            block1SigningRootResult.ToString().ShouldStartWith("0x80660707");
-            block1State.LatestBlockHeader.BodyRoot.ToString().ShouldStartWith("0xc8e276bfffd1");
+            // These values just captured from output
+            block1.ParentRoot.ToString().ShouldStartWith("0xc5ba9857");
+            block1.StateRoot.ToString().ShouldStartWith("0xfadf79e4");
+            block1HashTreeRootResult.ToString().ShouldStartWith("0xe29b9bf1");
+            block1SigningRootResult.ToString().ShouldStartWith("0x11c26e7f");
+            block1State.LatestBlockHeader.BodyRoot.ToString().ShouldStartWith("0x123ae93e");
         }
     }
 }

@@ -82,5 +82,10 @@ namespace Nethermind.Core2.Containers
         {
             DepositRoot = depositRoot;
         }
+
+        public override string ToString()
+        {
+            return $"[dr={DepositRoot.ToString().Substring(0, 10)} dc={DepositCount} bh={BlockHash.ToString().Substring(0, 10)}]";
+        }
     }
 }

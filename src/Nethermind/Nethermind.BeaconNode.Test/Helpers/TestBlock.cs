@@ -44,7 +44,9 @@ namespace Nethermind.BeaconNode.Test.Helpers
 
             Eth1Data eth1Data = new Eth1Data(Root.Zero, state.Eth1DepositIndex, Bytes32.Zero);
 
-            Root stateRoot = cryptographyService.HashTreeRoot(state);
+            Root stateRoot = !state.LatestBlockHeader.StateRoot.Equals(Root.Zero)
+                ? state.LatestBlockHeader.StateRoot
+                : cryptographyService.HashTreeRoot(state);
             BeaconBlockHeader previousBlockHeader = new BeaconBlockHeader(state.LatestBlockHeader.Slot,
                 state.LatestBlockHeader.ParentRoot, stateRoot, state.LatestBlockHeader.BodyRoot);
             Root previousBlockHashTreeRoot = cryptographyService.HashTreeRoot(previousBlockHeader);

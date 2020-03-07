@@ -82,10 +82,10 @@ namespace Nethermind.BeaconNode
                 new EventId(2201, nameof(OnAttestation)),
                 "Fork choice received attestation {Attestation}");
 
-        public static readonly Action<ILogger, Root, BeaconBlock, Exception?> OnBlock =
-            LoggerMessage.Define<Root, BeaconBlock>(LogLevel.Information,
+        public static readonly Action<ILogger, Root, BeaconBlock, BlsSignature, Exception?> OnBlock =
+            LoggerMessage.Define<Root, BeaconBlock, BlsSignature>(LogLevel.Information,
                 new EventId(2202, nameof(OnBlock)),
-                "Fork choice received block {BlockRoot} ({BeaconBlock})");
+                "Fork choice received block {BlockRoot} ({BeaconBlock}) with signature {Signature}");
 
         public static readonly Action<ILogger, Epoch, Slot, ulong, Exception?> OnTickNewEpoch =
             LoggerMessage.Define<Epoch, Slot, ulong>(LogLevel.Information,

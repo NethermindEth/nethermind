@@ -237,7 +237,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessAttestation(BeaconState state, Attestation attestation)
         {
-            if(_logger.IsDebug()) LogDebug.ProcessAttestation(_logger, attestation, state, null);
+            if(_logger.IsDebug()) LogDebug.ProcessAttestation(_logger, attestation, null);
 
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             AttestationData data = attestation.Data;
@@ -363,14 +363,13 @@ namespace Nethermind.BeaconNode
         {
             if(_logger.IsDebug()) LogDebug.ProcessBlock(_logger, block, state, null);
             ProcessBlockHeader(state, block);
-            ProcessRandao(state, block.Body);
-            ProcessEth1Data(state, block.Body);
-            ProcessOperations(state, block.Body);
+            ProcessBlockRandao(state, block.Body);
+            ProcessBlockEth1Data(state, block.Body);
+            ProcessBlockOperations(state, block.Body);
         }
 
         public void ProcessBlockHeader(BeaconState state, BeaconBlock block)
         {
-            if(_logger.IsDebug()) LogDebug.ProcessBlockHeader(_logger, block, null);
             // Verify that the slots match
             if (block.Slot != state.Slot)
             {
@@ -390,6 +389,7 @@ namespace Nethermind.BeaconNode
                 Root.Zero, // `state_root` is zeroed and overwritten in the next `process_slot` call
                 bodyRoot
                 );
+            if(_logger.IsDebug()) LogDebug.ProcessingBlockHeader(_logger, state.Slot, newBlockHeader, null);
             state.SetLatestBlockHeader(newBlockHeader);
 
             // Verify proposer is not slashed
@@ -466,7 +466,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessEpoch(BeaconState state)
         {
-            if (_logger.IsDebug()) LogDebug.ProcessEpoch(_logger, state, null);
+            if (_logger.IsDebug()) LogDebug.ProcessEpoch(_logger, state.Slot, null);
             ProcessJustificationAndFinalization(state);
             ProcessRewardsAndPenalties(state);
             ProcessRegistryUpdates(state);
@@ -483,9 +483,9 @@ namespace Nethermind.BeaconNode
             //# @after_process_final_updates
         }
 
-        public void ProcessEth1Data(BeaconState state, BeaconBlockBody body)
+        public void ProcessBlockEth1Data(BeaconState state, BeaconBlockBody body)
         {
-            if (_logger.IsDebug()) LogDebug.ProcessEth1Data(_logger, body, null);
+            if (_logger.IsDebug()) LogDebug.ProcessEth1Data(_logger, state.Slot, body.Eth1Data, null);
 
             state.AddEth1DataVote(body.Eth1Data);
             int eth1DataVoteCount = state.Eth1DataVotes.Count(x => x.Equals(body.Eth1Data));
@@ -497,7 +497,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessFinalUpdates(BeaconState state)
         {
-            if (_logger.IsDebug()) LogDebug.ProcessFinalUpdates(_logger, state, null);
+            if (_logger.IsDebug()) LogDebug.ProcessFinalUpdates(_logger, state.Slot, null);
 
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             GweiValues gweiValues = _gweiValueOptions.CurrentValue;
@@ -552,7 +552,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessJustificationAndFinalization(BeaconState state)
         {
-            if (_logger.IsDebug()) LogDebug.ProcessJustificationAndFinalization(_logger, state, null);
+            if (_logger.IsDebug()) LogDebug.ProcessJustificationAndFinalization(_logger, state.Slot, null);
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             if (currentEpoch <= _chainConstants.GenesisEpoch + new Epoch(1))
             {
@@ -620,9 +620,9 @@ namespace Nethermind.BeaconNode
             }
         }
 
-        public void ProcessOperations(BeaconState state, BeaconBlockBody body)
+        public void ProcessBlockOperations(BeaconState state, BeaconBlockBody body)
         {
-            if (_logger.IsDebug()) LogDebug.ProcessOperations(_logger, body, null);
+            if (_logger.IsDebug()) LogDebug.ProcessOperations(_logger, state.Slot, body, null);
             // Verify that outstanding deposits are processed up to the maximum number of deposits
             ulong outstandingDeposits = state.Eth1Data.DepositCount - state.Eth1DepositIndex;
             ulong expectedDeposits = Math.Min(_maxOperationsPerBlockOptions.CurrentValue.MaximumDeposits, outstandingDeposits);
@@ -700,9 +700,9 @@ namespace Nethermind.BeaconNode
             _beaconStateMutator.SlashValidator(state, proposerSlashing.ProposerIndex, ValidatorIndex.None);
         }
 
-        public void ProcessRandao(BeaconState state, BeaconBlockBody body)
+        public void ProcessBlockRandao(BeaconState state, BeaconBlockBody body)
         {
-            if (_logger.IsDebug()) LogDebug.ProcessRandao(_logger, body, null);
+            if (_logger.IsDebug()) LogDebug.ProcessRandao(_logger, state.Slot, body.RandaoReveal, null);
             Epoch epoch = _beaconStateAccessor.GetCurrentEpoch(state);
             // Verify RANDAO reveal
             ValidatorIndex beaconProposerIndex = _beaconStateAccessor.GetBeaconProposerIndex(state);
@@ -725,7 +725,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessRegistryUpdates(BeaconState state)
         {
-            if (_logger.IsDebug()) LogDebug.ProcessRegistryUpdates(_logger, state, null);
+            if (_logger.IsDebug()) LogDebug.ProcessRegistryUpdates(_logger, state.Slot, null);
 
             GweiValues gweiValues = _gweiValueOptions.CurrentValue;
 
@@ -767,7 +767,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessRewardsAndPenalties(BeaconState state)
         {
-            if (_logger.IsDebug()) LogDebug.ProcessRewardsAndPenalties(_logger, state, null);
+            if (_logger.IsDebug()) LogDebug.ProcessRewardsAndPenalties(_logger, state.Slot, null);
 
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             if (currentEpoch == _chainConstants.GenesisEpoch)
@@ -786,7 +786,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessSlashings(BeaconState state)
         {
-            if (_logger.IsDebug()) LogDebug.ProcessSlashings(_logger, state, null);
+            if (_logger.IsDebug()) LogDebug.ProcessSlashings(_logger, state.Slot, null);
 
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             Gwei totalBalance = _beaconStateAccessor.GetTotalActiveBalance(state);
@@ -841,7 +841,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessSlots(BeaconState state, Slot slot)
         {
-            if(_logger.IsDebug()) LogDebug.ProcessSlots(_logger, slot, state, null);
+            if(_logger.IsDebug()) LogDebug.ProcessSlots(_logger, state, slot, null);
             if (state.Slot > slot)
             {
                 throw new ArgumentOutOfRangeException(nameof(slot), slot, $"Slot to process should be greater than current state slot {state.Slot}");
@@ -863,7 +863,7 @@ namespace Nethermind.BeaconNode
         {
             VoluntaryExit voluntaryExit = signedVoluntaryExit.Message;
             
-            if (_logger.IsDebug()) LogDebug.ProcessVoluntaryExit(_logger, voluntaryExit, state, null);
+            if (_logger.IsDebug()) LogDebug.ProcessVoluntaryExit(_logger, voluntaryExit, null);
 
             Validator validator = state.Validators[(int)voluntaryExit.ValidatorIndex];
 
@@ -965,6 +965,7 @@ namespace Nethermind.BeaconNode
                 Epoch.None);
             Root signingRoot = _beaconChainUtility.ComputeSigningRoot(blockRoot, domain);
             bool isValid = _cryptographyService.BlsVerify(proposer.PublicKey, signingRoot, signedBlock.Signature);
+            if (_logger.IsDebug()) LogDebug.VerifiedBlockSignature(_logger, blockRoot, signedBlock.Message, signingRoot, beaconProposerIndex, isValid, null);
             return isValid;
         }
     }

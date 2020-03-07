@@ -49,7 +49,7 @@ namespace Nethermind.BeaconNode.Test
             
             IBeaconNodeApi beaconNode = testServiceProvider.GetService<IBeaconNodeApi>();
             Core2.Containers.Fork fork = await beaconNode.GetNodeForkAsync(CancellationToken.None);
-            fork.CurrentVersion.ShouldBe(new ForkVersion());
+            fork.CurrentVersion.ShouldBe(new ForkVersion(new byte[4] { 0x00, 0x00, 0x00, 0x01}));
 
             // Act
             BlockProducer blockProducer = testServiceProvider.GetService<BlockProducer>();
