@@ -52,7 +52,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
             Bytes32 indexHash = new Bytes32(indexBytes);
             proof.Add(indexHash);
             Bytes32 leaf = new Bytes32(cryptographyService.HashTreeRoot(depositData).AsSpan());
-            beaconChainUtility.IsValidMerkleBranch(leaf, proof, chainConstants.DepositContractTreeDepth + 1, (ulong)index, root);
+            bool checkValid = beaconChainUtility.IsValidMerkleBranch(leaf, proof, chainConstants.DepositContractTreeDepth + 1, (ulong)index, root);
             Deposit deposit = new Deposit(proof, depositData);
             return (deposit, root);
         }

@@ -106,7 +106,7 @@ namespace Nethermind.Core2.Containers
         {
             GenesisTime = genesisTime;
             Fork = fork;
-            Eth1DepositIndex = eth1Data.DepositCount; // TODO: Check what this value should be / default to
+            Eth1DepositIndex = 0;
             _eth1DataVotes = new List<Eth1Data>();
             Eth1Data = eth1Data;
             LatestBlockHeader = latestBlockHeader;
