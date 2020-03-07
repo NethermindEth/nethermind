@@ -89,11 +89,12 @@ namespace Nethermind.BeaconNode.Test
             var epoch = beaconChainUtility.ComputeEpochAtSlot(slot);
 
             var epochRoot = epoch.HashTreeRoot();
+            var epochSigningRoot = beaconChainUtility.ComputeSigningRoot(epochRoot, domain);
             
             BLSParameters parameters = new BLSParameters() { PrivateKey =  privateKey };
             BLS bls = BLS.Create(parameters);
             var destination = new Span<byte>(new byte[96]);
-            bls.TrySignHash(epochRoot.AsSpan(), destination, out var bytesWritten, domain.AsSpan());
+            bls.TrySignData(epochSigningRoot.AsSpan(), destination, out var bytesWritten);
             
             var signature = new BlsSignature(destination.ToArray());
             return signature;

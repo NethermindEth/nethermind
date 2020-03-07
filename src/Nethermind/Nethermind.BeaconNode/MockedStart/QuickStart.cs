@@ -137,7 +137,7 @@ namespace Nethermind.BeaconNode.MockedStart
                 Root depositMessageRoot = _cryptographyService.HashTreeRoot(depositMessage);
                 Root depositDataSigningRoot = _beaconChainUtility.ComputeSigningRoot(depositMessageRoot, domain);
                 byte[] destination = new byte[96];
-                bls.TrySignHash(depositDataSigningRoot.AsSpan(), destination, out int bytesWritten, domain.AsSpan());
+                bls.TrySignData(depositDataSigningRoot.AsSpan(), destination, out int bytesWritten);
                 BlsSignature depositDataSignature = new BlsSignature(destination);
                 depositData.SetSignature(depositDataSignature);
 

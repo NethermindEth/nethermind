@@ -77,7 +77,7 @@ namespace Nethermind.Cryptography
             var hash = new Span<byte>(new byte[32]);
             var hashSuccess = _bls.HashAlgorithm.TryComputeHash(message, hash, out var hashBytesWritten);
             var signature = new Span<byte>(new byte[96]);
-            var signSuccess = _bls.TrySignHash(hash, signature, out var signBytesWritten);
+            var signSuccess = _bls.TrySignData(hash, signature, out var signBytesWritten);
             return signature.ToArray();
         }
 
