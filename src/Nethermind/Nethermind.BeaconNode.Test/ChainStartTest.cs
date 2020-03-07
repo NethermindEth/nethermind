@@ -74,11 +74,12 @@ namespace Nethermind.BeaconNode.Test
             BeaconNode.Genesis beaconChain = new BeaconNode.Genesis(loggerFactory.CreateLogger<BeaconNode.Genesis>(),
                 chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions,
                 cryptographyService,  beaconStateAccessor, beaconStateTransition);
-            MemoryStoreProvider storeProvider = new MemoryStoreProvider(loggerFactory, timeParameterOptions);
+            MemoryStore store = new MemoryStore(loggerFactory.CreateLogger<MemoryStore>(), timeParameterOptions);
+            MemoryStoreProvider storeProvider = new MemoryStoreProvider(store);
             ForkChoice forkChoice = new ForkChoice(loggerFactory.CreateLogger<ForkChoice>(),
                 chainConstants, miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, forkChoiceConfigurationOptions, signatureDomainOptions,
                 cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateTransition, storeProvider);
-            ChainStart chainStart = new ChainStart(loggerFactory.CreateLogger<ChainStart>(), beaconChain, forkChoice);
+            ChainStart chainStart = new ChainStart(loggerFactory.CreateLogger<ChainStart>(), store, beaconChain, forkChoice);
 
             // Act
             Bytes32 eth1BlockHash = Bytes32.Zero;

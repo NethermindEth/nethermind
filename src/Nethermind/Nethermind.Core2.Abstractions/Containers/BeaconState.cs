@@ -97,8 +97,8 @@ namespace Nethermind.Core2.Containers
             ulong genesisTime, 
             Fork fork,
             Eth1Data eth1Data, 
-            //ulong eth1DepositIndex,
             BeaconBlockHeader latestBlockHeader,
+            Bytes32[] randaoMixes,
             uint slotsPerHistoricalRoot, 
             ulong epochsPerHistoricalVector, 
             ulong epochsPerSlashingsVector, 
@@ -110,13 +110,14 @@ namespace Nethermind.Core2.Containers
             _eth1DataVotes = new List<Eth1Data>();
             Eth1Data = eth1Data;
             LatestBlockHeader = latestBlockHeader;
+            _randaoMixes = randaoMixes;
             // Default/empty values:
             _validators = new List<Validator>();
             _balances = new List<Gwei>();
             _blockRoots = Enumerable.Repeat(Root.Zero, (int)slotsPerHistoricalRoot).ToArray();
             _stateRoots = Enumerable.Repeat(Root.Zero, (int)slotsPerHistoricalRoot).ToArray();
             _historicalRoots = new List<Root>();
-            _randaoMixes = Enumerable.Repeat(Bytes32.Zero, (int)epochsPerHistoricalVector).ToArray();
+            //_randaoMixes = Enumerable.Repeat(Bytes32.Zero, (int)epochsPerHistoricalVector).ToArray();
             _slashings = Enumerable.Repeat(Gwei.Zero, (int)epochsPerSlashingsVector).ToArray();
             _previousEpochAttestations = new List<PendingAttestation>();
             _currentEpochAttestations = new List<PendingAttestation>();
@@ -265,6 +266,6 @@ namespace Nethermind.Core2.Containers
 
         public void SetStateRoot(Slot index, Root stateRoot) => _stateRoots[index] = stateRoot;
 
-        public override string ToString() => $"G:{GenesisTime} S:{Slot} F:({Fork})";
+        public override string ToString() => $"S:{Slot} LS:{LatestBlockHeader.Slot} LP:{LatestBlockHeader.ParentRoot.ToString().Substring(0, 10)} LSt:{LatestBlockHeader.StateRoot.ToString().Substring(0, 10)} LBd:{LatestBlockHeader.BodyRoot.ToString().Substring(0, 10)}";
     }
 }

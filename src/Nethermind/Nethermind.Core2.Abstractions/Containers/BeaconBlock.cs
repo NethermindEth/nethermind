@@ -21,14 +21,6 @@ namespace Nethermind.Core2.Containers
 {
     public class BeaconBlock
     {
-        public BeaconBlock(Root genesisStateRoot)
-        {
-            Slot = new Slot(0);
-            ParentRoot = Root.Zero;
-            StateRoot = genesisStateRoot;
-            Body = new BeaconBlockBody();
-        }
-
         public BeaconBlock(Slot slot, Root parentRoot, Root stateRoot, BeaconBlockBody body)
         {
             Slot = slot;
@@ -42,13 +34,11 @@ namespace Nethermind.Core2.Containers
         public Slot Slot { get; private set; }
         public Root StateRoot { get; private set; }
 
-        public void SetSlot(Slot slot) => Slot = slot;
-
         public void SetStateRoot(Root stateRoot) => StateRoot = stateRoot;
 
         public override string ToString()
         {
-            return $"S:{Slot} P:{ParentRoot.ToString().Substring(0, 16)} St:{StateRoot.ToString().Substring(0, 16)}";
+            return $"S:{Slot} P:{ParentRoot.ToString().Substring(0, 10)} St:{StateRoot.ToString().Substring(0, 10)}";
         }
     }
 }

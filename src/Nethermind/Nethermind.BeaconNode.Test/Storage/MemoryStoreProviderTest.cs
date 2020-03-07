@@ -40,7 +40,8 @@ namespace Nethermind.BeaconNode.Test.Storage
             BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
-            IStore store = forkChoice.GetGenesisStore(state);
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
 
             InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
@@ -141,11 +142,10 @@ namespace Nethermind.BeaconNode.Test.Storage
 
             BeaconBlockHeader state1LatestHeader = block1State!.LatestBlockHeader;
             TestContext.WriteLine(
-                "State 1 latest header, slot: {0}, parent {1}, body root {2}, state root {3}, signature {4}, hash tree root {5}, signing root {6}",
+                "State 1 latest header, slot: {0}, parent {1}, body root {2}, state root {3}, signature {4}, header hash tree root (without state) {5}",
                 state1LatestHeader.Slot, state1LatestHeader.ParentRoot, state1LatestHeader.BodyRoot,
                 state1LatestHeader.StateRoot, state1LatestHeader,
-                cryptographyService.HashTreeRoot(state1LatestHeader),
-                beaconChainUtility.ComputeSigningRoot(cryptographyService.HashTreeRoot(state1LatestHeader), domain));
+                cryptographyService.HashTreeRoot(state1LatestHeader));
             
             // NOTE: cryptographyService.HashTreeRoot(beaconBlockHeader) == cryptographyService.HashTreeRoot(beaconBlock)
             //       likewise, the ComputeSigningRoot() of both will be the same

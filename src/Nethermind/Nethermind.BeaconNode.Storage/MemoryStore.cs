@@ -31,43 +31,56 @@ namespace Nethermind.BeaconNode.Storage
     // Data Class
     public class MemoryStore : IStore
     {
-        private readonly Dictionary<Root, BeaconBlock> _blocks;
-        private readonly Dictionary<Root, BeaconState> _blockStates;
-        private readonly Dictionary<Checkpoint, BeaconState> _checkpointStates;
-        private readonly Dictionary<ValidatorIndex, LatestMessage> _latestMessages;
+        private readonly Dictionary<Root, BeaconBlock> _blocks = new Dictionary<Root, BeaconBlock>();
+        private readonly Dictionary<Root, BeaconState> _blockStates = new Dictionary<Root, BeaconState>();
+        private readonly Dictionary<Checkpoint, BeaconState> _checkpointStates = new Dictionary<Checkpoint, BeaconState>();
+        private readonly Dictionary<ValidatorIndex, LatestMessage> _latestMessages = new Dictionary<ValidatorIndex, LatestMessage>();
         private readonly ILogger _logger;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
-        public MemoryStore(ulong time,
-            ulong genesisTime,
-            Checkpoint justifiedCheckpoint,
-            Checkpoint finalizedCheckpoint,
-            Checkpoint bestJustifiedCheckpoint,
-            IDictionary<Root, BeaconBlock> blocks,
-            IDictionary<Root, BeaconState> blockStates,
-            IDictionary<Checkpoint, BeaconState> checkpointStates,
-            IDictionary<ValidatorIndex, LatestMessage> latestMessages,
-            ILogger<MemoryStore> logger,
+        public MemoryStore(ILogger<MemoryStore> logger,
             IOptionsMonitor<TimeParameters> timeParameterOptions)
         {
+            _logger = logger;
+            _timeParameterOptions = timeParameterOptions;
+        }
+
+        public Checkpoint BestJustifiedCheckpoint { get; private set; } = Checkpoint.Zero;
+        public Checkpoint FinalizedCheckpoint { get; private set; } = Checkpoint.Zero;
+        public ulong GenesisTime { get; private set; }
+        public bool IsInitialized { get; private set; }
+        public Checkpoint JustifiedCheckpoint { get; private set; } = Checkpoint.Zero;
+        public ulong Time { get; private set; }
+
+        public Task InitializeForkChoiceStoreAsync(ulong time, ulong genesisTime, Checkpoint justifiedCheckpoint,
+            Checkpoint finalizedCheckpoint, Checkpoint bestJustifiedCheckpoint, IDictionary<Root, BeaconBlock> blocks, IDictionary<Root, BeaconState> states,
+            IDictionary<Checkpoint, BeaconState> checkpointStates)
+        {
+            if (IsInitialized)
+            {
+                throw new Exception("Store already initialized.");
+            }
+            
             Time = time;
             GenesisTime = genesisTime;
             JustifiedCheckpoint = justifiedCheckpoint;
             FinalizedCheckpoint = finalizedCheckpoint;
             BestJustifiedCheckpoint = bestJustifiedCheckpoint;
-            _blocks = new Dictionary<Root, BeaconBlock>(blocks);
-            _blockStates = new Dictionary<Root, BeaconState>(blockStates);
-            _checkpointStates = new Dictionary<Checkpoint, BeaconState>(checkpointStates);
-            _latestMessages = new Dictionary<ValidatorIndex, LatestMessage>(latestMessages);
-            _logger = logger;
-            _timeParameterOptions = timeParameterOptions;
+            foreach (KeyValuePair<Root, BeaconBlock> kvp in blocks)
+            {
+                _blocks[kvp.Key] = kvp.Value;
+            }
+            foreach (KeyValuePair<Root, BeaconState> kvp in states)
+            {
+                _blockStates[kvp.Key] = kvp.Value;
+            }
+            foreach (KeyValuePair<Checkpoint, BeaconState> kvp in checkpointStates)
+            {
+                _checkpointStates[kvp.Key] = kvp.Value;
+            }
+            IsInitialized = true;
+            return Task.CompletedTask;
         }
-
-        public Checkpoint BestJustifiedCheckpoint { get; private set; }
-        public Checkpoint FinalizedCheckpoint { get; private set; }
-        public ulong GenesisTime { get; }
-        public Checkpoint JustifiedCheckpoint { get; private set; }
-        public ulong Time { get; private set; }
 
         public Task SetBestJustifiedCheckpointAsync(Checkpoint checkpoint)
         {
@@ -75,15 +88,15 @@ namespace Nethermind.BeaconNode.Storage
             return Task.CompletedTask;
         }
 
-        public Task SetBlockAsync(Root blockHashTreeRoot, BeaconBlock block)
+        public Task SetBlockAsync(Root blockHashTreeRoot, BeaconBlock beaconBlock)
         {
-            _blocks[blockHashTreeRoot] = block;
+            _blocks[blockHashTreeRoot] = beaconBlock;
             return Task.CompletedTask;
         }
 
-        public Task SetBlockStateAsync(Root blockHashTreeRoot, BeaconState state)
+        public Task SetBlockStateAsync(Root blockHashTreeRoot, BeaconState beaconState)
         {
-            _blockStates[blockHashTreeRoot] = state;
+            _blockStates[blockHashTreeRoot] = beaconState;
             return Task.CompletedTask;
         }
 
@@ -119,13 +132,13 @@ namespace Nethermind.BeaconNode.Storage
 
         public ValueTask<BeaconBlock> GetBlockAsync(Root blockRoot)
         {
-            if (!_blocks.TryGetValue(blockRoot, out BeaconBlock? block))
+            if (!_blocks.TryGetValue(blockRoot, out BeaconBlock? beaconBlock))
             {
                 throw new ArgumentOutOfRangeException(nameof(blockRoot), blockRoot, "Block not found in store.");
             }
-            return new ValueTask<BeaconBlock>(block!);
+            return new ValueTask<BeaconBlock>(beaconBlock!);
         }
-
+        
         public ValueTask<BeaconState> GetBlockStateAsync(Root blockRoot)
         {
             if (!_blockStates.TryGetValue(blockRoot, out BeaconState? state))

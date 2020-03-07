@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2;
@@ -78,11 +79,12 @@ namespace Nethermind.BeaconNode
                 + (2 * timeParameters.MinimumGenesisDelay);
             Eth1Data eth1Data = new Eth1Data(Root.Zero, (ulong)deposits.Count, eth1BlockHash);
             
-            BeaconBlockBody emptyBlockBody = new BeaconBlockBody();
-            Root emptyBlockBodyRoot = _cryptographyService.HashTreeRoot(emptyBlockBody);
+            Root emptyBlockBodyRoot = _cryptographyService.HashTreeRoot(BeaconBlockBody.Zero);
             BeaconBlockHeader latestBlockHeader = new BeaconBlockHeader(emptyBlockBodyRoot);
+            
+            Bytes32[] randaoMixes = Enumerable.Repeat(eth1BlockHash, (int)stateListLengths.EpochsPerHistoricalVector).ToArray();
 
-            BeaconState state = new BeaconState(genesisTime, fork, eth1Data, latestBlockHeader,
+            BeaconState state = new BeaconState(genesisTime, fork, eth1Data, latestBlockHeader, randaoMixes,
                 timeParameters.SlotsPerHistoricalRoot, stateListLengths.EpochsPerHistoricalVector,
                 stateListLengths.EpochsPerSlashingsVector, _chainConstants.JustificationBitsLength);
 

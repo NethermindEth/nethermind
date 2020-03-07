@@ -43,7 +43,8 @@ namespace Nethermind.BeaconNode.Test.Fork
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
 
             // Initialization
-            IStore store = forkChoice.GetGenesisStore(state);
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
             ulong time = 100uL;
             await forkChoice.OnTickAsync(store, time);
             store.Time.ShouldBe(time);

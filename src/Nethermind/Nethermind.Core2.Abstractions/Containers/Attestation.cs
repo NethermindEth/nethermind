@@ -50,7 +50,8 @@ namespace Nethermind.Core2.Containers
         
         public bool Equals(Attestation? other)
         {
-            if (!Equals(Data, other.Data) ||
+            if (other is null ||
+                !Equals(Data, other.Data) ||
                 !Equals(Signature, other.Signature) ||
                 AggregationBits.Count != other.AggregationBits.Count)
             {

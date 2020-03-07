@@ -29,6 +29,10 @@ namespace Nethermind.Core2.Containers
         private readonly List<ProposerSlashing> _proposerSlashings;
         private readonly List<SignedVoluntaryExit> _voluntaryExits;
 
+        public static readonly BeaconBlockBody Zero = new BeaconBlockBody(BlsSignature.Zero, Eth1Data.Zero,
+            Bytes32.Zero, new ProposerSlashing[0], new AttesterSlashing[0], new Attestation[0], new Deposit[0],
+            new SignedVoluntaryExit[0]);
+
         public BeaconBlockBody(
             BlsSignature randaoReveal,
             Eth1Data eth1Data,
@@ -47,18 +51,6 @@ namespace Nethermind.Core2.Containers
             _attestations = new List<Attestation>(attestations);
             _deposits = new List<Deposit>(deposits);
             _voluntaryExits = new List<SignedVoluntaryExit>(voluntaryExits);
-        }
-
-        public BeaconBlockBody()
-        {
-            RandaoReveal = BlsSignature.Zero;
-            Eth1Data = Eth1Data.Zero;
-            Graffiti = Bytes32.Zero;
-            _proposerSlashings = new List<ProposerSlashing>();
-            _attesterSlashings = new List<AttesterSlashing>();
-            _attestations = new List<Attestation>();
-            _deposits = new List<Deposit>();
-            _voluntaryExits = new List<SignedVoluntaryExit>();
         }
 
         public IReadOnlyList<Attestation> Attestations { get { return _attestations; } }

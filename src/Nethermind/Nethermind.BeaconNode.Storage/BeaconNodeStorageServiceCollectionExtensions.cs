@@ -24,6 +24,9 @@ namespace Nethermind.BeaconNode.Storage
     {
         public static void AddBeaconNodeStorage(this IServiceCollection services, IConfiguration configuration)
         {
+            services.AddSingleton<IStore, MemoryStore>();
+
+            // TODO: Remove IStoreProvider
             services.AddSingleton<IStoreProvider, MemoryStoreProvider>();
         }
     }

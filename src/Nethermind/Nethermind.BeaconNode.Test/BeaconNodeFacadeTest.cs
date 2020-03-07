@@ -53,7 +53,8 @@ namespace Nethermind.BeaconNode.Test
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
-            _ = forkChoice.GetGenesisStore(state);            
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
 
             // Act
             IBeaconNodeApi beaconNode = testServiceProvider.GetService<IBeaconNodeApi>();
@@ -79,7 +80,8 @@ namespace Nethermind.BeaconNode.Test
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
-            _ = forkChoice.GetGenesisStore(state);            
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
             
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
             int numberOfValidators = state.Validators.Count;
@@ -135,7 +137,8 @@ namespace Nethermind.BeaconNode.Test
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
-            _ = forkChoice.GetGenesisStore(state);            
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
             
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
             int numberOfValidators = state.Validators.Count;

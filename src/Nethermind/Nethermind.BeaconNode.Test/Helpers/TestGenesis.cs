@@ -58,13 +58,14 @@ namespace Nethermind.BeaconNode.Test.Helpers
             StateListLengths stateListLengths = testServiceProvider.GetService<IOptions<StateListLengths>>().Value;
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
 
-            var blockHash = new Bytes32(Enumerable.Repeat((byte)0x42, 32).ToArray());
+            var eth1BlockHash = new Bytes32(Enumerable.Repeat((byte)0x42, 32).ToArray());
             var state = new BeaconState(
                 0,
                 new Core2.Containers.Fork(new ForkVersion(new byte[ForkVersion.Length]), new ForkVersion(new byte[ForkVersion.Length]), Epoch.Zero), 
-                new Eth1Data(Root.Zero, numberOfValidators, blockHash),
+                new Eth1Data(Root.Zero, numberOfValidators, eth1BlockHash),
                 //numberOfValidators,
-                new BeaconBlockHeader(cryptographyService.HashTreeRoot(new BeaconBlockBody())),
+                new BeaconBlockHeader(cryptographyService.HashTreeRoot(BeaconBlockBody.Zero)),
+                Enumerable.Repeat(eth1BlockHash, (int)stateListLengths.EpochsPerHistoricalVector).ToArray(),
                 timeParameters.SlotsPerHistoricalRoot,
                 stateListLengths.EpochsPerHistoricalVector,
                 stateListLengths.EpochsPerSlashingsVector,

@@ -51,14 +51,17 @@ namespace Nethermind.BeaconNode.Test.Fork
             BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
-            IStore store = forkChoice.GetGenesisStore(state);
+           
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
 
             // Act
             Root headRoot = await forkChoice.GetHeadAsync(store);
 
             // Assert
             Root stateRoot = cryptographyService.HashTreeRoot(state);
-            BeaconBlock genesisBlock = new BeaconBlock(stateRoot);
+
+            BeaconBlock genesisBlock = new BeaconBlock(Slot.Zero, Root.Zero, stateRoot, BeaconBlockBody.Zero);         
             Root expectedRoot = cryptographyService.HashTreeRoot(genesisBlock);
             
             headRoot.ShouldBe(expectedRoot);
@@ -74,7 +77,8 @@ namespace Nethermind.BeaconNode.Test.Fork
             // Initialization
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
-            IStore store = forkChoice.GetGenesisStore(state);
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
 
             // On receiving a block of `GENESIS_SLOT + 1` slot
             BeaconBlock block1 = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, BlsSignature.Zero);
@@ -104,7 +108,8 @@ namespace Nethermind.BeaconNode.Test.Fork
             // Initialization
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
-            IStore store = forkChoice.GetGenesisStore(state);
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
             BeaconState genesisState = BeaconState.Clone(state);
 
             // block at slot 1
@@ -144,7 +149,8 @@ namespace Nethermind.BeaconNode.Test.Fork
             // Initialization
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
-            IStore store = forkChoice.GetGenesisStore(state);
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
             BeaconState genesisState = BeaconState.Clone(state);
 
             // build longer tree

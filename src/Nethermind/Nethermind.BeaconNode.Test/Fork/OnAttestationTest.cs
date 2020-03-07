@@ -47,7 +47,8 @@ namespace Nethermind.BeaconNode.Test.Fork
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
 
             // Initialization
-            IStore store = forkChoice.GetGenesisStore(state);
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
             ulong time = store.Time + timeParameters.SecondsPerSlot * 2;
             await forkChoice.OnTickAsync(store, time);
 
@@ -82,7 +83,8 @@ namespace Nethermind.BeaconNode.Test.Fork
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
 
             // Initialization
-            IStore store = forkChoice.GetGenesisStore(state);
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
             ulong time = store.Time + timeParameters.SecondsPerSlot * (ulong)timeParameters.SlotsPerEpoch;
             await forkChoice.OnTickAsync(store, time);
 
@@ -117,7 +119,8 @@ namespace Nethermind.BeaconNode.Test.Fork
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
 
             // Initialization
-            IStore store = forkChoice.GetGenesisStore(state);
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
 
             // move time forward 2 epochs
             ulong time = store.Time + 2 * timeParameters.SecondsPerSlot * (ulong)timeParameters.SlotsPerEpoch;

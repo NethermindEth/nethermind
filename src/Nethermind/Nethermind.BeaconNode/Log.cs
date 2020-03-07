@@ -72,10 +72,10 @@ namespace Nethermind.BeaconNode
                 new EventId(2100, nameof(ValidatedStateTransition)),
                 "Validated state transition to new state root {StateRoot} ({BeaconState}) by block {BlockRoot} ({BeaconBlock})");
 
-        public static readonly Action<ILogger, BeaconBlock, BeaconState, Checkpoint, Root, Exception?> CreateGenesisStore =
-            LoggerMessage.Define<BeaconBlock, BeaconState, Checkpoint, Root>(LogLevel.Information,
+        public static readonly Action<ILogger, Fork, Root, ulong, BeaconState, BeaconBlock, Checkpoint, Exception?> CreateGenesisStore =
+            LoggerMessage.Define<Fork, Root, ulong, BeaconState, BeaconBlock, Checkpoint>(LogLevel.Information,
                 new EventId(2200, nameof(CreateGenesisStore)),
-                "Creating genesis store with block {BeaconBlock} for state {BeaconState}, with checkpoint {JustifiedCheckpoint}, with block hash tree root {BlockRoot}");
+                "Initializing store on fork {Fork} with anchor root {AnchorRoot}, genesis {GenesisTime} (state {AnchorState}, block {AnchorBlock}, checkpoint {AnchorCheckpoint})");
 
         public static readonly Action<ILogger, Attestation, Exception?> OnAttestation =
             LoggerMessage.Define<Attestation>(LogLevel.Information,

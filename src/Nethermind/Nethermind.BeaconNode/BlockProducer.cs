@@ -81,22 +81,22 @@ namespace Nethermind.BeaconNode
 
             Slot previousSlot = slot - Slot.One;
             Root head = await _forkChoice.GetHeadAsync(store).ConfigureAwait(false);
-            BeaconBlock headBlock = await store.GetBlockAsync(head).ConfigureAwait(false);
+            BeaconBlock headBeaconBlock = await store.GetBlockAsync(head).ConfigureAwait(false);
 
             BeaconState parentState;
             Root parentRoot;
-            if (headBlock!.Slot > previousSlot)
+            if (headBeaconBlock!.Slot > previousSlot)
             {
                 // Requesting a block for a past slot?
-                Root ancestorRoot = await _forkChoice.GetAncestorAsync(store, head, previousSlot);
+                Root ancestorRoot = await _forkChoice.GetAncestorAsync(store, head, previousSlot).ConfigureAwait(false);
                 parentState = await store.GetBlockStateAsync(ancestorRoot).ConfigureAwait(false);
                 parentRoot = ancestorRoot;
             }
             else
             {
-                if (headBlock.Slot < previousSlot)
+                if (headBeaconBlock.Slot < previousSlot)
                 {
-                    if (_logger.IsDebug()) LogDebug.NewBlockSkippedSlots(_logger, slot, randaoReveal, headBlock.Slot, null);
+                    if (_logger.IsDebug()) LogDebug.NewBlockSkippedSlots(_logger, slot, randaoReveal, headBeaconBlock.Slot, null);
                 }
                 parentState = await store.GetBlockStateAsync(head).ConfigureAwait(false);
                 parentRoot = head;

@@ -41,7 +41,7 @@ namespace Nethermind.BeaconNode.Test
         [DataRow(0uL, true)]
         [DataRow(79uL, true)]
         [DataRow(80uL, false)]
-        public void ValidatorShouldBeActiveAfterTestGenesis(ulong index, bool shouldBeActive)
+        public async Task ValidatorShouldBeActiveAfterTestGenesis(ulong index, bool shouldBeActive)
         {
             // NOTE: Test genesis has SlotsPerEpoch (8) * 10 = 80 validators.
             
@@ -52,7 +52,8 @@ namespace Nethermind.BeaconNode.Test
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
-            _ = forkChoice.GetGenesisStore(state);            
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
 
             // Act
             ValidatorAssignments validatorAssignments = testServiceProvider.GetService<ValidatorAssignments>();
@@ -115,7 +116,8 @@ namespace Nethermind.BeaconNode.Test
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
-            _ = forkChoice.GetGenesisStore(state);            
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
             
             // Act
             ValidatorAssignments validatorAssignments = testServiceProvider.GetService<ValidatorAssignments>();
@@ -169,7 +171,8 @@ namespace Nethermind.BeaconNode.Test
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
-            IStore store = forkChoice.GetGenesisStore(state);            
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
             
             // Move forward time
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
@@ -220,7 +223,8 @@ namespace Nethermind.BeaconNode.Test
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
-            IStore store = forkChoice.GetGenesisStore(state);
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
             
             // Move forward time
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;

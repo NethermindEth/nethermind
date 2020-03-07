@@ -98,7 +98,7 @@ namespace Nethermind.Core2.Containers
 
         public override string ToString()
         {
-            return $"S:{Slot} P:{ParentRoot.ToString().Substring(0, 12)} St:{StateRoot.ToString().Substring(0, 12)} Bd:{BodyRoot.ToString().Substring(0, 12)}";
+            return $"S:{Slot} P:{ParentRoot.ToString().Substring(0, 10)} St:{StateRoot.ToString().Substring(0, 10)} Bd:{BodyRoot.ToString().Substring(0, 10)}";
         }
     }
 }

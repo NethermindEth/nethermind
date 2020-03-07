@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -42,6 +43,7 @@ namespace Nethermind.BeaconNode.MockedStart
         private static readonly byte[][] s_zeroHashes = new byte[32][];
 
         private readonly Genesis _beaconChain;
+        private readonly IStore _store;
         private readonly BeaconChainUtility _beaconChainUtility;
         private readonly ChainConstants _chainConstants;
         private readonly ICryptographyService _cryptographyService;
@@ -70,6 +72,7 @@ namespace Nethermind.BeaconNode.MockedStart
             ICryptographyService cryptographyService,
             BeaconChainUtility beaconChainUtility,
             Genesis beaconChain,
+            IStore store,
             ForkChoice forkChoice)
         {
             _logger = logger;
@@ -81,15 +84,16 @@ namespace Nethermind.BeaconNode.MockedStart
             _cryptographyService = cryptographyService;
             _beaconChainUtility = beaconChainUtility;
             _beaconChain = beaconChain;
+            _store = store;
             _forkChoice = forkChoice;
         }
 
-        public Task InitializeNodeAsync()
+        public async Task InitializeNodeAsync()
         {
-            return Task.Run(QuickStartGenesis);
+            await QuickStartGenesis().ConfigureAwait(false);
         }
 
-        public void QuickStartGenesis()
+        private async Task QuickStartGenesis()
         {
             QuickStartParameters quickStartParameters = _quickStartParameterOptions.CurrentValue;
 
@@ -154,13 +158,9 @@ namespace Nethermind.BeaconNode.MockedStart
 
                 IList<Bytes32> merkleProof = GetMerkleProof(tree, index, 32);
                 List<Bytes32> proof = new List<Bytes32>(merkleProof);
-                Span<byte> indexBytes = new Span<byte>(new byte[32]);
-                BitConverter.TryWriteBytes(indexBytes, (ulong)index + 1);
-                if (!BitConverter.IsLittleEndian)
-                {
-                    indexBytes.Slice(0, 8).Reverse();
-                }
-
+                
+                byte[] indexBytes = new byte[32];
+                BinaryPrimitives.WriteInt32LittleEndian(indexBytes, index + 1);
                 Bytes32 indexHash = new Bytes32(indexBytes);
                 proof.Add(indexHash);
                 Bytes32 leaf = new Bytes32(_cryptographyService.HashTreeRoot(depositData).AsSpan());
@@ -177,9 +177,10 @@ namespace Nethermind.BeaconNode.MockedStart
             BeaconState genesisState = _beaconChain.InitializeBeaconStateFromEth1(quickStartParameters.Eth1BlockHash, quickStartParameters.Eth1Timestamp, deposits);
             // We use the state directly, and don't test IsValid
             genesisState.SetGenesisTime(quickStartParameters.GenesisTime);
-            IStore store = _forkChoice.GetGenesisStore(genesisState);
+           
+            await _forkChoice.InitializeForkChoiceStoreAsync(_store, genesisState).ConfigureAwait(false);
 
-            if (_logger.IsEnabled(LogLevel.Debug)) LogDebug.QuickStartStoreCreated(_logger, store.GenesisTime, null);
+            if (_logger.IsEnabled(LogLevel.Debug)) LogDebug.QuickStartStoreCreated(_logger, _store.GenesisTime, null);
         }
 
         private static IList<IList<Bytes32>> CalculateMerkleTreeFromLeaves(IEnumerable<Bytes32> values, int layerCount = 32)

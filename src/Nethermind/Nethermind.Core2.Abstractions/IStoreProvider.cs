@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
@@ -21,9 +22,9 @@ using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2
 {
+    // TODO: Remove
     public interface IStoreProvider
     {
-        IStore CreateStore(ulong time, ulong genesisTime, Checkpoint justifiedCheckpoint, Checkpoint finalizedCheckpoint, Checkpoint bestJustifiedCheckpoint, IDictionary<Root, BeaconBlock> blocks, IDictionary<Root, BeaconState> states, IDictionary<Checkpoint, BeaconState> checkpointStates, IDictionary<ValidatorIndex, LatestMessage> latestMessages);
         bool TryGetStore(out IStore? store);
     }
 }

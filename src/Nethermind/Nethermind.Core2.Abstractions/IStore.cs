@@ -24,43 +24,30 @@ namespace Nethermind.Core2
 {
     public interface IStore
     {
-//        IReadOnlyDictionary<Root, BeaconBlock> Blocks { get; }
-//        IReadOnlyDictionary<Root, BeaconState> BlockStates { get; }
-//        IReadOnlyDictionary<Checkpoint, BeaconState> CheckpointStates { get; }
-//        IReadOnlyDictionary<ValidatorIndex, LatestMessage> LatestMessages { get; }
-
         Checkpoint BestJustifiedCheckpoint { get; }
         Checkpoint FinalizedCheckpoint { get; }
         ulong GenesisTime { get; }
+        bool IsInitialized { get; }
         Checkpoint JustifiedCheckpoint { get; }
         ulong Time { get; }
+        ValueTask<BeaconBlock> GetBlockAsync(Root blockRoot);
+        ValueTask<BeaconState> GetBlockStateAsync(Root blockRoot);
+        ValueTask<BeaconState?> GetCheckpointStateAsync(Checkpoint checkpoint, bool throwIfMissing);
+        IAsyncEnumerable<Root> GetChildKeysAfterSlotAsync(Root parent, Slot slot);
+        IAsyncEnumerable<Root> GetChildKeysAsync(Root parent);
+        ValueTask<LatestMessage?> GetLatestMessageAsync(ValidatorIndex validatorIndex, bool throwIfMissing);
+
+        Task InitializeForkChoiceStoreAsync(ulong time, ulong genesisTime, Checkpoint justifiedCheckpoint,
+            Checkpoint finalizedCheckpoint, Checkpoint bestJustifiedCheckpoint, IDictionary<Root, BeaconBlock> blocks,
+            IDictionary<Root, BeaconState> states, IDictionary<Checkpoint, BeaconState> checkpointStates);
 
         Task SetBestJustifiedCheckpointAsync(Checkpoint checkpoint);
-
-        Task SetBlockAsync(Root blockHashTreeRoot, BeaconBlock block);
-
-        Task SetBlockStateAsync(Root blockHashTreeRoot, BeaconState state);
-
+        Task SetBlockAsync(Root blockHashTreeRoot, BeaconBlock beaconBlock);
+        Task SetBlockStateAsync(Root blockHashTreeRoot, BeaconState beaconState);
         Task SetCheckpointStateAsync(Checkpoint checkpoint, BeaconState state);
-
         Task SetFinalizedCheckpointAsync(Checkpoint checkpoint);
-
         Task SetJustifiedCheckpointAsync(Checkpoint checkpoint);
-
         Task SetLatestMessageAsync(ValidatorIndex validatorIndex, LatestMessage latestMessage);
-
         Task SetTimeAsync(ulong time);
-
-        ValueTask<BeaconBlock> GetBlockAsync(Root blockRoot);
-
-        ValueTask<BeaconState> GetBlockStateAsync(Root blockRoot);
-
-        ValueTask<BeaconState?> GetCheckpointStateAsync(Checkpoint checkpoint, bool throwIfMissing);
-
-        IAsyncEnumerable<Root> GetChildKeysAsync(Root parent);
-
-        IAsyncEnumerable<Root> GetChildKeysAfterSlotAsync(Root parent, Slot slot);
-
-        ValueTask<LatestMessage?> GetLatestMessageAsync(ValidatorIndex validatorIndex, bool throwIfMissing);
     }
 }

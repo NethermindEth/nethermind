@@ -44,9 +44,9 @@ namespace Nethermind.BeaconNode.Test.Helpers
 
             Eth1Data eth1Data = new Eth1Data(Root.Zero, state.Eth1DepositIndex, Bytes32.Zero);
 
-            Root stateRoot = cryptographyService.HashTreeRoot(state);
+            //Root stateRoot = cryptographyService.HashTreeRoot(state);
             BeaconBlockHeader previousBlockHeader = new BeaconBlockHeader(state.LatestBlockHeader.Slot,
-                state.LatestBlockHeader.ParentRoot, stateRoot, state.LatestBlockHeader.BodyRoot);
+                state.LatestBlockHeader.ParentRoot, Root.Zero, state.LatestBlockHeader.BodyRoot);
             Root previousBlockHashTreeRoot = cryptographyService.HashTreeRoot(previousBlockHeader);
 
             if (randaoReveal.Equals(BlsSignature.Zero))

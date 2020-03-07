@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Pipes;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -87,7 +88,7 @@ namespace Nethermind.BeaconNode
 
         public async Task<bool> FilterBlockTreeAsync(IStore store, Root blockRoot, IDictionary<Root, BeaconBlock> blocks)
         {
-            BeaconBlock block = await store.GetBlockAsync(blockRoot).ConfigureAwait(false);
+            BeaconBlock beaconBlock = await store.GetBlockAsync(blockRoot).ConfigureAwait(false);
 
             // If any children branches contain expected finalized/justified checkpoints,
             // add to filtered block-tree and signal viability to parent.
@@ -104,7 +105,7 @@ namespace Nethermind.BeaconNode
             {
                 if (anyChildResult)
                 {
-                    blocks[blockRoot] = block;
+                    blocks[blockRoot] = beaconBlock;
                 }
                 return anyChildResult;
             }
@@ -120,7 +121,7 @@ namespace Nethermind.BeaconNode
             // If expected finalized/justified, add to viable block-tree and signal viability to parent.
             if (correctJustified && correctFinalized)
             {
-                blocks[blockRoot] = block;
+                blocks[blockRoot] = beaconBlock;
                 return true;
             }
 
@@ -168,44 +169,47 @@ namespace Nethermind.BeaconNode
             return blocks;
         }
 
-        public IStore GetGenesisStore(BeaconState genesisState)
+        public async Task InitializeForkChoiceStoreAsync(IStore store, BeaconState anchorState)
         {
-            Root stateHashTreeRoot = _cryptographyService.HashTreeRoot(genesisState);
-            BeaconBlock genesisBlock = new BeaconBlock(stateHashTreeRoot);
+            // Implements the logic for get_genesis_store / get_forkchoice_store
 
-            Root anchorRoot = _cryptographyService.HashTreeRoot(genesisBlock);
+            Root stateRoot = !anchorState.LatestBlockHeader.StateRoot.Equals(Root.Zero)
+                ? anchorState.LatestBlockHeader.StateRoot
+                : _cryptographyService.HashTreeRoot(anchorState);
+            
+            BeaconBlock anchorBlock = new BeaconBlock(anchorState.Slot, anchorState.LatestBlockHeader.ParentRoot,
+                stateRoot, BeaconBlockBody.Zero);
 
-            Checkpoint justifiedCheckpoint = new Checkpoint(_chainConstants.GenesisEpoch, anchorRoot);
-            Checkpoint finalizedCheckpoint = new Checkpoint(_chainConstants.GenesisEpoch, anchorRoot);
+            Root anchorRoot = _cryptographyService.HashTreeRoot(anchorBlock);
+            Epoch anchorEpoch = _beaconStateAccessor.GetCurrentEpoch(anchorState);
+            Checkpoint justifiedCheckpoint = new Checkpoint(anchorEpoch, anchorRoot);
+            Checkpoint finalizedCheckpoint = new Checkpoint(anchorEpoch, anchorRoot);
 
             if (_logger.IsInfo())
-                Log.CreateGenesisStore(_logger, genesisBlock, genesisState, justifiedCheckpoint, anchorRoot, null);
+                Log.CreateGenesisStore(_logger, anchorState.Fork, anchorRoot, anchorState.GenesisTime, anchorState, anchorBlock, justifiedCheckpoint, null);
 
             Dictionary<Root, BeaconBlock> blocks = new Dictionary<Root, BeaconBlock>
             {
-                [anchorRoot] = genesisBlock
+                [anchorRoot] = anchorBlock
             };
             Dictionary<Root, BeaconState> blockStates = new Dictionary<Root, BeaconState>
             {
-                [anchorRoot] = BeaconState.Clone(genesisState)
+                [anchorRoot] = BeaconState.Clone(anchorState)
             };
             Dictionary<Checkpoint, BeaconState> checkpointStates = new Dictionary<Checkpoint, BeaconState>
             {
-                [justifiedCheckpoint] = BeaconState.Clone(genesisState)
+                [justifiedCheckpoint] = BeaconState.Clone(anchorState)
             };
 
-            IStore store = _storeProvider.CreateStore(
-                genesisState.GenesisTime,
-                genesisState.GenesisTime,
+            await store.InitializeForkChoiceStoreAsync(
+                anchorState.GenesisTime,
+                anchorState.GenesisTime,
                 justifiedCheckpoint,
                 finalizedCheckpoint,
                 justifiedCheckpoint,
                 blocks,
                 blockStates,
-                checkpointStates,
-                new Dictionary<ValidatorIndex, LatestMessage>()
-                );
-            return store;
+                checkpointStates);
         }
 
         public async Task<Root> GetHeadAsync(IStore store)
@@ -321,7 +325,6 @@ namespace Nethermind.BeaconNode
             if (currentSlot < targetEpochStartSlot)
             {
                 throw new Exception($"Ättestation target epoch start slot {targetEpochStartSlot} should not be larger than the store current slot {currentSlot}).");
-                
             }
 
             // Attestations must be for a known block. If block is unknown, delay consideration until the block is found

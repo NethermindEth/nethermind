@@ -17,6 +17,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -29,31 +30,31 @@ namespace Nethermind.BeaconNode
         private readonly ForkChoice _forkChoice;
         private readonly Genesis _genesis;
         private readonly ILogger _logger;
+        private readonly IStore _store;
 
         public ChainStart(ILogger<ChainStart> logger,
+            IStore store,
             Genesis genesis,
             ForkChoice forkChoice)
         {
             _logger = logger;
+            _store = store;
             _genesis = genesis;
             _forkChoice = forkChoice;
         }
 
         public async Task<bool> TryGenesisAsync(Bytes32 eth1BlockHash, ulong eth1Timestamp, IList<Deposit> deposits)
         {
-            return await Task.Run(() =>
-            {
-                if (_logger.IsDebug()) LogDebug.TryGenesis(_logger, eth1BlockHash, eth1Timestamp, deposits.Count, null);
+            if (_logger.IsDebug()) LogDebug.TryGenesis(_logger, eth1BlockHash, eth1Timestamp, deposits.Count, null);
 
-                BeaconState candidateState = _genesis.InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp, deposits);
-                if (_genesis.IsValidGenesisState(candidateState))
-                {
-                    BeaconState genesisState = candidateState;
-                    _ = _forkChoice.GetGenesisStore(genesisState);
-                    return true;
-                }
-                return false;
-            });
+            BeaconState candidateState = _genesis.InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp, deposits);
+            if (_genesis.IsValidGenesisState(candidateState))
+            {
+                BeaconState genesisState = candidateState;
+                await _forkChoice.InitializeForkChoiceStoreAsync(_store, genesisState);
+                return true;
+            }
+            return false;
         }
     }
 }

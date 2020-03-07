@@ -28,42 +28,18 @@ namespace Nethermind.BeaconNode.Storage
 {
     public class MemoryStoreProvider : IStoreProvider
     {
-        private readonly ILoggerFactory _loggerFactory;
-        private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
+        private IStore _store;
 
-        private IStore? _store;
-
-        public MemoryStoreProvider(ILoggerFactory loggerFactory, IOptionsMonitor<TimeParameters> timeParameterOptions)
+        public MemoryStoreProvider(IStore store)
         {
-            _loggerFactory = loggerFactory;
-            _timeParameterOptions = timeParameterOptions;
-        }
-
-        public IStore CreateStore(ulong time,
-            ulong genesisTime,
-            Checkpoint justifiedCheckpoint,
-            Checkpoint finalizedCheckpoint,
-            Checkpoint bestJustifiedCheckpoint,
-            IDictionary<Root, BeaconBlock> blocks,
-            IDictionary<Root, BeaconState> states,
-            IDictionary<Checkpoint, BeaconState> checkpointStates,
-            IDictionary<ValidatorIndex, LatestMessage> latestMessages)
-        {
-            _store = new MemoryStore(time, genesisTime, justifiedCheckpoint, finalizedCheckpoint, bestJustifiedCheckpoint, blocks, states, checkpointStates, latestMessages,
-                _loggerFactory.CreateLogger<MemoryStore>(),
-                _timeParameterOptions);
-            return _store;
+            _store = store;
         }
 
         public bool TryGetStore(out IStore? store)
         {
-            // NOTE: For MemoryStoreProvider, this needs ot have been initialised via CreateStore (MemoryStore has no persistence).
+            // NOTE: For MemoryStoreProvider, this always needs to have been initialised (MemoryStore has no persistence).
+            // TODO: Remove IStoreProvider... this implementation uses initialization instead of creation.
             store = _store;
-            
-            if (store is null)
-            {
-                return false;
-            }
             return true;
         }
     }

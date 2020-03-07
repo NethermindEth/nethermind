@@ -820,6 +820,18 @@ namespace Nethermind.BeaconNode
             // Cache latest block header state root
             if (state.LatestBlockHeader.StateRoot.Equals(Root.Zero))
             {
+                // TODO: Validate if the below is correct.
+                // NOTE: For slots that have a block, when the block is added, LatestBlockHeader.StateRoot = Root.Zero
+                // the state HashTreeRoot is then calculated (with the zero value) and included in the block.
+                // The value is set here as part of ProcessSlot and used during processing (during this time HashTreeRoot of
+                // state would be different), but is *reset* to Root.Zero which the block is added. 
+                // That means HashTreeRoot(state) for slots with blocks always have LatestBlockHeader.StateRoot = Root.Zero.
+                // But where slots are *skipped* this LatestBlockHeader.StateRoot is not cleared.
+                // i.e.
+                // State { slot 5, LatestBlockHeader { slot 5, parent = 0xa4a4, state = 0x0000, body = 0xb5b5 }} => state root 0xc5c5 => Block { slot 5, parent = 0xa4a4, state = 0xc5c5, body = 0xb5b5 } => block root 0xa5a5 
+                // State { slot 6, LatestBlockHeader { slot 6, parent = 0xa5a5, state = 0x0000, body = 0xb6b6 }} => state root 0xc6c6 => Block { slot 5, parent = 0xa5a5, state = 0xc6c6, body = 0xb6b6 } => block root 0xa5a5 
+                // State { slot 7, LatestBlockHeader { slot 6, parent = 0xa5a5, state = 0xc6c6, body = 0xb6b6 }} => state root 0x1234 => skip block (would have been 0xc7c7 if state root = 0x0000; the calculated state root goes into the history as well) 
+                // State { slot 8, LatestBlockHeader { slot 8, parent = 0xa5a5, state = 0x0000, body = 0xb8b8 }} => state root 0xc8c8 => Block { slot 8, parent = 0xa5a5, state = 0xc8c8, body = 0x85b8 } => block root 0xa8a8 
                 state.LatestBlockHeader.SetStateRoot(previousStateRoot);
             }
             // Cache block root

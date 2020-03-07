@@ -42,7 +42,8 @@ namespace Nethermind.BeaconNode.Test.Fork
             var state = TestState.PrepareTestState(testServiceProvider);
 
             var forkChoice = testServiceProvider.GetService<ForkChoice>();
-            var store = forkChoice.GetGenesisStore(state);
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
 
             // Act
             await RunOnTick(testServiceProvider, store, store.Time + 1, expectNewJustifiedCheckpoint: false);
@@ -58,7 +59,8 @@ namespace Nethermind.BeaconNode.Test.Fork
             var state = TestState.PrepareTestState(testServiceProvider);
 
             var forkChoice = testServiceProvider.GetService<ForkChoice>();
-            var store = forkChoice.GetGenesisStore(state);
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
 
             var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
 
