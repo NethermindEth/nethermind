@@ -18,10 +18,12 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Store;
 using Nethermind.Trie;
@@ -48,7 +50,17 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
         {
             _needMoreDataInvocations = 0;
             BeamSyncContext.LoopIterationsToFailInTest.Value = null;
+            MakeRequestsNeverExpire();
+        }
+
+        private void MakeRequestsNeverExpire()
+        {
             BeamSyncContext.LastFetchUtc.Value = DateTime.MaxValue;
+        }
+        
+        private void MakeRequestsImmediatelyExpire()
+        {
+            BeamSyncContext.LastFetchUtc.Value = DateTime.MinValue;
         }
 
         [Test]
@@ -59,14 +71,14 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
             Assert.IsInstanceOf(typeof(StateDb), dbProvider.StateDb);
             Assert.IsInstanceOf(typeof(StateDb), dbProvider.CodeDb);
         }
-        
+
         [Test]
         public void Beam_db_provider_can_dispose()
         {
             BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(new MemDbProvider(), "description", LimboLogs.Instance);
             dbProvider.Dispose();
         }
-        
+
         [TestCase("leaf_read")]
         public void Propagates_exception(string name)
         {
@@ -113,13 +125,13 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
 
             Assert.AreEqual(4, _needMoreDataInvocations);
         }
-        
+
         [TestCase("leaf_read")]
         public void Can_prepare_empty_request(string name)
         {
             (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
-            
+
             DataConsumerRequest[] request = _stateBeamLocal.PrepareRequests();
             Assert.AreEqual(0, request.Length);
         }
@@ -181,7 +193,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
         {
             (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
-            
+
             BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow.AddSeconds(-100);
             RunRounds(10);
             Assert.AreEqual(0, _needMoreDataInvocations);
@@ -231,6 +243,60 @@ namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
             _stateReader = new StateReader(_stateLocal, _codeLocal, LimboLogs.Instance);
             _stateBeamLocal.NeedMoreData += (sender, args) => { Interlocked.Increment(ref _needMoreDataInvocations); };
             PatriciaTree.NodeCache.Clear();
+        }
+
+        [Test]
+        public void Saves_nodes_to_beam_temp_db()
+        {
+            MemDb tempDb = new MemDb();
+            MemDb stateDB = new MemDb();
+            BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, tempDb, LimboLogs.Instance);
+
+            byte[] bytes = new byte[] {1, 2, 3};
+            beamSyncDb.Set(TestItem.KeccakA, bytes);
+            byte[] retrievedFromTemp = tempDb.Get(TestItem.KeccakA);
+            retrievedFromTemp.Should().BeEquivalentTo(bytes);
+        }
+        
+        [Test]
+        public void Does_not_save_nodes_to_state_db()
+        {
+            MemDb tempDb = new MemDb();
+            MemDb stateDB = new MemDb();
+            BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, tempDb, LimboLogs.Instance);
+
+            byte[] bytes = new byte[] {1, 2, 3};
+            beamSyncDb.Set(TestItem.KeccakA, bytes);
+            byte[] retrievedFromTemp = stateDB.Get(TestItem.KeccakA);
+            retrievedFromTemp.Should().BeNull();
+        }
+        
+        [Test]
+        public void Can_read_nodes_from_temp_when_missing_in_state()
+        {
+            MemDb tempDb = new MemDb();
+            MemDb stateDB = new MemDb();
+            BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, tempDb, LimboLogs.Instance);
+
+            byte[] bytes = new byte[] {1, 2, 3};
+            tempDb.Set(TestItem.KeccakA, bytes);
+            
+            byte[] retrievedFromTemp = beamSyncDb.Get(TestItem.KeccakA);
+            retrievedFromTemp.Should().BeEquivalentTo(bytes);
+        }
+        
+        [Test]
+        public void Can_read_nodes_from_state_when_missing_in_temp()
+        {
+            MemDb tempDb = new MemDb();
+            MemDb stateDB = new MemDb();
+            BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, tempDb, LimboLogs.Instance);
+
+            byte[] bytes = new byte[] {1, 2, 3};
+            stateDB.Set(TestItem.KeccakA, bytes);
+            
+            byte[] retrievedFromTemp = beamSyncDb.Get(TestItem.KeccakA);
+            retrievedFromTemp.Should().BeEquivalentTo(bytes);
         }
     }
 }

@@ -35,16 +35,29 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
         public UInt256 RequiredPeerDifficulty { get; private set; } = UInt256.Zero;
 
         /// <summary>
-        /// This DB should be not in memory, in fact we should write to the underlying rocksDb and only keep a cache in memory
+        /// The actual state DB that can be used for reading the fast synced state from. Also used for writes of any
+        /// nodes without dependencies.
         /// </summary>
-        private IDb _db;
+        private IDb _stateDb;
+
+        /// <summary>
+        /// This DB stands in front of the state DB for reads and serves as beam sync DB write-to DB for any writes
+        /// that are not final (do not have any unfilled child nodes).
+        /// </summary>
+        private IDb _tempDb;
 
         private ILogger _logger;
 
         public BeamSyncDb(IDb db, ILogManager logManager)
+            : this(db, db, logManager)
+        {
+        }
+
+        public BeamSyncDb(IDb stateDb, IDb tempDb, ILogManager logManager)
         {
             _logger = logManager.GetClassLogger<BeamSyncDb>();
-            _db = db ?? throw new ArgumentNullException(nameof(db));
+            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
+            _tempDb = tempDb ?? throw new ArgumentNullException(nameof(tempDb));
         }
 
         private bool _isDisposed = false;
@@ -52,10 +65,10 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
         public void Dispose()
         {
             _isDisposed = true;
-            _db.Dispose();
+            _tempDb.Dispose();
         }
 
-        public string Name => _db.Name;
+        public string Name => _tempDb.Name;
 
         private int _resolvedKeysCount;
 
@@ -86,13 +99,14 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                 // if we keep timing out then we would finally reject the block (but only shelve it instead of marking invalid)
 
                 bool wasInDb = true;
+                var fromMem = _stateDb[key];
                 while (true)
                 {
                     if (BeamSyncContext.Cancelled.Value.IsCancellationRequested)
                     {
                         throw new TaskCanceledException("Beam Sync task cancelled by a new block.");
                     }
-                    
+
                     if (_isDisposed)
                     {
                         throw new ObjectDisposedException("Beam Sync DB disposed");
@@ -108,7 +122,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                         }
                     }
 
-                    var fromMem = _db[key];
+                    fromMem ??= _tempDb[key];
                     if (fromMem == null)
                     {
                         if (Bytes.AreEqual(key, Keccak.Zero.Bytes))
@@ -161,7 +175,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                 }
             }
 
-            set => _db[key] = value;
+            set => _tempDb[key] = value;
         }
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, this[k])).ToArray();
@@ -181,19 +195,19 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
 
         public void Remove(byte[] key)
         {
-            _db.Remove(key);
+            _tempDb.Remove(key);
         }
 
         public bool KeyExists(byte[] key)
         {
-            return _db.KeyExists(key);
+            return _tempDb.KeyExists(key);
         }
 
-        public IDb Innermost => _db.Innermost;
-        
+        public IDb Innermost => _tempDb.Innermost;
+
         public void Flush()
         {
-            _db.Flush();
+            _tempDb.Flush();
         }
 
         public event EventHandler NeedMoreData;
@@ -244,7 +258,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             {
                 return 0;
             }
-            
+
             int consumed = 0;
             if (data != null)
             {
@@ -255,18 +269,18 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
                     {
                         if (Keccak.Compute(data[i]) == key)
                         {
-                            _db[key.Bytes] = data[i];
+                            _tempDb[key.Bytes] = data[i];
                             // _requestedNodes.Remove(hashes[i], out _);
                             consumed++;
                         }
                         else
                         {
-                            if(_logger.IsWarn) _logger.Warn("Received a node data which does not match hash.");
+                            if (_logger.IsWarn) _logger.Warn("Received a node data which does not match hash.");
                         }
                     }
                     else
                     {
-                        if (_db[key.Bytes] == null)
+                        if (_tempDb[key.Bytes] == null)
                         {
                             lock (_requestedNodes)
                             {
