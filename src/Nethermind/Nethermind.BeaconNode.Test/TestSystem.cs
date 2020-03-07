@@ -63,6 +63,7 @@ namespace Nethermind.BeaconNode.Test
 
             if (useStore)
             {
+                services.AddSingleton<IStore, MemoryStore>();
                 services.AddSingleton<IStoreProvider, MemoryStoreProvider>();
             }
 

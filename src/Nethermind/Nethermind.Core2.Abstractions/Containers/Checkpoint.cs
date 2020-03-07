@@ -72,7 +72,7 @@ namespace Nethermind.Core2.Containers
 
         public override string ToString()
         {
-            return $"{Epoch}_{Root.ToString().Substring(0, 12)}";
+            return $"{Epoch}_{Root.ToString().Substring(0, 10)}";
         }
     }
 }

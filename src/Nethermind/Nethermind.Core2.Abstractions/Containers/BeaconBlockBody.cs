@@ -69,7 +69,7 @@ namespace Nethermind.Core2.Containers
 
         public override string ToString()
         {
-            return $"R:{RandaoReveal.ToString().Substring(0, 12)} A[{Attestations.Count}] AS[{AttesterSlashings.Count}] D[{Deposits.Count}] PS[{ProposerSlashings.Count}]";
+            return $"[rr={RandaoReveal.ToString().Substring(0, 10)} ac={Attestations.Count} asc={AttesterSlashings.Count} dc={Deposits.Count} psc={ProposerSlashings.Count}]";
         }
 
         /*

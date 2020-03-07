@@ -266,6 +266,6 @@ namespace Nethermind.Core2.Containers
 
         public void SetStateRoot(Slot index, Root stateRoot) => _stateRoots[index] = stateRoot;
 
-        public override string ToString() => $"S:{Slot} LS:{LatestBlockHeader.Slot} LP:{LatestBlockHeader.ParentRoot.ToString().Substring(0, 10)} LSt:{LatestBlockHeader.StateRoot.ToString().Substring(0, 10)} LBd:{LatestBlockHeader.BodyRoot.ToString().Substring(0, 10)}";
+        public override string ToString() => $"s={Slot}_hs={LatestBlockHeader.Slot}_p={LatestBlockHeader.ParentRoot.ToString().Substring(0, 10)}_st={LatestBlockHeader.StateRoot.ToString().Substring(0, 10)}_bd={LatestBlockHeader.BodyRoot.ToString().Substring(0, 10)}";
     }
 }

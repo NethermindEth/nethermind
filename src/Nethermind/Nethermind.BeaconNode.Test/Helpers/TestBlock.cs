@@ -44,9 +44,9 @@ namespace Nethermind.BeaconNode.Test.Helpers
 
             Eth1Data eth1Data = new Eth1Data(Root.Zero, state.Eth1DepositIndex, Bytes32.Zero);
 
-            //Root stateRoot = cryptographyService.HashTreeRoot(state);
+            Root stateRoot = cryptographyService.HashTreeRoot(state);
             BeaconBlockHeader previousBlockHeader = new BeaconBlockHeader(state.LatestBlockHeader.Slot,
-                state.LatestBlockHeader.ParentRoot, Root.Zero, state.LatestBlockHeader.BodyRoot);
+                state.LatestBlockHeader.ParentRoot, stateRoot, state.LatestBlockHeader.BodyRoot);
             Root previousBlockHashTreeRoot = cryptographyService.HashTreeRoot(previousBlockHeader);
 
             if (randaoReveal.Equals(BlsSignature.Zero))
@@ -60,10 +60,10 @@ namespace Nethermind.BeaconNode.Test.Helpers
                 else
                 {
                     Epoch stateEpoch = beaconChainUtility.ComputeEpochAtSlot(state.Slot);
-                    if (stateEpoch + 1 > blockEpoch)
+                    if (blockEpoch > stateEpoch + 1)
                     {
-                        Console.WriteLine("WARNING: Block slot far away, and no proposer index manually given."
-                                          + " Signing block is slow due to transition for proposer index calculation.");
+                        Console.WriteLine("WARNING: Block slot (epoch {0}) far away from state (epoch {1}), and no proposer index manually given."
+                                          + " Signing block is slow due to transition for proposer index calculation.", blockEpoch, stateEpoch);
                     }
 
                     // use stub state to get proposer index of future slot
