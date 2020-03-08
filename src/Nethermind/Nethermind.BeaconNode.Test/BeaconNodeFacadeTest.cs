@@ -109,7 +109,16 @@ namespace Nethermind.BeaconNode.Test
                     (ulong) validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
                 validatorDutyIndex++;
             }
-            
+
+            Console.WriteLine();
+            Console.WriteLine("** ValidatorDuty summary");
+            foreach (ValidatorDuty validatorDuty in validatorDuties)
+            {
+                Console.WriteLine("Index [{0}], Epoch {1}, Validator {2}, : attestation slot {3}, shard {4}, proposal slot {5}",
+                    validatorDutyIndex, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
+                    (ulong) validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
+            }
+
             // Assert
             Dictionary<Slot, IGrouping<Slot, ValidatorDuty>> groupsByProposalSlot = validatorDuties
                 .GroupBy(x => x.BlockProposalSlot)
@@ -160,6 +169,15 @@ namespace Nethermind.BeaconNode.Test
                     validatorDutyIndex, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
                     (ulong) validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
                 validatorDutyIndex++;
+            }
+
+            Console.WriteLine();
+            Console.WriteLine("** ValidatorDuty summary");
+            foreach (ValidatorDuty validatorDuty in validatorDuties)
+            {
+                Console.WriteLine("Index [{0}], Epoch {1}, Validator {2}, : attestation slot {3}, shard {4}, proposal slot {5}",
+                    validatorDutyIndex, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
+                    (ulong) validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
             }
             
             // Assert
@@ -217,6 +235,15 @@ namespace Nethermind.BeaconNode.Test
                     validatorDutyIndex, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
                     (ulong) validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
                 validatorDutyIndex++;
+            }
+
+            Console.WriteLine();
+            Console.WriteLine("** ValidatorDuty summary");
+            foreach (ValidatorDuty validatorDuty in validatorDuties)
+            {
+                Console.WriteLine("Index [{0}], Epoch {1}, Validator {2}, : attestation slot {3}, shard {4}, proposal slot {5}",
+                    validatorDutyIndex, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
+                    (ulong) validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
             }
             
             // Assert

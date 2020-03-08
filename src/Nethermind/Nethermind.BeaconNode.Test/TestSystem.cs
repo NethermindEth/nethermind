@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Console;
 using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.Core2;
@@ -46,7 +47,12 @@ namespace Nethermind.BeaconNode.Test
             services.AddLogging(configure =>
             {
                 configure.SetMinimumLevel(LogLevel.Trace);
-                configure.AddConsole();
+                configure.AddConsole(options => { 
+                    options.Format = ConsoleLoggerFormat.Systemd;
+                    options.DisableColors = true;
+                    options.IncludeScopes = true;
+                    options.TimestampFormat = " HH':'mm':'sszz ";
+                });
             });
             
             services.ConfigureBeaconChain(configuration);

@@ -99,14 +99,14 @@ namespace Nethermind.BeaconNode.Test
         [DataRow("0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb", 0uL, true, 3uL, 0uL, null)]
         [DataRow("0xa572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e", 0uL, true, 6uL, 1uL, null)]
         [DataRow("0x89ece308f9d1f0131765212deca99697b112d61f9be9a5f1f3780a51335b3ff981747a0b2ca2179b96d2c0c9024e5224", 0uL, true, 6uL, 1uL, null)]
-        [DataRow("0x8774d1d544c4cc583fb649d0bbba86c2d2b5abb4c0395d7d1dac08ab1a2cc795030bdbdce6e3213154d4f2c748ccdaef", 0uL, true, 6uL, 0uL, null)]
+        [DataRow("0x8345dd80ffef0eaec8920e39ebb7f5e9ae9c1d6179e9129b705923df7830c67f3690cbc48649d4079eadf5397339580c", 0uL, true, 4uL, 1uL, 0uL)]
         // looking forward, find the 2uL proposal slot
         [DataRow("0x9717182463fbe215168e6762abcbb55c5c65290f2b5a2af616f8a6f50d625b46164178a11622d21913efdfa4b800648d", 0uL, true, 5uL, 1uL, null)]
         // epoch 1 tests
         [DataRow("0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb", 1uL, true, 13uL, 0uL, null)]
         [DataRow("0xa572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e", 1uL, true, 13uL, 1uL, null)]
         [DataRow("0x89ece308f9d1f0131765212deca99697b112d61f9be9a5f1f3780a51335b3ff981747a0b2ca2179b96d2c0c9024e5224", 1uL, true, 9uL, 0uL, null)]
-        [DataRow("0x95906ec0660892c205634e21ad540cbe0b6f7729d101d5c4639b864dea09be7f42a4252c675d46dd90a2661b3a94e8ca", 1uL, true, 12uL, 1uL, null)]
+        [DataRow("0x8515e7f61ca0470e165a44d247a23f17f24bf6e37185467bedb7981c1003ea70bbec875703f793dd8d11e56afa7f74ba", 1uL, true, 15uL, 0uL, 9uL)]
         public async Task BasicValidatorDuty(string publicKey, ulong epoch, bool success, ulong attestationSlot, ulong attestationShard, ulong? blockProposalSlot)
         {
             // Arrange
@@ -154,11 +154,17 @@ namespace Nethermind.BeaconNode.Test
 
         // TODO: FInd some attester values to use
         [DataTestMethod]
-        // time = slot 2 * 6 + 5 = 17
-        [DataRow(17uL, "0x9717182463fbe215168e6762abcbb55c5c65290f2b5a2af616f8a6f50d625b46164178a11622d21913efdfa4b800648d", 0uL, 5uL, 1uL, null)]
-        // time = slot 3 * 6 = 18
-        [DataRow(18uL, "0x9717182463fbe215168e6762abcbb55c5c65290f2b5a2af616f8a6f50d625b46164178a11622d21913efdfa4b800648d", 0uL, 5uL, 1uL, null)]
-        public async Task ValidatorDutyAtSpecificTime(ulong targetTime, string publicKey, ulong epoch, ulong attestationSlot, ulong attestationShard, ulong? blockProposalSlot)
+        // time = slot 0 * 6 + 5 = 5
+        [DataRow(5uL, "0x8345dd80ffef0eaec8920e39ebb7f5e9ae9c1d6179e9129b705923df7830c67f3690cbc48649d4079eadf5397339580c", 0uL, 4uL, 1uL, 0uL)]
+        // time = slot 1 * 6 = 6
+        [DataRow(6uL, "0x8345dd80ffef0eaec8920e39ebb7f5e9ae9c1d6179e9129b705923df7830c67f3690cbc48649d4079eadf5397339580c", 0uL, 4uL, 1uL, 7uL)]
+        // [DataRow(42uL, "0xab48aa2cc6f4a0bb63b5d67be54ac3aed10326dda304c5aeb9e942b40d6e7610478377680ab90e092ef1895e62786008", 0uL, 5uL, 1uL, null)]
+        // [DataRow(42uL, "0x8aea7d8eb22063bcfe882e2b7efc0b3713e1a48dd8343bed523b1ab4546114be84d00f896d33c605d1f67456e8e2ed93", 0uL, 5uL, 1uL, null)]
+        // [DataRow(42uL, "0x89db41a6183c2fe47cf54d1e00c3cfaae53df634a32cccd5cf0c0a73e95ee0450fc3d060bb6878780fbf5f30d9e29aac", 0uL, 5uL, 1uL, null)]
+        // [DataRow(42uL, "0xb783a70a1cf9f53e7d2ddf386bea81a947e5360c5f1e0bf004fceedb2073e4dd180ef3d2d91bee7b1c5a88d1afd11c49", 0uL, 5uL, 1uL, null)]
+        // [DataRow(42uL, "0x8fe55d12257709ae842f8594f9a0a40de3d38dabdf82b21a60baac927e52ed00c5fd42f4c905410eacdaf8f8a9952490", 0uL, 5uL, 1uL, null)]
+        // [DataRow(42uL, "0x95906ec0660892c205634e21ad540cbe0b6f7729d101d5c4639b864dea09be7f42a4252c675d46dd90a2661b3a94e8ca", 0uL, 5uL, 1uL, null)]
+        public async Task ValidatorDutyAtSpecificTimeDuplicateProposal(ulong targetTime, string publicKey, ulong epoch, ulong attestationSlot, ulong attestationShard, ulong? blockProposalSlot)
         {
             // NOTE: Current algorithm for GetBeaconProposerIndex() someimtes allocates multiple proposal slots in an epoch, e.g. above index 23 gets slot 2 and 6
             // It could be an error in the algorithm (need to check; domain type could be wrong), or due to the pre-shard algorithm.
@@ -333,8 +339,8 @@ namespace Nethermind.BeaconNode.Test
             // epoch 0 tests
             yield return new object?[]
             {
-                "0x8774d1d544c4cc583fb649d0bbba86c2d2b5abb4c0395d7d1dac08ab1a2cc795030bdbdce6e3213154d4f2c748ccdaef",
-                0uL, true, 6uL, 0uL, null
+                "0x8345dd80ffef0eaec8920e39ebb7f5e9ae9c1d6179e9129b705923df7830c67f3690cbc48649d4079eadf5397339580c",
+                0uL, true, 4uL, 1uL, 7uL
             };
             // looking backwards, should find 6uL proposal slot
             yield return new object?[]
@@ -345,8 +351,8 @@ namespace Nethermind.BeaconNode.Test
             // epoch 1 tests
             yield return new object?[]
             {
-                "0x95906ec0660892c205634e21ad540cbe0b6f7729d101d5c4639b864dea09be7f42a4252c675d46dd90a2661b3a94e8ca", 
-                1uL, true, 12uL, 1uL, null
+                "0x8515e7f61ca0470e165a44d247a23f17f24bf6e37185467bedb7981c1003ea70bbec875703f793dd8d11e56afa7f74ba", 
+                1uL, true, 15uL, 0uL, 9uL
             };
             // epoch 10 tests
             yield return new object?[]
