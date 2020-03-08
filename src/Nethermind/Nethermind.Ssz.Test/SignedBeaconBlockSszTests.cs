@@ -17,6 +17,7 @@
 using System;
 using System.Linq;
 using System.Runtime.InteropServices;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -29,6 +30,7 @@ namespace Nethermind.Ssz.Test
     [TestFixture]
     public class SignedBeaconBlockSszTests
     {
+        [TestCase]
         public void CheckEmptyBlockRootAfterDeserializing()
         {
             // Arrange
@@ -47,8 +49,11 @@ namespace Nethermind.Ssz.Test
             //         new BlsSignature(Enumerable.Repeat((byte)0x44, 96).ToArray())
             //         ));
 
+            //BlsSignature randaoReveal = new BlsSignature(Bytes.FromHexString("0xa7db5e45ebb7308924235c49b9c05d55cccc0be4f7128cc332028bfd0a377698ff44010ef0d164fd6cbd92f31bff8b2502a166af92c0a15c930e39e902f7a2f85d9d80ac3fb576797dcd20d1ca66bc9750149b4f3700a2f81458fb86e3a93391"));
+            BlsSignature randaoReveal = new BlsSignature(Enumerable.Repeat((byte) 0x56, 96).ToArray());
+
             BeaconBlockBody beaconBlockBody = new BeaconBlockBody(
-                new BlsSignature(Enumerable.Repeat((byte)0x56, 96).ToArray()),
+                randaoReveal,
                 eth1Data,
                 new Bytes32(new byte[32]),
                 new ProposerSlashing[0],
