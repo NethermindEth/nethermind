@@ -52,7 +52,7 @@ namespace Nethermind.BeaconNode.Peering
         public static readonly Action<ILogger, string, string, int, Exception?> PeeringWorkerStarting =
             LoggerMessage.Define<string, string, int>(LogLevel.Information,
                 new EventId(1050, nameof(PeeringWorkerStarting)),
-                "Peering {ProductTokenVersion} worker started; {Environment} environment [{ThreadId}]");
+                "Peering {ProductTokenVersion} worker starting; {Environment} environment [{ThreadId}]");
 
         // 2bxx 
         

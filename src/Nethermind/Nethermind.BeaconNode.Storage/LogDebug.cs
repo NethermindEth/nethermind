@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,12 +14,22 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using Microsoft.Extensions.Logging;
+using Nethermind.Core2.Containers;
+using Nethermind.Core2.Types;
+
 namespace Nethermind.BeaconNode.Storage
 {
-    public class InMemoryConfiguration
-    {
-        public bool LogBlockJson { get; set; }
-        
-        public bool LogBlockStateJson { get; set; }
+    internal static class LogDebug
+    { 
+        // 6bxx debug
+
+        // 628x debug - memory store
+
+        public static readonly Action<ILogger, string, string, Exception?> CreatingMemoryStoreLogDirectory =
+            LoggerMessage.Define<string, string>(LogLevel.Debug,
+                new EventId(6280, nameof(CreatingMemoryStoreLogDirectory)),
+                "Creating memory store log directory {LogDirectoryName} in {MemoryStoreBasePath}.");
     }
 }

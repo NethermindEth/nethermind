@@ -15,8 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.IO.Abstractions;
+using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
@@ -27,6 +31,7 @@ using Nethermind.Core2;
 using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Json;
 using Nethermind.Logging.Microsoft;
 using Nethermind.Peering.Mothra;
 
@@ -35,35 +40,44 @@ namespace Nethermind.BeaconNode.Peering
     public class MothraPeeringWorker : BackgroundService
     {
         private readonly IClientVersion _clientVersion;
-        private readonly IConfiguration _configuration;
         private readonly DataDirectory _dataDirectory;
+        private readonly IFileSystem _fileSystem;
         private readonly IHostEnvironment _environment;
         private readonly ForkChoice _forkChoice;
         private readonly ILogger _logger;
-        private const string _mothraDirectory = "mothra";
+        private const string MothraDirectory = "mothra";
         private readonly IMothraLibp2p _mothraLibp2p;
-        private readonly IOptionsMonitor<MothraConfiguration> _mothraConfigurationMonitor;
+        private readonly IOptionsMonitor<MothraConfiguration> _mothraConfigurationOptions;
         private readonly IStore _store;
+        private string? _logDirectoryPath;
+        private readonly object _logDirectoryPathLock = new object();
+        private readonly JsonSerializerOptions _jsonSerializerOptions;
 
         public MothraPeeringWorker(ILogger<MothraPeeringWorker> logger,
             IHostEnvironment environment,
-            IConfiguration configuration,
             IClientVersion clientVersion,
             DataDirectory dataDirectory,
-            IOptionsMonitor<MothraConfiguration> mothraConfigurationMonitor,
+            IFileSystem fileSystem,
+            IOptionsMonitor<MothraConfiguration> mothraConfigurationOptions,
             IMothraLibp2p mothraLibp2p,
             ForkChoice forkChoice,
             IStore store)
         {
             _logger = logger;
             _environment = environment;
-            _configuration = configuration;
             _clientVersion = clientVersion;
             _dataDirectory = dataDirectory;
-            _mothraConfigurationMonitor = mothraConfigurationMonitor;
+            _fileSystem = fileSystem;
+            _mothraConfigurationOptions = mothraConfigurationOptions;
             _mothraLibp2p = mothraLibp2p;
             _forkChoice = forkChoice;
             _store = store;
+            _jsonSerializerOptions = new JsonSerializerOptions {WriteIndented = true};
+            _jsonSerializerOptions.ConfigureNethermindCore2();
+            if (_mothraConfigurationOptions.CurrentValue.LogSignedBeaconBlockJson)
+            {
+                _ = GetLogDirectory();
+            }
         }
 
         protected override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -84,14 +98,14 @@ namespace Nethermind.BeaconNode.Peering
                 _mothraLibp2p.GossipReceived += OnGossipReceived;
                 _mothraLibp2p.RpcReceived += OnRpcReceived;
 
-                string mothraDataDirectory = Path.Combine(_dataDirectory.ResolvedPath, _mothraDirectory);
+                string mothraDataDirectory = Path.Combine(_dataDirectory.ResolvedPath, MothraDirectory);
                 MothraSettings mothraSettings = new MothraSettings()
                 {
                     DataDirectory = mothraDataDirectory,
                     //Topics = { Topic.BeaconBlock }
                 };
 
-                MothraConfiguration mothraConfiguration = _mothraConfigurationMonitor.CurrentValue;
+                MothraConfiguration mothraConfiguration = _mothraConfigurationOptions.CurrentValue;
 
                 mothraSettings.DiscoveryAddress = mothraConfiguration.DiscoveryAddress;
                 mothraSettings.DiscoveryPort = mothraConfiguration.DiscoveryPort;
@@ -103,6 +117,8 @@ namespace Nethermind.BeaconNode.Peering
                 {
                     mothraSettings.BootNodes.Add(bootNode);
                 }
+
+                if (_logger.IsDebug()) LogDebug.MothraStarting(_logger, mothraSettings.ListenAddress, mothraSettings.Port, mothraSettings.BootNodes.Count, null);
 
                 _mothraLibp2p.Start(mothraSettings);
 
@@ -122,10 +138,61 @@ namespace Nethermind.BeaconNode.Peering
             await base.StopAsync(cancellationToken);
         }
 
+        private string GetLogDirectory()
+        {
+            if (_logDirectoryPath == null)
+            {
+                lock (_logDirectoryPathLock)
+                {
+                    if (_logDirectoryPath == null)
+                    {
+                        string basePath = _fileSystem.Path.Combine(_dataDirectory.ResolvedPath, MothraDirectory);
+                        IDirectoryInfo baseDirectoryInfo = _fileSystem.DirectoryInfo.FromDirectoryName(basePath);
+                        if (!baseDirectoryInfo.Exists)
+                        {
+                            baseDirectoryInfo.Create();
+                        }
+
+                        IDirectoryInfo[] existingLogDirectories = baseDirectoryInfo.GetDirectories("log*");
+                        int existingSuffix = existingLogDirectories.Select(x =>
+                            {
+                                if (int.TryParse(x.Name.Substring(3), out int suffix))
+                                {
+                                    return suffix;
+                                }
+
+                                return 0;
+                            })
+                            .DefaultIfEmpty()
+                            .Max();
+                        int newSuffix = existingSuffix + 1;
+                        string logDirectoryName = $"log{newSuffix:0000}";
+                        
+                        if (_logger.IsDebug()) LogDebug.CreatingMothraLogDirectory(_logger, logDirectoryName, baseDirectoryInfo.FullName, null);
+                        IDirectoryInfo logDirectory = baseDirectoryInfo.CreateSubdirectory(logDirectoryName);
+                        _logDirectoryPath = logDirectory.FullName;
+                    }
+                }
+            }
+
+            return _logDirectoryPath;
+        }
+
         private async void HandleBeaconBlockAsync(SignedBeaconBlock signedBeaconBlock)
         {
             try
             {
+                if (_mothraConfigurationOptions.CurrentValue.LogSignedBeaconBlockJson)
+                {
+                    string logDirectoryPath = GetLogDirectory();
+                    string fileName = string.Format("signedblock{0:0000}_{1}.json", (int) signedBeaconBlock.Message.Slot, signedBeaconBlock.Signature.ToString().Substring(0,10));
+                    string path = _fileSystem.Path.Combine(logDirectoryPath, fileName);
+                    using (Stream fileStream = _fileSystem.File.OpenWrite(path))
+                    {
+                        await JsonSerializer.SerializeAsync(fileStream, signedBeaconBlock, _jsonSerializerOptions).ConfigureAwait(false);
+                    }
+                }
+                
                 await _forkChoice.OnBlockAsync(_store, signedBeaconBlock).ConfigureAwait(false);
             }
             catch (Exception ex)

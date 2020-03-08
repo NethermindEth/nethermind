@@ -18,6 +18,7 @@ using System;
 using System.IO.Abstractions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Nethermind.Core2;
 
 namespace Nethermind.BeaconNode.Storage
@@ -28,9 +29,9 @@ namespace Nethermind.BeaconNode.Storage
         {
             if (configuration.GetSection("Storage:InMemory").Exists())
             {
-                services.AddTransient<IFileSystem, FileSystem>();
                 services.Configure<InMemoryConfiguration>(x => configuration.Bind("Storage:InMemory", x));
                 services.AddSingleton<IStore, MemoryStore>();
+                services.TryAddTransient<IFileSystem, FileSystem>();
 
                 // TODO: Remove IStoreProvider
                 services.AddSingleton<IStoreProvider, MemoryStoreProvider>();

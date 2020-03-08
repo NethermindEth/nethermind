@@ -15,8 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO.Abstractions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Nethermind.Core2;
 using Nethermind.Peering.Mothra;
 
@@ -32,6 +34,7 @@ namespace Nethermind.BeaconNode.Peering
                 services.AddSingleton<INetworkPeering, MothraNetworkPeering>();
                 services.AddHostedService<MothraPeeringWorker>();
                 services.AddSingleton<IMothraLibp2p, MothraLibp2p>();
+                services.TryAddTransient<IFileSystem, FileSystem>();
             }
             else
             {
