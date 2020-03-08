@@ -88,6 +88,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
         private ISnapshotableDb _codeDb;
         private ILogger _logger;
         private ISnapshotableDb _stateDb;
+        private readonly IDb _tempDb;
 
         private ConcurrentStack<StateSyncItem>[] _nodes = new ConcurrentStack<StateSyncItem>[7];
 
@@ -106,10 +107,11 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
         private Dictionary<Keccak, HashSet<DependentItem>> _dependencies = new Dictionary<Keccak, HashSet<DependentItem>>();
         private LruCache<Keccak, object> _alreadySaved = new LruCache<Keccak, object>(1024 * 64);
 
-        public NodeDataFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, ILogManager logManager)
+        public NodeDataFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, IDb tempDb, ILogManager logManager)
         {
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
+            _tempDb = tempDb ?? throw new ArgumentNullException(nameof(tempDb));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             byte[] progress = _codeDb.Get(_fastSyncProgressKey);
@@ -135,6 +137,9 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                 }
             }
         }
+
+        public NodeDataFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, ILogManager logManager)
+            : this(codeDb, stateDb, new MemDb(), logManager) { }
 
         private AddNodeResult AddNode(StateSyncItem syncItem, DependentItem dependentItem, string reason, bool missing = false)
         {
@@ -246,10 +251,10 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                         _logger.Trace($"{dependentItems.Count} {nodeNodes} dependent on {hash}");
                     }
 
+                    _dependencies.Remove(hash);
                     foreach (DependentItem dependentItem in dependentItems)
                     {
                         dependentItem.Counter--;
-                        _dependencies.Remove(hash);
                         if (dependentItem.Counter == 0)
                         {
                             nodesToSave.Add(dependentItem);
@@ -266,6 +271,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             {
                 if (dependentItem.IsAccount) Interlocked.Increment(ref _savedAccounts);
                 SaveNode(dependentItem.SyncItem, dependentItem.Value);
+                _tempDb.Remove(dependentItem.SyncItem.Hash.Bytes);
             }
         }
 
@@ -557,7 +563,11 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                         {
                             long allChecks = _checkWasInDependencies + _checkWasCached + _stateWasThere + _stateWasNotThere;
                             if (_logger.IsInfo) _logger.Info($"OK {(decimal) _okCount / TotalRequestsCount:p2} | Emptish: {(decimal) _emptishCount / TotalRequestsCount:p2} | BadQuality: {(decimal) _badQualityCount / TotalRequestsCount:p2} | InvalidFormat: {(decimal) _invalidFormatCount / TotalRequestsCount:p2} | NotAssigned {(decimal) _notAssignedCount / TotalRequestsCount:p2}");
-                            if (_logger.IsInfo) _logger.Info($"Consumed {(decimal) _consumedNodesCount / _requestedNodesCount:p2} | Saved {(decimal) _savedNodesCount / _requestedNodesCount:p2} | DB Reads : {(decimal) _dbChecks / _requestedNodesCount:p2} | DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} | Cached {(decimal) _checkWasCached / allChecks:P2} + {(decimal) _checkWasInDependencies / allChecks:P2}");
+                            if (_requestedNodesCount > 0)
+                            {
+                                if (_logger.IsInfo) _logger.Info($"Consumed {(decimal) _consumedNodesCount / _requestedNodesCount:p2} | Saved {(decimal) _savedNodesCount / _requestedNodesCount:p2} | DB Reads : {(decimal) _dbChecks / _requestedNodesCount:p2} | DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} | Cached {(decimal) _checkWasCached / allChecks:P2} + {(decimal) _checkWasInDependencies / allChecks:P2}");
+                            }
+
                             _lastReportTime.full = DateTime.UtcNow;
                         }
 
@@ -671,10 +681,11 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                     if (nodeDataType == NodeDataType.State)
                     {
                         _maxStateLevel = 64;
-                        DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 0, true);
+                        DependentItem dependentItem = null;
                         (Keccak codeHash, Keccak storageRoot) = _accountDecoder.DecodeHashesOnly(new RlpStream(trieNode.Value));
                         if (codeHash != Keccak.OfAnEmptyString)
                         {
+                            dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 0, true);
                             // prepare a branch without the code DB
                             // this only protects against being same as storage root?
                             if (codeHash == storageRoot)
@@ -693,11 +704,12 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
                         if (storageRoot != Keccak.EmptyTreeHash)
                         {
+                            dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 0, true);
                             AddNodeResult addStorageNodeResult = AddNode(new StateSyncItem(storageRoot, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
                             if (addStorageNodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
                         }
 
-                        if (dependentItem.Counter == 0)
+                        if (dependentItem == null)
                         {
                             Interlocked.Increment(ref _savedAccounts);
                             SaveNode(currentStateSyncItem, currentResponseItem);
@@ -745,6 +757,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                 }
 
                 _dependencies[dependency].Add(dependentItem);
+                _tempDb[dependentItem.SyncItem.Hash.Bytes] = dependentItem.Value;
             }
         }
 
@@ -948,7 +961,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                 IsAccount = isAccount;
             }
         }
-        
+
         private class DependentItemComparer : IEqualityComparer<DependentItem>
         {
             private DependentItemComparer()

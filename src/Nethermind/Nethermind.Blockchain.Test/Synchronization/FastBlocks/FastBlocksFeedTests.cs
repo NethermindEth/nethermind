@@ -792,7 +792,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                                 }
 
                                 batch.Allocation = new SyncPeerAllocation(new StaticSelectionStrategy(new PeerInfo(syncPeer)));
-                                batch.Allocation.AllocateBestPeer(null, null, null, null);
+                                batch.Allocation.AllocateBestPeer(null, null, null);
                                 _pendingResponses.Add(syncPeer, batch);
                                 TestContext.WriteLine($"{_time,6} |SENDING {batch} REQUEST TO {syncPeer.Node:s}");
                                 wasAssigned = true;

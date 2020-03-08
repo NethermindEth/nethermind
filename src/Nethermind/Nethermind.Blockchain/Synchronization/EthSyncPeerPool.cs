@@ -300,7 +300,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 lock (_isAllocatedChecks)
                 {
-                    allocation.AllocateBestPeer(UsefulPeers.Where(p => !p.IsAllocated), _stats, _blockTree, "INIT");
+                    allocation.AllocateBestPeer(UsefulPeers.Where(p => !p.IsAllocated), _stats, _blockTree);
                     if (allocation.HasPeer)
                     {
                         if (peerSelectionStrategy.CanBeReplaced)
@@ -588,7 +588,7 @@ namespace Nethermind.Blockchain.Synchronization
                 lock (_isAllocatedChecks)
                 {
                     var unallocatedPeers = UsefulPeers.Where(p => !p.IsAllocated);
-                    allocation.AllocateBestPeer(unallocatedPeers, _stats, _blockTree, reason);
+                    allocation.AllocateBestPeer(unallocatedPeers, _stats, _blockTree);
                 }
             }
         }

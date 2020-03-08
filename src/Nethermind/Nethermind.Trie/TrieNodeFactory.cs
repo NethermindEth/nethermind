@@ -16,7 +16,7 @@
 
 namespace Nethermind.Trie
 {
-    internal static class TreeNodeFactory
+    internal static class TrieNodeFactory
     {
         public static TrieNode CreateBranch()
         {
