@@ -213,7 +213,6 @@ namespace Nethermind.Core2.Configuration
                                 () => new byte[DomainType.Length])));
                 });
             });
-            services.Configure<PeeringConfiguration>(x => configuration.Bind("Peering", x));
         }
     }
 }

@@ -16,7 +16,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -24,6 +27,7 @@ using Nethermind.Core2;
 using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Json;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.BeaconNode.Storage
@@ -31,18 +35,44 @@ namespace Nethermind.BeaconNode.Storage
     // Data Class
     public class MemoryStore : IStore
     {
+        private const string InMemoryDirectory = "memorystore";
+        
         private readonly Dictionary<Root, BeaconBlock> _blocks = new Dictionary<Root, BeaconBlock>();
         private readonly Dictionary<Root, BeaconState> _blockStates = new Dictionary<Root, BeaconState>();
         private readonly Dictionary<Checkpoint, BeaconState> _checkpointStates = new Dictionary<Checkpoint, BeaconState>();
         private readonly Dictionary<ValidatorIndex, LatestMessage> _latestMessages = new Dictionary<ValidatorIndex, LatestMessage>();
         private readonly ILogger _logger;
+        private readonly IOptionsMonitor<InMemoryConfiguration> _inMemoryConfigurationOptions;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
+        private readonly DataDirectory _dataDirectory;
+        private readonly IFileSystem _fileSystem;
+        private readonly JsonSerializerOptions _jsonSerializerOptions;
+        private readonly string _recordDirectoryPath;
 
         public MemoryStore(ILogger<MemoryStore> logger,
-            IOptionsMonitor<TimeParameters> timeParameterOptions)
+            IOptionsMonitor<InMemoryConfiguration> inMemoryConfigurationOptions,
+            IOptionsMonitor<TimeParameters> timeParameterOptions,
+            DataDirectory dataDirectory,
+            IFileSystem fileSystem,
+            IClock clock)
         {
             _logger = logger;
+            _inMemoryConfigurationOptions = inMemoryConfigurationOptions;
             _timeParameterOptions = timeParameterOptions;
+            _dataDirectory = dataDirectory;
+            _fileSystem = fileSystem;
+
+            _jsonSerializerOptions = new JsonSerializerOptions { WriteIndented = true };
+            _jsonSerializerOptions.ConfigureNethermindCore2();
+            string recordDirectoryName = string.Format("record-{0:yyyyMMdd}-{0:HHmm}", clock.UtcNow());
+            _recordDirectoryPath = _fileSystem.Path.Combine(_dataDirectory.ResolvedPath, InMemoryDirectory, recordDirectoryName);
+            // TODO: Handle if config changes, i.e. Ensure check when writing
+            InMemoryConfiguration config = _inMemoryConfigurationOptions.CurrentValue;
+            if ((config.RecordBlockJson || config.RecordBlockStateJson) &&
+                !_fileSystem.Directory.Exists(_recordDirectoryPath))
+            {
+                _fileSystem.Directory.CreateDirectory(_recordDirectoryPath);
+            }
         }
 
         public Checkpoint BestJustifiedCheckpoint { get; private set; } = Checkpoint.Zero;
@@ -88,16 +118,32 @@ namespace Nethermind.BeaconNode.Storage
             return Task.CompletedTask;
         }
 
-        public Task SetBlockAsync(Root blockHashTreeRoot, BeaconBlock beaconBlock)
+        public async Task SetBlockAsync(Root blockHashTreeRoot, BeaconBlock beaconBlock)
         {
             _blocks[blockHashTreeRoot] = beaconBlock;
-            return Task.CompletedTask;
+            if (_inMemoryConfigurationOptions.CurrentValue.RecordBlockJson)
+            {
+                string fileName = string.Format("block{0:0000}_{1}", (int)beaconBlock.Slot, blockHashTreeRoot);
+                string path = _fileSystem.Path.Combine(_recordDirectoryPath, fileName);
+                using (Stream fileStream = _fileSystem.File.OpenWrite(path))
+                {
+                    await JsonSerializer.SerializeAsync(fileStream, beaconBlock, _jsonSerializerOptions);
+                }
+            }
         }
 
-        public Task SetBlockStateAsync(Root blockHashTreeRoot, BeaconState beaconState)
+        public async Task SetBlockStateAsync(Root blockHashTreeRoot, BeaconState beaconState)
         {
             _blockStates[blockHashTreeRoot] = beaconState;
-            return Task.CompletedTask;
+            if (_inMemoryConfigurationOptions.CurrentValue.RecordBlockJson)
+            {
+                string fileName = string.Format("state{0:0000}_{1}", (int)beaconState.Slot, blockHashTreeRoot);
+                string path = _fileSystem.Path.Combine(_recordDirectoryPath, fileName);
+                using (Stream fileStream = _fileSystem.File.OpenWrite(path))
+                {
+                    await JsonSerializer.SerializeAsync(fileStream, beaconState, _jsonSerializerOptions);
+                }
+            }
         }
 
         public Task SetCheckpointStateAsync(Checkpoint checkpoint, BeaconState state)

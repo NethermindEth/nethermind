@@ -8,12 +8,12 @@ using Nethermind.Peering.Mothra;
 
 namespace Nethermind.BeaconNode.Peering
 {
-    public class NetworkPeering : INetworkPeering
+    public class MothraNetworkPeering : INetworkPeering
     {
         private readonly ILogger _logger;
         private readonly IMothraLibp2p _mothraLibp2p;
 
-        public NetworkPeering(ILogger<PeeringWorker> logger, IMothraLibp2p mothraLibp2p)
+        public MothraNetworkPeering(ILogger<MothraNetworkPeering> logger, IMothraLibp2p mothraLibp2p)
         {
             _logger = logger;
             _mothraLibp2p = mothraLibp2p;

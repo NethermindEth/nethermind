@@ -14,19 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Core2.Configuration
+namespace Nethermind.BeaconNode.Storage
 {
-    public class PeeringConfiguration
+    public class InMemoryConfiguration
     {
-        public int? Port { get; set; }
-        public string[] BootNodes { get; set; } = new string[0];
-
-        public string? DiscoveryAddress { get; set; }
-
-        public int? DiscoveryPort { get; set; }
-
-        public string? ListenAddress { get; set; }
-
-        public int? MaximumPeers { get; set; }
+        public bool RecordBlockJson { get; set; }
+        
+        public bool RecordBlockStateJson { get; set; }
     }
 }

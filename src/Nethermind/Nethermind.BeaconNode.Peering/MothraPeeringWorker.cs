@@ -32,7 +32,7 @@ using Nethermind.Peering.Mothra;
 
 namespace Nethermind.BeaconNode.Peering
 {
-    public class PeeringWorker : BackgroundService
+    public class MothraPeeringWorker : BackgroundService
     {
         private readonly IClientVersion _clientVersion;
         private readonly IConfiguration _configuration;
@@ -42,15 +42,15 @@ namespace Nethermind.BeaconNode.Peering
         private readonly ILogger _logger;
         private const string _mothraDirectory = "mothra";
         private readonly IMothraLibp2p _mothraLibp2p;
-        private readonly IOptionsMonitor<PeeringConfiguration> _peeringConfigurationMonitor;
+        private readonly IOptionsMonitor<MothraConfiguration> _mothraConfigurationMonitor;
         private readonly IStore _store;
 
-        public PeeringWorker(ILogger<PeeringWorker> logger,
+        public MothraPeeringWorker(ILogger<MothraPeeringWorker> logger,
             IHostEnvironment environment,
             IConfiguration configuration,
             IClientVersion clientVersion,
             DataDirectory dataDirectory,
-            IOptionsMonitor<PeeringConfiguration> peeringConfigurationMonitor,
+            IOptionsMonitor<MothraConfiguration> mothraConfigurationMonitor,
             IMothraLibp2p mothraLibp2p,
             ForkChoice forkChoice,
             IStore store)
@@ -60,7 +60,7 @@ namespace Nethermind.BeaconNode.Peering
             _configuration = configuration;
             _clientVersion = clientVersion;
             _dataDirectory = dataDirectory;
-            _peeringConfigurationMonitor = peeringConfigurationMonitor;
+            _mothraConfigurationMonitor = mothraConfigurationMonitor;
             _mothraLibp2p = mothraLibp2p;
             _forkChoice = forkChoice;
             _store = store;
@@ -91,15 +91,15 @@ namespace Nethermind.BeaconNode.Peering
                     //Topics = { Topic.BeaconBlock }
                 };
 
-                PeeringConfiguration peeringConfiguration = _peeringConfigurationMonitor.CurrentValue;
+                MothraConfiguration mothraConfiguration = _mothraConfigurationMonitor.CurrentValue;
 
-                mothraSettings.DiscoveryAddress = peeringConfiguration.DiscoveryAddress;
-                mothraSettings.DiscoveryPort = peeringConfiguration.DiscoveryPort;
-                mothraSettings.ListenAddress = peeringConfiguration.ListenAddress;
-                mothraSettings.MaximumPeers = peeringConfiguration.MaximumPeers;
-                mothraSettings.Port = peeringConfiguration.Port;
+                mothraSettings.DiscoveryAddress = mothraConfiguration.DiscoveryAddress;
+                mothraSettings.DiscoveryPort = mothraConfiguration.DiscoveryPort;
+                mothraSettings.ListenAddress = mothraConfiguration.ListenAddress;
+                mothraSettings.MaximumPeers = mothraConfiguration.MaximumPeers;
+                mothraSettings.Port = mothraConfiguration.Port;
 
-                foreach (string bootNode in peeringConfiguration.BootNodes)
+                foreach (string bootNode in mothraConfiguration.BootNodes)
                 {
                     mothraSettings.BootNodes.Add(bootNode);
                 }
