@@ -25,9 +25,9 @@ namespace Nethermind.Ssz
     {
         private const int BeaconBlockDynamicOffset = Ssz.SlotLength + 2 * Ssz.RootLength + sizeof(uint);
 
-        public static int BeaconBlockLength(BeaconBlock? container)
+        public static int BeaconBlockLength(BeaconBlock container)
         {
-            return container is null ? 0 : (BeaconBlockDynamicOffset + Ssz.BeaconBlockBodyLength(container.Body));
+            return BeaconBlockDynamicOffset + Ssz.BeaconBlockBodyLength(container.Body);
         }
 
         public static BeaconBlock DecodeBeaconBlock(ReadOnlySpan<byte> span)
@@ -44,7 +44,7 @@ namespace Nethermind.Ssz
             Encode(span, container, ref offset);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        //[MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static BeaconBlock DecodeBeaconBlock(ReadOnlySpan<byte> span, ref int offset)
         {
             var slot = DecodeSlot(span, ref offset);
@@ -60,11 +60,16 @@ namespace Nethermind.Ssz
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, BeaconBlock container, ref int offset)
         {
+            // Semantics of Encode = write container into span at offset, then increase offset by the bytes written
+            
+            // Static
             Encode(span, container.Slot, ref offset);
             Encode(span, container.ParentRoot, ref offset);
             Encode(span, container.StateRoot, ref offset);
             Encode(span, Ssz.BeaconBlockDynamicOffset, ref offset);
-            Encode(span.Slice(offset), container.Body);
+            
+            // Variable
+            Encode(span, container.Body, ref offset);
         }
     }
 }

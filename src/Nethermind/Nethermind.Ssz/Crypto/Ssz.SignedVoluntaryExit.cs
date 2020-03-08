@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
@@ -53,16 +54,6 @@ namespace Nethermind.Ssz
             Encode(span, container, ref offset);
         }
 
-        public static void EncodeList(Span<byte> span, SignedVoluntaryExit[] containers)
-        {
-            // Encoded 
-            if (span.Length != VarOffsetSize + SignedVoluntaryExitLength * containers.Length)
-                ThrowTargetLength<SignedVoluntaryExit>(span.Length, VarOffsetSize + SignedVoluntaryExitLength * containers.Length);
-            int offset = 0;
-            int dynamicOffset = VarOffsetSize;
-            EncodeList(span, containers, ref offset, ref dynamicOffset);
-        }
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static SignedVoluntaryExit DecodeSignedVoluntaryExit(ReadOnlySpan<byte> span, ref int offset)
         {
@@ -91,13 +82,15 @@ namespace Nethermind.Ssz
         }
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void EncodeList(Span<byte> span, SignedVoluntaryExit[] containers, ref int offset,
-            ref int dynamicOffset)
+        private static void EncodeList(Span<byte> span, IReadOnlyList<SignedVoluntaryExit> containers, ref int offset)
         {
             // fixed parts
-            Encode(span, dynamicOffset, ref offset);
-            // variable parts
-            EncodeVector(span, containers, ref dynamicOffset);
+            foreach (SignedVoluntaryExit signedVoluntaryExit in containers)
+            {
+                Encode(span, signedVoluntaryExit, ref offset);
+            }
+
+            // all items are fixed length, so no variable parts
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

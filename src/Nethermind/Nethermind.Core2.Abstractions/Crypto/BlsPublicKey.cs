@@ -30,19 +30,14 @@ namespace Nethermind.Core2.Crypto
         {
         }
 
-        public BlsPublicKey(byte[] bytes)
+        public BlsPublicKey(ReadOnlySpan<byte> span)
         {
-            if (bytes == null)
+            if (span.Length != Length)
             {
-                throw new ArgumentNullException(nameof(bytes));
+                throw new ArgumentException($"{nameof(BlsPublicKey)} should be {Length} bytes long", nameof(span));
             }
 
-            if (bytes.Length != Length)
-            {
-                throw new ArgumentException($"{nameof(BlsPublicKey)} should be {Length} bytes long", nameof(bytes));
-            }
-
-            Bytes = bytes;
+            Bytes = span.ToArray();
         }
 
         public byte[] Bytes { get; }

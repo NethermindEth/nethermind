@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO.Abstractions;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -29,6 +30,7 @@ using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Cryptography;
 using Nethermind.Core2.Types;
+using NSubstitute;
 using Shouldly;
 
 namespace Nethermind.BeaconNode.Test
@@ -52,6 +54,7 @@ namespace Nethermind.BeaconNode.Test
             IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions = testServiceProvider.GetService<IOptionsMonitor<MaxOperationsPerBlock>>();
             IOptionsMonitor<ForkChoiceConfiguration> forkChoiceConfigurationOptions = testServiceProvider.GetService<IOptionsMonitor<ForkChoiceConfiguration>>();
             IOptionsMonitor<SignatureDomains> signatureDomainOptions = testServiceProvider.GetService<IOptionsMonitor<SignatureDomains>>();
+            IOptionsMonitor<InMemoryConfiguration> inMemoryConfigurationOptions = testServiceProvider.GetService<IOptionsMonitor<InMemoryConfiguration>>();
 
             miscellaneousParameterOptions.CurrentValue.MinimumGenesisActiveValidatorCount = 2;
 
@@ -74,7 +77,7 @@ namespace Nethermind.BeaconNode.Test
             BeaconNode.Genesis beaconChain = new BeaconNode.Genesis(loggerFactory.CreateLogger<BeaconNode.Genesis>(),
                 chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions,
                 cryptographyService,  beaconStateAccessor, beaconStateTransition);
-            MemoryStore store = new MemoryStore(loggerFactory.CreateLogger<MemoryStore>(), timeParameterOptions);
+            MemoryStore store = new MemoryStore(loggerFactory.CreateLogger<MemoryStore>(), inMemoryConfigurationOptions, new DataDirectory("data"), Substitute.For<IFileSystem>());
             MemoryStoreProvider storeProvider = new MemoryStoreProvider(store);
             ForkChoice forkChoice = new ForkChoice(loggerFactory.CreateLogger<ForkChoice>(),
                 chainConstants, miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, forkChoiceConfigurationOptions, signatureDomainOptions,

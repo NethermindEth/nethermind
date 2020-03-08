@@ -16,6 +16,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Abstractions;
+using System.IO.Abstractions.TestingHelpers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -41,6 +43,12 @@ namespace Nethermind.BeaconNode.Test
             var configuration = new ConfigurationBuilder()
                 .AddJsonFile("appsettings.json")
                 .AddJsonFile("Development/appsettings.json")
+                .AddInMemoryCollection(new Dictionary<string, string>
+                {
+                    ["Peering:Mothra:LogSignedBeaconBlockJson"] = "false",
+                    ["Storage:InMemory:LogBlockJson"] = "false",
+                    ["Storage:InMemory:LogBlockStateJson"] = "false"
+                })
                 .Build();
             services.AddSingleton<IConfiguration>(configuration);
 
@@ -69,13 +77,14 @@ namespace Nethermind.BeaconNode.Test
 
             if (useStore)
             {
-                services.AddSingleton<IStore, MemoryStore>();
-                services.AddSingleton<IStoreProvider, MemoryStoreProvider>();
+                services.AddBeaconNodeStorage(configuration);
             }
 
             var networkPeering = Substitute.For<INetworkPeering>();
             services.AddSingleton<INetworkPeering>(networkPeering);
 
+            services.AddTransient<IFileSystem, MockFileSystem>();
+            
             return services;
         }
 

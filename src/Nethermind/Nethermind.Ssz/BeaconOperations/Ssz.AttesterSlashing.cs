@@ -74,13 +74,8 @@ namespace Nethermind.Ssz
             return attesterSlashing;
         }
 
-        public static void Encode(Span<byte> span, AttesterSlashing?[]? containers)
+        public static void Encode(Span<byte> span, AttesterSlashing[] containers)
         {
-            if (containers is null)
-            {
-                return;
-            }
-            
             int offset = 0;
             int dynamicOffset = containers.Length * VarOffsetSize;
             for (int i = 0; i < containers.Length; i++)

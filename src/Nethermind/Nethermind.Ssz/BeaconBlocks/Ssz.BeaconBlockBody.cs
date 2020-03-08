@@ -105,15 +105,46 @@ namespace Nethermind.Ssz
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, BeaconBlockBody container, ref int offset)
         {
-            int dynamicOffset = offset + Ssz.BeaconBlockBodyDynamicOffset;
+            // Semantics of Encode = write container into span at offset, then increase offset by the bytes written
+            
+            // Static
+            int dynamicOffset = Ssz.BeaconBlockBodyDynamicOffset;
             Encode(span, container.RandaoReveal, ref offset);
             Encode(span, container.Eth1Data, ref offset);
             Encode(span, container.Graffiti.AsSpan().ToArray(), ref offset);
-            Encode(span, container.ProposerSlashings.ToArray(), ref offset, ref dynamicOffset);
-            Encode(span, container.AttesterSlashings.ToArray(), ref offset, ref dynamicOffset);
-            Encode(span, container.Attestations.ToArray(), ref offset, ref dynamicOffset);
-            Encode(span, container.Deposits.ToArray(), ref offset, ref dynamicOffset);
-            EncodeList(span, container.VoluntaryExits.ToArray(), ref offset, ref dynamicOffset);
+
+            Encode(span, dynamicOffset, ref offset);
+            int proposerSlashingsLength = container.ProposerSlashings.Count * Ssz.ProposerSlashingLength;
+            dynamicOffset += proposerSlashingsLength;
+            
+            Encode(span, dynamicOffset, ref offset);
+            int attesterSlashingsLength = container.AttesterSlashings.Sum(x => Ssz.AttesterSlashingLength(x) + VarOffsetSize);
+            dynamicOffset += attesterSlashingsLength;
+            
+            Encode(span, dynamicOffset, ref offset);
+            dynamicOffset += container.Attestations.Sum(x => Ssz.AttestationLength(x) + VarOffsetSize);
+            
+            Encode(span, dynamicOffset, ref offset);
+            int depositsLength = container.Deposits.Count * Ssz.DepositLength();
+            dynamicOffset += depositsLength;
+            
+            Encode(span, dynamicOffset, ref offset);
+            int voluntaryExitsLength = container.VoluntaryExits.Count * Ssz.VoluntaryExitLength;
+            dynamicOffset += voluntaryExitsLength;
+            
+            // Dynamic
+            Encode(span.Slice(offset, proposerSlashingsLength), container.ProposerSlashings.ToArray());
+            offset += proposerSlashingsLength;
+            
+            Encode(span.Slice(offset, attesterSlashingsLength), container.AttesterSlashings.ToArray());
+            offset += attesterSlashingsLength;
+            
+            Encode(span, container.Attestations, ref offset);
+            
+            Encode(span.Slice(offset, depositsLength), container.Deposits.ToArray());
+            offset += depositsLength;
+            
+            EncodeList(span, container.VoluntaryExits, ref offset);
         }
     }
 }

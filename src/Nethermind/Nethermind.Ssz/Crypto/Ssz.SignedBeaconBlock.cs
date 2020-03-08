@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
@@ -32,8 +33,16 @@ namespace Nethermind.Ssz
 
         public static SignedBeaconBlock DecodeSignedBeaconBlock(ReadOnlySpan<byte> span)
         {
+            // fixed parts
             int offset = 0;
-            return DecodeSignedBeaconBlock(span, ref offset);
+            DecodeDynamicOffset(span, ref offset, out int messageDynamicOffset);
+            BlsSignature signature = DecodeBlsSignature(span.Slice(offset, BlsSignatureLength));
+            offset += BlsSignatureLength;
+
+            // variable parts
+            BeaconBlock message = DecodeBeaconBlock(span.Slice(messageDynamicOffset));
+            
+            return new SignedBeaconBlock(message, signature);
         }
 
         public static void Encode(Span<byte> span, SignedBeaconBlock container)
@@ -44,20 +53,18 @@ namespace Nethermind.Ssz
             int offset = 0;
             Encode(span, container, ref offset);
         }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static SignedBeaconBlock DecodeSignedBeaconBlock(ReadOnlySpan<byte> span, ref int offset)
-        {
-            BeaconBlock message = DecodeBeaconBlock(span, ref offset);
-            BlsSignature signature = DecodeBlsSignature(span, ref offset);
-            return new SignedBeaconBlock(message, signature);
-        }
-
+        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, SignedBeaconBlock container, ref int offset)
         {
-            Encode(span, container.Message, ref offset);
+            // Semantics of Encode = write container into span at offset, then increase offset by the bytes written
+
+            // Static
+            Encode(span, Ssz.SignedBeaconBlockDynamicOffset, ref offset);
             Encode(span, container.Signature, ref offset);
+            
+            // Variable
+            Encode(span, container.Message, ref offset);
         }
     }
 }

@@ -25,9 +25,27 @@ namespace Nethermind.Core2.Crypto
 
         public static readonly BlsSignature Zero = new BlsSignature(new byte[Length]);
 
-        public BlsSignature(byte[] bytes)
+        private BlsSignature(byte[] bytes)
         {
             Bytes = bytes;
+        }
+
+        public BlsSignature(ReadOnlySpan<byte> span)
+        {
+            if (span.Length != Length)
+            {
+                throw new ArgumentOutOfRangeException(nameof(span), span.Length,
+                    $"{nameof(Root)} must have exactly {Length} bytes");
+            }
+            Bytes = span.ToArray();
+        }
+
+        /// <summary>
+        /// Creates a BlsSignature directly using the provided buffer; it is up to the caller to ensure the buffer is unique.
+        /// </summary>
+        public static BlsSignature WithBuffer(byte[] bytes)
+        {
+            return new BlsSignature(bytes);
         }
 
         public byte[] Bytes { get; }

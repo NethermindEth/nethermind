@@ -26,30 +26,11 @@ namespace Nethermind.Ssz
     {
         public const int ProposerSlashingLength = Ssz.ValidatorIndexLength + 2 * Ssz.SignedBeaconBlockHeaderLength;
 
-        private static void Encode(Span<byte> span, ProposerSlashing?[]? containers, ref int offset, ref int dynamicOffset)
+        public static void Encode(Span<byte> span, ProposerSlashing container)
         {
-            int length = (containers?.Length ?? 0) * Ssz.ProposerSlashingLength;
-            Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
-            Encode(span.Slice(dynamicOffset, length), containers);
-            dynamicOffset += length;
-            offset += VarOffsetSize;
-        }
-        
-         public static void Encode(Span<byte> span, ProposerSlashing? container)
-        {
-            if (container is null)
-            {
-                return;
-            }
-            
             if (span.Length != Ssz.ProposerSlashingLength)
             {
                 ThrowTargetLength<ProposerSlashing>(span.Length, Ssz.ProposerSlashingLength);
-            }
-
-            if (container == null)
-            {
-                return;
             }
 
             int offset = 0;
@@ -71,13 +52,8 @@ namespace Nethermind.Ssz
             return container;
         }
 
-        public static void Encode(Span<byte> span, ProposerSlashing?[]? containers)
+        public static void Encode(Span<byte> span, ProposerSlashing[] containers)
         {
-            if (containers is null)
-            {
-                return;
-            }
-            
             if (span.Length != Ssz.ProposerSlashingLength * containers.Length)
             {
                 ThrowTargetLength<ProposerSlashing>(span.Length, Ssz.ProposerSlashingLength);

@@ -28,7 +28,7 @@ using Shouldly;
 namespace Nethermind.Ssz.Test
 {
     [TestFixture]
-    public class SignedBeaconBlockSszTests
+    public class SszSignedBeaconBlockTests
     {
         [TestCase]
         public void CheckEmptyBlockRootAfterDeserializing()
@@ -50,7 +50,7 @@ namespace Nethermind.Ssz.Test
             //         ));
 
             //BlsSignature randaoReveal = new BlsSignature(Bytes.FromHexString("0xa7db5e45ebb7308924235c49b9c05d55cccc0be4f7128cc332028bfd0a377698ff44010ef0d164fd6cbd92f31bff8b2502a166af92c0a15c930e39e902f7a2f85d9d80ac3fb576797dcd20d1ca66bc9750149b4f3700a2f81458fb86e3a93391"));
-            BlsSignature randaoReveal = new BlsSignature(Enumerable.Repeat((byte) 0x56, 96).ToArray());
+            BlsSignature randaoReveal = new BlsSignature(Enumerable.Repeat((byte) 0xfe, 96).ToArray());
 
             BeaconBlockBody beaconBlockBody = new BeaconBlockBody(
                 randaoReveal,
@@ -75,7 +75,7 @@ namespace Nethermind.Ssz.Test
             
             SignedBeaconBlock signedBeaconBlock = new SignedBeaconBlock(
                 beaconBlock,
-                new BlsSignature(Enumerable.Repeat((byte)0xbc, 96).ToArray())
+                new BlsSignature(Enumerable.Repeat((byte)0x0e, 96).ToArray())
             );            
             
             // Act

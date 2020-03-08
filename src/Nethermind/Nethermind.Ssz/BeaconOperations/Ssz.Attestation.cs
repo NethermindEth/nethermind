@@ -17,6 +17,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections;
+using System.Collections.Generic;
 using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
@@ -27,13 +28,8 @@ namespace Nethermind.Ssz
     {
         public const int AttestationDynamicOffset = sizeof(uint) + Ssz.AttestationDataLength + Ssz.BlsSignatureLength;
 
-        public static int AttestationLength(Attestation? container)
+        public static int AttestationLength(Attestation container)
         {
-            if (container == null)
-            {
-                return 0;
-            }
-
             return AttestationDynamicOffset + (container.AggregationBits.Length + 8) / 8;
         }
 
@@ -104,19 +100,22 @@ namespace Nethermind.Ssz
             return container;
         }
 
-        private static void Encode(Span<byte> span, Attestation[] attestations, ref int offset, ref int dynamicOffset)
+        private static void Encode(Span<byte> span, IReadOnlyList<Attestation> attestations, ref int offset)
         {
-            int length = attestations.Length * VarOffsetSize;
-
-            for (int i = 0; i < attestations.Length; i++)
+            // Semantics of Encode = write container into span at offset, then increase offset by the bytes written
+            
+            // Static
+            int staticOffset = offset;
+            int dynamicOffset = attestations.Count * VarOffsetSize;
+            offset += dynamicOffset;
+            foreach (Attestation attestation in attestations)
             {
-                length += Ssz.AttestationLength(attestations[i]);
+                int length = Ssz.AttestationLength(attestation);
+                Encode(span, dynamicOffset, ref staticOffset);
+                dynamicOffset += length;
+                Encode(span.Slice(offset, length), attestation);
+                offset += length;
             }
-
-            Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
-            Encode(span.Slice(dynamicOffset, length), attestations);
-            dynamicOffset += length;
-            offset += VarOffsetSize;
         }
     }
 }
