@@ -65,10 +65,10 @@ namespace Nethermind.HonestValidator
                 new EventId(2451, nameof(ValidatorDutyProposalChanged)),
                 "Validator {PublicKey} epoch {Epoch} duty proposal slot {Slot}.");
 
-        public static readonly Action<ILogger, Slot, BlsPublicKey, Exception?> ProposalDutyFor =
-            LoggerMessage.Define<Slot, BlsPublicKey>(LogLevel.Information,
+        public static readonly Action<ILogger, Slot, ulong, BlsPublicKey, Exception?> ProposalDutyFor =
+            LoggerMessage.Define<Slot, ulong, BlsPublicKey>(LogLevel.Information,
                 new EventId(2452, nameof(ProposalDutyFor)),
-                "Running block proposal duty for slot {Slot} for validator {PublicKey}.");
+                "Running block proposal duty for slot {Slot} at time {Time} for validator {PublicKey}.");
 
         // 4bxx warning
         

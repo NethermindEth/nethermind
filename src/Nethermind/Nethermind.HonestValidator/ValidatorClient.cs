@@ -120,7 +120,7 @@ namespace Nethermind.HonestValidator
             BlsPublicKey? blsPublicKey = _validatorState.GetProposalDutyForSlot(slot);
             if (!(blsPublicKey is null))
             {
-                if (_logger.IsInfo()) Log.ProposalDutyFor(_logger, slot, blsPublicKey, null);
+                if (_logger.IsInfo()) Log.ProposalDutyFor(_logger, slot, _beaconChain.Time, blsPublicKey, null);
                 
                 BlsSignature randaoReveal = GetEpochSignature(slot, blsPublicKey);
 

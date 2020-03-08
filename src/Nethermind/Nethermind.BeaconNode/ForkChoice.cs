@@ -390,10 +390,11 @@ namespace Nethermind.BeaconNode
             BeaconState preState = BeaconState.Clone(parentState);
 
             // Blocks cannot be in the future. If they are, their consideration must be delayed until the are in the past.
+            ulong storeTime = store.Time;
             Slot storeCurrentSlot = GetCurrentSlot(store);
             if (storeCurrentSlot < block.Slot)
             {
-                throw new ArgumentOutOfRangeException(nameof(block), block.Slot, $"Block slot time cannot be in the future, compared to store time {storeCurrentSlot}.");
+                throw new ArgumentOutOfRangeException(nameof(block), block.Slot, $"Block slot time cannot be in the future, compared to store time {storeTime} (slot {storeCurrentSlot}, since genesis {store.GenesisTime}.");
             }
 
             // Add new block to the store
