@@ -43,7 +43,7 @@ namespace Nethermind.BeaconNode.Peering
         private const string _mothraDirectory = "mothra";
         private readonly IMothraLibp2p _mothraLibp2p;
         private readonly IOptionsMonitor<PeeringConfiguration> _peeringConfigurationMonitor;
-        private readonly IStoreProvider _storeProvider;
+        private readonly IStore _store;
 
         public PeeringWorker(ILogger<PeeringWorker> logger,
             IHostEnvironment environment,
@@ -53,7 +53,7 @@ namespace Nethermind.BeaconNode.Peering
             IOptionsMonitor<PeeringConfiguration> peeringConfigurationMonitor,
             IMothraLibp2p mothraLibp2p,
             ForkChoice forkChoice,
-            IStoreProvider storeProvider)
+            IStore store)
         {
             _logger = logger;
             _environment = environment;
@@ -63,7 +63,7 @@ namespace Nethermind.BeaconNode.Peering
             _peeringConfigurationMonitor = peeringConfigurationMonitor;
             _mothraLibp2p = mothraLibp2p;
             _forkChoice = forkChoice;
-            _storeProvider = storeProvider;
+            _store = store;
         }
 
         protected override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -122,44 +122,76 @@ namespace Nethermind.BeaconNode.Peering
             await base.StopAsync(cancellationToken);
         }
 
-        private void HandleBeaconBlock(ReadOnlySpan<byte> data)
+        private async void HandleBeaconBlockAsync(SignedBeaconBlock signedBeaconBlock)
         {
-            SignedBeaconBlock signedBeaconBlock = Ssz.Ssz.DecodeSignedBeaconBlock(data);
-            if (!_storeProvider.TryGetStore(out IStore? retrievedStore))
+            try
             {
-                throw new Exception("Beacon chain is currently syncing or waiting for genesis.");
+                await _forkChoice.OnBlockAsync(_store, signedBeaconBlock).ConfigureAwait(false);
             }
-
-            IStore store = retrievedStore!;
-            _forkChoice.OnBlockAsync(store, signedBeaconBlock);
+            catch (Exception ex)
+            {
+                if (_logger.IsError())
+                    Log.HandleSignedBeaconBlockError(_logger, signedBeaconBlock.Message, ex.Message, ex);
+            }
         }
 
         private void OnGossipReceived(ReadOnlySpan<byte> topicUtf8, ReadOnlySpan<byte> data)
         {
-            // TODO: handle topic
-            if (topicUtf8.SequenceEqual(TopicUtf8.BeaconBlock))
+            try
             {
-                if (_logger.IsDebug())
-                    LogDebug.GossipReceived(_logger, nameof(TopicUtf8.BeaconBlock), data.Length, null);
-                HandleBeaconBlock(data);
+                // TODO: handle other topics
+                if (topicUtf8.SequenceEqual(TopicUtf8.BeaconBlock))
+                {
+                    if (_logger.IsDebug())
+                        LogDebug.GossipReceived(_logger, nameof(TopicUtf8.BeaconBlock), data.Length, null);
+                    // Need to deserialize in synchronous context (can't pass Span async)
+                    SignedBeaconBlock signedBeaconBlock = Ssz.Ssz.DecodeSignedBeaconBlock(data);
+                    // TODO: maybe use a blocking queue that the receiver converts and writes to, then the async worker (ExcecuteAsync) can process.
+                    if (!ThreadPool.QueueUserWorkItem(HandleBeaconBlockAsync, signedBeaconBlock, true))
+                    {
+                        throw new Exception($"Could not queue handling of block {signedBeaconBlock.Message}.");
+                    }
+                }
+                else
+                {
+                    if (_logger.IsDebug())
+                        LogDebug.GossipReceived(_logger, Encoding.UTF8.GetString(topicUtf8), data.Length, null);
+                }
             }
-            else
+            catch (Exception ex)
             {
-                if (_logger.IsDebug()) LogDebug.GossipReceived(_logger, Encoding.UTF8.GetString(topicUtf8), data.Length, null);
+                if (_logger.IsError())
+                    Log.GossipReceivedError(_logger, Encoding.UTF8.GetString(topicUtf8), ex.Message, ex);
             }
         }
 
         private void OnPeerDiscovered(ReadOnlySpan<byte> peerUtf8)
         {
-            if (_logger.IsInfo()) Log.PeerDiscovered(_logger, Encoding.UTF8.GetString(peerUtf8), null);
+            try
+            {
+                if (_logger.IsInfo()) Log.PeerDiscovered(_logger, Encoding.UTF8.GetString(peerUtf8), null);
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError())
+                    Log.PeerDiscoveredError(_logger, Encoding.UTF8.GetString(peerUtf8), ex.Message, ex);
+            }
         }
 
         private void OnRpcReceived(ReadOnlySpan<byte> methodUtf8, bool isResponse, ReadOnlySpan<byte> peerUtf8, ReadOnlySpan<byte> data)
         {
-            if (_logger.IsDebug())
-                LogDebug.RpcReceived(_logger, isResponse, Encoding.UTF8.GetString(methodUtf8), Encoding.UTF8.GetString(peerUtf8), data.Length,
-                    null);
-            // TODO: handle RPC
+            try
+            {
+                if (_logger.IsDebug())
+                    LogDebug.RpcReceived(_logger, isResponse, Encoding.UTF8.GetString(methodUtf8), Encoding.UTF8.GetString(peerUtf8), data.Length,
+                        null);
+                // TODO: handle RPC
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError())
+                    Log.RpcReceivedError(_logger, Encoding.UTF8.GetString(methodUtf8), ex.Message, ex);
+            }
         }
     }
 }
