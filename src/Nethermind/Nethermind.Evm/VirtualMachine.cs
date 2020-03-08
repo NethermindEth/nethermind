@@ -143,7 +143,7 @@ namespace Nethermind.Evm
                     {
                         if (_txTracer.IsTracingActions && !currentState.IsContinuation)
                         {
-                            _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.ExecutionType == ExecutionType.Create ? currentState.Env.CodeInfo.MachineCode : currentState.Env.InputData, currentState.ExecutionType);
+                            _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.ExecutionType.IsAnyCreate() ? currentState.Env.CodeInfo.MachineCode : currentState.Env.InputData, currentState.ExecutionType);
                             if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo.MachineCode);
                         }
 
@@ -202,13 +202,13 @@ namespace Nethermind.Evm
                             else
                             {
                                 long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
-                                if (currentState.ExecutionType == ExecutionType.Create && currentState.GasAvailable < codeDepositGasCost)
+                                if (currentState.ExecutionType.IsAnyCreate() && currentState.GasAvailable < codeDepositGasCost)
                                 {
                                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                                 }
                                 else
                                 {
-                                    if (currentState.ExecutionType == ExecutionType.Create)
+                                    if (currentState.ExecutionType.IsAnyCreate())
                                     {
                                         _txTracer.ReportActionEnd(currentState.GasAvailable - codeDepositGasCost, currentState.To, callResult.Output);
                                     }
@@ -233,7 +233,7 @@ namespace Nethermind.Evm
                     if (!callResult.ShouldRevert)
                     {
                         long gasAvailableForCodeDeposit = previousState.GasAvailable; // TODO: refactor, this is to fix 61363 Ropsten
-                        if (previousState.ExecutionType == ExecutionType.Create)
+                        if (previousState.ExecutionType.IsAnyCreate())
                         {
                             previousCallResult = callCodeOwner.Bytes;
                             previousCallOutputDestination = UInt256.Zero;
@@ -509,7 +509,7 @@ namespace Nethermind.Evm
                     _state.AddToBalance(env.ExecutingAccount, env.TransferValue, spec);
                 }
 
-                if (evmState.ExecutionType == ExecutionType.Create && spec.IsEip158Enabled)
+                if (evmState.ExecutionType.IsAnyCreate() && spec.IsEip158Enabled)
                 {
                     _state.IncrementNonce(env.ExecutingAccount);
                 }
@@ -2136,7 +2136,7 @@ namespace Nethermind.Evm
                         EvmState callState = new EvmState(
                             callGas,
                             callEnv,
-                            ExecutionType.Create,
+                            instruction == Instruction.CREATE2 ? ExecutionType.Create2 : ExecutionType.Create,
                             false,
                             false,
                             stateSnapshot,

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -65,33 +66,32 @@ namespace Nethermind.Blockchain.Producers
 
         public abstract Task StopAsync();
 
-        private object _newBlockLock = new object();
+        private readonly object _newBlockLock = new object();
 
-        protected async Task TryProduceNewBlock(CancellationToken token)
-        {
-            BlockHeader parentHeader = BlockTree.Head;
-            if (parentHeader == null)
-            {
-                if (Logger.IsWarn) Logger.Warn($"Preparing new block - parent header is null");
-            }
-            else if (_sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
-            {
-                await ProduceNewBlock(parentHeader, token);
-            }
-        }
-
-        private Task ProduceNewBlock(BlockHeader parent, CancellationToken token)
+        protected Task<bool> TryProduceNewBlock(CancellationToken token)
         {
             lock (_newBlockLock)
             {
-                _stateProvider.StateRoot = parent.StateRoot;
-
-                Block block = PrepareBlock(parent);
-                if (!PreparedBlockCanBeMined(block))
+                BlockHeader parentHeader = BlockTree.Head;
+                if (parentHeader == null)
                 {
-                    return Task.CompletedTask;
+                    if (Logger.IsWarn) Logger.Warn($"Preparing new block - parent header is null");
+                }
+                else if (_sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
+                {
+                    return ProduceNewBlock(parentHeader, token);
                 }
 
+                return Task.FromResult(false);
+            }
+        }
+
+        private Task<bool> ProduceNewBlock(BlockHeader parent, CancellationToken token)
+        {
+            _stateProvider.StateRoot = parent.StateRoot;
+            Block block = PrepareBlock(parent);
+            if (PreparedBlockCanBeMined(block))
+            {
                 Block processedBlock = Processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
                 if (processedBlock == null)
                 {
@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Producers
                 }
                 else
                 {
-                    _sealer.SealBlock(processedBlock, token).ContinueWith(t =>
+                    return _sealer.SealBlock(processedBlock, token).ContinueWith((Func<Task<Block>, bool>) (t =>
                     {
                         if (t.IsCompletedSuccessfully)
                         {
@@ -107,6 +107,7 @@ namespace Nethermind.Blockchain.Producers
                             {
                                 if (Logger.IsInfo) Logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
                                 BlockTree.SuggestBlock(t.Result);
+                                return true;
                             }
                             else
                             {
@@ -121,11 +122,13 @@ namespace Nethermind.Blockchain.Producers
                         {
                             if (Logger.IsInfo) Logger.Info($"Sealing block {processedBlock.Number} cancelled");
                         }
-                    }, token);
-                }
 
-                return Task.CompletedTask;
+                        return false;
+                    }), token);
+                }
             }
+
+            return Task.FromResult(false);
         }
 
         protected virtual bool PreparedBlockCanBeMined(Block block)
@@ -158,7 +161,8 @@ namespace Nethermind.Blockchain.Producers
 
             if (Logger.IsDebug) Logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
 
-            Block block = new Block(header, _pendingTxSelector.SelectTransactions(header.GasLimit), new BlockHeader[0]);
+            var transactions = _pendingTxSelector.SelectTransactions(header.GasLimit);
+            Block block = new Block(header, transactions, new BlockHeader[0]);
             header.TxRoot = new TxTrie(block.Transactions).RootHash;
             return block;
         }

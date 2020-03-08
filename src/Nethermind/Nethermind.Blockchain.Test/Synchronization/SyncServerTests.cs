@@ -23,8 +23,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Network;
+using Nethermind.Specs;
 using Nethermind.Stats.Model;
 using Nethermind.Store;
 using NSubstitute;
@@ -53,7 +55,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 x[1] = new PeerInfo(peer);
                 return true;
             });
-            
+
             _blockTree = Substitute.For<IBlockTree>();
             _synchronizer = Substitute.For<ISynchronizer>();
             _syncServer = new SyncServer(new StateDb(), new StateDb(), _blockTree, NullReceiptStorage.Instance, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, _peerPool, _synchronizer, new SyncConfig(), LimboLogs.Instance);
@@ -70,7 +72,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _blockTree.DidNotReceive().FindBlock(Arg.Any<Keccak>(), Arg.Any<BlockTreeLookupOptions>());
             Assert.AreEqual(TestItem.KeccakA, result);
         }
-        
+
         [Test]
         public void Does_not_request_peer_refresh_on_known_hints()
         {
@@ -78,7 +80,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _syncServer.HintBlock(TestItem.KeccakA, 1, _nodeWhoSentTheBlock);
             _peerPool.DidNotReceiveWithAnyArgs().RefreshTotalDifficulty(null, null);
         }
-        
+
         [Test]
         public void Requests_peer_refresh_on_unknown_hints()
         {
@@ -105,20 +107,20 @@ namespace Nethermind.Blockchain.Test.Synchronization
             ISealValidator sealValidator = sealOk ? TestSealValidator.AlwaysValid : TestSealValidator.NeverValid;
             IBlockValidator blockValidator = validationOk ? TestBlockValidator.AlwaysValid : TestBlockValidator.NeverValid;
             _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, blockValidator, sealValidator, _peerPool, _synchronizer, new SyncConfig(), LimboLogs.Instance);
-            
+
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
 
             _synchronizer.SyncMode.Returns(SyncMode.Full);
-
+            
             if (!accepted)
             {
                 Assert.Throws<EthSynchronizationException>(() => _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock));
             }
             else
             {
-                _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock);
+                _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock);    
             }
-            
+
             if (accepted)
             {
                 Assert.AreEqual(localBlockTree.BestSuggestedHeader, block.Header);
@@ -128,15 +130,15 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 Assert.AreNotEqual(localBlockTree.BestSuggestedHeader, block.Header);
             }
         }
-        
+
         [Test]
-        public void Rejects_new_blocks_with_failing_seal()
+        public void Can_accept_blocks_that_are_fine()
         {
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
 
             _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, _peerPool, _synchronizer, new SyncConfig(), LimboLogs.Instance);
-            
+
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
 
             _synchronizer.SyncMode.Returns(SyncMode.Full);
@@ -144,7 +146,26 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             Assert.AreEqual(localBlockTree.BestSuggestedHeader, block.Header);
         }
-        
+
+        [Test]
+        public void Will_not_reject_block_with_bad_total_diff_but_will_reset_diff_to_null()
+        {
+            BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
+            BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
+
+            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, new BlockValidator(TestTxValidator.AlwaysValid, new HeaderValidator(localBlockTree, TestSealValidator.AlwaysValid, MainNetSpecProvider.Instance, LimboLogs.Instance), AlwaysValidOmmersValidator.Instance, MainNetSpecProvider.Instance, LimboLogs.Instance), TestSealValidator.AlwaysValid, _peerPool, _synchronizer, new SyncConfig(), LimboLogs.Instance);
+
+            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
+            block.Header.TotalDifficulty *= 2;
+
+            _synchronizer.SyncMode.Returns(SyncMode.Full);
+            _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock);
+            Assert.AreEqual(localBlockTree.BestSuggestedHeader.Hash, block.Header.Hash);
+            
+            Block parentBlock = remoteBlockTree.FindBlock(8, BlockTreeLookupOptions.None);
+            Assert.AreEqual(parentBlock.TotalDifficulty + block.Difficulty, localBlockTree.BestSuggestedHeader.TotalDifficulty);
+        }
+
         [Test]
         public void Rejects_new_old_blocks()
         {
@@ -154,7 +175,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             ISealValidator sealValidator = Substitute.For<ISealValidator>();
             IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
             _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, blockValidator, sealValidator, _peerPool, _synchronizer, new SyncConfig(), LimboLogs.Instance);
-            
+
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
 
             _synchronizer.SyncMode.Returns(SyncMode.Full);

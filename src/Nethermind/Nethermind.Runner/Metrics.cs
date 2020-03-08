@@ -14,14 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Blockchain.Synchronization
+using System.ComponentModel;
+
+namespace Nethermind.Runner
 {
-    public enum SyncTriggerType
+    public static class Metrics
     {
-        SyncTimer,
-        PeerChange,
-        NewBlock,
-        PeerRefresh,
-        PeerAdded
+        [Description("Version number")]
+        public static long Version { get; set; }
     }
 }

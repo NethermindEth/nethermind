@@ -94,6 +94,8 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                     return "call";
                 case ExecutionType.Create:
                     return "create";
+                case ExecutionType.Create2:
+                    return "create";
                 case ExecutionType.Call:
                     return "call";
                 case ExecutionType.DelegateCall:
@@ -114,6 +116,8 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 case ExecutionType.Transaction:
                     return "call";
                 case ExecutionType.Create:
+                    return "create";
+                case ExecutionType.Create2:
                     return "create";
                 case ExecutionType.Call:
                     return "call";
@@ -408,8 +412,9 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             action.Gas = gas;
             action.CallType = GetCallType(callType);
             action.Type = GetActionType(callType);
+            action.CreationMethod = GetCreateMethod(callType);
 
-            if (_currentOperation != null && callType == ExecutionType.Create)
+            if (_currentOperation != null && callType.IsAnyCreate())
             {
                 // another Parity quirkiness
                 _currentOperation.Cost += gas;
@@ -417,7 +422,12 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             
             PushAction(action);
         }
-        
+
+        private string GetCreateMethod(ExecutionType callType)
+        {
+            return callType == ExecutionType.Create ? "create" : "create2";
+        }
+
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
         {
             ParityTraceAction action = new ParityTraceAction();

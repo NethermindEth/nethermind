@@ -20,7 +20,6 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Tracing.ParityStyle
 {
-    // TODO: probably should use multiple action types
     public class ParityTraceAction
     {
         public int[] TraceAddress { get; set; }
@@ -29,6 +28,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public bool IncludeInTrace => !IsPrecompiled;// || Error != null;
         public bool IsPrecompiled { get; set; }
         public string Type { get; set; }
+        public string CreationMethod { get; set; }
         public Address From { get; set; }
         public Address To { get; set; }
         public long Gas { get; set; }

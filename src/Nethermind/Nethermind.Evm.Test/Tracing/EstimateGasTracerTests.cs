@@ -76,7 +76,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Bytes.Empty, _executionType, false);
             tracer.ReportActionEnd(400, Bytes.Empty);
             tracer.ReportAction(400, 0, Address.Zero, Address.Zero, Bytes.Empty, _executionType, false);
-            if (_executionType == ExecutionType.Create)
+            if (_executionType.IsAnyCreate())
             {
                 tracer.ReportActionEnd(200, Address.Zero, Bytes.Empty);
                 tracer.ReportActionEnd(300, Bytes.Empty);
@@ -98,7 +98,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Bytes.Empty, _executionType, false);
             tracer.ReportAction(400, 0, Address.Zero, Address.Zero, Bytes.Empty, _executionType, false);
 
-            if (_executionType == ExecutionType.Create)
+            if (_executionType.IsAnyCreate())
             {
                 tracer.ReportActionError(EvmExceptionType.Other);
                 tracer.ReportActionEnd(400, Address.Zero, Bytes.Empty);
@@ -135,7 +135,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Bytes.Empty, _executionType, false);
             tracer.ReportAction(400, 0, Address.Zero, Address.Zero, Bytes.Empty, _executionType, false);
 
-            if (_executionType == ExecutionType.Create)
+            if (_executionType.IsAnyCreate())
             {
                 tracer.ReportActionEnd(200, Address.Zero, Bytes.Empty); // second level
                 tracer.ReportActionEnd(400, Address.Zero, Bytes.Empty);
@@ -159,7 +159,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Bytes.Empty, _executionType, false);
             tracer.ReportAction(400, 0, Address.Zero, Address.Zero, Bytes.Empty, _executionType, false);
 
-            if (_executionType == ExecutionType.Create)
+            if (_executionType.IsAnyCreate())
             {
                 tracer.ReportActionEnd(300, Address.Zero, Bytes.Empty); // second level
                 tracer.ReportActionEnd(200, Address.Zero, Bytes.Empty);

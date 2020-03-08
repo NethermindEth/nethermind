@@ -27,3 +27,5 @@ You can change the level of logging in file and in the console by choosing one o
 
     <logger name="*" minlevel="Info" writeTo="file-async"/>
     <logger name="*" minlevel="Info" writeTo="auto-colored-console-async"/>
+
+More detailed NLog configuration can be found `here <https://github.com/NLog/NLog/wiki/Configuration-file>`_.

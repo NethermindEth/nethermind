@@ -21,35 +21,38 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Metrics;
 using Prometheus;
 using Nethermind.Config;
+using Nethermind.Monitoring.Config;
 
 namespace Nethermind.Monitoring
 {
     public class MonitoringService : IMonitoringService
     {
         private readonly IMetricsUpdater _metricsUpdater;
-        private readonly string _enode;
-        private readonly int _intervalSeconds;
-        private readonly string _clientVersion;
-        private readonly string _pushGatewayUrl;
         private readonly ILogger _logger;
         private readonly Options _options;
+        
+        private readonly string _nodeName;
+        private readonly string _pushGatewayUrl;
+        private readonly int _intervalSeconds;
 
-        public MonitoringService(IMetricsUpdater metricsUpdater, string pushGatewayUrl,
-            string clientVersion, string enode, int intervalSeconds, ILogManager logManager)
+        public MonitoringService(IMetricsUpdater metricsUpdater, IMetricsConfig metricsConfig, ILogManager logManager)
         {
             _metricsUpdater = metricsUpdater ?? throw new ArgumentNullException(nameof(metricsUpdater));
+
+            string nodeName = metricsConfig.NodeName;
+            string pushGatewayUrl = metricsConfig.PushGatewayUrl;
+            int intervalSeconds = metricsConfig.IntervalSeconds;
+
+            _nodeName = string.IsNullOrWhiteSpace(nodeName)
+                ? throw new ArgumentNullException(nameof(nodeName))
+                : nodeName;
             _pushGatewayUrl = string.IsNullOrWhiteSpace(pushGatewayUrl)
                 ? throw new ArgumentNullException(nameof(pushGatewayUrl))
                 : pushGatewayUrl;
-            _clientVersion = string.IsNullOrWhiteSpace(clientVersion)
-                ? throw new ArgumentNullException(nameof(clientVersion))
-                : clientVersion;
-            _enode = string.IsNullOrWhiteSpace(enode)
-                ? throw new ArgumentNullException(nameof(enode))
-                : enode;
             _intervalSeconds = intervalSeconds <= 0
                 ? throw new ArgumentException($"Invalid monitoring interval: {intervalSeconds}s")
                 : intervalSeconds;
+            
             _logger = logManager == null
                 ? throw new ArgumentNullException(nameof(logManager))
                 : logManager.GetClassLogger();
@@ -58,14 +61,14 @@ namespace Nethermind.Monitoring
 
         public async Task StartAsync()
         {
-            var metricServer = new MetricPusher(_pushGatewayUrl, _options.Job, _options.Instance,
+            MetricPusher metricServer = new MetricPusher(_pushGatewayUrl, _options.Job, _options.Instance,
                 _intervalSeconds * 1000, new[]
                 {
                     new Tuple<string, string>("nethermind_group", _options.Group),
                 });
             metricServer.Start();
             await Task.Factory.StartNew(() => _metricsUpdater.StartUpdating(), TaskCreationOptions.LongRunning);
-            if (_logger.IsInfo) _logger.Info($"Started monitoring for the group: {_options.Group}, instance: {_options.Instance}, client: {_clientVersion}");
+            if (_logger.IsInfo) _logger.Info($"Started monitoring for the group: {_options.Group}, instance: {_options.Instance}");
         }
 
         public void RegisterMetrics(Type type)
@@ -84,12 +87,12 @@ namespace Nethermind.Monitoring
             => new Options(GetValueFromVariableOrDefault("JOB", "nethermind"), GetGroup(), GetInstance());
 
         private string GetInstance()
-            => _enode.Replace("enode://", string.Empty).Split("@").FirstOrDefault();
+            => _nodeName.Replace("enode://", string.Empty).Split("@").FirstOrDefault();
 
         private string GetGroup()
         {
-            var group = GetValueFromVariableOrDefault("GROUP", "nethermind");
-            var endpoint = _pushGatewayUrl.Split("/").LastOrDefault();
+            string group = GetValueFromVariableOrDefault("GROUP", "nethermind");
+            string endpoint = _pushGatewayUrl.Split("/").LastOrDefault();
             if (!string.IsNullOrWhiteSpace(endpoint) && endpoint.Contains("-"))
             {
                 group = endpoint.Split("-")[0] ?? group;
@@ -100,7 +103,7 @@ namespace Nethermind.Monitoring
 
         private static string GetValueFromVariableOrDefault(string variable, string @default)
         {
-            var value = Environment.GetEnvironmentVariable($"NETHERMIND_MONITORING_{variable}")?.ToLowerInvariant();
+            string value = Environment.GetEnvironmentVariable($"NETHERMIND_MONITORING_{variable}")?.ToLowerInvariant();
 
             return string.IsNullOrWhiteSpace(value) ? @default : value;
         }

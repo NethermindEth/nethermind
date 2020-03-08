@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,14 +14,25 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Blockchain.Synchronization
+using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Core;
+
+namespace Nethermind.Consensus
 {
-    public enum SyncTriggerType
+    public class SinglePendingTxSelector : IPendingTxSelector
     {
-        SyncTimer,
-        PeerChange,
-        NewBlock,
-        PeerRefresh,
-        PeerAdded
+        private readonly IPendingTxSelector _innerPendingTxSelector;
+
+        public SinglePendingTxSelector(IPendingTxSelector innerPendingTxSelector)
+        {
+            _innerPendingTxSelector = innerPendingTxSelector;
+        }
+        
+        public IEnumerable<Transaction> SelectTransactions(long gasLimit) => 
+            _innerPendingTxSelector.SelectTransactions(gasLimit)
+                .OrderBy(t => t.Nonce)
+                .ThenByDescending(t => t.Timestamp)
+                .Take(1);
     }
 }
