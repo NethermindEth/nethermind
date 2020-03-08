@@ -214,8 +214,8 @@ namespace Nethermind.HonestValidator
                 {
                     _validatorState.SetAttestationDuty(validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
                         validatorDuty.AttestationShard);
-                    if (_logger.IsInfo())
-                        Log.ValidatorDutyAttestationChanged(_logger, validatorDuty.ValidatorPublicKey, epoch,
+                    if (_logger.IsDebug())
+                        LogDebug.ValidatorDutyAttestationChanged(_logger, validatorDuty.ValidatorPublicKey, epoch,
                             validatorDuty.AttestationSlot, validatorDuty.AttestationShard, null);
                 }
             }

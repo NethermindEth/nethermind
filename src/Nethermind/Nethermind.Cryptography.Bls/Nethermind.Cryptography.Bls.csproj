@@ -37,11 +37,11 @@ Based on the Herumi cryptography library.
   </ItemGroup>
   
   <ItemGroup>
-    <Content Include="runtimes\linux-x64\native\libbls384_256.so" Link="libbls384_256.so">
+    <None Include="runtimes\linux-x64\native\libbls384_256.so" Link="libbls384_256.so">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Pack>true</Pack>
       <PackagePath>runtimes/linux-x64/native/libbls384_256.so</PackagePath>
-    </Content>
+    </None>
   </ItemGroup>
 
   <ItemGroup>
