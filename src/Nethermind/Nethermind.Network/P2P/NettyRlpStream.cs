@@ -20,7 +20,7 @@ using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth
+namespace Nethermind.Network.P2P
 {
     public class NettyRlpStream : RlpStream
     {

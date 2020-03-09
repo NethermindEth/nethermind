@@ -230,7 +230,15 @@ namespace Nethermind.Network
 
         private void InitLesProtocol(ISession session, LesProtocolHandler handler)
         {
-            // todo
+            handler.ProtocolInitialized += (sender, args) =>
+            {   //todo - add basic checks
+                if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
+                LesProtocolInitializedEventArgs typedArgs = (LesProtocolInitializedEventArgs)args;
+                _stats.ReportLesInitializeEvent(session.Node, new LesNodeDetails
+                {
+
+                });
+            };
         }
 
         private void InitEthProtocol(ISession session, Eth62ProtocolHandler handler)
@@ -252,12 +260,12 @@ namespace Nethermind.Network
                 if (isValid)
                 {
                     handler.ClientId = session.Node.ClientId;
-                    
+
                     if (_syncPeers.TryAdd(session.SessionId, handler))
                     {
                         _syncPool.AddPeer(handler);
                         _txPool.AddPeer(handler);
-                        if(_logger.IsDebug) _logger.Debug($"{handler.ClientId} sync peer {session} created.");
+                        if (_logger.IsDebug) _logger.Debug($"{handler.ClientId} sync peer {session} created.");
                     }
                     else
                     {
