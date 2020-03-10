@@ -28,8 +28,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
 
             #region Find Lengths
-            // Ideas for optimization, if needed:
-            // Most of these lengths will never change, and could be hard coded.
             int totalContentLength = 0;
             int protocolVersionLength = Rlp.LengthOf(StatusMessage.KeyNames.ProtocolVersion) + Rlp.LengthOf(message.ProtocolVersion);
             totalContentLength += Rlp.LengthOfSequence(protocolVersionLength);
@@ -59,7 +57,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             int serveHeadersLength = 0;
             if (message.ServeHeaders)
             {
-                serveHeadersLength = Rlp.LengthOf(StatusMessage.KeyNames.ServeHeaders);
+                serveHeadersLength = Rlp.LengthOf(StatusMessage.KeyNames.ServeHeaders) + Rlp.OfEmptySequence.Length;
                 totalContentLength += Rlp.LengthOfSequence(serveHeadersLength);
             }
 
@@ -94,7 +92,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             int txRelayLength = 0;
             if (message.TxRelay)
             {
-                txRelayLength = Rlp.LengthOf(StatusMessage.KeyNames.TxRelay);
+                txRelayLength = Rlp.LengthOf(StatusMessage.KeyNames.TxRelay) + Rlp.OfEmptySequence.Length;
                 totalContentLength += Rlp.LengthOfSequence(txRelayLength);
             }
 
@@ -113,23 +111,26 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             }
 
             int maxRequestCostsLength = 0;
+            int innerCostListLength = 0;
             if (message.MaximumRequestCosts != null)
             {
                 // todo - what's the best way to do this? Calculating the length twice is definitely less than ideal.
                 // Maybe build RLP for them here, and append bytes below?
+                maxRequestCostsLength += Rlp.LengthOf(StatusMessage.KeyNames.MaximumRequestCosts);
                 foreach (var item in message.MaximumRequestCosts)
                 {
                     int costContentLength = Rlp.LengthOf(item.MessageCode) + Rlp.LengthOf(item.BaseCost) + Rlp.LengthOf(item.RequestCost);
-                    maxRequestCostsLength += Rlp.LengthOfSequence(costContentLength);
+                    innerCostListLength += Rlp.LengthOfSequence(costContentLength);
                 }
+                maxRequestCostsLength += Rlp.LengthOfSequence(innerCostListLength);
                 totalContentLength += Rlp.LengthOfSequence(maxRequestCostsLength);
             }
+            #endregion
 
             #region Encode Values
             int totalLength = Rlp.LengthOfSequence(totalContentLength);
             byteBuffer.EnsureWritable(totalLength);
             rlpStream.StartSequence(totalContentLength);
-            #endregion
 
             rlpStream.StartSequence(protocolVersionLength);
             rlpStream.Encode(StatusMessage.KeyNames.ProtocolVersion);
@@ -141,7 +142,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
 
             rlpStream.StartSequence(headTdLength);
             rlpStream.Encode(StatusMessage.KeyNames.TotalDifficulty);
-            rlpStream.Encode(message.BestHash);
+            rlpStream.Encode(message.TotalDifficulty);
 
             rlpStream.StartSequence(headHashLength);
             rlpStream.Encode(StatusMessage.KeyNames.BestHash);
@@ -166,6 +167,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             {
                 rlpStream.StartSequence(serveHeadersLength);
                 rlpStream.Encode(StatusMessage.KeyNames.ServeHeaders);
+                rlpStream.Encode(Rlp.OfEmptySequence);
             }
 
             if (message.ServeChainSince.HasValue)
@@ -200,6 +202,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             {
                 rlpStream.StartSequence(txRelayLength);
                 rlpStream.Encode(StatusMessage.KeyNames.TxRelay);
+                rlpStream.Encode(Rlp.OfEmptySequence);
             }
 
             if (message.BufferLimit.HasValue)
@@ -219,6 +222,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             if (message.MaximumRequestCosts != null)
             {
                 rlpStream.StartSequence(maxRequestCostsLength);
+                rlpStream.Encode(StatusMessage.KeyNames.MaximumRequestCosts);
+                rlpStream.StartSequence(innerCostListLength);
                 foreach (var item in message.MaximumRequestCosts)
                 {
                     int length = Rlp.LengthOf(item.MessageCode) + Rlp.LengthOf(item.BaseCost) + Rlp.LengthOf(item.RequestCost);
