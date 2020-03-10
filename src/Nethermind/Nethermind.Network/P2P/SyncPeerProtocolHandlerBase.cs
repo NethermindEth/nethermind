@@ -48,7 +48,6 @@ namespace Nethermind.Network.P2P
         protected Keccak _remoteHeadBlockHash;
         protected ITxPool _txPool;
         protected ITimestamper _timestamper;
-        protected long Counter;
 
         protected readonly BlockingCollection<Request<GetBlockHeadersMessage, BlockHeader[]>> _headersRequests
             = new BlockingCollection<Request<GetBlockHeadersMessage, BlockHeader[]>>();

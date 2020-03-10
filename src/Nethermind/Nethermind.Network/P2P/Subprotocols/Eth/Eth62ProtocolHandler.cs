@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Threading;
 using System.Timers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -132,7 +131,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
 
             int size = message.Content.ReadableBytes;
-            Interlocked.Increment(ref Counter);
             if (Logger.IsTrace) Logger.Trace($"{Counter:D5} {Eth62MessageCode.GetDescription(packetType)} from {Node:c}");
             
             switch (packetType)
