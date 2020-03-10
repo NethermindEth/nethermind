@@ -18,13 +18,13 @@ namespace Nethermind.Core2.Api
 {
     public class Syncing
     {
-        public Syncing(bool isSyncing, SyncingStatus syncStatus)
+        public Syncing(bool isSyncing, SyncingStatus? syncStatus)
         {
             IsSyncing = isSyncing;
             SyncStatus = syncStatus;
         }
 
         public bool IsSyncing { get; }
-        public SyncingStatus SyncStatus { get; }
+        public SyncingStatus? SyncStatus { get; }
     }
 }
