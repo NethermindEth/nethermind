@@ -31,6 +31,18 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
+    public class Eth64ProtocolHandler : Eth63ProtocolHandler
+    {
+        public Eth64ProtocolHandler(ISession session,
+            IMessageSerializationService serializer,
+            INodeStatsManager nodeStatsManager,
+            ISyncServer syncServer,
+            ITxPool txPool,
+            ILogManager logManager) : base(session, serializer, nodeStatsManager, syncServer, txPool, logManager)
+        {
+        }
+    }
+    
     public class Eth63ProtocolHandler : Eth62ProtocolHandler
     {
         private readonly BlockingCollection<Request<GetNodeDataMessage, byte[][]>> _nodeDataRequests
@@ -43,8 +55,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             IMessageSerializationService serializer,
             INodeStatsManager nodeStatsManager,
             ISyncServer syncServer,
-            ILogManager logManager,
-            ITxPool txPool) : base(session, serializer, nodeStatsManager, syncServer, logManager, txPool)
+            ITxPool txPool,
+            ILogManager logManager) : base(session, serializer, nodeStatsManager, syncServer, txPool, logManager)
         {
         }
 

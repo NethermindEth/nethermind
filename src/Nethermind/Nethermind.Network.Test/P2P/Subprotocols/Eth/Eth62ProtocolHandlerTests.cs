@@ -49,8 +49,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
                 svc,
                 new NodeStatsManager(new StatsConfig(), LimboLogs.Instance),
                 syncManager,
-                LimboLogs.Instance,
-                transactionPool);
+                transactionPool, LimboLogs.Instance);
             handler.Init();
             
             var msg = new GetBlockHeadersMessage();
@@ -97,8 +96,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
                 svc,
                 new NodeStatsManager(new StatsConfig(), LimboLogs.Instance),
                 syncManager,
-                LimboLogs.Instance,
-                transactionPool);
+                transactionPool, LimboLogs.Instance);
             handler.Init();
             
             var msg = new GetBlockHeadersMessage();
@@ -144,8 +142,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
                 svc,
                 new NodeStatsManager(new StatsConfig(), LimboLogs.Instance),
                 syncManager,
-                LimboLogs.Instance,
-                transactionPool);
+                transactionPool, LimboLogs.Instance);
             handler.Init();
             
             var msg = new GetBlockHeadersMessage();
@@ -188,8 +185,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
                 svc,
                 new NodeStatsManager(new StatsConfig(), LimboLogs.Instance),
                 syncManager,
-                LimboLogs.Instance,
-                transactionPool);
+                transactionPool, LimboLogs.Instance);
             handler.Init();
             
             var msg = new GetBlockHeadersMessage();
