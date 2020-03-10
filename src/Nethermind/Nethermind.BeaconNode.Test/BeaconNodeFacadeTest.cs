@@ -277,13 +277,7 @@ namespace Nethermind.BeaconNode.Test
             Root root = new Root(Enumerable.Repeat((byte) 0x12, 32).ToArray());
             Checkpoint checkpoint = new Checkpoint(Epoch.Zero, root);
             BeaconBlock block = new BeaconBlock(current, Root.Zero, Root.Zero, BeaconBlockBody.Zero);
-            BeaconState state = new BeaconState(0, current, 
-                new Core2.Containers.Fork(new ForkVersion(), new ForkVersion(), Epoch.Zero), 
-                BeaconBlockHeader.Zero, new Root[0], new Root[0], new List<Root>(), 
-                Eth1Data.Zero, new List<Eth1Data>(), 0, new List<Validator>(), 
-                new List<Gwei>(), new Bytes32[0], new Gwei[0], new List<PendingAttestation>(),
-                new List<PendingAttestation>(), new BitArray(0), 
-                checkpoint, checkpoint, checkpoint);
+            var state = TestState.Create(slot: current, finalizedCheckpoint: checkpoint);
             mockStore.GetBlockAsync(root).Returns(block);
             mockStore.GetBlockStateAsync(root).Returns(state);
             mockStore.IsInitialized.Returns(true);
@@ -308,6 +302,47 @@ namespace Nethermind.BeaconNode.Test
             syncing.SyncStatus.StartingSlot.ShouldBe(Slot.One);
             syncing.SyncStatus.CurrentSlot.ShouldBe(new Slot(5));
             syncing.SyncStatus.HighestSlot.ShouldBe(new Slot(10));
+        }
+        
+        [TestMethod]
+        public async Task ShouldGetStatusWhenSyncComplete()
+        {
+            // Arrange
+            Slot starting = Slot.One;
+            Slot current = new Slot(11);
+            Slot highest = new Slot(11);
+            INetworkPeering mockNetworkPeering = Substitute.For<INetworkPeering>();
+            mockNetworkPeering.HighestPeerSlot.Returns(highest);
+            mockNetworkPeering.SyncStartingSlot.Returns(starting);
+            IStore mockStore = Substitute.For<IStore>();
+            Root root = new Root(Enumerable.Repeat((byte) 0x12, 32).ToArray());
+            Checkpoint checkpoint = new Checkpoint(Epoch.Zero, root);
+            BeaconBlock block = new BeaconBlock(current, Root.Zero, Root.Zero, BeaconBlockBody.Zero);
+            var state = TestState.Create(slot: current, finalizedCheckpoint: checkpoint);
+            mockStore.GetBlockAsync(root).Returns(block);
+            mockStore.GetBlockStateAsync(root).Returns(state);
+            mockStore.IsInitialized.Returns(true);
+            mockStore.JustifiedCheckpoint.Returns(checkpoint);
+            
+            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
+            testServiceCollection.AddSingleton(mockNetworkPeering);
+            testServiceCollection.AddSingleton(mockStore);
+            testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
+            testServiceCollection.AddSingleton<IEth1DataProvider>(Substitute.For<IEth1DataProvider>());
+            testServiceCollection.AddSingleton<IOperationPool>(Substitute.For<IOperationPool>());
+            ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
+
+            // Act
+            IBeaconNodeApi beaconNode = testServiceProvider.GetService<IBeaconNodeApi>();
+            beaconNode.ShouldBeOfType(typeof(BeaconNodeFacade));
+
+            Syncing syncing = await beaconNode.GetSyncingAsync(CancellationToken.None);
+
+            // Assert
+            syncing.IsSyncing.ShouldBeFalse();
+            syncing.SyncStatus.StartingSlot.ShouldBe(Slot.One);
+            syncing.SyncStatus.CurrentSlot.ShouldBe(new Slot(11));
+            syncing.SyncStatus.HighestSlot.ShouldBe(new Slot(11));
         }
     }
 }
