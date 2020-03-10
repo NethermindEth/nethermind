@@ -24,26 +24,26 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Nethermind.BeaconNode.OApiClient.Configuration;
 using Nethermind.Core2;
+using Nethermind.Core2.Api;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using Nethermind.BeaconNode.OApiClient.Configuration;
-using Nethermind.Core2.Api;
 using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode.OApiClient
 {
     public class BeaconNodeProxy : IBeaconNodeApi
     {
-        private readonly ILogger _logger;
         private readonly IOptionsMonitor<BeaconNodeConnection> _beaconNodeConnectionOptions;
-        private readonly IBeaconNodeOApiClientFactory _oapiClientFactory;
-        static SemaphoreSlim _connectionAttemptSemaphore = new SemaphoreSlim(1, 1);
-        private IBeaconNodeOApiClient? _oapiClient;
+        private static readonly SemaphoreSlim _connectionAttemptSemaphore = new SemaphoreSlim(1, 1);
         private int _connectionIndex = -1;
+        private readonly ILogger _logger;
+        private IBeaconNodeOApiClient? _oapiClient;
+        private readonly IBeaconNodeOApiClientFactory _oapiClientFactory;
 
-        public BeaconNodeProxy(ILogger<BeaconNodeProxy> logger, 
+        public BeaconNodeProxy(ILogger<BeaconNodeProxy> logger,
             IOptionsMonitor<BeaconNodeConnection> beaconNodeConnectionOptions,
             IBeaconNodeOApiClientFactory oapiClientFactory)
         {
@@ -51,7 +51,37 @@ namespace Nethermind.BeaconNode.OApiClient
             _beaconNodeConnectionOptions = beaconNodeConnectionOptions;
             _oapiClientFactory = oapiClientFactory;
         }
-        
+
+        public async Task<ulong> GetGenesisTimeAsync(CancellationToken cancellationToken)
+        {
+            ulong result = 0;
+            await ClientOperationWithRetry(
+                async (oapiClient, innerCancellationToken) =>
+                {
+                    result = await oapiClient.TimeAsync(innerCancellationToken).ConfigureAwait(false);
+                }, cancellationToken).ConfigureAwait(false);
+
+            return result;
+        }
+
+        public async Task<Core2.Containers.Fork> GetNodeForkAsync(CancellationToken cancellationToken)
+        {
+            Response2? result = null;
+            await ClientOperationWithRetry(
+                async (oapiClient, innerCancellationToken) =>
+                {
+                    result = await oapiClient.ForkAsync(innerCancellationToken).ConfigureAwait(false);
+                }, cancellationToken).ConfigureAwait(false);
+
+            Core2.Containers.Fork fork = new Core2.Containers.Fork(
+                new ForkVersion(result!.Fork.Previous_version),
+                new ForkVersion(result!.Fork.Current_version),
+                new Epoch((ulong) result!.Fork.Epoch)
+            );
+
+            return fork;
+        }
+
         // The proxy needs to take care of this (i.e. transparent to worker)
         // Not connected: (remote vs local)
         // connect to beacon node (priority order)
@@ -60,83 +90,35 @@ namespace Nethermind.BeaconNode.OApiClient
         public async Task<string> GetNodeVersionAsync(CancellationToken cancellationToken)
         {
             string? result = null;
-            await ClientOperationWithRetry(async (oapiClient, innerCancellationToken) =>
-            {
-                result = await oapiClient.VersionAsync(innerCancellationToken).ConfigureAwait(false);
-            }, cancellationToken).ConfigureAwait(false);
+            await ClientOperationWithRetry(
+                async (oapiClient, innerCancellationToken) =>
+                {
+                    result = await oapiClient.VersionAsync(innerCancellationToken).ConfigureAwait(false);
+                }, cancellationToken).ConfigureAwait(false);
 
             return result!;
         }
 
-        public async Task<ulong> GetGenesisTimeAsync(CancellationToken cancellationToken)
-        {
-            ulong result = 0;
-            await ClientOperationWithRetry(async (oapiClient, innerCancellationToken) =>
-            {
-                result = await oapiClient.TimeAsync(innerCancellationToken).ConfigureAwait(false);
-            }, cancellationToken).ConfigureAwait(false);
-
-            return result;
-        }
-
         public Task<Syncing> GetSyncingAsync(CancellationToken cancellationToken)
         {
-            throw new System.NotImplementedException();
+            throw new NotImplementedException();
         }
 
-        public async Task<Core2.Containers.Fork> GetNodeForkAsync(CancellationToken cancellationToken)
-        {
-            Response2? result = null;
-            await ClientOperationWithRetry(async (oapiClient, innerCancellationToken) =>
-            {
-                result = await oapiClient.ForkAsync(innerCancellationToken).ConfigureAwait(false);
-            }, cancellationToken).ConfigureAwait(false);
-
-            Core2.Containers.Fork fork = new Core2.Containers.Fork(
-                new Core2.Types.ForkVersion(result!.Fork.Previous_version),
-                new Core2.Types.ForkVersion(result!.Fork.Current_version), 
-                new Epoch((ulong) result!.Fork.Epoch)
-            );
-
-            return fork;
-        }
-
-        public async IAsyncEnumerable<Core2.Api.ValidatorDuty> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys,
-            Epoch epoch, [EnumeratorCancellation] CancellationToken cancellationToken)
-        {
-            IEnumerable<byte[]> validator_pubkeys = validatorPublicKeys.Select(x => x.Bytes);
-            ulong? epochValue = (epoch != Epoch.None) ? (ulong?) epoch : null;
-
-            ICollection<Nethermind.BeaconNode.OApiClient.ValidatorDuty>? result = null;
-            await ClientOperationWithRetry(async (oapiClient, innerCancellationToken) =>
-            {
-                result = await oapiClient.DutiesAsync(validator_pubkeys, epochValue, innerCancellationToken).ConfigureAwait(false);
-            }, cancellationToken).ConfigureAwait(false);
-
-            foreach (var value in result!)
-            {
-                var validatorPublicKey = new BlsPublicKey(value.Validator_pubkey);
-                var proposalSlot = value.Block_proposal_slot.HasValue
-                    ? new Slot(value.Block_proposal_slot.Value)
-                    : Slot.None;
-                var validatorDuty = new Core2.Api.ValidatorDuty(validatorPublicKey, new Slot(value.Attestation_slot),
-                    new Shard(value.Attestation_shard), proposalSlot);
-                yield return validatorDuty;
-            }
-        }
-
-        public async Task<Core2.Containers.BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal, CancellationToken cancellationToken)
+        public async Task<Core2.Containers.BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal,
+            CancellationToken cancellationToken)
         {
             ulong slotValue = (ulong) slot;
             byte[] randaoRevealBytes = randaoReveal.Bytes;
-            
-            BeaconNode.OApiClient.BeaconBlock? result = null;
-            await ClientOperationWithRetry(async (oapiClient, innerCancellationToken) =>
-            {
-                result = await oapiClient.BlockAsync(slotValue, randaoRevealBytes, innerCancellationToken).ConfigureAwait(false);
-            }, cancellationToken).ConfigureAwait(false);
 
-            BeaconNode.OApiClient.BeaconBlock oapiBeaconBlock = result!;
+            BeaconBlock? result = null;
+            await ClientOperationWithRetry(
+                async (oapiClient, innerCancellationToken) =>
+                {
+                    result = await oapiClient.BlockAsync(slotValue, randaoRevealBytes, innerCancellationToken)
+                        .ConfigureAwait(false);
+                }, cancellationToken).ConfigureAwait(false);
+
+            BeaconBlock oapiBeaconBlock = result!;
             Core2.Containers.BeaconBlock beaconBlock = new Core2.Containers.BeaconBlock(
                 new Slot((ulong) oapiBeaconBlock.Slot),
                 new Root(Bytes.FromHexString(oapiBeaconBlock.Parent_root)),
@@ -166,7 +148,7 @@ namespace Nethermind.BeaconNode.OApiClient
                         )
                     ),
                     oapiBeaconBlock.Body.Deposits.Select(x =>
-                        new Core2.Containers.Deposit(
+                        new Deposit(
                             x.Proof.Select(y => new Bytes32(y)),
                             new DepositData(
                                 new BlsPublicKey(x.Data.Pubkey),
@@ -178,7 +160,7 @@ namespace Nethermind.BeaconNode.OApiClient
                     ),
                     oapiBeaconBlock.Body.Voluntary_exits.Select(x =>
                         new SignedVoluntaryExit(
-                        new VoluntaryExit(
+                            new VoluntaryExit(
                                 new Epoch((ulong) x.Epoch),
                                 new ValidatorIndex((ulong) x.Validator_index)
                             ),
@@ -191,22 +173,22 @@ namespace Nethermind.BeaconNode.OApiClient
             return beaconBlock;
         }
 
-        public async Task<bool> PublishBlockAsync(Core2.Crypto.SignedBeaconBlock signedBlock, CancellationToken cancellationToken)
+        public async Task<bool> PublishBlockAsync(SignedBeaconBlock signedBlock, CancellationToken cancellationToken)
         {
             var block = signedBlock.Message;
-            BeaconNode.OApiClient.BeaconBlock data = new BeaconNode.OApiClient.BeaconBlock()
+            BeaconBlock data = new BeaconBlock()
             {
                 Slot = block.Slot,
                 Parent_root = block.ParentRoot.ToString(),
                 State_root = block.StateRoot.ToString(),
-                Body = new BeaconNode.OApiClient.BeaconBlockBody()
+                Body = new BeaconBlockBody()
                 {
                     Randao_reveal = block.Body!.RandaoReveal.AsSpan().ToArray(),
                     Eth1_data = new Eth1_data()
                     {
                         Block_hash = block.Body.Eth1Data.BlockHash.AsSpan().ToArray(),
                         Deposit_count = block.Body.Eth1Data.DepositCount,
-                        Deposit_root = block.Body.Eth1Data.DepositRoot.AsSpan().ToArray() 
+                        Deposit_root = block.Body.Eth1Data.DepositRoot.AsSpan().ToArray()
                     },
                     Graffiti = block.Body.Graffiti.AsSpan().ToArray(),
                     Proposer_slashings = block.Body.ProposerSlashings.Select(x => new Proposer_slashings()
@@ -235,7 +217,7 @@ namespace Nethermind.BeaconNode.OApiClient
                     }).ToList(),
                     Deposits = block.Body.Deposits.Select((x, index) => new Deposits()
                     {
-                        Index = (ulong)index,
+                        Index = (ulong) index,
                         Proof = x.Proof.Select(y => y.AsSpan().ToArray()).ToList(),
                         Data = new Data()
                         {
@@ -247,18 +229,48 @@ namespace Nethermind.BeaconNode.OApiClient
                     }).ToList(),
                 }
             };
-            
-            await ClientOperationWithRetry(async (oapiClient, innerCancellationToken) =>
-            {
-                await oapiClient.Block2Async(data, signedBlock.Signature, innerCancellationToken).ConfigureAwait(false);
-            }, cancellationToken).ConfigureAwait(false);
+
+            await ClientOperationWithRetry(
+                async (oapiClient, innerCancellationToken) =>
+                {
+                    await oapiClient.Block2Async(data, signedBlock.Signature, innerCancellationToken)
+                        .ConfigureAwait(false);
+                }, cancellationToken).ConfigureAwait(false);
 
             // TODO: Parse 202 result separate from 200 result
-            
+
             return true;
         }
 
-        private async Task ClientOperationWithRetry(Func<IBeaconNodeOApiClient, CancellationToken, Task> clientOperation, CancellationToken cancellationToken)
+        public async IAsyncEnumerable<Core2.Api.ValidatorDuty> ValidatorDutiesAsync(
+            IEnumerable<BlsPublicKey> validatorPublicKeys,
+            Epoch epoch, [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            IEnumerable<byte[]> validator_pubkeys = validatorPublicKeys.Select(x => x.Bytes);
+            ulong? epochValue = (epoch != Epoch.None) ? (ulong?) epoch : null;
+
+            ICollection<ValidatorDuty>? result = null;
+            await ClientOperationWithRetry(
+                async (oapiClient, innerCancellationToken) =>
+                {
+                    result = await oapiClient.DutiesAsync(validator_pubkeys, epochValue, innerCancellationToken)
+                        .ConfigureAwait(false);
+                }, cancellationToken).ConfigureAwait(false);
+
+            foreach (var value in result!)
+            {
+                var validatorPublicKey = new BlsPublicKey(value.Validator_pubkey);
+                var proposalSlot = value.Block_proposal_slot.HasValue
+                    ? new Slot(value.Block_proposal_slot.Value)
+                    : Slot.None;
+                var validatorDuty = new Core2.Api.ValidatorDuty(validatorPublicKey, new Slot(value.Attestation_slot),
+                    new Shard(value.Attestation_shard), proposalSlot);
+                yield return validatorDuty;
+            }
+        }
+
+        private async Task ClientOperationWithRetry(
+            Func<IBeaconNodeOApiClient, CancellationToken, Task> clientOperation, CancellationToken cancellationToken)
         {
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -274,7 +286,8 @@ namespace Nethermind.BeaconNode.OApiClient
                     catch (HttpRequestException ex)
                     {
                         // Only null out if the same client is still there (i.e. no one else has replaced)
-                        IBeaconNodeOApiClient? exchangeResult = Interlocked.CompareExchange(ref _oapiClient, null, localClient);
+                        IBeaconNodeOApiClient? exchangeResult =
+                            Interlocked.CompareExchange(ref _oapiClient, null, localClient);
                         if (exchangeResult == localClient)
                         {
                             if (_logger.IsWarn()) Log.NodeConnectionFailed(_logger, localClient.BaseUrl, ex);
@@ -290,7 +303,7 @@ namespace Nethermind.BeaconNode.OApiClient
                     if (_oapiClient is null)
                     {
                         // create new client
-                        _connectionIndex++; 
+                        _connectionIndex++;
                         BeaconNodeConnection beaconNodeConnection = _beaconNodeConnectionOptions.CurrentValue;
                         if (_connectionIndex >= beaconNodeConnection.RemoteUrls.Length)
                         {
@@ -298,13 +311,15 @@ namespace Nethermind.BeaconNode.OApiClient
                             if (_logger.IsWarn())
                                 Log.AllNodeConnectionsFailing(_logger, beaconNodeConnection.RemoteUrls.Length,
                                     beaconNodeConnection.ConnectionFailureLoopMillisecondsDelay, null);
-                            await Task.Delay(beaconNodeConnection.ConnectionFailureLoopMillisecondsDelay, cancellationToken).ConfigureAwait(false);
+                            await Task.Delay(beaconNodeConnection.ConnectionFailureLoopMillisecondsDelay,
+                                cancellationToken).ConfigureAwait(false);
                         }
+
                         string baseUrl = beaconNodeConnection.RemoteUrls[_connectionIndex];
                         if (_logger.IsDebug())
                             LogDebug.AttemptingConnectionToNode(_logger, baseUrl, _connectionIndex, null);
                         IBeaconNodeOApiClient newClient = _oapiClientFactory.CreateClient(baseUrl);
-                        
+
                         // check if it works
                         await clientOperation(newClient, cancellationToken).ConfigureAwait(false);
 
@@ -315,6 +330,7 @@ namespace Nethermind.BeaconNode.OApiClient
                         {
                             _connectionIndex = -1;
                         }
+
                         // exit loop and complete on success
                         break;
                     }
@@ -329,77 +345,77 @@ namespace Nethermind.BeaconNode.OApiClient
                 }
             }
         }
-        
-        private static Core2.Containers.IndexedAttestation MapIndexedAttestation(BeaconNode.OApiClient.IndexedAttestation indexedAttestation)
-        {
-            return new Core2.Containers.IndexedAttestation(
-                indexedAttestation.Custody_bit_0_indices.Select(y => new ValidatorIndex((ulong)y)),
-                MapAttestationData(indexedAttestation.Data),
-                new BlsSignature(Bytes.FromHexString(indexedAttestation.Signature))
-            );
-        }
 
-        private static Core2.Containers.AttestationData MapAttestationData(BeaconNode.OApiClient.AttestationData attestationData)
+        private static Core2.Containers.AttestationData MapAttestationData(AttestationData attestationData)
         {
             // NOTE: This mapping isn't right, spec changes (sharding)
             return new Core2.Containers.AttestationData(
                 Slot.None,
-                CommitteeIndex.None, 
-                new Root(attestationData.Beacon_block_root), 
+                CommitteeIndex.None,
+                new Root(attestationData.Beacon_block_root),
                 new Checkpoint(
-                    new Epoch((ulong)attestationData.Source_epoch), 
-                    new Root(attestationData.Source_root) 
+                    new Epoch((ulong) attestationData.Source_epoch),
+                    new Root(attestationData.Source_root)
                 ),
                 new Checkpoint(
-                    new Epoch((ulong)attestationData.Target_epoch), 
-                    new Root(attestationData.Target_root) 
+                    new Epoch((ulong) attestationData.Target_epoch),
+                    new Root(attestationData.Target_root)
                 )
             );
         }
 
-        private static Core2.Containers.BeaconBlockHeader MapBeaconBlockHeader(BeaconNode.OApiClient.BeaconBlockHeader value)
-        {
-            return new Core2.Containers.BeaconBlockHeader(
-                new Slot((ulong)value.Slot),
-                new Root(Bytes.FromHexString(value.Parent_root)), 
-                new Root(Bytes.FromHexString(value.State_root)), 
-                new Root(Bytes.FromHexString(value.Body_root))
-            );
-        }
-     
-        private static BeaconNode.OApiClient.IndexedAttestation MapIndexedAttestation(Core2.Containers.IndexedAttestation indexedAttestation)
-        {
-            return new BeaconNode.OApiClient.IndexedAttestation()
-            {
-                Signature = indexedAttestation.Signature.ToString(),
-                Custody_bit_0_indices = indexedAttestation.AttestingIndices.Select(y => (int)y).ToList(),
-                Custody_bit_1_indices = new int[0],
-                Data = MapAttestationData(indexedAttestation.Data)
-            };
-        }
-
-        private static BeaconNode.OApiClient.AttestationData MapAttestationData(Core2.Containers.AttestationData attestationData)
+        private static AttestationData MapAttestationData(Core2.Containers.AttestationData attestationData)
         {
             // NOTE: This mapping isn't right, spec changes (sharding)
-            return new BeaconNode.OApiClient.AttestationData()
+            return new AttestationData()
             {
                 Beacon_block_root = attestationData.BeaconBlockRoot.AsSpan().ToArray(),
-                Crosslink = new BeaconNode.OApiClient.Crosslink(),
+                Crosslink = new Crosslink(),
                 Source_epoch = attestationData.Source.Epoch,
                 Source_root = attestationData.Source.Root.AsSpan().ToArray(),
-                Target_epoch =  attestationData.Target.Epoch,
+                Target_epoch = attestationData.Target.Epoch,
                 Target_root = attestationData.Target.Root.AsSpan().ToArray()
             };
         }
 
-        private static BeaconNode.OApiClient.BeaconBlockHeader MapBeaconBlockHeader(Core2.Containers.BeaconBlockHeader value)
+        private static Core2.Containers.BeaconBlockHeader MapBeaconBlockHeader(BeaconBlockHeader value)
         {
-            return new BeaconNode.OApiClient.BeaconBlockHeader()
+            return new Core2.Containers.BeaconBlockHeader(
+                new Slot((ulong) value.Slot),
+                new Root(Bytes.FromHexString(value.Parent_root)),
+                new Root(Bytes.FromHexString(value.State_root)),
+                new Root(Bytes.FromHexString(value.Body_root))
+            );
+        }
+
+        private static BeaconBlockHeader MapBeaconBlockHeader(Core2.Containers.BeaconBlockHeader value)
+        {
+            return new BeaconBlockHeader()
             {
                 Body_root = value.BodyRoot.ToString(),
                 Parent_root = value.ParentRoot.ToString(),
                 Slot = value.Slot,
                 State_root = value.StateRoot.ToString()
+            };
+        }
+
+        private static Core2.Containers.IndexedAttestation MapIndexedAttestation(IndexedAttestation indexedAttestation)
+        {
+            return new Core2.Containers.IndexedAttestation(
+                indexedAttestation.Custody_bit_0_indices.Select(y => new ValidatorIndex((ulong) y)),
+                MapAttestationData(indexedAttestation.Data),
+                new BlsSignature(Bytes.FromHexString(indexedAttestation.Signature))
+            );
+        }
+
+        private static IndexedAttestation MapIndexedAttestation(Core2.Containers.IndexedAttestation indexedAttestation)
+        {
+            return new IndexedAttestation()
+            {
+                Signature = indexedAttestation.Signature.ToString(),
+                Custody_bit_0_indices = indexedAttestation.AttestingIndices.Select(y => (int) y).ToList(),
+                Custody_bit_1_indices = new int[0],
+                Data = MapAttestationData(indexedAttestation.Data)
             };
         }
     }

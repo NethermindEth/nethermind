@@ -94,14 +94,14 @@ namespace Nethermind.Core2.Containers
         }
 
         public BeaconState(
-            ulong genesisTime, 
+            ulong genesisTime,
             Fork fork,
-            Eth1Data eth1Data, 
+            Eth1Data eth1Data,
             BeaconBlockHeader latestBlockHeader,
             Bytes32[] randaoMixes,
-            uint slotsPerHistoricalRoot, 
-            ulong epochsPerHistoricalVector, 
-            ulong epochsPerSlashingsVector, 
+            uint slotsPerHistoricalRoot,
+            ulong epochsPerHistoricalVector,
+            ulong epochsPerSlashingsVector,
             int justificationBitsLength)
         {
             GenesisTime = genesisTime;
@@ -114,11 +114,11 @@ namespace Nethermind.Core2.Containers
             // Default/empty values:
             _validators = new List<Validator>();
             _balances = new List<Gwei>();
-            _blockRoots = Enumerable.Repeat(Root.Zero, (int)slotsPerHistoricalRoot).ToArray();
-            _stateRoots = Enumerable.Repeat(Root.Zero, (int)slotsPerHistoricalRoot).ToArray();
+            _blockRoots = Enumerable.Repeat(Root.Zero, (int) slotsPerHistoricalRoot).ToArray();
+            _stateRoots = Enumerable.Repeat(Root.Zero, (int) slotsPerHistoricalRoot).ToArray();
             _historicalRoots = new List<Root>();
             //_randaoMixes = Enumerable.Repeat(Bytes32.Zero, (int)epochsPerHistoricalVector).ToArray();
-            _slashings = Enumerable.Repeat(Gwei.Zero, (int)epochsPerSlashingsVector).ToArray();
+            _slashings = Enumerable.Repeat(Gwei.Zero, (int) epochsPerSlashingsVector).ToArray();
             _previousEpochAttestations = new List<PendingAttestation>();
             _currentEpochAttestations = new List<PendingAttestation>();
             JustificationBits = new BitArray(justificationBitsLength);
@@ -127,11 +127,20 @@ namespace Nethermind.Core2.Containers
             FinalizedCheckpoint = new Checkpoint(new Epoch(0), Root.Zero);
         }
 
-        public IReadOnlyList<Gwei> Balances { get { return _balances; } }
+        public IReadOnlyList<Gwei> Balances
+        {
+            get { return _balances; }
+        }
 
-        public IReadOnlyList<Root> BlockRoots { get { return _blockRoots; } }
+        public IReadOnlyList<Root> BlockRoots
+        {
+            get { return _blockRoots; }
+        }
 
-        public IReadOnlyList<PendingAttestation> CurrentEpochAttestations { get { return _currentEpochAttestations; } }
+        public IReadOnlyList<PendingAttestation> CurrentEpochAttestations
+        {
+            get { return _currentEpochAttestations; }
+        }
 
         public Checkpoint CurrentJustifiedCheckpoint { get; private set; }
 
@@ -146,21 +155,53 @@ namespace Nethermind.Core2.Containers
 
         public BeaconBlockHeader LatestBlockHeader { get; private set; }
 
-        public IReadOnlyList<PendingAttestation> PreviousEpochAttestations { get { return _previousEpochAttestations; } }
+        public IReadOnlyList<PendingAttestation> PreviousEpochAttestations
+        {
+            get { return _previousEpochAttestations; }
+        }
 
         //public IReadOnlyList<Crosslink> PreviousCrosslinks { get { return _previousCrosslinks; } }
         public Checkpoint PreviousJustifiedCheckpoint { get; private set; }
 
-        public IReadOnlyList<Bytes32> RandaoMixes { get { return _randaoMixes; } }
+        public IReadOnlyList<Bytes32> RandaoMixes
+        {
+            get { return _randaoMixes; }
+        }
 
-        public IReadOnlyList<Gwei> Slashings { get { return _slashings; } }
+        public IReadOnlyList<Gwei> Slashings
+        {
+            get { return _slashings; }
+        }
 
         public Slot Slot { get; private set; }
 
-        public IReadOnlyList<Root> StateRoots { get { return _stateRoots; } }
+        public IReadOnlyList<Root> StateRoots
+        {
+            get { return _stateRoots; }
+        }
 
         //public Shard StartShard { get; }
-        public IReadOnlyList<Validator> Validators { get { return _validators; } }
+        public IReadOnlyList<Validator> Validators
+        {
+            get { return _validators; }
+        }
+
+        public void AddCurrentAttestation(PendingAttestation attestation) => _currentEpochAttestations.Add(attestation);
+
+        public void AddEth1DataVote(Eth1Data eth1Data) => _eth1DataVotes.Add(eth1Data);
+
+        public void AddHistoricalRoot(Root historicalRoot) => _historicalRoots.Add(historicalRoot);
+
+        public void AddPreviousAttestation(PendingAttestation attestation) =>
+            _previousEpochAttestations.Add(attestation);
+
+        public void AddValidatorWithBalance(Validator validator, Gwei amount)
+        {
+            _validators.Add(validator);
+            _balances.Add(amount);
+        }
+
+        public void ClearEth1DataVotes() => _eth1DataVotes.Clear();
 
         /// <summary>
         /// Creates a deep copy of the object.
@@ -188,33 +229,15 @@ namespace Nethermind.Core2.Containers
                 Checkpoint.Clone(other.PreviousJustifiedCheckpoint),
                 Checkpoint.Clone(other.CurrentJustifiedCheckpoint),
                 Checkpoint.Clone(other.FinalizedCheckpoint)
-                );
+            );
             return clone;
         }
-
-        public void AddCurrentAttestation(PendingAttestation attestation) => _currentEpochAttestations.Add(attestation);
-
-        public void AddEth1DataVote(Eth1Data eth1Data) => _eth1DataVotes.Add(eth1Data);
-
-        public void AddHistoricalRoot(Root historicalRoot) => _historicalRoots.Add(historicalRoot);
-
-        public void AddPreviousAttestation(PendingAttestation attestation) => _previousEpochAttestations.Add(attestation);
-
-        public void AddValidatorWithBalance(Validator validator, Gwei amount)
-        {
-            _validators.Add(validator);
-            _balances.Add(amount);
-        }
-
-        public void SetGenesisTime(ulong genesisTime) => GenesisTime = genesisTime;
-
-        public void ClearEth1DataVotes() => _eth1DataVotes.Clear();
 
         public void IncreaseEth1DepositIndex() => Eth1DepositIndex++;
 
         public void IncreaseSlot()
         {
-            Slot = (Slot)(Slot + 1UL);
+            Slot = (Slot) (Slot + 1UL);
         }
 
         public void JustificationBitsShift()
@@ -224,7 +247,8 @@ namespace Nethermind.Core2.Containers
             JustificationBits.LeftShift(1);
         }
 
-        public void SetBalance(ValidatorIndex validatorIndex, Gwei balance) => _balances[(int)validatorIndex] = balance;
+        public void SetBalance(ValidatorIndex validatorIndex, Gwei balance) =>
+            _balances[(int) validatorIndex] = balance;
 
         public void SetBlockRoot(Slot index, Root blockRoot) => _blockRoots[index] = blockRoot;
 
@@ -241,6 +265,8 @@ namespace Nethermind.Core2.Containers
         public void SetEth1DepositIndex(ulong value) => Eth1DepositIndex = value;
 
         public void SetFinalizedCheckpoint(Checkpoint checkpoint) => FinalizedCheckpoint = checkpoint;
+
+        public void SetGenesisTime(ulong genesisTime) => GenesisTime = genesisTime;
 
         public void SetJustificationBits(BitArray justificationBits)
         {
@@ -266,6 +292,7 @@ namespace Nethermind.Core2.Containers
 
         public void SetStateRoot(Slot index, Root stateRoot) => _stateRoots[index] = stateRoot;
 
-        public override string ToString() => $"s={Slot}_hs={LatestBlockHeader.Slot}_p={LatestBlockHeader.ParentRoot.ToString().Substring(0, 10)}_st={LatestBlockHeader.StateRoot.ToString().Substring(0, 10)}_bd={LatestBlockHeader.BodyRoot.ToString().Substring(0, 10)}";
+        public override string ToString() =>
+            $"s={Slot}_hs={LatestBlockHeader.Slot}_p={LatestBlockHeader.ParentRoot.ToString().Substring(0, 10)}_st={LatestBlockHeader.StateRoot.ToString().Substring(0, 10)}_bd={LatestBlockHeader.BodyRoot.ToString().Substring(0, 10)}";
     }
 }

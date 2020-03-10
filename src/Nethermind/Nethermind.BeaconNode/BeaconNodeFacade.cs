@@ -20,10 +20,8 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Nethermind.BeaconNode.Services;
 using Nethermind.Core2;
 using Nethermind.Core2.Api;
-using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -33,13 +31,13 @@ namespace Nethermind.BeaconNode
 {
     public class BeaconNodeFacade : IBeaconNodeApi
     {
-        private readonly ILogger<BeaconNodeFacade> _logger;
+        private readonly BlockProducer _blockProducer;
         private readonly IClientVersion _clientVersion;
         private readonly ForkChoice _forkChoice;
-        private readonly IStore _store;
+        private readonly ILogger<BeaconNodeFacade> _logger;
         private readonly INetworkPeering _networkPeering;
+        private readonly IStore _store;
         private readonly ValidatorAssignments _validatorAssignments;
-        private readonly BlockProducer _blockProducer;
 
         public BeaconNodeFacade(
             ILogger<BeaconNodeFacade> logger,
@@ -59,20 +57,6 @@ namespace Nethermind.BeaconNode
             _blockProducer = blockProducer;
         }
 
-        public Task<string> GetNodeVersionAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                var versionDescription = _clientVersion.Description;
-                return Task.FromResult(versionDescription);
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsWarn()) Log.ApiErrorGetVersion(_logger, ex);
-                throw;
-            }
-        }
-
         public async Task<ulong> GetGenesisTimeAsync(CancellationToken cancellationToken)
         {
             try
@@ -83,6 +67,34 @@ namespace Nethermind.BeaconNode
             catch (Exception ex)
             {
                 if (_logger.IsWarn()) Log.ApiErrorGetGenesisTime(_logger, ex);
+                throw;
+            }
+        }
+
+        public async Task<Fork> GetNodeForkAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                BeaconState state = await GetHeadStateAsync().ConfigureAwait(false);
+                return state.Fork;
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsWarn()) Log.ApiErrorGetFork(_logger, ex);
+                throw;
+            }
+        }
+
+        public Task<string> GetNodeVersionAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                var versionDescription = _clientVersion.Description;
+                return Task.FromResult(versionDescription);
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsWarn()) Log.ApiErrorGetVersion(_logger, ex);
                 throw;
             }
         }
@@ -106,43 +118,8 @@ namespace Nethermind.BeaconNode
             return new Syncing(isSyncing, new SyncingStatus(startingSlot, currentSlot, highestSlot));
         }
 
-        public async Task<Fork> GetNodeForkAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                BeaconState state = await GetHeadStateAsync().ConfigureAwait(false);
-                return state.Fork;
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsWarn()) Log.ApiErrorGetFork(_logger, ex);
-                throw;
-            }
-        }
-
-        public async IAsyncEnumerable<ValidatorDuty> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys,
-            Epoch epoch, [EnumeratorCancellation] CancellationToken cancellationToken)
-        {
-            // TODO: Rather than check one by one (each of which loops through potentially all slots for the epoch), optimise by either checking multiple, or better possibly caching or pre-calculating
-            foreach (BlsPublicKey validatorPublicKey in validatorPublicKeys)
-            {
-                ValidatorDuty validatorDuty;
-                try
-                {
-                    validatorDuty =
-                        await _validatorAssignments.GetValidatorDutyAsync(validatorPublicKey, epoch)
-                            .ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    if (_logger.IsWarn()) Log.ApiErrorValidatorDuties(_logger, ex);
-                    throw;
-                }
-                yield return validatorDuty;
-            }
-        }
-
-        public async Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal, CancellationToken cancellationToken)
+        public async Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal,
+            CancellationToken cancellationToken)
         {
             try
             {
@@ -173,10 +150,33 @@ namespace Nethermind.BeaconNode
             {
                 if (_logger.IsWarn()) Log.BlockNotAcceptedLocally(_logger, signedBlock.Message, ex);
             }
-            
+
             await _networkPeering.PublishBeaconBlockAsync(signedBlock).ConfigureAwait(false);
-            
+
             return acceptedLocally;
+        }
+
+        public async IAsyncEnumerable<ValidatorDuty> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys,
+            Epoch epoch, [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            // TODO: Rather than check one by one (each of which loops through potentially all slots for the epoch), optimise by either checking multiple, or better possibly caching or pre-calculating
+            foreach (BlsPublicKey validatorPublicKey in validatorPublicKeys)
+            {
+                ValidatorDuty validatorDuty;
+                try
+                {
+                    validatorDuty =
+                        await _validatorAssignments.GetValidatorDutyAsync(validatorPublicKey, epoch)
+                            .ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    if (_logger.IsWarn()) Log.ApiErrorValidatorDuties(_logger, ex);
+                    throw;
+                }
+
+                yield return validatorDuty;
+            }
         }
 
         private async Task<BeaconState> GetHeadStateAsync()

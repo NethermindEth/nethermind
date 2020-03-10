@@ -14,24 +14,23 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.BeaconNode.Peering
 {
     public class PeerSyncStatus
     {
-        private object _highestPeerLock = new object();
-        
+        private readonly object _highestPeerLock = new object();
+
         public Slot HighestPeerSlot { get; private set; }
-        
+
         public Slot SyncStartingSlot { get; private set; }
 
         public void StartSync(Slot slot)
         {
             SyncStartingSlot = slot;
         }
-        
+
         public void UpdateMostRecentSlot(Slot slot)
         {
             if (slot > HighestPeerSlot)
