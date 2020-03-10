@@ -22,6 +22,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.Services;
 using Nethermind.Core2;
+using Nethermind.Core2.Api;
 using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
@@ -35,7 +36,7 @@ namespace Nethermind.BeaconNode
         private readonly ILogger<BeaconNodeFacade> _logger;
         private readonly IClientVersion _clientVersion;
         private readonly ForkChoice _forkChoice;
-        private readonly IStoreProvider _storeProvider;
+        private readonly IStore _store;
         private readonly INetworkPeering _networkPeering;
         private readonly ValidatorAssignments _validatorAssignments;
         private readonly BlockProducer _blockProducer;
@@ -44,7 +45,7 @@ namespace Nethermind.BeaconNode
             ILogger<BeaconNodeFacade> logger,
             IClientVersion clientVersion,
             ForkChoice forkChoice,
-            IStoreProvider storeProvider,
+            IStore store,
             INetworkPeering networkPeering,
             ValidatorAssignments validatorAssignments,
             BlockProducer blockProducer)
@@ -52,7 +53,7 @@ namespace Nethermind.BeaconNode
             _logger = logger;
             _clientVersion = clientVersion;
             _forkChoice = forkChoice;
-            _storeProvider = storeProvider;
+            _store = store;
             _networkPeering = networkPeering;
             _validatorAssignments = validatorAssignments;
             _blockProducer = blockProducer;
@@ -86,9 +87,23 @@ namespace Nethermind.BeaconNode
             }
         }
 
-        public Task<bool> GetIsSyncingAsync(CancellationToken cancellationToken)
+        public async Task<Syncing> GetSyncingAsync(CancellationToken cancellationToken)
         {
-            throw new System.NotImplementedException();
+            Slot currentSlot = Slot.Zero;
+            if (_store.IsInitialized)
+            {
+                Root head = await _forkChoice.GetHeadAsync(_store).ConfigureAwait(false);
+                BeaconBlock block = await _store.GetBlockAsync(head).ConfigureAwait(false);
+                currentSlot = block.Slot;
+            }
+
+            Slot highestSlot = Slot.Max(currentSlot, _networkPeering.HighestPeerSlot);
+
+            Slot startingSlot = _networkPeering.SyncStartingSlot;
+
+            bool isSyncing = highestSlot > currentSlot;
+
+            return new Syncing(isSyncing, new SyncingStatus(startingSlot, currentSlot, highestSlot));
         }
 
         public async Task<Fork> GetNodeForkAsync(CancellationToken cancellationToken)
@@ -142,17 +157,15 @@ namespace Nethermind.BeaconNode
 
         public async Task<bool> PublishBlockAsync(SignedBeaconBlock signedBlock, CancellationToken cancellationToken)
         {
-            if (!_storeProvider.TryGetStore(out IStore? retrievedStore))
+            if (!_store.IsInitialized)
             {
                 throw new Exception("Beacon chain is currently syncing or waiting for genesis.");
             }
 
-            IStore store = retrievedStore!;
-
             bool acceptedLocally = false;
             try
             {
-                await _forkChoice.OnBlockAsync(store, signedBlock).ConfigureAwait(false);
+                await _forkChoice.OnBlockAsync(_store, signedBlock).ConfigureAwait(false);
                 // TODO: validate as per honest validator spec and return true/false
                 acceptedLocally = true;
             }
@@ -168,14 +181,13 @@ namespace Nethermind.BeaconNode
 
         private async Task<BeaconState> GetHeadStateAsync()
         {
-            if (!_storeProvider.TryGetStore(out IStore? retrievedStore))
+            if (!_store.IsInitialized)
             {
                 throw new Exception("Beacon chain is currently syncing or waiting for genesis.");
             }
 
-            IStore store = retrievedStore!;
-            Root head = await _forkChoice.GetHeadAsync(store).ConfigureAwait(false);
-            BeaconState state = await store.GetBlockStateAsync(head).ConfigureAwait(false);
+            Root head = await _forkChoice.GetHeadAsync(_store).ConfigureAwait(false);
+            BeaconState state = await _store.GetBlockStateAsync(head).ConfigureAwait(false);
 
             return state;
         }

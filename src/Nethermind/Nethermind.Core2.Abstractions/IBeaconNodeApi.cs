@@ -25,6 +25,7 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core2.Api;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -41,7 +42,7 @@ namespace Nethermind.Core2
     {
         Task<string> GetNodeVersionAsync(CancellationToken cancellationToken);
         Task<ulong> GetGenesisTimeAsync(CancellationToken cancellationToken);
-        Task<bool> GetIsSyncingAsync(CancellationToken cancellationToken);
+        Task<Syncing> GetSyncingAsync(CancellationToken cancellationToken);
         Task<Fork> GetNodeForkAsync(CancellationToken cancellationToken);
         IAsyncEnumerable<ValidatorDuty> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys, Epoch epoch, CancellationToken cancellationToken);
         Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal, CancellationToken cancellationToken);

@@ -23,6 +23,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2.Configuration;
 using Nethermind.Core2;
+using Nethermind.Core2.Api;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;

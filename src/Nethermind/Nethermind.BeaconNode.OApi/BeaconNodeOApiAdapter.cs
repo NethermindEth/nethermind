@@ -233,7 +233,7 @@ namespace Nethermind.BeaconNode.OApi
         public async Task<Response> SyncingAsync()
         {
             Response response = new Response();
-            response.Is_syncing = await _beaconNode.GetIsSyncingAsync(CancellationToken.None);
+            //response.Is_syncing = await _beaconNode.GetSyncingAsync(CancellationToken.None);
             response.Sync_status = new SyncingStatus();
             //response.Sync_status.Current_slot =
             return response;

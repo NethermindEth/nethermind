@@ -47,6 +47,7 @@ namespace Nethermind.BeaconNode.Peering
         private readonly ILogger _logger;
         private const string MothraDirectory = "mothra";
         private readonly IMothraLibp2p _mothraLibp2p;
+        private readonly PeerSyncStatus _peerSyncStatus;
         private readonly IOptionsMonitor<MothraConfiguration> _mothraConfigurationOptions;
         private readonly IStore _store;
         private string? _logDirectoryPath;
@@ -60,6 +61,7 @@ namespace Nethermind.BeaconNode.Peering
             IFileSystem fileSystem,
             IOptionsMonitor<MothraConfiguration> mothraConfigurationOptions,
             IMothraLibp2p mothraLibp2p,
+            PeerSyncStatus peerSyncStatus,
             ForkChoice forkChoice,
             IStore store)
         {
@@ -70,6 +72,7 @@ namespace Nethermind.BeaconNode.Peering
             _fileSystem = fileSystem;
             _mothraConfigurationOptions = mothraConfigurationOptions;
             _mothraLibp2p = mothraLibp2p;
+            _peerSyncStatus = peerSyncStatus;
             _forkChoice = forkChoice;
             _store = store;
             _jsonSerializerOptions = new JsonSerializerOptions {WriteIndented = true};
@@ -192,6 +195,10 @@ namespace Nethermind.BeaconNode.Peering
                         await JsonSerializer.SerializeAsync(fileStream, signedBeaconBlock, _jsonSerializerOptions).ConfigureAwait(false);
                     }
                 }
+
+                // Update the most recent slot seen (even if we can't add it to the chain yet, e.g. if we are missing prior blocks)
+                // Note: a peer could lie and send a signed block that isn't part of the chain (but it could like on status as well)
+                _peerSyncStatus.UpdateMostRecentSlot(signedBeaconBlock.Message.Slot);
                 
                 await _forkChoice.OnBlockAsync(_store, signedBeaconBlock).ConfigureAwait(false);
             }

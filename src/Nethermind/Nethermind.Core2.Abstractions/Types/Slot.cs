@@ -130,6 +130,11 @@ namespace Nethermind.Core2.Types
             return (int) slot.Number;
         }
         
+        public static Slot Max(Slot val1, Slot val2)
+        {
+            return val1 >= val2 ? val1 : val2;
+        }
+        
         public static Slot Min(Slot val1, Slot val2)
         {
             return val1 <= val2 ? val1 : val2;

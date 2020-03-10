@@ -29,6 +29,7 @@ using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.BeaconNode.OApiClient.Configuration;
+using Nethermind.Core2.Api;
 using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode.OApiClient
@@ -78,7 +79,7 @@ namespace Nethermind.BeaconNode.OApiClient
             return result;
         }
 
-        public Task<bool> GetIsSyncingAsync(CancellationToken cancellationToken)
+        public Task<Syncing> GetSyncingAsync(CancellationToken cancellationToken)
         {
             throw new System.NotImplementedException();
         }
@@ -100,7 +101,7 @@ namespace Nethermind.BeaconNode.OApiClient
             return fork;
         }
 
-        public async IAsyncEnumerable<Core2.ValidatorDuty> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys,
+        public async IAsyncEnumerable<Core2.Api.ValidatorDuty> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys,
             Epoch epoch, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             IEnumerable<byte[]> validator_pubkeys = validatorPublicKeys.Select(x => x.Bytes);
@@ -118,7 +119,7 @@ namespace Nethermind.BeaconNode.OApiClient
                 var proposalSlot = value.Block_proposal_slot.HasValue
                     ? new Slot(value.Block_proposal_slot.Value)
                     : Slot.None;
-                var validatorDuty = new Core2.ValidatorDuty(validatorPublicKey, new Slot(value.Attestation_slot),
+                var validatorDuty = new Core2.Api.ValidatorDuty(validatorPublicKey, new Slot(value.Attestation_slot),
                     new Shard(value.Attestation_shard), proposalSlot);
                 yield return validatorDuty;
             }
