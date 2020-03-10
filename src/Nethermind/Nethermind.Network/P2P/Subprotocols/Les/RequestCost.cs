@@ -14,37 +14,19 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Stats.Model
+using System;
+namespace Nethermind.Network.P2P.Subprotocols.Les
 {
-    public enum NodeStatsEventType
+    public class RequestCostItem
     {
-        DiscoveryPingOut,
-        DiscoveryPingIn,
-        DiscoveryPongOut,
-        DiscoveryPongIn,
-        DiscoveryNeighboursOut,
-        DiscoveryNeighboursIn,
-        DiscoveryFindNodeOut,
-        DiscoveryFindNodeIn,
-
-        P2PPingIn,
-        P2PPingOut,
-
-        NodeDiscovered,
-        ConnectionEstablished,
-        ConnectionFailed,
-        HandshakeCompleted,
-        P2PInitialized,
-        Eth62Initialized,
-        LesInitialized,
-        SyncInitFailed,
-        SyncInitCancelled,
-        SyncInitCompleted,
-        SyncStarted,
-        SyncCancelled,
-        SyncFailed,
-        SyncCompleted,
-
-        Disconnect
+        public int MessageCode;
+        public int BaseCost;
+        public int RequestCost;
+        public RequestCostItem(int messageCode, int baseCost, int requestCost)
+        {
+            MessageCode = messageCode;
+            BaseCost = baseCost;
+            RequestCost = requestCost;
+        }
     }
 }
