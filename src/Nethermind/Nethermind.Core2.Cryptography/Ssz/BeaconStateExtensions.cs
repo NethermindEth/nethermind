@@ -24,10 +24,10 @@ namespace Nethermind.Core2.Cryptography.Ssz
 {
     public static class BeaconStateExtensions
     {
-        public static Hash32 HashTreeRoot(this BeaconState item, ulong historicalRootsLimit, ulong slotsPerEth1VotingPeriod, ulong validatorRegistryLimit, ulong maximumAttestationsPerEpoch, ulong maximumValidatorsPerCommittee)
+        public static Root HashTreeRoot(this BeaconState item, ulong historicalRootsLimit, ulong slotsPerEth1VotingPeriod, ulong validatorRegistryLimit, ulong maximumAttestationsPerEpoch, ulong maximumValidatorsPerCommittee)
         {
             var tree = new SszTree(item.ToSszContainer(historicalRootsLimit, slotsPerEth1VotingPeriod, validatorRegistryLimit, maximumAttestationsPerEpoch, maximumValidatorsPerCommittee));
-            return new Hash32(tree.HashTreeRoot());
+            return new Root(tree.HashTreeRoot());
         }
 
         public static SszContainer ToSszContainer(this BeaconState item, ulong historicalRootsLimit, ulong slotsPerEth1VotingPeriod, ulong validatorRegistryLimit, ulong maximumAttestationsPerEpoch, ulong maximumValidatorsPerCommittee)

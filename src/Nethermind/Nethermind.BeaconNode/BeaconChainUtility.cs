@@ -34,18 +34,24 @@ namespace Nethermind.BeaconNode
         private readonly ICryptographyService _cryptographyService;
         private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
         private readonly ILogger _logger;
+        private readonly ChainConstants _chainConstants;
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
+        private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
         public BeaconChainUtility(ILogger<BeaconChainUtility> logger,
+            ChainConstants chainConstants,
             IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
+            IOptionsMonitor<InitialValues> initialValueOptions,
             IOptionsMonitor<GweiValues> gweiValueOptions,
             IOptionsMonitor<TimeParameters> timeParameterOptions,
             ICryptographyService cryptographyService)
         {
             _cryptographyService = cryptographyService;
             _logger = logger;
+            _chainConstants = chainConstants;
             _miscellaneousParameterOptions = miscellaneousParameterOptions;
+            _initialValueOptions = initialValueOptions;
             _gweiValueOptions = gweiValueOptions;
             _timeParameterOptions = timeParameterOptions;
         }
@@ -61,7 +67,7 @@ namespace Nethermind.BeaconNode
         /// <summary>
         /// Return the committee corresponding to ``indices``, ``seed``, ``index``, and committee ``count``.
         /// </summary>
-        public IReadOnlyList<ValidatorIndex> ComputeCommittee(IList<ValidatorIndex> indices, Hash32 seed, ulong index, ulong count)
+        public IReadOnlyList<ValidatorIndex> ComputeCommittee(IList<ValidatorIndex> indices, Bytes32 seed, ulong index, ulong count)
         {
             ulong start = (ulong) indices.Count * index / count;
             ulong end = (ulong) indices.Count * (index + 1) / count;
@@ -79,11 +85,15 @@ namespace Nethermind.BeaconNode
         /// <summary>
         /// Returns the domain for the 'domain_type' and 'fork_version'
         /// </summary>
-        public Domain ComputeDomain(DomainType domainType, ForkVersion forkVersion = new ForkVersion())
+        public Domain ComputeDomain(DomainType domainType, ForkVersion? forkVersion = null)
         {
+            if (forkVersion == null)
+            {
+                forkVersion = _initialValueOptions.CurrentValue.GenesisForkVersion;
+            }
             Span<byte> combined = stackalloc byte[Domain.Length];
             domainType.AsSpan().CopyTo(combined);
-            forkVersion.AsSpan().CopyTo(combined.Slice(DomainType.Length));
+            forkVersion.Value.AsSpan().CopyTo(combined.Slice(DomainType.Length));
             return new Domain(combined);
         }
 
@@ -98,7 +108,7 @@ namespace Nethermind.BeaconNode
         /// <summary>
         /// Return from ``indices`` a random index sampled by effective balance.
         /// </summary>
-        public ValidatorIndex ComputeProposerIndex(BeaconState state, IList<ValidatorIndex> indices, Hash32 seed)
+        public ValidatorIndex ComputeProposerIndex(BeaconState state, IList<ValidatorIndex> indices, Bytes32 seed)
         {
             if (!indices.Any())
             {
@@ -116,7 +126,7 @@ namespace Nethermind.BeaconNode
                 ValidatorIndex candidateIndex = indices[(int) shuffledIndex];
 
                 BinaryPrimitives.WriteUInt64LittleEndian(randomInputBytes.Slice(32), index / 32);
-                Hash32 randomHash = _cryptographyService.Hash(randomInputBytes);
+                Bytes32 randomHash = _cryptographyService.Hash(randomInputBytes);
                 byte random = randomHash.AsSpan()[(int) (index % 32)];
 
                 Gwei effectiveBalance = state.Validators[(int) candidateIndex].EffectiveBalance;
@@ -133,7 +143,7 @@ namespace Nethermind.BeaconNode
         /// <summary>
         /// Return the shuffled validator index corresponding to ``seed`` (and ``index_count``).
         /// </summary>
-        public ValidatorIndex ComputeShuffledIndex(ValidatorIndex index, ulong indexCount, Hash32 seed)
+        public ValidatorIndex ComputeShuffledIndex(ValidatorIndex index, ulong indexCount, Bytes32 seed)
         {
             if (index >= indexCount)
             {
@@ -151,7 +161,7 @@ namespace Nethermind.BeaconNode
             {
                 byte roundByte = (byte) (currentRound & 0xFF);
                 pivotHashInput[32] = roundByte;
-                Hash32 pivotHash = _cryptographyService.Hash(pivotHashInput);
+                Bytes32 pivotHash = _cryptographyService.Hash(pivotHashInput);
                 ReadOnlySpan<byte> pivotBytes = pivotHash.AsSpan().Slice(0, 8);
                 ValidatorIndex pivot = BinaryPrimitives.ReadUInt64LittleEndian(pivotBytes) % indexCount;
 
@@ -161,7 +171,7 @@ namespace Nethermind.BeaconNode
 
                 sourceHashInput[32] = roundByte;
                 BinaryPrimitives.WriteUInt32LittleEndian(sourceHashInput.Slice(33), (uint)position / 256);
-                Hash32 source = _cryptographyService.Hash(sourceHashInput.ToArray());
+                Bytes32 source = _cryptographyService.Hash(sourceHashInput.ToArray());
 
                 byte flipByte = source.AsSpan()[(int)((position % 256) / 8)];
 
@@ -174,6 +184,15 @@ namespace Nethermind.BeaconNode
             }
 
             return index;
+        }
+
+        /// <summary>
+        /// Return the signing root of an object by calculating the root of the object-domain tree.
+        /// </summary>
+        public Root ComputeSigningRoot(Root objectRoot, Domain domain)
+        {
+            SigningRoot domainWrappedObject = new SigningRoot(objectRoot, domain);
+            return _cryptographyService.HashTreeRoot(domainWrappedObject);
         }
 
         /// <summary>
@@ -191,6 +210,26 @@ namespace Nethermind.BeaconNode
         {
             return validator.ActivationEpoch <= epoch
                    && epoch < validator.ExitEpoch;
+        }
+
+        /// <summary>
+        /// Check if ``validator`` is eligible for activation.
+        /// </summary>
+        public bool IsEligibleForActivation(BeaconState state, Validator validator)
+        {
+            // Placement in queue is finalized            
+            return validator.ActivationEligibilityEpoch <= state.FinalizedCheckpoint.Epoch
+                   // Has not yet been activated
+                   && validator.ActivationEpoch == _chainConstants.FarFutureEpoch;
+        }
+
+        /// <summary>
+        /// Check if ``validator`` is eligible to be placed into the activation queue.
+        /// </summary>
+        public bool IsEligibleForActivationQueue(Validator validator)
+        {
+            return validator.ActivationEligibilityEpoch == _chainConstants.FarFutureEpoch
+                   && validator.EffectiveBalance == _gweiValueOptions.CurrentValue.MaximumEffectiveBalance;
         }
 
         /// <summary>
@@ -229,26 +268,46 @@ namespace Nethermind.BeaconNode
                 return false;
             }
 
-            // Verify indices are sorted
+            // Verify indices are sorted and unique
             if (attestingIndices.Count() > 1)
             {
                 for (int index = 0; index < attestingIndices.Count() - 1; index++)
                 {
                     if (!(attestingIndices[index] < attestingIndices[index + 1]))
                     {
-                        if (_logger.IsWarn()) Log.InvalidIndexedAttestationNotSorted(_logger, indexedAttestation.Data.Index, indexedAttestation.Data.Slot, 0, index, null);
+                        if (attestingIndices[index] == attestingIndices[index + 1])
+                        {
+                            if (_logger.IsWarn())
+                                Log.InvalidIndexedAttestationNotUnique(_logger, indexedAttestation.Data.Index,
+                                    indexedAttestation.Data.Slot, 0, index, null);
+                        }
+                        else
+                        {
+                            if (_logger.IsWarn())
+                                Log.InvalidIndexedAttestationNotSorted(_logger, indexedAttestation.Data.Index,
+                                    indexedAttestation.Data.Slot, 0, index, null);
+                        }
                         return false;
                     }
                 }
             }
 
+            // TODO: BLS FastAggregateVerify (see spec)
+            
             // Verify aggregate signature
-            IEnumerable<BlsPublicKey> publicKeys = attestingIndices.Select(x => state.Validators[(int) (ulong) x].PublicKey);
-            BlsPublicKey aggregatePublicKey = _cryptographyService.BlsAggregatePublicKeys(publicKeys);
-            Hash32 messageHash = _cryptographyService.HashTreeRoot(indexedAttestation.Data);
+            IList<BlsPublicKey> publicKeys = attestingIndices.Select(x => state.Validators[(int) (ulong) x].PublicKey)
+                .ToList();
+            
+            Root attestationDataRoot = _cryptographyService.HashTreeRoot(indexedAttestation.Data);
+            Root signingRoot = ComputeSigningRoot(attestationDataRoot, domain);
+            
             BlsSignature signature = indexedAttestation.Signature;
+            
+            //BlsPublicKey aggregatePublicKey = _cryptographyService.BlsAggregatePublicKeys(publicKeys);
+            //bool isValid = _cryptographyService.BlsVerify(aggregatePublicKey, signingRoot, signature);
 
-            bool isValid = _cryptographyService.BlsVerify(aggregatePublicKey, messageHash, signature, domain);
+            bool isValid = _cryptographyService.BlsFastAggregateVerify(publicKeys, signingRoot, signature);
+            
             if (!isValid)
             {
                 if (_logger.IsWarn()) Log.InvalidIndexedAttestationSignature(_logger, indexedAttestation.Data.Index, indexedAttestation.Data.Slot, null);
@@ -261,12 +320,12 @@ namespace Nethermind.BeaconNode
         /// <summary>
         /// Check if 'leaf' at 'index' verifies against the Merkle 'root' and 'branch'
         /// </summary>
-        public bool IsValidMerkleBranch(Hash32 leaf, IReadOnlyList<Hash32> branch, int depth, ulong index, Hash32 root)
+        public bool IsValidMerkleBranch(Bytes32 leaf, IReadOnlyList<Bytes32> branch, int depth, ulong index, Root root)
         {
-            Hash32 value = leaf;
+            Bytes32 value = leaf;
             for (int testDepth = 0; testDepth < depth; testDepth++)
             {
-                Hash32 branchValue = branch[testDepth];
+                Bytes32 branchValue = branch[testDepth];
                 ulong indexAtDepth = index / ((ulong) 1 << testDepth);
                 if (indexAtDepth % 2 == 0)
                 {
@@ -280,7 +339,7 @@ namespace Nethermind.BeaconNode
                 }
             }
 
-            return value.Equals(root);
+            return value.AsSpan().SequenceEqual(root.AsSpan());
         }
     }
 }

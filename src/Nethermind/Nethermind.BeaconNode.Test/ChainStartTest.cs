@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO.Abstractions;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -29,6 +30,7 @@ using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Cryptography;
 using Nethermind.Core2.Types;
+using NSubstitute;
 using Shouldly;
 
 namespace Nethermind.BeaconNode.Test
@@ -52,6 +54,7 @@ namespace Nethermind.BeaconNode.Test
             IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions = testServiceProvider.GetService<IOptionsMonitor<MaxOperationsPerBlock>>();
             IOptionsMonitor<ForkChoiceConfiguration> forkChoiceConfigurationOptions = testServiceProvider.GetService<IOptionsMonitor<ForkChoiceConfiguration>>();
             IOptionsMonitor<SignatureDomains> signatureDomainOptions = testServiceProvider.GetService<IOptionsMonitor<SignatureDomains>>();
+            IOptionsMonitor<InMemoryConfiguration> inMemoryConfigurationOptions = testServiceProvider.GetService<IOptionsMonitor<InMemoryConfiguration>>();
 
             miscellaneousParameterOptions.CurrentValue.MinimumGenesisActiveValidatorCount = 2;
 
@@ -62,27 +65,27 @@ namespace Nethermind.BeaconNode.Test
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
             
             BeaconChainUtility beaconChainUtility = new BeaconChainUtility(loggerFactory.CreateLogger<BeaconChainUtility>(),
-                miscellaneousParameterOptions, gweiValueOptions, timeParameterOptions,
+                chainConstants, miscellaneousParameterOptions, initialValueOptions, gweiValueOptions, timeParameterOptions,
                 cryptographyService);
-            BeaconStateAccessor beaconStateAccessor = new BeaconStateAccessor(miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, signatureDomainOptions,
+            BeaconStateAccessor beaconStateAccessor = new BeaconStateAccessor(chainConstants, miscellaneousParameterOptions, timeParameterOptions, stateListLengthOptions, signatureDomainOptions,
                 cryptographyService, beaconChainUtility);
             BeaconStateMutator beaconStateMutator = new BeaconStateMutator(chainConstants, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions,
                 beaconChainUtility, beaconStateAccessor);
             BeaconStateTransition beaconStateTransition = new BeaconStateTransition(loggerFactory.CreateLogger<BeaconStateTransition>(),
-                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions, signatureDomainOptions,
+                chainConstants, gweiValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions, signatureDomainOptions,
                 cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator);
             BeaconNode.Genesis beaconChain = new BeaconNode.Genesis(loggerFactory.CreateLogger<BeaconNode.Genesis>(),
-                chainConstants, miscellaneousParameterOptions,
-                gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
+                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions,
                 cryptographyService,  beaconStateAccessor, beaconStateTransition);
-            MemoryStoreProvider storeProvider = new MemoryStoreProvider(loggerFactory, timeParameterOptions);
+            MemoryStore store = new MemoryStore(loggerFactory.CreateLogger<MemoryStore>(), inMemoryConfigurationOptions, new DataDirectory("data"), Substitute.For<IFileSystem>());
+            MemoryStoreProvider storeProvider = new MemoryStoreProvider(store);
             ForkChoice forkChoice = new ForkChoice(loggerFactory.CreateLogger<ForkChoice>(),
-                miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, forkChoiceConfigurationOptions, signatureDomainOptions,
+                chainConstants, miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, forkChoiceConfigurationOptions, signatureDomainOptions,
                 cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateTransition, storeProvider);
-            ChainStart chainStart = new ChainStart(loggerFactory.CreateLogger<ChainStart>(), beaconChain, forkChoice);
+            ChainStart chainStart = new ChainStart(loggerFactory.CreateLogger<ChainStart>(), store, beaconChain, forkChoice);
 
             // Act
-            Hash32 eth1BlockHash = Hash32.Zero;
+            Bytes32 eth1BlockHash = Bytes32.Zero;
             ulong eth1Timestamp = 106185600uL; // 1973-05-14
             Deposit[] deposits = Array.Empty<Deposit>();
             bool success = await chainStart.TryGenesisAsync(eth1BlockHash, eth1Timestamp, deposits);

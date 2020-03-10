@@ -32,20 +32,20 @@ namespace Nethermind.Ssz
         private static void BuildZeroHashes()
         {
             Span<UInt256> concatenation = stackalloc UInt256[2];
-            UInt256.CreateFromLittleEndian(out ZeroHashes[0], Hash32.Zero.Bytes);
+            // ZeroHashes[0] will be UInt256.Zero
             for (int i = 1; i < 64; i++)
             {
                 var previous = ZeroHashes[i - 1];
                 MemoryMarshal.CreateSpan(ref previous, 1).CopyTo(concatenation.Slice(0, 1));
                 MemoryMarshal.CreateSpan(ref previous, 1).CopyTo(concatenation.Slice(1, 1));
-                UInt256.CreateFromLittleEndian(out ZeroHashes[i], Sha256.Compute(MemoryMarshal.Cast<UInt256, byte>(concatenation)).Bytes);
+                UInt256.CreateFromLittleEndian(out ZeroHashes[i], Sha256.Compute(MemoryMarshal.Cast<UInt256, byte>(concatenation)).AsSpan().ToArray());
             }
         }
 
         static Merkle()
         {
             BuildZeroHashes();
-            UInt256.CreateFromBigEndian(out RootOfNull, Sha256.OfAnEmptyString.Bytes);
+            UInt256.CreateFromBigEndian(out RootOfNull, Sha256.RootOfAnEmptyString.AsSpan().ToArray());
         }
 
         public static uint NextPowerOfTwo(uint v)
@@ -125,7 +125,7 @@ namespace Nethermind.Ssz
 
         private static Chunk Compute(Span<Chunk> span)
         {
-            return MemoryMarshal.Cast<byte, Chunk>(Sha256.Compute(MemoryMarshal.Cast<Chunk, byte>(span)).Bytes)[0];
+            return MemoryMarshal.Cast<byte, Chunk>(Sha256.ComputeBytes(MemoryMarshal.Cast<Chunk, byte>(span)))[0];
         }
 
         internal static Chunk HashConcatenation(Chunk left, Chunk right, int level)
@@ -192,9 +192,30 @@ namespace Nethermind.Ssz
             root = value;
         }
 
-        public static void Ize(out UInt256 root, Hash32 value)
+        public static void Ize(out UInt256 root, Bytes32 value)
         {
-            UInt256.CreateFromLittleEndian(out root, value.Bytes ?? Hash32.Zero.Bytes);
+            ReadOnlySpan<byte> readOnlyBytes = value.AsSpan();
+            unsafe
+            {
+                fixed (byte* buffer = &readOnlyBytes.GetPinnableReference())
+                {
+                    Span<byte> apiNeedsWriteableEvenThoughOnlyReading = new Span<byte>(buffer, readOnlyBytes.Length);
+                    UInt256.CreateFromLittleEndian(out root, apiNeedsWriteableEvenThoughOnlyReading);
+                }
+            }
+        }
+
+        public static void Ize(out UInt256 root, Root value)
+        {
+            ReadOnlySpan<byte> readOnlyBytes = value.AsSpan();
+            unsafe
+            {
+                fixed (byte* buffer = &readOnlyBytes.GetPinnableReference())
+                {
+                    Span<byte> apiNeedsWriteableEvenThoughOnlyReading = new Span<byte>(buffer, readOnlyBytes.Length);
+                    UInt256.CreateFromLittleEndian(out root, apiNeedsWriteableEvenThoughOnlyReading);
+                }
+            }
         }
 
         public static void Ize(out UInt256 root, Span<bool> value)

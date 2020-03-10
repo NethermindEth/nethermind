@@ -1,0 +1,11 @@
+responses:
+  Success:
+    description: "Request successful."
+  InvalidRequest:
+    description: "Invalid request syntax."
+  InternalError:
+    description: "Beacon node internal error."
+  CurrentlySyncing:
+    description: "Beacon node is currently syncing, try again later."
+  NotFound:
+    description: "The requested API endpoint does not exist."

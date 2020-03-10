@@ -16,7 +16,7 @@
 
 using System;
 using System.Collections.Generic;
-using Cortex.Cryptography;
+using Nethermind.Cryptography;
 using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Crypto;
 
@@ -77,7 +77,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
                 };
                 using var bls = BLS.Create(blsParameters);
                 var publicKeyBytes = new byte[BlsPublicKey.Length];
-                bls.TryExportBLSPublicKey(publicKeyBytes, out var bytesWritten);
+                bls.TryExportBlsPublicKey(publicKeyBytes, out var bytesWritten);
                 var publicKey = new BlsPublicKey(publicKeyBytes);
 
                 _privateKeys.Add(privateKey);

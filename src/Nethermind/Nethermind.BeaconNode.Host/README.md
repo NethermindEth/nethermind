@@ -62,20 +62,27 @@ Ensure the host is build:
 dotnet build src/Nethermind/Nethermind.BeaconNode.Host
 ``` 
 
-Run the first node in one shell:
-
-```
-dotnet run --no-build --project src/Nethermind/Nethermind.BeaconNode.Host -- --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ValidatorStartIndex 0 --QuickStart:NumberOfValidators 32
-```
-
-And at the same time start the second node in a second PowerShell terminal, getting the ENR value (and see below for notes on clock synchronisation):
+In the second terminal, get the ENR record details:
 
 ```
 $enr = Get-Content 'src/Nethermind/Nethermind.BeaconNode.Host/bin/Debug/netcoreapp3.0/Development/mothra/network/enr.dat'
-dotnet run --no-build --project src/Nethermind/Nethermind.BeaconNode.Host -- --DataDirectory Development9001 --Peering:BootNodes:0 $enr --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ValidatorStartIndex 32 --QuickStart:NumberOfValidators 32
+```
+
+Then, at the same time start the first node in one terminal (see below for clock synchronisation details):
+
+```
+$offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())/60) * 60; $offset; dotnet run --no-build --project src/Nethermind/Nethermind.BeaconNode.Host --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ClockOffset $offset --QuickStart:ValidatorStartIndex 0 --QuickStart:NumberOfValidators 32
+```
+
+And the second node in a second PowerShell terminal:
+
+```
+$offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())/60) * 60; $offset; dotnet run --no-build --project src/Nethermind/Nethermind.BeaconNode.Host -- --DataDirectory Development9001 --Peering:Mothra:BootNodes:0 $enr --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ClockOffset $offset --QuickStart:ValidatorStartIndex 32 --QuickStart:NumberOfValidators 4
 ```
 
 ### Test with separate processes for node and validator
+
+**NOTE: REST API is currently broken (from spec updated to 0.10.1), so can't run in separate processes**
 
 This will run the Beacon Node and Honest Validator in separate host processes, communicating via the REST API.
 

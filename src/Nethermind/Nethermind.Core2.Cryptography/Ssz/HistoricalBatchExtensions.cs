@@ -23,10 +23,10 @@ namespace Nethermind.Core2.Cryptography.Ssz
 {
     public static class HistoricalBatchExtensions
     {
-        public static Hash32 HashTreeRoot(this HistoricalBatch item)
+        public static Root HashTreeRoot(this HistoricalBatch item)
         {
             var tree = new SszTree(item.ToSszContainer());
-            return new Hash32(tree.HashTreeRoot());
+            return new Root(tree.HashTreeRoot());
         }
 
         public static SszContainer ToSszContainer(this HistoricalBatch item)

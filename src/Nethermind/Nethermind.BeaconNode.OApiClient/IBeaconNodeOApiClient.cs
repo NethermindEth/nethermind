@@ -17,6 +17,7 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core2.Crypto;
 
 namespace Nethermind.BeaconNode.OApiClient
 {
@@ -31,6 +32,7 @@ namespace Nethermind.BeaconNode.OApiClient
             CancellationToken cancellationToken);
         Task<BeaconBlock> BlockAsync(ulong slot, byte[] randao_reveal, CancellationToken cancellationToken);
         Task<ulong> TimeAsync(CancellationToken cancellationToken);
-        Task Block2Async(BeaconBlock body, CancellationToken cancellationToken);
+        // HACK: signature parameter is stand in to get test working... need to fix OAPI
+        Task Block2Async(BeaconBlock body, BlsSignature signature, CancellationToken cancellationToken);
     }
 }

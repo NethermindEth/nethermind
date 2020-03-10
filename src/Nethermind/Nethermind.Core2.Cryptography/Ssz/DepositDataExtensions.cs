@@ -24,27 +24,21 @@ namespace Nethermind.Core2.Cryptography.Ssz
 {
     public static class DepositDataExtensions
     {
-        public static Hash32 HashTreeRoot(this IEnumerable<DepositData> list, ulong limit)
+        public static Root HashTreeRoot(this IEnumerable<DepositData> list, ulong limit)
         {
             var tree = new SszTree(list.ToSszList(limit));
-            return new Hash32(tree.HashTreeRoot());
+            return new Root(tree.HashTreeRoot());
         }
 
-        public static Hash32 HashTreeRoot(this DepositData item)
+        public static Root HashTreeRoot(this DepositData item)
         {
             var tree = new SszTree(item.ToSszContainer());
-            return new Hash32(tree.HashTreeRoot());
-        }
-
-        public static Hash32 SigningRoot(this DepositData item)
-        {
-            var tree = new SszTree(new SszContainer(GetValues(item, true)));
-            return new Hash32(tree.HashTreeRoot());
+            return new Root(tree.HashTreeRoot());
         }
 
         public static SszContainer ToSszContainer(this DepositData item)
         {
-            return new SszContainer(GetValues(item, false));
+            return new SszContainer(GetValues(item));
         }
 
         public static SszList ToSszList(this IEnumerable<DepositData> list, ulong limit)
@@ -52,15 +46,12 @@ namespace Nethermind.Core2.Cryptography.Ssz
             return new SszList(list.Select(x => ToSszContainer(x)), limit);
         }
 
-        private static IEnumerable<SszElement> GetValues(DepositData item, bool forSigning)
+        private static IEnumerable<SszElement> GetValues(DepositData item)
         {
             yield return new SszBasicVector(item.PublicKey.AsSpan());
             yield return new SszBasicVector(item.WithdrawalCredentials.AsSpan());
-            yield return new SszBasicElement((ulong)item.Amount);
-            if (!forSigning)
-            {
-                yield return item.Signature.ToSszBasicVector();
-            }
+            yield return new SszBasicElement(item.Amount);
+            yield return item.Signature.ToSszBasicVector();
         }
     }
 }

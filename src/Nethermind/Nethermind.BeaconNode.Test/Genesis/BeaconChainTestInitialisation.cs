@@ -14,12 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Test.Helpers;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Shouldly;
@@ -32,30 +35,31 @@ namespace Nethermind.BeaconNode.Test.Genesis
         [TestMethod]
         public void TestInitializeBeaconStateFromEth1()
         {
-            var useBls = true;
+            bool useBls = true;
 
             // Arrange
-            var testServiceProvider = TestSystem.BuildTestServiceProvider(useBls);
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider(useBls);
 
-            var chainConstants = testServiceProvider.GetService<ChainConstants>();
-            var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
-            var gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
+            ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
+            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            MiscellaneousParameters miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
+            GweiValues gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
 
-            var depositCount = miscellaneousParameters.MinimumGenesisActiveValidatorCount;
+            int depositCount = miscellaneousParameters.MinimumGenesisActiveValidatorCount;
 
-            (var deposits, var depositRoot) = TestDeposit.PrepareGenesisDeposits(testServiceProvider, depositCount, gweiValues.MaximumEffectiveBalance, signed: useBls);
+            (IList<Deposit> deposits, Root depositRoot) = TestDeposit.PrepareGenesisDeposits(testServiceProvider, depositCount, gweiValues.MaximumEffectiveBalance, signed: useBls);
 
-            var eth1BlockHash = new Hash32(Enumerable.Repeat((byte)0x12, 32).ToArray());
-            var eth1Timestamp = miscellaneousParameters.MinimumGenesisTime;
+            Bytes32 eth1BlockHash = new Bytes32(Enumerable.Repeat((byte)0x12, 32).ToArray());
+            ulong eth1Timestamp = miscellaneousParameters.MinimumGenesisTime;
 
-            var beaconChain = testServiceProvider.GetService<BeaconNode.Genesis>();
+            BeaconNode.Genesis beaconChain = testServiceProvider.GetService<BeaconNode.Genesis>();
 
             // Act
             //# initialize beacon_state
-            var state = beaconChain.InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp, deposits);
+            BeaconState state = beaconChain.InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp, deposits);
 
             // Assert
-            state.GenesisTime.ShouldBe(eth1Timestamp - eth1Timestamp % chainConstants.SecondsPerDay + 2 * chainConstants.SecondsPerDay);
+            state.GenesisTime.ShouldBe(eth1Timestamp - eth1Timestamp % timeParameters.MinimumGenesisDelay + 2 * timeParameters.MinimumGenesisDelay);
             state.Validators.Count.ShouldBe(depositCount);
             state.Eth1Data.DepositRoot.ShouldBe(depositRoot);
             state.Eth1Data.DepositCount.ShouldBe((ulong)depositCount);

@@ -105,10 +105,9 @@ namespace Nethermind.BeaconNode.Test.MockedStart
             await quickStart.InitializeNodeAsync();
 
             // Assert
-            IStoreProvider storeProvider = testServiceProvider.GetService<IStoreProvider>();
-            storeProvider.TryGetStore(out IStore? store).ShouldBeTrue();
+            IStore store = testServiceProvider.GetService<IStore>();
 
-            BeaconState state = await store!.GetBlockStateAsync(store!.FinalizedCheckpoint.Root);
+            BeaconState state = await store.GetBlockStateAsync(store.FinalizedCheckpoint.Root);
 
             BlsPublicKey expectedKey0 = new BlsPublicKey(_testDataItems[0].PublicKey);
             state.Validators[0].PublicKey.ShouldBe(expectedKey0);

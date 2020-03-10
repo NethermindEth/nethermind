@@ -17,27 +17,25 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using Nethermind.Core2;
 using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Types;
 
 namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
-        public const int Hash32Length = Hash32.Length;
+        public const int RootLength = Root.Length;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void Encode(Span<byte> span, Hash32 value, ref int offset)
+        private static void Encode(Span<byte> span, Root value, ref int offset)
         {
-            Encode(span.Slice(offset, Ssz.Hash32Length), value);
-            offset += Ssz.Hash32Length;
+            Encode(span.Slice(offset, Ssz.RootLength), value);
+            offset += Ssz.RootLength;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Encode(Span<byte> span, Hash32 value)
+        public static void Encode(Span<byte> span, Root value)
         {
-            Encode(span, value.Bytes ?? Hash32.Zero.Bytes);
+            Encode(span, value.AsSpan());
         }
         
 //        public static void Encode(Span<byte> span, ReadOnlySpan<Hash32> value)
@@ -48,40 +46,40 @@ namespace Nethermind.Ssz
 //            }
 //        }
 
-        public static void Encode(Span<byte> span, IReadOnlyList<Hash32> value)
+        public static void Encode(Span<byte> span, IReadOnlyList<Root> value)
         {
             for (int i = 0; i < value.Count; i++)
             {
-                Encode(span.Slice(i * Ssz.Hash32Length, Ssz.Hash32Length), value[i]);    
+                Encode(span.Slice(i * Ssz.RootLength, Ssz.RootLength), value[i]);    
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static Hash32 DecodeSha256(ReadOnlySpan<byte> span, ref int offset)
+        private static Root DecodeRoot(ReadOnlySpan<byte> span, ref int offset)
         {
-            Hash32 hash32 = DecodeSha256(span.Slice(offset, Ssz.Hash32Length));
-            offset += Ssz.Hash32Length;
+            Root hash32 = DecodeRoot(span.Slice(offset, Ssz.RootLength));
+            offset += Ssz.RootLength;
             return hash32;
         }
         
-        public static Hash32 DecodeSha256(ReadOnlySpan<byte> span)
+        public static Root DecodeRoot(ReadOnlySpan<byte> span)
         {
-            return Bytes.AreEqual(Hash32.Zero.Bytes, span) ? Hash32.Zero : new Hash32(span.ToArray());
+            return new Root(span);
         }
         
-        public static Hash32[] DecodeHashes(ReadOnlySpan<byte> span)
+        public static Root[] DecodeRoots(ReadOnlySpan<byte> span)
         {
             if (span.Length == 0)
             {
-                return Array.Empty<Hash32>();
+                return Array.Empty<Root>();
             }
             
-            int count = span.Length / Ssz.Hash32Length;
-            Hash32[] result = new Hash32[count];
+            int count = span.Length / Ssz.RootLength;
+            Root[] result = new Root[count];
             for (int i = 0; i < count; i++)
             {
-                ReadOnlySpan<byte> current = span.Slice(i * Ssz.Hash32Length, Ssz.Hash32Length);
-                result[i] = DecodeSha256(current);
+                ReadOnlySpan<byte> current = span.Slice(i * Ssz.RootLength, Ssz.RootLength);
+                result[i] = DecodeRoot(current);
             }
 
             return result;

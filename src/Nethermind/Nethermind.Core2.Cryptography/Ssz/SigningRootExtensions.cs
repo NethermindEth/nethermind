@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,24 +14,24 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Extensions;
-using NUnit.Framework;
+using System.Collections.Generic;
+using Cortex.SimpleSerialize;
+using Nethermind.Core2.Crypto;
 
-namespace Nethermind.Bls.Test
+namespace Nethermind.Core2.Cryptography.Ssz
 {
-    public class SimpleBlsTests
+    public static class SigningRootExtensions
     {
-        [Test]
-        public void TestPrivateKeyToPublic()
+        public static Root HashTreeRoot(this SigningRoot item)
         {
-            var privateKeyBytes = Bytes.FromHexString("47b8192d77bf871b62e87859d653922725724a5c031afeabc60bcef5ff665138");
+            var tree = new SszTree(new SszContainer(GetValues(item)));
+            return new Root(tree.HashTreeRoot());
+        }
 
-            TestContext.Out.WriteLine("Serialized private key: {0}", privateKeyBytes.ToHexString());
-
-            BlsProxy.GetPublicKey(privateKeyBytes, out var publicKeySpan);
-            var publicKeyBytes = publicKeySpan.ToArray();
-
-            Assert.AreEqual("b301803f8b5ac4a1133581fc676dfedc60d891dd5fa99028805e5ea5b08d3491af75d0707adab3b70c6a6a580217bf81", publicKeyBytes.ToHexString());
+        private static IEnumerable<SszElement> GetValues(SigningRoot item)
+        {
+            yield return item.ObjectRoot.ToSszBasicVector();
+            yield return item.Domain.ToSszBasicVector();
         }
     }
 }

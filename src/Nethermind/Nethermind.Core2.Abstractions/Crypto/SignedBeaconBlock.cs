@@ -14,19 +14,19 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Core2.Configuration
+using Nethermind.Core2.Containers;
+
+namespace Nethermind.Core2.Crypto
 {
-    public class PeeringConfiguration
+    public class SignedBeaconBlock
     {
-        public int? Port { get; set; }
-        public string[] BootNodes { get; set; } = new string[0];
+        public SignedBeaconBlock(BeaconBlock message, BlsSignature signature)
+        {
+            Message = message;
+            Signature = signature;
+        }
 
-        public string? DiscoveryAddress { get; set; }
-
-        public int? DiscoveryPort { get; set; }
-
-        public string? ListenAddress { get; set; }
-
-        public int? MaximumPeers { get; set; }
+        public BeaconBlock Message { get; }
+        public BlsSignature Signature { get; }
     }
 }

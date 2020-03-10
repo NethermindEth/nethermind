@@ -24,15 +24,15 @@ namespace Nethermind.Core2.Cryptography.Ssz
 {
     public static class VoluntaryExitExtensions
     {
-        public static Hash32 SigningRoot(this VoluntaryExit item)
+        public static Root HashTreeRoot(this VoluntaryExit item)
         {
-            var tree = new SszTree(new SszContainer(GetValues(item, true)));
-            return new Hash32(tree.HashTreeRoot());
+            var tree = new SszTree(new SszContainer(GetValues(item)));
+            return new Root(tree.HashTreeRoot());
         }
 
         public static SszContainer ToSszContainer(this VoluntaryExit item)
         {
-            return new SszContainer(GetValues(item, false));
+            return new SszContainer(GetValues(item));
         }
 
         public static SszList ToSszList(this IEnumerable<VoluntaryExit> list, ulong limit)
@@ -40,14 +40,10 @@ namespace Nethermind.Core2.Cryptography.Ssz
             return new SszList(list.Select(x => ToSszContainer(x)), limit);
         }
 
-        private static IEnumerable<SszElement> GetValues(VoluntaryExit item, bool forSigning)
+        private static IEnumerable<SszElement> GetValues(VoluntaryExit item)
         {
             yield return item.Epoch.ToSszBasicElement();
             yield return item.ValidatorIndex.ToSszBasicElement();
-            if (!forSigning)
-            {
-                yield return item.Signature.ToSszBasicVector();
-            }
         }
     }
 }

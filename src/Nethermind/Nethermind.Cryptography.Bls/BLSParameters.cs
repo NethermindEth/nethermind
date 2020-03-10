@@ -14,23 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.Text.Json;
-using System.Text.Json.Serialization;
-using Nethermind.Core2.Crypto;
-
-namespace Nethermind.Core2.Json
+namespace Nethermind.Cryptography
 {
-    public class JsonConverterHash32 : JsonConverter<Hash32>
+    public struct BLSParameters
     {
-        public override Hash32 Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        {
-            return new Hash32(reader.GetBytesFromPrefixedHex());
-        }
-
-        public override void Write(Utf8JsonWriter writer, Hash32 value, JsonSerializerOptions options)
-        {
-            writer.WritePrefixedHexStringValue(value.AsSpan());
-        }
+        public byte[] InputKeyMaterial;
+        public byte[] PrivateKey;
+        public byte[] PublicKey;
+        public BlsScheme Scheme;
+        public BlsVariant Variant;
     }
 }
