@@ -36,7 +36,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Facade.Test
 {
-    public class BlockChainBridgeTests
+    public class BlockchainBridgeTests
     {
         private BlockchainBridge _blockchainBridge;
         private IStateReader _stateReader;
