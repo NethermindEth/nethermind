@@ -12,7 +12,6 @@ Metrics can be enabled by simply passing ``--Metrics.Enabled true`` argument to 
 Setting up Prometheus and Pushgateway
 -------------------------------------
 
-
 Prometheus GitHub `<https://github.com/prometheus/prometheus>`_.
 
 Pushgateway GitHub `<https://github.com/prometheus/pushgateway>`_.
