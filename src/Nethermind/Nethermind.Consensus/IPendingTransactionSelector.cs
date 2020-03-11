@@ -16,11 +16,12 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus
 {
     public interface IPendingTxSelector
     {
-        IEnumerable<Transaction> SelectTransactions(long gasLimit);
+        IEnumerable<Transaction> SelectTransactions(Keccak stateRoot, long gasLimit);
     }
 }
