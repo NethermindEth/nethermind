@@ -43,7 +43,13 @@ namespace Nethermind.Network
         
         [Description("Number of eth status messages sent")]
         public static long StatusesSent { get; set; }
-        
+        // todo
+        [Description("Number of les status messages received")]
+        public static long LesStatusesReceived { get; set; }
+        // todo
+        [Description("Number of les status messages sent")]
+        public static long LesStatusesSent { get; set; }
+
         [Description("Number of received disconnects due to breach of protocol")]
         public static long BreachOfProtocolDisconnects { get; set; }
         

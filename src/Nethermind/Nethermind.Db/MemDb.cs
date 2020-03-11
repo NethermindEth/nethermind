@@ -31,15 +31,16 @@ namespace Nethermind.Db
 
         private readonly ConcurrentDictionary<byte[], byte[]> _db;
 
-        public MemDb(string description)
+        public MemDb(string name)
+            : this(0, 0)
         {
-            Description = description;
+            Name = name;
         }
 
-        public MemDb() : this(0,0)
+        public MemDb() : this(0, 0)
         {
         }
-        
+
         public MemDb(int writeDelay, int readDelay)
         {
             _writeDelay = writeDelay;
@@ -47,7 +48,7 @@ namespace Nethermind.Db
             _db = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
         }
 
-        public string Name { get; } = "MemDb";
+        public string Name { get; }
 
         public byte[] this[byte[] key]
         {
@@ -57,7 +58,7 @@ namespace Nethermind.Db
                 {
                     Thread.Sleep(_readDelay);
                 }
-                
+
                 ReadsCount++;
                 return _db.ContainsKey(key) ? _db[key] : null;
             }
@@ -67,7 +68,7 @@ namespace Nethermind.Db
                 {
                     Thread.Sleep(_writeDelay);
                 }
-                
+
                 WritesCount++;
                 _db[key] = value;
             }
@@ -98,7 +99,10 @@ namespace Nethermind.Db
         }
 
         public IDb Innermost => this;
-        public void Flush() { }
+
+        public void Flush()
+        {
+        }
 
         public IEnumerable<byte[]> GetAll() => Values;
 
@@ -110,8 +114,6 @@ namespace Nethermind.Db
         {
         }
 
-        public string Description { get; }
-        
         public ICollection<byte[]> Keys => _db.Keys;
         public ICollection<byte[]> Values => _db.Values;
 
@@ -119,7 +121,7 @@ namespace Nethermind.Db
         {
             _db.Clear();
         }
-        
+
         public void Dispose()
         {
         }
