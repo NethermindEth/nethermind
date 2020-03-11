@@ -115,7 +115,10 @@ namespace Nethermind.Blockchain.Test
         [TestCaseSource(nameof(ProperTransactionsSelectedTestCases))]
         public void Proper_transactions_selected(ProperTransactionsSelectedTestCase testCase)
         {
-            var stateProvider = new StateProvider(new StateDb(new MemDb()), new MemDb(), LimboLogs.Instance);
+            var stateDb = new StateDb();
+            var codeDb = new MemDb();
+            var stateProvider = new StateProvider(stateDb, codeDb, LimboLogs.Instance);
+            var stateReader = new StateReader(stateDb, codeDb, LimboLogs.Instance);
 
             void SetAccountStates(IEnumerable<Address> missingAddresses)
             {
@@ -131,15 +134,16 @@ namespace Nethermind.Blockchain.Test
                 }
 
                 stateProvider.Commit(Homestead.Instance);
+                stateProvider.RecalculateStateRoot();
             }
 
             var transactionPool = Substitute.For<ITxPool>();
             transactionPool.GetPendingTransactions().Returns(testCase.Transactions.ToArray());
             SetAccountStates(testCase.MissingAddresses);
 
-            var selector = new PendingTxSelector(transactionPool, stateProvider, LimboLogs.Instance, testCase.MinGasPriceForMining);
+            var selector = new PendingTxSelector(transactionPool, stateReader, LimboLogs.Instance, testCase.MinGasPriceForMining);
 
-            var selectedTransactions = selector.SelectTransactions(testCase.GasLimit);
+            var selectedTransactions = selector.SelectTransactions(stateProvider.StateRoot, testCase.GasLimit);
             selectedTransactions.Should().BeEquivalentTo(testCase.ExpectedSelectedTransactions);
         }
     }
