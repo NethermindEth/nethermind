@@ -20,8 +20,6 @@ namespace Nethermind.Db
 {
     public interface IFullDb : IDb
     {
-        string Description { get; }
-        
         ICollection<byte[]> Keys { get; }
 
         ICollection<byte[]> Values { get; }
