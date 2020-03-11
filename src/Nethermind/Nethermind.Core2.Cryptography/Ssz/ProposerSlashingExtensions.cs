@@ -36,8 +36,8 @@ namespace Nethermind.Core2.Cryptography.Ssz
         private static IEnumerable<SszElement> GetValues(ProposerSlashing item)
         {
             yield return item.ProposerIndex.ToSszBasicElement();
-            yield return item.Header1.ToSszContainer();
-            yield return item.Header2.ToSszContainer();
+            yield return item.SignedHeader1.ToSszContainer();
+            yield return item.SignedHeader2.ToSszContainer();
         }
     }
 }

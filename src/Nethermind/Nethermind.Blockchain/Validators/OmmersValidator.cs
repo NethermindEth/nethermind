@@ -16,6 +16,7 @@
 
 using System;
 using System.Linq;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Logging;
@@ -103,7 +104,7 @@ namespace Nethermind.Blockchain.Validators
                 return false;
             }
             
-            BlockHeader parent = _blockTree.FindHeader(header.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            BlockHeader parent = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (parent == null)
             {
                 return false;

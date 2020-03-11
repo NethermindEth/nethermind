@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Threading;
+using Nethermind.Monitoring.Config;
 using Prometheus;
 
 namespace Nethermind.Monitoring.Metrics
@@ -58,9 +59,9 @@ namespace Nethermind.Monitoring.Metrics
         private static Gauge CreateGauge(string name, string help = "")
             => Prometheus.Metrics.CreateGauge($"nethermind_{name}", help);
 
-        public MetricsUpdater(int intervalSeconds = 5)
+        public MetricsUpdater(IMetricsConfig metricsConfig)
         {
-            _intervalSeconds = intervalSeconds;
+            _intervalSeconds = metricsConfig.IntervalSeconds == 0 ? 5 : metricsConfig.IntervalSeconds;
         }
 
         public void StartUpdating()

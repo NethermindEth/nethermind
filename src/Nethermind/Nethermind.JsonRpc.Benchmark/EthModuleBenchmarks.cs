@@ -26,14 +26,16 @@ using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
+using Nethermind.State;
+using Nethermind.State.Repositories;
 using Nethermind.Store;
 using Nethermind.Store.Bloom;
-using Nethermind.Store.Repositories;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 
@@ -105,7 +107,8 @@ namespace Nethermind.JsonRpc.Benchmark
                 transactionProcessor, 
                 new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance),
                 bloomStorage, 
-                new ReceiptsRecovery());
+                new ReceiptsRecovery(),
+                LimboLogs.Instance);
             
             _ethModule = new EthModule(new JsonRpcConfig(), LimboLogs.Instance, bridge);
         }

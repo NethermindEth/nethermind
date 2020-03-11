@@ -101,7 +101,7 @@ namespace Nethermind.EthStats.Integrations
             _websocketClient.DisconnectionHappened.Subscribe(reason =>
             {
                 _connected = false;
-                if (_logger.IsWarn) _logger.Warn($"ETH Stats disconnected, reason: {reason}");
+                if (_logger.IsInfo) _logger.Info($"ETH Stats disconnected, reason: {reason}");
             });
 
             timer.Start();

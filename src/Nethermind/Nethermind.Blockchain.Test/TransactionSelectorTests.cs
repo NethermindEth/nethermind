@@ -22,8 +22,10 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Store;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -79,6 +81,10 @@ namespace Nethermind.Blockchain.Test
                 twoTransactionSelectedDueToLackOfSenderAddress.ExpectedSelectedTransactions.AddRange(twoTransactionSelectedDueToLackOfSenderAddress.Transactions.OrderBy(t => t.Nonce).Take(2));
                 yield return new TestCaseData(twoTransactionSelectedDueToLackOfSenderAddress).SetName("Two transaction selected due to lack of sender address");
                 
+                var missingAddressState = ProperTransactionsSelectedTestCase.Default;
+                missingAddressState.MissingAddresses.Add(TestItem.AddressA);
+                yield return new TestCaseData(missingAddressState).SetName("Missing address state");
+                
                 var complexCase = new ProperTransactionsSelectedTestCase()
                 {
                     AccountStates = { {TestItem.AddressA, (1000, 1)}, {TestItem.AddressB, (1000, 0)}, {TestItem.AddressC, (1000, 3)} },
@@ -99,7 +105,7 @@ namespace Nethermind.Blockchain.Test
                         Build.A.Transaction.WithSenderAddress(TestItem.AddressC).WithNonce(3).WithValue(500).WithGasPrice(20).WithGasLimit(9).TestObject,
                         Build.A.Transaction.WithSenderAddress(TestItem.AddressC).WithNonce(4).WithValue(500).WithGasPrice(20).WithGasLimit(9).TestObject,
                     },
-                    GasLimit = 10000
+                    GasLimit = 10000000
                 };
                 complexCase.ExpectedSelectedTransactions.AddRange(new[] {3, 4, 0, 2, 7, 1 }.Select(i => complexCase.Transactions[i]));
                 yield return new TestCaseData(complexCase).SetName("Complex case");
@@ -109,11 +115,13 @@ namespace Nethermind.Blockchain.Test
         [TestCaseSource(nameof(ProperTransactionsSelectedTestCases))]
         public void Proper_transactions_selected(ProperTransactionsSelectedTestCase testCase)
         {
-            var stateProvider = new StateProvider(new StateDb(new MemDb()), new MemDb(), NullLogManager.Instance);
+            var stateProvider = new StateProvider(new StateDb(new MemDb()), new MemDb(), LimboLogs.Instance);
 
-            void SetAccountStates()
+            void SetAccountStates(IEnumerable<Address> missingAddresses)
             {
-                foreach (var accountState in testCase.AccountStates)
+                var missingAddressesSet = missingAddresses.ToHashSet();
+                
+                foreach (var accountState in testCase.AccountStates.Where(v => !missingAddressesSet.Contains(v.Key)))
                 {
                     stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
                     for (int i = 0; i < accountState.Value.Nonce; i++)
@@ -127,9 +135,9 @@ namespace Nethermind.Blockchain.Test
 
             var transactionPool = Substitute.For<ITxPool>();
             transactionPool.GetPendingTransactions().Returns(testCase.Transactions.ToArray());
-            SetAccountStates();
+            SetAccountStates(testCase.MissingAddresses);
 
-            var selector = new PendingTxSelector(transactionPool, stateProvider, NullLogManager.Instance, testCase.MinGasPriceForMining);
+            var selector = new PendingTxSelector(transactionPool, stateProvider, LimboLogs.Instance, testCase.MinGasPriceForMining);
 
             var selectedTransactions = selector.SelectTransactions(testCase.GasLimit);
             selectedTransactions.Should().BeEquivalentTo(testCase.ExpectedSelectedTransactions);
@@ -155,7 +163,9 @@ namespace Nethermind.Blockchain.Test
                     Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1).WithValue(10).WithGasPrice(10).WithGasLimit(10).TestObject,
                     Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).WithValue(10).WithGasPrice(10).WithGasLimit(10).TestObject
                 },
-                GasLimit = 1000
+                GasLimit = 10000000
             };
+
+        public List<Address> MissingAddresses { get; } = new List<Address>(); 
     }
 }

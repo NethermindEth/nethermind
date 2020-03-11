@@ -15,26 +15,27 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.Mining;
-using Nethermind.Store;
-using Nethermind.Store.Proofs;
+using Nethermind.State;
+using Nethermind.State.Proofs;
 
 namespace Nethermind.Blockchain.Producers
 {
     public abstract class BaseBlockProducer : IBlockProducer
     {
-        protected IBlockchainProcessor Processor { get; }
+        private IBlockchainProcessor Processor { get; }
         protected IBlockTree BlockTree { get; }
         protected IBlockProcessingQueue BlockProcessingQueue { get; }
-        
+
         private readonly ISealer _sealer;
         private readonly IStateProvider _stateProvider;
         private readonly ITimestamper _timestamper;
@@ -55,33 +56,39 @@ namespace Nethermind.Blockchain.Producers
             Processor = processor ?? throw new ArgumentNullException(nameof(processor));
             _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
             BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            BlockProcessingQueue = blockProcessingQueue ?? throw new ArgumentNullException(nameof(blockProcessingQueue)); 
+            BlockProcessingQueue = blockProcessingQueue ?? throw new ArgumentNullException(nameof(blockProcessingQueue));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
-        
+
         public abstract void Start();
 
         public abstract Task StopAsync();
-        
-        protected virtual async ValueTask TryProduceNewBlock(CancellationToken token)
+
+        private readonly object _newBlockLock = new object();
+
+        protected Task<bool> TryProduceNewBlock(CancellationToken token)
         {
-            BlockHeader parentHeader = BlockTree.Head;
-            if (parentHeader == null)
+            lock (_newBlockLock)
             {
-                if (Logger.IsWarn) Logger.Warn($"Preparing new block - parent header is null");
-            }
-            else if (_sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
-            {
-                await ProduceNewBlock(parentHeader, token);
+                BlockHeader parentHeader = BlockTree.Head;
+                if (parentHeader == null)
+                {
+                    if (Logger.IsWarn) Logger.Warn($"Preparing new block - parent header is null");
+                }
+                else if (_sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
+                {
+                    return ProduceNewBlock(parentHeader, token);
+                }
+
+                return Task.FromResult(false);
             }
         }
 
-        protected ValueTask ProduceNewBlock(BlockHeader parent, CancellationToken token)
+        private Task<bool> ProduceNewBlock(BlockHeader parent, CancellationToken token)
         {
             _stateProvider.StateRoot = parent.StateRoot;
-            
             Block block = PrepareBlock(parent);
             if (PreparedBlockCanBeMined(block))
             {
@@ -92,7 +99,7 @@ namespace Nethermind.Blockchain.Producers
                 }
                 else
                 {
-                    _sealer.SealBlock(processedBlock, token).ContinueWith(t =>
+                    return _sealer.SealBlock(processedBlock, token).ContinueWith((Func<Task<Block>, bool>) (t =>
                     {
                         if (t.IsCompletedSuccessfully)
                         {
@@ -100,6 +107,7 @@ namespace Nethermind.Blockchain.Producers
                             {
                                 if (Logger.IsInfo) Logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
                                 BlockTree.SuggestBlock(t.Result);
+                                return true;
                             }
                             else
                             {
@@ -114,11 +122,13 @@ namespace Nethermind.Blockchain.Producers
                         {
                             if (Logger.IsInfo) Logger.Info($"Sealing block {processedBlock.Number} cancelled");
                         }
-                    }, token);
+
+                        return false;
+                    }), token);
                 }
             }
 
-            return default;
+            return Task.FromResult(false);
         }
 
         protected virtual bool PreparedBlockCanBeMined(Block block)
@@ -143,7 +153,7 @@ namespace Nethermind.Blockchain.Producers
                 difficulty,
                 parent.Number + 1,
                 parent.GasLimit,
-                UInt256.Max( parent.Timestamp + 1, Timestamper.Default.EpochSeconds),
+                UInt256.Max(parent.Timestamp + 1, Timestamper.Default.EpochSeconds),
                 Encoding.UTF8.GetBytes("Nethermind"))
             {
                 TotalDifficulty = parent.TotalDifficulty + difficulty
@@ -151,7 +161,8 @@ namespace Nethermind.Blockchain.Producers
 
             if (Logger.IsDebug) Logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
 
-            Block block = new Block(header, _pendingTxSelector.SelectTransactions(header.GasLimit), new BlockHeader[0]);
+            var transactions = _pendingTxSelector.SelectTransactions(header.GasLimit);
+            Block block = new Block(header, transactions, new BlockHeader[0]);
             header.TxRoot = new TxTrie(block.Transactions).RootHash;
             return block;
         }

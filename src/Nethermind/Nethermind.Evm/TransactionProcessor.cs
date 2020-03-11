@@ -27,7 +27,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.Store;
+using Nethermind.State;
 using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Evm
@@ -50,7 +50,7 @@ namespace Nethermind.Evm
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _ecdsa = new EthereumEcdsa(specProvider, logManager);
         }
-        
+
         public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer)
         {
             Execute(transaction, block, txTracer, true);
@@ -65,7 +65,7 @@ namespace Nethermind.Evm
         {
             block.GasUsed += tx.GasLimit;
             Address recipient = tx.To ?? ContractAddress.From(tx.SenderAddress, _stateProvider.GetNonce(tx.SenderAddress));
-            
+
             _stateProvider.RecalculateStateRoot();
             Keccak stateRoot = _specProvider.GetSpec(block.Number).IsEip658Enabled ? null : _stateProvider.StateRoot;
             if (txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, tx.GasLimit, Bytes.Empty, reason ?? "invalid", stateRoot);
@@ -81,7 +81,7 @@ namespace Nethermind.Evm
             {
                 spec = new SystemTransactionReleaseSpec(spec);
             }
-            
+
             Address recipient = transaction.To;
             UInt256 value = transaction.Value;
             UInt256 gasPrice = transaction.GasPrice;
@@ -127,10 +127,10 @@ namespace Nethermind.Evm
                 {
                     transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, block.Number);
                 }
-                
+
                 if (sender != transaction.SenderAddress)
                 {
-                    if(_logger.IsWarn) _logger.Warn($"TX recovery issue fixed - tx was coming with sender {sender} and the now it recovers to {transaction.SenderAddress}");
+                    if (_logger.IsWarn) _logger.Warn($"TX recovery issue fixed - tx was coming with sender {sender} and the now it recovers to {transaction.SenderAddress}");
                     sender = transaction.SenderAddress;
                 }
                 else
@@ -139,7 +139,7 @@ namespace Nethermind.Evm
                     if (gasPrice == UInt256.Zero)
                     {
                         _stateProvider.CreateAccount(sender, UInt256.Zero);
-                    }                    
+                    }
                 }
             }
 
@@ -163,9 +163,9 @@ namespace Nethermind.Evm
                 _stateProvider.IncrementNonce(sender);
             }
 
-            _stateProvider.SubtractFromBalance(sender, (ulong) gasLimit * gasPrice, spec);
-
-            // TODO: I think we can skip this commit and decrease the tree operations this way
+            UInt256 senderReservedGasPayment = (ulong) gasLimit * gasPrice;
+            
+            _stateProvider.SubtractFromBalance(sender, senderReservedGasPayment, spec);
             _stateProvider.Commit(spec, txTracer.IsTracingState ? txTracer : null);
 
             long unspentGas = gasLimit - intrinsicGas;
@@ -187,7 +187,7 @@ namespace Nethermind.Evm
                     {
                         recipient = transaction.SenderAddress;
                     }
-                    
+
                     if (_stateProvider.AccountExists(recipient))
                     {
                         if ((_virtualMachine.GetCachedCodeInfo(recipient)?.MachineCode?.Length ?? 0) != 0 || _stateProvider.GetNonce(recipient) != 0)
@@ -255,6 +255,7 @@ namespace Nethermind.Evm
                     {
                         if (_logger.IsTrace) _logger.Trace($"Destroying account {toBeDestroyed}");
                         _stateProvider.DeleteAccount(toBeDestroyed);
+                        if (txTracer.IsTracingRefunds) txTracer.ReportRefund(RefundOf.Destroy);
                     }
 
                     statusCode = StatusCode.Success;
@@ -296,6 +297,10 @@ namespace Nethermind.Evm
             {
                 _storageProvider.Reset();
                 _stateProvider.Reset();
+                
+                _stateProvider.AddToBalance(sender, senderReservedGasPayment, spec);
+                _stateProvider.DecrementNonce(sender);
+                _stateProvider.Commit(spec);
             }
 
             if (!isCall && notSystemTransaction)
@@ -310,9 +315,9 @@ namespace Nethermind.Evm
                 if (!eip658Enabled)
                 {
                     _stateProvider.RecalculateStateRoot();
-                    stateRoot = _stateProvider.StateRoot;    
+                    stateRoot = _stateProvider.StateRoot;
                 }
-                
+
                 if (statusCode == StatusCode.Failure)
                 {
                     txTracer.MarkAsFailed(recipient, spentGas, (substate?.ShouldRevert ?? false) ? substate.Output : Bytes.Empty, substate?.Error, stateRoot);
@@ -328,14 +333,14 @@ namespace Nethermind.Evm
         {
             if (_logger.IsTrace) _logger.Trace($"Invalid tx {transaction.Hash} ({reason})");
         }
-
+        
         private long Refund(long gasLimit, long unspentGas, TransactionSubstate substate, Address sender, UInt256 gasPrice, IReleaseSpec spec)
         {
             long spentGas = gasLimit;
             if (!substate.IsError)
             {
                 spentGas -= unspentGas;
-                long refund = substate.ShouldRevert ? 0 : Math.Min(spentGas / 2L, substate.Refund + substate.DestroyList.Count * RefundOf.Destroy);
+                long refund = substate.ShouldRevert ? 0 : RefundHelper.CalculateClaimableRefund(spentGas, substate.Refund + substate.DestroyList.Count * RefundOf.Destroy);
 
                 if (_logger.IsTrace) _logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + refund);
                 _stateProvider.AddToBalance(sender, (ulong) (unspentGas + refund) * gasPrice, spec);

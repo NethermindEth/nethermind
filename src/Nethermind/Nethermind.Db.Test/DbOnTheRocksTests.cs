@@ -14,8 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Db.Config;
-using Nethermind.Db.Databases;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
 using NUnit.Framework;
 
 namespace Nethermind.Db.Test

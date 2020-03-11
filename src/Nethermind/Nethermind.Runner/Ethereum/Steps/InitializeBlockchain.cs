@@ -22,16 +22,18 @@ using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
-using Nethermind.Mining;
 using Nethermind.Runner.Ethereum.Context;
+using Nethermind.State;
+using Nethermind.State.Repositories;
 using Nethermind.Store;
 using Nethermind.Store.Bloom;
-using Nethermind.Store.Repositories;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 
@@ -51,14 +53,14 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             await InitBlockchain();
         }
-        
-         [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
+
+        [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
         private Task InitBlockchain()
         {
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             if (_context.DbProvider == null) throw new StepDependencyException(nameof(_context.DbProvider));
             if (_context.SpecProvider == null) throw new StepDependencyException(nameof(_context.SpecProvider));
-            
+
             ILogger logger = _context.LogManager.GetClassLogger();
             IInitConfig initConfig = _context.Config<IInitConfig>();
             ISyncConfig syncConfig = _context.Config<ISyncConfig>();
@@ -72,7 +74,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 logger.Warn("Welcome to the alpha version of the Nethermind Goerli Beam Sync. I will start by downloading the pivot block header and then will continue to download all the headers from the pivot upwards. After that I will be beam synchronizing the new blocks. Many things can fail - appreciated if you report issues via GitHub or Gitter.");
             }
-            
+
             Account.AccountStartNonce = _context.ChainSpec.Parameters.AccountStartNonce;
 
             _context.StateProvider = new StateProvider(
@@ -93,12 +95,17 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.ReceiptStorage = new PersistentReceiptStorage(_context.DbProvider.ReceiptsDb, _context.SpecProvider, _context.LogManager);
 
             var bloomConfig = _context.Config<IBloomConfig>();
-            _context.BloomStorage = bloomConfig.Index 
-                ? new BloomStorage(bloomConfig, _context.DbProvider.BloomDb, new FixedSizeFileStoreFactory(Path.Combine(initConfig.BaseDbPath, DbNames.Bloom), DbNames.Bloom, Bloom.ByteLength)) 
+            
+            var fileStoreFactory = initConfig.DiagnosticMode == DiagnosticMode.MemDb 
+                ? (IFileStoreFactory) new InMemoryDictionaryFileStoreFactory() 
+                : new FixedSizeFileStoreFactory(Path.Combine(initConfig.BaseDbPath, DbNames.Bloom), DbNames.Bloom, Bloom.ByteLength); 
+           
+            _context.BloomStorage = bloomConfig.Index
+                ? new BloomStorage(bloomConfig, _context.DbProvider.BloomDb, fileStoreFactory)
                 : (IBloomStorage) NullBloomStorage.Instance;
-            
+
             _context.DisposeStack.Push(_context.BloomStorage);
-            
+
             _context.ChainLevelInfoRepository = new ChainLevelInfoRepository(_context.DbProvider.BlockInfosDb);
 
             _context.BlockTree = new BlockTree(
@@ -170,7 +177,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.TxPoolInfoProvider = new TxPoolInfoProvider(_context.StateProvider, _context.TxPool);
 
             _context.MainBlockProcessor = CreateBlockProcessor();
-            
+
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(
                 _context.BlockTree,
                 _context.MainBlockProcessor,
@@ -181,7 +188,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             _context.BlockProcessingQueue = blockchainProcessor;
             _context.BlockchainProcessor = blockchainProcessor;
-            
+
             if (syncConfig.BeamSync)
             {
                 _ = new BeamBlockchainProcessor(
@@ -202,7 +209,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             if (_context.DbProvider == null) throw new StepDependencyException(nameof(_context.DbProvider));
             if (_context.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_context.RewardCalculatorSource));
-            
+
             return new BlockProcessor(
                 _context.SpecProvider,
                 _context.BlockValidator,
@@ -222,6 +229,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.Sealer = NullSealEngine.Instance;
             _context.SealValidator = NullSealEngine.Instance;
             _context.RewardCalculatorSource = NoBlockRewards.Source;
-        }       
+        }
     }
 }

@@ -20,6 +20,7 @@ using FluentAssertions;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.Repositories;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp;
+using Nethermind.Db;
 using Nethermind.Store;
 using NUnit.Framework;
 

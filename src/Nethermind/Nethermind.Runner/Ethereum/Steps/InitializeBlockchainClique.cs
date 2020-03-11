@@ -16,8 +16,8 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Rewards;
-using Nethermind.Clique;
-using Nethermind.Mining;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Clique;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Wallet;
 

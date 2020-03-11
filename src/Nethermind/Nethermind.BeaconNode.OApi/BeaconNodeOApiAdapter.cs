@@ -53,22 +53,22 @@ namespace Nethermind.BeaconNode.OApi
                     Bytes.ToHexString(beacon_block.Body.Graffiti),
                     beacon_block.Signature, null);
             
-            Core2.Containers.BeaconBlock signedBlock = new Core2.Containers.BeaconBlock(
+            Core2.Containers.BeaconBlock block = new Core2.Containers.BeaconBlock(
                 new Slot((ulong) beacon_block.Slot),
-                new Hash32(Bytes.FromHexString(beacon_block.Parent_root)),
-                new Hash32(Bytes.FromHexString(beacon_block.State_root)),
+                new Root(Bytes.FromHexString(beacon_block.Parent_root)), 
+                new Root(Bytes.FromHexString(beacon_block.State_root)),
                 new Core2.Containers.BeaconBlockBody(
                     new BlsSignature(beacon_block.Body.Randao_reveal),
                     new Eth1Data(
-                        new Hash32(beacon_block.Body.Eth1_data.Deposit_root),
+                        new Root(beacon_block.Body.Eth1_data.Deposit_root),
                         (ulong) beacon_block.Body.Eth1_data.Deposit_count,
-                        new Hash32(beacon_block.Body.Eth1_data.Block_hash)
+                        new Bytes32(beacon_block.Body.Eth1_data.Block_hash)
                     ),
                     new Bytes32(beacon_block.Body.Graffiti),
                     beacon_block.Body.Proposer_slashings.Select(x => new ProposerSlashing(
                         new ValidatorIndex((ulong) x.Proposer_index),
-                        MapBeaconBlockHeader(x.Header_1),
-                        MapBeaconBlockHeader(x.Header_2)
+                        new SignedBeaconBlockHeader(MapBeaconBlockHeader(x.Header_1), BlsSignature.Zero),
+                        new SignedBeaconBlockHeader(MapBeaconBlockHeader(x.Header_2), BlsSignature.Zero)
                     )),
                     beacon_block.Body.Attester_slashings.Select(x => new AttesterSlashing(
                         MapIndexedAttestation(x.Attestation_1),
@@ -83,26 +83,27 @@ namespace Nethermind.BeaconNode.OApi
                     ),
                     beacon_block.Body.Deposits.Select(x =>
                         new Core2.Containers.Deposit(
-                            x.Proof.Select(y => new Hash32(y)),
+                            x.Proof.Select(y => new Bytes32(y)),
                             new DepositData(
                                 new BlsPublicKey(x.Data.Pubkey),
-                                new Hash32(x.Data.Withdrawal_credentials),
+                                new Bytes32(x.Data.Withdrawal_credentials),
                                 new Gwei((ulong) x.Data.Amount),
                                 new BlsSignature(x.Data.Signature)
                             )
                         )
                     ),
                     beacon_block.Body.Voluntary_exits.Select(x =>
+                        new Core2.Crypto.SignedVoluntaryExit(
                         new Core2.Containers.VoluntaryExit(
                             new Epoch((ulong) x.Epoch),
-                            new ValidatorIndex((ulong) x.Validator_index),
-                            new BlsSignature((x.Signature))
+                            new ValidatorIndex((ulong) x.Validator_index)
+                            ),
+                            BlsSignature.Zero
                         )
                     )
-                ),
-                new BlsSignature(Bytes.FromHexString(beacon_block.Signature))
+                )
             );
-
+            SignedBeaconBlock signedBlock = new SignedBeaconBlock(block, new BlsSignature(Bytes.FromHexString(beacon_block.Signature)));
             bool acceptedLocally = await _beaconNode.PublishBlockAsync(signedBlock, CancellationToken.None);
             
             // TODO: return 200 or 202 based on whether accepted locally or not
@@ -134,21 +135,20 @@ namespace Nethermind.BeaconNode.OApi
                 Slot = (ulong)data.Slot,
                 Parent_root = data.ParentRoot.ToString(),
                 State_root = data.StateRoot.ToString(),
-                Signature = data.Signature.ToString(),
                 Body = new OApi.BeaconBlockBody()
                 {
                     Randao_reveal = data.Body!.RandaoReveal.AsSpan().ToArray(),
                     Eth1_data = new Eth1_data()
                     {
-                        Block_hash = data.Body.Eth1Data.BlockHash.Bytes,
+                        Block_hash = data.Body.Eth1Data.BlockHash.AsSpan().ToArray(),
                         Deposit_count = data.Body.Eth1Data.DepositCount,
-                        Deposit_root = data.Body.Eth1Data.DepositRoot.Bytes 
+                        Deposit_root = data.Body.Eth1Data.DepositRoot.AsSpan().ToArray() 
                     },
                     Graffiti = data.Body.Graffiti.AsSpan().ToArray(),
                     Proposer_slashings = data.Body.ProposerSlashings.Select(x => new Proposer_slashings()
                     {
-                        Header_1 = MapBeaconBlockHeader(x.Header1),
-                        Header_2 = MapBeaconBlockHeader(x.Header2),
+                        Header_1 = MapBeaconBlockHeader(x.SignedHeader1.Message),
+                        Header_2 = MapBeaconBlockHeader(x.SignedHeader2.Message),
                         Proposer_index = x.ProposerIndex
                     }).ToList(),
                     Attester_slashings = data.Body.AttesterSlashings.Select(x => new Attester_slashings()
@@ -165,20 +165,20 @@ namespace Nethermind.BeaconNode.OApi
                     }).ToList(),
                     Voluntary_exits = data.Body.VoluntaryExits.Select(x => new Voluntary_exits()
                     {
-                        Validator_index = x.ValidatorIndex,
-                        Epoch = x.Epoch,
+                        Validator_index = x.Message.ValidatorIndex,
+                        Epoch = x.Message.Epoch,
                         Signature = x.Signature.Bytes
                     }).ToList(),
                     Deposits = data.Body.Deposits.Select((x, index) => new Deposits()
                     {
                         Index = (ulong)index,
-                        Proof = x.Proof.Select(y => y.Bytes).ToList(),
+                        Proof = x.Proof.Select(y => y.AsSpan().ToArray()).ToList(),
                         Data = new Data()
                         {
                             Amount = x.Data.Amount,
                             Pubkey = x.Data.PublicKey.Bytes,
                             Signature = x.Data.Signature.Bytes,
-                            Withdrawal_credentials = x.Data.WithdrawalCredentials.Bytes
+                            Withdrawal_credentials = x.Data.WithdrawalCredentials.AsSpan().ToArray()
                         }
                     }).ToList(),
                     Transfers = new List<Transfers>()
@@ -268,14 +268,14 @@ namespace Nethermind.BeaconNode.OApi
             return new Core2.Containers.AttestationData(
                 Slot.None,
                 CommitteeIndex.None, 
-                new Hash32(attestationData.Beacon_block_root), 
+                new Root(attestationData.Beacon_block_root), 
                 new Checkpoint(
                     new Epoch((ulong)attestationData.Source_epoch), 
-                    new Hash32(attestationData.Source_root) 
+                    new Root(attestationData.Source_root) 
                 ),
                 new Checkpoint(
                     new Epoch((ulong)attestationData.Target_epoch), 
-                    new Hash32(attestationData.Target_root) 
+                    new Root(attestationData.Target_root) 
                 )
             );
         }
@@ -284,10 +284,9 @@ namespace Nethermind.BeaconNode.OApi
         {
             return new Core2.Containers.BeaconBlockHeader(
                 new Slot((ulong)value.Slot),
-                new Hash32(Bytes.FromHexString(value.Parent_root)), 
-                new Hash32(Bytes.FromHexString(value.State_root)), 
-                new Hash32(Bytes.FromHexString(value.Body_root)),
-                new BlsSignature(Bytes.FromHexString(value.Signature))
+                new Root(Bytes.FromHexString(value.Parent_root)), 
+                new Root(Bytes.FromHexString(value.State_root)), 
+                new Root(Bytes.FromHexString(value.Body_root))
             );
         }
         
@@ -307,12 +306,12 @@ namespace Nethermind.BeaconNode.OApi
             // NOTE: This mapping isn't right, spec changes (sharding)
             return new AttestationData()
             {
-                Beacon_block_root = attestationData.BeaconBlockRoot.Bytes,
+                Beacon_block_root = attestationData.BeaconBlockRoot.AsSpan().ToArray(),
                 Crosslink = new Crosslink(),
                 Source_epoch = attestationData.Source.Epoch,
-                Source_root = attestationData.Source.Root.Bytes,
+                Source_root = attestationData.Source.Root.AsSpan().ToArray(),
                 Target_epoch =  attestationData.Target.Epoch,
-                Target_root = attestationData.Target.Root.Bytes
+                Target_root = attestationData.Target.Root.AsSpan().ToArray()
             };
         }
 
@@ -323,8 +322,7 @@ namespace Nethermind.BeaconNode.OApi
                 Body_root = value.BodyRoot.ToString(),
                 Parent_root = value.ParentRoot.ToString(),
                 Slot = value.Slot,
-                State_root = value.StateRoot.ToString(),
-                Signature = value.Signature.ToString()
+                State_root = value.StateRoot.ToString()
             };
         }
     }

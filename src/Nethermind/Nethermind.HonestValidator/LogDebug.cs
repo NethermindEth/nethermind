@@ -17,6 +17,7 @@
 using System;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.HonestValidator
@@ -50,5 +51,10 @@ namespace Nethermind.HonestValidator
             LoggerMessage.Define<Slot, string, string, BeaconBlock, string>(LogLevel.Debug,
                 new EventId(6454, nameof(PublishingSignedBlock)),
                 "Publishing signed block for slot {Slot} for validator {PublicKey} with RANDAO reveal {RandaoReveal}, block details {BeaconBlock}, and signature {Signature}.");
+        public static readonly Action<ILogger, BlsPublicKey, Epoch, Slot, Shard, Exception?> ValidatorDutyAttestationChanged =
+            LoggerMessage.Define<BlsPublicKey, Epoch, Slot, Shard>(LogLevel.Debug,
+                new EventId(6455, nameof(ValidatorDutyAttestationChanged)),
+                "Validator {PublicKey} epoch {Epoch} duty attestation slot {Slot} for shard {Shard}.");
+
     }
 }

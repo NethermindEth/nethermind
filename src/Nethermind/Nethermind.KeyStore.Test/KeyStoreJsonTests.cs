@@ -48,7 +48,7 @@ namespace Nethermind.KeyStore.Test
                 Directory.CreateDirectory(_keyStoreDir);
             }
 
-            ILogManager logManager = NullLogManager.Instance;
+            ILogManager logManager = LimboLogs.Instance;
             _serializer = new EthereumJsonSerializer();
             _cryptoRandom = new CryptoRandom();
             _store = new FileKeyStore(_config, _serializer, new AesEncrypter(_config, logManager), _cryptoRandom, logManager);

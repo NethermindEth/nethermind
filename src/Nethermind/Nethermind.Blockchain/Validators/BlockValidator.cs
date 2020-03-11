@@ -21,7 +21,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Logging;
-using Nethermind.Store.Proofs;
+using Nethermind.State.Proofs;
 
 namespace Nethermind.Blockchain.Validators
 {

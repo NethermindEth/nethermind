@@ -49,10 +49,9 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 : ResultWrapper<ChainLevelForRpc>.Success(new ChainLevelForRpc(levelInfo));
         }
         
-        public ResultWrapper<bool> debug_deleteChainSlice(in long startNumber, in long endNumber)
+        public ResultWrapper<int> debug_deleteChainSlice(in long startNumber)
         {
-            _debugBridge.DeleteChainSlice(startNumber, endNumber);
-            return ResultWrapper<bool>.Success(true);
+            return ResultWrapper<int>.Success(_debugBridge.DeleteChainSlice(startNumber));
         }
 
         public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Keccak transactionHash, GethTraceOptions options = null)

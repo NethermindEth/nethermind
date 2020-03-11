@@ -15,8 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Blockchain.Rewards;
-using Nethermind.Mining;
-using Nethermind.Mining.Difficulty;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Mining;
+using Nethermind.Consensus.Mining.Difficulty;
 using Nethermind.Runner.Ethereum.Context;
 
 namespace Nethermind.Runner.Ethereum.Steps

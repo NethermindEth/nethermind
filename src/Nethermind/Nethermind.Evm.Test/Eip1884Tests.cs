@@ -21,6 +21,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.State;
 using Nethermind.Store;
 using NUnit.Framework;
 

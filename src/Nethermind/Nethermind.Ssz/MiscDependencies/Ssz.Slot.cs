@@ -37,7 +37,7 @@ namespace Nethermind.Ssz
         }    
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static Slot DecodeSlot(Span<byte> span, ref int offset)
+        private static Slot DecodeSlot(ReadOnlySpan<byte> span, ref int offset)
         {
             Slot slot = new Slot(BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(offset)));
             offset += Ssz.SlotLength;

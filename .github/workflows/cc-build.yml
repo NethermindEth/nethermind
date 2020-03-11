@@ -84,18 +84,30 @@ jobs:
     - name: Nethermind.Core2.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Core2.Test
-    - name: Nethermind.Store.Test
+    - name: Nethermind.State.Test
       run: |
-        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Store.Test
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.State.Test
     - name: Nethermind.Wallet.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Wallet.Test
     - name: Nethermind.DataMarketplace.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.DataMarketplace.Test
+    - name: Nethermind.DataMarketplace.Channels.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.DataMarketplace.Channels.Test
     - name: Nethermind.DataMarketplace.Consumers.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.DataMarketplace.Consumers.Test
+    - name: Nethermind.DataMarketplace.Infrastructure.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.DataMarketplace.Infrastructure.Test
+    - name: Nethermind.DataMarketplace.Subprotocols.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.DataMarketplace.Subprotocols.Test
+    - name: Nethermind.DataMarketplace.WebSockets.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.DataMarketplace.WebSockets.Test
     - name: Upload coverage reports to Codecov
       uses: codecov/codecov-action@v1.0.3
       with:

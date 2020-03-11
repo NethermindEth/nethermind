@@ -208,16 +208,18 @@ namespace Nethermind.Runner.Ethereum.Steps
                 startedThisRound++;
                 Task continuationTask = task.ContinueWith(t =>
                 {
-                    _hasFinishedExecution[stepBaseType] = true;
                     stopwatch.Stop();
 
                     if (t.IsFaulted)
                     {
                         if (_logger.IsError) _logger.Error($"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms", t.Exception);
+                        _context.LogManager.GetClassLogger().Error($"FAILED TO INIT {stepBaseType.Name}", t.Exception);
+                        _hasFinishedExecution[stepBaseType] = true;
                     }
                     else
                     {
                         if (_logger.IsInfo) _logger.Info($"Step {step.GetType().Name.PadRight(24)} executed in {stopwatch.ElapsedMilliseconds}ms");
+                        _hasFinishedExecution[stepBaseType] = true;
                     }
                 });
 

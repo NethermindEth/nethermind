@@ -20,7 +20,7 @@ using System.Data.SqlTypes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Store;
+using Nethermind.State;
 using Newtonsoft.Json.Serialization;
 
 namespace Nethermind.Evm.Tracing
@@ -44,6 +44,10 @@ namespace Nethermind.Evm.Tracing
         /// </summary>
         bool IsTracingMemory { get; }
         bool IsTracingInstructions { get; }
+        /// <summary>
+        /// Updates of refund counter
+        /// </summary>
+        bool IsTracingRefunds { get; }
         /// <summary>
         /// Code deployment
         /// </summary>
@@ -100,8 +104,14 @@ namespace Nethermind.Evm.Tracing
 
         void ReportByteCode(byte[] byteCode);
 
-        void ReportRefundForVmTrace(long refund, long gasAvailable);
+        /// <summary>
+        /// Special case for VM trace in Parity but we consider removing support for it
+        /// </summary>
+        /// <param name="refund"></param>
+        /// <param name="gasAvailable"></param>
+        void ReportGasUpdateForVmTrace(long refund, long gasAvailable);
 
         void ReportRefund(long refund);
+        void ReportExtraGasPressure(long extraGasPressure);
     }
 }

@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
-using Nethermind.Clique;
+using Nethermind.Consensus.Clique;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Runner.Ethereum.Context;
 

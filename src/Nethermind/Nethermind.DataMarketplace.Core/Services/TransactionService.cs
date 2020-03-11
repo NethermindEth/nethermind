@@ -77,7 +77,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 throw new InvalidOperationException("Multiplier for gas price when canceling transaction cannot be 0.");
             }
 
-            const long gasLimit = 21000;
+            const long gasLimit = Transaction.BaseTxGasCost;
             UInt256 gasPrice = 0; 
             
             var hash = await UpdateAsync(transactionHash, transaction =>

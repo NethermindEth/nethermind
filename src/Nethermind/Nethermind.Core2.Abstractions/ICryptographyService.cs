@@ -19,34 +19,28 @@ using System.Collections.Generic;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using Hash32 = Nethermind.Core2.Crypto.Hash32;
 
 namespace Nethermind.Core2
 {
     public interface ICryptographyService
     {
-        BlsPublicKey BlsAggregatePublicKeys(IEnumerable<BlsPublicKey> publicKeys);
-
-        bool BlsVerify(BlsPublicKey publicKey, Hash32 signingRoot, BlsSignature signature, Domain domain);
-
-        bool BlsVerifyMultiple(IEnumerable<BlsPublicKey> publicKeys, IEnumerable<Hash32> messageHashes, BlsSignature signature, Domain domain);
-
-        Hash32 Hash(Hash32 a, Hash32 b);
-
-        Hash32 Hash(ReadOnlySpan<byte> bytes);
-
-        Hash32 HashTreeRoot(AttestationData attestationData);
-        Hash32 HashTreeRoot(BeaconBlock beaconBlock);
-        Hash32 HashTreeRoot(BeaconBlockBody beaconBlockBody);
-        Hash32 HashTreeRoot(BeaconState beaconState);
-        Hash32 HashTreeRoot(DepositData depositData);
-        Hash32 HashTreeRoot(IList<DepositData> depositData);
-        Hash32 HashTreeRoot(Epoch epoch);
-        Hash32 HashTreeRoot(HistoricalBatch historicalBatch);
-
-        Hash32 SigningRoot(BeaconBlock beaconBlock);
-        Hash32 SigningRoot(BeaconBlockHeader beaconBlockHeader);
-        Hash32 SigningRoot(DepositData depositData);
-        Hash32 SigningRoot(VoluntaryExit voluntaryExit);
+        BlsPublicKey BlsAggregatePublicKeys(IList<BlsPublicKey> publicKeys);
+        bool BlsAggregateVerify(IList<BlsPublicKey> publicKeys, IList<Root> signingRoots, BlsSignature signature);
+        bool BlsFastAggregateVerify(IList<BlsPublicKey> publicKey, Root signingRoot, BlsSignature signature);
+        bool BlsVerify(BlsPublicKey publicKey, Root signingRoot, BlsSignature signature);
+        Bytes32 Hash(Bytes32 a, Bytes32 b);
+        Bytes32 Hash(ReadOnlySpan<byte> bytes);
+        Root HashTreeRoot(AttestationData attestationData);
+        Root HashTreeRoot(BeaconBlock beaconBlock);
+        Root HashTreeRoot(BeaconBlockBody beaconBlockBody);
+        Root HashTreeRoot(BeaconBlockHeader beaconBlockHeader);
+        Root HashTreeRoot(BeaconState beaconState);
+        Root HashTreeRoot(DepositData depositData);
+        Root HashTreeRoot(DepositMessage depositMessage);
+        Root HashTreeRoot(IList<DepositData> depositData);
+        Root HashTreeRoot(Epoch epoch);
+        Root HashTreeRoot(HistoricalBatch historicalBatch);
+        Root HashTreeRoot(SigningRoot signingRoot);
+        Root HashTreeRoot(VoluntaryExit voluntaryExit);
     }
 }

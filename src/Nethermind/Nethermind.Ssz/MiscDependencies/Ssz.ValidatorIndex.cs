@@ -46,7 +46,7 @@ namespace Nethermind.Ssz
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ValidatorIndex DecodeValidatorIndex(Span<byte> span, ref int offset)
+        private static ValidatorIndex DecodeValidatorIndex(ReadOnlySpan<byte> span, ref int offset)
         {
             ValidatorIndex validatorIndex = new ValidatorIndex(BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(offset)));
             offset += Ssz.ValidatorIndexLength;
@@ -76,7 +76,7 @@ namespace Nethermind.Ssz
             dynamicOffset += length;
         }
 
-        public static ValidatorIndex[] DecodeValidatorIndexes(Span<byte> span)
+        public static ValidatorIndex[] DecodeValidatorIndexes(ReadOnlySpan<byte> span)
         {
             return MemoryMarshal.Cast<byte, ValidatorIndex>(span).ToArray();
         }

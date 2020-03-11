@@ -17,13 +17,13 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.AuRa.Rewards;
-using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
@@ -71,7 +71,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyBlockTree, _context.SpecProvider, _context.LogManager);
             BlockProcessor blockProcessor = CreateBlockProcessor(readOnlyTxProcessingEnv, readOnlyDbProvider);
             OneTimeChainProcessor chainProcessor = new OneTimeChainProcessor(readOnlyDbProvider, new BlockchainProcessor(readOnlyBlockTree, blockProcessor, _context.RecoveryStep, _context.LogManager, false));
-            PendingTxSelector pendingTxSelector = new PendingTxSelector(_context.TxPool, readOnlyTxProcessingEnv.StateProvider, _context.LogManager);
+            var pendingTxSelector = CreatePendingTxSelector();
 
             return new BlockProducerContext
             {
@@ -80,6 +80,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 PendingTxSelector = pendingTxSelector
             };
         }
+
+        protected virtual IPendingTxSelector CreatePendingTxSelector() => new PendingTxSelector(_context.TxPool, _context.StateProvider, _context.LogManager);
 
         protected virtual BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, IReadOnlyDbProvider readOnlyDbProvider)
         {

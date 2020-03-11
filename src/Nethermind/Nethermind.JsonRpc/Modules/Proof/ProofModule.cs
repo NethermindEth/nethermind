@@ -32,7 +32,7 @@ using Nethermind.Evm.Tracing.Proofs;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store.Proofs;
+using Nethermind.State.Proofs;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {

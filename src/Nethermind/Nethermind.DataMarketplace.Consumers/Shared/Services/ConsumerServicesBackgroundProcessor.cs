@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -37,7 +38,7 @@ using Timer = System.Timers.Timer;
 
 namespace Nethermind.DataMarketplace.Consumers.Shared.Services
 {
-    public class ConsumerServicesBackgroundProcessor : IConsumerServicesBackgroundProcessor
+    public class ConsumerServicesBackgroundProcessor : IConsumerServicesBackgroundProcessor, IDisposable
     {
         private readonly IDepositDetailsRepository _depositRepository;
         private readonly IConsumerNotifier _consumerNotifier;
@@ -94,20 +95,20 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                 {
                     if (_ethJsonRpcClientProxy == null)
                     {
-                        if(_logger.IsError) _logger.Error("Cannot find any configured ETH proxy to run deposit timer.");
+                        if (_logger.IsError) _logger.Error("Cannot find any configured ETH proxy to run deposit timer.");
                         return;
                     }
-                    
+
                     _depositTimer = new Timer(_depositTimerPeriod);
                     _depositTimer.Elapsed += DepositTimerOnElapsed;
                     _depositTimer.Start();
                 }
-                else
-                {
-                    _blockProcessor.BlockProcessed += OnBlockProcessed;
-                }
 
                 if (_logger.IsInfo) _logger.Info("Initialized NDM consumer services background processor.");
+            }
+            else
+            {
+                _blockProcessor.BlockProcessed += OnBlockProcessed;
             }
         }
 
@@ -218,6 +219,11 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                         refundClaimStatus.TransactionHash!);
                 }
             }
+        }
+
+        public void Dispose()
+        {
+            _depositTimer?.Dispose();
         }
     }
 }

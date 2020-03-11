@@ -26,7 +26,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
-using Nethermind.Store;
+using Nethermind.State;
 using Nethermind.TxPool.Collections;
 using Timer = System.Timers.Timer;
 

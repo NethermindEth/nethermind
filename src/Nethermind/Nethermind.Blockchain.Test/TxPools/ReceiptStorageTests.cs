@@ -20,6 +20,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Store;
@@ -37,7 +38,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         public void Setup()
         {
             _specProvider = RopstenSpecProvider.Instance;
-            _ethereumEcdsa = new EthereumEcdsa(_specProvider, NullLogManager.Instance);
+            _ethereumEcdsa = new EthereumEcdsa(_specProvider, LimboLogs.Instance);
         }
 
         [Test]

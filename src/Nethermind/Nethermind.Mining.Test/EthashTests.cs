@@ -15,12 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Consensus.Mining;
+using Nethermind.Consensus.Mining.Difficulty;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Mining.Difficulty;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using NUnit.Framework;
@@ -806,7 +807,7 @@ namespace Nethermind.Mining.Test
         {
             Block b = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
 
-            Ethash ethash = new Ethash(NullLogManager.Instance);
+            Ethash ethash = new Ethash(LimboLogs.Instance);
             EthashSealValidator sealValidator = new EthashSealValidator(LimboLogs.Instance, new DifficultyCalculator(MainNetSpecProvider.Instance), new CryptoRandom(), ethash);
             bool valid = sealValidator.ValidateSeal(b.Header, true);
             Assert.True(valid);
@@ -817,7 +818,7 @@ namespace Nethermind.Mining.Test
         {
             Block b = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
 
-            Ethash ethash = new Ethash(NullLogManager.Instance);
+            Ethash ethash = new Ethash(LimboLogs.Instance);
             EthashSealValidator sealValidator = new EthashSealValidator(LimboLogs.Instance, new DifficultyCalculator(MainNetSpecProvider.Instance), new CryptoRandom(), ethash);
             sealValidator.ValidateSeal(b.Header, true);
             b.Header.MixHash = Keccak.Zero;
@@ -831,7 +832,7 @@ namespace Nethermind.Mining.Test
             Block b = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
             b.Header.MixHash = Keccak.Zero;
 
-            Ethash ethash = new Ethash(NullLogManager.Instance);
+            Ethash ethash = new Ethash(LimboLogs.Instance);
             EthashSealValidator sealValidator = new EthashSealValidator(LimboLogs.Instance, new DifficultyCalculator(MainNetSpecProvider.Instance), new CryptoRandom(), ethash);
             bool valid = sealValidator.ValidateSeal(b.Header, false);
             Assert.True(valid);

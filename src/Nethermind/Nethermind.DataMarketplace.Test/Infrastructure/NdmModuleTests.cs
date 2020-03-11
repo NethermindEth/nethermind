@@ -29,6 +29,7 @@ using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure;
 using Nethermind.DataMarketplace.Infrastructure.Modules;
 using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
+using Nethermind.Db;
 using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
@@ -92,7 +93,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
             _baseDbPath = "db";
             _rocksProvider = Substitute.For<IDbProvider>();
             _mongoProvider = Substitute.For<IMongoProvider>();
-            _logManager = Substitute.For<ILogManager>();
+            _logManager = LimboLogs.Instance;
             _blockTree = Substitute.For<IBlockTree>();
             _specProvider = Substitute.For<ISpecProvider>();
             _transactionPool = Substitute.For<ITxPool>();

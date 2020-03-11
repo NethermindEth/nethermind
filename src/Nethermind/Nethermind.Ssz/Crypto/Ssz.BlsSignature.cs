@@ -31,7 +31,7 @@ namespace Nethermind.Ssz
         }
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static BlsSignature DecodeBlsSignature(Span<byte> span, ref int offset)
+        private static BlsSignature DecodeBlsSignature(ReadOnlySpan<byte> span, ref int offset)
         {
             BlsSignature blsSignature = DecodeBlsSignature(span.Slice(offset, Ssz.BlsSignatureLength));
             offset += Ssz.BlsSignatureLength;
@@ -45,9 +45,9 @@ namespace Nethermind.Ssz
             offset += Ssz.BlsSignatureLength;
         }
         
-        public static BlsSignature DecodeBlsSignature(Span<byte> span)
+        public static BlsSignature DecodeBlsSignature(ReadOnlySpan<byte> span)
         {
-            return new BlsSignature(DecodeBytes(span).ToArray());
+            return new BlsSignature(span.ToArray());
         }    
     }
 }

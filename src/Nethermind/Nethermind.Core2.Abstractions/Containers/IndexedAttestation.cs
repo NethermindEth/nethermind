@@ -25,6 +25,9 @@ namespace Nethermind.Core2.Containers
     {
         private List<ValidatorIndex> _attestingIndices;
 
+        public static readonly IndexedAttestation Zero =
+            new IndexedAttestation(new ValidatorIndex[0], AttestationData.Zero, BlsSignature.Zero);
+        
         public IndexedAttestation(
             IEnumerable<ValidatorIndex> attestingIndices,
             AttestationData data,

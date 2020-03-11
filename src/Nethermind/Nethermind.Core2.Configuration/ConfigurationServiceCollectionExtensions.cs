@@ -27,6 +27,8 @@ namespace Nethermind.Core2.Configuration
             services.AddSingleton<IClientVersion, ClientVersion>();
             
             services.AddSingleton<ChainConstants>();
+
+            services.AddSingleton(new DataDirectory(configuration.GetValue<string>(DataDirectory.Key)));
             
             services.Configure<MiscellaneousParameters>(x =>
             {
@@ -50,6 +52,29 @@ namespace Nethermind.Core2.Configuration
                         () => configuration.GetValue<ulong>("MIN_GENESIS_TIME"));
                 });
             });
+            services.Configure<ForkChoiceConfiguration>(x =>
+            {
+                x.SafeSlotsToUpdateJustified = new Slot(
+                    configuration.GetValue<ulong>("BeaconChain:ForkChoice:SafeSlotsToUpdateJustified",
+                        () => configuration.GetValue<ulong>("SAFE_SLOTS_TO_UPDATE_JUSTIFIED")));
+            });
+            services.Configure<HonestValidatorConstants>(x =>
+            {
+                configuration.Bind("BeaconChain:Validator", section =>
+                {
+                    x.Eth1FollowDistance = section.GetValue(nameof(x.Eth1FollowDistance),
+                        () => configuration.GetValue<ulong>("ETH1_FOLLOW_DISTANCE"));
+                    x.TargetAggregatorsPerCommittee = section.GetValue(nameof(x.TargetAggregatorsPerCommittee),
+                        () => configuration.GetValue<ulong>("TARGET_AGGREGATORS_PER_COMMITTEE"));
+                    x.RandomSubnetsPerValidator = section.GetValue(nameof(x.RandomSubnetsPerValidator),
+                        () => configuration.GetValue<ulong>("RANDOM_SUBNETS_PER_VALIDATOR"));
+                    x.EpochsPerRandomSubnetSubscription = new Epoch(
+                        section.GetValue(nameof(x.Eth1FollowDistance),
+                            () => configuration.GetValue<ulong>("EPOCHS_PER_RANDOM_SUBNET_SUBSCRIPTION")));
+                    x.SecondsPerEth1Block = section.GetValue(nameof(x.SecondsPerEth1Block),
+                        () => configuration.GetValue<ulong>("SECONDS_PER_ETH1_BLOCK"));
+                });
+            });
             services.Configure<GweiValues>(x =>
             {
                 configuration.Bind("BeaconChain:GweiValues", section =>
@@ -69,22 +94,20 @@ namespace Nethermind.Core2.Configuration
             {
                 configuration.Bind("BeaconChain:InitialValues", section =>
                 {
-                    var slotsPerEpoch = configuration.GetValue<ulong>("BeaconChain:TimeParameters:SlotsPerEpoch",
-                        () => configuration.GetValue<ulong>("SLOTS_PER_EPOCH"));
-                    if (slotsPerEpoch != 0)
-                    {
-                        var genesisSlot = section.GetValue<ulong>("GenesisSlot",
-                            () => configuration.GetValue<ulong>("GENESIS_EPOCH"));
-                        x.GenesisEpoch = new Epoch(genesisSlot / slotsPerEpoch);
-                    }
                     x.BlsWithdrawalPrefix = section.GetValue<byte>("BlsWithdrawalPrefix",
                         () => configuration.GetValue<byte>("BLS_WITHDRAWAL_PREFIX"));
+                    x.GenesisForkVersion = new ForkVersion(
+                        section.GetBytesFromPrefixedHex("GenesisForkVersion",
+                            () => configuration.GetBytesFromPrefixedHex("GENESIS_FORK_VERSION",
+                                () => new byte[ForkVersion.Length])));
                 });
             });
             services.Configure<TimeParameters>(x =>
             {
                 configuration.Bind("BeaconChain:TimeParameters", section =>
                 {
+                    x.MinimumGenesisDelay = section.GetValue("MinimumGenesisDelay",
+                        () => configuration.GetValue<uint>("MIN_GENESIS_DELAY"));
                     x.SecondsPerSlot = section.GetValue("SecondsPerSlot",
                         () => configuration.GetValue<uint>("SECONDS_PER_SLOT"));
                     x.MinimumAttestationInclusionDelay = new Slot(
@@ -171,37 +194,23 @@ namespace Nethermind.Core2.Configuration
                     x.BeaconProposer =  new DomainType(
                         section.GetBytesFromPrefixedHex("DomainBeaconProposer",
                             () => configuration.GetBytesFromPrefixedHex("DOMAIN_BEACON_PROPOSER",
-                                () => new byte[4])));
+                                () => new byte[DomainType.Length])));
                     x.BeaconAttester = new DomainType(
                         section.GetBytesFromPrefixedHex("DomainBeaconAttester",
                             () => configuration.GetBytesFromPrefixedHex("DOMAIN_BEACON_ATTESTER",
-                                () => new byte[4])));
+                                () => new byte[DomainType.Length])));
                     x.Randao = new DomainType(
                         section.GetBytesFromPrefixedHex("DomainRandao",
                             () => configuration.GetBytesFromPrefixedHex("DOMAIN_RANDAO",
-                                () => new byte[4])));
+                                () => new byte[DomainType.Length])));
                     x.Deposit = new DomainType(
                         section.GetBytesFromPrefixedHex("DomainDeposit",
                             () => configuration.GetBytesFromPrefixedHex("DOMAIN_DEPOSIT",
-                                () => new byte[4])));
+                                () => new byte[DomainType.Length])));
                     x.VoluntaryExit = new DomainType(
                         section.GetBytesFromPrefixedHex("DomainVoluntaryExit",
                             () => configuration.GetBytesFromPrefixedHex("DOMAIN_VOLUNTARY_EXIT",
-                                () => new byte[4])));
-                });
-            });
-            services.Configure<ForkChoiceConfiguration>(x =>
-            {
-                x.SafeSlotsToUpdateJustified = new Slot(
-                    configuration.GetValue<ulong>("ForkChoiceConfiguration:SafeSlotsToUpdateJustified",
-                        () => configuration.GetValue<ulong>("SAFE_SLOTS_TO_UPDATE_JUSTIFIED")));
-            });
-            services.Configure<HonestValidatorConstants>(x =>
-            {
-                configuration.Bind("HonestValidatorConstants", section =>
-                {
-                    x.Eth1FollowDistance = section.GetValue(nameof(x.Eth1FollowDistance),
-                        () => configuration.GetValue<ulong>("ETH1_FOLLOW_DISTANCE"));
+                                () => new byte[DomainType.Length])));
                 });
             });
         }

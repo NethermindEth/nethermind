@@ -15,8 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Runtime.Serialization;
-using Nethermind.Store;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.Synchronization.BeamSync
 {

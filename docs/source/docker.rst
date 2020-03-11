@@ -100,7 +100,13 @@ Logs can be mapped with the following command::
 Keystore::
 
     -v /home/user/keystore:/nethermind/keystore
-    
+
+Nlog::
+
+    -v /home/user/NLog.config:/nethermind/NLog.config
+
+More detailed NLog configuration can be found `here <https://github.com/NLog/NLog/wiki/Configuration-file>`_.
+
 Building an image
 =================
 

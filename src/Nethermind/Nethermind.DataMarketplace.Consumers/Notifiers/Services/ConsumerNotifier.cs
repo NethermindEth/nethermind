@@ -91,6 +91,12 @@ namespace Nethermind.DataMarketplace.Consumers.Notifiers.Services
                     address
                 }));
 
+        public Task SendConsumerAccountUnlockedAsync(Address address)
+            => _notifier.NotifyAsync(new Notification("consumer_account_unlocked",
+                new
+                {
+                    address
+                }));
         public Task SendConsumerAddressChangedAsync(Address newAddress, Address previousAddress)
             => _notifier.NotifyAsync(new Notification("consumer_address_changed",
                 new

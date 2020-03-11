@@ -22,6 +22,7 @@ using Nethermind.Core;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
+using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.Store;
@@ -65,6 +66,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 services.Ecdsa,
                 services.BloomStorage,
                 new ReceiptsRecovery(),
+                logManager,
                 jsonRpcConfig.FindLogBlockDepthLimit);
             var dataAssetRlpDecoder = new DataAssetDecoder();
             var encoder = new AbiEncoder();

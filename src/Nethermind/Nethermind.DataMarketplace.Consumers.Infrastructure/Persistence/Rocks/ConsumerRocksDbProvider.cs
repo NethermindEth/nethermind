@@ -15,9 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.Databases;
-using Nethermind.Db.Config;
+using Nethermind.Db;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
-using Nethermind.Store;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks
 {

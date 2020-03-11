@@ -34,7 +34,7 @@ namespace Nethermind.Core2.Json
             options.Converters.Add(new JsonConverterEpoch());
             options.Converters.Add(new JsonConverterForkVersion());
             options.Converters.Add(new JsonConverterGwei());
-            options.Converters.Add(new JsonConverterHash32());
+            options.Converters.Add(new JsonConverterRoot());
             options.Converters.Add(new JsonConverterShard());
             options.Converters.Add(new JsonConverterSlot());
             options.Converters.Add(new JsonConverterValidatorIndex());

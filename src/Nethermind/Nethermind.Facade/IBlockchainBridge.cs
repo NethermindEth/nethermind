@@ -22,6 +22,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 using Block = Nethermind.Core.Block;
 
@@ -42,7 +43,7 @@ namespace Nethermind.Facade
         Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions);
         TxReceipt GetReceipt(Keccak txHash);
         BlockchainBridge.CallOutput Call(BlockHeader blockHeader, Transaction transaction);
-        long EstimateGas(BlockHeader header, Transaction transaction);
+        BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx);
         long GetChainId();
         byte[] GetCode(Address address);
         byte[] GetCode(Keccak codeHash);

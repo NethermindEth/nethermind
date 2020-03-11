@@ -139,7 +139,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
                     message => Handle(Deserialize<DataStreamEnabledMessage>(message.Data)),
                 [NdmMessageCode.DataStreamDisabled] =
                     message => Handle(Deserialize<DataStreamDisabledMessage>(message.Data)),
-                [NdmMessageCode.DataUnavailable] =
+                [NdmMessageCode.DataAvailability] =
                     message => Handle(Deserialize<DataAvailabilityMessage>(message.Data)),
                 [NdmMessageCode.RequestDataDeliveryReceipt] = message =>
                     Handle(Deserialize<RequestDataDeliveryReceiptMessage>(message.Data)),

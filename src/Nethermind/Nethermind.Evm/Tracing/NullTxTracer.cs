@@ -20,7 +20,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Store;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing
 {
@@ -44,6 +44,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingOpLevelStorage => false;
         public bool IsTracingMemory => false;
         public bool IsTracingInstructions => false;
+        public bool IsTracingRefunds => false;
         public bool IsTracingCode => false;
         public bool IsTracingStack => false;
         public bool IsTracingState => false;
@@ -93,7 +94,11 @@ namespace Nethermind.Evm.Tracing
         public void ReportBlockHash(Keccak blockHash) => throw new InvalidOperationException(ErrorMessage);
 
         public void ReportByteCode(byte[] byteCode) => throw new InvalidOperationException(ErrorMessage);
-        public void ReportRefundForVmTrace(long refund, long gasAvailable)=> throw new InvalidOperationException(ErrorMessage);
+        public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)=> throw new InvalidOperationException(ErrorMessage);
         public void ReportRefund(long refund) => throw new InvalidOperationException(ErrorMessage);
+        public void ReportExtraGasPressure(long extraGasPressure)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

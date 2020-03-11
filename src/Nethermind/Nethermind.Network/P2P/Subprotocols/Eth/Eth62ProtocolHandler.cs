@@ -294,7 +294,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
             catch (Exception e)
             {
-                Logger.Error($"Adding new block {newBlockMessage.Block?.ToString(Block.Format.Short)} from {Node:c} failed", e);
+                Logger.Debug($"Adding new block {newBlockMessage.Block?.ToString(Block.Format.Short)} from {Node:c} failed: " + e.Message);
                 throw;
             }
         }

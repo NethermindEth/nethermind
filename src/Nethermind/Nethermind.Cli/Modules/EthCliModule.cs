@@ -34,7 +34,7 @@ namespace Nethermind.Cli.Modules
 
             TransactionForRpc tx = new TransactionForRpc();
             tx.Value = amountInWei;
-            tx.Gas = 21000;
+            tx.Gas = Transaction.BaseTxGasCost;
             tx.GasPrice = (UInt256) Engine.JintEngine.GetValue("gasPrice").AsNumber();
             tx.To = address;
             tx.Nonce = (ulong) NodeManager.Post<long>("eth_getTransactionCount", address, blockNumber).Result;

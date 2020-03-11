@@ -17,12 +17,12 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Mining.Difficulty;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
-using Nethermind.Mining;
-using Nethermind.Mining.Difficulty;
-using Nethermind.Store;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.Producers
 {
@@ -55,16 +55,17 @@ namespace Nethermind.Blockchain.Producers
             }
         }
 
-        private async void OnBlockProcessorQueueEmpty(object sender, EventArgs e)
+        private void OnBlockProcessorQueueEmpty(object sender, EventArgs e)
         {
             CancellationToken token;
             lock (_syncToken)
             {
+                _cancellationTokenSource?.Cancel();
                 _cancellationTokenSource = new CancellationTokenSource();
                 token = _cancellationTokenSource.Token;
             }
 
-            await base.TryProduceNewBlock(token);
+            TryProduceNewBlock(token);
         }
 
         public override void Start()

@@ -20,7 +20,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Store;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing
 {
@@ -31,6 +31,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingOpLevelStorage => false;
         public bool IsTracingMemory => false;
         public bool IsTracingInstructions => false;
+        public bool IsTracingRefunds => false;
         public bool IsTracingCode => false;
         public bool IsTracingStack => false;
         public bool IsTracingState => false;
@@ -169,7 +170,7 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        public void ReportRefundForVmTrace(long refund, long gasAvailable)
+        public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
         {
             throw new NotSupportedException();
         }
@@ -177,6 +178,11 @@ namespace Nethermind.Evm.Tracing
         public void ReportRefund(long refund)
         {
             throw new NotSupportedException();
+        }
+
+        public void ReportExtraGasPressure(long extraGasPressure)
+        {
+            throw new NotImplementedException();
         }
     }
 }

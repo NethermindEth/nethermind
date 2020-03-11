@@ -166,7 +166,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
 
             _remoteHeadBlockHash = status.BestHash;
 
-
             ReceivedProtocolInitMsg(status);
             LesProtocolInitializedEventArgs eventArgs = new LesProtocolInitializedEventArgs(this, status);
 

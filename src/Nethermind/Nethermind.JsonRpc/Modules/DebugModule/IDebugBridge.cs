@@ -36,6 +36,6 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         byte[] GetDbValue(string dbName, byte[] key);
         object GetConfigValue(string category, string name);
         public ChainLevelInfo GetLevelInfo(long number);
-        public void DeleteChainSlice(long startNumber, long endNumber);
+        public int DeleteChainSlice(long startNumber);
     }
 }

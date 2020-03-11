@@ -37,13 +37,13 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
             IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
+            ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
             BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
 
             BeaconState preState = BeaconState.Clone(state);
 
             Epoch stateEpoch = beaconChainUtility.ComputeEpochAtSlot(state.Slot);
-            stateEpoch.ShouldBe(initialValues.GenesisEpoch);
+            stateEpoch.ShouldBe(chainConstants.GenesisEpoch);
 
             // Act
             RunProcessRewardsAndPenalties(testServiceProvider, state);
@@ -62,7 +62,7 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
             IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
+            ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
 
             BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
@@ -90,7 +90,7 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
 
             // ensure has not cross the epoch boundary
             Epoch stateEpoch = beaconChainUtility.ComputeEpochAtSlot(state.Slot);
-            stateEpoch.ShouldBe(initialValues.GenesisEpoch);
+            stateEpoch.ShouldBe(chainConstants.GenesisEpoch);
 
             BeaconState preState = BeaconState.Clone(state);
 
@@ -142,8 +142,8 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
 
         private static IList<Attestation> PrepareStateWithFullAttestations(IServiceProvider testServiceProvider, BeaconState state)
         {
+            ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
 
             BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
 
@@ -170,7 +170,7 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
             }
 
             Epoch stateEpoch = beaconChainUtility.ComputeEpochAtSlot(state.Slot);
-            stateEpoch.ShouldBe(initialValues.GenesisEpoch + Epoch.One);
+            stateEpoch.ShouldBe(chainConstants.GenesisEpoch + Epoch.One);
 
             state.PreviousEpochAttestations.Count.ShouldBe((int)timeParameters.SlotsPerEpoch);
 

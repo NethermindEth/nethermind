@@ -108,6 +108,8 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             {
                 return;
             }
+            
+            _consumerNotifier.SendConsumerAccountLockedAsync(e.Address);
 
             if (_logger.IsInfo) _logger.Info($"Unlocked a consumer account: '{e.Address}', data streams can be enabled.");
         }

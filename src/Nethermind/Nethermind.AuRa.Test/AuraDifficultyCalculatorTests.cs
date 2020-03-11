@@ -16,6 +16,7 @@
 
 using System.Collections;
 using System.Collections.Generic;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;

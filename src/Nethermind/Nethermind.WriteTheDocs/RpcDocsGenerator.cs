@@ -28,7 +28,7 @@ namespace Nethermind.WriteTheDocs
     {
         private static List<string> _assemblyNames = new List<string>
         {
-            "Nethermind.Clique",
+            "Nethermind.Consensus.Clique",
             "Nethermind.JsonRpc"
         };
 

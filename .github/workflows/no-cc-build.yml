@@ -20,7 +20,7 @@ jobs:
       run: sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Installing macOS packages
       if: matrix.os == 'macOS'
-      run: brew install gmp && brew install snappy && brew install lz4
+      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
     - name: Nethermind.Abi.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Abi.Test;
@@ -80,7 +80,7 @@ jobs:
         dotnet test -c Release src/Nethermind/Nethermind.Core2.Test
     - name: Nethermind.Store.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Store.Test
+        dotnet test -c Release src/Nethermind/Nethermind.State.Test
     - name: Nethermind.Wallet.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Wallet.Test

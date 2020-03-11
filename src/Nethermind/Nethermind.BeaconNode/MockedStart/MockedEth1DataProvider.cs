@@ -52,28 +52,28 @@ namespace Nethermind.BeaconNode.MockedStart
             _storeProvider = storeProvider;
         }
         
-        public Task<ulong> GetDistanceAsync(Hash32 eth1BlockHash)
+        public Task<ulong> GetDistanceAsync(Bytes32 eth1BlockHash)
         {
             ulong distance = 2 * _honestValidatorConstantOptions.CurrentValue.Eth1FollowDistance;
             return Task.FromResult(distance);
         }
 
-        public async Task<Eth1Data> GetEth1DataAsync(ulong distance)
+        public async IAsyncEnumerable<Eth1Data> GetEth1DataDescendingAsync(ulong maximumTimestampInclusive, ulong minimumTimestampInclusive)
         {
             if (!_storeProvider.TryGetStore(out IStore? store))
             {
                 throw new Exception("Store not available.");
             }
 
-            Hash32 head = await _forkChoice.GetHeadAsync(store!);
+            Root head = await _forkChoice.GetHeadAsync(store!);
             BeaconState state = await store!.GetBlockStateAsync(head);
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state!);
             Eth1Data eth1Data = GetEth1DataStub(state!, currentEpoch);
             
-            return eth1Data;
+            yield return eth1Data;
         }
-
-        public IAsyncEnumerable<Deposit> GetDepositsAsync(Hash32 eth1BlockHash, ulong startIndex, ulong maximum)
+        
+        public IAsyncEnumerable<Deposit> GetDepositsAsync(Bytes32 eth1BlockHash, ulong startIndex, ulong maximum)
         {
             // Mocked data returns no extra deposits, but because count doesn't increase, then it won't actually be called. If it is called, there is a problem, so throw.
             throw new NotImplementedException();
@@ -87,11 +87,11 @@ namespace Nethermind.BeaconNode.MockedStart
             ulong votingPeriod = (ulong)currentEpoch / epochsPerPeriod;
             Span<byte> votingPeriodBytes = stackalloc byte[32];
             BinaryPrimitives.WriteUInt64LittleEndian(votingPeriodBytes, votingPeriod);
-            Hash32 depositRoot = _cryptographyService.Hash(votingPeriodBytes);
+            Bytes32 hashOfVotingPeriod = _cryptographyService.Hash(votingPeriodBytes);
             
+            Root depositRoot = new Root(hashOfVotingPeriod.AsSpan());
             ulong depositCount = state.Eth1DepositIndex;
-            Hash32 blockHash = _cryptographyService.Hash(depositRoot.AsSpan());
-            
+            Bytes32 blockHash = _cryptographyService.Hash(hashOfVotingPeriod.AsSpan());
             Eth1Data eth1Data = new Eth1Data(depositRoot, depositCount, blockHash);
             
             return eth1Data;

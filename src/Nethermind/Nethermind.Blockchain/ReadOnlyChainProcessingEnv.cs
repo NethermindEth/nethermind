@@ -19,9 +19,9 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Specs;
-using Nethermind.Specs;
+using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Store;
+using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain

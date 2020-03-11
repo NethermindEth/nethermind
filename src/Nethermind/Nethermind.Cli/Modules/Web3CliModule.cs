@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Globalization;
 using Jint.Native;
 using Nethermind.Abi;
 using Nethermind.Core.Extensions;
@@ -35,7 +34,7 @@ namespace Nethermind.Cli.Modules
         public string Sha3(string data) => NodeManager.Post<string>("web3_sha3", data).Result;
         
         [CliFunction("web3", "toDecimal")]
-        public int ToDecimal(string hex) => int.Parse(hex.Replace("0x", string.Empty), NumberStyles.AllowHexSpecifier);
+        public JsValue ToDecimal(string hex) => Engine.Execute(hex);
         
         [CliFunction("web3", "abi")]
         public string Abi(string name) => new AbiSignature(name).Address.ToHexString();

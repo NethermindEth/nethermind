@@ -23,6 +23,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Specs;
 using Nethermind.Logging;
 using Nethermind.Store;
@@ -74,7 +75,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             ReadOnlyChainProcessingEnv readOnlyChainProcessingEnv = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculatorSource.Get(txEnv.TransactionProcessor), _receiptStorage, readOnlyDbProvider, _specProvider, _logManager);
             IGethStyleTracer tracer = new GethStyleTracer(readOnlyChainProcessingEnv.ChainProcessor, _receiptStorage, new ReadOnlyBlockTree(_blockTree));
 
-            DebugBridge debugBridge = new DebugBridge(_configProvider, readOnlyDbProvider, tracer, readOnlyChainProcessingEnv.BlockProcessingQueue, _blockTree);
+            DebugBridge debugBridge = new DebugBridge(_configProvider, readOnlyDbProvider, tracer, readOnlyChainProcessingEnv.BlockProcessingQueue, readOnlyTree);
             return new DebugModule(_logManager, debugBridge);
         }
 

@@ -76,9 +76,9 @@ namespace Nethermind.Blockchain
                 long currentGen2 = GC.CollectionCount(2);
                 long currentMemory = GC.GetTotalMemory(false);
                 _maxMemory = Math.Max(_maxMemory, currentMemory);
-                long currentStateDbReads = Store.Metrics.StateDbReads;
-                long currentStateDbWrites = Store.Metrics.StateDbWrites;
-                long currentTreeNodeRlp = Store.Metrics.TreeNodeRlpEncodings + Store.Metrics.TreeNodeRlpDecodings;
+                long currentStateDbReads = Db.Metrics.StateDbReads;
+                long currentStateDbWrites = Db.Metrics.StateDbWrites;
+                long currentTreeNodeRlp = Trie.Metrics.TreeNodeRlpEncodings + Trie.Metrics.TreeNodeRlpDecodings;
                 long evmExceptions = Evm.Metrics.EvmExceptions;
                 long currentSelfDestructs = Evm.Metrics.SelfDestructs;
 

@@ -48,10 +48,10 @@ namespace Nethermind.HonestValidator
         
         // 1bxx preliminary
 
-        public static readonly Action<ILogger, string, string, int, Exception?> HonestValidatorWorkerExecuteStarted =
-            LoggerMessage.Define<string, string, int>(LogLevel.Information,
+        public static readonly Action<ILogger, string, string, string, int, Exception?> HonestValidatorWorkerExecuteStarted =
+            LoggerMessage.Define<string, string, string, int>(LogLevel.Information,
                 new EventId(1450, nameof(HonestValidatorWorkerExecuteStarted)),
-                "Honest Validator {ProductTokenVersion} worker started; {Environment} environment [{ThreadId}]");
+                "Honest Validator {ProductTokenVersion} worker started; data directory '{DataDirectory}' (environment {Environment}) [{ThreadId}]");
 
         public static readonly Action<ILogger, string, ulong, Exception?> HonestValidatorWorkerConnected =
             LoggerMessage.Define<string, ulong>(LogLevel.Information,
@@ -60,20 +60,15 @@ namespace Nethermind.HonestValidator
 
         // 2bxx 
         
-        public static readonly Action<ILogger, BlsPublicKey, Epoch, Slot, Shard, Exception?> ValidatorDutyAttestationChanged =
-            LoggerMessage.Define<BlsPublicKey, Epoch, Slot, Shard>(LogLevel.Information,
-                new EventId(2450, nameof(ValidatorDutyAttestationChanged)),
-                "Validator {PublicKey} epoch {Epoch} duty attestation slot {Slot} for shard {Shard}.");
-
         public static readonly Action<ILogger, BlsPublicKey, Epoch, Slot, Exception?> ValidatorDutyProposalChanged =
             LoggerMessage.Define<BlsPublicKey, Epoch, Slot>(LogLevel.Information,
                 new EventId(2451, nameof(ValidatorDutyProposalChanged)),
                 "Validator {PublicKey} epoch {Epoch} duty proposal slot {Slot}.");
 
-        public static readonly Action<ILogger, Slot, BlsPublicKey, Exception?> ProposalDutyFor =
-            LoggerMessage.Define<Slot, BlsPublicKey>(LogLevel.Information,
+        public static readonly Action<ILogger, Slot, ulong, BlsPublicKey, Exception?> ProposalDutyFor =
+            LoggerMessage.Define<Slot, ulong, BlsPublicKey>(LogLevel.Information,
                 new EventId(2452, nameof(ProposalDutyFor)),
-                "Running block proposal duty for slot {Slot} for validator {PublicKey}.");
+                "Running block proposal duty for slot {Slot} at time {Time} for validator {PublicKey}.");
 
         // 4bxx warning
         

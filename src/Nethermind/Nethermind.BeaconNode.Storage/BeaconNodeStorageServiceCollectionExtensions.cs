@@ -14,8 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.IO.Abstractions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Nethermind.Core2;
 
 namespace Nethermind.BeaconNode.Storage
@@ -24,7 +27,20 @@ namespace Nethermind.BeaconNode.Storage
     {
         public static void AddBeaconNodeStorage(this IServiceCollection services, IConfiguration configuration)
         {
-            services.AddSingleton<IStoreProvider, MemoryStoreProvider>();
+            if (configuration.GetSection("Storage:InMemory").Exists())
+            {
+                services.Configure<InMemoryConfiguration>(x => configuration.Bind("Storage:InMemory", x));
+                services.AddSingleton<IStore, MemoryStore>();
+                services.TryAddTransient<IFileSystem, FileSystem>();
+
+                // TODO: Remove IStoreProvider
+                services.AddSingleton<IStoreProvider, MemoryStoreProvider>();
+            }
+            else
+            {
+                throw new Exception("No storage configuration found.");
+            }
+            
         }
     }
 }

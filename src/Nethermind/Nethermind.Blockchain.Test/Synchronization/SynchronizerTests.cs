@@ -32,12 +32,13 @@ using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Store;
-using Nethermind.Store.Repositories;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Blockchain.Test.Validators;
+using Nethermind.Db;
 using Nethermind.Network;
-using Nethermind.Store.BeamSync;
+using Nethermind.State.Repositories;
 using Nethermind.Store.Bloom;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -677,7 +678,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggestedBlockHasNumber(1).Stop();
         }
 
-        [Test, Retry(5)]
+        [Test]
         public void Will_inform_connecting_peer_about_the_alternative_branch_with_same_difficulty()
         {
             if (_synchronizerType == SynchronizerType.Fast)
@@ -700,8 +701,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .Stop();
 
             Assert.AreNotEqual(peerB.HeadBlock.Hash, peerA.HeadBlock.Hash);
-            
-            SpinWait.SpinUntil(() => peerB.ReceivedBlocks.Peek().Hash == peerA.HeadBlock.Hash, WaitTime);
+
+            SpinWait.SpinUntil(() => peerB.ReceivedBlocks.Any() && peerB.ReceivedBlocks.Peek().Hash == peerA.HeadBlock.Hash, WaitTime);
             Assert.AreEqual(peerB.ReceivedBlocks.Peek().Hash, peerA.HeadBlock.Hash);
         }
 

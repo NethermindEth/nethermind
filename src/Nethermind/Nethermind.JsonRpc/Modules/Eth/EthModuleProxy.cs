@@ -28,8 +28,8 @@ using Nethermind.Facade.Proxy;
 using Nethermind.Facade.Proxy.Models;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Proofs;
 using Nethermind.Store;
-using Nethermind.Store.Proofs;
 using Nethermind.Wallet;
 
 namespace Nethermind.JsonRpc.Modules.Eth

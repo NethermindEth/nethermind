@@ -16,11 +16,12 @@
 
 using System.Threading.Tasks;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 
 namespace Nethermind.Core2
 {
     public interface INetworkPeering
     {
-        Task PublishBeaconBlockAsync(BeaconBlock beaconBlock);
+        Task PublishBeaconBlockAsync(SignedBeaconBlock signedBlock);
     }
 }

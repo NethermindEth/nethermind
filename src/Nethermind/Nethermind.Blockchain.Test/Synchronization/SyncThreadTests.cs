@@ -34,14 +34,15 @@ using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Store;
-using Nethermind.Store.Repositories;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Blockchain.Test.Validators;
+using Nethermind.Db;
 using Nethermind.Evm.Tracing.ParityStyle;
-using Nethermind.Mining;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store.BeamSync;
+using Nethermind.State;
+using Nethermind.State.Repositories;
 using Nethermind.Store.Bloom;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
@@ -237,8 +238,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
         private SyncTestContext CreateSyncManager(int index)
         {
-            Rlp.RegisterDecoders(typeof(ParityTraceDecoder).Assembly);
-
             var logManager = NoErrorLimboLogs.Instance;
             ConsoleAsyncLogger logger = new ConsoleAsyncLogger(LogLevel.Debug, "PEER " + index + " ");
 //            var logManager = new OneLoggerLogManager(logger);
