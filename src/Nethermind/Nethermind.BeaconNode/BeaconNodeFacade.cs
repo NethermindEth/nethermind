@@ -57,12 +57,18 @@ namespace Nethermind.BeaconNode
             _blockProducer = blockProducer;
         }
 
-        public async Task<ulong> GetGenesisTimeAsync(CancellationToken cancellationToken)
+        public async Task<ApiResponse<ulong>> GetGenesisTimeAsync(CancellationToken cancellationToken)
         {
             try
             {
+                if (!_store.IsInitialized)
+                {
+                    // Beacon chain is currently syncing or waiting for genesis.
+                    return ApiResponse.Create<ulong>(StatusCode.InternalError);
+                }
+                
                 BeaconState state = await GetHeadStateAsync().ConfigureAwait(false);
-                return state.GenesisTime;
+                return ApiResponse.Create(StatusCode.Success, state.GenesisTime);
             }
             catch (Exception ex)
             {
@@ -71,12 +77,12 @@ namespace Nethermind.BeaconNode
             }
         }
 
-        public async Task<Fork> GetNodeForkAsync(CancellationToken cancellationToken)
+        public async Task<ApiResponse<Fork>> GetNodeForkAsync(CancellationToken cancellationToken)
         {
             try
             {
                 BeaconState state = await GetHeadStateAsync().ConfigureAwait(false);
-                return state.Fork;
+                return ApiResponse.Create(StatusCode.Success, state.Fork);
             }
             catch (Exception ex)
             {
@@ -85,12 +91,12 @@ namespace Nethermind.BeaconNode
             }
         }
 
-        public Task<string> GetNodeVersionAsync(CancellationToken cancellationToken)
+        public Task<ApiResponse<string>> GetNodeVersionAsync(CancellationToken cancellationToken)
         {
             try
             {
                 var versionDescription = _clientVersion.Description;
-                return Task.FromResult(versionDescription);
+                return Task.FromResult(ApiResponse.Create(StatusCode.Success, versionDescription));
             }
             catch (Exception ex)
             {
@@ -99,31 +105,42 @@ namespace Nethermind.BeaconNode
             }
         }
 
-        public async Task<Syncing> GetSyncingAsync(CancellationToken cancellationToken)
+        public async Task<ApiResponse<Syncing>> GetSyncingAsync(CancellationToken cancellationToken)
         {
-            Slot currentSlot = Slot.Zero;
-            if (_store.IsInitialized)
+            try
             {
-                Root head = await _forkChoice.GetHeadAsync(_store).ConfigureAwait(false);
-                BeaconBlock block = await _store.GetBlockAsync(head).ConfigureAwait(false);
-                currentSlot = block.Slot;
+                Slot currentSlot = Slot.Zero;
+                if (_store.IsInitialized)
+                {
+                    Root head = await _forkChoice.GetHeadAsync(_store).ConfigureAwait(false);
+                    BeaconBlock block = await _store.GetBlockAsync(head).ConfigureAwait(false);
+                    currentSlot = block.Slot;
+                }
+
+                Slot highestSlot = Slot.Max(currentSlot, _networkPeering.HighestPeerSlot);
+
+                Slot startingSlot = _networkPeering.SyncStartingSlot;
+
+                bool isSyncing = highestSlot > currentSlot;
+
+                Syncing syncing = new Syncing(isSyncing, new SyncingStatus(startingSlot, currentSlot, highestSlot));
+
+                return ApiResponse.Create(StatusCode.Success, syncing);
             }
-
-            Slot highestSlot = Slot.Max(currentSlot, _networkPeering.HighestPeerSlot);
-
-            Slot startingSlot = _networkPeering.SyncStartingSlot;
-
-            bool isSyncing = highestSlot > currentSlot;
-
-            return new Syncing(isSyncing, new SyncingStatus(startingSlot, currentSlot, highestSlot));
+            catch (Exception ex)
+            {
+                if (_logger.IsWarn()) Log.ApiErrorGetSyncing(_logger, ex);
+                throw;
+            }
         }
 
-        public async Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal,
+        public async Task<ApiResponse<BeaconBlock>> NewBlockAsync(Slot slot, BlsSignature randaoReveal,
             CancellationToken cancellationToken)
         {
             try
             {
-                return await _blockProducer.NewBlockAsync(slot, randaoReveal).ConfigureAwait(false);
+                BeaconBlock unsignedBlock = await _blockProducer.NewBlockAsync(slot, randaoReveal).ConfigureAwait(false);
+                return ApiResponse.Create(StatusCode.Success, unsignedBlock);
             }
             catch (Exception ex)
             {
@@ -132,42 +149,72 @@ namespace Nethermind.BeaconNode
             }
         }
 
-        public async Task<bool> PublishBlockAsync(SignedBeaconBlock signedBlock, CancellationToken cancellationToken)
+        public async Task<ApiResponse> PublishBlockAsync(SignedBeaconBlock signedBlock, CancellationToken cancellationToken)
         {
-            if (!_store.IsInitialized)
-            {
-                throw new Exception("Beacon chain is currently syncing or waiting for genesis.");
-            }
-
-            bool acceptedLocally = false;
             try
             {
-                await _forkChoice.OnBlockAsync(_store, signedBlock).ConfigureAwait(false);
-                // TODO: validate as per honest validator spec and return true/false
-                acceptedLocally = true;
+                if (!_store.IsInitialized)
+                {
+                    return new ApiResponse(StatusCode.CurrentlySyncing);
+                }
+
+                bool acceptedLocally = false;
+                try
+                {
+                    await _forkChoice.OnBlockAsync(_store, signedBlock).ConfigureAwait(false);
+                    // TODO: validate as per honest validator spec and return true/false
+                    acceptedLocally = true;
+                }
+                catch (Exception ex)
+                {
+                    if (_logger.IsWarn()) Log.BlockNotAcceptedLocally(_logger, signedBlock.Message, ex);
+                }
+
+                await _networkPeering.PublishBeaconBlockAsync(signedBlock).ConfigureAwait(false);
+
+                if (acceptedLocally)
+                {
+                    return new ApiResponse(StatusCode.Success);
+                }
+                else
+                {
+                    return new ApiResponse(StatusCode.Success);
+                }
             }
             catch (Exception ex)
             {
-                if (_logger.IsWarn()) Log.BlockNotAcceptedLocally(_logger, signedBlock.Message, ex);
+                if (_logger.IsWarn()) Log.ApiErrorPublishBlock(_logger, ex);
+                throw;
             }
-
-            await _networkPeering.PublishBeaconBlockAsync(signedBlock).ConfigureAwait(false);
-
-            return acceptedLocally;
         }
 
-        public async IAsyncEnumerable<ValidatorDuty> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys,
-            Epoch epoch, [EnumeratorCancellation] CancellationToken cancellationToken)
+        public async Task<ApiResponse<IList<ValidatorDuty>>> ValidatorDutiesAsync(IList<BlsPublicKey> validatorPublicKeys,
+            Epoch? epoch, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
+            if (validatorPublicKeys.Count < 1)
+            {
+                return ApiResponse.Create<IList<ValidatorDuty>>(StatusCode.InvalidRequest);
+            }
+            if (!_store.IsInitialized)
+            {
+                // Beacon chain is currently syncing or waiting for genesis.
+                return ApiResponse.Create<IList<ValidatorDuty>>(StatusCode.CurrentlySyncing);
+            }
+            
             // TODO: Rather than check one by one (each of which loops through potentially all slots for the epoch), optimise by either checking multiple, or better possibly caching or pre-calculating
+            IList<ValidatorDuty> validatorDuties = new List<ValidatorDuty>();
             foreach (BlsPublicKey validatorPublicKey in validatorPublicKeys)
             {
                 ValidatorDuty validatorDuty;
                 try
                 {
                     validatorDuty =
-                        await _validatorAssignments.GetValidatorDutyAsync(validatorPublicKey, epoch)
+                        await _validatorAssignments.GetValidatorDutyAsync(validatorPublicKey, epoch ?? Epoch.None)
                             .ConfigureAwait(false);
+                }
+                catch (ArgumentOutOfRangeException outOfRangeException) when (outOfRangeException.ParamName == "epoch")
+                {
+                    return ApiResponse.Create<IList<ValidatorDuty>>(StatusCode.DutiesNotAvailableForRequestedEpoch);
                 }
                 catch (Exception ex)
                 {
@@ -175,17 +222,15 @@ namespace Nethermind.BeaconNode
                     throw;
                 }
 
-                yield return validatorDuty;
+                validatorDuties.Add(validatorDuty);
             }
+            
+            ApiResponse<IList<ValidatorDuty>> response = ApiResponse.Create(StatusCode.Success, validatorDuties);
+            return response;
         }
 
         private async Task<BeaconState> GetHeadStateAsync()
         {
-            if (!_store.IsInitialized)
-            {
-                throw new Exception("Beacon chain is currently syncing or waiting for genesis.");
-            }
-
             Root head = await _forkChoice.GetHeadAsync(_store).ConfigureAwait(false);
             BeaconState state = await _store.GetBlockStateAsync(head).ConfigureAwait(false);
 

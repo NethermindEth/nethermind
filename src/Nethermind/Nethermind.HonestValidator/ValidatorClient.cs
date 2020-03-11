@@ -109,8 +109,16 @@ namespace Nethermind.HonestValidator
 
         public async Task UpdateForkVersion(CancellationToken cancellationToken)
         {
-            Fork fork = await _beaconNodeApi.GetNodeForkAsync(cancellationToken).ConfigureAwait(false);
-            await _beaconChain.SetForkAsync(fork).ConfigureAwait(false);
+            var forkResponse = await _beaconNodeApi.GetNodeForkAsync(cancellationToken).ConfigureAwait(false);
+            if (forkResponse.StatusCode == StatusCode.Success)
+            {
+                var fork = forkResponse.Content;
+                await _beaconChain.SetForkAsync(fork).ConfigureAwait(false);
+            }
+            else
+            {
+                throw new Exception($"Error response from get fork: {(int)forkResponse.StatusCode} {forkResponse.StatusCode}.");
+            }
         }
 
         public async Task ProcessProposalDutiesAsync(Slot slot, CancellationToken cancellationToken)
@@ -127,16 +135,30 @@ namespace Nethermind.HonestValidator
 
                 if (_logger.IsDebug()) LogDebug.RequestingBlock(_logger, slot, blsPublicKey.ToShortString(), randaoReveal.ToString().Substring(0, 10), null);
 
-                BeaconBlock unsignedBlock = await _beaconNodeApi.NewBlockAsync(slot, randaoReveal, cancellationToken).ConfigureAwait(false);
+                ApiResponse<BeaconBlock> newBlockResponse = await _beaconNodeApi.NewBlockAsync(slot, randaoReveal, cancellationToken).ConfigureAwait(false);
+                if (newBlockResponse.StatusCode == StatusCode.Success)
+                {
+                    BeaconBlock unsignedBlock = newBlockResponse.Content;
+                    BlsSignature blockSignature = GetBlockSignature(unsignedBlock, blsPublicKey);
+                    SignedBeaconBlock signedBlock = new SignedBeaconBlock(unsignedBlock, blockSignature);
 
-                BlsSignature blockSignature = GetBlockSignature(unsignedBlock, blsPublicKey);
-                SignedBeaconBlock signedBlock = new SignedBeaconBlock(unsignedBlock, blockSignature); 
+                    if (_logger.IsDebug())
+                        LogDebug.PublishingSignedBlock(_logger, slot, blsPublicKey.ToShortString(),
+                            randaoReveal.ToString().Substring(0, 10), signedBlock.Message,
+                            signedBlock.Signature.ToString().Substring(0, 10), null);
 
-                if (_logger.IsDebug()) LogDebug.PublishingSignedBlock(_logger, slot, blsPublicKey.ToShortString(), randaoReveal.ToString().Substring(0, 10), signedBlock.Message, signedBlock.Signature.ToString().Substring(0, 10), null);
+                    ApiResponse publishBlockResponse = await _beaconNodeApi.PublishBlockAsync(signedBlock, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (publishBlockResponse.StatusCode != StatusCode.Success && publishBlockResponse.StatusCode !=
+                        StatusCode.BroadcastButFailedValidation)
+                    {
+                        throw new Exception($"Error response from publish: {(int)publishBlockResponse.StatusCode} {publishBlockResponse.StatusCode}.");
+                    }
 
-                bool nodeAccepted = await _beaconNodeApi.PublishBlockAsync(signedBlock, cancellationToken).ConfigureAwait(false);
-                
-                _validatorState.ClearProposalDutyForSlot(slot);
+                    bool nodeAccepted = publishBlockResponse.StatusCode == StatusCode.Success;
+                    // TODO: Log warning if not accepted? Not sure what else we could do.
+                    _validatorState.ClearProposalDutyForSlot(slot);
+                }
             }
         }
 
@@ -200,11 +222,12 @@ namespace Nethermind.HonestValidator
 
         public async Task UpdateDutiesAsync(Epoch epoch, CancellationToken cancellationToken)
         {
-            IEnumerable<BlsPublicKey> publicKeys = _validatorKeyProvider.GetPublicKeys();
+            IList<BlsPublicKey> publicKeys = _validatorKeyProvider.GetPublicKeys();
 
-            IAsyncEnumerable<ValidatorDuty> validatorDuties = _beaconNodeApi.ValidatorDutiesAsync(publicKeys, epoch, cancellationToken);
+            ApiResponse<IList<ValidatorDuty>> validatorDutiesResponse = await _beaconNodeApi.ValidatorDutiesAsync(publicKeys, epoch, cancellationToken);
+            IList<ValidatorDuty> validatorDuties = validatorDutiesResponse.Content;
 
-            await foreach (ValidatorDuty validatorDuty in validatorDuties.ConfigureAwait(false))
+            foreach (ValidatorDuty validatorDuty in validatorDuties)
             {
                 Slot? currentAttestationSlot =
                     _validatorState.AttestationSlot.GetValueOrDefault(validatorDuty.ValidatorPublicKey);
@@ -221,7 +244,7 @@ namespace Nethermind.HonestValidator
                 }
             }
 
-            await foreach (ValidatorDuty validatorDuty in validatorDuties.ConfigureAwait(false))
+            foreach (ValidatorDuty validatorDuty in validatorDuties)
             {
                 Slot? currentProposalSlot = _validatorState.ProposalSlot.GetValueOrDefault(validatorDuty.ValidatorPublicKey);
                 if (validatorDuty.BlockProposalSlot != Slot.None &&

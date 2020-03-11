@@ -52,19 +52,20 @@ namespace Nethermind.BeaconNode.OApiClient
             _oapiClientFactory = oapiClientFactory;
         }
 
-        public async Task<ulong> GetGenesisTimeAsync(CancellationToken cancellationToken)
-        {
-            ulong result = 0;
-            await ClientOperationWithRetry(
-                async (oapiClient, innerCancellationToken) =>
-                {
-                    result = await oapiClient.TimeAsync(innerCancellationToken).ConfigureAwait(false);
-                }, cancellationToken).ConfigureAwait(false);
+        // public async Task<ulong> GetGenesisTimeAsync(CancellationToken cancellationToken)
+        // {
+        //     ulong result = 0;
+        //     await ClientOperationWithRetry(
+        //         async (oapiClient, innerCancellationToken) =>
+        //         {
+        //             result = await oapiClient.TimeAsync(innerCancellationToken).ConfigureAwait(false);
+        //         }, cancellationToken).ConfigureAwait(false);
+        //
+        //     return result;
+        // }
+        //
 
-            return result;
-        }
-
-        public async Task<Core2.Containers.Fork> GetNodeForkAsync(CancellationToken cancellationToken)
+        public async Task<ApiResponse<Core2.Containers.Fork>> GetNodeForkAsync(CancellationToken cancellationToken)
         {
             Response2? result = null;
             await ClientOperationWithRetry(
@@ -72,203 +73,203 @@ namespace Nethermind.BeaconNode.OApiClient
                 {
                     result = await oapiClient.ForkAsync(innerCancellationToken).ConfigureAwait(false);
                 }, cancellationToken).ConfigureAwait(false);
-
+        
             Core2.Containers.Fork fork = new Core2.Containers.Fork(
                 new ForkVersion(result!.Fork.Previous_version),
                 new ForkVersion(result!.Fork.Current_version),
                 new Epoch((ulong) result!.Fork.Epoch)
             );
-
-            return fork;
+        
+            return ApiResponse.Create(StatusCode.Success, fork);
         }
-
-        // The proxy needs to take care of this (i.e. transparent to worker)
-        // Not connected: (remote vs local)
-        // connect to beacon node (priority order)
-        // if not connected, wait and try next
-
-        public async Task<string> GetNodeVersionAsync(CancellationToken cancellationToken)
-        {
-            string? result = null;
-            await ClientOperationWithRetry(
-                async (oapiClient, innerCancellationToken) =>
-                {
-                    result = await oapiClient.VersionAsync(innerCancellationToken).ConfigureAwait(false);
-                }, cancellationToken).ConfigureAwait(false);
-
-            return result!;
-        }
-
-        public Task<Syncing> GetSyncingAsync(CancellationToken cancellationToken)
-        {
-            throw new NotImplementedException();
-        }
-
-        public async Task<Core2.Containers.BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal,
-            CancellationToken cancellationToken)
-        {
-            ulong slotValue = (ulong) slot;
-            byte[] randaoRevealBytes = randaoReveal.Bytes;
-
-            BeaconBlock? result = null;
-            await ClientOperationWithRetry(
-                async (oapiClient, innerCancellationToken) =>
-                {
-                    result = await oapiClient.BlockAsync(slotValue, randaoRevealBytes, innerCancellationToken)
-                        .ConfigureAwait(false);
-                }, cancellationToken).ConfigureAwait(false);
-
-            BeaconBlock oapiBeaconBlock = result!;
-            Core2.Containers.BeaconBlock beaconBlock = new Core2.Containers.BeaconBlock(
-                new Slot((ulong) oapiBeaconBlock.Slot),
-                new Root(Bytes.FromHexString(oapiBeaconBlock.Parent_root)),
-                new Root(Bytes.FromHexString(oapiBeaconBlock.State_root)),
-                new Core2.Containers.BeaconBlockBody(
-                    new BlsSignature(oapiBeaconBlock.Body.Randao_reveal),
-                    new Eth1Data(
-                        new Root(oapiBeaconBlock.Body.Eth1_data.Deposit_root),
-                        (ulong) oapiBeaconBlock.Body.Eth1_data.Deposit_count,
-                        new Bytes32(oapiBeaconBlock.Body.Eth1_data.Block_hash)
-                    ),
-                    new Bytes32(oapiBeaconBlock.Body.Graffiti),
-                    oapiBeaconBlock.Body.Proposer_slashings.Select(x => new ProposerSlashing(
-                        new ValidatorIndex((ulong) x.Proposer_index),
-                        new SignedBeaconBlockHeader(MapBeaconBlockHeader(x.Header_1), BlsSignature.Zero),
-                        new SignedBeaconBlockHeader(MapBeaconBlockHeader(x.Header_2), BlsSignature.Zero)
-                    )),
-                    oapiBeaconBlock.Body.Attester_slashings.Select(x => new AttesterSlashing(
-                        MapIndexedAttestation(x.Attestation_1),
-                        MapIndexedAttestation(x.Attestation_2)
-                    )),
-                    oapiBeaconBlock.Body.Attestations.Select(x =>
-                        new Core2.Containers.Attestation(
-                            new BitArray(x.Aggregation_bits),
-                            MapAttestationData(x.Data),
-                            new BlsSignature(x.Signature)
-                        )
-                    ),
-                    oapiBeaconBlock.Body.Deposits.Select(x =>
-                        new Deposit(
-                            x.Proof.Select(y => new Bytes32(y)),
-                            new DepositData(
-                                new BlsPublicKey(x.Data.Pubkey),
-                                new Bytes32(x.Data.Withdrawal_credentials),
-                                new Gwei((ulong) x.Data.Amount),
-                                new BlsSignature(x.Data.Signature)
-                            )
-                        )
-                    ),
-                    oapiBeaconBlock.Body.Voluntary_exits.Select(x =>
-                        new SignedVoluntaryExit(
-                            new VoluntaryExit(
-                                new Epoch((ulong) x.Epoch),
-                                new ValidatorIndex((ulong) x.Validator_index)
-                            ),
-                            BlsSignature.Zero
-                        )
-                    )
-                )
-            );
-
-            return beaconBlock;
-        }
-
-        public async Task<bool> PublishBlockAsync(SignedBeaconBlock signedBlock, CancellationToken cancellationToken)
-        {
-            var block = signedBlock.Message;
-            BeaconBlock data = new BeaconBlock()
-            {
-                Slot = block.Slot,
-                Parent_root = block.ParentRoot.ToString(),
-                State_root = block.StateRoot.ToString(),
-                Body = new BeaconBlockBody()
-                {
-                    Randao_reveal = block.Body!.RandaoReveal.AsSpan().ToArray(),
-                    Eth1_data = new Eth1_data()
-                    {
-                        Block_hash = block.Body.Eth1Data.BlockHash.AsSpan().ToArray(),
-                        Deposit_count = block.Body.Eth1Data.DepositCount,
-                        Deposit_root = block.Body.Eth1Data.DepositRoot.AsSpan().ToArray()
-                    },
-                    Graffiti = block.Body.Graffiti.AsSpan().ToArray(),
-                    Proposer_slashings = block.Body.ProposerSlashings.Select(x => new Proposer_slashings()
-                    {
-                        Header_1 = MapBeaconBlockHeader(x.SignedHeader1.Message),
-                        Header_2 = MapBeaconBlockHeader(x.SignedHeader2.Message),
-                        Proposer_index = x.ProposerIndex
-                    }).ToList(),
-                    Attester_slashings = block.Body.AttesterSlashings.Select(x => new Attester_slashings()
-                    {
-                        Attestation_1 = MapIndexedAttestation(x.Attestation1),
-                        Attestation_2 = MapIndexedAttestation(x.Attestation2)
-                    }).ToList(),
-                    Attestations = block.Body.Attestations.Select(x => new Attestations()
-                    {
-                        Signature = x.Signature.Bytes,
-                        Aggregation_bits = x.AggregationBits.Cast<byte>().ToArray(),
-                        Custody_bits = new byte[0],
-                        Data = MapAttestationData(x.Data)
-                    }).ToList(),
-                    Voluntary_exits = block.Body.VoluntaryExits.Select(x => new Voluntary_exits()
-                    {
-                        Validator_index = x.Message.ValidatorIndex,
-                        Epoch = x.Message.Epoch,
-                        Signature = x.Signature.Bytes
-                    }).ToList(),
-                    Deposits = block.Body.Deposits.Select((x, index) => new Deposits()
-                    {
-                        Index = (ulong) index,
-                        Proof = x.Proof.Select(y => y.AsSpan().ToArray()).ToList(),
-                        Data = new Data()
-                        {
-                            Amount = x.Data.Amount,
-                            Pubkey = x.Data.PublicKey.Bytes,
-                            Signature = x.Data.Signature.Bytes,
-                            Withdrawal_credentials = x.Data.WithdrawalCredentials.AsSpan().ToArray()
-                        }
-                    }).ToList(),
-                }
-            };
-
-            await ClientOperationWithRetry(
-                async (oapiClient, innerCancellationToken) =>
-                {
-                    await oapiClient.Block2Async(data, signedBlock.Signature, innerCancellationToken)
-                        .ConfigureAwait(false);
-                }, cancellationToken).ConfigureAwait(false);
-
-            // TODO: Parse 202 result separate from 200 result
-
-            return true;
-        }
-
-        public async IAsyncEnumerable<Core2.Api.ValidatorDuty> ValidatorDutiesAsync(
-            IEnumerable<BlsPublicKey> validatorPublicKeys,
-            Epoch epoch, [EnumeratorCancellation] CancellationToken cancellationToken)
-        {
-            IEnumerable<byte[]> validator_pubkeys = validatorPublicKeys.Select(x => x.Bytes);
-            ulong? epochValue = (epoch != Epoch.None) ? (ulong?) epoch : null;
-
-            ICollection<ValidatorDuty>? result = null;
-            await ClientOperationWithRetry(
-                async (oapiClient, innerCancellationToken) =>
-                {
-                    result = await oapiClient.DutiesAsync(validator_pubkeys, epochValue, innerCancellationToken)
-                        .ConfigureAwait(false);
-                }, cancellationToken).ConfigureAwait(false);
-
-            foreach (var value in result!)
-            {
-                var validatorPublicKey = new BlsPublicKey(value.Validator_pubkey);
-                var proposalSlot = value.Block_proposal_slot.HasValue
-                    ? new Slot(value.Block_proposal_slot.Value)
-                    : Slot.None;
-                var validatorDuty = new Core2.Api.ValidatorDuty(validatorPublicKey, new Slot(value.Attestation_slot),
-                    new Shard(value.Attestation_shard), proposalSlot);
-                yield return validatorDuty;
-            }
-        }
-
+        
+        // // The proxy needs to take care of this (i.e. transparent to worker)
+        // // Not connected: (remote vs local)
+        // // connect to beacon node (priority order)
+        // // if not connected, wait and try next
+        //
+        // public async Task<string> GetNodeVersionAsync(CancellationToken cancellationToken)
+        // {
+        //     string? result = null;
+        //     await ClientOperationWithRetry(
+        //         async (oapiClient, innerCancellationToken) =>
+        //         {
+        //             result = await oapiClient.VersionAsync(innerCancellationToken).ConfigureAwait(false);
+        //         }, cancellationToken).ConfigureAwait(false);
+        //
+        //     return result!;
+        // }
+        //
+        // public Task<Syncing> GetSyncingAsync(CancellationToken cancellationToken)
+        // {
+        //     throw new NotImplementedException();
+        // }
+        //
+        // public async Task<Core2.Containers.BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal,
+        //     CancellationToken cancellationToken)
+        // {
+        //     ulong slotValue = (ulong) slot;
+        //     byte[] randaoRevealBytes = randaoReveal.Bytes;
+        //
+        //     BeaconBlock? result = null;
+        //     await ClientOperationWithRetry(
+        //         async (oapiClient, innerCancellationToken) =>
+        //         {
+        //             result = await oapiClient.BlockAsync(slotValue, randaoRevealBytes, innerCancellationToken)
+        //                 .ConfigureAwait(false);
+        //         }, cancellationToken).ConfigureAwait(false);
+        //
+        //     BeaconBlock oapiBeaconBlock = result!;
+        //     Core2.Containers.BeaconBlock beaconBlock = new Core2.Containers.BeaconBlock(
+        //         new Slot((ulong) oapiBeaconBlock.Slot),
+        //         new Root(Bytes.FromHexString(oapiBeaconBlock.Parent_root)),
+        //         new Root(Bytes.FromHexString(oapiBeaconBlock.State_root)),
+        //         new Core2.Containers.BeaconBlockBody(
+        //             new BlsSignature(oapiBeaconBlock.Body.Randao_reveal),
+        //             new Eth1Data(
+        //                 new Root(oapiBeaconBlock.Body.Eth1_data.Deposit_root),
+        //                 (ulong) oapiBeaconBlock.Body.Eth1_data.Deposit_count,
+        //                 new Bytes32(oapiBeaconBlock.Body.Eth1_data.Block_hash)
+        //             ),
+        //             new Bytes32(oapiBeaconBlock.Body.Graffiti),
+        //             oapiBeaconBlock.Body.Proposer_slashings.Select(x => new ProposerSlashing(
+        //                 new ValidatorIndex((ulong) x.Proposer_index),
+        //                 new SignedBeaconBlockHeader(MapBeaconBlockHeader(x.Header_1), BlsSignature.Zero),
+        //                 new SignedBeaconBlockHeader(MapBeaconBlockHeader(x.Header_2), BlsSignature.Zero)
+        //             )),
+        //             oapiBeaconBlock.Body.Attester_slashings.Select(x => new AttesterSlashing(
+        //                 MapIndexedAttestation(x.Attestation_1),
+        //                 MapIndexedAttestation(x.Attestation_2)
+        //             )),
+        //             oapiBeaconBlock.Body.Attestations.Select(x =>
+        //                 new Core2.Containers.Attestation(
+        //                     new BitArray(x.Aggregation_bits),
+        //                     MapAttestationData(x.Data),
+        //                     new BlsSignature(x.Signature)
+        //                 )
+        //             ),
+        //             oapiBeaconBlock.Body.Deposits.Select(x =>
+        //                 new Deposit(
+        //                     x.Proof.Select(y => new Bytes32(y)),
+        //                     new DepositData(
+        //                         new BlsPublicKey(x.Data.Pubkey),
+        //                         new Bytes32(x.Data.Withdrawal_credentials),
+        //                         new Gwei((ulong) x.Data.Amount),
+        //                         new BlsSignature(x.Data.Signature)
+        //                     )
+        //                 )
+        //             ),
+        //             oapiBeaconBlock.Body.Voluntary_exits.Select(x =>
+        //                 new SignedVoluntaryExit(
+        //                     new VoluntaryExit(
+        //                         new Epoch((ulong) x.Epoch),
+        //                         new ValidatorIndex((ulong) x.Validator_index)
+        //                     ),
+        //                     BlsSignature.Zero
+        //                 )
+        //             )
+        //         )
+        //     );
+        //
+        //     return beaconBlock;
+        // }
+        //
+        // public async Task<bool> PublishBlockAsync(SignedBeaconBlock signedBlock, CancellationToken cancellationToken)
+        // {
+        //     var block = signedBlock.Message;
+        //     BeaconBlock data = new BeaconBlock()
+        //     {
+        //         Slot = block.Slot,
+        //         Parent_root = block.ParentRoot.ToString(),
+        //         State_root = block.StateRoot.ToString(),
+        //         Body = new BeaconBlockBody()
+        //         {
+        //             Randao_reveal = block.Body!.RandaoReveal.AsSpan().ToArray(),
+        //             Eth1_data = new Eth1_data()
+        //             {
+        //                 Block_hash = block.Body.Eth1Data.BlockHash.AsSpan().ToArray(),
+        //                 Deposit_count = block.Body.Eth1Data.DepositCount,
+        //                 Deposit_root = block.Body.Eth1Data.DepositRoot.AsSpan().ToArray()
+        //             },
+        //             Graffiti = block.Body.Graffiti.AsSpan().ToArray(),
+        //             Proposer_slashings = block.Body.ProposerSlashings.Select(x => new Proposer_slashings()
+        //             {
+        //                 Header_1 = MapBeaconBlockHeader(x.SignedHeader1.Message),
+        //                 Header_2 = MapBeaconBlockHeader(x.SignedHeader2.Message),
+        //                 Proposer_index = x.ProposerIndex
+        //             }).ToList(),
+        //             Attester_slashings = block.Body.AttesterSlashings.Select(x => new Attester_slashings()
+        //             {
+        //                 Attestation_1 = MapIndexedAttestation(x.Attestation1),
+        //                 Attestation_2 = MapIndexedAttestation(x.Attestation2)
+        //             }).ToList(),
+        //             Attestations = block.Body.Attestations.Select(x => new Attestations()
+        //             {
+        //                 Signature = x.Signature.Bytes,
+        //                 Aggregation_bits = x.AggregationBits.Cast<byte>().ToArray(),
+        //                 Custody_bits = new byte[0],
+        //                 Data = MapAttestationData(x.Data)
+        //             }).ToList(),
+        //             Voluntary_exits = block.Body.VoluntaryExits.Select(x => new Voluntary_exits()
+        //             {
+        //                 Validator_index = x.Message.ValidatorIndex,
+        //                 Epoch = x.Message.Epoch,
+        //                 Signature = x.Signature.Bytes
+        //             }).ToList(),
+        //             Deposits = block.Body.Deposits.Select((x, index) => new Deposits()
+        //             {
+        //                 Index = (ulong) index,
+        //                 Proof = x.Proof.Select(y => y.AsSpan().ToArray()).ToList(),
+        //                 Data = new Data()
+        //                 {
+        //                     Amount = x.Data.Amount,
+        //                     Pubkey = x.Data.PublicKey.Bytes,
+        //                     Signature = x.Data.Signature.Bytes,
+        //                     Withdrawal_credentials = x.Data.WithdrawalCredentials.AsSpan().ToArray()
+        //                 }
+        //             }).ToList(),
+        //         }
+        //     };
+        //
+        //     await ClientOperationWithRetry(
+        //         async (oapiClient, innerCancellationToken) =>
+        //         {
+        //             await oapiClient.Block2Async(data, signedBlock.Signature, innerCancellationToken)
+        //                 .ConfigureAwait(false);
+        //         }, cancellationToken).ConfigureAwait(false);
+        //
+        //     // TODO: Parse 202 result separate from 200 result
+        //
+        //     return true;
+        // }
+        //
+        // public async IAsyncEnumerable<Core2.Api.ValidatorDuty> ValidatorDutiesAsync(
+        //     IEnumerable<BlsPublicKey> validatorPublicKeys,
+        //     Epoch epoch, [EnumeratorCancellation] CancellationToken cancellationToken)
+        // {
+        //     IEnumerable<byte[]> validator_pubkeys = validatorPublicKeys.Select(x => x.Bytes);
+        //     ulong? epochValue = (epoch != Epoch.None) ? (ulong?) epoch : null;
+        //
+        //     ICollection<ValidatorDuty>? result = null;
+        //     await ClientOperationWithRetry(
+        //         async (oapiClient, innerCancellationToken) =>
+        //         {
+        //             result = await oapiClient.DutiesAsync(validator_pubkeys, epochValue, innerCancellationToken)
+        //                 .ConfigureAwait(false);
+        //         }, cancellationToken).ConfigureAwait(false);
+        //
+        //     foreach (var value in result!)
+        //     {
+        //         var validatorPublicKey = new BlsPublicKey(value.Validator_pubkey);
+        //         var proposalSlot = value.Block_proposal_slot.HasValue
+        //             ? new Slot(value.Block_proposal_slot.Value)
+        //             : Slot.None;
+        //         var validatorDuty = new Core2.Api.ValidatorDuty(validatorPublicKey, new Slot(value.Attestation_slot),
+        //             new Shard(value.Attestation_shard), proposalSlot);
+        //         yield return validatorDuty;
+        //     }
+        // }
+        
         private async Task ClientOperationWithRetry(
             Func<IBeaconNodeOApiClient, CancellationToken, Task> clientOperation, CancellationToken cancellationToken)
         {
@@ -294,7 +295,7 @@ namespace Nethermind.BeaconNode.OApiClient
                         }
                     }
                 }
-
+        
                 // take turns trying the first connection
                 await _connectionAttemptSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
                 try
@@ -314,15 +315,15 @@ namespace Nethermind.BeaconNode.OApiClient
                             await Task.Delay(beaconNodeConnection.ConnectionFailureLoopMillisecondsDelay,
                                 cancellationToken).ConfigureAwait(false);
                         }
-
+        
                         string baseUrl = beaconNodeConnection.RemoteUrls[_connectionIndex];
                         if (_logger.IsDebug())
                             LogDebug.AttemptingConnectionToNode(_logger, baseUrl, _connectionIndex, null);
                         IBeaconNodeOApiClient newClient = _oapiClientFactory.CreateClient(baseUrl);
-
+        
                         // check if it works
                         await clientOperation(newClient, cancellationToken).ConfigureAwait(false);
-
+        
                         // success! set the client, and if not the first, set the connection index to restart from first
                         if (_logger.IsInfo()) Log.NodeConnectionSuccess(_logger, baseUrl, _connectionIndex, null);
                         _oapiClient = newClient;
@@ -330,7 +331,7 @@ namespace Nethermind.BeaconNode.OApiClient
                         {
                             _connectionIndex = -1;
                         }
-
+        
                         // exit loop and complete on success
                         break;
                     }
@@ -345,78 +346,108 @@ namespace Nethermind.BeaconNode.OApiClient
                 }
             }
         }
-
-        private static Core2.Containers.AttestationData MapAttestationData(AttestationData attestationData)
+        
+        // private static Core2.Containers.AttestationData MapAttestationData(AttestationData attestationData)
+        // {
+        //     // NOTE: This mapping isn't right, spec changes (sharding)
+        //     return new Core2.Containers.AttestationData(
+        //         Slot.None,
+        //         CommitteeIndex.None,
+        //         new Root(attestationData.Beacon_block_root),
+        //         new Checkpoint(
+        //             new Epoch((ulong) attestationData.Source_epoch),
+        //             new Root(attestationData.Source_root)
+        //         ),
+        //         new Checkpoint(
+        //             new Epoch((ulong) attestationData.Target_epoch),
+        //             new Root(attestationData.Target_root)
+        //         )
+        //     );
+        // }
+        //
+        // private static AttestationData MapAttestationData(Core2.Containers.AttestationData attestationData)
+        // {
+        //     // NOTE: This mapping isn't right, spec changes (sharding)
+        //     return new AttestationData()
+        //     {
+        //         Beacon_block_root = attestationData.BeaconBlockRoot.AsSpan().ToArray(),
+        //         Crosslink = new Crosslink(),
+        //         Source_epoch = attestationData.Source.Epoch,
+        //         Source_root = attestationData.Source.Root.AsSpan().ToArray(),
+        //         Target_epoch = attestationData.Target.Epoch,
+        //         Target_root = attestationData.Target.Root.AsSpan().ToArray()
+        //     };
+        // }
+        //
+        // private static Core2.Containers.BeaconBlockHeader MapBeaconBlockHeader(BeaconBlockHeader value)
+        // {
+        //     return new Core2.Containers.BeaconBlockHeader(
+        //         new Slot((ulong) value.Slot),
+        //         new Root(Bytes.FromHexString(value.Parent_root)),
+        //         new Root(Bytes.FromHexString(value.State_root)),
+        //         new Root(Bytes.FromHexString(value.Body_root))
+        //     );
+        // }
+        //
+        // private static BeaconBlockHeader MapBeaconBlockHeader(Core2.Containers.BeaconBlockHeader value)
+        // {
+        //     return new BeaconBlockHeader()
+        //     {
+        //         Body_root = value.BodyRoot.ToString(),
+        //         Parent_root = value.ParentRoot.ToString(),
+        //         Slot = value.Slot,
+        //         State_root = value.StateRoot.ToString()
+        //     };
+        // }
+        //
+        // private static Core2.Containers.IndexedAttestation MapIndexedAttestation(IndexedAttestation indexedAttestation)
+        // {
+        //     return new Core2.Containers.IndexedAttestation(
+        //         indexedAttestation.Custody_bit_0_indices.Select(y => new ValidatorIndex((ulong) y)),
+        //         MapAttestationData(indexedAttestation.Data),
+        //         new BlsSignature(Bytes.FromHexString(indexedAttestation.Signature))
+        //     );
+        // }
+        //
+        // private static IndexedAttestation MapIndexedAttestation(Core2.Containers.IndexedAttestation indexedAttestation)
+        // {
+        //     return new IndexedAttestation()
+        //     {
+        //         Signature = indexedAttestation.Signature.ToString(),
+        //         Custody_bit_0_indices = indexedAttestation.AttestingIndices.Select(y => (int) y).ToList(),
+        //         Custody_bit_1_indices = new int[0],
+        //         Data = MapAttestationData(indexedAttestation.Data)
+        //     };
+        // }
+        
+        public Task<ApiResponse<string>> GetNodeVersionAsync(CancellationToken cancellationToken)
         {
-            // NOTE: This mapping isn't right, spec changes (sharding)
-            return new Core2.Containers.AttestationData(
-                Slot.None,
-                CommitteeIndex.None,
-                new Root(attestationData.Beacon_block_root),
-                new Checkpoint(
-                    new Epoch((ulong) attestationData.Source_epoch),
-                    new Root(attestationData.Source_root)
-                ),
-                new Checkpoint(
-                    new Epoch((ulong) attestationData.Target_epoch),
-                    new Root(attestationData.Target_root)
-                )
-            );
+            throw new NotImplementedException();
         }
 
-        private static AttestationData MapAttestationData(Core2.Containers.AttestationData attestationData)
+        public Task<ApiResponse<ulong>> GetGenesisTimeAsync(CancellationToken cancellationToken)
         {
-            // NOTE: This mapping isn't right, spec changes (sharding)
-            return new AttestationData()
-            {
-                Beacon_block_root = attestationData.BeaconBlockRoot.AsSpan().ToArray(),
-                Crosslink = new Crosslink(),
-                Source_epoch = attestationData.Source.Epoch,
-                Source_root = attestationData.Source.Root.AsSpan().ToArray(),
-                Target_epoch = attestationData.Target.Epoch,
-                Target_root = attestationData.Target.Root.AsSpan().ToArray()
-            };
+            throw new NotImplementedException();
         }
 
-        private static Core2.Containers.BeaconBlockHeader MapBeaconBlockHeader(BeaconBlockHeader value)
+        public Task<ApiResponse<Syncing>> GetSyncingAsync(CancellationToken cancellationToken)
         {
-            return new Core2.Containers.BeaconBlockHeader(
-                new Slot((ulong) value.Slot),
-                new Root(Bytes.FromHexString(value.Parent_root)),
-                new Root(Bytes.FromHexString(value.State_root)),
-                new Root(Bytes.FromHexString(value.Body_root))
-            );
+            throw new NotImplementedException();
         }
 
-        private static BeaconBlockHeader MapBeaconBlockHeader(Core2.Containers.BeaconBlockHeader value)
+        public Task<ApiResponse<IList<Core2.Api.ValidatorDuty>>> ValidatorDutiesAsync(IList<BlsPublicKey> validatorPublicKeys, Epoch? epoch, CancellationToken cancellationToken)
         {
-            return new BeaconBlockHeader()
-            {
-                Body_root = value.BodyRoot.ToString(),
-                Parent_root = value.ParentRoot.ToString(),
-                Slot = value.Slot,
-                State_root = value.StateRoot.ToString()
-            };
+            throw new NotImplementedException();
         }
 
-        private static Core2.Containers.IndexedAttestation MapIndexedAttestation(IndexedAttestation indexedAttestation)
+        public Task<ApiResponse<Core2.Containers.BeaconBlock>> NewBlockAsync(Slot slot, BlsSignature randaoReveal, CancellationToken cancellationToken)
         {
-            return new Core2.Containers.IndexedAttestation(
-                indexedAttestation.Custody_bit_0_indices.Select(y => new ValidatorIndex((ulong) y)),
-                MapAttestationData(indexedAttestation.Data),
-                new BlsSignature(Bytes.FromHexString(indexedAttestation.Signature))
-            );
+            throw new NotImplementedException();
         }
 
-        private static IndexedAttestation MapIndexedAttestation(Core2.Containers.IndexedAttestation indexedAttestation)
+        public Task<ApiResponse> PublishBlockAsync(SignedBeaconBlock signedBlock, CancellationToken cancellationToken)
         {
-            return new IndexedAttestation()
-            {
-                Signature = indexedAttestation.Signature.ToString(),
-                Custody_bit_0_indices = indexedAttestation.AttestingIndices.Select(y => (int) y).ToList(),
-                Custody_bit_1_indices = new int[0],
-                Data = MapAttestationData(indexedAttestation.Data)
-            };
+            throw new NotImplementedException();
         }
     }
 }

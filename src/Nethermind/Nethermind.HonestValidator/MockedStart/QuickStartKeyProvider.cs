@@ -43,29 +43,34 @@ namespace Nethermind.HonestValidator.MockedStart
             _quickStartParameterOptions = quickStartParameterOptions;
         }
 
-        public IEnumerable<BlsPublicKey> GetPublicKeys()
+        public IList<BlsPublicKey> GetPublicKeys()
         {
-            QuickStartParameters _quickStartParameters = _quickStartParameterOptions.CurrentValue;
-
-            var endIndex = _quickStartParameters.ValidatorStartIndex + _quickStartParameters.NumberOfValidators;
-            for (var validatorIndex = _quickStartParameters.ValidatorStartIndex; validatorIndex < endIndex; validatorIndex++)
+            if (_publicKeyToBls.Count == 0)
             {
-                byte[] privateKey = GeneratePrivateKey(validatorIndex);
+                QuickStartParameters _quickStartParameters = _quickStartParameterOptions.CurrentValue;
 
-                BLSParameters blsParameters = new BLSParameters()
+                ulong endIndex = _quickStartParameters.ValidatorStartIndex + _quickStartParameters.NumberOfValidators;
+                for (ulong validatorIndex = _quickStartParameters.ValidatorStartIndex;
+                    validatorIndex < endIndex;
+                    validatorIndex++)
                 {
-                    PrivateKey = privateKey
-                };
-                BLS bls = BLS.Create(blsParameters);
-                byte[] publicKeyBytes = new byte[BlsPublicKey.Length];
-                bls.TryExportBlsPublicKey(publicKeyBytes, out int publicKeyBytesWritten);
-                BlsPublicKey publicKey = new BlsPublicKey(publicKeyBytes);
+                    byte[] privateKey = GeneratePrivateKey(validatorIndex);
 
-                // Cache the BLS class, for easy signing
-                _publicKeyToBls[publicKey] = bls;
-                
-                yield return publicKey;
+                    BLSParameters blsParameters = new BLSParameters()
+                    {
+                        PrivateKey = privateKey
+                    };
+                    BLS bls = BLS.Create(blsParameters);
+                    byte[] publicKeyBytes = new byte[BlsPublicKey.Length];
+                    bls.TryExportBlsPublicKey(publicKeyBytes, out int publicKeyBytesWritten);
+                    BlsPublicKey publicKey = new BlsPublicKey(publicKeyBytes);
+
+                    // Cache the BLS class, for easy signing
+                    _publicKeyToBls[publicKey] = bls;
+                }
             }
+
+            return _publicKeyToBls.Keys.ToList();
         }
 
         public BlsSignature SignRoot(BlsPublicKey blsPublicKey, Root root)

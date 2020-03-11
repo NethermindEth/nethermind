@@ -62,7 +62,8 @@ namespace Nethermind.BeaconNode.Test
             IBeaconNodeApi beaconNode = testServiceProvider.GetService<IBeaconNodeApi>();
             beaconNode.ShouldBeOfType(typeof(BeaconNodeFacade));
 
-            Core2.Containers.Fork fork = await beaconNode.GetNodeForkAsync(CancellationToken.None);
+            var forkResponse = await beaconNode.GetNodeForkAsync(CancellationToken.None);
+            var fork = forkResponse.Content;
 
             // Assert
             fork.Epoch.ShouldBe(Epoch.Zero);
@@ -97,13 +98,15 @@ namespace Nethermind.BeaconNode.Test
             
             // Act
             Epoch targetEpoch = new Epoch(0);
-            IEnumerable<BlsPublicKey> validatorPublicKeys = publicKeys.Take(numberOfValidators);
+            var validatorPublicKeys = publicKeys.Take(numberOfValidators).ToList();
             IBeaconNodeApi beaconNode = testServiceProvider.GetService<IBeaconNodeApi>();
             beaconNode.ShouldBeOfType(typeof(BeaconNodeFacade));
 
             int validatorDutyIndex = 0;
             List<ValidatorDuty> validatorDuties = new List<ValidatorDuty>();
-            await foreach (ValidatorDuty validatorDuty in beaconNode.ValidatorDutiesAsync(validatorPublicKeys, targetEpoch, CancellationToken.None))
+            var validatorDutiesResponse =
+                await beaconNode.ValidatorDutiesAsync(validatorPublicKeys, targetEpoch, CancellationToken.None);
+            foreach (ValidatorDuty validatorDuty in validatorDutiesResponse.Content)
             {
                 validatorDuties.Add(validatorDuty);
                 Console.WriteLine("Index [{0}], Epoch {1}, Validator {2}, : attestation slot {3}, shard {4}, proposal slot {5}",
@@ -158,13 +161,15 @@ namespace Nethermind.BeaconNode.Test
             
             // Act
             Epoch targetEpoch = new Epoch(1);
-            IEnumerable<BlsPublicKey> validatorPublicKeys = publicKeys.Take(numberOfValidators);
+            var validatorPublicKeys = publicKeys.Take(numberOfValidators).ToList();
             IBeaconNodeApi beaconNode = testServiceProvider.GetService<IBeaconNodeApi>();
             beaconNode.ShouldBeOfType(typeof(BeaconNodeFacade));
             
             int validatorDutyIndex = 0;
             List<ValidatorDuty> validatorDuties = new List<ValidatorDuty>();
-            await foreach (ValidatorDuty validatorDuty in beaconNode.ValidatorDutiesAsync(validatorPublicKeys, targetEpoch, CancellationToken.None))
+            var validatorDutiesResponse =
+                await beaconNode.ValidatorDutiesAsync(validatorPublicKeys, targetEpoch, CancellationToken.None);
+            foreach (ValidatorDuty validatorDuty in validatorDutiesResponse.Content)
             {
                 validatorDuties.Add(validatorDuty);
                 Console.WriteLine("Index [{0}], Epoch {1}, Validator {2}, : attestation slot {3}, shard {4}, proposal slot {5}",
@@ -224,13 +229,15 @@ namespace Nethermind.BeaconNode.Test
             
             // Act
             Epoch targetEpoch = new Epoch(0);
-            IEnumerable<BlsPublicKey> validatorPublicKeys = state!.Validators.Select(x => x.PublicKey);
+            var validatorPublicKeys = state!.Validators.Select(x => x.PublicKey).ToList();
             IBeaconNodeApi beaconNode = testServiceProvider.GetService<IBeaconNodeApi>();
             beaconNode.ShouldBeOfType(typeof(BeaconNodeFacade));
             
             int validatorDutyIndex = 0;
             List<ValidatorDuty> validatorDuties = new List<ValidatorDuty>();
-            await foreach (ValidatorDuty validatorDuty in beaconNode.ValidatorDutiesAsync(validatorPublicKeys, targetEpoch, CancellationToken.None))
+            var validatorDutiesResponse =
+                await beaconNode.ValidatorDutiesAsync(validatorPublicKeys, targetEpoch, CancellationToken.None);
+            foreach (ValidatorDuty validatorDuty in validatorDutiesResponse.Content)
             {
                 validatorDuties.Add(validatorDuty);
                 Console.WriteLine("Index [{0}], Epoch {1}, Validator {2}, : attestation slot {3}, shard {4}, proposal slot {5}",
@@ -295,7 +302,8 @@ namespace Nethermind.BeaconNode.Test
             IBeaconNodeApi beaconNode = testServiceProvider.GetService<IBeaconNodeApi>();
             beaconNode.ShouldBeOfType(typeof(BeaconNodeFacade));
 
-            Syncing syncing = await beaconNode.GetSyncingAsync(CancellationToken.None);
+            var syncingResponse = await beaconNode.GetSyncingAsync(CancellationToken.None);
+            var syncing = syncingResponse.Content;
 
             // Assert
             syncing.IsSyncing.ShouldBeTrue();
@@ -318,7 +326,7 @@ namespace Nethermind.BeaconNode.Test
             Root root = new Root(Enumerable.Repeat((byte) 0x12, 32).ToArray());
             Checkpoint checkpoint = new Checkpoint(Epoch.Zero, root);
             BeaconBlock block = new BeaconBlock(current, Root.Zero, Root.Zero, BeaconBlockBody.Zero);
-            var state = TestState.Create(slot: current, finalizedCheckpoint: checkpoint);
+            BeaconState state = TestState.Create(slot: current, finalizedCheckpoint: checkpoint);
             mockStore.GetBlockAsync(root).Returns(block);
             mockStore.GetBlockStateAsync(root).Returns(state);
             mockStore.IsInitialized.Returns(true);
@@ -336,7 +344,8 @@ namespace Nethermind.BeaconNode.Test
             IBeaconNodeApi beaconNode = testServiceProvider.GetService<IBeaconNodeApi>();
             beaconNode.ShouldBeOfType(typeof(BeaconNodeFacade));
 
-            Syncing syncing = await beaconNode.GetSyncingAsync(CancellationToken.None);
+            ApiResponse<Syncing> syncingResponse = await beaconNode.GetSyncingAsync(CancellationToken.None);
+            Syncing syncing = syncingResponse.Content;
 
             // Assert
             syncing.IsSyncing.ShouldBeFalse();
