@@ -20,29 +20,13 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.P2P.Subprotocols.Les
 {
-    // todo - I don't think we actually need all of these. prune later.
+    // todo - I don't think we actually need the full status message - rework when complete.
     public class LesProtocolInitializedEventArgs : ProtocolInitializedEventArgs
     {
-        public string Protocol { get; set; }
-        public byte ProtocolVersion { get; set; }
-        public long ChainId { get; set; }
-        public BigInteger TotalDifficulty { get; set; }
-        public Keccak BestHash { get; set; }
-        public long HeadBlockNo { get; set; }
-        public Keccak GenesisHash { get; set; }
-        public byte AnnounceType { get; set; }
-        public bool ServeHeaders { get; set; }
-        public long? ServeChainSince { get; set; }
-        public long? ServeRecentChain { get; set; }
-        public long? ServeStateSince { get; set; }
-        public long? ServeRecentState { get; set; }
-        public bool TxRelay { get; set; }
-        public int? BufferLimit { get; set; }
-        public int? MaximumRechargeRate { get; set; }
-        public RequestCostItem[] MaximumRequestCosts { get; set; }
-        public LesProtocolInitializedEventArgs(LesProtocolHandler protocolHandler) : base(protocolHandler)
+        StatusMessage _statusMessage;
+        public LesProtocolInitializedEventArgs(LesProtocolHandler protocolHandler, StatusMessage statusMessage) : base(protocolHandler)
         {
-            
+            _statusMessage = statusMessage;
         }
     }
 }

@@ -168,31 +168,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
 
 
             ReceivedProtocolInitMsg(status);
-            LesProtocolInitializedEventArgs eventArgs = new LesProtocolInitializedEventArgs(this)
-            {
-                Protocol = status.Protocol,
-                ProtocolVersion = status.ProtocolVersion,
-                ChainId = (long) status.ChainId, // todo should these really be different data types?
-                TotalDifficulty = status.TotalDifficulty,
-                BestHash = status.BestHash,
-                HeadBlockNo = status.HeadBlockNo,
-                GenesisHash = status.GenesisHash,
-                AnnounceType = status.AnnounceType.Value,
-                ServeHeaders = status.ServeHeaders,
-                ServeChainSince = status.ServeChainSince,
-                ServeRecentChain = status.ServeRecentChain,
-                ServeStateSince = status.ServeStateSince,
-                ServeRecentState = status.ServeRecentState,
-                TxRelay = status.TxRelay,
-                BufferLimit = status.BufferLimit,
-                MaximumRechargeRate = status.MaximumRechargeRate,
-                MaximumRequestCosts = status.MaximumRequestCosts
-            };
-
-            if (status.BestHash == new Keccak("0x828f6e9967f75742364c7ab5efd6e64428e60ad38e218789aaf108fbd0232973"))
-            {
-                InitiateDisconnect(DisconnectReason.UselessPeer, "One of the Rinkeby nodes stuck at Constantinople transition");
-            }
+            LesProtocolInitializedEventArgs eventArgs = new LesProtocolInitializedEventArgs(this, status);
 
             TotalDifficultyOnSessionStart = status.TotalDifficulty;
             RequestedAnnounceType = status.AnnounceType.Value;

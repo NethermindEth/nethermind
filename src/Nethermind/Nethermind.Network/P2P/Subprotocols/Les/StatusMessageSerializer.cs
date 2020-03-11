@@ -279,7 +279,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
                         statusMessage.AnnounceType = rlpStream.DecodeByte();
                         break;
                     default:
-                        // Ignore unknown keys - forwards compatibility
+                        // Ignore unknown keys
                         rlpStream.Position = readLength;
                         break;
                 }
