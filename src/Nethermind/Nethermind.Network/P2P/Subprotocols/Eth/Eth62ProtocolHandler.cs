@@ -19,6 +19,7 @@ using System.Timers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
@@ -31,7 +32,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
     public class Eth62ProtocolHandler : SyncPeerProtocolHandlerBase, IZeroProtocolHandler
     {
         private readonly TimeSpan _txFloodCheckInterval = TimeSpan.FromSeconds(60);
-        private readonly System.Timers.Timer _txFloodCheckTimer;
+        private readonly Timer _txFloodCheckTimer;
         private bool _isDowngradedDueToTxFlooding;
 
         private readonly Random _random = new Random();
@@ -42,9 +43,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             INodeStatsManager statsManager,
             ISyncServer syncServer,
             ITxPool txPool,
-            ILogManager logManager) : base(session, serializer, statsManager, syncServer, logManager, txPool)
+            ILogManager logManager) : base(session, serializer, statsManager, syncServer, txPool, logManager)
         {
-            _txFloodCheckTimer = new System.Timers.Timer(_txFloodCheckInterval.TotalMilliseconds);
+            _txFloodCheckTimer = new Timer(_txFloodCheckInterval.TotalMilliseconds);
             _txFloodCheckTimer.Elapsed += CheckTxFlooding;
             _txFloodCheckTimer.Start();
         }
@@ -92,6 +93,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
         }
 
+        public virtual void EnrichStatusMessage(StatusMessage statusMessage)
+        {
+        }
+        
         public override void Init()
         {
             if (Logger.IsTrace) Logger.Trace($"{ProtocolCode} v{ProtocolVersion} subprotocol initializing with {Session.Node:c}");
@@ -107,6 +112,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             statusMessage.TotalDifficulty = head.TotalDifficulty ?? head.Difficulty;
             statusMessage.BestHash = head.Hash;
             statusMessage.GenesisHash = SyncServer.Genesis.Hash;
+            EnrichStatusMessage(statusMessage);
             
             Metrics.StatusesSent++;
             Send(statusMessage);

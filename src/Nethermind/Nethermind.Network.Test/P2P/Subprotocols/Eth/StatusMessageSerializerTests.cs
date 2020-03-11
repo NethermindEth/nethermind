@@ -27,42 +27,47 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
         [Test]
         public void Roundtrip()
         {
-            StatusMessage statusMessage = new StatusMessage();            
+            StatusMessage statusMessage = new StatusMessage();
             statusMessage.ProtocolVersion = 63;
             statusMessage.BestHash = Keccak.Compute("1");
             statusMessage.GenesisHash = Keccak.Compute("0");
             statusMessage.TotalDifficulty = 131200;
             statusMessage.ChainId = 1;
-            
-            StatusMessageSerializer serializer = new StatusMessageSerializer();
-            byte[] bytes = serializer.Serialize(statusMessage);
-            byte[] expectedBytes = Bytes.FromHexString("f8483f0183020080a0c89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc6a0044852b2a670ade5407e78fb2863c51de9fcb96542a07186fe3aeda6bb8a116d");
 
-            Assert.True(Bytes.AreEqual(bytes, expectedBytes), "bytes");
-            
-            StatusMessage deserialized = serializer.Deserialize(bytes);
-            
-            Assert.AreEqual(statusMessage.BestHash, deserialized.BestHash, $"{nameof(deserialized.BestHash)}");
-            Assert.AreEqual(statusMessage.GenesisHash, deserialized.GenesisHash, $"{nameof(deserialized.GenesisHash)}");
-            Assert.AreEqual(statusMessage.TotalDifficulty, deserialized.TotalDifficulty, $"{nameof(deserialized.TotalDifficulty)}");
-            Assert.AreEqual(statusMessage.ChainId, deserialized.ChainId, $"{nameof(deserialized.ChainId)}");
-            Assert.AreEqual(statusMessage.ProtocolVersion, deserialized.ProtocolVersion, $"{nameof(deserialized.ProtocolVersion)}");
+            StatusMessageSerializer serializer = new StatusMessageSerializer();
+            SerializerTester.TestZero(serializer, statusMessage, "f8483f0183020080a0c89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc6a0044852b2a670ade5407e78fb2863c51de9fcb96542a07186fe3aeda6bb8a116d");
+        }
+
+        [Test]
+        public void Roundtrip_with_fork_id_next_is_zero()
+        {
+            StatusMessage statusMessage = new StatusMessage();
+            statusMessage.ProtocolVersion = 63;
+            statusMessage.BestHash = Keccak.Compute("1");
+            statusMessage.GenesisHash = Keccak.Compute("0");
+            statusMessage.TotalDifficulty = 131200;
+            statusMessage.ChainId = 1;
+            statusMessage.ForkId = new ForkId(new byte[] {1, 2, 3, 4, 5, 6, 7, 8}, 0);
+
+            StatusMessageSerializer serializer = new StatusMessageSerializer();
+            SerializerTester.TestZero(serializer, statusMessage);
         }
         
         [Test]
-        public void Hobbit()
+        public void Roundtrip_with_fork_id_next_is_max()
         {
-            StatusMessage message = new StatusMessage();            
-            message.ProtocolVersion = 63;
-            message.BestHash = Keccak.Compute("1");
-            message.GenesisHash = Keccak.Compute("0");
-            message.TotalDifficulty = 131200;
-            message.ChainId = 1;
-            
+            StatusMessage statusMessage = new StatusMessage();
+            statusMessage.ProtocolVersion = 63;
+            statusMessage.BestHash = Keccak.Compute("1");
+            statusMessage.GenesisHash = Keccak.Compute("0");
+            statusMessage.TotalDifficulty = 131200;
+            statusMessage.ChainId = 1;
+            statusMessage.ForkId = new ForkId(new byte[] {1, 2, 3, 4, 5, 6, 7, 8}, long.MaxValue);
+
             StatusMessageSerializer serializer = new StatusMessageSerializer();
-            SerializerTester.TestZero(serializer, message);
+            SerializerTester.TestZero(serializer, statusMessage);
         }
-        
+
         [Test]
         public void Can_deserialize_example_from_ethereumJ()
         {
@@ -70,8 +75,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             StatusMessageSerializer serializer = new StatusMessageSerializer();
             StatusMessage message = serializer.Deserialize(bytes);
             Assert.AreEqual(39, message.ProtocolVersion, "ProtocolVersion");
-            
-            Assert.AreEqual(0x25c60144, (int)message.TotalDifficulty, "Difficulty");
+
+            Assert.AreEqual(0x25c60144, (int) message.TotalDifficulty, "Difficulty");
             Assert.AreEqual(new Keccak("832056d3c93ff2739ace7199952e5365aa29f18805be05634c4db125c5340216"), message.BestHash, "BestHash");
             Assert.AreEqual(new Keccak("0x955f36d073ccb026b78ab3424c15cf966a7563aa270413859f78702b9e8e22cb"), message.GenesisHash, "GenesisHash");
 

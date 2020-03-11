@@ -331,7 +331,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             NetworkStorage peerStorage = new NetworkStorage(peersDb, _context.LogManager);
 
             ProtocolValidator protocolValidator = new ProtocolValidator(_context.NodeStatsManager, _context.BlockTree, _context.LogManager);
-            _context.ProtocolsManager = new ProtocolsManager(_context.SyncPeerPool, _context.SyncServer, _context.TxPool, _context.DiscoveryApp, _context._messageSerializationService, _context.RlpxPeer, _context.NodeStatsManager, protocolValidator, peerStorage, _context.LogManager);
+            _context.ProtocolsManager = new ProtocolsManager(_context.SyncPeerPool, _context.SyncServer, _context.TxPool, _context.DiscoveryApp, _context._messageSerializationService, _context.RlpxPeer, _context.NodeStatsManager, protocolValidator, peerStorage, _context.SpecProvider, _context.LogManager);
 
             if (!(_context.NdmInitializer is null))
             {

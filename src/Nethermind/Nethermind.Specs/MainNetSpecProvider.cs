@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 
@@ -54,12 +55,12 @@ namespace Nethermind.Specs
             {
                 return Byzantium.Instance;
             }
-            
+
             if (blockNumber < IstanbulBlockNumber)
             {
                 return ConstantinopleFix.Instance;
             }
-            
+
             if (blockNumber < MuirGlacierBlockNumber)
             {
                 return Istanbul.Instance;
@@ -68,16 +69,29 @@ namespace Nethermind.Specs
             return MuirGlacier.Instance;
         }
 
-        public static long HomesteadBlockNumber { get; } = 1150000;
-        public long? DaoBlockNumber { get; } = 1920000;
-        public static long TangerineWhistleBlockNumber { get; } = 2463000;
-        public static long SpuriousDragonBlockNumber { get; } = 2675000;
-        public static long ByzantiumBlockNumber { get; } = 4370000;
-        public static long ConstantinopleFixBlockNumber { get; } = 7280000;
-        public static long IstanbulBlockNumber { get; } = 9069000;
-        public static long MuirGlacierBlockNumber { get; } = 9200000;
+        public static long HomesteadBlockNumber => 1150000;
+        public long? DaoBlockNumber => 1920000;
+        public static long TangerineWhistleBlockNumber => 2463000;
+        public static long SpuriousDragonBlockNumber => 2675000;
+        public static long ByzantiumBlockNumber => 4370000;
+        public static long ConstantinopleFixBlockNumber => 7280000;
+        public static long IstanbulBlockNumber => 9069000;
+        public static long MuirGlacierBlockNumber => 9200000;
 
         public int ChainId => 1;
+        public Keccak GenesisHash => KnownHashes.MainnetGenesis;
+
+        public long[] TransitionBlocks { get; } =
+        {
+            HomesteadBlockNumber,
+            1920000,
+            TangerineWhistleBlockNumber,
+            SpuriousDragonBlockNumber,
+            ByzantiumBlockNumber,
+            ConstantinopleFixBlockNumber,
+            IstanbulBlockNumber,
+            MuirGlacierBlockNumber
+        };
 
         private MainNetSpecProvider()
         {

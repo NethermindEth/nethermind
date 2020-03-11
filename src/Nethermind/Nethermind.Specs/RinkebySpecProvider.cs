@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 
@@ -29,27 +30,27 @@ namespace Nethermind.Specs
             {
                 return TangerineWhistle.Instance;
             }
-            
+
             if (blockNumber < ByzantiumBlockNumber)
             {
                 return SpuriousDragon.Instance;
             }
-            
+
             if (blockNumber < ConstantinopleBlockNumber)
             {
                 return Byzantium.Instance;
             }
-            
+
             if (blockNumber < ConstantinopleFixBlockNumber)
             {
                 return Constantinople.Instance;
             }
-            
+
             if (blockNumber < IstanbulBlockNumber)
             {
                 return ConstantinopleFix.Instance;
             }
-            
+
             return Istanbul.Instance;
         }
 
@@ -60,13 +61,22 @@ namespace Nethermind.Specs
         public static long ConstantinopleBlockNumber { get; } = 3660663;
         public static long ConstantinopleFixBlockNumber { get; } = 4321234;
         public static long IstanbulBlockNumber { get; } = 5435345;
-        
+
         public int ChainId => 4;
-        
+        public Keccak GenesisHash => KnownHashes.RinkebyGenesis;
+        public long[] TransitionBlocks { get; } =
+        {
+            SpuriousDragonBlockNumber,
+            ByzantiumBlockNumber,
+            ConstantinopleBlockNumber,
+            ConstantinopleFixBlockNumber,
+            IstanbulBlockNumber
+        };
+
         private RinkebySpecProvider()
         {
         }
-        
+
         public static readonly RinkebySpecProvider Instance = new RinkebySpecProvider();
     }
 }

@@ -25,6 +25,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth;
@@ -55,13 +56,12 @@ namespace Nethermind.Network.P2P
         protected readonly BlockingCollection<Request<GetBlockBodiesMessage, BlockBody[]>> _bodiesRequests
             = new BlockingCollection<Request<GetBlockBodiesMessage, BlockBody[]>>();
 
-        protected SyncPeerProtocolHandlerBase(
-            ISession session,
+        protected SyncPeerProtocolHandlerBase(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
             ISyncServer syncServer,
-            ILogManager logManager,
-            ITxPool txPool) : base(session, statsManager, serializer, logManager)
+            ITxPool txPool,
+            ILogManager logManager) : base(session, statsManager, serializer, logManager)
         {
             SyncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));

@@ -119,7 +119,7 @@ namespace Nethermind.Wallet.Test
         public void Can_sign_on_networks_with_chain_id(DevWalletType walletType)
         {
             const int networkId = 40000;
-            EthereumEcdsa ecdsa = new EthereumEcdsa(new SingleReleaseSpecProvider(Latest.Release, networkId), LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance);
             IWallet wallet = SetupWallet(walletType);
 
             for (int i = 1; i <= (walletType == DevWalletType.Memory ? 10 : 3); i++)

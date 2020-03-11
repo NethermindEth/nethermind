@@ -21,6 +21,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
@@ -49,6 +50,7 @@ namespace Nethermind.Network
         private readonly INodeStatsManager _stats;
         private readonly IProtocolValidator _protocolValidator;
         private readonly INetworkStorage _peerStorage;
+        private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
         private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
@@ -65,6 +67,7 @@ namespace Nethermind.Network
             INodeStatsManager nodeStatsManager,
             IProtocolValidator protocolValidator,
             INetworkStorage peerStorage,
+            ISpecProvider specProvider,
             ILogManager logManager)
         {
             _syncPool = ethSyncPeerPool ?? throw new ArgumentNullException(nameof(ethSyncPeerPool));
@@ -76,6 +79,7 @@ namespace Nethermind.Network
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _protocolValidator = protocolValidator ?? throw new ArgumentNullException(nameof(protocolValidator));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -173,23 +177,16 @@ namespace Nethermind.Network
                 },
                 [Protocol.Eth] = (session, version) =>
                 {
-                    var protocolHandler = version switch
+                    var ethHandler = version switch
                     {
                         62 => new Eth62ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _logManager),
                         63 => new Eth63ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _logManager),
+                        64 => new Eth64ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _specProvider, _logManager),
                         _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
                     };
-                    if (version < 62 || version > 63)
-                    {
-                        throw new NotSupportedException($"Eth protocol version {version} is not supported.");
-                    }
-
-                    Eth62ProtocolHandler handler = version == 62
-                        ? new Eth62ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _logManager)
-                        : new Eth63ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _logManager);
-                    InitEthProtocol(session, handler);
-
-                    return handler;
+                    
+                    InitEthProtocol(session, ethHandler);
+                    return ethHandler;
                 },
                 [Protocol.Les] = (session, version) =>
                 {
