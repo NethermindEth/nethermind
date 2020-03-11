@@ -38,7 +38,6 @@ namespace Nethermind.Specs
 
         public long? DaoBlockNumber { get; set; }
         public int ChainId { get; set; }
-        public Keccak GenesisHash { get; set; } = Keccak.Zero;
         public long[] TransitionBlocks { get; set; } = new long[] {0};
     }
 }

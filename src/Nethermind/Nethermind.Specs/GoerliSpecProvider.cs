@@ -42,9 +42,7 @@ namespace Nethermind.Specs
 
         public long? DaoBlockNumber { get; } = null;
         public static long IstanbulBlockNumber => 0x17D433;
-
         public int ChainId => 0x5;
-        public Keccak GenesisHash => KnownHashes.GoerliGenesis;
 
         public long[] TransitionBlocks { get; } =
         {

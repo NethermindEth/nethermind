@@ -68,7 +68,6 @@ namespace Nethermind.Specs
         public static long MuirGlacierBlockNumber { get; } = 7117117;
 
         public int ChainId => 3;
-        public Keccak GenesisHash => KnownHashes.RopstenGenesis;
         public long[] TransitionBlocks => new[]
         {
             SpuriousDragonBlockNumber,

@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 
@@ -79,7 +78,6 @@ namespace Nethermind.Specs
         public static long MuirGlacierBlockNumber => 9200000;
 
         public int ChainId => 1;
-        public Keccak GenesisHash => KnownHashes.MainnetGenesis;
 
         public long[] TransitionBlocks { get; } =
         {

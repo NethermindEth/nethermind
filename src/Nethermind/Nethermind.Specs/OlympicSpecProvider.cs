@@ -32,7 +32,6 @@ namespace Nethermind.Specs
         public long? DaoBlockNumber { get; } = null;
 
         public int ChainId => 3;
-        public Keccak GenesisHash => KnownHashes.MainnetGenesis;
         public long[] TransitionBlocks { get; } = {0};
 
         private OlympicSpecProvider()

@@ -16,18 +16,19 @@
 
 using System.Buffers.Binary;
 using Force.Crc32;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Network
 {
     public static class ForkInfo
     {
-        public static byte[] CalculateForkHash(ISpecProvider specProvider, long headNumber)
+        public static byte[] CalculateForkHash(ISpecProvider specProvider, long headNumber, Keccak genesisHash)
         {
             uint crc = 0;
             long[] transitionBlocks = specProvider.TransitionBlocks;
             byte[] blockNumberBytes = new byte[8];
-            crc = Crc32Algorithm.Append(crc, specProvider.GenesisHash.Bytes);
+            crc = Crc32Algorithm.Append(crc, genesisHash.Bytes);
             for (int i = 0; i < transitionBlocks.Length; i++)
             {
                 if (transitionBlocks[i] > headNumber)
@@ -44,9 +45,9 @@ namespace Nethermind.Network
             return forkHash;
         }
 
-        public static ForkId CalculateForkId(ISpecProvider specProvider, long headNumber)
+        public static ForkId CalculateForkId(ISpecProvider specProvider, long headNumber, Keccak genesisHash)
         {
-            byte[] forkHash = CalculateForkHash(specProvider, headNumber);
+            byte[] forkHash = CalculateForkHash(specProvider, headNumber, genesisHash);
             long next = 0;
             for (int i = 0; i < specProvider.TransitionBlocks.Length; i++)
             {

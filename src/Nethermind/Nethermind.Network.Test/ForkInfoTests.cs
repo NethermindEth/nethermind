@@ -14,10 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.IO;
 using FluentAssertions;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test
@@ -45,7 +49,7 @@ namespace Nethermind.Network.Test
         [TestCase(9500000, "0xe029e991", 0, "Muir Glacier block")]
         public void Fork_id_and_hash_as_expected(long head, string forkHashHex, long next, string description)
         {
-            Test(head, forkHashHex, next, description, MainNetSpecProvider.Instance);
+            Test(head, KnownHashes.MainnetGenesis, forkHashHex, next, description, MainNetSpecProvider.Instance, "foundation.json");
         }
 
         [TestCase(0, "0xa3f5ab08", 1561651, "Unsynced")]
@@ -53,7 +57,7 @@ namespace Nethermind.Network.Test
         [TestCase(1561651, "0xc25efa5c", 0, "First Istanbul block")]
         public void Fork_id_and_hash_as_expected_on_goerli(long head, string forkHashHex, long next, string description)
         {
-            Test(head, forkHashHex, next, description, GoerliSpecProvider.Instance);
+            Test(head, KnownHashes.GoerliGenesis, forkHashHex, next, description, GoerliSpecProvider.Instance, "goerli.json");
         }
 
         [TestCase(0, "0x3b8e0691", 1, "Unsynced, last Frontier block")]
@@ -71,7 +75,7 @@ namespace Nethermind.Network.Test
         [TestCase(6000000, "0xcbdb8838", 0, "")]
         public void Fork_id_and_hash_as_expected_on_rinkeby(long head, string forkHashHex, long next, string description)
         {
-            Test(head, forkHashHex, next, description, RinkebySpecProvider.Instance);
+            Test(head, KnownHashes.RinkebyGenesis, forkHashHex, next, description, RinkebySpecProvider.Instance, "rinkeby.json");
         }
 
         [TestCase(0, "0x30c7ddbc", 10, " Unsynced, last Frontier, Homestead and first Tangerine block")]
@@ -89,16 +93,26 @@ namespace Nethermind.Network.Test
         [TestCase(7500000, "0x6727ef90", 0, "Future Muir Glacier block")]
         public void Fork_id_and_hash_as_expected_on_ropsten(long head, string forkHashHex, long next, string description)
         {
-            Test(head, forkHashHex, next, description, RopstenSpecProvider.Instance);
+            Test(head, KnownHashes.RopstenGenesis, forkHashHex, next, description, RopstenSpecProvider.Instance, "ropsten.json");
         }
 
-        private static void Test(long head, string forkHashHex, long next, string description, ISpecProvider specProvider)
+        private static void Test(long head, Keccak genesisHash, string forkHashHex, long next, string description, ISpecProvider specProvider, string chainSpec)
+        {
+            Test(head, genesisHash, forkHashHex, next, description, specProvider);
+
+            ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
+            ChainSpec spec = loader.Load(File.ReadAllText("../../../../Chains/" + chainSpec));
+            ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
+            Test(head, genesisHash, forkHashHex, next, description, provider);
+        }
+
+        private static void Test(long head, Keccak genesisHash, string forkHashHex, long next, string description, ISpecProvider specProvider)
         {
             byte[] expectedForkHash = Bytes.FromHexString(forkHashHex);
-            byte[] forkHash = ForkInfo.CalculateForkHash(specProvider, head);
+            byte[] forkHash = ForkInfo.CalculateForkHash(specProvider, head, genesisHash);
             forkHash.Should().BeEquivalentTo(expectedForkHash, description);
 
-            ForkId forkId = ForkInfo.CalculateForkId(specProvider, head);
+            ForkId forkId = ForkInfo.CalculateForkId(specProvider, head, genesisHash);
             forkId.Next.Should().Be(next);
             forkId.ForkHash.Should().BeEquivalentTo(expectedForkHash);
         }

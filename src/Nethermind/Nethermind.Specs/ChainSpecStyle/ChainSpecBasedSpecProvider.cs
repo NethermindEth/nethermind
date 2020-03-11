@@ -85,7 +85,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 transitionBlocks.Add(bombDelay.Key);
             }
 
-            TransitionBlocks = transitionBlocks.ToArray();
+            TransitionBlocks = transitionBlocks.Skip(1).ToArray();
             _transitions = new (long BlockNumber, IReleaseSpec Release)[transitionBlocks.Count];
 
             int index = 0;
@@ -179,7 +179,6 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
 
         public int ChainId => _chainSpec.ChainId;
-        public Keccak GenesisHash => _chainSpec.Genesis.Hash;
         public long[] TransitionBlocks { get; private set; }
     };
 }

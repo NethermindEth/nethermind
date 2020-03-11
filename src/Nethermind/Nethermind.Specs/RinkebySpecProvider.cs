@@ -75,7 +75,6 @@ namespace Nethermind.Specs
         public static long IstanbulBlockNumber { get; } = 5435345;
 
         public int ChainId => 4;
-        public Keccak GenesisHash => KnownHashes.RinkebyGenesis;
 
         public long[] TransitionBlocks { get; } =
         {

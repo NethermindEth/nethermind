@@ -23,7 +23,6 @@ namespace Nethermind.Specs
     public class SingleReleaseSpecProvider : ISpecProvider
     {
         public int ChainId { get; }
-        public Keccak GenesisHash => Keccak.Zero;
         public long[] TransitionBlocks { get; } = {0};
 
         private readonly IReleaseSpec _releaseSpec;
