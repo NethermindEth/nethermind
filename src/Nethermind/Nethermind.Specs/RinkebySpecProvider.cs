@@ -26,6 +26,16 @@ namespace Nethermind.Specs
 
         public IReleaseSpec GetSpec(long blockNumber)
         {
+            if (blockNumber < HomesteadBlockNumber)
+            {
+                return Frontier.Instance;
+            }
+
+            if (blockNumber < TangerineWhistleBlockNumber)
+            {
+                return Homestead.Instance;
+            }
+
             if (blockNumber < SpuriousDragonBlockNumber)
             {
                 return TangerineWhistle.Instance;
@@ -56,6 +66,8 @@ namespace Nethermind.Specs
 
         public long? DaoBlockNumber { get; } = null;
 
+        public static long HomesteadBlockNumber { get; } = 1;
+        public static long TangerineWhistleBlockNumber { get; } = 2;
         public static long SpuriousDragonBlockNumber { get; } = 3;
         public static long ByzantiumBlockNumber { get; } = 1035301;
         public static long ConstantinopleBlockNumber { get; } = 3660663;
@@ -64,8 +76,11 @@ namespace Nethermind.Specs
 
         public int ChainId => 4;
         public Keccak GenesisHash => KnownHashes.RinkebyGenesis;
+
         public long[] TransitionBlocks { get; } =
         {
+            HomesteadBlockNumber,
+            TangerineWhistleBlockNumber,
             SpuriousDragonBlockNumber,
             ByzantiumBlockNumber,
             ConstantinopleBlockNumber,
