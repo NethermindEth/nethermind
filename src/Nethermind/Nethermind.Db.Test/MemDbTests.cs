@@ -31,6 +31,7 @@ namespace Nethermind.Db.Test
             MemDb memDb = new MemDb(10, 10);
             memDb.Set(TestItem.KeccakA, new byte[] {1, 2, 3});
             memDb.Get(TestItem.KeccakA);
+            var some = memDb[new[] {TestItem.KeccakA.Bytes}];
         }
 
         [Test]
@@ -110,6 +111,15 @@ namespace Nethermind.Db.Test
             result[1].Value.Should().NotBeNull();
             result[2].Value.Should().BeNull();
         }
+        
+        [Test]
+        public void Can_get_all()
+        {
+            MemDb memDb = new MemDb();
+            memDb.Set(TestItem.KeccakA, _sampleValue);
+            memDb.Set(TestItem.KeccakB, _sampleValue);
+            memDb.GetAll().Should().HaveCount(2);
+        }
 
         [Test]
         public void Can_get_values()
@@ -125,6 +135,13 @@ namespace Nethermind.Db.Test
         {
             MemDb memDb = new MemDb();
             memDb.Dispose();
+        }
+        
+        [Test]
+        public void Flush_does_not_cause_trouble()
+        {
+            MemDb memDb = new MemDb();
+            memDb.Flush();
         }
 
         [Test]
