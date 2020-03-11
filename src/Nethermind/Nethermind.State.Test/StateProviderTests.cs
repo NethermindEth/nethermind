@@ -28,6 +28,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
@@ -74,6 +75,74 @@ namespace Nethermind.Store.Test
 
             provider.GetAccount(systemUser).Should().NotBeNull();
         }
+        
+        [Test]
+        public void Can_dump_state()
+        {
+            StateProvider provider = new StateProvider(new StateDb(new MemDb()), Substitute.For<IDb>(), Logger);
+            provider.CreateAccount(TestItem.AddressA, 1.Ether());
+            provider.Commit(MuirGlacier.Instance);
+            provider.CommitTree();
+
+            string state = provider.DumpState();
+            state.Should().NotBeEmpty();
+        }
+        
+        [Test]
+        public void Can_collect_stats()
+        {
+            StateProvider provider = new StateProvider(new StateDb(new MemDb()), Substitute.For<IDb>(), Logger);
+            provider.CreateAccount(TestItem.AddressA, 1.Ether());
+            provider.Commit(MuirGlacier.Instance);
+            provider.CommitTree();
+
+            var stats = provider.CollectStats();
+            stats.AccountCount.Should().Be(1);
+        }
+        
+        private class TreeVisitor : ITreeVisitor
+        {
+            public bool ShouldVisit(Keccak nextNode)
+            {
+                return true;
+            }
+
+            public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext)
+            {
+            }
+
+            public void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext)
+            {
+            }
+
+            public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
+            {
+            }
+
+            public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
+            {
+            }
+
+            public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null)
+            {
+            }
+
+            public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext)
+            {
+            }
+        }
+        
+        [Test]
+        public void Can_accepts_visitors()
+        {
+            StateProvider provider = new StateProvider(new StateDb(new MemDb()), Substitute.For<IDb>(), Logger);
+            provider.CreateAccount(TestItem.AddressA, 1.Ether());
+            provider.Commit(MuirGlacier.Instance);
+            provider.CommitTree();
+
+            TrieStatsCollector visitor = new TrieStatsCollector(new MemDb(), LimboLogs.Instance);
+            provider.Accept(visitor, provider.StateRoot);
+        }
 
         [Test]
         public void Empty_commit_restore()
@@ -84,13 +153,12 @@ namespace Nethermind.Store.Test
         }
         
         [Test]
-        public void Update_balance_on_non_existing_acccount_throws()
+        public void Update_balance_on_non_existing_account_throws()
         {
             StateProvider provider = new StateProvider(new StateDb(new MemDb()), Substitute.For<IDb>(), Logger);
             Assert.Throws<InvalidOperationException>(() => provider.AddToBalance(TestItem.AddressA, 1.Ether(), Olympic.Instance));
         }
-
-
+        
         [Test]
         public void Is_empty_account()
         {
@@ -98,6 +166,14 @@ namespace Nethermind.Store.Test
             provider.CreateAccount(_address1, 0);
             provider.Commit(Frontier.Instance);
             Assert.True(provider.IsEmptyAccount(_address1));
+        }
+        
+        [Test]
+        public void Returns_empty_byte_code_for_non_existing_accounts()
+        {
+            StateProvider provider = new StateProvider(new StateDb(new MemDb()), Substitute.For<IDb>(), Logger);
+            byte[] code = provider.GetCode(TestItem.AddressA);
+            code.Should().BeEmpty();
         }
 
         [Test]
