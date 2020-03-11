@@ -299,6 +299,48 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
         }
 
+        private Random _broadcastRandomizer = new Random();
+        public override bool OnNewBlock(Block block, bool forceFullBlock = false)
+        {
+            int peerCount = SyncServer.GetPeerCount();
+            double broadcastRatio = Math.Sqrt(peerCount) / peerCount;
+            if (forceFullBlock || _broadcastRandomizer.NextDouble() < broadcastRatio)
+            {
+                SendNewBlock(block);
+                return true;
+            }
+            else
+            {
+                HintNewBlock(block.Hash, block.Number);
+                return false;
+            }
+        }
+
+        public void SendNewBlock(Block block)
+        {
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NewBlock to {Node:c}");
+            if (block.TotalDifficulty == null)
+            {
+                throw new InvalidOperationException($"Trying to send a block {block.Hash} with null total difficulty");
+            }
+
+            NewBlockMessage msg = new NewBlockMessage();
+            msg.Block = block;
+            msg.TotalDifficulty = block.TotalDifficulty ?? 0;
+
+            Send(msg);
+        }
+
+        public void HintNewBlock(Keccak blockHash, long number)
+        {
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} HintBlock to {Node:c}");
+
+            NewBlockHashesMessage msg = new NewBlockHashesMessage();
+            msg.BlockHashes = new[] { (blockHash, number) };
+            Send(msg);
+        }
+
+
         protected override void OnDisposed()
         {
             try

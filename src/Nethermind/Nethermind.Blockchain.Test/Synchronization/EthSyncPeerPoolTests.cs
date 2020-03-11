@@ -110,12 +110,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 return await Task.FromResult(Build.A.BlockHeader.TestObject);
             }
 
-            public void SendNewBlock(Block block)
+            public bool OnNewBlock(Block block, bool forceFullBlock = false)
             {
-            }
-
-            public void HintNewBlock(Keccak blockHash, long number)
-            {
+                return forceFullBlock;
             }
 
             public PublicKey Id => Node.Id;

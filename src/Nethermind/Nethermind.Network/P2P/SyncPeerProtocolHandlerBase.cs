@@ -229,31 +229,7 @@ namespace Nethermind.Network.P2P
             await Task.CompletedTask;
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");
         }
-
-        public void SendNewBlock(Block block)
-        {
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NewBlock to {Node:c}");
-            if (block.TotalDifficulty == null)
-            {
-                throw new InvalidOperationException($"Trying to send a block {block.Hash} with null total difficulty");
-            }
-
-            NewBlockMessage msg = new NewBlockMessage();
-            msg.Block = block;
-            msg.TotalDifficulty = block.TotalDifficulty ?? 0;
-
-            Send(msg);
-        }
-
-        public void HintNewBlock(Keccak blockHash, long number)
-        {
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} HintBlock to {Node:c}");
-
-            NewBlockHashesMessage msg = new NewBlockHashesMessage();
-            msg.BlockHashes = new[] { (blockHash, number) };
-            Send(msg);
-        }
-
+        public abstract bool OnNewBlock(Block block, bool forceFullBlock = false);
         public virtual async Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)
         {
             await Task.CompletedTask;

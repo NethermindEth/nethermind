@@ -377,7 +377,7 @@ namespace Nethermind.Blockchain.Synchronization
                             Block block = _blockTree.FindBlock(_blockTree.BestSuggestedHeader.Hash, BlockTreeLookupOptions.None);
                             if (block != null) // can be null if fast syncing headers only
                             {
-                                peerInfo.SyncPeer.SendNewBlock(block);
+                                peerInfo.SyncPeer.OnNewBlock(block, true);
                                 if (_logger.IsDebug) _logger.Debug($"Sending my best block {block} to {peerInfo}");
                             }
                         }

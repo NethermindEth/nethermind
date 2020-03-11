@@ -211,12 +211,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
                 return Task.FromResult(BlockTree.Head);
             }
 
-            public void SendNewBlock(Block block)
-            {
-                throw new NotImplementedException();
-            }
-
-            public void HintNewBlock(Keccak blockHash, long number)
+            public bool OnNewBlock(Block block, bool forceFullBlock = false)
             {
                 throw new NotImplementedException();
             }

@@ -206,13 +206,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 return header;
             }
 
-            public void SendNewBlock(Block block)
+            public bool OnNewBlock(Block block, bool forceFullBlock = false)
             {
-                ReceivedBlocks.Push(block);
-            }
-
-            public void HintNewBlock(Keccak blockHash, long number)
-            {
+                if (forceFullBlock)
+                    ReceivedBlocks.Push(block);
+                return forceFullBlock;
             }
 
             public Stack<Block> ReceivedBlocks { get; set; } = new Stack<Block>();
