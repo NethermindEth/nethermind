@@ -307,7 +307,7 @@ namespace Nethermind.BeaconNode.Test
 
             // Assert
             syncing.IsSyncing.ShouldBeTrue();
-            syncing.SyncStatus.StartingSlot.ShouldBe(Slot.One);
+            syncing.SyncStatus!.StartingSlot.ShouldBe(Slot.One);
             syncing.SyncStatus.CurrentSlot.ShouldBe(new Slot(5));
             syncing.SyncStatus.HighestSlot.ShouldBe(new Slot(10));
         }
@@ -349,7 +349,7 @@ namespace Nethermind.BeaconNode.Test
 
             // Assert
             syncing.IsSyncing.ShouldBeFalse();
-            syncing.SyncStatus.StartingSlot.ShouldBe(Slot.One);
+            syncing.SyncStatus!.StartingSlot.ShouldBe(Slot.One);
             syncing.SyncStatus.CurrentSlot.ShouldBe(new Slot(11));
             syncing.SyncStatus.HighestSlot.ShouldBe(new Slot(11));
         }

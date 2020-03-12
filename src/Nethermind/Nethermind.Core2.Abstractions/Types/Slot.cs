@@ -16,6 +16,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace Nethermind.Core2.Types
@@ -155,15 +156,10 @@ namespace Nethermind.Core2.Types
 
         public static Slot InterlockedCompareExchange(ref Slot location1, Slot value, Slot comparand)
         {
-            unsafe
-            {
-                fixed (ulong* ptr = &location1._number)
-                {
-                    // Interlocked doesn't support ulong yet (planned for .NET 5), but isomorphic with Int64
-                    long originalNumber = Interlocked.CompareExchange(ref* (long*)ptr, (long)value._number, (long)comparand._number);
-                    return new Slot((ulong)originalNumber);
-                }
-            }
+            // Interlocked doesn't support ulong yet (planned for .NET 5), but isomorphic with Int64
+            ref long longRef = ref Unsafe.As<ulong, long>(ref location1._number);
+            long originalNumber = Interlocked.CompareExchange(ref longRef, (long)value._number, (long)comparand._number);
+            return new Slot((ulong)originalNumber);
         }
     }
 }
