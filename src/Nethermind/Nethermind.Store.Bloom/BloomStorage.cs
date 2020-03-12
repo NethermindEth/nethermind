@@ -430,8 +430,7 @@ namespace Nethermind.Store.Bloom
                     else
                     {
                         var storageLevel = _storageLevels[CurrentLevel];
-                        storageLevel.Reader.Read(storageLevel.Storage.GetBucket(_currentPosition), _bloom.Bytes);
-                        return _bloom;
+                        return storageLevel.Reader.Read(storageLevel.Storage.GetBucket(_currentPosition), _bloom.Bytes) == Core.Bloom.ByteLength ? _bloom : Core.Bloom.Empty;
                     }
                 }
             }
