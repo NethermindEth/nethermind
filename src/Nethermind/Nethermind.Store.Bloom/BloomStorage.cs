@@ -56,7 +56,7 @@ namespace Nethermind.Store.Bloom
             }
         }
 
-        private long MaxBlockNumber
+        public long MaxBlockNumber
         {
             get => _maxBlockNumber;
             set
