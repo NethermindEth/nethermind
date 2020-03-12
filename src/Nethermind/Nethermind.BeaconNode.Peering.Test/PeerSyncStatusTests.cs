@@ -1,7 +1,9 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Types;
 using NUnit.Framework;
 using Shouldly;
@@ -20,12 +22,12 @@ namespace Nethermind.BeaconNode.Peering.Test
         public void UpdateSlotShouldBeThreadSafe()
         {
             // arrange
-            var peerSyncStatus = new PeerSyncStatus();
+            PeerSyncStatus peerSyncStatus = new PeerSyncStatus();
             peerSyncStatus.UpdateMostRecentSlot(new Slot(5));
 
-            var startEvent = new ManualResetEventSlim();
-            var random = new Random();
-            var taskList = new List<Task>();
+            ManualResetEventSlim startEvent = new ManualResetEventSlim();
+            Random random = new Random();
+            List<Task> taskList = new List<Task>();
             for (int i = 0; i < 10; i++)
             {
                 Slot slot = new Slot((ulong) random.Next(5, 10));
@@ -59,6 +61,32 @@ namespace Nethermind.BeaconNode.Peering.Test
             
             // assert
             peerSyncStatus.HighestPeerSlot.ShouldBe(new Slot(50));
+        }
+
+        [Test]
+        public void SlotInterlockedOnlyAffectsOneValue()
+        {
+            // arrange
+            Slot slot = new Slot(10);
+            Slot slot2 = slot;
+            PendingAttestation slotContainer =
+                new PendingAttestation(new BitArray(0), AttestationData.Zero, slot, ValidatorIndex.Zero);
+
+            // act
+            Slot comparand = new Slot(10);
+            PendingAttestation containerToSourceUpdatedSlotFrom = new PendingAttestation(new BitArray(0),
+                AttestationData.Zero, new Slot(20), ValidatorIndex.Zero);
+            Slot original = Slot.InterlockedCompareExchange(ref slot, containerToSourceUpdatedSlotFrom.InclusionDelay, comparand);
+
+            // NOTE: Doesn't make properties mutable, as you need the field ref (not a property), e.g. the following doesn't compile:
+            // Example: Slot.InterlockedCompareExchange(ref slotContainer.InclusionDelay, slot, containerToSourceUpdatedSlotFrom.InclusionDelay, comparand);
+            
+            // assert
+            slot.ShouldBe(new Slot(20));
+            
+            slot2.ShouldBe(new Slot(10));
+            slotContainer.InclusionDelay.ShouldBe(new Slot(10));
+            original.ShouldBe(new Slot(10));
         }
     }
 }

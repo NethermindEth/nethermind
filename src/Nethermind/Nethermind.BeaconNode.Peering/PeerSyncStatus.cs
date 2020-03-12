@@ -20,9 +20,12 @@ namespace Nethermind.BeaconNode.Peering
 {
     public class PeerSyncStatus
     {
-        private readonly object _highestPeerLock = new object();
+        private Slot _highestPeerSlot;
 
-        public Slot HighestPeerSlot { get; private set; }
+        public Slot HighestPeerSlot
+        {
+            get => _highestPeerSlot;
+        }
 
         public Slot SyncStartingSlot { get; private set; }
 
@@ -33,16 +36,15 @@ namespace Nethermind.BeaconNode.Peering
 
         public void UpdateMostRecentSlot(Slot slot)
         {
-            if (slot > HighestPeerSlot)
+            Slot initialValue;
+            do
             {
-                lock (_highestPeerLock)
+                initialValue = _highestPeerSlot;
+                if (slot <= initialValue)
                 {
-                    if (slot > HighestPeerSlot)
-                    {
-                        HighestPeerSlot = slot;
-                    }
+                    break;
                 }
-            }
+            } while (initialValue != Slot.InterlockedCompareExchange(ref _highestPeerSlot, slot, initialValue));
         }
     }
 }
