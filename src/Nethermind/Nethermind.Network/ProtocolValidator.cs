@@ -68,28 +68,26 @@ namespace Nethermind.Network
 
                     break;
                 case Protocol.Eth:
-                    EthProtocolInitializedEventArgs ethArgs = (EthProtocolInitializedEventArgs) eventArgs;
-                    if (!ValidateChainId(ethArgs.ChainId))
+                case Protocol.Les:
+                    SyncPeerProtocolInitializedEventArgs syncPeerArgs = (SyncPeerProtocolInitializedEventArgs) eventArgs;
+                    if (!ValidateChainId(syncPeerArgs.ChainId))
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different chainId: {ChainId.GetChainName((int) ethArgs.ChainId)}, our chainId: {ChainId.GetChainName(_blockTree.ChainId)}");
+                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different chainId: {ChainId.GetChainName((int) syncPeerArgs.ChainId)}, our chainId: {ChainId.GetChainName(_blockTree.ChainId)}");
                         _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.ChainId);
-                        Disconnect(session, DisconnectReason.UselessPeer, $"invalid chain id - {ethArgs.ChainId}");
-                        if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.UselessPeer} (invalid chain id - {ethArgs.ChainId})"); 
+                        Disconnect(session, DisconnectReason.UselessPeer, $"invalid chain id - {syncPeerArgs.ChainId}");
+                        if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.UselessPeer} (invalid chain id - {syncPeerArgs.ChainId})"); 
                         return false;
                     }
 
-                    if (ethArgs.GenesisHash != _blockTree.Genesis.Hash)
+                    if (syncPeerArgs.GenesisHash != _blockTree.Genesis.Hash)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different genesis hash: {ethArgs.GenesisHash}, our: {_blockTree.Genesis.Hash}");
+                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different genesis hash: {syncPeerArgs.GenesisHash}, our: {_blockTree.Genesis.Hash}");
                         _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.DifferentGenesis);
                         Disconnect(session, DisconnectReason.BreachOfProtocol, "invalid genesis");
                         if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.BreachOfProtocol} (invalid genesis)"); 
                         return false;
                     }
 
-                    break;
-                case Protocol.Les:
-                      // todo validate session
                     break;
             }
 

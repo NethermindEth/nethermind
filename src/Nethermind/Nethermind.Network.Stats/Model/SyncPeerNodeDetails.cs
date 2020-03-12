@@ -17,19 +17,14 @@
 using System.Numerics;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth
+namespace Nethermind.Stats.Model
 {
-    public class EthProtocolInitializedEventArgs : ProtocolInitializedEventArgs
+    public class SyncPeerNodeDetails
     {
-        public string Protocol { get; set; }
         public byte ProtocolVersion { get; set; }
         public long ChainId { get; set; }
         public BigInteger TotalDifficulty { get; set; }
         public Keccak BestHash { get; set; }
         public Keccak GenesisHash { get; set; }
-
-        public EthProtocolInitializedEventArgs(Eth62ProtocolHandler protocolHandler) : base(protocolHandler)
-        {
-        }
     }
 }

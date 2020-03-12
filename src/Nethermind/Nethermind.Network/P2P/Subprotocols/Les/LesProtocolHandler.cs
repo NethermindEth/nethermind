@@ -162,12 +162,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
                              Environment.NewLine + $" transaction relay\t{status.TxRelay}" +
                              Environment.NewLine + $" buffer limit\t{status.BufferLimit}" +
                              Environment.NewLine + $" max recharge\t{status.MaximumRechargeRate}");
-                             // todo - log max request costs table
+            // todo - log max request costs table
 
             _remoteHeadBlockHash = status.BestHash;
 
             ReceivedProtocolInitMsg(status);
-            LesProtocolInitializedEventArgs eventArgs = new LesProtocolInitializedEventArgs(this, status);
+            SyncPeerProtocolInitializedEventArgs eventArgs = new SyncPeerProtocolInitializedEventArgs(this)
+            {
+                ChainId = (long) status.ChainId,
+                BestHash = status.BestHash,
+                GenesisHash = status.GenesisHash,
+                Protocol = status.Protocol,
+                ProtocolVersion = status.ProtocolVersion,
+                TotalDifficulty = status.TotalDifficulty
+            };
 
             TotalDifficultyOnSessionStart = status.TotalDifficulty;
             RequestedAnnounceType = status.AnnounceType.Value;

@@ -238,7 +238,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             
             ReceivedProtocolInitMsg(status);
 
-            EthProtocolInitializedEventArgs eventArgs = new EthProtocolInitializedEventArgs(this)
+            SyncPeerProtocolInitializedEventArgs eventArgs = new SyncPeerProtocolInitializedEventArgs(this)
             {
                 ChainId = (long) status.ChainId,
                 BestHash = status.BestHash,
