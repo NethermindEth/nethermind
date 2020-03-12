@@ -35,14 +35,18 @@ namespace Nethermind.BeaconNode.Peering
         {
             if (slot > HighestPeerSlot)
             {
-                lock (_highestPeerLock)
-                {
-                    if (slot > HighestPeerSlot)
-                    {
-                        HighestPeerSlot = slot;
-                    }
-                }
+                HighestPeerSlot = slot;
             }
+            // if (slot > HighestPeerSlot)
+            // {
+            //     lock (_highestPeerLock)
+            //     {
+            //         if (slot > HighestPeerSlot)
+            //         {
+            //             HighestPeerSlot = slot;
+            //         }
+            //     }
+            // }
         }
     }
 }

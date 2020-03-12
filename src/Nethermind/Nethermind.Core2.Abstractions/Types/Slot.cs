@@ -16,6 +16,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Threading;
 
 namespace Nethermind.Core2.Types
 {
@@ -149,5 +150,10 @@ namespace Nethermind.Core2.Types
         {
             return Number.CompareTo(other.Number);
         }
+
+        // public static bool InterlockCompareExchange()
+        // {
+        //     Interlocked.CompareExchange()
+        // }
     }
 }
