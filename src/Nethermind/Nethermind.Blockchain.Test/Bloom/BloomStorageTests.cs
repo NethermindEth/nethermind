@@ -123,6 +123,27 @@ namespace Nethermind.Blockchain.Test.Bloom
             ranges.Should().BeEquivalentTo(expectedBlocks);
             bloomsChecked.Should().Be(expectedBloomsChecked);
         }
+        
+        [Test]
+        public void Can_find_bloom_offseted()
+        {
+            var storage = CreateBloomStorage(new BloomConfig() {IndexLevelBucketSizes = new []{4}});
+            var bloom = new Core.Bloom();
+            byte[] bytes = {1, 2, 3};
+            bloom.Set(bytes);
+            storage.Store(4, bloom);
+            var bloomEnumeration = storage.GetBlooms(1, 10);
+            long blockNumber = 0;
+            foreach (var b in bloomEnumeration)
+            {
+                if (b.Matches(bytes))
+                {
+                    bloomEnumeration.TryGetBlockNumber(out blockNumber);
+                }
+            }
+            
+            blockNumber.Should().Be(4);
+        }
 
         private const int Buckets = 3;
         private const int Levels = 3;

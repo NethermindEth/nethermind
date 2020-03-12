@@ -401,7 +401,11 @@ namespace Nethermind.Store.Bloom
             {
                 if (_currentLevelRead)
                 {
-                    _currentPosition += _storageLevels[CurrentLevel].Storage.LevelElementSize;
+                    var currentStorageLevel = _storageLevels[CurrentLevel].Storage;
+                    _currentPosition += _currentPosition == _fromBlock
+                        ? currentStorageLevel.LevelElementSize - _currentPosition % currentStorageLevel.LevelElementSize
+                        : currentStorageLevel.LevelElementSize;
+                    
                     while (CurrentLevel > 0 && _currentPosition % _storageLevels[CurrentLevel - 1].Storage.LevelElementSize == 0)
                     {
                         CurrentLevel--;
