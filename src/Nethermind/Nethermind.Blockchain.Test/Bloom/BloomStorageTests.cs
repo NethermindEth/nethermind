@@ -124,25 +124,38 @@ namespace Nethermind.Blockchain.Test.Bloom
             bloomsChecked.Should().Be(expectedBloomsChecked);
         }
         
-        [Test]
-        public void Can_find_bloom_offseted()
+        [TestCase(1, 10, new long[] {4}, new int[] {4})]
+        [TestCase(0, 4, new long[] {4}, new int[] {4})]
+        [TestCase(1, 10, new long[] {1, 4, 6, 8}, new int[] {4})]
+        [TestCase(1, 10, new long[] {4, 6, 8}, new int[] {4, 4})]
+        [TestCase(1, 10, new long[] {4, 8, 16, 32}, new int[] {4, 4})]
+        [TestCase(1, 48, new long[] {4, 8, 16, 32}, new int[] {4, 4})]
+        [TestCase(5, 60, new long[] {4, 8, 49}, new int[] {8, 3})]
+        [TestCase(1, 120, new long[] {4, 8, 64, 65}, new int[] {4, 4, 4})]
+        public void Can_find_bloom_with_fromBlock_offset(long from, long to, long[] blocksSet, int[] levels)
         {
-            var storage = CreateBloomStorage(new BloomConfig() {IndexLevelBucketSizes = new []{4}});
+            var storage = CreateBloomStorage(new BloomConfig() {IndexLevelBucketSizes = levels});
             var bloom = new Core.Bloom();
             byte[] bytes = {1, 2, 3};
             bloom.Set(bytes);
-            storage.Store(4, bloom);
-            var bloomEnumeration = storage.GetBlooms(1, 10);
-            long blockNumber = 0;
-            foreach (var b in bloomEnumeration)
+            foreach (var blockNumber in blocksSet)
             {
-                if (b.Matches(bytes))
-                {
-                    bloomEnumeration.TryGetBlockNumber(out blockNumber);
-                }
+                storage.Store(blockNumber, bloom);
             }
             
-            blockNumber.Should().Be(4);
+            var bloomEnumeration = storage.GetBlooms(from, to);
+            IList<long> foundBlocks = new List<long>(blocksSet.Length);
+            foreach (var b in bloomEnumeration)
+            {
+                if (b.Matches(bytes) && bloomEnumeration.TryGetBlockNumber(out var block))
+                {
+                    foundBlocks.Add(block);
+                }
+            }
+
+            var expectedFoundBlocks = blocksSet.Where(b => b >= from && b <= to).ToArray();
+            TestContext.Out.WriteLine($"Expected found blocks: {string.Join(", ", expectedFoundBlocks)}");
+            foundBlocks.Should().BeEquivalentTo(expectedFoundBlocks);
         }
 
         private const int Buckets = 3;
