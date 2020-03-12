@@ -38,7 +38,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IBlockTree _blockTree;
         private readonly IDbProvider _dbProvider;
         private readonly IEthereumEcdsa _ethereumEcdsa;
-        private readonly IReceiptStorage _receiptStorage;
+        private readonly IReceiptFinder _receiptFinder;
         private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
         private readonly ITxPool _txPool;
@@ -54,7 +54,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             IBlockTree blockTree,
             IEthereumEcdsa ethereumEcdsa,
             IBlockProcessor blockProcessor,
-            IReceiptStorage receiptStorage,
+            IReceiptFinder receiptFinder,
             ISpecProvider specProvider,
             IJsonRpcConfig config,
             IBloomStorage bloomStorage,
@@ -65,7 +65,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _ethereumEcdsa = ethereumEcdsa ?? throw new ArgumentNullException(nameof(ethereumEcdsa));
-            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _rpcConfig = config ?? throw new ArgumentNullException(nameof(config));
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
@@ -87,14 +87,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 readOnlyTxProcessingEnv.StorageProvider,
                 readOnlyTxProcessingEnv.BlockTree,
                 _txPool,
-                _receiptStorage,
+                _receiptFinder,
                 _filterStore,
                 _filterManager,
                 _wallet,
                 readOnlyTxProcessingEnv.TransactionProcessor,
                 _ethereumEcdsa,
                 _bloomStorage,
-                new ReceiptsRecovery(),
                 _logManager,
                 _rpcConfig.FindLogBlockDepthLimit);
             

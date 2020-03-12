@@ -19,7 +19,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Db.Rocks
 {
-    public class ReceiptsRocksDb : DbOnTheRocks
+    public class ReceiptsRocksDb : ColumnsDb<ReceiptsColumns>
     {
         public override string Name { get; } = "Receipts";
 

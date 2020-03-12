@@ -27,19 +27,17 @@ namespace Nethermind.Blockchain.Find
 {
     public class LogFinder : ILogFinder
     {
-        private readonly IReceiptStorage _receiptStorage;
+        private readonly IReceiptFinder _receiptFinder;
         private readonly IBloomStorage _bloomStorage;
-        private readonly IReceiptsRecovery _receiptsRecovery;
         private readonly int _maxBlockDepth;
         private readonly IBlockFinder _blockFinder;
         private readonly ILogger _logger;
 
-        public LogFinder(IBlockFinder blockFinder, IReceiptStorage receiptStorage, IBloomStorage bloomStorage, IReceiptsRecovery receiptsRecovery, ILogManager logManager, int maxBlockDepth = 1000)
+        public LogFinder(IBlockFinder blockFinder, IReceiptFinder receiptFinder, IBloomStorage bloomStorage, ILogManager logManager, int maxBlockDepth = 1000)
         {
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
-            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
-            _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
             _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
             _maxBlockDepth = maxBlockDepth;
         }
@@ -123,31 +121,29 @@ namespace Nethermind.Blockchain.Find
         {
             if (block != null)
             {
-                var receipts = _receiptStorage.FindForBlock(block, _receiptsRecovery);
+                var receipts = _receiptFinder.Get(block);
                 long logIndexInBlock = 0;
-                foreach (var receipt in receipts)
+                if (receipts != null)
                 {
-                    if (receipt == null)
+                    foreach (var receipt in receipts)
                     {
-                        continue;
-                    }
-
-                    if (filter.Matches(receipt.Bloom))
-                    {
-                        for (var index = 0; index < receipt.Logs.Length; index++)
+                        if (filter.Matches(receipt.Bloom))
                         {
-                            var log = receipt.Logs[index];
-                            if (filter.Accepts(log))
+                            for (var index = 0; index < receipt.Logs.Length; index++)
                             {
-                                yield return new FilterLog(logIndexInBlock, index, receipt, log);
-                            }
+                                var log = receipt.Logs[index];
+                                if (filter.Accepts(log))
+                                {
+                                    yield return new FilterLog(logIndexInBlock, index, receipt, log);
+                                }
 
-                            logIndexInBlock++;
+                                logIndexInBlock++;
+                            }
                         }
-                    }
-                    else
-                    {
-                        logIndexInBlock += receipt.Logs.Length;
+                        else
+                        {
+                            logIndexInBlock += receipt.Logs.Length;
+                        }
                     }
                 }
             }

@@ -115,19 +115,20 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         public ResultWrapper<TransactionWithProof> proof_getTransactionByHash(Keccak txHash, bool includeHeader)
         {
-            TxReceipt receipt = _receiptFinder.Find(txHash);
-            if (receipt == null)
+            Keccak blockHash = _receiptFinder.Find(txHash);
+            if (blockHash == null)
             {
                 return ResultWrapper<TransactionWithProof>.Fail($"{txHash} receipt (transaction) could not be found", ErrorCodes.ResourceNotFound);
             }
 
-            SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(receipt.BlockHash));
+            SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
             if (searchResult.IsError)
             {
                 return ResultWrapper<TransactionWithProof>.Fail(searchResult);
             }
 
             Block block = searchResult.Object;
+            TxReceipt receipt = _receiptFinder.Get(block, txHash);
             Transaction[] txs = block.Transactions;
             Transaction transaction = txs[receipt.Index];
 
@@ -144,20 +145,21 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         public ResultWrapper<ReceiptWithProof> proof_getTransactionReceipt(Keccak txHash, bool includeHeader)
         {
-            TxReceipt receipt = _receiptFinder.Find(txHash);
-            if (receipt == null)
+            Keccak blockHash = _receiptFinder.Find(txHash);
+            if (blockHash == null)
             {
                 return ResultWrapper<ReceiptWithProof>.Fail($"{txHash} receipt could not be found", ErrorCodes.ResourceNotFound);
             }
 
-            SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(receipt.BlockHash));
+            SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
             if (searchResult.IsError)
             {
                 return ResultWrapper<ReceiptWithProof>.Fail(searchResult);
             }
 
             Block block = searchResult.Object;
-
+            TxReceipt receipt = _receiptFinder.Get(block, txHash);
+            
             BlockReceiptsTracer receiptsTracer = new BlockReceiptsTracer();
             receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
             _tracer.Trace(block, receiptsTracer);

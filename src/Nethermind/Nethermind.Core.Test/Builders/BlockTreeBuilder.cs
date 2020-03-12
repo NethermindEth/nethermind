@@ -161,12 +161,7 @@ namespace Nethermind.Core.Test.Builders
                 currentBlock.Header.ReceiptsRoot = new ReceiptTrie(currentBlock.Number, _specProvider, receipts.ToArray()).RootHash;
                 currentBlock.Header.Hash = currentBlock.CalculateHash();
 
-                foreach (TxReceipt receipt in receipts)
-                {
-                    receipt.BlockHash = currentBlock.Hash;
-                    receipt.BlockNumber = currentBlock.Number;
-                    _receiptStorage.Add(receipt, false);
-                }
+                _receiptStorage.Insert(currentBlock, receipts.ToArray());
             }
             else
             {

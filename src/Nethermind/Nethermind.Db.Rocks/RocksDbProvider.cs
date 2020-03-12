@@ -58,7 +58,7 @@ namespace Nethermind.Db.Rocks
                 }
                 else
                 {
-                    ReceiptsDb = new ReadOnlyDb(new MemDb(), false);
+                    ReceiptsDb = new ReadOnlyColumnsDb<ReceiptsColumns>(new MemColumnsDb<ReceiptsColumns>(), false);
                 }
             }));
 
@@ -67,7 +67,7 @@ namespace Nethermind.Db.Rocks
 
         public ISnapshotableDb StateDb { get; private set; }
         public ISnapshotableDb CodeDb { get; private set; }
-        public IDb ReceiptsDb { get; private set; }
+        public IColumnsDb<ReceiptsColumns> ReceiptsDb { get; private set; }
         public IDb BlocksDb { get; private set; }
         public IDb HeadersDb { get; private set; }
         public IDb BlockInfosDb { get; private set; }

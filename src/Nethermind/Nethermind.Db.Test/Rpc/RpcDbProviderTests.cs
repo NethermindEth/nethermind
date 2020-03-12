@@ -33,8 +33,8 @@ namespace Nethermind.Db.Test.Rpc
             {
                 foreach (var db in dbs)
                 {
-                    db.Should().BeOfType<T>(db.Name);
-                    db.Innermost.Should().BeOfType<RpcDb>(db.Name);
+                    db.Should().BeAssignableTo<T>(db.Name);
+                    db.Innermost.Should().BeAssignableTo<RpcDb>(db.Name);
                 }
             }
             
@@ -56,7 +56,6 @@ namespace Nethermind.Db.Test.Rpc
             ValidateDb<StateDb>(
                 rpcDbProvider.StateDb,
                 rpcDbProvider.CodeDb);
-            
         }
     }
 }

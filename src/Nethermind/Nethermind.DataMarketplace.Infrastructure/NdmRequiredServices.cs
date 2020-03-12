@@ -55,7 +55,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
         public IBlockTree BlockTree { get; }
         public ITxPool TransactionPool { get; }
         public ISpecProvider SpecProvider { get; }
-        public IReceiptStorage ReceiptStorage { get; }
+        public IReceiptFinder ReceiptFinder { get; }
         public IFilterStore FilterStore { get; }
         public IFilterManager FilterManager { get; }
         public IWallet Wallet { get; }
@@ -90,7 +90,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             IBlockTree blockTree,
             ITxPool transactionPool,
             ISpecProvider specProvider,
-            IReceiptStorage receiptStorage,
+            IReceiptFinder receiptFinder,
             IFilterStore filterStore,
             IFilterManager filterManager,
             IWallet wallet,
@@ -124,7 +124,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             TransactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             SpecProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            ReceiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            ReceiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             FilterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
             FilterManager = filterManager ?? throw new ArgumentNullException(nameof(filterManager));
             Wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));

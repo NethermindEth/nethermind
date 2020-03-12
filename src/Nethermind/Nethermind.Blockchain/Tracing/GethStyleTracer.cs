@@ -57,13 +57,13 @@ namespace Nethermind.Blockchain.Tracing
 
         public GethLikeTxTrace Trace(Keccak txHash, GethTraceOptions traceOptions)
         {
-            TxReceipt txReceipt = _receiptStorage.Find(txHash);
-            if (txReceipt == null)
+            Keccak blockHash = _receiptStorage.Find(txHash);
+            if (blockHash == null)
             {
                 return null;
             }
 
-            Block block = _blockTree.FindBlock(txReceipt.BlockNumber, BlockTreeLookupOptions.RequireCanonical);
+            Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
             if (block == null)
             {
                 return null;

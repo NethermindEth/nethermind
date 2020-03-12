@@ -20,18 +20,28 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public class ReceiptFinder : IReceiptFinder
+    public class FullInfoReceiptFinder : IReceiptFinder
     {
-        private readonly IReceiptStorage _receiptStorage;
+        private readonly IReceiptFinder _innerFinder;
+        private readonly IReceiptsRecovery _receiptsRecovery;
 
-        public ReceiptFinder(IReceiptStorage receiptStorage)
+        public FullInfoReceiptFinder(IReceiptFinder innerFinder, IReceiptsRecovery receiptsRecovery)
         {
-            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _innerFinder = innerFinder ?? throw new ArgumentNullException(nameof(innerFinder));
+            _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
         }
         
-        public TxReceipt Find(Keccak txHash)
+        public Keccak Find(Keccak txHash) => _innerFinder.Find(txHash);
+
+        public TxReceipt[] Get(Block block)
         {
-            return _receiptStorage.Find(txHash);
+            var receipts = _innerFinder.Get(block);
+            if (receipts != null)
+            {
+                _receiptsRecovery.TryRecover(block, receipts);
+            }
+
+            return receipts;
         }
     }
 }

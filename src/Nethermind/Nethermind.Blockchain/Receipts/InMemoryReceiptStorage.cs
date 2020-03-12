@@ -23,34 +23,32 @@ namespace Nethermind.Blockchain.Receipts
 {
     public class InMemoryReceiptStorage : IReceiptStorage
     {
-        private readonly ConcurrentDictionary<Keccak, TxReceipt> _receipts =
-            new ConcurrentDictionary<Keccak, TxReceipt>();
+        private readonly ConcurrentDictionary<Keccak, TxReceipt[]> _receipts = new ConcurrentDictionary<Keccak, TxReceipt[]>();
+        
+        private readonly ConcurrentDictionary<Keccak, TxReceipt> _transactions = new ConcurrentDictionary<Keccak, TxReceipt>();
 
-        public TxReceipt Find(Keccak hash)
+        public Keccak Find(Keccak txHash)
         {
-            _receipts.TryGetValue(hash, out var transaction);
-            return transaction;
+            _transactions.TryGetValue(txHash, out var receipt);
+            return receipt?.BlockHash;
         }
 
-        public void Add(TxReceipt txReceipt, bool isProcessed)
-            => _receipts.TryAdd(txReceipt.TxHash, txReceipt);
-
-        public void Insert(long blockNumber, TxReceipt txReceipt)
+        public TxReceipt[] Get(Block block)
         {
-            if (txReceipt != null)
-            {
-                _receipts.TryAdd(txReceipt.TxHash, txReceipt);
-            }
-
-            LowestInsertedReceiptBlock = blockNumber;
+            _receipts.TryGetValue(block.Hash, out var receipts);
+            return receipts;
         }
 
-        public void Insert(List<(long blockNumber, TxReceipt txReceipt)> receipts)
+        public void Insert(Block block, params TxReceipt[] txReceipts)
         {
-            foreach ((long blockNumber, TxReceipt txReceipt) in receipts)
+            _receipts[block.Hash] = txReceipts;
+            for (int i = 0; i < txReceipts.Length; i++)
             {
-                Insert(blockNumber, txReceipt);
+                var txReceipt = txReceipts[i];
+                _transactions[txReceipt.TxHash] = txReceipt;
             }
+
+            LowestInsertedReceiptBlock = block.Number;
         }
 
         public long? LowestInsertedReceiptBlock { get; private set; }

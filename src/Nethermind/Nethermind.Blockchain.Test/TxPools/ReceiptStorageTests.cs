@@ -47,28 +47,30 @@ namespace Nethermind.Blockchain.Test.TxPools
 
         [Test]
         public void should_add_and_fetch_receipt_from_persistent_storage()
-            => TestAddAndGetReceipt(new PersistentReceiptStorage(new MemDb(), _specProvider, LimboLogs.Instance));
+            => TestAddAndGetReceipt(new PersistentReceiptStorage(new MemColumnsDb<ReceiptsColumns>(), _specProvider));
         
         [Test]
         public void should_add_and_fetch_receipt_from_persistent_storage_with_eip_658()
-            => TestAddAndGetReceiptEip658(new PersistentReceiptStorage(new MemDb(), _specProvider, LimboLogs.Instance));
+            => TestAddAndGetReceiptEip658(new PersistentReceiptStorage(new MemColumnsDb<ReceiptsColumns>(), _specProvider));
 
         private void TestAddAndGetReceipt(IReceiptStorage storage)
         {
             var transaction = GetSignedTransaction();
             var receipt = GetReceipt(transaction);
-            storage.Add(receipt, true);
+            var block = GetBlock(transaction);
+            storage.Insert(block, receipt);
             var fetchedReceipt = storage.Find(transaction.Hash);
             receipt.StatusCode.Should().Be(fetchedReceipt.StatusCode);
             receipt.PostTransactionState.Should().Be(fetchedReceipt.PostTransactionState);
             receipt.TxHash.Should().Be(transaction.Hash);
         }
-        
+
         private void TestAddAndGetReceiptEip658(IReceiptStorage storage)
         {
             var transaction = GetSignedTransaction();
             var receipt = GetReceipt(transaction);
-            storage.Add(receipt, true);
+            var block = GetBlock(transaction);
+            storage.Insert(block, receipt);
             var fetchedReceipt = storage.Find(transaction.Hash);
             receipt.StatusCode.Should().Be(fetchedReceipt.StatusCode);
             receipt.PostTransactionState.Should().Be(fetchedReceipt.PostTransactionState);
@@ -81,5 +83,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         private static TxReceipt GetReceipt(Transaction transaction)
             => Build.A.Receipt.WithState(TestItem.KeccakB)
                 .WithTransactionHash(transaction.Hash).TestObject;
+        
+        private Block GetBlock(Transaction transaction) => Build.A.Block.WithTransactions(transaction).TestObject;
     }
 }

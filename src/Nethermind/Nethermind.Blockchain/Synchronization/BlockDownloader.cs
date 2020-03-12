@@ -267,10 +267,7 @@ namespace Nethermind.Blockchain.Synchronization
                     {
                         if (downloadReceipts)
                         {
-                            for (int receiptIndex = 0; receiptIndex < (context.ReceiptsForBlocks[blockIndex]?.Length ?? 0); receiptIndex++)
-                            {
-                                _receiptStorage.Add(context.ReceiptsForBlocks[blockIndex][receiptIndex], true);
-                            }
+                            _receiptStorage.Insert(currentBlock, context.ReceiptsForBlocks[blockIndex]);
                         }
 
                         blocksSynced++;

@@ -88,7 +88,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             blockTree.UpdateMainChain(new[] {block}, true);
 
             var logEntries = new[] {Build.A.LogEntry.TestObject};
-            receiptStorage.Add(new TxReceipt()
+            receiptStorage.Insert(block,new TxReceipt()
             {
                 Bloom = new Bloom(logEntries),
                 Index = 1,
@@ -102,7 +102,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 StatusCode = 0,
                 GasUsedTotal = 2000,
                 Logs = logEntries
-            }, true);
+            });
         }
 
         [Test]

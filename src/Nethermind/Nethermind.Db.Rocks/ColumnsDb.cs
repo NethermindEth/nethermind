@@ -14,7 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using RocksDbSharp;
@@ -27,10 +29,22 @@ namespace Nethermind.Db.Rocks
         
         protected ColumnsDb(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager, params T[] keys) : base(basePath, dbPath, dbConfig, logManager, GetColumnFamilies(keys))
         {
+            keys = GetEnumKeys(keys);
+
             foreach (var key in keys)
             {
                 _columnDbs[key] = new ColumnDb(Db, this, key.ToString()); 
             }
+        }
+
+        private static T[] GetEnumKeys(T[] keys)
+        {
+            if (typeof(T).IsEnum && keys.Length == 0)
+            {
+                keys = Enum.GetValues(typeof(T)).Cast<T>().ToArray();
+            }
+
+            return keys;
         }
 
         private static ColumnFamilies GetColumnFamilies(T[] keys)

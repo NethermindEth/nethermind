@@ -82,7 +82,6 @@ namespace Nethermind.Facade.Test
                 _transactionProcessor,
                 _ethereumEcdsa,
                 _bloomStorage,
-                _receiptsRecovery,
                 LimboLogs.Instance);
         }
 
@@ -96,7 +95,7 @@ namespace Nethermind.Facade.Test
         public void get_transaction_returns_receipt_when_found()
         {
             var receipt = Build.A.Receipt.WithBlockHash(TestItem.KeccakB).TestObject;
-            _receiptStorage.Find(TestItem.KeccakA).Returns(receipt);
+            _receiptStorage.Find(TestItem.KeccakA).Returns(TestItem.KeccakB);
             _blockchainBridge.GetTransaction(TestItem.KeccakA).Should().BeEquivalentTo((receipt, (Transaction) null));
         }
         

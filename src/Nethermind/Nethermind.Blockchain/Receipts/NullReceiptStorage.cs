@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -22,25 +23,17 @@ namespace Nethermind.Blockchain.Receipts
 {
     public class NullReceiptStorage : IReceiptStorage
     {
-        public TxReceipt Find(Keccak hash) => null;
-
+        public static NullReceiptStorage Instance { get; } = new NullReceiptStorage();
+        
+        public Keccak Find(Keccak hash) => null;
+        
         private NullReceiptStorage()
         {
         }
         
-        public static NullReceiptStorage Instance { get; } = new NullReceiptStorage();
-
-        public void Add(TxReceipt txReceipt, bool isProcessed)
-        {
-        }
-
-        public void Insert(long blockNumber, TxReceipt txReceipt)
-        {
-        }
-
-        public void Insert(List<(long blockNumber, TxReceipt txReceipt)> receipts)
-        {
-        }
+        public void Insert(Block block, params TxReceipt[] txReceipts) { }
+        
+        public TxReceipt[] Get(Block block) => Array.Empty<TxReceipt>();
 
         public long? LowestInsertedReceiptBlock => long.MaxValue;
     }
