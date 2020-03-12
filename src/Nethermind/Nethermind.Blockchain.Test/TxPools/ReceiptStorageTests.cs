@@ -59,7 +59,9 @@ namespace Nethermind.Blockchain.Test.TxPools
             var receipt = GetReceipt(transaction);
             var block = GetBlock(transaction);
             storage.Insert(block, receipt);
-            var fetchedReceipt = storage.Find(transaction.Hash);
+            var blockHash = storage.Find(transaction.Hash);
+            blockHash.Should().Be(block.Hash);
+            var fetchedReceipt = storage.Get(block, transaction.Hash);
             receipt.StatusCode.Should().Be(fetchedReceipt.StatusCode);
             receipt.PostTransactionState.Should().Be(fetchedReceipt.PostTransactionState);
             receipt.TxHash.Should().Be(transaction.Hash);
@@ -71,7 +73,9 @@ namespace Nethermind.Blockchain.Test.TxPools
             var receipt = GetReceipt(transaction);
             var block = GetBlock(transaction);
             storage.Insert(block, receipt);
-            var fetchedReceipt = storage.Find(transaction.Hash);
+            var blockHash = storage.Find(transaction.Hash);
+            blockHash.Should().Be(block.Hash);
+            var fetchedReceipt = storage.Get(block, transaction.Hash);
             receipt.StatusCode.Should().Be(fetchedReceipt.StatusCode);
             receipt.PostTransactionState.Should().Be(fetchedReceipt.PostTransactionState);
             receipt.TxHash.Should().Be(transaction.Hash);

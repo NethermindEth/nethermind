@@ -183,7 +183,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                     int receiptIndex = 0;
                     foreach (Transaction transaction in block.Transactions)
                     {
-                        blockReceipts[receiptIndex++] = _receiptStorage.Find(transaction.Hash);
+                        // blockReceipts[receiptIndex++] = _receiptStorage.Find(transaction.Hash);
                     }
 
                     receipts[i++] = blockReceipts;

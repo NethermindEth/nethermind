@@ -108,7 +108,7 @@ namespace Nethermind.Facade.Test
                 Build.A.Block.WithTransactions(
                     Enumerable.Range(0, 10).Select(i => Build.A.Transaction.WithNonce((UInt256) i).TestObject).ToArray()
                 ).TestObject);
-            _receiptStorage.Find(TestItem.KeccakA).Returns(receipt);
+            _receiptStorage.Find(TestItem.KeccakA).Returns(TestItem.KeccakA);
             _blockchainBridge.GetTransaction(TestItem.KeccakA).Should()
                 .BeEquivalentTo((receipt, (Transaction) Build.A.Transaction.WithNonce((UInt256) index).TestObject));
         }
