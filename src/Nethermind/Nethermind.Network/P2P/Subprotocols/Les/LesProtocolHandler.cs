@@ -179,7 +179,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
 
         public override bool HasAvailableCapability(Capability capability) => false;
 
-        public override bool OnNewBlock(Block block, bool forceFullBlock = false) => throw new NotImplementedException();
+        public override void NotifyOfNewBlock(Block block, SendBlockPriority priorty) => throw new NotImplementedException();
 
         protected override void OnDisposed() { }
     }

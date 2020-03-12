@@ -36,11 +36,7 @@ namespace Nethermind.Blockchain
         Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token);
         Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token);
-        /// <summary>
-        /// Will be called upon learning about a new block
-        /// </summary>
-        /// <returns>true if extended block data was sent - e.g. SendNewBlock vs HintNewBlock</returns>
-        bool OnNewBlock(Block block, bool forceFullBlock = false);
+        void NotifyOfNewBlock(Block block, SendBlockPriority priorty);
         Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token);
         Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token);
     }

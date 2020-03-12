@@ -229,7 +229,7 @@ namespace Nethermind.Network.P2P
             await Task.CompletedTask;
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");
         }
-        public abstract bool OnNewBlock(Block block, bool forceFullBlock = false);
+        public abstract void NotifyOfNewBlock(Block block, SendBlockPriority priority);
         public virtual async Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)
         {
             await Task.CompletedTask;

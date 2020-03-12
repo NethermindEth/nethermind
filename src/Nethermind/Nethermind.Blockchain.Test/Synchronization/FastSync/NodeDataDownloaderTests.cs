@@ -211,7 +211,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
                 return Task.FromResult(BlockTree.Head);
             }
 
-            public bool OnNewBlock(Block block, bool forceFullBlock = false)
+            public void NotifyOfNewBlock(Block block, SendBlockPriority priorty)
             {
                 throw new NotImplementedException();
             }

@@ -84,7 +84,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             throw new NotImplementedException();
         }
 
-        public bool OnNewBlock(Block block, bool forceFullBlock)
+        public void NotifyOfNewBlock(Block block, SendBlockPriority priorty)
         {
             throw new NotImplementedException();
         }

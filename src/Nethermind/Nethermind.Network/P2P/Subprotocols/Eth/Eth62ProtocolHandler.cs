@@ -299,20 +299,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
         }
 
-        private Random _broadcastRandomizer = new Random();
-        public override bool OnNewBlock(Block block, bool forceFullBlock = false)
+        public override void NotifyOfNewBlock(Block block, SendBlockPriority priority)
         {
-            int peerCount = SyncServer.GetPeerCount();
-            double broadcastRatio = Math.Sqrt(peerCount) / peerCount;
-            if (forceFullBlock || _broadcastRandomizer.NextDouble() < broadcastRatio)
+            if (priority == SendBlockPriority.High)
             {
                 SendNewBlock(block);
-                return true;
             }
             else
             {
                 HintNewBlock(block.Hash, block.Number);
-                return false;
             }
         }
 

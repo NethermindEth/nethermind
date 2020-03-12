@@ -206,11 +206,10 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 return header;
             }
 
-            public bool OnNewBlock(Block block, bool forceFullBlock = false)
+            public void NotifyOfNewBlock(Block block, SendBlockPriority priorty)
             {
-                if (forceFullBlock)
+                if (priorty == SendBlockPriority.High)
                     ReceivedBlocks.Push(block);
-                return forceFullBlock;
             }
 
             public Stack<Block> ReceivedBlocks { get; set; } = new Stack<Block>();

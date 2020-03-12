@@ -110,9 +110,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 return await Task.FromResult(Build.A.BlockHeader.TestObject);
             }
 
-            public bool OnNewBlock(Block block, bool forceFullBlock = false)
+            public void NotifyOfNewBlock(Block block, SendBlockPriority priorty)
             {
-                return forceFullBlock;
             }
 
             public PublicKey Id => Node.Id;
