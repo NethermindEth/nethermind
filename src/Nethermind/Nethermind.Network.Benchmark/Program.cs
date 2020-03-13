@@ -21,18 +21,22 @@ namespace Nethermind.Network.Benchmarks
 {
     public class Program
     {
-        public static void Main(string[] args) => BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, new DebugInProcessConfig());
-        // {
-        //     // BenchmarkRunner.Run<HandshakeBenchmarks>();
-        //     // BenchmarkRunner.Run<KdfDerivation>();
-        //     // BenchmarkRunner.Run<EcdhAgreementBenchmarks>();
-        //     // BenchmarkRunner.Run<OutFlowBenchmark>();
-        //     // BenchmarkRunner.Run<InFlowBenchmark>();
-        //     // BenchmarkRunner.Run<NettyFrameEncoder>();
-        //     // BenchmarkRunner.Run<NettyFrameMerger>();
-        //     // BenchmarkRunner.Run<NettyPacketSplitter>();
-        //     // BenchmarkRunner.Run<DiscoveryBenchmarks>();
-        //     BenchmarkRunner.Run<Eth62ProtocolHandlerBenchmarks>(new DebugInProcessConfig());
-        // }
+        public static void Main(string[] args)
+#if DEBUG
+=> BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, new DebugInProcessConfig());
+#else
+        {
+            // BenchmarkRunner.Run<HandshakeBenchmarks>();
+            // BenchmarkRunner.Run<KdfDerivation>();
+            // BenchmarkRunner.Run<EcdhAgreementBenchmarks>();
+            // BenchmarkRunner.Run<OutFlowBenchmark>();
+            // BenchmarkRunner.Run<InFlowBenchmark>();
+            // BenchmarkRunner.Run<NettyFrameEncoder>();
+            // BenchmarkRunner.Run<NettyFrameMerger>();
+            // BenchmarkRunner.Run<NettyPacketSplitter>();
+            // BenchmarkRunner.Run<DiscoveryBenchmarks>();
+            BenchmarkRunner.Run<Eth62ProtocolHandlerBenchmarks>(new DebugInProcessConfig());
+        }
+#endif
     }
 }

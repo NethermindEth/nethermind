@@ -29,8 +29,10 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
+using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Storages;
 using NSubstitute;
 
 namespace Nethermind.Network.Benchmarks
@@ -41,6 +43,8 @@ namespace Nethermind.Network.Benchmarks
     {
         private Eth62ProtocolHandler _handler;
         private ZeroPacket _zeroPacket;
+        private MessageSerializationService _ser;
+        private TransactionsMessage _txMsg;
 
         [GlobalSetup]
         public void SetUp()
@@ -50,13 +54,18 @@ namespace Nethermind.Network.Benchmarks
             session.RemoteNodeId = TestItem.PublicKeyA;
             session.RemoteHost = "127.0.0.1";
             session.RemotePort = 30303;
-            MessageSerializationService ser = new MessageSerializationService();
-            ser.Register(new TransactionsMessageSerializer());
-            ser.Register(new StatusMessageSerializer());
+            _ser = new MessageSerializationService();
+            _ser.Register(new TransactionsMessageSerializer());
+            _ser.Register(new StatusMessageSerializer());
             NodeStatsManager stats = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
-            ITxPool txPool = Substitute.For<ITxPool>();
+            
+            var ecdsa = new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance);
+            TxPool.TxPool txPool = new TxPool.TxPool(NullTxStorage.Instance, Timestamper.Default, ecdsa, MainNetSpecProvider.Instance, new TxPoolConfig(), Substitute.For<IStateProvider>(), LimboLogs.Instance);
             ISyncServer syncSrv = Substitute.For<ISyncServer>();
-            _handler = new Eth62ProtocolHandler(session, ser, stats, syncSrv, txPool, LimboLogs.Instance);
+            BlockHeader head = Build.A.BlockHeader.WithNumber(1).TestObject;
+            syncSrv.Head.Returns(head);
+            _handler = new Eth62ProtocolHandler(session, _ser, stats, syncSrv, txPool, LimboLogs.Instance);
+            _handler.DisableTxFiltering();
             
             StatusMessage statusMessage = new StatusMessage();
             statusMessage.ProtocolVersion = 63;
@@ -64,19 +73,14 @@ namespace Nethermind.Network.Benchmarks
             statusMessage.GenesisHash = Keccak.Compute("0");
             statusMessage.TotalDifficulty = 131200;
             statusMessage.ChainId = 1;
-            IByteBuffer bufStatus = ser.ZeroSerialize(statusMessage);
+            IByteBuffer bufStatus = _ser.ZeroSerialize(statusMessage);
             _zeroPacket = new ZeroPacket(bufStatus);
             _zeroPacket.PacketType = bufStatus.ReadByte();
 
             _handler.HandleMessage(_zeroPacket);
-
-            var ecdsa = new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance);
+            
             Transaction tx = Build.A.Transaction.SignedAndResolved(ecdsa, TestItem.PrivateKeyA, 1).TestObject;
-            TransactionsMessage txMsg = new TransactionsMessage(tx);
-            IByteBuffer buf = ser.ZeroSerialize(txMsg);
-            _zeroPacket = new ZeroPacket(buf);
-            _zeroPacket.PacketType = buf.ReadByte();
-            _zeroPacket.PacketType = Eth62MessageCode.Transactions;
+            _txMsg = new TransactionsMessage(tx);
         }
 
         [GlobalCleanup]
@@ -87,12 +91,20 @@ namespace Nethermind.Network.Benchmarks
         [Benchmark(Baseline = true)]
         public void Current()
         {
+            IByteBuffer buf = _ser.ZeroSerialize(_txMsg);
+            _zeroPacket = new ZeroPacket(buf);
+            _zeroPacket.PacketType = buf.ReadByte();
+            _zeroPacket.PacketType = Eth62MessageCode.Transactions;
             _handler.HandleMessage(_zeroPacket);
         }
             
         [Benchmark]
         public void New()
         {
+            IByteBuffer buf = _ser.ZeroSerialize(_txMsg);
+            _zeroPacket = new ZeroPacket(buf);
+            _zeroPacket.PacketType = buf.ReadByte();
+            _zeroPacket.PacketType = Eth62MessageCode.Transactions;
             _handler.HandleMessage(_zeroPacket);
         }
     }

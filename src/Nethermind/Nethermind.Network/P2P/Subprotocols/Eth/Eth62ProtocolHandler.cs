@@ -34,6 +34,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private readonly TimeSpan _txFloodCheckInterval = TimeSpan.FromSeconds(60);
         private readonly Timer _txFloodCheckTimer;
         private bool _isDowngradedDueToTxFlooding;
+        private bool _txFilteringDisabled;
 
         private readonly Random _random = new Random();
         private bool _statusReceived;
@@ -48,6 +49,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             _txFloodCheckTimer = new Timer(_txFloodCheckInterval.TotalMilliseconds);
             _txFloodCheckTimer.Elapsed += CheckTxFlooding;
             _txFloodCheckTimer.Start();
+        }
+
+        public void DisableTxFiltering()
+        {
+            _txFilteringDisabled = true;
         }
         
         public override byte ProtocolVersion { get; protected set; } = 62;
@@ -228,7 +234,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private void Handle(TransactionsMessage msg)
         {
             // TODO: disable that when IsMining is set to true
-            if (_isDowngradedDueToTxFlooding || 10 < _random.Next(0, 99))
+            if (!_txFilteringDisabled && (_isDowngradedDueToTxFlooding || 10 < _random.Next(0, 99)))
             {
                 // we only accept 10% of transactions from downgraded nodes
                 return;
