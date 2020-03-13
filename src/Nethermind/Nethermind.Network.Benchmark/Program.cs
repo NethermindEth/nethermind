@@ -14,31 +14,24 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
+using BenchmarkDotNet.Running;
 
-namespace Nethermind.Benchmarks.Evm
+namespace Nethermind.Network.Benchmarks
 {
-    [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
-    public class RipemdBenchmark
+    public class Program
     {
-        [GlobalSetup]
-        public void Setup()
+        public static void Main(string[] args)
         {
-        }
-        
-        [Benchmark]
-        public bool Improved()
-        {
-            throw new NotImplementedException();
-        }
-        
-        [Benchmark]
-        public bool Current()
-        {
-            throw new NotImplementedException();
+            // BenchmarkRunner.Run<HandshakeBenchmarks>();
+            // BenchmarkRunner.Run<KdfDerivation>();
+            // BenchmarkRunner.Run<EcdhAgreementBenchmarks>();
+            // BenchmarkRunner.Run<OutFlowBenchmark>();
+            // BenchmarkRunner.Run<InFlowBenchmark>();
+            // BenchmarkRunner.Run<NettyFrameEncoder>();
+            // BenchmarkRunner.Run<NettyFrameMerger>();
+            // BenchmarkRunner.Run<NettyPacketSplitter>();
+            // BenchmarkRunner.Run<DiscoveryBenchmarks>();
+            BenchmarkRunner.Run<Eth62ProtocolHandlerBenchmarks>();
         }
     }
 }

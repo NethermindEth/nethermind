@@ -16,6 +16,7 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -24,7 +25,7 @@ using Nethermind.Core.Test.Builders;
 namespace Nethermind.Benchmarks.Core
 {
     [MemoryDiagnoser]
-    [CoreJob(baseline: true)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class BytesCompareBenchmarks
     {
         private byte[] _a;

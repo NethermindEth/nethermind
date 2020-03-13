@@ -17,6 +17,7 @@
 using System;
 using System.Globalization;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -25,7 +26,7 @@ using Nethermind.Dirichlet.Numerics;
 namespace Nethermind.Benchmarks.Rlp
 {
     [MemoryDiagnoser]
-    [CoreJob(baseline: true)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class RlpEncodeAccountBenchmark
     {
         private static Account _account;

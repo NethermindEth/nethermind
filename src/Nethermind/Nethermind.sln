@@ -117,7 +117,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Overseer.Test", 
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Monitoring", "Nethermind.Monitoring\Nethermind.Monitoring.csproj", "{4796E327-D5A1-4CEF-B402-3FB155ED400A}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network.Benchmarks", "Nethermind.Network.Benchmarks\Nethermind.Network.Benchmarks.csproj", "{DCFB31ED-429F-4BA1-AAD3-BBA0C23FBD48}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network.Benchmark", "Nethermind.Network.Benchmark\Nethermind.Network.Benchmark.csproj", "{DCFB31ED-429F-4BA1-AAD3-BBA0C23FBD48}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.WriteTheDocs", "Nethermind.WriteTheDocs\Nethermind.WriteTheDocs.csproj", "{47A9DD4D-A117-41DB-8DC3-5938AFCCCE56}"
 EndProject

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,23 +14,36 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using BenchmarkDotNet.Running;
+using System.Net;
+using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Network.Discovery.Messages;
+using Nethermind.Network.Discovery.Serializers;
 
 namespace Nethermind.Network.Benchmarks
 {
-    public class Program
+    [MemoryDiagnoser]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
+    public class DiscoveryBenchmarks
     {
-        public static void Main(string[] args)
+        [GlobalSetup]
+        public void GlobalSetup()
         {
-            // BenchmarkRunner.Run<HandshakeBenchmarks>();
-//            BenchmarkRunner.Run<KdfDerivation>();
-//            BenchmarkRunner.Run<EcdhAgreement>();
-//            BenchmarkRunner.Run<OutFlowBenchmark>();
-//            BenchmarkRunner.Run<InFlowBenchmark>();
-//            BenchmarkRunner.Run<NettyFrameEncoder>();
-//            BenchmarkRunner.Run<NettyFrameMerger>();
-//            BenchmarkRunner.Run<NettyPacketSplitter>();
-            BenchmarkRunner.Run<DiscoveryBenchmarks>();
+        }
+
+        [Benchmark(Baseline = true)]
+        public byte[] Old()
+        {
+            return Bytes.Empty;
+        }
+
+        [Benchmark]
+        public byte[] New()
+        {
+            return Bytes.Empty;
         }
     }
 }

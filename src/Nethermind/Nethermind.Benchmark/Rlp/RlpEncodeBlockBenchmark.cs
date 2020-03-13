@@ -17,6 +17,7 @@
 using System;
 using System.Linq;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -30,7 +31,7 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Benchmarks.Rlp
 {
     [MemoryDiagnoser]
-    [CoreJob(baseline: true)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class RlpEncodeBlockBenchmark
     {
         private static BlockDecoder _blockDecoder = new BlockDecoder();

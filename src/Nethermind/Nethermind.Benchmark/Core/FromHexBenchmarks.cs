@@ -15,12 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Benchmarks.Core
 {
     [MemoryDiagnoser]
-    [CoreJob(baseline: true)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class FromHexBenchmarks
     {
         private string array = Bytes.FromHexString("0123456789abcdef").ToHexString();

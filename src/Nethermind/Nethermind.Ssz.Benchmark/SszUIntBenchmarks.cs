@@ -16,11 +16,12 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Ssz.Benchmarks
 {
-    [CoreJob]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class SszUIntBenchmarks
     {
         [Benchmark(Baseline = true)]
