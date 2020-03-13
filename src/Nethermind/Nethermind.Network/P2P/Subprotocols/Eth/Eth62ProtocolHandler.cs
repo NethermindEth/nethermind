@@ -157,7 +157,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     Handle(Deserialize<NewBlockHashesMessage>(message.Content));
                     break;
                 case Eth62MessageCode.Transactions:
-                    TransactionsMessage transactionsMessage = Deserialize<TransactionsMessage>(message.Content);
+                    TransientTransactionsMessage transactionsMessage = Deserialize<TransientTransactionsMessage>(message.Content);
                     if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, $"{nameof(TransactionsMessage)}({transactionsMessage.Transactions.Length})");
                     Handle(transactionsMessage);
                     break;
@@ -231,7 +231,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private long _notAcceptedTxsSinceLastCheck;
 
-        private void Handle(TransactionsMessage msg)
+        private void Handle(TransientTransactionsMessage msg)
         {
             // TODO: disable that when IsMining is set to true
             if (!_txFilteringDisabled && (_isDowngradedDueToTxFlooding || 10 < _random.Next(0, 99)))
@@ -243,16 +243,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Metrics.Eth62TransactionsReceived++;
             for (int i = 0; i < msg.Transactions.Length; i++)
             {
-                Transaction transaction = msg.Transactions[i];
-                transaction.DeliveredBy = Node.Id;
-                transaction.Timestamp = _timestamper.EpochSeconds;
-                AddTxResult result = _txPool.AddTransaction(transaction, SyncServer.Head.Number, TxHandlingOptions.None);
+                TransientTransaction transaction = msg.Transactions[i];
+                // transaction.DeliveredBy = Node.Id;
+                // transaction.Timestamp = _timestamper.EpochSeconds;
+                AddTxResult result = _txPool.AddTransaction(transaction, SyncServer.Head.Number);
                 if (result != AddTxResult.Added)
                 {
                     _notAcceptedTxsSinceLastCheck++;
                 }
 
-                if (Logger.IsTrace) Logger.Trace($"{Node:c} sent {transaction.Hash} tx and it was {result} (chain ID = {transaction.Signature.ChainId})");
+                if (Logger.IsTrace) Logger.Trace($"Received a tx {transaction.Hash} from {Node:c} tx and it was {result}");
             }
         }
 

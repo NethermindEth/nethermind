@@ -26,6 +26,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.TxPool.Collections;
 using Timer = System.Timers.Timer;
@@ -189,19 +190,22 @@ namespace Nethermind.TxPool
 
             if (_logger.IsTrace) _logger.Trace($"Removed a peer from TX pool: {nodeId}");
         }
-
-        public class TransientTransactions
-        {
-        }
         
-        public AddTxResult AddTransactions(TransientTransactions txs, long blockNumber)
+        private TransactionDecoder _decoder = new TransactionDecoder();
+        
+        public AddTxResult AddTransaction(TransientTransaction tx, long blockNumber)
         {
             // check if already known (in memory)
             // check if already known (in storage) - even create an LRU cache
             // recover address easily (from full RLP)
-            
-            
-            return AddTxResult.Added;
+            if (_transactions.TryGetValue(tx.Hash, out _))
+            {
+                Metrics.PendingTransactionsKnown++;
+                return AddTxResult.AlreadyKnown;
+            }
+
+            Transaction fromRaw = _decoder.Decode(tx.Raw.AsRlpStream());
+            return AddTransaction(fromRaw, blockNumber, TxHandlingOptions.None);
         }
         
         public AddTxResult AddTransaction(Transaction tx, long blockNumber, TxHandlingOptions handlingOptions)

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,34 +14,30 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core;
+using System;
+using DotNetty.Buffers;
+using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class TransactionsMessage : P2PMessage
+    public class TransientTransactionsMessageSerializer : IZeroMessageSerializer<TransientTransactionsMessage>
     {
-        public override int PacketType { get; } = Eth62MessageCode.Transactions;
-        public override string Protocol { get; } = "eth";
-        
-        public Transaction[] Transactions { get; set; }
-
-        public TransactionsMessage(params Transaction[] transactions)
+        public void Serialize(IByteBuffer byteBuffer, TransientTransactionsMessage message)
         {
-            Transactions = transactions;
+            throw new InvalidOperationException();
         }
-    }
-    
-    public class TransientTransactionsMessage : P2PMessage
-    {
-        public override int PacketType { get; } = Eth62MessageCode.Transactions;
-        public override string Protocol { get; } = "eth";
-        
-        public TransientTransaction[] Transactions { get; set; }
 
-        public TransientTransactionsMessage(params TransientTransaction[] transactions)
+        public TransientTransactionsMessage Deserialize(IByteBuffer byteBuffer)
         {
-            Transactions = transactions;
+            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            return Deserialize(rlpStream);
+        }
+        
+        private static TransientTransactionsMessage Deserialize(RlpStream rlpStream)
+        {
+            TransientTransaction[] txs = Rlp.DecodeArray<TransientTransaction>(rlpStream);
+            return new TransientTransactionsMessage(txs);
         }
     }
 }
