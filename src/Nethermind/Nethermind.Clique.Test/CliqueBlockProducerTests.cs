@@ -38,7 +38,6 @@ using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Store;
 using Nethermind.Store.Bloom;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
@@ -99,6 +98,7 @@ namespace Nethermind.Clique.Test
 
                 ISpecProvider specProvider = RinkebySpecProvider.Instance;
 
+                StateReader stateReader = new StateReader(stateDb, codeDb, nodeLogManager);
                 StateProvider stateProvider = new StateProvider(stateDb, codeDb, nodeLogManager);
                 stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
                 stateProvider.Commit(GoerliSpecProvider.Instance.GenesisSpec);
@@ -142,7 +142,7 @@ namespace Nethermind.Clique.Test
                     ProcessGenesis(privateKey);
                 }
 
-                PendingTxSelector pendingTxSelector = new PendingTxSelector(txPool, stateProvider, nodeLogManager);
+                PendingTxSelector pendingTxSelector = new PendingTxSelector(txPool, stateReader, nodeLogManager);
                 CliqueBlockProducer blockProducer = new CliqueBlockProducer(pendingTxSelector, minerProcessor, minerStateProvider, blockTree, _timestamper, new CryptoRandom(), snapshotManager, cliqueSealer, privateKey.Address, _cliqueConfig, nodeLogManager);
                 blockProducer.Start();
 

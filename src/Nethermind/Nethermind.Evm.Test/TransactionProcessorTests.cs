@@ -220,6 +220,23 @@ namespace Nethermind.Evm.Test
         }
         
         [Test]
+        public void Account_is_not_created_on_call_and_restore()
+        {
+            long gasLimit = 100000;
+            Transaction tx = Build.A.Transaction
+                .WithValue(0.Ether())
+                .WithGasPrice(1)
+                .WithGasLimit(gasLimit)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyD, 1)
+                .TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
+
+            _stateProvider.AccountExists(TestItem.PrivateKeyD.Address).Should().BeFalse();
+            _transactionProcessor.CallAndRestore(tx, block.Header, NullTxTracer.Instance);
+            _stateProvider.AccountExists(TestItem.PrivateKeyD.Address).Should().BeFalse();
+        }
+        
+        [Test]
         public void Nonce_is_not_changed_on_call_and_restore()
         {
             long gasLimit = 100000;

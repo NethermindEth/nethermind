@@ -184,7 +184,12 @@ namespace Nethermind.Network.P2P
 
             _isInitialized = true;
 
+<<<<<<< HEAD
             if (!capabilities.Any(c => SupportedCapabilities.Contains(c)))
+=======
+            if (!capabilities.Any(x => (x.ProtocolCode == Protocol.Eth && (x.Version == 62 || x.Version == 63))
+                                       || x.ProtocolCode == Protocol.Ndm))
+>>>>>>> master
             {
                 InitiateDisconnect(DisconnectReason.UselessPeer, $"capabilities: {string.Join(", ", capabilities.Select(c => string.Concat(c.ProtocolCode, c.Version)))}");
             }

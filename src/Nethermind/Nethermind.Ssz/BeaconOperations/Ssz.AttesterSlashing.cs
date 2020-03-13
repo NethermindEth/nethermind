@@ -114,15 +114,12 @@ namespace Nethermind.Ssz
             return containers;
         }
         
-        private static void Encode(Span<byte> span, AttesterSlashing?[]? containers, ref int offset, ref int dynamicOffset)
+        private static void Encode(Span<byte> span, AttesterSlashing[] containers, ref int offset, ref int dynamicOffset)
         {
-            int length = (containers?.Length ?? 0)  * VarOffsetSize;
-            if (!(containers is null))
+            int length = containers.Length  * VarOffsetSize;
+            for (int i = 0; i < containers.Length; i++)
             {
-                for (int i = 0; i < containers.Length; i++)
-                {
-                    length += Ssz.AttesterSlashingLength(containers[i]);
-                }
+                length += Ssz.AttesterSlashingLength(containers[i]);
             }
 
             Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
