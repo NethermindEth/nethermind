@@ -35,7 +35,7 @@ namespace Nethermind.Network.Benchmarks
             // BenchmarkRunner.Run<NettyFrameMerger>();
             // BenchmarkRunner.Run<NettyPacketSplitter>();
             // BenchmarkRunner.Run<DiscoveryBenchmarks>();
-            BenchmarkRunner.Run<Eth62ProtocolHandlerBenchmarks>(new DebugInProcessConfig());
+            BenchmarkRunner.Run<Eth62ProtocolHandlerBenchmarks>();
         }
 #endif
     }

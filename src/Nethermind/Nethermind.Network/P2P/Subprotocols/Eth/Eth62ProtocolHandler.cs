@@ -239,7 +239,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 // we only accept 10% of transactions from downgraded nodes
                 return;
             }
-            
+
             Metrics.Eth62TransactionsReceived++;
             for (int i = 0; i < msg.Transactions.Length; i++)
             {

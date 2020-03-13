@@ -19,6 +19,37 @@ using System.Threading;
 
 namespace Nethermind.Logging
 {
+    public class ForBenchmarks : ILogManager
+    {
+        private ForBenchmarks()
+        {
+        }
+
+        private static ForBenchmarks _instance;
+        
+        public static ForBenchmarks Instance => _instance ?? LazyInitializer.EnsureInitialized(ref _instance, () => new ForBenchmarks());
+        
+        public ILogger GetClassLogger(Type type)
+        {
+            return NullLogger.Instance;
+        }
+
+        public ILogger GetClassLogger<T>()
+        {
+            return NullLogger.Instance;
+        }
+
+        public ILogger GetClassLogger()
+        {
+            return NullLogger.Instance;
+        }
+
+        public ILogger GetLogger(string loggerName)
+        {
+            return NullLogger.Instance;
+        }
+    }
+    
     /// <summary>
     /// LimboLogs redirects logs to nowhere (limbo) and it should be always used in tests as it guarantees that
     /// we test any potential issues with the log message construction.
