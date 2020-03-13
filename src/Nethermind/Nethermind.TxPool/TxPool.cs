@@ -190,6 +190,20 @@ namespace Nethermind.TxPool
             if (_logger.IsTrace) _logger.Trace($"Removed a peer from TX pool: {nodeId}");
         }
 
+        public class TransientTransactions
+        {
+        }
+        
+        public AddTxResult AddTransactions(TransientTransactions txs, long blockNumber)
+        {
+            // check if already known (in memory)
+            // check if already known (in storage) - even create an LRU cache
+            // recover address easily (from full RLP)
+            
+            
+            return AddTxResult.Added;
+        }
+        
         public AddTxResult AddTransaction(Transaction tx, long blockNumber, TxHandlingOptions handlingOptions)
         {
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
@@ -210,16 +224,6 @@ namespace Nethermind.TxPool
                 // It may happen that other nodes send us transactions that were signed for another chain.
                 Metrics.PendingTransactionsDiscarded++;
                 return AddTxResult.InvalidChainId;
-            }
-
-            /* We have encountered multiple transactions that do not resolve sender address properly.
-             * We need to investigate what these txs are and why the sender address is resolved to null.
-             * Then we need to decide whether we really want to broadcast them.
-             * */
-
-            if (tx.SenderAddress == null)
-            {
-                tx.SenderAddress = _ecdsa.RecoverAddress(tx, blockNumber);
             }
 
             /* Note that here we should also test incoming transactions for old nonce.
@@ -244,6 +248,16 @@ namespace Nethermind.TxPool
                 // If transaction is a bit older and already known then it may be stored in the persistent storage.
                 Metrics.PendingTransactionsKnown++;
                 return AddTxResult.AlreadyKnown;
+            }
+            
+            /* We have encountered multiple transactions that do not resolve sender address properly.
+             * We need to investigate what these txs are and why the sender address is resolved to null.
+             * Then we need to decide whether we really want to broadcast them.
+             */
+
+            if (tx.SenderAddress == null)
+            {
+                tx.SenderAddress = _ecdsa.RecoverAddress(tx, blockNumber);
             }
 
             HandleOwnTransaction(tx, isPersistentBroadcast);
