@@ -21,11 +21,14 @@ using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
+using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -44,17 +47,36 @@ namespace Nethermind.Network.Benchmarks
         {
             Console.WriteLine("AAA");
             Session session = new Session(8545, LimboLogs.Instance, Substitute.For<IChannel>());
+            session.RemoteNodeId = TestItem.PublicKeyA;
+            session.RemoteHost = "127.0.0.1";
+            session.RemotePort = 30303;
             MessageSerializationService ser = new MessageSerializationService();
             ser.Register(new TransactionsMessageSerializer());
+            ser.Register(new StatusMessageSerializer());
             NodeStatsManager stats = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
             ITxPool txPool = Substitute.For<ITxPool>();
             ISyncServer syncSrv = Substitute.For<ISyncServer>();
             _handler = new Eth62ProtocolHandler(session, ser, stats, syncSrv, txPool, LimboLogs.Instance);
             
-            Transaction tx = Build.A.Transaction.TestObject;
+            StatusMessage statusMessage = new StatusMessage();
+            statusMessage.ProtocolVersion = 63;
+            statusMessage.BestHash = Keccak.Compute("1");
+            statusMessage.GenesisHash = Keccak.Compute("0");
+            statusMessage.TotalDifficulty = 131200;
+            statusMessage.ChainId = 1;
+            IByteBuffer bufStatus = ser.ZeroSerialize(statusMessage);
+            _zeroPacket = new ZeroPacket(bufStatus);
+            _zeroPacket.PacketType = bufStatus.ReadByte();
+
+            _handler.HandleMessage(_zeroPacket);
+
+            var ecdsa = new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance);
+            Transaction tx = Build.A.Transaction.SignedAndResolved(ecdsa, TestItem.PrivateKeyA, 1).TestObject;
             TransactionsMessage txMsg = new TransactionsMessage(tx);
             IByteBuffer buf = ser.ZeroSerialize(txMsg);
-            _zeroPacket = new ZeroPacket(buf);   
+            _zeroPacket = new ZeroPacket(buf);
+            _zeroPacket.PacketType = buf.ReadByte();
+            _zeroPacket.PacketType = Eth62MessageCode.Transactions;
         }
 
         [GlobalCleanup]

@@ -14,24 +14,25 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Running;
 
 namespace Nethermind.Network.Benchmarks
 {
     public class Program
     {
-        public static void Main(string[] args)
-        {
-            // BenchmarkRunner.Run<HandshakeBenchmarks>();
-            // BenchmarkRunner.Run<KdfDerivation>();
-            // BenchmarkRunner.Run<EcdhAgreementBenchmarks>();
-            // BenchmarkRunner.Run<OutFlowBenchmark>();
-            // BenchmarkRunner.Run<InFlowBenchmark>();
-            // BenchmarkRunner.Run<NettyFrameEncoder>();
-            // BenchmarkRunner.Run<NettyFrameMerger>();
-            // BenchmarkRunner.Run<NettyPacketSplitter>();
-            // BenchmarkRunner.Run<DiscoveryBenchmarks>();
-            BenchmarkRunner.Run<Eth62ProtocolHandlerBenchmarks>();
-        }
+        public static void Main(string[] args) => BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, new DebugInProcessConfig());
+        // {
+        //     // BenchmarkRunner.Run<HandshakeBenchmarks>();
+        //     // BenchmarkRunner.Run<KdfDerivation>();
+        //     // BenchmarkRunner.Run<EcdhAgreementBenchmarks>();
+        //     // BenchmarkRunner.Run<OutFlowBenchmark>();
+        //     // BenchmarkRunner.Run<InFlowBenchmark>();
+        //     // BenchmarkRunner.Run<NettyFrameEncoder>();
+        //     // BenchmarkRunner.Run<NettyFrameMerger>();
+        //     // BenchmarkRunner.Run<NettyPacketSplitter>();
+        //     // BenchmarkRunner.Run<DiscoveryBenchmarks>();
+        //     BenchmarkRunner.Run<Eth62ProtocolHandlerBenchmarks>(new DebugInProcessConfig());
+        // }
     }
 }

@@ -37,6 +37,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             StatusMessageSerializer serializer = new StatusMessageSerializer();
             SerializerTester.TestZero(serializer, statusMessage, "f8483f0183020080a0c89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc6a0044852b2a670ade5407e78fb2863c51de9fcb96542a07186fe3aeda6bb8a116d");
         }
+        
+        [Test]
+        public void Roundtrip_empty_status()
+        {
+            StatusMessage statusMessage = new StatusMessage();
+            StatusMessageSerializer serializer = new StatusMessageSerializer();
+            SerializerTester.TestZero(serializer, statusMessage);
+        }
 
         [Test]
         public void Roundtrip_with_fork_id_next_is_zero()
