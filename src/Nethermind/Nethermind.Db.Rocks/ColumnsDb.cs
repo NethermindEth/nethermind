@@ -27,7 +27,7 @@ namespace Nethermind.Db.Rocks
     {
         private readonly IDictionary<T, IDb> _columnDbs = new Dictionary<T, IDb>();
         
-        protected ColumnsDb(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager, params T[] keys) : base(basePath, dbPath, dbConfig, logManager, GetColumnFamilies(keys))
+        protected ColumnsDb(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager, params T[] keys) : base(basePath, dbPath, dbConfig, logManager, GetColumnFamilies(GetEnumKeys(keys)))
         {
             keys = GetEnumKeys(keys);
 
