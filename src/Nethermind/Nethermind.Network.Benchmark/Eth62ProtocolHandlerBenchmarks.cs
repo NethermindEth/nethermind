@@ -99,13 +99,18 @@ namespace Nethermind.Network.Benchmarks
         }
             
         [Benchmark]
-        public void New()
+        public void JustSerialize()
+        {
+            _ser.ZeroSerialize(_txMsg);
+        }
+        
+        [Benchmark]
+        public void SerializeAndCreatePacket()
         {
             IByteBuffer buf = _ser.ZeroSerialize(_txMsg);
             _zeroPacket = new ZeroPacket(buf);
             _zeroPacket.PacketType = buf.ReadByte();
             _zeroPacket.PacketType = Eth62MessageCode.Transactions;
-            _handler.HandleMessage(_zeroPacket);
         }
     }
 }
