@@ -21,7 +21,7 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.TxPool
 {
-    public class TransientTransaction : IDisposable
+    public struct TransientTransaction : IDisposable
     {
         public Keccak Hash { get; set; }
         public byte[] Raw { get; set; }

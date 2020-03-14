@@ -25,10 +25,10 @@ namespace Nethermind.TxPool
     {
         public TransientTransaction Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var fullTxRlp = rlpStream.PeekNextItem();
+            Span<byte> fullTxRlp = rlpStream.PeekNextItem();
             byte[] bytes = ArrayPool<byte>.Shared.Rent(fullTxRlp.Length);
             fullTxRlp.CopyTo(bytes.AsSpan());
-            return new TransientTransaction{Raw = bytes, Hash = Keccak.Zero};
+            return new TransientTransaction{Raw = bytes, Hash = Keccak.Compute(fullTxRlp)};
         }
 
         public Rlp Encode(TransientTransaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
