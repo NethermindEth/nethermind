@@ -52,7 +52,13 @@ namespace Nethermind.JsonRpc.Modules.Parity
         
         public ResultWrapper<ReceiptForRpc[]> parity_getBlockReceipts(BlockParameter blockParameter)
         {
-            Block block = _blockFinder.FindBlock(blockParameter);
+            SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
+            if (searchResult.IsError)
+            {
+                return ResultWrapper<ReceiptForRpc[]>.Fail(searchResult);
+            }
+
+            Block block = searchResult.Object;
             TxReceipt[] receipts = _receiptFinder.Get(block) ?? new TxReceipt[block.Transactions.Length];
             IEnumerable<ReceiptForRpc> result = receipts.Zip(block.Transactions, (r, t) => new ReceiptForRpc(t.Hash, r));
             return ResultWrapper<ReceiptForRpc[]>.Success(result.ToArray());

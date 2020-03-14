@@ -76,6 +76,11 @@ namespace Nethermind.Blockchain.Receipts
 
         public TxReceipt[] Get(Block block)
         {
+            if (block.ReceiptsRoot == Keccak.EmptyTreeHash)
+            {
+                return Array.Empty<TxReceipt>();
+            }
+            
             var receiptsData = _blocksDb.Get(block.Hash);
             if (receiptsData != null)
             {

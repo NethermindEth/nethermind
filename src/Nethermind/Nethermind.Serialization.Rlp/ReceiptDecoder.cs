@@ -21,6 +21,9 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp
 {
+    /// <remarks>
+    /// <see cref="RlpBehaviors.Storage"/> is now obsolete. Used only for backward compatibility with old receipt format. Receipts are stored and retrieved in simple format as arrays per block.
+    /// </remarks>
     public class ReceiptDecoder : IRlpDecoder<TxReceipt>
     {
         public TxReceipt Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
