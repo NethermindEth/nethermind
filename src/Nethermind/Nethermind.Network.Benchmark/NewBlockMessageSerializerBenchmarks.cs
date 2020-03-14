@@ -60,14 +60,14 @@ namespace Nethermind.Network.Benchmarks
         [Benchmark(Baseline = true)]
         public void Current()
         {
-            _serializer.Deserialize(_buffer);
+            _serializer.DeserializeNoCache(_buffer);
             _buffer.SetReaderIndex(0);
         }
         
         [Benchmark]
         public void WithCache()
         {
-            _serializer.DeserializeWithCache(_buffer);
+            _serializer.Deserialize(_buffer);
             _buffer.SetReaderIndex(0);
         }
     }

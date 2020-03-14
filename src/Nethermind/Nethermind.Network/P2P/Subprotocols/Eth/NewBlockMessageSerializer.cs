@@ -37,13 +37,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             rlpStream.Encode(message.TotalDifficulty);
         }
 
-        public NewBlockMessage Deserialize(IByteBuffer byteBuffer)
+        public NewBlockMessage DeserializeNoCache(IByteBuffer byteBuffer)
         {
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
             return Deserialize(rlpStream, false);
         }
 
-        public NewBlockMessage DeserializeWithCache(IByteBuffer byteBuffer)
+        public NewBlockMessage Deserialize(IByteBuffer byteBuffer)
         {
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
             return Deserialize(rlpStream, true);
