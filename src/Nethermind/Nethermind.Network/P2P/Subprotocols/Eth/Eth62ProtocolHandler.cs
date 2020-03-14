@@ -319,14 +319,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public void SendNewBlock(Block block)
         {
             if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NewBlock to {Node:c}");
-            if (block.TotalDifficulty == null)
+            if (!block.TotalDifficulty.HasValue)
             {
                 throw new InvalidOperationException($"Trying to send a block {block.Hash} with null total difficulty");
             }
 
             NewBlockMessage msg = new NewBlockMessage();
             msg.Block = block;
-            msg.TotalDifficulty = block.TotalDifficulty;
+            msg.TotalDifficulty = block.TotalDifficulty.Value;
 
             Send(msg);
         }
