@@ -37,7 +37,6 @@ namespace Nethermind.Runner.Ethereum.Steps
         public virtual Task Execute()
         {
             Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(NetworkNodeDecoder)));
-            Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(TransientTransactionDecoder)));
             return Task.CompletedTask;
         }
     }

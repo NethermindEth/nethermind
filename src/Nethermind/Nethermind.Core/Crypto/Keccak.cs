@@ -144,7 +144,7 @@ namespace Nethermind.Core.Crypto
             {
                 return OfAnEmptyString;
             }
-
+            
             return new Keccak(KeccakHash.ComputeHashBytes(input));
         }
 

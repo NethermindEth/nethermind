@@ -28,8 +28,8 @@ namespace Nethermind.TxPool
         void AddFilter<T>(T filter) where T : ITxFilter;
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
-        AddTxResult AddTransaction(TransientTransaction tx, long blockNumber);
         AddTxResult AddTransaction(Transaction tx, long blockNumber, TxHandlingOptions handlingOptions);
+        bool IsKnownTransaction(Keccak hash);
         void RemoveTransaction(Keccak hash, long blockNumber);
         bool TryGetPendingTransaction(Keccak hash, out Transaction transaction);
         UInt256 ReserveOwnTransactionNonce(Address address);

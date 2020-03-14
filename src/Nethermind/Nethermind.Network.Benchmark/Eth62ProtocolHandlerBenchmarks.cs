@@ -17,7 +17,6 @@
 using System;
 using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain.Synchronization;
@@ -41,13 +40,17 @@ using NSubstitute;
 namespace Nethermind.Network.Benchmarks
 {
     [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
+    // [SimpleJob(RuntimeMoniker.NetCoreApp31)]
+    [ShortRunJob]
     public class Eth62ProtocolHandlerBenchmarks
     {
         private Eth62ProtocolHandler _handler;
         private ZeroPacket _zeroPacket;
         private MessageSerializationService _ser;
         private TransactionsMessage _txMsg;
+        private Rlp _singleTxRlp;
+        private TxPool.TxPool _txPool;
+        private TransactionDecoder _txDecoder;
 
         private class SyncServerMock : ISyncServer
         {
@@ -57,7 +60,7 @@ namespace Nethermind.Network.Benchmarks
             {
                 _header = header;
             }
-            
+
             public void HintBlock(Keccak hash, long number, Node receivedFrom)
             {
                 throw new System.NotImplementedException();
@@ -102,7 +105,7 @@ namespace Nethermind.Network.Benchmarks
             public BlockHeader Genesis { get; }
             public BlockHeader Head => _header;
         }
-        
+
         [GlobalSetup]
         public void SetUp()
         {
@@ -113,21 +116,19 @@ namespace Nethermind.Network.Benchmarks
             session.RemotePort = 30303;
             var node = session.Node;
             Console.WriteLine(node.Host); // just to invoke node getter
-            
-            Rlp.RegisterDecoders(typeof(TransientTransaction).Assembly);
+
             _ser = new MessageSerializationService();
-            _ser.Register(new TransientTransactionsMessageSerializer());
             _ser.Register(new TransactionsMessageSerializer());
             _ser.Register(new StatusMessageSerializer());
             NodeStatsManager stats = new NodeStatsManager(new StatsConfig(), logManager);
-            
+
             var ecdsa = new EthereumEcdsa(MainNetSpecProvider.Instance, logManager);
-            TxPool.TxPool txPool = new TxPool.TxPool(NullTxStorage.Instance, Timestamper.Default, ecdsa, MainNetSpecProvider.Instance, new TxPoolConfig(), Substitute.For<IStateProvider>(), logManager);
+            _txPool = new TxPool.TxPool(NullTxStorage.Instance, Timestamper.Default, ecdsa, MainNetSpecProvider.Instance, new TxPoolConfig(), Substitute.For<IStateProvider>(), logManager);
             BlockHeader head = Build.A.BlockHeader.WithNumber(1).TestObject;
             ISyncServer syncSrv = new SyncServerMock(head);
-            _handler = new Eth62ProtocolHandler(session, _ser, stats, syncSrv, txPool, logManager);
+            _handler = new Eth62ProtocolHandler(session, _ser, stats, syncSrv, _txPool, logManager);
             _handler.DisableTxFiltering();
-            
+
             StatusMessage statusMessage = new StatusMessage();
             statusMessage.ProtocolVersion = 63;
             statusMessage.BestHash = Keccak.Compute("1");
@@ -139,9 +140,13 @@ namespace Nethermind.Network.Benchmarks
             _zeroPacket.PacketType = bufStatus.ReadByte();
 
             _handler.HandleMessage(_zeroPacket);
-            
-            Transaction tx = Build.A.Transaction.SignedAndResolved(ecdsa, TestItem.PrivateKeyA, 1).TestObject;
-            _txMsg = new TransactionsMessage(tx);
+
+            Transaction tx = Build.A.Transaction.WithData(new byte[5000]).SignedAndResolved(ecdsa, TestItem.PrivateKeyA, 1).TestObject;
+            _txMsg = new TransactionsMessage(tx, tx);
+
+            TransactionDecoder txDecoder = new TransactionDecoder();
+            _singleTxRlp = txDecoder.Encode(tx);
+            _txDecoder = new TransactionDecoder();
         }
 
         [GlobalCleanup]
@@ -152,13 +157,29 @@ namespace Nethermind.Network.Benchmarks
         [Benchmark(Baseline = true)]
         public void Current()
         {
-            for (int i = 0; i < 4; i++)
+            IByteBuffer buf = _ser.ZeroSerialize(_txMsg);
+            _zeroPacket = new ZeroPacket(buf);
+            _zeroPacket.PacketType = buf.ReadByte();
+            _zeroPacket.PacketType = Eth62MessageCode.Transactions;
+            _handler.HandleMessage(_zeroPacket);
+        }
+
+        [Benchmark]
+        public void StandardTxPool()
+        {
+            Transaction tx = _txDecoder.Decode(_singleTxRlp.Bytes.AsRlpStream());
+            _txPool.AddTransaction(tx, 1, TxHandlingOptions.None);
+        }
+
+        [Benchmark]
+        public void StandardTxPoolWithHashChecks()
+        {
+            RlpStream rlpStream = _singleTxRlp.Bytes.AsRlpStream();
+            Span<byte> next = rlpStream.PeekNextItem();
+            if (!_txPool.IsKnownTransaction(Keccak.Compute(next)))
             {
-                IByteBuffer buf = _ser.ZeroSerialize(_txMsg);
-                _zeroPacket = new ZeroPacket(buf);
-                _zeroPacket.PacketType = buf.ReadByte();
-                _zeroPacket.PacketType = Eth62MessageCode.Transactions;
-                _handler.HandleMessage(_zeroPacket);    
+                Transaction tx = _txDecoder.Decode(rlpStream);
+                _txPool.AddTransaction(tx, 1, TxHandlingOptions.None);
             }
         }
     }

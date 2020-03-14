@@ -378,13 +378,6 @@ namespace Nethermind.Core.Crypto
             st[24] = asu;
         }
 
-        public static Span<byte> ComputeHash(Span<byte> input, int size = HASH_SIZE)
-        {
-            Span<byte> output = new byte[size];
-            ComputeHash(input, output);
-            return output;
-        }
-
         public static byte[] ComputeHashBytes(Span<byte> input, int size = HASH_SIZE)
         {
             var output = new byte[HASH_SIZE];
@@ -408,11 +401,11 @@ namespace Nethermind.Core.Crypto
             Span<ulong> state = stackalloc ulong[STATE_SIZE / sizeof(ulong)];
             Span<byte> temp = stackalloc byte[TEMP_BUFF_SIZE];
 
-            var remainingInputLength = input.Length;
+            int remainingInputLength = input.Length;
             int i;
             for (; remainingInputLength >= ROUND_SIZE; remainingInputLength -= ROUND_SIZE, input = input.Slice(ROUND_SIZE))
             {
-                var input64 = MemoryMarshal.Cast<byte, ulong>(input);
+                Span<ulong> input64 = MemoryMarshal.Cast<byte, ulong>(input);
 
                 for (i = 0; i < ROUND_SIZE_U64; i++)
                 {

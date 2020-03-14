@@ -23,6 +23,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.TxPool;
@@ -136,6 +137,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 }
             });
         }
+        
+        TransactionDecoder _txDecoder = new TransactionDecoder();
 
         public override void HandleMessage(ZeroPacket message)
         {
@@ -160,9 +163,34 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     Handle(Deserialize<NewBlockHashesMessage>(message.Content));
                     break;
                 case Eth62MessageCode.Transactions:
-                    TransientTransactionsMessage transactionsMessage = Deserialize<TransientTransactionsMessage>(message.Content);
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, $"{nameof(TransactionsMessage)}({transactionsMessage.Transactions.Length})");
-                    Handle(transactionsMessage);
+                    Metrics.Eth62TransactionsReceived++;
+                    // TODO: disable that when IsMining is set to true
+                    if (!_txFilteringDisabled && (_isDowngradedDueToTxFlooding || 10 < _random.Next(0, 99)))
+                    {
+                        // we only accept 10% of transactions from downgraded nodes
+                        // it seems there is a bug here that says 10% always and never from downgraded?
+                        break;
+                    }
+                    
+                    RlpStream rlpStream = new NettyRlpStream(message.Content);
+                    int txCount = rlpStream.ReadNumberOfItemsRemaining(0);
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, $"{nameof(TransactionsMessage)}({txCount})");
+                    
+                    for (int i = 0; i < txCount; i++)
+                    {
+                        Span<byte> txRlp = rlpStream.PeekNextItem();
+                        Keccak txHash = Keccak.Compute(txRlp);
+                        if (_txPool.IsKnownTransaction(txHash))
+                        {
+                            Transaction transaction = _txDecoder.Decode(rlpStream);
+                            HandleIncomingTransaction(transaction);
+                        }
+                        else
+                        {
+                            _notAcceptedTxsSinceLastCheck++;
+                        }
+                    }
+                    
                     break;
                 case Eth62MessageCode.GetBlockHeaders:
                     GetBlockHeadersMessage getBlockHeadersMessage = Deserialize<GetBlockHeadersMessage>(message.Content);
@@ -234,37 +262,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private long _notAcceptedTxsSinceLastCheck;
 
-        private void Handle(TransientTransactionsMessage msg)
-        {
-            // TODO: disable that when IsMining is set to true
-            if (!_txFilteringDisabled && (_isDowngradedDueToTxFlooding || 10 < _random.Next(0, 99)))
-            {
-                // we only accept 10% of transactions from downgraded nodes
-                // it seems there is a bug here that says 10% always and never from downgraded?
-                return;
-            }
-
-            Metrics.Eth62TransactionsReceived++;
-            for (int i = 0; i < msg.Transactions.Length; i++)
-            {
-                TransientTransaction transaction = msg.Transactions[i];
-                try
-                {
-                    HandleIncomingTransaction(transaction);
-                }
-                finally
-                {
-                    transaction.Dispose();
-                }
-                
-            }
-        }
-
-        private void HandleIncomingTransaction(TransientTransaction transaction)
+        private void HandleIncomingTransaction(Transaction transaction)
         {
             transaction.DeliveredBy = Node.Id;
             transaction.Timestamp = _timestamper.EpochSeconds;
-            AddTxResult result = _txPool.AddTransaction(transaction, SyncServer.Head.Number);
+            AddTxResult result = _txPool.AddTransaction(transaction, SyncServer.Head.Number, TxHandlingOptions.None);
             if (result != AddTxResult.Added)
             {
                 _notAcceptedTxsSinceLastCheck++;

@@ -31,17 +31,4 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Transactions = transactions;
         }
     }
-    
-    public class TransientTransactionsMessage : P2PMessage
-    {
-        public override int PacketType { get; } = Eth62MessageCode.Transactions;
-        public override string Protocol { get; } = "eth";
-        
-        public TransientTransaction[] Transactions { get; set; }
-
-        public TransientTransactionsMessage(params TransientTransaction[] transactions)
-        {
-            Transactions = transactions;
-        }
-    }
 }

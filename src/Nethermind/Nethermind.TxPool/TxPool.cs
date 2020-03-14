@@ -191,23 +191,6 @@ namespace Nethermind.TxPool
             if (_logger.IsTrace) _logger.Trace($"Removed a peer from TX pool: {nodeId}");
         }
         
-        private TransactionDecoder _decoder = new TransactionDecoder();
-        
-        public AddTxResult AddTransaction(TransientTransaction tx, long blockNumber)
-        {
-            if (_transactions.TryGetValue(tx.Hash, out _))
-            {
-                Metrics.PendingTransactionsKnown++;
-                return AddTxResult.AlreadyKnown;
-            }
-
-            Transaction fromRaw = _decoder.Decode(tx.Raw.AsRlpStream());
-            fromRaw.DeliveredBy = tx.DeliveredBy;
-            fromRaw.Timestamp = tx.Timestamp;
-
-            return AddTransaction(fromRaw, blockNumber, TxHandlingOptions.None);
-        }
-        
         public AddTxResult AddTransaction(Transaction tx, long blockNumber, TxHandlingOptions handlingOptions)
         {
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
@@ -270,6 +253,11 @@ namespace Nethermind.TxPool
             FilterAndStoreTx(tx, blockNumber);
             NewPending?.Invoke(this, new TxEventArgs(tx));
             return AddTxResult.Added;
+        }
+
+        public bool IsKnownTransaction(Keccak hash)
+        {
+            return _transactions.TryGetValue(hash, out _);
         }
 
         private void HandleOwnTransaction(Transaction transaction, bool isOwn)
