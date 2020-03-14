@@ -40,7 +40,7 @@ namespace Nethermind.TxPool.Storages
 
         public Transaction[] GetAll()
         {
-            var transactionsBytes = _database.GetAll().ToArray();
+            var transactionsBytes = _database.GetAllValues().ToArray();
             if (transactionsBytes.Length == 0)
             {
                 return Array.Empty<Transaction>();

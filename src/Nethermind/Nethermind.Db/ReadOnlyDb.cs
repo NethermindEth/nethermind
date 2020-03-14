@@ -72,7 +72,9 @@ namespace Nethermind.Db
             }
         }
 
-        public IEnumerable<byte[]> GetAll() => _memDb.GetAll();
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll() => _memDb.GetAll();
+
+        public IEnumerable<byte[]> GetAllValues() => _memDb.GetAllValues();
 
         public void StartBatch()
         {

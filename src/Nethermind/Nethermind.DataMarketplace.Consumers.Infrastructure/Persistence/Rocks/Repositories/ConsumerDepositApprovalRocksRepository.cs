@@ -50,7 +50,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
         {
             if (query == null) throw new ArgumentNullException(nameof(query));
             
-            byte[][] depositApprovalsBytes = _database.GetAll().ToArray();
+            byte[][] depositApprovalsBytes = _database.GetAllValues().ToArray();
             if (depositApprovalsBytes.Length == 0)
             {
                 return Task.FromResult(PagedResult<DepositApproval>.Empty);

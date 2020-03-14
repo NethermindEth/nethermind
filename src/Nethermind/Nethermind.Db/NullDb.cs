@@ -52,10 +52,9 @@ namespace Nethermind.Db
         public IDb Innermost => this;
         public void Flush() { }
 
-        public IEnumerable<byte[]> GetAll()
-        {
-            throw new System.NotImplementedException();
-        }
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll() => Enumerable.Empty<KeyValuePair<byte[], byte[]>>();
+
+        public IEnumerable<byte[]> GetAllValues() => Enumerable.Empty<byte[]>();
 
         public void StartBatch()
         {

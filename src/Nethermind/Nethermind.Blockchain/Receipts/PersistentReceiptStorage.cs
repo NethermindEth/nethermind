@@ -100,6 +100,8 @@ namespace Nethermind.Blockchain.Receipts
 
         public void Insert(Block block, params TxReceipt[] txReceipts)
         {
+            txReceipts ??= Array.Empty<TxReceipt>();
+            
             if (block.Transactions.Length != txReceipts.Length)
             {
                 throw new ArgumentException($"Block {block.ToString(Block.Format.FullHashAndNumber)} has different number of transactions than receipts.");

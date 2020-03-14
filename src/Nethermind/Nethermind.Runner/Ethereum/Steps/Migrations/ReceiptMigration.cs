@@ -15,13 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Runner.Ethereum.Steps.Migrations;
 
-namespace Nethermind.Runner.Ethereum.Steps
+namespace Nethermind.Runner.Ethereum.Steps.Migrations
 {
     public class ReceiptMigration : IDatabaseMigration
     {
@@ -46,7 +47,13 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public void Run()
         {
-            throw new NotImplementedException();
+            IReceiptStorage? storage = _context.ReceiptStorage;
+            var db = _context.DbProvider.ReceiptsDb;
+            var kvp = db.GetAllValues().FirstOrDefault();
+            if (kvp != default)
+            {
+                
+            }
         }
     }
 }

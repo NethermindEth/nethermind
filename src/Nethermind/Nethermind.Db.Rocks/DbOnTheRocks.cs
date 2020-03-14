@@ -213,13 +213,19 @@ namespace Nethermind.Db.Rocks
             Db.Remove(key, null, WriteOptions);
         }
 
-        public IEnumerable<byte[]> GetAll()
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll()
         {
             using Iterator iterator = Db.NewIterator();
             return GetAllCore(iterator);
         }
 
-        internal IEnumerable<byte[]> GetAllCore(Iterator iterator)
+        public IEnumerable<byte[]> GetAllValues()
+        {
+            using Iterator iterator = Db.NewIterator();
+            return GetAllValuesCore(iterator);
+        }
+
+        internal IEnumerable<byte[]> GetAllValuesCore(Iterator iterator)
         {
             iterator.SeekToFirst();
             while (iterator.Valid())
@@ -228,6 +234,17 @@ namespace Nethermind.Db.Rocks
                 iterator.Next();
             }
         }
+        
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAllCore(Iterator iterator)
+        {
+            iterator.SeekToFirst();
+            while (iterator.Valid())
+            {
+                yield return new KeyValuePair<byte[], byte[]>(iterator.Key(), iterator.Value());
+                iterator.Next();
+            }
+        }
+
 
         private ILogger _logger;
 
@@ -282,6 +299,6 @@ namespace Nethermind.Db.Rocks
                     Handle = IntPtr.Zero;
                 }
             }
-        }
+        } 
     }
 }

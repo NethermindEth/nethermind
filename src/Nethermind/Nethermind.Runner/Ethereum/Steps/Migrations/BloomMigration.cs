@@ -37,7 +37,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
 {
     public class BloomMigration : IDatabaseMigration
     {
-        private static BlockHeader EmptyHeader = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, UInt256.Zero, Bytes.Empty);
+        private static readonly BlockHeader EmptyHeader = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, UInt256.Zero, Bytes.Empty);
         
         private readonly EthereumRunnerContext _context;
         private readonly ILogger _logger;
@@ -45,7 +45,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
         private readonly MeasuredProgress _progress = new MeasuredProgress();
         private long _migrateCount;
         private CancellationTokenSource? _cancellationTokenSource;
-        private Task? _bloomDbMigrationTask;
+        private Task? _migrationTask;
         private Average[]? _averages;
         private readonly StringBuilder _builder = new StringBuilder();
         private readonly IBloomConfig _bloomConfig;
@@ -120,7 +120,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                 _cancellationTokenSource = new CancellationTokenSource();
                 _context.DisposeStack.Push(this);
                 _stopwatch = Stopwatch.StartNew();
-                _bloomDbMigrationTask = Task.Run(() => RunBloomMigration(_cancellationTokenSource.Token))
+                _migrationTask = Task.Run(() => RunBloomMigration(_cancellationTokenSource.Token))
                     .ContinueWith(x =>
                     {
                         if (x.IsFaulted && _logger.IsError)
@@ -290,7 +290,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
         public async ValueTask DisposeAsync()
         {
             _cancellationTokenSource?.Cancel();
-            await (_bloomDbMigrationTask ?? Task.CompletedTask);
+            await (_migrationTask ?? Task.CompletedTask);
         }
     }
 }
