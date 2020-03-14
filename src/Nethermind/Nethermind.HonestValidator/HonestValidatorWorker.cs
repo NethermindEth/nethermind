@@ -21,6 +21,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core2;
+using Nethermind.Core2.Api;
 using Nethermind.Core2.Configuration;
 using Nethermind.HonestValidator.Services;
 using Nethermind.Logging.Microsoft;
@@ -90,7 +91,11 @@ namespace Nethermind.HonestValidator
                 {
                     try
                     {
-                        nodeVersion = await _beaconNodeApi.GetNodeVersionAsync(stoppingToken).ConfigureAwait(false);
+                        ApiResponse<string> nodeVersionResponse = await _beaconNodeApi.GetNodeVersionAsync(stoppingToken).ConfigureAwait(false);
+                        if (nodeVersionResponse.StatusCode == StatusCode.Success)
+                        {
+                            nodeVersion = nodeVersionResponse.Content;
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -104,7 +109,11 @@ namespace Nethermind.HonestValidator
                 {
                     try
                     {
-                        genesisTime = await _beaconNodeApi.GetGenesisTimeAsync(stoppingToken).ConfigureAwait(false);
+                        ApiResponse<ulong> genesisTimeResponse = await _beaconNodeApi.GetGenesisTimeAsync(stoppingToken).ConfigureAwait(false);
+                        if (genesisTimeResponse.StatusCode == StatusCode.Success)
+                        {
+                            genesisTime = genesisTimeResponse.Content;
+                        }
                     }
                     catch (Exception ex)
                     {

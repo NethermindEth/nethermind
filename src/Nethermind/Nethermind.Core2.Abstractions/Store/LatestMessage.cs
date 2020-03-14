@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,16 +14,21 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
-using System.Threading.Tasks;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
-namespace Nethermind.HonestValidator.Services
+namespace Nethermind.Core2.Store
 {
-    public interface IValidatorKeyProvider
+    // Data Class
+    public class LatestMessage
     {
-        IList<BlsPublicKey> GetPublicKeys();
-        BlsSignature SignRoot(BlsPublicKey blsPublicKey, Root root);
+        public LatestMessage(Epoch epoch, Root root)
+        {
+            Epoch = epoch;
+            Root = root;
+        }
+
+        public Epoch Epoch { get; }
+        public Root Root { get; }
     }
 }

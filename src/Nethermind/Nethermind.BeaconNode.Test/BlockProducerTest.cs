@@ -14,6 +14,7 @@ using Nethermind.BeaconNode.MockedStart;
 using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.Core2;
+using Nethermind.Core2.Api;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Cryptography.Ssz;
@@ -48,7 +49,8 @@ namespace Nethermind.BeaconNode.Test
             await quickStart.InitializeNodeAsync();
             
             IBeaconNodeApi beaconNode = testServiceProvider.GetService<IBeaconNodeApi>();
-            Core2.Containers.Fork fork = await beaconNode.GetNodeForkAsync(CancellationToken.None);
+            ApiResponse<Fork> forkResponse = await beaconNode.GetNodeForkAsync(CancellationToken.None);
+            Fork fork = forkResponse.Content;
             fork.CurrentVersion.ShouldBe(new ForkVersion(new byte[4] { 0x00, 0x00, 0x00, 0x01}));
 
             // Act
