@@ -189,19 +189,19 @@ namespace Nethermind.Blockchain.Test.TxPools
             _txPool.GetPendingTransactions().Should().BeEmpty();
         }
 
-        [Test]
-        public void should_add_transactions_to_in_memory_storage()
-        {
-            var transactions = AddAndFilterTransactions(_inMemoryTxStorage);
-            transactions.Pending.Count().Should().Be(transactions.Filtered.Count());
-        }
+        // [Test]
+        // public void should_add_transactions_to_in_memory_storage()
+        // {
+        //     var transactions = AddAndFilterTransactions(_inMemoryTxStorage);
+        //     transactions.Pending.Count().Should().Be(transactions.Filtered.Count());
+        // }
 
-        [Test]
-        public void should_add_transactions_to_persistent_storage()
-        {
-            var transactions = AddAndFilterTransactions(_persistentTxStorage);
-            transactions.Pending.Count().Should().Be(transactions.Filtered.Count());
-        }
+        // [Test]
+        // public void should_add_transactions_to_persistent_storage()
+        // {
+        //     var transactions = AddAndFilterTransactions(_persistentTxStorage);
+        //     transactions.Pending.Count().Should().Be(transactions.Filtered.Count());
+        // }
 
         [Test]
         public void should_increment_own_transaction_nonces_locally_when_requesting_reservations()
@@ -253,12 +253,12 @@ namespace Nethermind.Blockchain.Test.TxPools
             _txPool.GetPendingTransactions().Length.Should().Be(1);
         }
 
-        [Test]
-        public void should_add_all_transactions_to_storage_when_using_accept_all_filter()
-        {
-            var transactions = AddAndFilterTransactions(_inMemoryTxStorage, new AcceptAllTxFilter());
-            transactions.Pending.Count().Should().Be(transactions.Filtered.Count());
-        }
+        // [Test]
+        // public void should_add_all_transactions_to_storage_when_using_accept_all_filter()
+        // {
+        //     var transactions = AddAndFilterTransactions(_inMemoryTxStorage, new AcceptAllTxFilter());
+        //     transactions.Pending.Count().Should().Be(transactions.Filtered.Count());
+        // }
 
         [Test]
         public void should_not_add_any_transaction_to_storage_when_using_reject_all_filter()
@@ -277,15 +277,15 @@ namespace Nethermind.Blockchain.Test.TxPools
             transactions.Pending.Count().Should().NotBe(transactions.Filtered.Count());
         }
         
-        [Test]
-        public void should_retrieve_stored_transaction_correctly()
-        {
-            var transaction = Build.A.Transaction.SignedAndResolved().TestObject;
-            _txPool = CreatePool(_inMemoryTxStorage);
-            _inMemoryTxStorage.Add(transaction, 100);
-            _txPool.TryGetPendingTransaction(transaction.Hash, out var retrievedTransaction).Should().BeTrue();
-            retrievedTransaction.Should().BeEquivalentTo(transaction);
-        }
+        // [Test]
+        // public void should_retrieve_stored_transaction_correctly()
+        // {
+        //     var transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+        //     _txPool = CreatePool(_inMemoryTxStorage);
+        //     _inMemoryTxStorage.Add(transaction, 100);
+        //     _txPool.TryGetPendingTransaction(transaction.Hash, out var retrievedTransaction).Should().BeTrue();
+        //     retrievedTransaction.Should().BeEquivalentTo(transaction);
+        // }
         
         [Test]
         public void should_retrieve_added_transaction_correctly()
@@ -308,17 +308,17 @@ namespace Nethermind.Blockchain.Test.TxPools
             retrievedTransaction.Should().BeNull();
         }
 
-        [Test]
-        public void should_add_some_transactions_to_storage_when_using_accept_when_filter()
-        {
-            var filter = AcceptWhenTxFilter
-                .Create()
-                .Nonce(n => n >= 0)
-                .GasPrice(p => p > 2 && p < 1500)
-                .Build();
-            var transactions = AddAndFilterTransactions(_inMemoryTxStorage, filter);
-            transactions.Filtered.Count().Should().NotBe(0);
-        }
+        // [Test]
+        // public void should_add_some_transactions_to_storage_when_using_accept_when_filter()
+        // {
+        //     var filter = AcceptWhenTxFilter
+        //         .Create()
+        //         .Nonce(n => n >= 0)
+        //         .GasPrice(p => p > 2 && p < 1500)
+        //         .Build();
+        //     var transactions = AddAndFilterTransactions(_inMemoryTxStorage, filter);
+        //     transactions.Filtered.Count().Should().NotBe(0);
+        // }
 
         private Transactions AddAndFilterTransactions(ITxStorage storage, params ITxFilter[] filters)
         {
