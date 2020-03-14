@@ -173,7 +173,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     }
                     
                     RlpStream rlpStream = new NettyRlpStream(message.Content);
-                    int txCount = rlpStream.ReadNumberOfItemsRemaining(0);
+                    rlpStream.ReadSequenceLength();
+                    int txCount = rlpStream.ReadNumberOfItemsRemaining();
                     if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, $"{nameof(TransactionsMessage)}({txCount})");
                     
                     for (int i = 0; i < txCount; i++)
