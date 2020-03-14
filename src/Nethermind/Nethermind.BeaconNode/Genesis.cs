@@ -18,8 +18,8 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Nethermind.Core2.Configuration;
 using Nethermind.Core2;
+using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -35,7 +35,6 @@ namespace Nethermind.BeaconNode
         private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly ILogger _logger;
-        private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
         private readonly ICryptographyService _cryptographyService;
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
@@ -48,7 +47,6 @@ namespace Nethermind.BeaconNode
             IOptionsMonitor<InitialValues> initialValueOptions,
             IOptionsMonitor<TimeParameters> timeParameterOptions,
             IOptionsMonitor<StateListLengths> stateListLengthOptions,
-            IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions,
             ICryptographyService cryptographyService,
             BeaconStateAccessor beaconStateAccessor,
             BeaconStateTransition beaconStateTransition)
@@ -62,35 +60,40 @@ namespace Nethermind.BeaconNode
             _initialValueOptions = initialValueOptions;
             _timeParameterOptions = timeParameterOptions;
             _stateListLengthOptions = stateListLengthOptions;
-            _maxOperationsPerBlockOptions = maxOperationsPerBlockOptions;
             _cryptographyService = cryptographyService;
         }
 
-        public BeaconState InitializeBeaconStateFromEth1(Hash32 eth1BlockHash, ulong eth1Timestamp, IEnumerable<Deposit> deposits)
+        public BeaconState InitializeBeaconStateFromEth1(Bytes32 eth1BlockHash, ulong eth1Timestamp, IList<Deposit> deposits)
         {
-            if (_logger.IsInfo()) Log.InitializeBeaconState(_logger, eth1BlockHash, eth1Timestamp, deposits.Count(), null);
+            if (_logger.IsInfo()) Log.InitializeBeaconState(_logger, eth1BlockHash, eth1Timestamp, deposits.Count, null);
 
-            GweiValues gweiValues = _gweiValueOptions.CurrentValue;
             InitialValues initialValues = _initialValueOptions.CurrentValue;
+            GweiValues gweiValues = _gweiValueOptions.CurrentValue;
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             StateListLengths stateListLengths = _stateListLengthOptions.CurrentValue;
 
-            ulong genesisTime = eth1Timestamp - (eth1Timestamp % _chainConstants.SecondsPerDay)
-                + (2 * _chainConstants.SecondsPerDay);
-            Eth1Data eth1Data = new Eth1Data((ulong)deposits.Count(), eth1BlockHash);
-            BeaconBlockBody emptyBlockBody = new BeaconBlockBody();
+            Fork fork = new Fork(initialValues.GenesisForkVersion, initialValues.GenesisForkVersion,
+                _chainConstants.GenesisEpoch);
+
+            ulong genesisTime = eth1Timestamp - (eth1Timestamp % timeParameters.MinimumGenesisDelay)
+                + (2 * timeParameters.MinimumGenesisDelay);
+            Eth1Data eth1Data = new Eth1Data(Root.Zero, (ulong)deposits.Count, eth1BlockHash);
             
-            Hash32 emptyBlockBodyRoot = _cryptographyService.HashTreeRoot(emptyBlockBody);
-            
+            Root emptyBlockBodyRoot = _cryptographyService.HashTreeRoot(BeaconBlockBody.Zero);
             BeaconBlockHeader latestBlockHeader = new BeaconBlockHeader(emptyBlockBodyRoot);
-            BeaconState state = new BeaconState(genesisTime, 0, eth1Data, latestBlockHeader, timeParameters.SlotsPerHistoricalRoot, stateListLengths.EpochsPerHistoricalVector, stateListLengths.EpochsPerSlashingsVector, _chainConstants.JustificationBitsLength);
+            
+            Bytes32[] randaoMixes = Enumerable.Repeat(eth1BlockHash, (int)stateListLengths.EpochsPerHistoricalVector).ToArray();
+
+            BeaconState state = new BeaconState(genesisTime, fork, eth1Data, latestBlockHeader, randaoMixes,
+                timeParameters.SlotsPerHistoricalRoot, stateListLengths.EpochsPerHistoricalVector,
+                stateListLengths.EpochsPerSlashingsVector, _chainConstants.JustificationBitsLength);
 
             // Process deposits
             List<DepositData> depositDataList = new List<DepositData>();
             foreach (Deposit deposit in deposits)
             {
                 depositDataList.Add(deposit.Data);
-                Hash32 depositRoot = _cryptographyService.HashTreeRoot(depositDataList);
+                Root depositRoot = _cryptographyService.HashTreeRoot(depositDataList);
                 state.Eth1Data.SetDepositRoot(depositRoot);
                 _beaconStateTransition.ProcessDeposit(state, deposit);
             }
@@ -104,8 +107,8 @@ namespace Nethermind.BeaconNode
                 validator.SetEffectiveBalance(effectiveBalance);
                 if (validator.EffectiveBalance == gweiValues.MaximumEffectiveBalance)
                 {
-                    validator.SetEligible(initialValues.GenesisEpoch);
-                    validator.SetActive(initialValues.GenesisEpoch);
+                    validator.SetEligible(_chainConstants.GenesisEpoch);
+                    validator.SetActive(_chainConstants.GenesisEpoch);
                 }
             }
 
@@ -115,13 +118,12 @@ namespace Nethermind.BeaconNode
         public bool IsValidGenesisState(BeaconState state)
         {
             MiscellaneousParameters miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
-            InitialValues initialValues = _initialValueOptions.CurrentValue;
 
             if (state.GenesisTime < miscellaneousParameters.MinimumGenesisTime)
             {
                 return false;
             }
-            IList<ValidatorIndex> activeValidatorIndices = _beaconStateAccessor.GetActiveValidatorIndices(state, initialValues.GenesisEpoch);
+            IList<ValidatorIndex> activeValidatorIndices = _beaconStateAccessor.GetActiveValidatorIndices(state, _chainConstants.GenesisEpoch);
             if (activeValidatorIndices.Count < miscellaneousParameters.MinimumGenesisActiveValidatorCount)
             {
                 return false;

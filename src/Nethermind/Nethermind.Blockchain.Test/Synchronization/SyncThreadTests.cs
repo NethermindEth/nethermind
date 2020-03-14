@@ -249,6 +249,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             StateDb codeDb = new StateDb();
             StateDb stateDb = new StateDb();
 
+            var stateReader = new StateReader(stateDb, codeDb, logManager);
             var stateProvider = new StateProvider(stateDb, codeDb, logManager);
             stateProvider.CreateAccount(TestItem.AddressA, 10000.Ether());
             stateProvider.Commit(specProvider.GenesisSpec);
@@ -291,7 +292,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var devTxProcessor = new TransactionProcessor(specProvider, devState, devStorage, devEvm, logManager);
             var devBlockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, devTxProcessor, stateDb, codeDb, devState, devStorage, txPool, receiptStorage, logManager);
             var devChainProcessor = new BlockchainProcessor(tree, devBlockProcessor, step, logManager, false);
-            var transactionSelector = new PendingTxSelector(txPool, stateProvider, logManager);
+            var transactionSelector = new PendingTxSelector(txPool, stateReader, logManager);
             var producer = new DevBlockProducer(transactionSelector, devChainProcessor, stateProvider, tree, processor, txPool, new Timestamper(), logManager);
 
             NodeDataFeed feed = new NodeDataFeed(codeDb, stateDb, logManager);

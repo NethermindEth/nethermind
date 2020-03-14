@@ -17,6 +17,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus
 {
@@ -29,8 +30,8 @@ namespace Nethermind.Consensus
             _innerPendingTxSelector = innerPendingTxSelector;
         }
         
-        public IEnumerable<Transaction> SelectTransactions(long gasLimit) => 
-            _innerPendingTxSelector.SelectTransactions(gasLimit)
+        public IEnumerable<Transaction> SelectTransactions(Keccak stateRoot, long gasLimit) => 
+            _innerPendingTxSelector.SelectTransactions(stateRoot, gasLimit)
                 .OrderBy(t => t.Nonce)
                 .ThenByDescending(t => t.Timestamp)
                 .Take(1);

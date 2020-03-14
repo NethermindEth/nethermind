@@ -37,7 +37,7 @@ namespace Nethermind.Core2.Containers
 
         public override string ToString()
         {
-            return $"E:{Epoch} C:{CurrentVersion} P:{PreviousVersion}";
+            return $"{PreviousVersion}_{CurrentVersion}_{Epoch}";
         }
     }
 }

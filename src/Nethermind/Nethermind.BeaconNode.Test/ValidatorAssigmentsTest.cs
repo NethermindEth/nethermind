@@ -41,7 +41,7 @@ namespace Nethermind.BeaconNode.Test
         [DataRow(0uL, true)]
         [DataRow(79uL, true)]
         [DataRow(80uL, false)]
-        public void ValidatorShouldBeActiveAfterTestGenesis(ulong index, bool shouldBeActive)
+        public async Task ValidatorShouldBeActiveAfterTestGenesis(ulong index, bool shouldBeActive)
         {
             // NOTE: Test genesis has SlotsPerEpoch (8) * 10 = 80 validators.
             
@@ -52,7 +52,8 @@ namespace Nethermind.BeaconNode.Test
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
-            _ = forkChoice.GetGenesisStore(state);            
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
 
             // Act
             ValidatorAssignments validatorAssignments = testServiceProvider.GetService<ValidatorAssignments>();
@@ -65,7 +66,7 @@ namespace Nethermind.BeaconNode.Test
 
         [DataTestMethod]
         // TODO: Values not validated against manual check or another client; just set based on first run.
-        [DataRow(0uL, 6uL, 1uL)]
+        [DataRow(0uL, 3uL, 0uL)]
         public void BasicGetCommitteeAssignment(ulong index, ulong slot, ulong committeeIndex)
         {
             // Arrange
@@ -95,17 +96,17 @@ namespace Nethermind.BeaconNode.Test
         [DataRow("0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb", 2uL, false, 0uL, 0uL, null)]
         [DataRow("0x123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0", 0uL, false, 0uL, 0uL, null)]
         // epoch 0 tests
-        [DataRow("0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb", 0uL, true, 6uL, 1uL, null)]
-        [DataRow("0xa572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e", 0uL, true, 0uL, 0uL, null)]
-        [DataRow("0x89ece308f9d1f0131765212deca99697b112d61f9be9a5f1f3780a51335b3ff981747a0b2ca2179b96d2c0c9024e5224", 0uL, true, 2uL, 1uL, null)]
-        [DataRow("0x8774d1d544c4cc583fb649d0bbba86c2d2b5abb4c0395d7d1dac08ab1a2cc795030bdbdce6e3213154d4f2c748ccdaef", 0uL, true, 6uL, 0uL, 0uL)]
+        [DataRow("0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb", 0uL, true, 3uL, 0uL, null)]
+        [DataRow("0xa572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e", 0uL, true, 6uL, 1uL, null)]
+        [DataRow("0x89ece308f9d1f0131765212deca99697b112d61f9be9a5f1f3780a51335b3ff981747a0b2ca2179b96d2c0c9024e5224", 0uL, true, 6uL, 1uL, null)]
+        [DataRow("0x8345dd80ffef0eaec8920e39ebb7f5e9ae9c1d6179e9129b705923df7830c67f3690cbc48649d4079eadf5397339580c", 0uL, true, 4uL, 1uL, 0uL)]
         // looking forward, find the 2uL proposal slot
-        [DataRow("0x9717182463fbe215168e6762abcbb55c5c65290f2b5a2af616f8a6f50d625b46164178a11622d21913efdfa4b800648d", 0uL, true, 4uL, 0uL, 2uL)]
+        [DataRow("0x9717182463fbe215168e6762abcbb55c5c65290f2b5a2af616f8a6f50d625b46164178a11622d21913efdfa4b800648d", 0uL, true, 5uL, 1uL, null)]
         // epoch 1 tests
-        [DataRow("0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb", 1uL, true, 10uL, 0uL, null)]
-        [DataRow("0xa572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e", 1uL, true, 14uL, 1uL, null)]
-        [DataRow("0x89ece308f9d1f0131765212deca99697b112d61f9be9a5f1f3780a51335b3ff981747a0b2ca2179b96d2c0c9024e5224", 1uL, true, 8uL, 1uL, null)]
-        [DataRow("0x95906ec0660892c205634e21ad540cbe0b6f7729d101d5c4639b864dea09be7f42a4252c675d46dd90a2661b3a94e8ca", 1uL, true, 8uL, 0uL, 9uL)]
+        [DataRow("0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb", 1uL, true, 13uL, 0uL, null)]
+        [DataRow("0xa572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e", 1uL, true, 13uL, 1uL, null)]
+        [DataRow("0x89ece308f9d1f0131765212deca99697b112d61f9be9a5f1f3780a51335b3ff981747a0b2ca2179b96d2c0c9024e5224", 1uL, true, 9uL, 0uL, null)]
+        [DataRow("0x8515e7f61ca0470e165a44d247a23f17f24bf6e37185467bedb7981c1003ea70bbec875703f793dd8d11e56afa7f74ba", 1uL, true, 15uL, 0uL, 9uL)]
         public async Task BasicValidatorDuty(string publicKey, ulong epoch, bool success, ulong attestationSlot, ulong attestationShard, ulong? blockProposalSlot)
         {
             // Arrange
@@ -115,7 +116,8 @@ namespace Nethermind.BeaconNode.Test
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
-            _ = forkChoice.GetGenesisStore(state);            
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
             
             // Act
             ValidatorAssignments validatorAssignments = testServiceProvider.GetService<ValidatorAssignments>();
@@ -150,12 +152,19 @@ namespace Nethermind.BeaconNode.Test
             validatorDuty.AttestationShard.ShouldBe(expectedAttestationShard);
         }
 
+        // TODO: FInd some attester values to use
         [DataTestMethod]
-        // time = slot 2 * 6 + 5 = 17
-        [DataRow(17uL, "0x9717182463fbe215168e6762abcbb55c5c65290f2b5a2af616f8a6f50d625b46164178a11622d21913efdfa4b800648d", 0uL, 4uL, 0uL, 2uL)]
-        // time = slot 3 * 6 = 18
-        [DataRow(18uL, "0x9717182463fbe215168e6762abcbb55c5c65290f2b5a2af616f8a6f50d625b46164178a11622d21913efdfa4b800648d", 0uL, 4uL, 0uL, 6uL)]
-        public async Task ValidatorDutyAtSpecificTime(ulong targetTime, string publicKey, ulong epoch, ulong attestationSlot, ulong attestationShard, ulong? blockProposalSlot)
+        // time = slot 0 * 6 + 5 = 5
+        [DataRow(5uL, "0x8345dd80ffef0eaec8920e39ebb7f5e9ae9c1d6179e9129b705923df7830c67f3690cbc48649d4079eadf5397339580c", 0uL, 4uL, 1uL, 0uL)]
+        // time = slot 1 * 6 = 6
+        [DataRow(6uL, "0x8345dd80ffef0eaec8920e39ebb7f5e9ae9c1d6179e9129b705923df7830c67f3690cbc48649d4079eadf5397339580c", 0uL, 4uL, 1uL, 7uL)]
+        // [DataRow(42uL, "0xab48aa2cc6f4a0bb63b5d67be54ac3aed10326dda304c5aeb9e942b40d6e7610478377680ab90e092ef1895e62786008", 0uL, 5uL, 1uL, null)]
+        // [DataRow(42uL, "0x8aea7d8eb22063bcfe882e2b7efc0b3713e1a48dd8343bed523b1ab4546114be84d00f896d33c605d1f67456e8e2ed93", 0uL, 5uL, 1uL, null)]
+        // [DataRow(42uL, "0x89db41a6183c2fe47cf54d1e00c3cfaae53df634a32cccd5cf0c0a73e95ee0450fc3d060bb6878780fbf5f30d9e29aac", 0uL, 5uL, 1uL, null)]
+        // [DataRow(42uL, "0xb783a70a1cf9f53e7d2ddf386bea81a947e5360c5f1e0bf004fceedb2073e4dd180ef3d2d91bee7b1c5a88d1afd11c49", 0uL, 5uL, 1uL, null)]
+        // [DataRow(42uL, "0x8fe55d12257709ae842f8594f9a0a40de3d38dabdf82b21a60baac927e52ed00c5fd42f4c905410eacdaf8f8a9952490", 0uL, 5uL, 1uL, null)]
+        // [DataRow(42uL, "0x95906ec0660892c205634e21ad540cbe0b6f7729d101d5c4639b864dea09be7f42a4252c675d46dd90a2661b3a94e8ca", 0uL, 5uL, 1uL, null)]
+        public async Task ValidatorDutyAtSpecificTimeDuplicateProposal(ulong targetTime, string publicKey, ulong epoch, ulong attestationSlot, ulong attestationShard, ulong? blockProposalSlot)
         {
             // NOTE: Current algorithm for GetBeaconProposerIndex() someimtes allocates multiple proposal slots in an epoch, e.g. above index 23 gets slot 2 and 6
             // It could be an error in the algorithm (need to check; domain type could be wrong), or due to the pre-shard algorithm.
@@ -169,7 +178,8 @@ namespace Nethermind.BeaconNode.Test
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
-            IStore store = forkChoice.GetGenesisStore(state);            
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
             
             // Move forward time
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
@@ -179,9 +189,9 @@ namespace Nethermind.BeaconNode.Test
                 await forkChoice.OnTickAsync(store, time);
                 if (timeSinceGenesis % timeParameters.SecondsPerSlot == 0)
                 {
-                    BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
-                    TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
-                    await forkChoice.OnBlockAsync(store, block);
+                    BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, BlsSignature.Zero);
+                    SignedBeaconBlock signedBlock = TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
+                    await forkChoice.OnBlockAsync(store, signedBlock);
                 }
             }
             
@@ -220,7 +230,8 @@ namespace Nethermind.BeaconNode.Test
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
-            IStore store = forkChoice.GetGenesisStore(state);
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
             
             // Move forward time
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
@@ -241,9 +252,9 @@ namespace Nethermind.BeaconNode.Test
 //                Hash32 head = await forkChoice.GetHeadAsync(store);
 //                store.TryGetBlockState(head, out BeaconState headState);
                 BeaconState headState = state;
-                BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, headState, signed: true);
-                TestState.StateTransitionAndSignBlock(testServiceProvider, headState, block);
-                await forkChoice.OnBlockAsync(store, block);
+                BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, headState, BlsSignature.Zero);
+                SignedBeaconBlock signedBlock = TestState.StateTransitionAndSignBlock(testServiceProvider, headState, block);
+                await forkChoice.OnBlockAsync(store, signedBlock);
                 nextSlotTime = nextSlotTime + timeParameters.SecondsPerSlot;
             }
             // halfway through slot
@@ -328,51 +339,52 @@ namespace Nethermind.BeaconNode.Test
             // epoch 0 tests
             yield return new object?[]
             {
-                "0x8774d1d544c4cc583fb649d0bbba86c2d2b5abb4c0395d7d1dac08ab1a2cc795030bdbdce6e3213154d4f2c748ccdaef",
-                0uL, true, 6uL, 0uL, 0uL
+                "0x8345dd80ffef0eaec8920e39ebb7f5e9ae9c1d6179e9129b705923df7830c67f3690cbc48649d4079eadf5397339580c",
+                0uL, true, 4uL, 1uL, 7uL
             };
             // looking backwards, should find 6uL proposal slot
             yield return new object?[]
             {
                 "0x9717182463fbe215168e6762abcbb55c5c65290f2b5a2af616f8a6f50d625b46164178a11622d21913efdfa4b800648d",
-                0uL, true, 4uL, 0uL, 6uL
+                0uL, true, 5uL, 1uL, null
             };
             // epoch 1 tests
             yield return new object?[]
             {
-                "0x95906ec0660892c205634e21ad540cbe0b6f7729d101d5c4639b864dea09be7f42a4252c675d46dd90a2661b3a94e8ca", 1uL, true, 8uL, 0uL, 9uL
+                "0x8515e7f61ca0470e165a44d247a23f17f24bf6e37185467bedb7981c1003ea70bbec875703f793dd8d11e56afa7f74ba", 
+                1uL, true, 15uL, 0uL, 9uL
             };
             // epoch 10 tests
             yield return new object?[]
             {
                 "0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
-                4uL, true, 36uL, 1uL, null
+                4uL, true, 32uL, 1uL, null
             };
             yield return new object?[]
             {
                 "0xa572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e",
-                4uL, true, 34uL, 1uL, null
+                4uL, true, 32uL, 0uL, null
             };
             yield return new object?[]
             {
                 "0x89ece308f9d1f0131765212deca99697b112d61f9be9a5f1f3780a51335b3ff981747a0b2ca2179b96d2c0c9024e5224",
-                4uL, true, 35uL, 1uL, null
+                4uL, true, 34uL, 1uL, null
             };
             yield return new object?[]
             {
                 "0xac9b60d5afcbd5663a8a44b7c5a02f19e9a77ab0a35bd65809bb5c67ec582c897feb04decc694b13e08587f3ff9b5b60",
-                4uL, true, 39uL, 1uL, null
+                4uL, true, 36uL, 0uL, null
             };
             yield return new object?[]
             {
                 "0xb0e7791fb972fe014159aa33a98622da3cdc98ff707965e536d8636b5fcc5ac7a91a8c46e59a00dca575af0f18fb13dc",
-                4uL, true, 34uL, 0uL, null
+                4uL, true, 33uL, 0uL, null
             };
             // epoch 11 tests
             yield return new object?[]
             {
                 "0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
-                5uL, true, 40uL, 1uL, null
+                5uL, true, 42uL, 1uL, null
             };
         }
     }

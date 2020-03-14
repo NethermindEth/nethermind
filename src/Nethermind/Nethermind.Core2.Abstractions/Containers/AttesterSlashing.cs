@@ -20,6 +20,8 @@ namespace Nethermind.Core2.Containers
 {
     public class AttesterSlashing
     {
+        public static readonly AttesterSlashing Zero = new AttesterSlashing(IndexedAttestation.Zero, IndexedAttestation.Zero);
+        
         public AttesterSlashing(
             IndexedAttestation attestation1,
             IndexedAttestation attestation2)

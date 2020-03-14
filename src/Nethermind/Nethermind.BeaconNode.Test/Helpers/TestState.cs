@@ -68,7 +68,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
         /// State transition via the provided ``block``
         /// then package the block with the state root and signature.
         /// </summary>
-        public static void StateTransitionAndSignBlock(IServiceProvider testServiceProvider, BeaconState state, BeaconBlock block)
+        public static SignedBeaconBlock StateTransitionAndSignBlock(IServiceProvider testServiceProvider, BeaconState state, BeaconBlock block)
         {
             MiscellaneousParameters miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
@@ -78,10 +78,12 @@ namespace Nethermind.BeaconNode.Test.Helpers
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
             BeaconStateTransition beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
 
-            beaconStateTransition.StateTransition(state, block, validateStateRoot: false);
-            Hash32 stateRoot = cryptographyService.HashTreeRoot(state);
+            SignedBeaconBlock preSigningBlock = new SignedBeaconBlock(block, BlsSignature.Zero);
+            beaconStateTransition.StateTransition(state, preSigningBlock, validateResult: false);
+            Root stateRoot = cryptographyService.HashTreeRoot(state);
             block.SetStateRoot(stateRoot);
-            TestBlock.SignBlock(testServiceProvider, state, block, ValidatorIndex.None);
+            SignedBeaconBlock signedBlock = TestBlock.SignBlock(testServiceProvider, state, block, ValidatorIndex.None);
+            return signedBlock;
         }
     }
 }

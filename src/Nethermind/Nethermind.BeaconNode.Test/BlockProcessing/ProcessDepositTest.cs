@@ -34,17 +34,17 @@ namespace Nethermind.BeaconNode.Test.BlockProcessing
         public void NewDepositUnderMax()
         {
             // Arrange
-            var testServiceProvider = TestSystem.BuildTestServiceProvider();
-            var state = TestState.PrepareTestState(testServiceProvider);
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
+            BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
             // fresh deposit = next validator index = validator appended to registry
-            var validatorIndex = new ValidatorIndex((ulong)state.Validators.Count);
+            ValidatorIndex validatorIndex = new ValidatorIndex((ulong)state.Validators.Count);
 
             // effective balance will be 1 EFFECTIVE_BALANCE_INCREMENT smaller because of this small decrement.
-            var gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
-            var amount = gweiValues.MaximumEffectiveBalance - new Gwei(1);
+            GweiValues gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
+            Gwei amount = gweiValues.MaximumEffectiveBalance - new Gwei(1);
 
-            var deposit = TestDeposit.PrepareStateAndDeposit(testServiceProvider, state, validatorIndex, amount, Hash32.Zero, signed: true);
+            Deposit deposit = TestDeposit.PrepareStateAndDeposit(testServiceProvider, state, validatorIndex, amount, Bytes32.Zero, signed: true);
 
             RunDepositProcessing(testServiceProvider, state, deposit, validatorIndex, expectValid: true, effective: true);
         }
@@ -56,11 +56,11 @@ namespace Nethermind.BeaconNode.Test.BlockProcessing
         //If ``valid == False``, run expecting ``AssertionError``
         private void RunDepositProcessing(IServiceProvider testServiceProvider, BeaconState state, Deposit deposit, ValidatorIndex validatorIndex, bool expectValid, bool effective)
         {
-            var gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
-            var beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
+            GweiValues gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
+            BeaconStateTransition beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
 
-            var preValidatorCount = state.Validators.Count;
-            var preBalance = Gwei.Zero;
+            int preValidatorCount = state.Validators.Count;
+            Gwei preBalance = Gwei.Zero;
             if ((int)(ulong)validatorIndex < preValidatorCount)
             {
                 preBalance = TestState.GetBalance(state, validatorIndex);
@@ -83,7 +83,7 @@ namespace Nethermind.BeaconNode.Test.BlockProcessing
                 state.Balances.Count.ShouldBe(preValidatorCount);
                 if ((int)(ulong)validatorIndex < preValidatorCount)
                 {
-                    var balance = TestState.GetBalance(state, validatorIndex);
+                    Gwei balance = TestState.GetBalance(state, validatorIndex);
                     balance.ShouldBe(preBalance);
                 }
             }
@@ -102,11 +102,11 @@ namespace Nethermind.BeaconNode.Test.BlockProcessing
                     state.Balances.Count.ShouldBe(preValidatorCount + 1);
                 }
 
-                var balance = TestState.GetBalance(state, validatorIndex);
-                var expectedBalance = preBalance + deposit.Data.Amount;
+                Gwei balance = TestState.GetBalance(state, validatorIndex);
+                Gwei expectedBalance = preBalance + deposit.Data.Amount;
                 balance.ShouldBe(expectedBalance);
 
-                var expectedEffectiveBalance = Gwei.Min(gweiValues.MaximumEffectiveBalance, expectedBalance);
+                Gwei expectedEffectiveBalance = Gwei.Min(gweiValues.MaximumEffectiveBalance, expectedBalance);
                 expectedEffectiveBalance -= expectedEffectiveBalance % gweiValues.EffectiveBalanceIncrement;
                 state.Validators[(int)(ulong)validatorIndex].EffectiveBalance.ShouldBe(expectedEffectiveBalance);
             }

@@ -53,7 +53,8 @@ namespace Nethermind.BeaconNode.Test
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
-            _ = forkChoice.GetGenesisStore(state);            
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
 
             // Act
             IBeaconNodeApi beaconNode = testServiceProvider.GetService<IBeaconNodeApi>();
@@ -79,7 +80,8 @@ namespace Nethermind.BeaconNode.Test
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
-            _ = forkChoice.GetGenesisStore(state);            
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
             
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
             int numberOfValidators = state.Validators.Count;
@@ -107,7 +109,16 @@ namespace Nethermind.BeaconNode.Test
                     (ulong) validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
                 validatorDutyIndex++;
             }
-            
+
+            Console.WriteLine();
+            Console.WriteLine("** ValidatorDuty summary");
+            foreach (ValidatorDuty validatorDuty in validatorDuties)
+            {
+                Console.WriteLine("Index [{0}], Epoch {1}, Validator {2}, : attestation slot {3}, shard {4}, proposal slot {5}",
+                    validatorDutyIndex, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
+                    (ulong) validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
+            }
+
             // Assert
             Dictionary<Slot, IGrouping<Slot, ValidatorDuty>> groupsByProposalSlot = validatorDuties
                 .GroupBy(x => x.BlockProposalSlot)
@@ -118,9 +129,9 @@ namespace Nethermind.BeaconNode.Test
             groupsByProposalSlot[new Slot(3)].Count().ShouldBe(1);
             groupsByProposalSlot[new Slot(4)].Count().ShouldBe(1);
             groupsByProposalSlot[new Slot(5)].Count().ShouldBe(1);
-            //groupsByProposalSlot[new Slot(6)].Count().ShouldBe(1);
-            groupsByProposalSlot[new Slot(7)].Count().ShouldBe(1);
-            //groupsByProposalSlot[Slot.None].Count().ShouldBe(numberOfValidators - 7);
+            groupsByProposalSlot[new Slot(6)].Count().ShouldBe(1);
+            //groupsByProposalSlot[new Slot(7)].Count().ShouldBe(1);
+            groupsByProposalSlot[Slot.None].Count().ShouldBe(numberOfValidators - 7);
         }
         
         [TestMethod]
@@ -135,7 +146,8 @@ namespace Nethermind.BeaconNode.Test
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
-            _ = forkChoice.GetGenesisStore(state);            
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
             
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
             int numberOfValidators = state.Validators.Count;
@@ -158,6 +170,15 @@ namespace Nethermind.BeaconNode.Test
                     (ulong) validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
                 validatorDutyIndex++;
             }
+
+            Console.WriteLine();
+            Console.WriteLine("** ValidatorDuty summary");
+            foreach (ValidatorDuty validatorDuty in validatorDuties)
+            {
+                Console.WriteLine("Index [{0}], Epoch {1}, Validator {2}, : attestation slot {3}, shard {4}, proposal slot {5}",
+                    validatorDutyIndex, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
+                    (ulong) validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
+            }
             
             // Assert
             Dictionary<Slot, IGrouping<Slot, ValidatorDuty>> groupsByProposalSlot = validatorDuties
@@ -167,11 +188,11 @@ namespace Nethermind.BeaconNode.Test
             groupsByProposalSlot[new Slot(9)].Count().ShouldBe(1);
             groupsByProposalSlot[new Slot(10)].Count().ShouldBe(1);
             groupsByProposalSlot[new Slot(11)].Count().ShouldBe(1);
-            //groupsByProposalSlot[new Slot(12)].Count().ShouldBe(1);
+            groupsByProposalSlot[new Slot(12)].Count().ShouldBe(1);
             groupsByProposalSlot[new Slot(13)].Count().ShouldBe(1);
             groupsByProposalSlot[new Slot(14)].Count().ShouldBe(1);
-            groupsByProposalSlot[new Slot(15)].Count().ShouldBe(1);
-            //groupsByProposalSlot[Slot.None].Count().ShouldBe(numberOfValidators - 8);
+            //groupsByProposalSlot[new Slot(15)].Count().ShouldBe(1);
+            groupsByProposalSlot[Slot.None].Count().ShouldBe(numberOfValidators - 7);
         }
         
         [TestMethod]
@@ -214,6 +235,15 @@ namespace Nethermind.BeaconNode.Test
                     validatorDutyIndex, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
                     (ulong) validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
                 validatorDutyIndex++;
+            }
+
+            Console.WriteLine();
+            Console.WriteLine("** ValidatorDuty summary");
+            foreach (ValidatorDuty validatorDuty in validatorDuties)
+            {
+                Console.WriteLine("Index [{0}], Epoch {1}, Validator {2}, : attestation slot {3}, shard {4}, proposal slot {5}",
+                    validatorDutyIndex, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
+                    (ulong) validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
             }
             
             // Assert

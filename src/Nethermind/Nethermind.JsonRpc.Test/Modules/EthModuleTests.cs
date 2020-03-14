@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
@@ -69,23 +70,23 @@ namespace Nethermind.JsonRpc.Test.Modules
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
             IStateReader stateReader = new StateReader(stateDb, codeDb, LimboLogs.Instance);
-            IStateProvider stateProvider = new StateProvider(stateDb, codeDb, LimboLogs.Instance);
-            stateProvider.CreateAccount(TestItem.AddressA, 1000.Ether());
-            stateProvider.CreateAccount(TestItem.AddressB, 1000.Ether());
-            stateProvider.CreateAccount(TestItem.AddressC, 1000.Ether());
+            _stateProvider = new StateProvider(stateDb, codeDb, LimboLogs.Instance);
+            _stateProvider.CreateAccount(TestItem.AddressA, 1000.Ether());
+            _stateProvider.CreateAccount(TestItem.AddressB, 1000.Ether());
+            _stateProvider.CreateAccount(TestItem.AddressC, 1000.Ether());
             byte[] code = Bytes.FromHexString("0xabcd");
             Keccak codeHash = Keccak.Compute(code);
-            stateProvider.UpdateCode(code);
-            stateProvider.UpdateCodeHash(TestItem.AddressA, codeHash, specProvider.GenesisSpec);
+            _stateProvider.UpdateCode(code);
+            _stateProvider.UpdateCodeHash(TestItem.AddressA, codeHash, specProvider.GenesisSpec);
 
-            IStorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, LimboLogs.Instance);
+            IStorageProvider storageProvider = new StorageProvider(stateDb, _stateProvider, LimboLogs.Instance);
             storageProvider.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
             storageProvider.Commit();
 
-            stateProvider.Commit(specProvider.GenesisSpec);
-            stateProvider.CommitTree();
+            _stateProvider.Commit(specProvider.GenesisSpec);
+            _stateProvider.CommitTree();
 
-            ITxPool txPool = new TxPool.TxPool(txStorage, Timestamper.Default, ethereumEcdsa, specProvider, new TxPoolConfig(), stateProvider, LimboLogs.Instance);
+            ITxPool txPool = new TxPool.TxPool(txStorage, Timestamper.Default, ethereumEcdsa, specProvider, new TxPoolConfig(), _stateProvider, LimboLogs.Instance);
 
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
@@ -93,13 +94,13 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockTree blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockDb), specProvider, txPool, NullBloomStorage.Instance, LimboLogs.Instance);
 
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
-            VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, new BlockhashProvider(blockTree, LimboLogs.Instance), specProvider, LimboLogs.Instance);
-            TransactionProcessor txProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
-            IBlockProcessor blockProcessor = new BlockProcessor(specProvider, AlwaysValidBlockValidator.Instance, new RewardCalculator(specProvider), txProcessor, stateDb, codeDb, stateProvider, storageProvider, txPool, receiptStorage, LimboLogs.Instance);
+            VirtualMachine virtualMachine = new VirtualMachine(_stateProvider, storageProvider, new BlockhashProvider(blockTree, LimboLogs.Instance), specProvider, LimboLogs.Instance);
+            TransactionProcessor txProcessor = new TransactionProcessor(specProvider, _stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
+            IBlockProcessor blockProcessor = new BlockProcessor(specProvider, AlwaysValidBlockValidator.Instance, new RewardCalculator(specProvider), txProcessor, stateDb, codeDb, _stateProvider, storageProvider, txPool, receiptStorage, LimboLogs.Instance);
 
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, blockProcessor, txPool, LimboLogs.Instance);
-            _blockchainBridge = new BlockchainBridge(stateReader, stateProvider, storageProvider, blockTree, txPool, receiptStorage, filterStore, filterManager, NullWallet.Instance, txProcessor, ethereumEcdsa, NullBloomStorage.Instance, LimboLogs.Instance);
+            _blockchainBridge = new BlockchainBridge(stateReader, _stateProvider, storageProvider, blockTree, txPool, receiptStorage, filterStore, filterManager, NullWallet.Instance, txProcessor, ethereumEcdsa, NullBloomStorage.Instance, new ReceiptsRecovery(), LimboLogs.Instance);
 
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(ethereumEcdsa, txPool, LimboLogs.Instance), LimboLogs.Instance, true);
             blockchainProcessor.Start();
@@ -145,6 +146,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         private IEthModule _ethModule;
         private IBlockTree _blockTree;
         private IJsonSerializer _ethSerializer;
+        private IStateProvider _stateProvider;
 
         [TestCase("earliest", "0x3635c9adc5dea00000")]
         [TestCase("latest", "0x3635c9adc5dea00000")]
@@ -373,12 +375,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":{expectedResult},\"id\":67}}", serialized2, serialized2);
         }
 
-//        [Test]
-//        public void Eth_get_block_by_number_null()
-//        {
-//            string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_getBlockByNumber", string.Empty, "false");
-//            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params: invalid type: null, expected a block number or 'latest', 'earliest' or 'pending'.\",\"id\":67}}", serialized);
-//        }
+        [Test]
+        public void Eth_get_block_by_number_null()
+        {
+            string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_getBlockByNumber", "1000000", "false");
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}", serialized);
+        }
 
         [Test]
         public void Eth_get_code()
@@ -400,6 +402,59 @@ namespace Nethermind.JsonRpc.Test.Modules
             var transaction = _ethSerializer.Deserialize<TransactionForRpc>("{\"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_call", _ethSerializer.Serialize(transaction), "0x0");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
+        }
+        
+        [Test]
+        public void Eth_call_web3_sample_not_enough_gas_system_account()
+        {
+            _stateProvider.AccountExists(Address.SystemUser).Should().BeFalse();
+            var transaction = _ethSerializer.Deserialize<TransactionForRpc>("{\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+            string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_call", _ethSerializer.Serialize(transaction), "0x0");
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
+            _stateProvider.AccountExists(Address.SystemUser).Should().BeFalse();
+        }
+        
+        [Test]
+        public void Eth_call_web3_sample_not_enough_gas_other_account()
+        {
+            Address someAccount = new Address("0x0001020304050607080910111213141516171819");
+            _stateProvider.AccountExists(someAccount).Should().BeFalse();
+            var transaction = _ethSerializer.Deserialize<TransactionForRpc>("{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+            string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_call", _ethSerializer.Serialize(transaction), "0x0");
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
+            _stateProvider.AccountExists(someAccount).Should().BeFalse();
+        }
+        
+        [Test]
+        public void Eth_estimateGas_web3_sample_not_enough_gas_system_account()
+        {
+            _stateProvider.AccountExists(Address.SystemUser).Should().BeFalse();
+            var transaction = _ethSerializer.Deserialize<TransactionForRpc>("{\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+            string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_estimateGas", _ethSerializer.Serialize(transaction));
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x5898\",\"id\":67}", serialized);
+            _stateProvider.AccountExists(Address.SystemUser).Should().BeFalse();
+        }
+        
+        [Test]
+        public void Eth_estimateGas_web3_sample_not_enough_gas_other_account()
+        {
+            Address someAccount = new Address("0x0001020304050607080910111213141516171819");
+            _stateProvider.AccountExists(someAccount).Should().BeFalse();
+            var transaction = _ethSerializer.Deserialize<TransactionForRpc>("{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+            string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_estimateGas", _ethSerializer.Serialize(transaction));
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x5898\",\"id\":67}", serialized);
+            _stateProvider.AccountExists(someAccount).Should().BeFalse();
+        }
+        
+        [Test]
+        public void Eth_estimateGas_web3_above_block_gas_limit()
+        {
+            Address someAccount = new Address("0x0001020304050607080910111213141516171819");
+            _stateProvider.AccountExists(someAccount).Should().BeFalse();
+            var transaction = _ethSerializer.Deserialize<TransactionForRpc>("{\"from\":\"0x0001020304050607080910111213141516171819\",\"gas\":\"0x100000000\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+            string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_estimateGas", _ethSerializer.Serialize(transaction));
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x5898\",\"id\":67}", serialized);
+            _stateProvider.AccountExists(someAccount).Should().BeFalse();
         }
 
         [Test]

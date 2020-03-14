@@ -17,32 +17,32 @@
 using System;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using Hash32 = Nethermind.Core2.Crypto.Hash32;
 
 namespace Nethermind.Core2.Containers
 {
-    public class DepositData
+    public class DepositData : IEquatable<DepositData>
     {
-        public DepositData(BlsPublicKey publicKey, Hash32 withdrawalCredentials, Gwei amount)
-            : this(publicKey, withdrawalCredentials, amount, BlsSignature.Empty)
-        {
-        }
-
-        public DepositData(BlsPublicKey publicKey, Hash32 withdrawalCredentials, Gwei amount, BlsSignature signature)
+        public static readonly DepositData Zero = new DepositData(BlsPublicKey.Zero, Bytes32.Zero, Gwei.Zero,
+            BlsSignature.Zero);
+        
+        public DepositData(BlsPublicKey publicKey, Bytes32 withdrawalCredentials, Gwei amount, BlsSignature signature)
         {
             PublicKey = publicKey;
             WithdrawalCredentials = withdrawalCredentials;
             Amount = amount;
-            Signature = signature;
+            Signature = signature; // Signing over DepositMessage
         }
 
         public Gwei Amount { get; }
 
         public BlsPublicKey PublicKey { get; }
 
+        /// <summary>
+        /// Signing over DepositMessage
+        /// </summary>
         public BlsSignature Signature { get; private set; }
 
-        public Hash32 WithdrawalCredentials { get; }
+        public Bytes32 WithdrawalCredentials { get; }
 
         public void SetSignature(BlsSignature signature)
         {

@@ -17,37 +17,35 @@
 using System;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-//using System.Reflection.Metadata.Ecma335;
-using Hash32 = Nethermind.Core2.Crypto.Hash32;
 
 namespace Nethermind.Core2.Containers
 {
     public class BeaconBlockHeader : IEquatable<BeaconBlockHeader>
     {
+        public static readonly BeaconBlockHeader Zero =
+            new BeaconBlockHeader(Slot.Zero, Root.Zero, Root.Zero, Root.Zero);
+
         public BeaconBlockHeader(
             Slot slot,
-            Hash32 parentRoot,
-            Hash32 stateRoot,
-            Hash32 bodyRoot,
-            BlsSignature signature)
+            Root parentRoot,
+            Root stateRoot,
+            Root bodyRoot)
         {
             Slot = slot;
             ParentRoot = parentRoot;
             StateRoot = stateRoot;
             BodyRoot = bodyRoot;
-            Signature = signature;
         }
 
-        public BeaconBlockHeader(Hash32 bodyRoot)
-            : this(Slot.Zero, Hash32.Zero, Hash32.Zero, bodyRoot, BlsSignature.Empty)
+        public BeaconBlockHeader(Root bodyRoot)
+            : this(Slot.Zero, Root.Zero, Root.Zero, bodyRoot)
         {
         }
 
-        public Hash32 BodyRoot { get; private set; }
-        public Hash32 ParentRoot { get; private set; }
-        public BlsSignature Signature { get; private set; }
+        public Root BodyRoot { get; private set; }
+        public Root ParentRoot { get; private set; }
         public Slot Slot { get; private set; }
-        public Hash32 StateRoot { get; private set; }
+        public Root StateRoot { get; private set; }
 
         /// <summary>
         /// Creates a deep copy of the object.
@@ -59,18 +57,12 @@ namespace Nethermind.Core2.Containers
                 Slot = other.Slot,
                 ParentRoot = other.ParentRoot,
                 StateRoot = other.StateRoot,
-                BodyRoot = other.BodyRoot,
-                Signature = new BlsSignature(other.Signature.Bytes)
+                BodyRoot = other.BodyRoot
             };
             return clone;
         }
 
-        public void SetSignature(BlsSignature signature)
-        {
-            Signature = signature;
-        }
-
-        public void SetStateRoot(Hash32 stateRoot)
+        public void SetStateRoot(Root stateRoot)
         {
             StateRoot = stateRoot;
         }
@@ -87,16 +79,15 @@ namespace Nethermind.Core2.Containers
                 return true;
             }
             
-            return BodyRoot == other.BodyRoot
-                && ParentRoot == other.ParentRoot
-                && Signature == other.Signature
+            return BodyRoot.Equals(other.BodyRoot)
+                && ParentRoot.Equals(other.ParentRoot)
                 && Slot == other.Slot
-                && StateRoot == other.StateRoot;
+                && StateRoot.Equals(other.StateRoot);
         }
 
         public override int GetHashCode()
         {
-            return HashCode.Combine(BodyRoot, ParentRoot, Signature, Slot, StateRoot);
+            return HashCode.Combine(BodyRoot, ParentRoot, Slot, StateRoot);
         }
 
         public override bool Equals(object? obj)
@@ -107,7 +98,7 @@ namespace Nethermind.Core2.Containers
 
         public override string ToString()
         {
-            return $"S:{Slot} P:{ParentRoot.ToString().Substring(0, 12)} St:{StateRoot.ToString().Substring(0, 12)} Bd:{BodyRoot.ToString().Substring(0, 12)}";
+            return $"s={Slot}_p={ParentRoot.ToString().Substring(0, 10)}_st={StateRoot.ToString().Substring(0, 10)}_bd={BodyRoot.ToString().Substring(0, 10)}";
         }
     }
 }

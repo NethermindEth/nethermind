@@ -15,36 +15,40 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2.Containers
 {
     public class ProposerSlashing
     {
+        public static readonly ProposerSlashing Zero = new ProposerSlashing(ValidatorIndex.Zero,
+            SignedBeaconBlockHeader.Zero, SignedBeaconBlockHeader.Zero);
+
         public ProposerSlashing(
             ValidatorIndex proposerIndex,
-            BeaconBlockHeader header1,
-            BeaconBlockHeader header2)
+            SignedBeaconBlockHeader signedHeader1,
+            SignedBeaconBlockHeader signedHeader2)
         {
             ProposerIndex = proposerIndex;
-            Header1 = header1;
-            Header2 = header2;
+            SignedHeader1 = signedHeader1;
+            SignedHeader2 = signedHeader2;
         }
 
-        public BeaconBlockHeader Header1 { get; }
-        public BeaconBlockHeader Header2 { get; }
+        public SignedBeaconBlockHeader SignedHeader1 { get; }
+        public SignedBeaconBlockHeader SignedHeader2 { get; }
         public ValidatorIndex ProposerIndex { get; }
 
         public override string ToString()
         {
-            return $"P:{ProposerIndex} for B1:({Header1})";
+            return $"P:{ProposerIndex} for B1:({SignedHeader1})";
         }
         
         public bool Equals(ProposerSlashing other)
         {
             return ProposerIndex == other.ProposerIndex &&
-                   Equals(Header1, other.Header1) &&
-                   Equals(Header2, other.Header2);
+                   Equals(SignedHeader1, other.SignedHeader1) &&
+                   Equals(SignedHeader2, other.SignedHeader2);
         }
 
         public override bool Equals(object? obj)
@@ -56,7 +60,7 @@ namespace Nethermind.Core2.Containers
 
         public override int GetHashCode()
         {
-            return HashCode.Combine(ProposerIndex, Header1, Header2);
+            return HashCode.Combine(ProposerIndex, SignedHeader1, SignedHeader2);
         }
     }
 }

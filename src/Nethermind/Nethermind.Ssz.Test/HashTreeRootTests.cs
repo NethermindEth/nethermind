@@ -89,13 +89,13 @@ namespace Nethermind.Ssz.Test
         }
         
         [Test]
-        public void Can_merkleize_hash32()
+        public void Can_merkleize_bytes32()
         {
             // arrange
-            Hash32 hash32 = new Hash32(Enumerable.Repeat((byte) 0x34, 32).ToArray());
+            Bytes32 bytes32 = new Bytes32(Enumerable.Repeat((byte) 0x34, 32).ToArray());
 
             // act
-            Merkle.Ize(out UInt256 root, hash32);
+            Merkle.Ize(out UInt256 root, bytes32);
             Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
 
             // assert
@@ -109,7 +109,7 @@ namespace Nethermind.Ssz.Test
             // arrange
             Checkpoint checkpoint = new Checkpoint(
                 new Epoch(3),
-                new Hash32(Enumerable.Repeat((byte) 0x34, 32).ToArray())
+                new Root(Enumerable.Repeat((byte) 0x34, 32).ToArray())
             );
 
             // act
@@ -131,14 +131,14 @@ namespace Nethermind.Ssz.Test
             AttestationData attestationData = new AttestationData(
                 Slot.One,
                 new CommitteeIndex(2),
-                new Hash32(Enumerable.Repeat((byte) 0x12, 32).ToArray()),
+                new Root(Enumerable.Repeat((byte) 0x12, 32).ToArray()), 
                 new Checkpoint(
                     new Epoch(3),
-                    new Hash32(Enumerable.Repeat((byte) 0x34, 32).ToArray())
+                    new Root(Enumerable.Repeat((byte) 0x34, 32).ToArray())
                 ),
                 new Checkpoint(
                     new Epoch(4),
-                    new Hash32(Enumerable.Repeat((byte) 0x56, 32).ToArray())
+                    new Root(Enumerable.Repeat((byte) 0x56, 32).ToArray())
                 )
             );
 
@@ -180,7 +180,7 @@ namespace Nethermind.Ssz.Test
             // arrange
             DepositData depositData = new DepositData(
                 new BlsPublicKey(Enumerable.Repeat((byte) 0x12, BlsPublicKey.Length).ToArray()),
-                new Hash32(Enumerable.Repeat((byte) 0x34, Hash32.Length).ToArray()),
+                new Bytes32(Enumerable.Repeat((byte) 0x34, Bytes32.Length).ToArray()),
                 new Gwei(5),
                 new BlsSignature(Enumerable.Repeat((byte) 0x67, BlsSignature.Length).ToArray())
             );
@@ -196,7 +196,7 @@ namespace Nethermind.Ssz.Test
                         Enumerable.Repeat((byte) 0x12, 32).ToArray(),
                         HashUtility.Chunk(Enumerable.Repeat((byte) 0x12, 16).ToArray())
                     ),
-                    Enumerable.Repeat((byte) 0x34, Hash32.Length).ToArray() // withdrawal credentials
+                    Enumerable.Repeat((byte) 0x34, Bytes32.Length).ToArray() // withdrawal credentials
                 ),
                 HashUtility.Hash(
                     HashUtility.Chunk(new byte[] {0x05}), // amount
@@ -226,13 +226,13 @@ namespace Nethermind.Ssz.Test
             // arrange
             DepositData depositData1 = new DepositData(
                 new BlsPublicKey(Enumerable.Repeat((byte) 0x12, BlsPublicKey.Length).ToArray()),
-                new Hash32(Enumerable.Repeat((byte) 0x34, Hash32.Length).ToArray()),
+                new Bytes32(Enumerable.Repeat((byte) 0x34, Bytes32.Length).ToArray()),
                 new Gwei(5),
                 new BlsSignature(Enumerable.Repeat((byte) 0x67, BlsSignature.Length).ToArray())
             );
             DepositData depositData2 = new DepositData(
                 new BlsPublicKey(Enumerable.Repeat((byte) 0x9a, BlsPublicKey.Length).ToArray()),
-                new Hash32(Enumerable.Repeat((byte) 0xbc, Hash32.Length).ToArray()),
+                new Bytes32(Enumerable.Repeat((byte) 0xbc, Bytes32.Length).ToArray()),
                 new Gwei(0xd),
                 new BlsSignature(Enumerable.Repeat((byte) 0xef, BlsSignature.Length).ToArray())
             );
@@ -254,7 +254,7 @@ namespace Nethermind.Ssz.Test
                         Enumerable.Repeat((byte) 0x12, 32).ToArray(),
                         HashUtility.Chunk(Enumerable.Repeat((byte) 0x12, 16).ToArray())
                     ),
-                    Enumerable.Repeat((byte) 0x34, Hash32.Length).ToArray() // withdrawal credentials
+                    Enumerable.Repeat((byte) 0x34, Bytes32.Length).ToArray() // withdrawal credentials
                 ),
                 HashUtility.Hash(
                     HashUtility.Chunk(new byte[] {0x05}), // amount
@@ -276,7 +276,7 @@ namespace Nethermind.Ssz.Test
                         Enumerable.Repeat((byte) 0x9a, 32).ToArray(),
                         HashUtility.Chunk(Enumerable.Repeat((byte) 0x9a, 16).ToArray())
                     ),
-                    Enumerable.Repeat((byte) 0xbc, Hash32.Length).ToArray() // withdrawal credentials
+                    Enumerable.Repeat((byte) 0xbc, Bytes32.Length).ToArray() // withdrawal credentials
                 ),
                 HashUtility.Hash(
                     HashUtility.Chunk(new byte[] {0x0d}), // amount
@@ -370,9 +370,9 @@ namespace Nethermind.Ssz.Test
         {
             // arrange
             Eth1Data eth1Data = new Eth1Data(
-                new Hash32(Enumerable.Repeat((byte) 0x34, Hash32.Length).ToArray()),
+                new Root(Enumerable.Repeat((byte) 0x34, Root.Length).ToArray()),
                 5,
-                new Hash32(Enumerable.Repeat((byte) 0x67, Hash32.Length).ToArray())
+                new Bytes32(Enumerable.Repeat((byte) 0x67, Bytes32.Length).ToArray())
             );
 
             // act
@@ -401,14 +401,14 @@ namespace Nethermind.Ssz.Test
             List<AttesterSlashing> attesterSlashings = new List<AttesterSlashing>();
             List<Attestation> attestations = new List<Attestation>();
             List<Deposit> deposits = new List<Deposit>();
-            List<VoluntaryExit> voluntaryExits = new List<VoluntaryExit>();
+            List<SignedVoluntaryExit> voluntaryExits = new List<SignedVoluntaryExit>();
             
             BeaconBlockBody beaconBlockBody = new BeaconBlockBody(
                 new BlsSignature(Enumerable.Repeat((byte) 0x12, BlsSignature.Length).ToArray()),
                 new Eth1Data(
-                    new Hash32(Enumerable.Repeat((byte) 0x34, Hash32.Length).ToArray()),
+                    new Root(Enumerable.Repeat((byte) 0x34, Root.Length).ToArray()),
                     5,
-                    new Hash32(Enumerable.Repeat((byte) 0x67, Hash32.Length).ToArray())
+                    new Bytes32(Enumerable.Repeat((byte) 0x67, Bytes32.Length).ToArray())
                 ),
                 new Bytes32(Enumerable.Repeat((byte) 0x89, Bytes32.Length).ToArray()),
                 proposerSlashings,

@@ -1,0 +1,34 @@
+schemas:
+  Transfer:
+    type: object
+    description: "The [`Transfer`](https://github.com/ethereum/eth2.0-specs/blob/master/specs/core/0_beacon-chain.md#transfer) object from the Eth2.0 spec."
+    properties:
+      sender:
+        type: integer
+        format: uint64
+        description: "Sender index."
+      recipient:
+        type: integer
+        format: uint64
+        description: "Recipient index."
+      amount:
+        type: integer
+        format: uint64
+        description: "Amount in Gwei."
+      fee:
+        type: integer
+        format: uint64
+        description: "Fee in Gwei for block producer."
+      slot:
+        type: integer
+        format: uint64
+        description: "Inclusion slot."
+      pubkey:
+        type: string
+        format: byte
+        pattern: "^0x[a-fA-F0-9]{96}$"
+        description: "Sender withdrawal public key."
+      signature:
+        allOf:
+          - $ref: '../misc.yaml#/schemas/Signature'
+          - description: "Sender signature."

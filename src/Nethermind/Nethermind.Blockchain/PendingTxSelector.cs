@@ -20,6 +20,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -32,26 +33,26 @@ namespace Nethermind.Blockchain
     public class PendingTxSelector : IPendingTxSelector
     {
         private readonly ITxPool _transactionPool;
-        private readonly IStateProvider _stateProvider;
+        private readonly IStateReader _stateReader;
         private readonly ILogger _logger;
         private readonly long _minGasPriceForMining;
 
-        public PendingTxSelector(ITxPool transactionPool, IStateProvider stateProvider, ILogManager logManager, long minGasPriceForMining = 0)
+        public PendingTxSelector(ITxPool transactionPool, IStateReader stateReader, ILogManager logManager, long minGasPriceForMining = 0)
         {
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
-            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _logger = logManager?.GetClassLogger<PendingTxSelector>() ?? throw new ArgumentNullException(nameof(logManager));
             _minGasPriceForMining = minGasPriceForMining;
         }
 
-        public IEnumerable<Transaction> SelectTransactions(long gasLimit)
+        public IEnumerable<Transaction> SelectTransactions(Keccak stateRoot, long gasLimit)
         {
-            T GetFromState<T>(Func<Address, T> stateGetter, Address address, T defaultValue)
+            T GetFromState<T>(Func<Keccak, Address, T> stateGetter, Address address, T defaultValue)
             {
                 T value = defaultValue;
                 try
                 {
-                    value = stateGetter(address);
+                    value = stateGetter(stateRoot, address);
                 }
                 catch (TrieException e)
                 {
@@ -69,7 +70,7 @@ namespace Nethermind.Blockchain
             {
                 if (!noncesDictionary.TryGetValue(address, out var nonce))
                 {
-                    noncesDictionary[address] = nonce = GetFromState(_stateProvider.GetNonce, address, UInt256.Zero);
+                    noncesDictionary[address] = nonce = GetFromState(_stateReader.GetNonce, address, UInt256.Zero);
                 }
                 
                 return nonce;
@@ -79,7 +80,7 @@ namespace Nethermind.Blockchain
             {
                 if (!balances.TryGetValue(address, out var balance))
                 {
-                    balances[address] = balance = GetFromState(_stateProvider.GetBalance, address, UInt256.Zero);
+                    balances[address] = balance = GetFromState(_stateReader.GetBalance, address, UInt256.Zero);
                 }
 
                 return balance;

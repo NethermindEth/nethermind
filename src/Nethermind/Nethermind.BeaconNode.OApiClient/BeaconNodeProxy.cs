@@ -138,20 +138,20 @@ namespace Nethermind.BeaconNode.OApiClient
             BeaconNode.OApiClient.BeaconBlock oapiBeaconBlock = result!;
             Core2.Containers.BeaconBlock beaconBlock = new Core2.Containers.BeaconBlock(
                 new Slot((ulong) oapiBeaconBlock.Slot),
-                new Hash32(Bytes.FromHexString(oapiBeaconBlock.Parent_root)),
-                new Hash32(Bytes.FromHexString(oapiBeaconBlock.State_root)),
+                new Root(Bytes.FromHexString(oapiBeaconBlock.Parent_root)),
+                new Root(Bytes.FromHexString(oapiBeaconBlock.State_root)),
                 new Core2.Containers.BeaconBlockBody(
                     new BlsSignature(oapiBeaconBlock.Body.Randao_reveal),
                     new Eth1Data(
-                        new Hash32(oapiBeaconBlock.Body.Eth1_data.Deposit_root),
+                        new Root(oapiBeaconBlock.Body.Eth1_data.Deposit_root),
                         (ulong) oapiBeaconBlock.Body.Eth1_data.Deposit_count,
-                        new Hash32(oapiBeaconBlock.Body.Eth1_data.Block_hash)
+                        new Bytes32(oapiBeaconBlock.Body.Eth1_data.Block_hash)
                     ),
                     new Bytes32(oapiBeaconBlock.Body.Graffiti),
                     oapiBeaconBlock.Body.Proposer_slashings.Select(x => new ProposerSlashing(
                         new ValidatorIndex((ulong) x.Proposer_index),
-                        MapBeaconBlockHeader(x.Header_1),
-                        MapBeaconBlockHeader(x.Header_2)
+                        new SignedBeaconBlockHeader(MapBeaconBlockHeader(x.Header_1), BlsSignature.Zero),
+                        new SignedBeaconBlockHeader(MapBeaconBlockHeader(x.Header_2), BlsSignature.Zero)
                     )),
                     oapiBeaconBlock.Body.Attester_slashings.Select(x => new AttesterSlashing(
                         MapIndexedAttestation(x.Attestation_1),
@@ -166,51 +166,52 @@ namespace Nethermind.BeaconNode.OApiClient
                     ),
                     oapiBeaconBlock.Body.Deposits.Select(x =>
                         new Core2.Containers.Deposit(
-                            x.Proof.Select(y => new Hash32(y)),
+                            x.Proof.Select(y => new Bytes32(y)),
                             new DepositData(
                                 new BlsPublicKey(x.Data.Pubkey),
-                                new Hash32(x.Data.Withdrawal_credentials),
+                                new Bytes32(x.Data.Withdrawal_credentials),
                                 new Gwei((ulong) x.Data.Amount),
                                 new BlsSignature(x.Data.Signature)
                             )
                         )
                     ),
                     oapiBeaconBlock.Body.Voluntary_exits.Select(x =>
+                        new SignedVoluntaryExit(
                         new VoluntaryExit(
-                            new Epoch((ulong) x.Epoch),
-                            new ValidatorIndex((ulong) x.Validator_index),
-                            new BlsSignature((x.Signature))
+                                new Epoch((ulong) x.Epoch),
+                                new ValidatorIndex((ulong) x.Validator_index)
+                            ),
+                            BlsSignature.Zero
                         )
                     )
-                ),
-                BlsSignature.Empty
+                )
             );
 
             return beaconBlock;
         }
 
-        public async Task<bool> PublishBlockAsync(Core2.Containers.BeaconBlock block, CancellationToken cancellationToken)
-        { 
+        public async Task<bool> PublishBlockAsync(Core2.Crypto.SignedBeaconBlock signedBlock, CancellationToken cancellationToken)
+        {
+            var block = signedBlock.Message;
             BeaconNode.OApiClient.BeaconBlock data = new BeaconNode.OApiClient.BeaconBlock()
             {
                 Slot = block.Slot,
                 Parent_root = block.ParentRoot.ToString(),
                 State_root = block.StateRoot.ToString(),
-                Signature = block.Signature.ToString(),
                 Body = new BeaconNode.OApiClient.BeaconBlockBody()
                 {
                     Randao_reveal = block.Body!.RandaoReveal.AsSpan().ToArray(),
                     Eth1_data = new Eth1_data()
                     {
-                        Block_hash = block.Body.Eth1Data.BlockHash.Bytes,
+                        Block_hash = block.Body.Eth1Data.BlockHash.AsSpan().ToArray(),
                         Deposit_count = block.Body.Eth1Data.DepositCount,
-                        Deposit_root = block.Body.Eth1Data.DepositRoot.Bytes 
+                        Deposit_root = block.Body.Eth1Data.DepositRoot.AsSpan().ToArray() 
                     },
                     Graffiti = block.Body.Graffiti.AsSpan().ToArray(),
                     Proposer_slashings = block.Body.ProposerSlashings.Select(x => new Proposer_slashings()
                     {
-                        Header_1 = MapBeaconBlockHeader(x.Header1),
-                        Header_2 = MapBeaconBlockHeader(x.Header2),
+                        Header_1 = MapBeaconBlockHeader(x.SignedHeader1.Message),
+                        Header_2 = MapBeaconBlockHeader(x.SignedHeader2.Message),
                         Proposer_index = x.ProposerIndex
                     }).ToList(),
                     Attester_slashings = block.Body.AttesterSlashings.Select(x => new Attester_slashings()
@@ -227,20 +228,20 @@ namespace Nethermind.BeaconNode.OApiClient
                     }).ToList(),
                     Voluntary_exits = block.Body.VoluntaryExits.Select(x => new Voluntary_exits()
                     {
-                        Validator_index = x.ValidatorIndex,
-                        Epoch = x.Epoch,
+                        Validator_index = x.Message.ValidatorIndex,
+                        Epoch = x.Message.Epoch,
                         Signature = x.Signature.Bytes
                     }).ToList(),
                     Deposits = block.Body.Deposits.Select((x, index) => new Deposits()
                     {
                         Index = (ulong)index,
-                        Proof = x.Proof.Select(y => y.Bytes).ToList(),
+                        Proof = x.Proof.Select(y => y.AsSpan().ToArray()).ToList(),
                         Data = new Data()
                         {
                             Amount = x.Data.Amount,
                             Pubkey = x.Data.PublicKey.Bytes,
                             Signature = x.Data.Signature.Bytes,
-                            Withdrawal_credentials = x.Data.WithdrawalCredentials.Bytes
+                            Withdrawal_credentials = x.Data.WithdrawalCredentials.AsSpan().ToArray()
                         }
                     }).ToList(),
                 }
@@ -248,7 +249,7 @@ namespace Nethermind.BeaconNode.OApiClient
             
             await ClientOperationWithRetry(async (oapiClient, innerCancellationToken) =>
             {
-                await oapiClient.Block2Async(data, innerCancellationToken).ConfigureAwait(false);
+                await oapiClient.Block2Async(data, signedBlock.Signature, innerCancellationToken).ConfigureAwait(false);
             }, cancellationToken).ConfigureAwait(false);
 
             // TODO: Parse 202 result separate from 200 result
@@ -343,14 +344,14 @@ namespace Nethermind.BeaconNode.OApiClient
             return new Core2.Containers.AttestationData(
                 Slot.None,
                 CommitteeIndex.None, 
-                new Hash32(attestationData.Beacon_block_root), 
+                new Root(attestationData.Beacon_block_root), 
                 new Checkpoint(
                     new Epoch((ulong)attestationData.Source_epoch), 
-                    new Hash32(attestationData.Source_root) 
+                    new Root(attestationData.Source_root) 
                 ),
                 new Checkpoint(
                     new Epoch((ulong)attestationData.Target_epoch), 
-                    new Hash32(attestationData.Target_root) 
+                    new Root(attestationData.Target_root) 
                 )
             );
         }
@@ -359,10 +360,9 @@ namespace Nethermind.BeaconNode.OApiClient
         {
             return new Core2.Containers.BeaconBlockHeader(
                 new Slot((ulong)value.Slot),
-                new Hash32(Bytes.FromHexString(value.Parent_root)), 
-                new Hash32(Bytes.FromHexString(value.State_root)), 
-                new Hash32(Bytes.FromHexString(value.Body_root)),
-                new BlsSignature(Bytes.FromHexString(value.Signature))
+                new Root(Bytes.FromHexString(value.Parent_root)), 
+                new Root(Bytes.FromHexString(value.State_root)), 
+                new Root(Bytes.FromHexString(value.Body_root))
             );
         }
      
@@ -382,12 +382,12 @@ namespace Nethermind.BeaconNode.OApiClient
             // NOTE: This mapping isn't right, spec changes (sharding)
             return new BeaconNode.OApiClient.AttestationData()
             {
-                Beacon_block_root = attestationData.BeaconBlockRoot.Bytes,
+                Beacon_block_root = attestationData.BeaconBlockRoot.AsSpan().ToArray(),
                 Crosslink = new BeaconNode.OApiClient.Crosslink(),
                 Source_epoch = attestationData.Source.Epoch,
-                Source_root = attestationData.Source.Root.Bytes,
+                Source_root = attestationData.Source.Root.AsSpan().ToArray(),
                 Target_epoch =  attestationData.Target.Epoch,
-                Target_root = attestationData.Target.Root.Bytes
+                Target_root = attestationData.Target.Root.AsSpan().ToArray()
             };
         }
 
@@ -398,8 +398,7 @@ namespace Nethermind.BeaconNode.OApiClient
                 Body_root = value.BodyRoot.ToString(),
                 Parent_root = value.ParentRoot.ToString(),
                 Slot = value.Slot,
-                State_root = value.StateRoot.ToString(),
-                Signature = value.Signature.ToString()
+                State_root = value.StateRoot.ToString()
             };
         }
     }

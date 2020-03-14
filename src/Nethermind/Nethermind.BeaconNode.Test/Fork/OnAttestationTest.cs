@@ -26,6 +26,7 @@ using Nethermind.BeaconNode.Storage;
 using Nethermind.BeaconNode.Test.Helpers;
 using Nethermind.Core2;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Shouldly;
 namespace Nethermind.BeaconNode.Test.Fork
@@ -40,29 +41,31 @@ namespace Nethermind.BeaconNode.Test.Fork
             IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
+            ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
             InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
 
             // Initialization
-            IStore store = forkChoice.GetGenesisStore(state);
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
             ulong time = store.Time + timeParameters.SecondsPerSlot * 2;
             await forkChoice.OnTickAsync(store, time);
 
-            BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
-            TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
+            BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, BlsSignature.Zero);
+            SignedBeaconBlock signedBlock = TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
 
             // Store block in store
-            await forkChoice.OnBlockAsync(store, block);
+            await forkChoice.OnBlockAsync(store, signedBlock);
 
             Attestation attestation = TestAttestation.GetValidAttestation(testServiceProvider, state, block.Slot, CommitteeIndex.None, signed: true);
 
-            attestation.Data.Target.Epoch.ShouldBe(initialValues.GenesisEpoch);
+            attestation.Data.Target.Epoch.ShouldBe(chainConstants.GenesisEpoch);
 
             BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
             Slot currentSlot = forkChoice.GetCurrentSlot(store);
             Epoch currentEpoch = beaconChainUtility.ComputeEpochAtSlot(currentSlot);
-            currentEpoch.ShouldBe(initialValues.GenesisEpoch);
+            currentEpoch.ShouldBe(chainConstants.GenesisEpoch);
 
             await RunOnAttestation(testServiceProvider, state, store, attestation, expectValid: true);
         }
@@ -74,29 +77,31 @@ namespace Nethermind.BeaconNode.Test.Fork
             IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
+            ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
             InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
 
             // Initialization
-            IStore store = forkChoice.GetGenesisStore(state);
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
             ulong time = store.Time + timeParameters.SecondsPerSlot * (ulong)timeParameters.SlotsPerEpoch;
             await forkChoice.OnTickAsync(store, time);
 
-            BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
-            TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
+            BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, BlsSignature.Zero);
+            SignedBeaconBlock signedBlock = TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
 
             // Store block in store
-            await forkChoice.OnBlockAsync(store, block);
+            await forkChoice.OnBlockAsync(store, signedBlock);
 
             Attestation attestation = TestAttestation.GetValidAttestation(testServiceProvider, state, block.Slot, CommitteeIndex.None, signed: true);
 
-            attestation.Data.Target.Epoch.ShouldBe(initialValues.GenesisEpoch);
+            attestation.Data.Target.Epoch.ShouldBe(chainConstants.GenesisEpoch);
 
             BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
             Slot currentSlot = forkChoice.GetCurrentSlot(store);
             Epoch currentEpoch = beaconChainUtility.ComputeEpochAtSlot(currentSlot);
-            currentEpoch.ShouldBe(initialValues.GenesisEpoch + Epoch.One);
+            currentEpoch.ShouldBe(chainConstants.GenesisEpoch + Epoch.One);
 
             await RunOnAttestation(testServiceProvider, state, store, attestation, expectValid: true);
         }
@@ -108,31 +113,33 @@ namespace Nethermind.BeaconNode.Test.Fork
             IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
+            ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
             InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
 
             // Initialization
-            IStore store = forkChoice.GetGenesisStore(state);
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
 
             // move time forward 2 epochs
             ulong time = store.Time + 2 * timeParameters.SecondsPerSlot * (ulong)timeParameters.SlotsPerEpoch;
             await forkChoice.OnTickAsync(store, time);
 
             // create and store block from 3 epochs ago
-            BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
-            TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
-            await forkChoice.OnBlockAsync(store, block);
+            BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, BlsSignature.Zero);
+            SignedBeaconBlock signedBlock = TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
+            await forkChoice.OnBlockAsync(store, signedBlock);
 
             // create attestation for past block
             Attestation attestation = TestAttestation.GetValidAttestation(testServiceProvider, state, state.Slot, CommitteeIndex.None, signed: true);
 
-            attestation.Data.Target.Epoch.ShouldBe(initialValues.GenesisEpoch);
+            attestation.Data.Target.Epoch.ShouldBe(chainConstants.GenesisEpoch);
 
             BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
             Slot currentSlot = forkChoice.GetCurrentSlot(store);
             Epoch currentEpoch = beaconChainUtility.ComputeEpochAtSlot(currentSlot);
-            currentEpoch.ShouldBe((Epoch)(initialValues.GenesisEpoch + 2UL));
+            currentEpoch.ShouldBe((Epoch)(chainConstants.GenesisEpoch + 2UL));
 
             await RunOnAttestation(testServiceProvider, state, store, attestation, expectValid: false);
         }

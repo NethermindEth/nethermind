@@ -26,7 +26,7 @@ namespace Nethermind.Ssz
     {
         public static int HistoricalBatchLength()
         {
-            return 2 * SlotsPerHistoricalRoot * Ssz.Hash32Length;
+            return 2 * SlotsPerHistoricalRoot * Ssz.RootLength;
         }
 
         public static void Encode(Span<byte> span, HistoricalBatch container)
@@ -44,8 +44,8 @@ namespace Nethermind.Ssz
         {
             if (span.Length != Ssz.HistoricalBatchLength()) ThrowSourceLength<HistoricalBatch>(span.Length, Ssz.HistoricalBatchLength());
 
-            Hash32[] blockRoots = DecodeHashes(span.Slice(0, Ssz.HistoricalBatchLength() / 2));
-            Hash32[] stateRoots = DecodeHashes(span.Slice(Ssz.HistoricalBatchLength() / 2));
+            Root[] blockRoots = DecodeRoots(span.Slice(0, Ssz.HistoricalBatchLength() / 2));
+            Root[] stateRoots = DecodeRoots(span.Slice(Ssz.HistoricalBatchLength() / 2));
             HistoricalBatch container = new HistoricalBatch(blockRoots, stateRoots);
             return container;
         }

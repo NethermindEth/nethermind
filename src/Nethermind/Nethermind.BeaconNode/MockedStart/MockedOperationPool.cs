@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.BeaconNode.Services;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 
 namespace Nethermind.BeaconNode.MockedStart
 {
@@ -41,7 +42,7 @@ namespace Nethermind.BeaconNode.MockedStart
             yield break;
         }
         
-        public async IAsyncEnumerable<VoluntaryExit> GetVoluntaryExits(ulong maximum)
+        public async IAsyncEnumerable<SignedVoluntaryExit> GetSignedVoluntaryExits(ulong maximum)
         {
             await Task.CompletedTask;
             yield break;

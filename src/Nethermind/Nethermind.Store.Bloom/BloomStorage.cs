@@ -56,7 +56,7 @@ namespace Nethermind.Store.Bloom
             }
         }
 
-        private long MaxBlockNumber
+        public long MaxBlockNumber
         {
             get => _maxBlockNumber;
             set
@@ -401,7 +401,11 @@ namespace Nethermind.Store.Bloom
             {
                 if (_currentLevelRead)
                 {
-                    _currentPosition += _storageLevels[CurrentLevel].Storage.LevelElementSize;
+                    var currentStorageLevel = _storageLevels[CurrentLevel].Storage;
+                    _currentPosition += _currentPosition == _fromBlock
+                        ? currentStorageLevel.LevelElementSize - _currentPosition % currentStorageLevel.LevelElementSize
+                        : currentStorageLevel.LevelElementSize;
+                    
                     while (CurrentLevel > 0 && _currentPosition % _storageLevels[CurrentLevel - 1].Storage.LevelElementSize == 0)
                     {
                         CurrentLevel--;
@@ -426,8 +430,7 @@ namespace Nethermind.Store.Bloom
                     else
                     {
                         var storageLevel = _storageLevels[CurrentLevel];
-                        storageLevel.Reader.Read(storageLevel.Storage.GetBucket(_currentPosition), _bloom.Bytes);
-                        return _bloom;
+                        return storageLevel.Reader.Read(storageLevel.Storage.GetBucket(_currentPosition), _bloom.Bytes) == Core.Bloom.ByteLength ? _bloom : Core.Bloom.Empty;
                     }
                 }
             }

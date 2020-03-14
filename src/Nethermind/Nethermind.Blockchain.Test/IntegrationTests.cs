@@ -70,6 +70,7 @@ namespace Nethermind.Blockchain.Test
             StateDb stateDb = new StateDb();
             StateProvider stateProvider = new StateProvider(stateDb, codeDb, logManager);
             StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, logManager);
+            StateReader stateReader = new StateReader(stateDb, codeDb, logManager);
             
             /* store & validation */
 
@@ -122,7 +123,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(chainSpec.Genesis);
             blockchainProcessor.Start();
 
-            var transactionSelector = new PendingTxSelector(txPool, stateProvider, logManager);
+            var transactionSelector = new PendingTxSelector(txPool, stateReader, logManager);
             MinedBlockProducer minedBlockProducer = new MinedBlockProducer(transactionSelector, blockchainProcessor, sealer, blockTree, blockchainProcessor, stateProvider, timestamper, LimboLogs.Instance, difficultyCalculator);
             minedBlockProducer.Start();
 

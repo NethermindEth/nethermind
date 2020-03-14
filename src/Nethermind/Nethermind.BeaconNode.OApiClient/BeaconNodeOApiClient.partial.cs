@@ -14,6 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Core2.Crypto;
+
 namespace Nethermind.BeaconNode.OApiClient
 {
     public partial class BeaconNodeOApiClient : IBeaconNodeOApiClient
@@ -21,6 +25,11 @@ namespace Nethermind.BeaconNode.OApiClient
         partial void UpdateJsonSerializerSettings(Newtonsoft.Json.JsonSerializerSettings settings)
         {
             settings.Converters.Add(new PrefixedHexByteArrayNewtonsoftJsonConverter());
+        }
+
+        public Task Block2Async(BeaconBlock body, BlsSignature signature, CancellationToken cancellationToken)
+        {
+            throw new System.NotImplementedException();
         }
     }
 }

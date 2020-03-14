@@ -22,9 +22,12 @@ namespace Nethermind.Core2.Containers
 {
     public class Validator
     {
+        public static readonly Validator Zero = new Validator(BlsPublicKey.Zero, Bytes32.Zero, Gwei.Zero, false,
+            Epoch.Zero, Epoch.Zero, Epoch.Zero, Epoch.Zero);
+
         public Validator(
             BlsPublicKey publicKey,
-            Hash32 withdrawalCredentials,
+            Bytes32 withdrawalCredentials,
             Gwei effectiveBalance,
             bool isSlashed,
             Epoch activationEligibilityEpoch,
@@ -60,7 +63,7 @@ namespace Nethermind.Core2.Containers
         public Epoch WithdrawableEpoch { get; private set; }
 
         /// <summary>Gets the public key commitment for withdrawals and transfers</summary>
-        public Hash32 WithdrawalCredentials { get; }
+        public Bytes32 WithdrawalCredentials { get; }
 
         public static Validator Clone(Validator other)
         {

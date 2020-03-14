@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 
@@ -22,37 +23,53 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
-        public const int BeaconBlockDynamicOffset = Ssz.SlotLength + 2 * Ssz.Hash32Length + sizeof(uint) + Ssz.BlsSignatureLength;
+        private const int BeaconBlockDynamicOffset = Ssz.SlotLength + 2 * Ssz.RootLength + sizeof(uint);
 
-        public static int BeaconBlockLength(BeaconBlock? container)
+        public static int BeaconBlockLength(BeaconBlock container)
         {
-            return container is null ? 0 : (BeaconBlockDynamicOffset + Ssz.BeaconBlockBodyLength(container.Body));
-        }
-
-        public static void Encode(Span<byte> span, BeaconBlock container)
-        {
-            if (span.Length != Ssz.BeaconBlockLength(container)) ThrowTargetLength<BeaconBlock>(span.Length, Ssz.BeaconBlockLength(container));
-            int offset = 0;
-            Encode(span, container.Slot, ref offset);
-            Encode(span, container.ParentRoot, ref offset);
-            Encode(span, container.StateRoot, ref offset);
-            Encode(span, Ssz.BeaconBlockDynamicOffset, ref offset);
-            Encode(span, container.Signature, ref offset);
-            Encode(span.Slice(offset), container.Body);
+            return BeaconBlockDynamicOffset + Ssz.BeaconBlockBodyLength(container.Body);
         }
 
         public static BeaconBlock DecodeBeaconBlock(ReadOnlySpan<byte> span)
         {
             int offset = 0;
+            return DecodeBeaconBlock(span, ref offset);
+        }
+
+        public static void Encode(Span<byte> span, BeaconBlock container)
+        {
+            if (span.Length != Ssz.BeaconBlockLength(container))
+                ThrowTargetLength<BeaconBlock>(span.Length, Ssz.BeaconBlockLength(container));
+            int offset = 0;
+            Encode(span, container, ref offset);
+        }
+
+        //[MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static BeaconBlock DecodeBeaconBlock(ReadOnlySpan<byte> span, ref int offset)
+        {
             var slot = DecodeSlot(span, ref offset);
-            var parentRoot = DecodeSha256(span, ref offset);
-            var stateRoot = DecodeSha256(span, ref offset);
+            var parentRoot = DecodeRoot(span, ref offset);
+            var stateRoot = DecodeRoot(span, ref offset);
             DecodeDynamicOffset(span, ref offset, out int dynamicOffset1);
-            var signature = DecodeBlsSignature(span, ref offset);
             var body = DecodeBeaconBlockBody(span.Slice(dynamicOffset1));
             
-            BeaconBlock beaconBlock = new BeaconBlock(slot, parentRoot, stateRoot, body, signature);
+            BeaconBlock beaconBlock = new BeaconBlock(slot, parentRoot, stateRoot, body);
             return beaconBlock;
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void Encode(Span<byte> span, BeaconBlock container, ref int offset)
+        {
+            // Semantics of Encode = write container into span at offset, then increase offset by the bytes written
+            
+            // Static
+            Encode(span, container.Slot, ref offset);
+            Encode(span, container.ParentRoot, ref offset);
+            Encode(span, container.StateRoot, ref offset);
+            Encode(span, Ssz.BeaconBlockDynamicOffset, ref offset);
+            
+            // Variable
+            Encode(span, container.Body, ref offset);
         }
     }
 }
