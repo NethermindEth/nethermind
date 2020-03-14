@@ -180,7 +180,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     {
                         Span<byte> txRlp = rlpStream.PeekNextItem();
                         Keccak txHash = Keccak.Compute(txRlp);
-                        if (_txPool.IsKnownTransaction(txHash))
+                        if (!_txPool.IsKnownTransaction(txHash))
                         {
                             Transaction transaction = _txDecoder.Decode(rlpStream);
                             HandleIncomingTransaction(transaction);
