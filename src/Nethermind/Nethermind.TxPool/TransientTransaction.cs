@@ -15,7 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.TxPool
 {
@@ -24,9 +26,12 @@ namespace Nethermind.TxPool
         public Keccak Hash { get; set; }
         public byte[] Raw { get; set; }
         
+        public PublicKey DeliveredBy { get; set; }
+        public UInt256 Timestamp { get; set; }
+        
         public void Dispose()
         {
-            // deallocate from ArrayPool - Raw
+            ArrayPool<byte>.Shared.Return(Raw);
         }
     }
 }

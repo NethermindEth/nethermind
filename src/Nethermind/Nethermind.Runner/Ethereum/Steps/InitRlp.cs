@@ -22,6 +22,7 @@ using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Network;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Serialization.Rlp;
+using Nethermind.TxPool;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -36,6 +37,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         public virtual Task Execute()
         {
             Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(NetworkNodeDecoder)));
+            Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(TransientTransactionDecoder)));
             return Task.CompletedTask;
         }
     }

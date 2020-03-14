@@ -195,9 +195,6 @@ namespace Nethermind.TxPool
         
         public AddTxResult AddTransaction(TransientTransaction tx, long blockNumber)
         {
-            // check if already known (in memory)
-            // check if already known (in storage) - even create an LRU cache
-            // recover address easily (from full RLP)
             if (_transactions.TryGetValue(tx.Hash, out _))
             {
                 Metrics.PendingTransactionsKnown++;
@@ -205,6 +202,9 @@ namespace Nethermind.TxPool
             }
 
             Transaction fromRaw = _decoder.Decode(tx.Raw.AsRlpStream());
+            fromRaw.DeliveredBy = tx.DeliveredBy;
+            fromRaw.Timestamp = tx.Timestamp;
+
             return AddTransaction(fromRaw, blockNumber, TxHandlingOptions.None);
         }
         

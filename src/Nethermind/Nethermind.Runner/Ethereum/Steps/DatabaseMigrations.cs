@@ -29,6 +29,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Runner.Ethereum.Context;
+using Nethermind.State.Repositories;
 using Nethermind.Store.Bloom;
 using ILogger = Nethermind.Logging.ILogger;
 using Timer = System.Timers.Timer;
@@ -162,6 +163,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (_context.BloomStorage == null) throw new StepDependencyException(nameof(_context.BloomStorage));
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
+            if (_context.ChainLevelInfoRepository == null) throw new StepDependencyException(nameof(_context.ChainLevelInfoRepository));
             
             IBlockTree blockTree = _context.BlockTree;
             IBloomStorage storage = _context.BloomStorage;
@@ -170,7 +172,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             long from = synced;
             _migrateCount = to + 1;
             _averages = _context.BloomStorage.Averages.ToArray();
-            var chainLevelInfoRepository = _context.ChainLevelInfoRepository;
+            IChainLevelInfoRepository? chainLevelInfoRepository = _context.ChainLevelInfoRepository;
 
             _progress.Update(synced);
 
@@ -195,9 +197,10 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 IEnumerable<BlockHeader> GetHeadersForMigration()
                 {
+                    if (_context.ChainLevelInfoRepository == null) throw new StepDependencyException(nameof(_context.ChainLevelInfoRepository));
                     bool TryGetMainChainBlockHashFromLevel(long number, out Keccak? blockHash)
                     {
-                        using var batch = chainLevelInfoRepository.StartBatch();
+                        using BatchWrite batch = chainLevelInfoRepository.StartBatch();
                         var level = chainLevelInfoRepository.LoadLevel(number);
                         if (level != null)
                         {
@@ -229,7 +232,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                             yield break;
                         }
 
-                        var level = chainLevelInfoRepository.LoadLevel(i);
                         if (TryGetMainChainBlockHashFromLevel(i, out var blockHash))
                         {
                             var header = blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);

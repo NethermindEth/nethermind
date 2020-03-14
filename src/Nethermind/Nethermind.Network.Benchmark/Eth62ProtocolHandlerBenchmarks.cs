@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain.Synchronization;
@@ -28,6 +29,7 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.Stats;
@@ -39,7 +41,7 @@ using NSubstitute;
 namespace Nethermind.Network.Benchmarks
 {
     [MemoryDiagnoser]
-    [ShortRunJob]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class Eth62ProtocolHandlerBenchmarks
     {
         private Eth62ProtocolHandler _handler;
@@ -112,7 +114,9 @@ namespace Nethermind.Network.Benchmarks
             var node = session.Node;
             Console.WriteLine(node.Host); // just to invoke node getter
             
+            Rlp.RegisterDecoders(typeof(TransientTransaction).Assembly);
             _ser = new MessageSerializationService();
+            _ser.Register(new TransientTransactionsMessageSerializer());
             _ser.Register(new TransactionsMessageSerializer());
             _ser.Register(new StatusMessageSerializer());
             NodeStatsManager stats = new NodeStatsManager(new StatsConfig(), logManager);
