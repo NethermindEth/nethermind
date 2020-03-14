@@ -17,6 +17,8 @@
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -24,9 +26,12 @@ namespace Nethermind.Serialization.Rlp
     {
         private HeaderDecoder _headerDecoder = new HeaderDecoder();
         private TransactionDecoder _txDecoder = new TransactionDecoder();
-        
+
+        private LruCache<Keccak, Block> _decoderCache = new LruCache<Keccak, Block>(8);
+
         public Block Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            bool useCache = (rlpBehaviors & RlpBehaviors.UseCache) == RlpBehaviors.UseCache;
             if (rlpStream.IsNextItemNull())
             {
                 rlpStream.ReadByte();
@@ -36,24 +41,43 @@ namespace Nethermind.Serialization.Rlp
             int sequenceLength = rlpStream.ReadSequenceLength();
             int blockCheck = rlpStream.Position + sequenceLength;
 
-            BlockHeader header = Rlp.Decode<BlockHeader>(rlpStream);
+            BlockHeader header = Rlp.Decode<BlockHeader>(rlpStream, rlpBehaviors);
+            Block block = useCache
+                ? _decoderCache.Get(header.Hash)
+                : null;
+            List<Transaction> transactions = null;
+            List<BlockHeader> ommerHeaders = null;
 
             int transactionsSequenceLength = rlpStream.ReadSequenceLength();
             int transactionsCheck = rlpStream.Position + transactionsSequenceLength;
-            List<Transaction> transactions = new List<Transaction>();
-            while (rlpStream.Position < transactionsCheck)
+            if (block != null)
             {
-                transactions.Add(Rlp.Decode<Transaction>(rlpStream));
+                rlpStream.Position += transactionsSequenceLength;
+            }
+            else
+            {
+                transactions = new List<Transaction>();
+                while (rlpStream.Position < transactionsCheck)
+                {
+                    transactions.Add(Rlp.Decode<Transaction>(rlpStream));
+                }
             }
 
             rlpStream.Check(transactionsCheck);
 
             int ommersSequenceLength = rlpStream.ReadSequenceLength();
             int ommersCheck = rlpStream.Position + ommersSequenceLength;
-            List<BlockHeader> ommerHeaders = new List<BlockHeader>();
-            while (rlpStream.Position < ommersCheck)
+            if (block != null)
             {
-                ommerHeaders.Add(Rlp.Decode<BlockHeader>(rlpStream, rlpBehaviors));
+                rlpStream.Position += ommersSequenceLength;
+            }
+            else
+            {
+                ommerHeaders = new List<BlockHeader>();
+                while (rlpStream.Position < ommersCheck)
+                {
+                    ommerHeaders.Add(Rlp.Decode<BlockHeader>(rlpStream, rlpBehaviors));
+                }
             }
 
             rlpStream.Check(ommersCheck);
@@ -63,13 +87,15 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Check(blockCheck);
             }
 
-            return new Block(header, transactions, ommerHeaders);
+            block ??= new Block(header, transactions, ommerHeaders);
+            if (useCache) _decoderCache.Set(header.Hash, block);
+            return block;
         }
 
         private (int Total, int Txs, int Ommers) GetContentLength(Block item, RlpBehaviors rlpBehaviors)
-        {   
+        {
             int contentLength = _headerDecoder.GetLength(item.Header, rlpBehaviors);
-            
+
             int txLength = GetTxLength(item, rlpBehaviors);
             contentLength += Rlp.GetSequenceRlpLength(txLength);
 
@@ -107,7 +133,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 return 1;
             }
-            
+
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
         }
 
@@ -117,12 +143,12 @@ namespace Nethermind.Serialization.Rlp
             {
                 return Rlp.OfEmptySequence;
             }
-            
+
             RlpStream rlpStream = new RlpStream(GetLength(item, rlpBehaviors));
             Encode(rlpStream, item, rlpBehaviors);
             return new Rlp(rlpStream.Data);
         }
-        
+
         public void Encode(RlpStream stream, Block item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
@@ -130,7 +156,7 @@ namespace Nethermind.Serialization.Rlp
                 stream.EncodeNullObject();
                 return;
             }
-            
+
             (int contentLength, int txsLength, int ommersLength) = GetContentLength(item, rlpBehaviors);
             stream.StartSequence(contentLength);
             stream.Encode(item.Header);
@@ -139,7 +165,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 stream.Encode(item.Transactions[i]);
             }
-            
+
             stream.StartSequence(ommersLength);
             for (int i = 0; i < item.Ommers.Length; i++)
             {

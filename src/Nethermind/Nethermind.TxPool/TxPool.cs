@@ -26,7 +26,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.TxPool.Collections;
 using Timer = System.Timers.Timer;
@@ -88,11 +87,6 @@ namespace Nethermind.TxPool
         private readonly ITimestamper _timestamper;
 
         /// <summary>
-        /// Long term storage for pending transactions.
-        /// </summary>
-        private readonly ITxStorage _txStorage;
-
-        /// <summary>
         /// Defines which of the pending transactions can be removed and should not be broadcast or included in blocks any more. 
         /// </summary>
         private readonly IPendingTxThresholdValidator _pendingTxThresholdValidator;
@@ -137,9 +131,9 @@ namespace Nethermind.TxPool
             IStateProvider stateProvider,
             ILogManager logManager)
         {
+            // txStorage not used any more
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _txStorage = txStorage ?? throw new ArgumentNullException(nameof(txStorage));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
@@ -230,13 +224,6 @@ namespace Nethermind.TxPool
                 return AddTxResult.AlreadyKnown;
             }
 
-            if (_txStorage.Get(tx.Hash) != null)
-            {
-                // If transaction is a bit older and already known then it may be stored in the persistent storage.
-                Metrics.PendingTransactionsKnown++;
-                return AddTxResult.AlreadyKnown;
-            }
-            
             /* We have encountered multiple transactions that do not resolve sender address properly.
              * We need to investigate what these txs are and why the sender address is resolved to null.
              * Then we need to decide whether we really want to broadcast them.
@@ -248,9 +235,7 @@ namespace Nethermind.TxPool
             }
 
             HandleOwnTransaction(tx, isPersistentBroadcast);
-
             NotifySelectedPeers(tx);
-            FilterAndStoreTx(tx, blockNumber);
             NewPending?.Invoke(this, new TxEventArgs(tx));
             return AddTxResult.Added;
         }
@@ -353,18 +338,12 @@ namespace Nethermind.TxPool
                 }
             }
 
-            _txStorage.Delete(hash);
             if (_logger.IsTrace) _logger.Trace($"Deleted a transaction: {hash}");
         }
 
         public bool TryGetPendingTransaction(Keccak hash, out Transaction transaction)
         {
-            if (!_transactions.TryGetValue(hash, out transaction))
-            {
-                transaction = _txStorage.Get(hash);
-            }
-
-            return transaction != null;
+            return _transactions.TryGetValue(hash, out transaction);
         }
 
         // TODO: Ensure that nonce is always valid in case of sending own transactions from different nodes.
@@ -440,18 +419,6 @@ namespace Nethermind.TxPool
 
                 Notify(peer, tx);
             }
-        }
-
-        private void FilterAndStoreTx(Transaction tx, long blockNumber)
-        {
-            var filters = _filters.Values;
-            if (filters.Any(filter => !filter.IsValid(tx)))
-            {
-                return;
-            }
-
-            _txStorage.Add(tx, blockNumber);
-            if (_logger.IsTrace) _logger.Trace($"Added a transaction: {tx.Hash}");
         }
 
         private void OwnTimerOnElapsed(object sender, ElapsedEventArgs e)

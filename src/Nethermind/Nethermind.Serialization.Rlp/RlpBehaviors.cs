@@ -27,6 +27,7 @@ namespace Nethermind.Serialization.Rlp
         Storage = 4,
         Eip658Receipts = 8,
         AllowUnsigned = 16,
-        All = 31
+        UseCache = 32,
+        All = 63
     }
 }

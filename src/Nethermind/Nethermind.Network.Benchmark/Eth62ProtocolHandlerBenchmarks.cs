@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain.Synchronization;
@@ -40,8 +41,8 @@ using NSubstitute;
 namespace Nethermind.Network.Benchmarks
 {
     [MemoryDiagnoser]
-    // [SimpleJob(RuntimeMoniker.NetCoreApp31)]
-    [ShortRunJob]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
+    // [ShortRunJob]
     public class Eth62ProtocolHandlerBenchmarks
     {
         private Eth62ProtocolHandler _handler;
@@ -152,6 +153,15 @@ namespace Nethermind.Network.Benchmarks
         [GlobalCleanup]
         public void Cleanup()
         {
+        }
+
+        [Benchmark]
+        public void CurrentPacketOverhead()
+        {
+            IByteBuffer buf = _ser.ZeroSerialize(_txMsg);
+            _zeroPacket = new ZeroPacket(buf);
+            _zeroPacket.PacketType = buf.ReadByte();
+            _zeroPacket.PacketType = Eth62MessageCode.Transactions;
         }
 
         [Benchmark(Baseline = true)]
