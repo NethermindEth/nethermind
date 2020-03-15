@@ -27,6 +27,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
+using DotNetty.Common.Utilities;
 using Nethermind.Config;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -294,7 +295,7 @@ namespace Nethermind.Network
                     Interlocked.Exchange(ref connectionRounds, 0);
 
                     SelectAndRankCandidates();
-                    IReadOnlyCollection<Peer> remainingCandidates = _currentSelection.Candidates;
+                    List<Peer> remainingCandidates = _currentSelection.Candidates;
                     if (!remainingCandidates.Any())
                     {
                         continue;
@@ -305,6 +306,7 @@ namespace Nethermind.Network
                         break;
                     }
 
+                    int previousStartIndex = 0;
                     while (true)
                     {
                         if (_cancellationTokenSource.IsCancellationRequested)
@@ -312,15 +314,13 @@ namespace Nethermind.Network
                             break;
                         }
 
-                        int nodesToTry = Math.Min(remainingCandidates.Count, AvailableActivePeersCount);
+                        int startIndex = previousStartIndex;
+                        int nodesToTry = Math.Min(remainingCandidates.Count - startIndex, AvailableActivePeersCount);
+                        previousStartIndex += nodesToTry;
                         if (nodesToTry == 0)
                         {
                             break;
                         }
-
-                        IEnumerable<Peer> candidatesToTry = remainingCandidates.Take(nodesToTry)
-                            .Distinct(_distinctPeerComparer);
-                        remainingCandidates = remainingCandidates.Skip(nodesToTry).ToList();
 
                         ActionBlock<Peer> workerBlock = new ActionBlock<Peer>(
                             SetupPeerConnection,
@@ -329,12 +329,12 @@ namespace Nethermind.Network
                                 MaxDegreeOfParallelism = _parallelism,
                                 CancellationToken = _cancellationTokenSource.Token
                             });
-
-                        foreach (Peer candidateToTry in candidatesToTry)
+                        
+                        for (int i = startIndex; i < startIndex + nodesToTry; i++)
                         {
-                            await workerBlock.SendAsync(candidateToTry);
+                            await workerBlock.SendAsync(remainingCandidates[i]);
                         }
-
+                        
                         workerBlock.Complete();
 
                         // Wait for all messages to propagate through the network.
@@ -343,13 +343,13 @@ namespace Nethermind.Network
                         Interlocked.Increment(ref connectionRounds);
                     }
 
-                    if (_logger.IsDebug)
+                    if (_logger.IsTrace)
                     {
                         int activePeersCount = _activePeers.Count;
                         if (activePeersCount != _prevActivePeersCount)
                         {
                             string countersLog = string.Join(", ", _currentSelection.Counters.Select(x => $"{x.Key.ToString()}: {x.Value}"));
-                            _logger.Debug($"RunPeerUpdate | {countersLog}, Incompatible: {GetIncompatibleDesc(_currentSelection.Incompatible)}, EligibleCandidates: {_currentSelection.Candidates.Count()}, " +
+                            _logger.Trace($"RunPeerUpdate | {countersLog}, Incompatible: {GetIncompatibleDesc(_currentSelection.Incompatible)}, EligibleCandidates: {_currentSelection.Candidates.Count()}, " +
                                           $"Tried: {tryCount}, Rounds: {connectionRounds}, Failed initial connect: {failedInitialConnect}, Established initial connect: {newActiveNodes}, " +
                                           $"Current candidate peers: {_candidatePeers.Count}, Current active peers: {_activePeers.Count} " +
                                           $"[InOut: {_activePeers.Count(x => x.Value.OutSession != null && x.Value.InSession != null)} | " +
@@ -1060,7 +1060,7 @@ namespace Nethermind.Network
             NetworkNode[] nonActiveNodes = storedNodes.Where(x => !activeNodeIds.Contains(x.NodeId))
                 .OrderBy(x => x.Reputation).ToArray();
             int countToRemove = storedNodes.Length - _networkConfig.MaxPersistedPeerCount;
-            NetworkNode[] nodesToRemove = nonActiveNodes.Take(countToRemove).ToArray();
+            Span<NetworkNode> nodesToRemove = nonActiveNodes.AsSpan().Slice(0, countToRemove);
             if (nodesToRemove.Length > 0)
             {
                 _peerStorage.RemoveNodes(nodesToRemove);

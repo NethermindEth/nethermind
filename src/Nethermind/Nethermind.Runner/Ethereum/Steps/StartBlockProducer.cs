@@ -37,7 +37,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     public abstract class StartBlockProducer : IStep, ISubsystemStateAware
     {
         private readonly EthereumRunnerContext _context;
-        private ReadOnlyDbProvider _readOnlyDbProvider;
+        private ReadOnlyDbProvider? _readOnlyDbProvider;
 
         public StartBlockProducer(EthereumRunnerContext context)
         {
@@ -69,6 +69,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected BlockProducerContext GetProducerChain()
         {
+            if (_readOnlyDbProvider == null) throw new StepDependencyException(nameof(_readOnlyDbProvider));
             ReadOnlyBlockTree readOnlyBlockTree = new ReadOnlyBlockTree(_context.BlockTree);
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(_readOnlyDbProvider, readOnlyBlockTree, _context.SpecProvider, _context.LogManager);
             BlockProcessor blockProcessor = CreateBlockProcessor(readOnlyTxProcessingEnv, _readOnlyDbProvider);
@@ -85,8 +86,9 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected virtual IPendingTxSelector CreatePendingTxSelector()
         {
+            if (_readOnlyDbProvider == null) throw new StepDependencyException(nameof(_readOnlyDbProvider));
             StateReader reader = new StateReader(_readOnlyDbProvider.StateDb, _readOnlyDbProvider.CodeDb, _context.LogManager);
-            var txSelector = new PendingTxSelector(_context.TxPool, reader, _context.LogManager);
+            PendingTxSelector txSelector = new PendingTxSelector(_context.TxPool, reader, _context.LogManager);
             return txSelector;
         }
 

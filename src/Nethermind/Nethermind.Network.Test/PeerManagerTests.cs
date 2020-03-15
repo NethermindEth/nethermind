@@ -157,7 +157,7 @@ namespace Nethermind.Network.Test
                 _pendingChanges = true;
             }
 
-            public void UpdateNodes(IEnumerable<NetworkNode> nodes)
+            public void UpdateNodes(Span<NetworkNode> nodes)
             {
                 foreach (NetworkNode node in nodes)
                 {
@@ -165,7 +165,7 @@ namespace Nethermind.Network.Test
                 }
             }
 
-            public void RemoveNodes(NetworkNode[] nodes)
+            public void RemoveNodes(Span<NetworkNode> nodes)
             {
                 _pendingChanges = true;
             }
@@ -394,15 +394,15 @@ namespace Nethermind.Network.Test
             }
         }
 
-        private List<NetworkNode> CreateNodes(int count)
+        private NetworkNode[] CreateNodes(int count)
         {
-            var nodes = new List<NetworkNode>();
+            var nodes = new NetworkNode[count];
             for (int i = 0; i < count; i++)
             {
                 var generator = new PrivateKeyGenerator();
-                var enode = GenerateEnode(generator);
+                string enode = GenerateEnode(generator);
                 NetworkNode node = new NetworkNode(enode);
-                nodes.Add(node);
+                nodes[i] = node;
             }
 
             return nodes;

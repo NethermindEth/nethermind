@@ -108,8 +108,9 @@ namespace Nethermind.Network.Discovery
                 while (true)
                 {
                     int count = failRequestCount > 0 ? failRequestCount : _discoveryConfig.Concurrency;
-                    Node[] nodesToSend = tryCandidates.Skip(nodesTriedCount).Take(count).ToArray();
-                    if (!nodesToSend.Any())
+                    count = Math.Min(count, tryCandidates.Length - nodesTriedCount);
+                    Node[] nodesToSend = count == 0 ? Array.Empty<Node>() : tryCandidates.AsSpan(nodesTriedCount, count).ToArray();
+                    if (nodesToSend.Length == 0)
                     {
                         _logger.Trace($"No more nodes to send, sent {successRequestsCount} successfull requests, failedRequestCounter: {failRequestCount}, nodesTriedCounter: {nodesTriedCount}");
                         break;

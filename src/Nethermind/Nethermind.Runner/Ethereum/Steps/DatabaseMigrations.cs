@@ -172,7 +172,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             long from = synced;
             _migrateCount = to + 1;
             _averages = _context.BloomStorage.Averages.ToArray();
-            IChainLevelInfoRepository? chainLevelInfoRepository = _context.ChainLevelInfoRepository;
+            IChainLevelInfoRepository chainLevelInfoRepository = _context.ChainLevelInfoRepository!;
 
             _progress.Update(synced);
 

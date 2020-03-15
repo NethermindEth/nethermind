@@ -63,15 +63,15 @@ namespace Nethermind.Network
             _updateCounter++;
         }
 
-        public void UpdateNodes(IEnumerable<NetworkNode> nodes)
+        public void UpdateNodes(Span<NetworkNode> nodes)
         {
-            foreach (NetworkNode node in nodes)
+            for (int i = 0; i < nodes.Length; i++)
             {
-                UpdateNode(node);
+                UpdateNode(nodes[i]);
             }
         }
 
-        public void RemoveNodes(NetworkNode[] nodes)
+        public void RemoveNodes(Span<NetworkNode> nodes)
         {
             for (int i = 0; i < nodes.Length; i++)
             {
