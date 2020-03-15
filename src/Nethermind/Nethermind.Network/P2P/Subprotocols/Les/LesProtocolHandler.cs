@@ -101,7 +101,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
 
         protected override TimeSpan InitTimeout => Timeouts.Les3Status;
 
-        public byte RequestedAnnounceType = 0;
+        public LesAnnounceType RequestedAnnounceType;
 
         public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
         public override event EventHandler<ProtocolEventArgs> SubprotocolRequested
@@ -178,7 +178,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             };
 
             TotalDifficultyOnSessionStart = status.TotalDifficulty;
-            RequestedAnnounceType = status.AnnounceType.Value;
+            RequestedAnnounceType = (LesAnnounceType)status.AnnounceType.Value;
 
             ProtocolInitialized?.Invoke(this, eventArgs);
         }
@@ -187,7 +187,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
 
         public override bool HasAvailableCapability(Capability capability) => false;
 
-        public override void NotifyOfNewBlock(Block block, SendBlockPriority priorty) => throw new NotImplementedException();
+        private BlockHeader _lastSentBlock;
+        public override void NotifyOfNewBlock(Block block, SendBlockPriority priorty)
+        {
+            if (RequestedAnnounceType == LesAnnounceType.None) return;
+
+            _lastSentBlock = block.Header;
+
+        }
+
+        Task<BlockHeader> ISyncPeer.GetHeadBlockHeader(Keccak hash, CancellationToken token)
+        {
+            return Task.FromResult(_lastSentBlock ?? SyncServer.Head);
+        }
 
         protected override void OnDisposed() { }
     }
