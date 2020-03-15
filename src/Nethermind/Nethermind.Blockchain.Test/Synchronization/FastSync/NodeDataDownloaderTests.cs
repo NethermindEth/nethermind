@@ -184,6 +184,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
 
             public Node Node { get; }
             public string ClientId => "executorMock";
+            public string EthDetails => "eth.64";
             public UInt256 TotalDifficultyOnSessionStart => UInt256.Zero;
 
             public void Disconnect(DisconnectReason reason, string details)

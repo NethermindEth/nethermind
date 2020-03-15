@@ -57,6 +57,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public Node Node { get; }
         public Node LocalNode { get; }
         public string ClientId => Node.ClientId;
+        public string EthDetails => Node.EthDetails;
         public UInt256 TotalDifficultyOnSessionStart => Tree.Head.TotalDifficulty ?? 0;
 
         public void Disconnect(DisconnectReason reason, string details)

@@ -84,6 +84,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             public Node Node { get; } = new Node(Build.A.PrivateKey.TestObject.PublicKey, "127.0.0.1", 1234);
 
             public string ClientId { get; }
+            public string EthDetails { get; }
 
             public UInt256 TotalDifficultyOnSessionStart =>
                 (UInt256) ((Blocks?.LastOrDefault()?.Difficulty ?? UInt256.Zero) * (BigInteger) ((UInt256) (Blocks?.Count ?? 0) - UInt256.One)
