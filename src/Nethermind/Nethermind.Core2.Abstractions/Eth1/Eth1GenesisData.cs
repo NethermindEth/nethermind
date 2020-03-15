@@ -14,16 +14,23 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Core2.Containers
-{
-    public class Eth1Block
-    {
-        public ulong Timestamp { get; }
+using System.Collections.Generic;
+using Nethermind.Core2.Containers;
+using Nethermind.Core2.Types;
 
-        public Eth1Block(ulong timestamp)
+namespace Nethermind.Core2.Eth1
+{
+    public class Eth1GenesisData
+    {
+        public Eth1GenesisData(Bytes32 blockHash, ulong timestamp, IList<Deposit> deposits)
         {
+            BlockHash = blockHash;
             Timestamp = timestamp;
+            Deposits = deposits;
         }
-        
+
+        public Bytes32 BlockHash { get; }
+        public ulong Timestamp { get; }
+        public IList<Deposit> Deposits { get; }
     }
 }

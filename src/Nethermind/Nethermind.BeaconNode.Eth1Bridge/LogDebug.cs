@@ -35,13 +35,18 @@ namespace Nethermind.BeaconNode.Eth1Bridge
             LoggerMessage.Define(LogLevel.Debug,
                 new EventId(6352, nameof(PeeringWorkerStopping)),
                 "Eth1 bridge worker stopping.");
+        
+        public static readonly Action<ILogger, int, Exception?> CheckingForEth1Genesis =
+            LoggerMessage.Define<int>(LogLevel.Debug,
+                new EventId(6353, nameof(CheckingForEth1Genesis)),
+                "Checking for Eth1 genesis {CheckGenesisCount}.");
 
         // 7bxx - mock
 
-        public static readonly Action<ILogger, ulong, Exception?> QuickStartStoreCreated =
-            LoggerMessage.Define<ulong>(LogLevel.Debug,
-                new EventId(7300, nameof(QuickStartStoreCreated)),
-                "Quick start genesis store created with genesis time {GenesisTime:n0}.");
+        public static readonly Action<ILogger, Bytes32, ulong, int, Exception?> QuickStartGenesisDataCreated =
+            LoggerMessage.Define<Bytes32, ulong, int>(LogLevel.Debug,
+                new EventId(7300, nameof(QuickStartGenesisDataCreated)),
+                "Quick start genesis data created with block hash {BlockHash}, genesis time {GenesisTime:n0}, and {DepositCount} deposits.");
         public static readonly Action<ILogger, ValidatorIndex, string, Exception?> QuickStartAddValidator =
             LoggerMessage.Define<ValidatorIndex, string>(LogLevel.Debug,
                 new EventId(7301, nameof(QuickStartAddValidator)),

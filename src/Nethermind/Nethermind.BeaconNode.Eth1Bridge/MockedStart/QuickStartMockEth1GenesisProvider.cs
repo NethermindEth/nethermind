@@ -20,49 +20,43 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Security.Cryptography;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Nethermind.BeaconNode.Services;
 using Nethermind.Core2;
 using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Eth1;
 using Nethermind.Core2.Types;
 using Nethermind.Cryptography;
 using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
 {
-    public class QuickStartEth1
+    public class QuickStartMockEth1GenesisProvider : IEth1GenesisProvider
     {
-        private static readonly BigInteger s_curveOrder = BigInteger.Parse("52435875175126190479447740508185965837690552500527637822603658699938581184513");
+        private readonly BeaconChainUtility _beaconChainUtility;
+        private readonly ChainConstants _chainConstants;
+        private readonly ICryptographyService _cryptographyService;
+
+        private readonly IEth1Genesis _eth1Genesis;
+        private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
+        private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
+        private readonly ILogger<QuickStartMockEth1GenesisProvider> _logger;
+        private readonly IOptionsMonitor<QuickStartParameters> _quickStartParameterOptions;
+        private readonly IOptionsMonitor<SignatureDomains> _signatureDomainOptions;
+        private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
+
+        private static readonly BigInteger s_curveOrder =
+            BigInteger.Parse("52435875175126190479447740508185965837690552500527637822603658699938581184513");
 
         private static readonly HashAlgorithm s_hashAlgorithm = SHA256.Create();
 
         private static readonly byte[][] s_zeroHashes = new byte[32][];
 
-        private readonly IEth1Genesis _eth1Genesis;
-        private readonly BeaconChainUtility _beaconChainUtility;
-        private readonly ChainConstants _chainConstants;
-        private readonly ICryptographyService _cryptographyService;
-        private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
-        private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
-        private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
-        private readonly ILogger<QuickStartEth1> _logger;
-        private readonly IOptionsMonitor<QuickStartParameters> _quickStartParameterOptions;
-        private readonly IOptionsMonitor<SignatureDomains> _signatureDomainOptions;
-
-        static QuickStartEth1()
-        {
-            s_zeroHashes[0] = new byte[32];
-            for (int index = 1; index < 32; index++)
-            {
-                s_zeroHashes[index] = Hash(s_zeroHashes[index - 1], s_zeroHashes[index - 1]);
-            }
-        }
-
-        public QuickStartEth1(ILogger<QuickStartEth1> logger,
+        public QuickStartMockEth1GenesisProvider(ILogger<QuickStartMockEth1GenesisProvider> logger,
             ChainConstants chainConstants,
             IOptionsMonitor<GweiValues> gweiValueOptions,
             IOptionsMonitor<InitialValues> initialValueOptions,
@@ -85,11 +79,57 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
             _eth1Genesis = eth1Genesis;
         }
 
-        public async Task QuickStartGenesis()
+        static QuickStartMockEth1GenesisProvider()
+        {
+            s_zeroHashes[0] = new byte[32];
+            for (int index = 1; index < 32; index++)
+            {
+                s_zeroHashes[index] = Hash(s_zeroHashes[index - 1], s_zeroHashes[index - 1]);
+            }
+        }
+
+        public byte[] GeneratePrivateKey(ulong index)
+        {
+            Span<byte> input = new Span<byte>(new byte[32]);
+            BigInteger bigIndex = new BigInteger(index);
+            bool indexWriteSuccess =
+                bigIndex.TryWriteBytes(input, out int indexBytesWritten, isUnsigned: true, isBigEndian: false);
+            if (!indexWriteSuccess || indexBytesWritten == 0)
+            {
+                throw new Exception("Error getting input for quick start private key generation.");
+            }
+
+            Bytes32 hash32 = _cryptographyService.Hash(input);
+            ReadOnlySpan<byte> hash = hash32.AsSpan();
+            // Mocked start interop specifies to convert the hash as little endian (which is the default for BigInteger)
+            BigInteger value = new BigInteger(hash.ToArray(), isUnsigned: true);
+            BigInteger privateKey = value % s_curveOrder;
+
+            // Note that the private key is an *unsigned*, *big endian* number
+            // However, we want to pad the big endian on the left to get 32 bytes.
+            // So, write as little endian (will pad to right), then reverse.
+            // NOTE: Alternative, write to Span 64, and then slice based on bytesWritten to get the padding.
+            Span<byte> privateKeySpan = new Span<byte>(new byte[32]);
+            bool keyWriteSuccess = privateKey.TryWriteBytes(privateKeySpan, out int keyBytesWritten, isUnsigned: true,
+                isBigEndian: false);
+            if (!keyWriteSuccess)
+            {
+                throw new Exception("Error generating quick start private key.");
+            }
+
+            privateKeySpan.Reverse();
+
+            return privateKeySpan.ToArray();
+        }
+
+
+        public Task<Eth1GenesisData> GetEth1GenesisDataAsync(CancellationToken cancellationToken)
         {
             QuickStartParameters quickStartParameters = _quickStartParameterOptions.CurrentValue;
 
-            if (_logger.IsWarn()) Log.MockedQuickStart(_logger, quickStartParameters.GenesisTime, quickStartParameters.ValidatorCount, null);
+            if (_logger.IsWarn())
+                Log.MockedQuickStart(_logger, quickStartParameters.GenesisTime, quickStartParameters.ValidatorCount,
+                    null);
 
             GweiValues gweiValues = _gweiValueOptions.CurrentValue;
             InitialValues initialValues = _initialValueOptions.CurrentValue;
@@ -126,7 +166,8 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
 
                 // Sign deposit data
                 Domain domain = _beaconChainUtility.ComputeDomain(signatureDomains.Deposit);
-                DepositMessage depositMessage = new DepositMessage(depositData.PublicKey, depositData.WithdrawalCredentials, depositData.Amount);
+                DepositMessage depositMessage = new DepositMessage(depositData.PublicKey,
+                    depositData.WithdrawalCredentials, depositData.Amount);
                 Root depositMessageRoot = _cryptographyService.HashTreeRoot(depositMessage);
                 Root depositDataSigningRoot = _beaconChainUtility.ComputeSigningRoot(depositMessageRoot, domain);
                 byte[] destination = new byte[96];
@@ -145,19 +186,21 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
                 depositDataList.Add(depositData);
                 //int depositDataLength = (ulong) 1 << _chainConstants.DepositContractTreeDepth;
                 Root root = _cryptographyService.HashTreeRoot(depositDataList);
-                IEnumerable<Bytes32> allLeaves = depositDataList.Select(x => new Bytes32(_cryptographyService.HashTreeRoot((DepositData) x).AsSpan()));
+                IEnumerable<Bytes32> allLeaves = depositDataList.Select(x =>
+                    new Bytes32(_cryptographyService.HashTreeRoot((DepositData) x).AsSpan()));
                 IList<IList<Bytes32>> tree = CalculateMerkleTreeFromLeaves(allLeaves);
-                
+
 
                 IList<Bytes32> merkleProof = GetMerkleProof(tree, index, 32);
                 List<Bytes32> proof = new List<Bytes32>(merkleProof);
-                
+
                 byte[] indexBytes = new byte[32];
                 BinaryPrimitives.WriteInt32LittleEndian(indexBytes, index + 1);
                 Bytes32 indexHash = new Bytes32(indexBytes);
                 proof.Add(indexHash);
                 Bytes32 leaf = new Bytes32(_cryptographyService.HashTreeRoot(depositData).AsSpan());
-                _beaconChainUtility.IsValidMerkleBranch(leaf, proof, _chainConstants.DepositContractTreeDepth + 1, (ulong)index, root);
+                _beaconChainUtility.IsValidMerkleBranch(leaf, proof, _chainConstants.DepositContractTreeDepth + 1,
+                    (ulong) index, root);
                 Deposit deposit = new Deposit(proof, depositData);
 
                 if (_logger.IsEnabled(LogLevel.Debug))
@@ -170,13 +213,14 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
             ulong eth1Timestamp = quickStartParameters.Eth1Timestamp;
             if (eth1Timestamp == 0)
             {
-                eth1Timestamp = quickStartParameters.GenesisTime - (ulong)(1.5 * timeParameters.MinimumGenesisDelay);
+                eth1Timestamp = quickStartParameters.GenesisTime - (ulong) (1.5 * timeParameters.MinimumGenesisDelay);
             }
             else
             {
                 ulong minimumEth1TimestampInclusive =
                     quickStartParameters.GenesisTime - 2 * timeParameters.MinimumGenesisDelay;
-                ulong maximumEth1TimestampInclusive = quickStartParameters.GenesisTime - timeParameters.MinimumGenesisDelay - 1;
+                ulong maximumEth1TimestampInclusive =
+                    quickStartParameters.GenesisTime - timeParameters.MinimumGenesisDelay - 1;
                 if (eth1Timestamp < minimumEth1TimestampInclusive)
                 {
                     if (_logger.IsEnabled(LogLevel.Warning))
@@ -193,36 +237,39 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
                 }
             }
 
-            bool genesisSuccess = await _eth1Genesis.TryGenesisAsync(quickStartParameters.Eth1BlockHash, eth1Timestamp,
+            var eth1GenesisData = new Eth1GenesisData(quickStartParameters.Eth1BlockHash, eth1Timestamp,
                 deposits);
 
-            if (!genesisSuccess)
-            {
-                throw new Exception("Quick start genesis did not succeed");
-            }
-            
-            if (_logger.IsEnabled(LogLevel.Debug)) LogDebug.QuickStartStoreCreated(_logger, quickStartParameters.GenesisTime, null);
+            if (_logger.IsEnabled(LogLevel.Debug))
+                LogDebug.QuickStartGenesisDataCreated(_logger, eth1GenesisData.BlockHash, eth1GenesisData.Timestamp,
+                    eth1GenesisData.Deposits.Count, null);
+
+            return Task.FromResult(eth1GenesisData);
         }
 
-        private static IList<IList<Bytes32>> CalculateMerkleTreeFromLeaves(IEnumerable<Bytes32> values, int layerCount = 32)
+        private static IList<IList<Bytes32>> CalculateMerkleTreeFromLeaves(IEnumerable<Bytes32> values,
+            int layerCount = 32)
         {
             List<Bytes32> workingValues = new List<Bytes32>(values);
-            List<IList<Bytes32>> tree = new List<IList<Bytes32>>(new[] { workingValues.ToArray() });
+            List<IList<Bytes32>> tree = new List<IList<Bytes32>>(new[] {workingValues.ToArray()});
             for (int height = 0; height < layerCount; height++)
             {
                 if (workingValues.Count % 2 == 1)
                 {
                     workingValues.Add(new Bytes32(s_zeroHashes[height]));
                 }
+
                 List<Bytes32> hashes = new List<Bytes32>();
                 for (int index = 0; index < workingValues.Count; index += 2)
                 {
                     byte[] hash = Hash(workingValues[index].AsSpan(), workingValues[index + 1].AsSpan());
                     hashes.Add(new Bytes32(hash));
                 }
+
                 tree.Add(hashes.ToArray());
                 workingValues = hashes;
             }
+
             return tree;
         }
 
@@ -237,6 +284,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
                     : new Bytes32(s_zeroHashes[height]);
                 proof.Add(value);
             }
+
             return proof;
         }
 
@@ -246,37 +294,6 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
             a.CopyTo(combined);
             b.CopyTo(combined.Slice(32));
             return s_hashAlgorithm.ComputeHash(combined.ToArray());
-        }
-
-        public byte[] GeneratePrivateKey(ulong index)
-        {
-            Span<byte> input = new Span<byte>(new byte[32]);
-            BigInteger bigIndex = new BigInteger(index);
-            bool indexWriteSuccess = bigIndex.TryWriteBytes(input, out int indexBytesWritten, isUnsigned: true, isBigEndian: false);
-            if (!indexWriteSuccess || indexBytesWritten == 0)
-            {
-                throw new Exception("Error getting input for quick start private key generation.");
-            }
-
-            Bytes32 hash32 = _cryptographyService.Hash(input);
-            ReadOnlySpan<byte> hash = hash32.AsSpan();
-            // Mocked start interop specifies to convert the hash as little endian (which is the default for BigInteger)
-            BigInteger value = new BigInteger(hash.ToArray(), isUnsigned: true);
-            BigInteger privateKey = value % s_curveOrder;
-
-            // Note that the private key is an *unsigned*, *big endian* number
-            // However, we want to pad the big endian on the left to get 32 bytes.
-            // So, write as little endian (will pad to right), then reverse.
-            // NOTE: Alternative, write to Span 64, and then slice based on bytesWritten to get the padding.
-            Span<byte> privateKeySpan = new Span<byte>(new byte[32]);
-            bool keyWriteSuccess = privateKey.TryWriteBytes(privateKeySpan, out int keyBytesWritten, isUnsigned: true, isBigEndian: false);
-            if (!keyWriteSuccess)
-            {
-                throw new Exception("Error generating quick start private key.");
-            }
-            privateKeySpan.Reverse();
-            
-            return privateKeySpan.ToArray();
         }
     }
 }

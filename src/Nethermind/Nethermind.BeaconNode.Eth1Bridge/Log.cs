@@ -54,6 +54,11 @@ namespace Nethermind.BeaconNode.Eth1Bridge
                 new EventId(1350, nameof(PeeringWorkerStarting)),
                 "Eth1 bridge {ProductTokenVersion} worker starting; {Environment} environment [{ThreadId}]");
 
+        public static readonly Action<ILogger, Bytes32, ulong, int, int, Exception?> Eth1GenesisSuccess =
+            LoggerMessage.Define<Bytes32, ulong, int, int>(LogLevel.Information,
+                new EventId(1351, nameof(Eth1GenesisSuccess)),
+                "Eth genesis succeeded with block hash {BlockHash}, genesis time {GenesisTime:n0}, and {DepositCount} deposits, at check {CheckGenesisCount}.");
+
         // 2bxx 
         
         // 4bxx warning

@@ -43,7 +43,7 @@ using Shouldly;
 namespace Nethermind.BeaconNode.Test
 {
     [TestClass]
-    public class BeaconNodeFacadeTest
+    public class BeaconNodeFacadeTests
     {
         [TestMethod]
         public async Task ShouldReturnDefaultForkVersion()
@@ -223,8 +223,9 @@ namespace Nethermind.BeaconNode.Test
             testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
             
-            QuickStartEth1 quickStartEth1 = testServiceProvider.GetService<QuickStartEth1>();
-            await quickStartEth1.QuickStartGenesis();
+            Eth1BridgeWorker eth1BridgeWorker =
+                testServiceProvider.GetServices<IHostedService>().OfType<Eth1BridgeWorker>().First();
+            await eth1BridgeWorker.ExecuteEth1GenesisAsync(CancellationToken.None);
 
             IStore store = testServiceProvider.GetService<IStore>();
             BeaconState state = await store!.GetBlockStateAsync(store.FinalizedCheckpoint.Root);

@@ -16,24 +16,28 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Cryptography;
+using NSubstitute;
 
 namespace Nethermind.BeaconNode.Eth1Bridge.Test
 {
     public static class TestSystem
     {
-        public static IServiceCollection BuildTestServiceCollection(IDictionary<string, string>? overrideConfiguration = null)
+        public static IServiceCollection BuildTestServiceCollection(
+            IDictionary<string, string>? overrideConfiguration = null)
         {
-            var services = new ServiceCollection();
+            ServiceCollection services = new ServiceCollection();
 
-            var inMemoryConfiguration = new Dictionary<string, string>
+            services.AddSingleton(Substitute.For<IHostEnvironment>());
+
+            Dictionary<string, string> inMemoryConfiguration = new Dictionary<string, string>
             {
                 ["Peering:Mothra:LogSignedBeaconBlockJson"] = "false",
                 ["Storage:InMemory:LogBlockJson"] = "false",
@@ -41,13 +45,13 @@ namespace Nethermind.BeaconNode.Eth1Bridge.Test
             };
             if (overrideConfiguration != null)
             {
-                foreach (var kvp in overrideConfiguration)
+                foreach (KeyValuePair<string, string> kvp in overrideConfiguration)
                 {
                     inMemoryConfiguration[kvp.Key] = kvp.Value;
                 }
             }
-            
-            var configuration = new ConfigurationBuilder()
+
+            IConfigurationRoot configuration = new ConfigurationBuilder()
                 .AddJsonFile("appsettings.json")
                 .AddJsonFile("Development/appsettings.json")
                 .AddInMemoryCollection(inMemoryConfiguration)
@@ -57,30 +61,30 @@ namespace Nethermind.BeaconNode.Eth1Bridge.Test
             services.AddLogging(configure =>
             {
                 configure.SetMinimumLevel(LogLevel.Trace);
-                configure.AddConsole(options => { 
+                configure.AddConsole(options =>
+                {
                     options.Format = ConsoleLoggerFormat.Systemd;
                     options.DisableColors = true;
                     options.IncludeScopes = true;
                     options.TimestampFormat = " HH':'mm':'sszz ";
                 });
             });
-            
+
             services.ConfigureBeaconChain(configuration);
             services.AddBeaconNode(configuration);
             services.AddCryptographyService(configuration);
             services.AddBeaconNodeEth1Bridge(configuration);
 
             services.AddBeaconNodeStorage(configuration);
-            
+
             return services;
         }
 
         public static IServiceProvider BuildTestServiceProvider()
         {
-            var services = BuildTestServiceCollection();
-            var options = new ServiceProviderOptions() { ValidateOnBuild = false };
+            IServiceCollection services = BuildTestServiceCollection();
+            ServiceProviderOptions options = new ServiceProviderOptions() {ValidateOnBuild = false};
             return services.BuildServiceProvider(options);
         }
-
     }
 }

@@ -14,40 +14,79 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Nethermind.BeaconNode.Eth1Bridge.MockedStart;
+using Microsoft.Extensions.Options;
 using Nethermind.Core2;
+using Nethermind.Core2.Configuration;
 using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode.Eth1Bridge
 {
     public class Eth1BridgeWorker : BackgroundService
     {
+        private readonly IOptionsMonitor<AnchorState> _anchorStateOptions;
         private readonly IClientVersion _clientVersion;
-        private readonly QuickStartEth1 _quickStartEth1;
         private readonly IHostEnvironment _environment;
+        private readonly IEth1Genesis _eth1Genesis;
+        private readonly IEth1GenesisProvider _eth1GenesisProvider;
+        private static readonly TimeSpan _genesisCheckDelay = TimeSpan.FromSeconds(5);
         private readonly ILogger _logger;
 
         public Eth1BridgeWorker(ILogger<Eth1BridgeWorker> logger,
             IHostEnvironment environment,
+            IOptionsMonitor<AnchorState> anchorStateOptions,
             IClientVersion clientVersion,
-            QuickStartEth1 quickStartEth1)
+            IEth1GenesisProvider eth1GenesisProvider,
+            IEth1Genesis eth1Genesis)
         {
             _logger = logger;
             _environment = environment;
+            _anchorStateOptions = anchorStateOptions;
             _clientVersion = clientVersion;
-            _quickStartEth1 = quickStartEth1;
+            _eth1GenesisProvider = eth1GenesisProvider;
+            _eth1Genesis = eth1Genesis;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             if (_logger.IsDebug()) LogDebug.PeeringWorkerExecute(_logger, null);
 
-            // TODO: change to check if source = eth1, and if so get IEth1GenesisProvider
-            await _quickStartEth1.QuickStartGenesis();
+            if (_anchorStateOptions.CurrentValue.Source == AnchorStateSource.Eth1Genesis)
+            {
+                await ExecuteEth1GenesisAsync(stoppingToken);
+            }
+
+            // TODO: Any other work for the Eth1Bridge, e.g. maybe need IEth1Collection or similar interface that needs to be run
+        }
+
+        public async Task ExecuteEth1GenesisAsync(CancellationToken stoppingToken)
+        {
+            int count = 1;
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                if (_logger.IsEnabled(LogLevel.Debug))
+                    LogDebug.CheckingForEth1Genesis(_logger, count, null);
+
+                var eth1GenesisData = await _eth1GenesisProvider.GetEth1GenesisDataAsync(stoppingToken)
+                    .ConfigureAwait(false);
+                var genesisSuccess = await _eth1Genesis.TryGenesisAsync(eth1GenesisData.BlockHash,
+                    eth1GenesisData.Timestamp,
+                    eth1GenesisData.Deposits).ConfigureAwait(false);
+                if (genesisSuccess)
+                {
+                    if (_logger.IsEnabled(LogLevel.Information))
+                        Log.Eth1GenesisSuccess(_logger, eth1GenesisData.BlockHash, eth1GenesisData.Timestamp,
+                            eth1GenesisData.Deposits.Count, count, null);
+                    break;
+                }
+
+                await Task.Delay(_genesisCheckDelay);
+                count++;
+            }
         }
 
         public override async Task StartAsync(CancellationToken cancellationToken)

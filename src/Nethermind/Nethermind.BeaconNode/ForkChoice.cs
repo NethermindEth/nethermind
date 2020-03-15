@@ -176,6 +176,8 @@ namespace Nethermind.BeaconNode
         {
             // NOTE: This method should probably live in a separate object, for different implementations, possibly part of Store (for efficiency).
 
+            // TODO: Also, should cache, i.e. will only change if store is updated (so should be easy to cache if in store)
+
             // Get filtered block tree that only includes viable branches
             IDictionary<Root, BeaconBlock> blocks = await GetFilteredBlockTreeAsync(store).ConfigureAwait(false);
 

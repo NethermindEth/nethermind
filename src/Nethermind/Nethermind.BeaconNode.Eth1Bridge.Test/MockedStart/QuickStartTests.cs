@@ -15,12 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Nethermind.BeaconNode.Eth1Bridge.MockedStart;
-using Nethermind.BeaconNode.MockedStart;
-using Nethermind.BeaconNode.Services;
 using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
@@ -100,12 +100,13 @@ namespace Nethermind.BeaconNode.Eth1Bridge.Test.MockedStart
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
             // Act
-            QuickStartEth1 quickStartEth1 = testServiceProvider.GetService<QuickStartEth1>();
-            await quickStartEth1.QuickStartGenesis();
+            Eth1BridgeWorker eth1BridgeWorker =
+                testServiceProvider.GetServices<IHostedService>().OfType<Eth1BridgeWorker>().First();
+            await eth1BridgeWorker.ExecuteEth1GenesisAsync(CancellationToken.None);
 
             // Assert
+            testServiceProvider.GetService<IEth1GenesisProvider>().ShouldBeOfType<QuickStartMockEth1GenesisProvider>();
             IStore store = testServiceProvider.GetService<IStore>();
-
             BeaconState state = await store.GetBlockStateAsync(store.FinalizedCheckpoint.Root);
 
             BlsPublicKey expectedKey0 = new BlsPublicKey(_testDataItems[0].PublicKey);
@@ -126,13 +127,14 @@ namespace Nethermind.BeaconNode.Eth1Bridge.Test.MockedStart
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
             // Act
-            QuickStartEth1 quickStartEth1 = testServiceProvider.GetService<QuickStartEth1>();
-            await quickStartEth1.QuickStartGenesis();
+            Eth1BridgeWorker eth1BridgeWorker =
+                testServiceProvider.GetServices<IHostedService>().OfType<Eth1BridgeWorker>().First();
+            await eth1BridgeWorker.ExecuteEth1GenesisAsync(CancellationToken.None);
 
             // Assert
-            IStoreProvider storeProvider = testServiceProvider.GetService<IStoreProvider>();
-            storeProvider.TryGetStore(out IStore? store).ShouldBeTrue();
-            BeaconState state = await store!.GetBlockStateAsync(store!.FinalizedCheckpoint.Root);
+            testServiceProvider.GetService<IEth1GenesisProvider>().ShouldBeOfType<QuickStartMockEth1GenesisProvider>();
+            IStore store = testServiceProvider.GetService<IStore>();
+            BeaconState state = await store.GetBlockStateAsync(store.FinalizedCheckpoint.Root);
 
             for (int index = 1; index < 10; index++)
             {
@@ -154,13 +156,14 @@ namespace Nethermind.BeaconNode.Eth1Bridge.Test.MockedStart
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
             // Act
-            QuickStartEth1 quickStartEth1 = testServiceProvider.GetService<QuickStartEth1>();
-            await quickStartEth1.QuickStartGenesis();
+            Eth1BridgeWorker eth1BridgeWorker =
+                testServiceProvider.GetServices<IHostedService>().OfType<Eth1BridgeWorker>().First();
+            await eth1BridgeWorker.ExecuteEth1GenesisAsync(CancellationToken.None);
 
             // Assert
-            IStoreProvider storeProvider = testServiceProvider.GetService<IStoreProvider>();
-            storeProvider.TryGetStore(out IStore? store).ShouldBeTrue();
-            BeaconState state = await store!.GetBlockStateAsync(store!.FinalizedCheckpoint.Root);
+            testServiceProvider.GetService<IEth1GenesisProvider>().ShouldBeOfType<QuickStartMockEth1GenesisProvider>();
+            IStore store = testServiceProvider.GetService<IStore>();
+            BeaconState state = await store.GetBlockStateAsync(store.FinalizedCheckpoint.Root);
 
             state.Validators.Count.ShouldBe(64);
         }
@@ -222,8 +225,9 @@ namespace Nethermind.BeaconNode.Eth1Bridge.Test.MockedStart
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
             // Act
-            QuickStartEth1 quickStartEth1 = testServiceProvider.GetService<QuickStartEth1>();
-            byte[] privateKey = quickStartEth1.GeneratePrivateKey(63);
+            QuickStartMockEth1GenesisProvider quickStartMockEth1GenesisProvider =
+                testServiceProvider.GetService<IEth1GenesisProvider>() as QuickStartMockEth1GenesisProvider;
+            byte[] privateKey = quickStartMockEth1GenesisProvider.GeneratePrivateKey(63);
 
             // Assert
             privateKey.Length.ShouldBe(32);
