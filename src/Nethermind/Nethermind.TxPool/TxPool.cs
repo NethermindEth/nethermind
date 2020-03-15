@@ -223,6 +223,13 @@ namespace Nethermind.TxPool
                 Metrics.PendingTransactionsKnown++;
                 return AddTxResult.AlreadyKnown;
             }
+            
+            if (!_transactions.TryGetValue(tx.Hash, out _))
+            {
+                // if transactions was dropped due to low gas price
+                Metrics.PendingTransactionsDiscarded++;
+                return AddTxResult.PotentiallyUseless;
+            }
 
             /* We have encountered multiple transactions that do not resolve sender address properly.
              * We need to investigate what these txs are and why the sender address is resolved to null.
