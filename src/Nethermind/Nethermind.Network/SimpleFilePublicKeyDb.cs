@@ -63,7 +63,7 @@ namespace Nethermind.Network
             set { _cache.AddOrUpdate(key, newValue => Add(value), (x, oldValue) => Update(oldValue, value)); }
         }
 
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] =>  keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _cache.TryGetValue(k, out var value) ? value : null)).ToArray();
+        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] =>  keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _cache.TryGetValue(k, out byte[] value) ? value : null)).ToArray();
 
         public void Remove(byte[] key)
         {
@@ -96,14 +96,14 @@ namespace Nethermind.Network
             using (Backup backup = new Backup(DbPath, _logger))
             {
                 _hasPendingChanges = false;
-                var snapshot = _cache.ToArray();
+                KeyValuePair<byte[], byte[]>[] snapshot = _cache.ToArray();
 
                 if (_logger.IsDebug) _logger.Debug($"Saving data in {DbPath} | backup stored in {backup.BackupPath}");
                 try
                 {
-                    using (var streamWriter = new StreamWriter(DbPath))
+                    using (StreamWriter streamWriter = new StreamWriter(DbPath))
                     {
-                        foreach (var keyValuePair in snapshot)
+                        foreach (KeyValuePair<byte[], byte[]> keyValuePair in snapshot)
                         {
                             keyValuePair.Key.StreamHex(streamWriter);
                             streamWriter.Write(',');
@@ -170,18 +170,19 @@ namespace Nethermind.Network
             {
                 return;
             }
-
-            var lines = File.ReadAllLines(DbPath);
-            foreach (string line in lines)
+            
+            foreach (string line in File.ReadLines(DbPath))
             {
-                var values = line.Split(",");
-                if (values.Length != 2)
+                int splitIndex = line.IndexOf(',');
+                ReadOnlySpan<char> key = line.AsSpan(0, splitIndex);
+                ReadOnlySpan<char> value = line.AsSpan(splitIndex);
+                if (line.IndexOf(',', splitIndex + 1) != -1)
                 {
                     if (_logger.IsError) _logger.Error($"Error when loading data from {Name} - expected two items separated by a comma and got '{line}')");
                     continue;
                 }
 
-                _cache[Bytes.FromHexString(values[0])] = Bytes.FromHexString(values[1]);
+                _cache[Bytes.FromHexString(key)] = Bytes.FromHexString(value);
             }
         }
 

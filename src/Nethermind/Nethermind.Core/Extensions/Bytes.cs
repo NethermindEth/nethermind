@@ -714,7 +714,7 @@ namespace Nethermind.Core.Extensions
         };
 
         [DebuggerStepThrough]
-        public static byte[] FromHexString(string hexString)
+        public static byte[] FromHexString(ReadOnlySpan<char> hexString)
         {
             if (hexString == null)
             {
