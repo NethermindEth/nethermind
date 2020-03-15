@@ -41,7 +41,6 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
         private readonly ChainConstants _chainConstants;
         private readonly ICryptographyService _cryptographyService;
 
-        private readonly IEth1Genesis _eth1Genesis;
         private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly ILogger<QuickStartMockEth1GenesisProvider> _logger;
@@ -64,8 +63,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
             IOptionsMonitor<SignatureDomains> signatureDomainOptions,
             IOptionsMonitor<QuickStartParameters> quickStartParameterOptions,
             ICryptographyService cryptographyService,
-            BeaconChainUtility beaconChainUtility,
-            IEth1Genesis eth1Genesis)
+            BeaconChainUtility beaconChainUtility)
         {
             _logger = logger;
             _chainConstants = chainConstants;
@@ -76,7 +74,6 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
             _quickStartParameterOptions = quickStartParameterOptions;
             _cryptographyService = cryptographyService;
             _beaconChainUtility = beaconChainUtility;
-            _eth1Genesis = eth1Genesis;
         }
 
         static QuickStartMockEth1GenesisProvider()

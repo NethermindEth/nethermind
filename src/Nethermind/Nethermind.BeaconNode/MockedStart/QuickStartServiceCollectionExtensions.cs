@@ -15,25 +15,18 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Linq;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.Services;
 using Nethermind.Core2;
-using Nethermind.Core2.Types;
-using Nethermind.Logging.Microsoft;
-using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Configuration.MockedStart;
-using Nethermind.Core2.Crypto;
+using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode.MockedStart
 {
     public static class QuickStartServiceCollectionExtensions
     {
-        private const ulong DefaultEth1Timestamp = (ulong)1 << 40;
-        private static readonly byte[] s_defaultEth1BlockHash = Enumerable.Repeat((byte)0x42, 32).ToArray();
-
         public static void AddBeaconNodeQuickStart(this IServiceCollection services, IConfiguration configuration)
         {
             services.AddSingleton<IOperationPool, MockedOperationPool>();
