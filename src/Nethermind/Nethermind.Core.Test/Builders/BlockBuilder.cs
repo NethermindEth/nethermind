@@ -20,6 +20,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.State.Proofs;
 
 namespace Nethermind.Core.Test.Builders
 {
@@ -29,6 +30,7 @@ namespace Nethermind.Core.Test.Builders
         {
             BlockHeader header = Build.A.BlockHeader.TestObject;
             TestObjectInternal = new Block(header);
+            header.Hash = TestObjectInternal.CalculateHash();
         }
 
         public BlockBuilder WithHeader(BlockHeader header)
@@ -36,37 +38,40 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header = header;
             return this;
         }
-        
+
         public BlockBuilder WithNumber(long number)
         {
             TestObjectInternal.Header.Number = number;
             return this;
         }
-        
+
         public BlockBuilder WithExtraData(byte[] extraData)
         {
             TestObjectInternal.Header.ExtraData = extraData;
             return this;
         }
-        
+
         public BlockBuilder WithGasLimit(long gasLimit)
         {
             TestObjectInternal.Header.GasLimit = gasLimit;
             return this;
         }
-        
+
         public BlockBuilder WithTimestamp(UInt256 timestamp)
         {
             TestObjectInternal.Header.Timestamp = timestamp;
             return this;
         }
-        
+
         public BlockBuilder WithTransactions(params Transaction[] transactions)
         {
             TestObjectInternal.Body = TestObjectInternal.Body.WithChangedTransactions(transactions);
+            TxTrie trie = new TxTrie(transactions, false);
+            trie.UpdateRootHash();
+            TestObjectInternal.Header.TxRoot = trie.RootHash;
             return this;
         }
-        
+
         public BlockBuilder WithBeneficiary(Address address)
         {
             TestObjectInternal.Header.Beneficiary = address;
@@ -75,7 +80,7 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockBuilder WithTotalDifficulty(long difficulty)
         {
-            TestObjectInternal.Header.TotalDifficulty = (ulong)difficulty;
+            TestObjectInternal.Header.TotalDifficulty = (ulong) difficulty;
             return this;
         }
 
@@ -90,13 +95,13 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.Nonce = nonce;
             return this;
         }
-        
+
         public BlockBuilder WithMixHash(Keccak mixHash)
         {
             TestObjectInternal.Header.MixHash = mixHash;
             return this;
         }
-        
+
         public BlockBuilder WithDifficulty(UInt256 difficulty)
         {
             TestObjectInternal.Header.Difficulty = difficulty;
@@ -115,13 +120,13 @@ namespace Nethermind.Core.Test.Builders
         {
             return WithParent(block.Header);
         }
-        
+
         public BlockBuilder WithOmmers(params Block[] ommers)
         {
             TestObjectInternal.Body = TestObjectInternal.Body.WithChangedOmmers(ommers.Select(o => o.Header).ToArray());
             return this;
         }
-        
+
         public BlockBuilder WithOmmers(params BlockHeader[] ommers)
         {
             TestObjectInternal.Body = TestObjectInternal.Body.WithChangedOmmers(ommers);
@@ -133,19 +138,19 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.ParentHash = parent;
             return this;
         }
-        
+
         public BlockBuilder WithStateRoot(Keccak stateRoot)
         {
             TestObjectInternal.Header.StateRoot = stateRoot;
             return this;
         }
-        
+
         public BlockBuilder WithBloom(Bloom bloom)
         {
             TestObjectInternal.Header.Bloom = bloom;
             return this;
         }
-        
+
         public BlockBuilder WithAura(long step, byte[] signature = null)
         {
             TestObjectInternal.Header.AuRaStep = step;
