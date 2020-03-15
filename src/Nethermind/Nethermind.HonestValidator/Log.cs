@@ -96,7 +96,27 @@ namespace Nethermind.HonestValidator
         public static readonly Action<ILogger, int, StatusCode, Exception?> ErrorGettingValidatorDuties =
             LoggerMessage.Define<int, StatusCode>(LogLevel.Error,
                 new EventId(5451, nameof(ErrorGettingValidatorDuties)),
-                "Error getting updated validator duties from bacon node, response: {StatusCodeNumeric} {StatusCode}.");
+                "Error getting updated validator duties from beacon node, response: {StatusCodeNumeric} {StatusCode}.");
+        public static readonly Action<ILogger, int, StatusCode, Exception?> ErrorGettingForkVersion =
+            LoggerMessage.Define<int, StatusCode>(LogLevel.Error,
+                new EventId(5452, nameof(ErrorGettingForkVersion)),
+                "Error getting updated fork version from beacon node, response: {StatusCodeNumeric} {StatusCode}.");
+        public static readonly Action<ILogger, int, StatusCode, Exception?> ErrorGettingSyncStatus =
+            LoggerMessage.Define<int, StatusCode>(LogLevel.Error,
+                new EventId(5453, nameof(ErrorGettingSyncStatus)),
+                "Error getting updated sync status from beacon node, response: {StatusCodeNumeric} {StatusCode}.");
+        public static readonly Action<ILogger, string, Exception?> ExceptionGettingValidatorDuties =
+            LoggerMessage.Define<string>(LogLevel.Error,
+                new EventId(5454, nameof(ErrorGettingValidatorDuties)),
+                "Exception getting updated validator duties from beacon node, error message: {ErrorMessage}");
+        public static readonly Action<ILogger, string, Exception?> ExceptionGettingForkVersion =
+            LoggerMessage.Define<string>(LogLevel.Error,
+                new EventId(5455, nameof(ErrorGettingForkVersion)),
+                "Exception getting updated fork version from beacon node, error message: {ErrorMessage}");
+        public static readonly Action<ILogger, string, Exception?> ExceptionGettingSyncStatus =
+            LoggerMessage.Define<string>(LogLevel.Error,
+                new EventId(5456, nameof(ErrorGettingSyncStatus)),
+                "Exception getting updated sync status from beacon node, error message: {ErrorMessage}");
 
         // 8bxx finalization
 
