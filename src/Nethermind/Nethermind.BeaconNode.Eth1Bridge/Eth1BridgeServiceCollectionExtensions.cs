@@ -28,7 +28,6 @@ namespace Nethermind.BeaconNode.Eth1Bridge
 {
     public static class Eth1BridgeServiceCollectionExtensions
     {
-        private const ulong DefaultEth1Timestamp = (ulong)1 << 40;
         private static readonly byte[] s_defaultEth1BlockHash = Enumerable.Repeat((byte)0x42, 32).ToArray();
         
         public static void AddBeaconNodeEth1Bridge(this IServiceCollection services, IConfiguration configuration)
@@ -44,7 +43,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge
                         x.GenesisTime = section.GetValue<ulong>("GenesisTime");
                         x.ValidatorCount = section.GetValue<ulong>("ValidatorCount");
                         x.Eth1BlockHash = new Bytes32(section.GetBytesFromPrefixedHex("Eth1BlockHash", () => s_defaultEth1BlockHash));
-                        x.Eth1Timestamp = section.GetValue("Eth1Timestamp", DefaultEth1Timestamp);
+                        x.Eth1Timestamp = section.GetValue<ulong>("Eth1Timestamp");
                         x.UseSystemClock = section.GetValue<bool>("UseSystemClock");
                         x.ValidatorStartIndex = section.GetValue<ulong>("ValidatorStartIndex");
                         x.NumberOfValidators = section.GetValue<ulong>("NumberOfValidators");

@@ -90,15 +90,13 @@ namespace Nethermind.BeaconNode.Eth1Bridge.Test.MockedStart
         public async Task TestGenerationOfFirstValidator()
         {
             // Arrange
-            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection();
-            IConfigurationRoot configuration = new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string>
-                {
-                    ["QuickStart:GenesisTime"] = "1578009600",
-                    ["QuickStart:ValidatorCount"] = "1"
-                })
-                .Build();
-            testServiceCollection.AddBeaconNodeEth1Bridge(configuration);
+            var overrideConfiguration = new Dictionary<string, string>
+            {
+                ["QuickStart:GenesisTime"] = "1578009600",
+                ["QuickStart:ValidatorCount"] = "1",
+                ["BeaconChain:MiscellaneousParameters:MinimumGenesisActiveValidatorCount"] = "1"
+            };
+            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(overrideConfiguration);
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
             // Act
@@ -118,15 +116,13 @@ namespace Nethermind.BeaconNode.Eth1Bridge.Test.MockedStart
         public async Task TestValidatorKeyGeneration10()
         {
             // Arrange
-            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection();
-            IConfigurationRoot configuration = new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string>
-                {
-                    ["QuickStart:GenesisTime"] = "1578009600",
-                    ["QuickStart:ValidatorCount"] = "10"
-                })
-                .Build();
-            testServiceCollection.AddBeaconNodeEth1Bridge(configuration);
+            var overrideConfiguration = new Dictionary<string, string>
+            {
+                ["QuickStart:GenesisTime"] = "1578009600",
+                ["QuickStart:ValidatorCount"] = "10",
+                ["BeaconChain:MiscellaneousParameters:MinimumGenesisActiveValidatorCount"] = "10"
+            };
+            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(overrideConfiguration);
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
             // Act
@@ -149,15 +145,12 @@ namespace Nethermind.BeaconNode.Eth1Bridge.Test.MockedStart
         public async Task TestValidatorKeyGeneration64()
         {
             // Arrange
-            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection();
-            IConfigurationRoot configuration = new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string>
-                {
-                    ["QuickStart:GenesisTime"] = "1578009600",
-                    ["QuickStart:ValidatorCount"] = "64"
-                })
-                .Build();
-            testServiceCollection.AddBeaconNodeEth1Bridge(configuration);
+            var overrideConfiguration = new Dictionary<string, string>
+            {
+                ["QuickStart:GenesisTime"] = "1578009600",
+                ["QuickStart:ValidatorCount"] = "64"
+            };
+            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(overrideConfiguration);
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
             // Act
@@ -220,15 +213,12 @@ namespace Nethermind.BeaconNode.Eth1Bridge.Test.MockedStart
             //      0x006edac0cf64bfd91bc691c4165efe1eb5cf80672ac06d2096f72a48a5dad4bd
             
             // Arrange
-            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection();
-            IConfigurationRoot configuration = new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string>
-                {
-                    ["QuickStart:GenesisTime"] = "1578009600",
-                    ["QuickStart:ValidatorCount"] = "64"
-                })
-                .Build();
-            testServiceCollection.AddBeaconNodeEth1Bridge(configuration);
+            var overrideConfiguration = new Dictionary<string, string>
+            {
+                ["QuickStart:GenesisTime"] = "1578009600",
+                ["QuickStart:ValidatorCount"] = "64"
+            };
+            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(overrideConfiguration);
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
             // Act

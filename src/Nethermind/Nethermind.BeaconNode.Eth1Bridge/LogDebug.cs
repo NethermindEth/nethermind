@@ -40,11 +40,11 @@ namespace Nethermind.BeaconNode.Eth1Bridge
 
         public static readonly Action<ILogger, ulong, Exception?> QuickStartStoreCreated =
             LoggerMessage.Define<ulong>(LogLevel.Debug,
-                new EventId(7100, nameof(QuickStartStoreCreated)),
+                new EventId(7300, nameof(QuickStartStoreCreated)),
                 "Quick start genesis store created with genesis time {GenesisTime:n0}.");
         public static readonly Action<ILogger, ValidatorIndex, string, Exception?> QuickStartAddValidator =
             LoggerMessage.Define<ValidatorIndex, string>(LogLevel.Debug,
-                new EventId(7300, nameof(QuickStartAddValidator)),
+                new EventId(7301, nameof(QuickStartAddValidator)),
                 "Quick start adding deposit for mocked validator {ValidatorIndex} with public key {PublicKey}.");
 
     }

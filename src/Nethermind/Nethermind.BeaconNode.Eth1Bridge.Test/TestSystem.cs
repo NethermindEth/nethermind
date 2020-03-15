@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -28,19 +29,28 @@ namespace Nethermind.BeaconNode.Eth1Bridge.Test
 {
     public static class TestSystem
     {
-        public static IServiceCollection BuildTestServiceCollection()
+        public static IServiceCollection BuildTestServiceCollection(IDictionary<string, string>? overrideConfiguration = null)
         {
             var services = new ServiceCollection();
+
+            var inMemoryConfiguration = new Dictionary<string, string>
+            {
+                ["Peering:Mothra:LogSignedBeaconBlockJson"] = "false",
+                ["Storage:InMemory:LogBlockJson"] = "false",
+                ["Storage:InMemory:LogBlockStateJson"] = "false"
+            };
+            if (overrideConfiguration != null)
+            {
+                foreach (var kvp in overrideConfiguration)
+                {
+                    inMemoryConfiguration[kvp.Key] = kvp.Value;
+                }
+            }
             
             var configuration = new ConfigurationBuilder()
                 .AddJsonFile("appsettings.json")
                 .AddJsonFile("Development/appsettings.json")
-                .AddInMemoryCollection(new Dictionary<string, string>
-                {
-                    ["Peering:Mothra:LogSignedBeaconBlockJson"] = "false",
-                    ["Storage:InMemory:LogBlockJson"] = "false",
-                    ["Storage:InMemory:LogBlockStateJson"] = "false"
-                })
+                .AddInMemoryCollection(inMemoryConfiguration)
                 .Build();
             services.AddSingleton<IConfiguration>(configuration);
 
@@ -58,6 +68,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.Test
             services.ConfigureBeaconChain(configuration);
             services.AddBeaconNode(configuration);
             services.AddCryptographyService(configuration);
+            services.AddBeaconNodeEth1Bridge(configuration);
 
             services.AddBeaconNodeStorage(configuration);
             

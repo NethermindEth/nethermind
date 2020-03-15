@@ -58,6 +58,15 @@ namespace Nethermind.BeaconNode.Eth1Bridge
         
         // 4bxx warning
         
+        public static readonly Action<ILogger, ulong, ulong, ulong, Exception?> QuickStartEth1TimestampTooLow =
+            LoggerMessage.Define<ulong, ulong, ulong>(LogLevel.Warning,
+                new EventId(4390, nameof(QuickStartEth1TimestampTooLow)),
+                "Quick start Eth1Timestamp {ConfiguredEth1Timestamp} to low for genesis {Genesis}; using {MinimumEth1Timestamp}.");
+        public static readonly Action<ILogger, ulong, ulong, ulong, Exception?> QuickStartEth1TimestampTooHigh =
+            LoggerMessage.Define<ulong, ulong, ulong>(LogLevel.Warning,
+                new EventId(4391, nameof(QuickStartEth1TimestampTooHigh)),
+                "Quick start Eth1Timestamp {ConfiguredEth1Timestamp} to high for genesis {Genesis}; using {MaximumEth1Timestamp}.");
+
         public static readonly Action<ILogger, ulong, ulong, Exception?> MockedQuickStart =
             LoggerMessage.Define<ulong, ulong>(LogLevel.Warning,
                 new EventId(4900, nameof(MockedQuickStart)),

@@ -42,14 +42,13 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
 
         private static readonly byte[][] s_zeroHashes = new byte[32][];
 
-        private readonly GenesisChainStart _beaconChain;
-        private readonly IStore _store;
+        private readonly IEth1Genesis _eth1Genesis;
         private readonly BeaconChainUtility _beaconChainUtility;
         private readonly ChainConstants _chainConstants;
         private readonly ICryptographyService _cryptographyService;
-        private readonly ForkChoice _forkChoice;
         private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
+        private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
         private readonly ILogger<QuickStart> _logger;
         private readonly IOptionsMonitor<QuickStartParameters> _quickStartParameterOptions;
         private readonly IOptionsMonitor<SignatureDomains> _signatureDomainOptions;
@@ -67,25 +66,23 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
             ChainConstants chainConstants,
             IOptionsMonitor<GweiValues> gweiValueOptions,
             IOptionsMonitor<InitialValues> initialValueOptions,
+            IOptionsMonitor<TimeParameters> timeParameterOptions,
             IOptionsMonitor<SignatureDomains> signatureDomainOptions,
             IOptionsMonitor<QuickStartParameters> quickStartParameterOptions,
             ICryptographyService cryptographyService,
             BeaconChainUtility beaconChainUtility,
-            GenesisChainStart beaconChain,
-            IStore store,
-            ForkChoice forkChoice)
+            IEth1Genesis eth1Genesis)
         {
             _logger = logger;
             _chainConstants = chainConstants;
             _gweiValueOptions = gweiValueOptions;
             _initialValueOptions = initialValueOptions;
+            _timeParameterOptions = timeParameterOptions;
             _signatureDomainOptions = signatureDomainOptions;
             _quickStartParameterOptions = quickStartParameterOptions;
             _cryptographyService = cryptographyService;
             _beaconChainUtility = beaconChainUtility;
-            _beaconChain = beaconChain;
-            _store = store;
-            _forkChoice = forkChoice;
+            _eth1Genesis = eth1Genesis;
         }
 
         public async Task InitializeNodeAsync()
@@ -101,6 +98,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
 
             GweiValues gweiValues = _gweiValueOptions.CurrentValue;
             InitialValues initialValues = _initialValueOptions.CurrentValue;
+            TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             SignatureDomains signatureDomains = _signatureDomainOptions.CurrentValue;
 
             // Fixed amount
@@ -174,13 +172,41 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
                 deposits.Add(deposit);
             }
 
-            BeaconState genesisState = _beaconChain.InitializeBeaconStateFromEth1(quickStartParameters.Eth1BlockHash, quickStartParameters.Eth1Timestamp, deposits);
-            // We use the state directly, and don't test IsValid
-            genesisState.SetGenesisTime(quickStartParameters.GenesisTime);
-           
-            await _forkChoice.InitializeForkChoiceStoreAsync(_store, genesisState).ConfigureAwait(false);
+            ulong eth1Timestamp = quickStartParameters.Eth1Timestamp;
+            if (eth1Timestamp == 0)
+            {
+                eth1Timestamp = quickStartParameters.GenesisTime - (ulong)(1.5 * timeParameters.MinimumGenesisDelay);
+            }
+            else
+            {
+                ulong minimumEth1TimestampInclusive =
+                    quickStartParameters.GenesisTime - 2 * timeParameters.MinimumGenesisDelay;
+                ulong maximumEth1TimestampInclusive = quickStartParameters.GenesisTime - timeParameters.MinimumGenesisDelay - 1;
+                if (eth1Timestamp < minimumEth1TimestampInclusive)
+                {
+                    if (_logger.IsEnabled(LogLevel.Warning))
+                        Log.QuickStartEth1TimestampTooLow(_logger, eth1Timestamp, quickStartParameters.GenesisTime,
+                            minimumEth1TimestampInclusive, null);
+                    eth1Timestamp = minimumEth1TimestampInclusive;
+                }
+                else if (eth1Timestamp > maximumEth1TimestampInclusive)
+                {
+                    if (_logger.IsEnabled(LogLevel.Warning))
+                        Log.QuickStartEth1TimestampTooHigh(_logger, eth1Timestamp, quickStartParameters.GenesisTime,
+                            maximumEth1TimestampInclusive, null);
+                    eth1Timestamp = maximumEth1TimestampInclusive;
+                }
+            }
 
-            if (_logger.IsEnabled(LogLevel.Debug)) LogDebug.QuickStartStoreCreated(_logger, _store.GenesisTime, null);
+            bool genesisSuccess = await _eth1Genesis.TryGenesisAsync(quickStartParameters.Eth1BlockHash, eth1Timestamp,
+                deposits);
+
+            if (!genesisSuccess)
+            {
+                throw new Exception("Quick start genesis did not succeed");
+            }
+            
+            if (_logger.IsEnabled(LogLevel.Debug)) LogDebug.QuickStartStoreCreated(_logger, quickStartParameters.GenesisTime, null);
         }
 
         private static IList<IList<Bytes32>> CalculateMerkleTreeFromLeaves(IEnumerable<Bytes32> values, int layerCount = 32)
