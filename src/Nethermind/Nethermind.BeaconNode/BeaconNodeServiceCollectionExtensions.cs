@@ -18,7 +18,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.BeaconNode.Services;
 using Nethermind.Core2;
-using Nethermind.Core2.Configuration;
 
 namespace Nethermind.BeaconNode
 {

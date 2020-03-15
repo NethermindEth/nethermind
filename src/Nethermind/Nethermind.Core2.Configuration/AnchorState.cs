@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,24 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core2.Types;
-
 namespace Nethermind.Core2.Configuration
 {
-    public class ChainConstants
+    public class AnchorState
     {
-        public ulong BaseRewardsPerEpoch { get; } = 4;
-
-        public int DepositContractTreeDepth { get; } = 1 << 5;
-
-        public Epoch FarFutureEpoch { get; } = new Epoch(ulong.MaxValue);
-
-        public Epoch GenesisEpoch { get; } = Epoch.Zero;
-
-        public Slot GenesisSlot { get; } = Slot.Zero;
-
-        public int JustificationBitsLength { get; } = 4;
-
-        public ulong MaximumDepositContracts { get; } = (ulong) 1 << (1 << 5);
+        public AnchorStateSource Source { get; set; }
     }
 }

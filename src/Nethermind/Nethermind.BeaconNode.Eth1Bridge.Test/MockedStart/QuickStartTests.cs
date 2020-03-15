@@ -100,8 +100,8 @@ namespace Nethermind.BeaconNode.Eth1Bridge.Test.MockedStart
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
             // Act
-            INodeStart quickStart = testServiceProvider.GetService<INodeStart>();
-            await quickStart.InitializeNodeAsync();
+            QuickStartEth1 quickStartEth1 = testServiceProvider.GetService<QuickStartEth1>();
+            await quickStartEth1.QuickStartGenesis();
 
             // Assert
             IStore store = testServiceProvider.GetService<IStore>();
@@ -126,8 +126,8 @@ namespace Nethermind.BeaconNode.Eth1Bridge.Test.MockedStart
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
             // Act
-            INodeStart quickStart = testServiceProvider.GetService<INodeStart>();
-            await quickStart.InitializeNodeAsync();
+            QuickStartEth1 quickStartEth1 = testServiceProvider.GetService<QuickStartEth1>();
+            await quickStartEth1.QuickStartGenesis();
 
             // Assert
             IStoreProvider storeProvider = testServiceProvider.GetService<IStoreProvider>();
@@ -154,8 +154,8 @@ namespace Nethermind.BeaconNode.Eth1Bridge.Test.MockedStart
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
             // Act
-            INodeStart quickStart = testServiceProvider.GetService<INodeStart>();
-            await quickStart.InitializeNodeAsync();
+            QuickStartEth1 quickStartEth1 = testServiceProvider.GetService<QuickStartEth1>();
+            await quickStartEth1.QuickStartGenesis();
 
             // Assert
             IStoreProvider storeProvider = testServiceProvider.GetService<IStoreProvider>();
@@ -222,8 +222,8 @@ namespace Nethermind.BeaconNode.Eth1Bridge.Test.MockedStart
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
             // Act
-            QuickStart quickStart = (testServiceProvider.GetService<INodeStart>() as QuickStart)!;
-            byte[] privateKey = quickStart.GeneratePrivateKey(63);
+            QuickStartEth1 quickStartEth1 = testServiceProvider.GetService<QuickStartEth1>();
+            byte[] privateKey = quickStartEth1.GeneratePrivateKey(63);
 
             // Assert
             privateKey.Length.ShouldBe(32);

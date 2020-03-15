@@ -18,6 +18,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Nethermind.BeaconNode.Eth1Bridge.MockedStart;
 using Nethermind.Core2;
 using Nethermind.Logging.Microsoft;
 
@@ -26,22 +27,27 @@ namespace Nethermind.BeaconNode.Eth1Bridge
     public class Eth1BridgeWorker : BackgroundService
     {
         private readonly IClientVersion _clientVersion;
+        private readonly QuickStartEth1 _quickStartEth1;
         private readonly IHostEnvironment _environment;
         private readonly ILogger _logger;
 
         public Eth1BridgeWorker(ILogger<Eth1BridgeWorker> logger,
             IHostEnvironment environment,
-            IClientVersion clientVersion)
+            IClientVersion clientVersion,
+            QuickStartEth1 quickStartEth1)
         {
             _logger = logger;
             _environment = environment;
             _clientVersion = clientVersion;
+            _quickStartEth1 = quickStartEth1;
         }
 
-        protected override Task ExecuteAsync(CancellationToken stoppingToken)
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             if (_logger.IsDebug()) LogDebug.PeeringWorkerExecute(_logger, null);
-            return Task.CompletedTask;
+
+            // TODO: change to check if source = eth1, and if so get IEth1GenesisProvider
+            await _quickStartEth1.QuickStartGenesis();
         }
 
         public override async Task StartAsync(CancellationToken cancellationToken)

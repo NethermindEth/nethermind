@@ -50,7 +50,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge
                         x.ClockOffset = section.GetValue<long>("ClockOffset");
                     });
                 });
-                services.AddSingleton<INodeStart, QuickStart>();
+                services.AddSingleton<QuickStartEth1>();
                 services.AddSingleton<IEth1DataProvider, MockedEth1DataProvider>();
 
             }

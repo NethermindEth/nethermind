@@ -48,8 +48,8 @@ namespace Nethermind.BeaconNode.Test
             testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
-            QuickStart quickStart = (QuickStart)testServiceProvider.GetService<INodeStart>();
-            await quickStart.InitializeNodeAsync();
+            QuickStartEth1 quickStartEth1 = testServiceProvider.GetService<QuickStartEth1>();
+            await quickStartEth1.QuickStartGenesis();
             
             IBeaconNodeApi beaconNode = testServiceProvider.GetService<IBeaconNodeApi>();
             ApiResponse<Fork> forkResponse = await beaconNode.GetNodeForkAsync(CancellationToken.None);
@@ -60,7 +60,7 @@ namespace Nethermind.BeaconNode.Test
             BlockProducer blockProducer = testServiceProvider.GetService<BlockProducer>();
             Slot targetSlot = new Slot(1);
             // With QuickStart64, proposer for Slot 1 is validator index 29, 0xa98ed496...
-            byte[] privateKey = quickStart.GeneratePrivateKey(29);
+            byte[] privateKey = quickStartEth1.GeneratePrivateKey(29);
             BlsSignature randaoReveal = GetEpochSignature(testServiceProvider, privateKey, fork.CurrentVersion, targetSlot);
             // value for quickstart 20/64, fork 0, slot 1
             randaoReveal.ToString().StartsWith("0x932f8730");

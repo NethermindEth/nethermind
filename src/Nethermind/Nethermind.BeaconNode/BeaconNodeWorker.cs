@@ -17,13 +17,12 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Services;
 using Nethermind.Core2;
+using Nethermind.Core2.Configuration;
 using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode
@@ -32,15 +31,15 @@ namespace Nethermind.BeaconNode
     public class BeaconNodeWorker : BackgroundService
     {
         private readonly IClientVersion _clientVersion;
-        private readonly IStoreProvider _storeProvider;
-        private readonly DataDirectory _dataDirectory;
-        private readonly ForkChoice _forkChoice;
-        private readonly INodeStart _nodeStart;
-        private readonly ILogger _logger;
-        private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
         private readonly IClock _clock;
+        private readonly DataDirectory _dataDirectory;
         private readonly IHostEnvironment _environment;
+        private readonly ForkChoice _forkChoice;
+        private readonly ILogger _logger;
+        private readonly INodeStart _nodeStart;
         private bool _stopped;
+        private readonly IStoreProvider _storeProvider;
+        private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
         public BeaconNodeWorker(ILogger<BeaconNodeWorker> logger,
             IOptionsMonitor<TimeParameters> timeParameterOptions,
@@ -63,25 +62,12 @@ namespace Nethermind.BeaconNode
             _nodeStart = nodeStart;
         }
 
-        public override async Task StopAsync(CancellationToken cancellationToken)
-        {
-            if (_logger.IsDebug()) LogDebug.BeaconNodeWorkerStopping(_logger, null);
-            _stopped = true;
-            await base.StopAsync(cancellationToken);
-        }
-
-        public override async Task StartAsync(CancellationToken cancellationToken)
-        {
-            if (_logger.IsDebug()) LogDebug.BeaconNodeWorkerStarting(_logger, null);
-            await base.StartAsync(cancellationToken);
-            if (_logger.IsDebug()) LogDebug.BeaconNodeWorkerStarted(_logger, null);
-        }
-
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             if (_logger.IsInfo())
                 Log.BeaconNodeWorkerExecuteStarted(_logger, _clientVersion.Description,
-                    _dataDirectory.ResolvedPath, _environment.EnvironmentName, Thread.CurrentThread.ManagedThreadId, null);
+                    _dataDirectory.ResolvedPath, _environment.EnvironmentName, Thread.CurrentThread.ManagedThreadId,
+                    null);
 
             try
             {
@@ -94,21 +80,22 @@ namespace Nethermind.BeaconNode
                     {
                         DateTimeOffset clockTime = _clock.UtcNow();
                         ulong time = (ulong) clockTime.ToUnixTimeSeconds();
-                        
+
                         if (store == null)
                         {
                             if (_storeProvider.TryGetStore(out store))
                             {
                                 if (_logger.IsInfo())
                                 {
-                                    long slotValue = ((long)time - (long)store!.GenesisTime) / _timeParameterOptions.CurrentValue.SecondsPerSlot;
+                                    long slotValue = ((long) time - (long) store!.GenesisTime) /
+                                                     _timeParameterOptions.CurrentValue.SecondsPerSlot;
                                     Log.WorkerStoreAvailableTickStarted(_logger, store!.GenesisTime, time, slotValue,
                                         Thread.CurrentThread.ManagedThreadId, null);
                                 }
                             }
                         }
 
-                        if (store != null )
+                        if (store != null)
                         {
                             if (time >= store.GenesisTime)
                             {
@@ -116,7 +103,7 @@ namespace Nethermind.BeaconNode
                             }
                             else
                             {
-                                long timeToGenesis = (long)store.GenesisTime - (long)time;
+                                long timeToGenesis = (long) store.GenesisTime - (long) time;
                                 if (timeToGenesis < 10 || timeToGenesis % 10 == 0)
                                 {
                                     if (_logger.IsInfo()) Log.GenesisCountdown(_logger, timeToGenesis, null);
@@ -149,7 +136,22 @@ namespace Nethermind.BeaconNode
                 throw;
             }
 
-            if (_logger.IsDebug()) LogDebug.BeaconNodeWorkerExecuteExiting(_logger, Thread.CurrentThread.ManagedThreadId, null);
+            if (_logger.IsDebug())
+                LogDebug.BeaconNodeWorkerExecuteExiting(_logger, Thread.CurrentThread.ManagedThreadId, null);
+        }
+
+        public override async Task StartAsync(CancellationToken cancellationToken)
+        {
+            if (_logger.IsDebug()) LogDebug.BeaconNodeWorkerStarting(_logger, null);
+            await base.StartAsync(cancellationToken);
+            if (_logger.IsDebug()) LogDebug.BeaconNodeWorkerStarted(_logger, null);
+        }
+
+        public override async Task StopAsync(CancellationToken cancellationToken)
+        {
+            if (_logger.IsDebug()) LogDebug.BeaconNodeWorkerStopping(_logger, null);
+            _stopped = true;
+            await base.StopAsync(cancellationToken);
         }
     }
 }

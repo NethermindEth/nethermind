@@ -34,7 +34,7 @@ using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
 {
-    public class QuickStart : INodeStart
+    public class QuickStartEth1
     {
         private static readonly BigInteger s_curveOrder = BigInteger.Parse("52435875175126190479447740508185965837690552500527637822603658699938581184513");
 
@@ -49,11 +49,11 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
         private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
-        private readonly ILogger<QuickStart> _logger;
+        private readonly ILogger<QuickStartEth1> _logger;
         private readonly IOptionsMonitor<QuickStartParameters> _quickStartParameterOptions;
         private readonly IOptionsMonitor<SignatureDomains> _signatureDomainOptions;
 
-        static QuickStart()
+        static QuickStartEth1()
         {
             s_zeroHashes[0] = new byte[32];
             for (int index = 1; index < 32; index++)
@@ -62,7 +62,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
             }
         }
 
-        public QuickStart(ILogger<QuickStart> logger,
+        public QuickStartEth1(ILogger<QuickStartEth1> logger,
             ChainConstants chainConstants,
             IOptionsMonitor<GweiValues> gweiValueOptions,
             IOptionsMonitor<InitialValues> initialValueOptions,
@@ -85,12 +85,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
             _eth1Genesis = eth1Genesis;
         }
 
-        public async Task InitializeNodeAsync()
-        {
-            await QuickStartGenesis().ConfigureAwait(false);
-        }
-
-        private async Task QuickStartGenesis()
+        public async Task QuickStartGenesis()
         {
             QuickStartParameters quickStartParameters = _quickStartParameterOptions.CurrentValue;
 
