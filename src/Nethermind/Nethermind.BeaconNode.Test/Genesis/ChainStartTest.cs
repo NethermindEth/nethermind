@@ -73,8 +73,8 @@ namespace Nethermind.BeaconNode.Test.Genesis
                 cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator);
             MemoryStore store = new MemoryStore(loggerFactory.CreateLogger<MemoryStore>(), inMemoryConfigurationOptions, new DataDirectory("data"), Substitute.For<IFileSystem>());
             ForkChoice forkChoice = new ForkChoice(loggerFactory.CreateLogger<ForkChoice>(),
-                chainConstants, miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, forkChoiceConfigurationOptions, signatureDomainOptions,
-                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateTransition, store);
+                chainConstants, miscellaneousParameterOptions, timeParameterOptions, maxOperationsPerBlockOptions, forkChoiceConfigurationOptions, signatureDomainOptions,
+                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateTransition);
             GenesisChainStart genesisChainStart = new GenesisChainStart(loggerFactory.CreateLogger<BeaconNode.GenesisChainStart>(),
                 chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions,
                 cryptographyService, store,  beaconStateAccessor, beaconStateTransition, forkChoice);

@@ -31,7 +31,6 @@ namespace Nethermind.BeaconNode
     public class BeaconNodeWorker : BackgroundService
     {
         private readonly IClientVersion _clientVersion;
-        private readonly IStore _store;
         private readonly IClock _clock;
         private readonly DataDirectory _dataDirectory;
         private readonly IHostEnvironment _environment;
@@ -39,6 +38,7 @@ namespace Nethermind.BeaconNode
         private readonly ILogger _logger;
         private readonly INodeStart _nodeStart;
         private bool _stopped;
+        private readonly IStore _store;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
         public BeaconNodeWorker(ILogger<BeaconNodeWorker> logger,
@@ -80,7 +80,7 @@ namespace Nethermind.BeaconNode
                     {
                         DateTimeOffset clockTime = _clock.UtcNow();
                         ulong time = (ulong) clockTime.ToUnixTimeSeconds();
-                        
+
                         if (_store.IsInitialized)
                         {
                             if (!started)
@@ -95,7 +95,7 @@ namespace Nethermind.BeaconNode
 
                                 started = true;
                             }
-                            
+
                             if (time >= _store.GenesisTime)
                             {
                                 await _forkChoice.OnTickAsync(_store, time);

@@ -37,11 +37,11 @@ namespace Nethermind.BeaconNode
         private readonly ICryptographyService _cryptographyService;
         private readonly IEth1DataProvider _eth1DataProvider;
         private readonly ForkChoice _forkChoice;
-        private readonly IStore _store;
         private readonly IOptionsMonitor<HonestValidatorConstants> _honestValidatorConstantOptions;
         private readonly ILogger _logger;
         private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
         private readonly IOperationPool _operationPool;
+        private readonly IStore _store;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
         public BlockProducer(ILogger<BlockProducer> logger,
@@ -84,7 +84,8 @@ namespace Nethermind.BeaconNode
             if (headBeaconBlock!.Slot > previousSlot)
             {
                 // Requesting a block for a past slot?
-                Root ancestorRoot = await _forkChoice.GetAncestorAsync(_store, head, previousSlot).ConfigureAwait(false);
+                Root ancestorRoot =
+                    await _forkChoice.GetAncestorAsync(_store, head, previousSlot).ConfigureAwait(false);
                 parentState = await _store.GetBlockStateAsync(ancestorRoot).ConfigureAwait(false);
                 parentRoot = ancestorRoot;
             }

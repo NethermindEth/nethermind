@@ -37,7 +37,6 @@ namespace Nethermind.BeaconNode.Storage
             {
                 throw new Exception("No storage configuration found.");
             }
-            
         }
     }
 }
