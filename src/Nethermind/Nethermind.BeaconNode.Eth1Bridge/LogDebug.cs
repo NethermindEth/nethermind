@@ -35,6 +35,17 @@ namespace Nethermind.BeaconNode.Eth1Bridge
             LoggerMessage.Define(LogLevel.Debug,
                 new EventId(6352, nameof(PeeringWorkerStopping)),
                 "Eth1 bridge worker stopping.");
-        
+
+        // 7bxx - mock
+
+        public static readonly Action<ILogger, ulong, Exception?> QuickStartStoreCreated =
+            LoggerMessage.Define<ulong>(LogLevel.Debug,
+                new EventId(7100, nameof(QuickStartStoreCreated)),
+                "Quick start genesis store created with genesis time {GenesisTime:n0}.");
+        public static readonly Action<ILogger, ValidatorIndex, string, Exception?> QuickStartAddValidator =
+            LoggerMessage.Define<ValidatorIndex, string>(LogLevel.Debug,
+                new EventId(7300, nameof(QuickStartAddValidator)),
+                "Quick start adding deposit for mocked validator {ValidatorIndex} with public key {PublicKey}.");
+
     }
 }

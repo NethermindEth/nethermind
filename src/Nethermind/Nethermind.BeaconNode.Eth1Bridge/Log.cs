@@ -58,6 +58,11 @@ namespace Nethermind.BeaconNode.Eth1Bridge
         
         // 4bxx warning
         
+        public static readonly Action<ILogger, ulong, ulong, Exception?> MockedQuickStart =
+            LoggerMessage.Define<ulong, ulong>(LogLevel.Warning,
+                new EventId(4900, nameof(MockedQuickStart)),
+                "Mocked quick start with genesis time {GenesisTime:n0} and {ValidatorCount} validators.");
+
         // 5bxx error
 
         // 8bxx finalization

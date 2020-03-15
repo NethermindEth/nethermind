@@ -98,6 +98,7 @@ namespace Nethermind.BeaconNode.Host
                         services.AddBeaconNodeQuickStart(hostContext.Configuration);
                     }
                     
+                    // TODO: Add non-quickstart validator check
                     if (hostContext.Configuration.GetSection("QuickStart:ValidatorStartIndex").Exists())
                     {
                         services.AddHonestValidator(hostContext.Configuration);

@@ -21,7 +21,6 @@ using System.Linq;
 using System.Numerics;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
-using Nethermind.Cryptography;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode.Services;
@@ -30,9 +29,10 @@ using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
+using Nethermind.Cryptography;
 using Nethermind.Logging.Microsoft;
 
-namespace Nethermind.BeaconNode.MockedStart
+namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
 {
     public class QuickStart : INodeStart
     {
@@ -42,7 +42,7 @@ namespace Nethermind.BeaconNode.MockedStart
 
         private static readonly byte[][] s_zeroHashes = new byte[32][];
 
-        private readonly Genesis _beaconChain;
+        private readonly GenesisChainStart _beaconChain;
         private readonly IStore _store;
         private readonly BeaconChainUtility _beaconChainUtility;
         private readonly ChainConstants _chainConstants;
@@ -71,7 +71,7 @@ namespace Nethermind.BeaconNode.MockedStart
             IOptionsMonitor<QuickStartParameters> quickStartParameterOptions,
             ICryptographyService cryptographyService,
             BeaconChainUtility beaconChainUtility,
-            Genesis beaconChain,
+            GenesisChainStart beaconChain,
             IStore store,
             ForkChoice forkChoice)
         {
@@ -152,7 +152,7 @@ namespace Nethermind.BeaconNode.MockedStart
                 depositDataList.Add(depositData);
                 //int depositDataLength = (ulong) 1 << _chainConstants.DepositContractTreeDepth;
                 Root root = _cryptographyService.HashTreeRoot(depositDataList);
-                IEnumerable<Bytes32> allLeaves = depositDataList.Select(x => new Bytes32(_cryptographyService.HashTreeRoot(x).AsSpan()));
+                IEnumerable<Bytes32> allLeaves = depositDataList.Select(x => new Bytes32(_cryptographyService.HashTreeRoot((DepositData) x).AsSpan()));
                 IList<IList<Bytes32>> tree = CalculateMerkleTreeFromLeaves(allLeaves);
                 
 

@@ -9,6 +9,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Nethermind.BeaconNode.Eth1Bridge;
+using Nethermind.BeaconNode.Eth1Bridge.MockedStart;
 using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.MockedStart;
 using Nethermind.BeaconNode.Services;
@@ -42,6 +44,7 @@ namespace Nethermind.BeaconNode.Test
                 })
                 .Build();
             testServiceCollection.AddBeaconNodeQuickStart(configuration);
+            testServiceCollection.AddBeaconNodeEth1Bridge(configuration);
             testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 

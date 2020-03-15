@@ -25,6 +25,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Nethermind.BeaconNode.Eth1Bridge;
 using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.MockedStart;
 using Nethermind.BeaconNode.Services;
@@ -216,6 +217,7 @@ namespace Nethermind.BeaconNode.Test
                     ["QuickStart:GenesisTime"] = $"{genesisTime}"
                 })
                 .Build();
+            testServiceCollection.AddBeaconNodeEth1Bridge(configuration);
             testServiceCollection.AddBeaconNodeQuickStart(configuration);
             testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
@@ -223,9 +225,8 @@ namespace Nethermind.BeaconNode.Test
             INodeStart quickStart = testServiceProvider.GetService<INodeStart>();
             await quickStart.InitializeNodeAsync();
 
-            IStoreProvider storeProvider = testServiceProvider.GetService<IStoreProvider>();
-            storeProvider.TryGetStore(out IStore? store).ShouldBeTrue();
-            BeaconState state = await store!.GetBlockStateAsync(store!.FinalizedCheckpoint.Root);
+            IStore store = testServiceProvider.GetService<IStore>();
+            BeaconState state = await store!.GetBlockStateAsync(store.FinalizedCheckpoint.Root);
             
             // Act
             Epoch targetEpoch = new Epoch(0);

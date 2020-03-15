@@ -19,14 +19,13 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Options;
-using Nethermind.BeaconNode.Services;
 using Nethermind.Core2;
 using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.MockedStart
+namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
 {
     public class MockedEth1DataProvider : IEth1DataProvider
     {

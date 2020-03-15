@@ -37,7 +37,7 @@ namespace Nethermind.BeaconNode.Test.Genesis
             MiscellaneousParameters miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
             GweiValues gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
 
-            BeaconNode.Genesis beaconChain = testServiceProvider.GetService<BeaconNode.Genesis>();
+            BeaconNode.GenesisChainStart beaconChain = testServiceProvider.GetService<BeaconNode.GenesisChainStart>();
 
             int depositCount = miscellaneousParameters.MinimumGenesisActiveValidatorCount;
             (IList<Deposit> deposits, _) = TestDeposit.PrepareGenesisDeposits(testServiceProvider, depositCount, gweiValues.MaximumEffectiveBalance, signed: true);
@@ -49,7 +49,7 @@ namespace Nethermind.BeaconNode.Test.Genesis
 
         public static void IsValidGenesisState(IServiceProvider testServiceProvider, BeaconState state, bool valid)
         {
-            BeaconNode.Genesis beaconChain = testServiceProvider.GetService<BeaconNode.Genesis>();
+            BeaconNode.GenesisChainStart beaconChain = testServiceProvider.GetService<BeaconNode.GenesisChainStart>();
             bool isValid = beaconChain.IsValidGenesisState(state);
             isValid.ShouldBe(valid);
         }
@@ -58,7 +58,7 @@ namespace Nethermind.BeaconNode.Test.Genesis
         public void IsValidGenesisStateTrue()
         {
             // Arrange
-            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
 
             // Act
             BeaconState state = CreateValidBeaconState(testServiceProvider);
@@ -71,7 +71,7 @@ namespace Nethermind.BeaconNode.Test.Genesis
         public void IsValidGenesisStateFalseInvalidTimestamp()
         {
             // Arrange
-            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
 
             ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
@@ -88,7 +88,7 @@ namespace Nethermind.BeaconNode.Test.Genesis
         public void IsValidGenesisStateTrueMoreBalance()
         {
             // Arrange
-            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
 
             GweiValues gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
 
@@ -104,12 +104,12 @@ namespace Nethermind.BeaconNode.Test.Genesis
         public void IsValidGenesisStateTrueOneMoreValidator()
         {
             // Arrange
-            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
 
             MiscellaneousParameters miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
             GweiValues gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
 
-            BeaconNode.Genesis beaconChain = testServiceProvider.GetService<BeaconNode.Genesis>();
+            BeaconNode.GenesisChainStart beaconChain = testServiceProvider.GetService<BeaconNode.GenesisChainStart>();
 
             int depositCount = miscellaneousParameters.MinimumGenesisActiveValidatorCount + 1;
             (IList<Deposit> deposits, _) = TestDeposit.PrepareGenesisDeposits(testServiceProvider, depositCount, gweiValues.MaximumEffectiveBalance, signed: true);
@@ -127,12 +127,12 @@ namespace Nethermind.BeaconNode.Test.Genesis
         public void IsValidGenesisStateFalseNotEnoughValidators()
         {
             // Arrange
-            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
 
             MiscellaneousParameters miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
             GweiValues gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
 
-            BeaconNode.Genesis beaconChain = testServiceProvider.GetService<BeaconNode.Genesis>();
+            BeaconNode.GenesisChainStart beaconChain = testServiceProvider.GetService<BeaconNode.GenesisChainStart>();
 
             int depositCount = miscellaneousParameters.MinimumGenesisActiveValidatorCount - 1;
             (IList<Deposit> deposits, _) = TestDeposit.PrepareGenesisDeposits(testServiceProvider, depositCount, gweiValues.MaximumEffectiveBalance, signed: true);
