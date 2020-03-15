@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 
@@ -21,7 +22,7 @@ namespace Nethermind.Network.Crypto
 {
     public interface IEciesCipher
     {
-        (bool, byte[]) Decrypt(PrivateKey privateKey, byte[] ciphertextBody, byte[] macData = null);
+        (bool, byte[]) Decrypt(PrivateKey privateKey, Span<byte> ciphertextBody, byte[] macData = null);
         byte[] Encrypt(PublicKey recipientPublicKey, byte[] plaintext, byte[] macData);
     }
 }

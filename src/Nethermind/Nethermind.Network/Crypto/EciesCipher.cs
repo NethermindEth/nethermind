@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
@@ -43,23 +44,21 @@ namespace Nethermind.Network.Crypto
             _keyGenerator = new PrivateKeyGenerator(cryptoRandom);
         }
 
-        public (bool, byte[]) Decrypt(PrivateKey privateKey, byte[] ciphertextBody, byte[] macData = null)
+        public (bool, byte[]) Decrypt(PrivateKey privateKey, Span<byte> ciphertextBody, byte[] macData = null)
         {
-            MemoryStream inputStream = new MemoryStream(ciphertextBody);
-            int ephemBytesLength = 2 * ((BouncyCrypto.DomainParameters.Curve.FieldSize + 7) / 8) + 1;
-
-            byte[] ephemBytes = new byte[ephemBytesLength];
-            inputStream.Read(ephemBytes, 0, ephemBytesLength);
-            byte[] iv = new byte[KeySize / 8];
-            inputStream.Read(iv, 0, iv.Length);
-            byte[] cipherBody = new byte[inputStream.Length - inputStream.Position];
-            inputStream.Read(cipherBody, 0, cipherBody.Length);
-            if (ephemBytes[0] != 4) // if not a compressed public key then probably we need to use EIP8
+            // MemoryStream inputStream = new MemoryStream(ciphertextBody);
+            int ephemeralBytesLength = 2 * ((BouncyCrypto.DomainParameters.Curve.FieldSize + 7) / 8) + 1;
+            Span<byte> ephemeralBytes = ciphertextBody.Slice(0, ephemeralBytesLength);
+            // inputStream.Read(ephemBytes, 0, ephemBytesLength);
+            Span<byte> iv = ciphertextBody.Slice(ephemeralBytesLength, KeySize / 8);
+            // inputStream.Read(iv, 0, iv.Length);
+            Span<byte> cipherBody = ciphertextBody.Slice(ephemeralBytesLength + KeySize / 8);
+            if (ephemeralBytes[0] != 4) // if not a compressed public key then probably we need to use EIP8
             {
                 return (false, null);
             }
 
-            byte[] plaintext = Decrypt(new PublicKey(ephemBytes), privateKey, iv, cipherBody, macData);
+            byte[] plaintext = Decrypt(new PublicKey(ephemeralBytes.ToArray()), privateKey, iv.ToArray(), cipherBody.ToArray(), macData);
             return (true, plaintext);
         }
 

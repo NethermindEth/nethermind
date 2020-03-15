@@ -16,6 +16,7 @@
 
 using System;
 using System.Net;
+using System.Security.Cryptography;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -70,20 +71,20 @@ namespace Nethermind.Network.Discovery.Serializers
                 throw new NetworkingException("Incorrect message", NetworkExceptionType.Validation);
             }
 
-            byte[] mdc = msg.Slice(0, 32);
-            byte[] signature = msg.Slice(32, 65);
+            Span<byte> mdc = msg.AsSpan().Slice(0, 32);
+            Span<byte> signature = msg.AsSpan().Slice(32, 65);
             // var type = new[] { msg[97] };
             byte[] data = msg.Slice(98, msg.Length - 98);
-            byte[] computedMdc = Keccak.Compute(msg.Slice(32)).Bytes;
+            Span<byte> computedMdc = ValueKeccak.Compute(msg.AsSpan().Slice(32)).BytesAsSpan;
 
             if (!Bytes.AreEqual(mdc, computedMdc))
             {
                 throw new NetworkingException("Invalid MDC", NetworkExceptionType.Validation);
             }
 
-            PublicKey nodeId = _nodeIdResolver.GetNodeId(signature.Slice(0, 64), signature[64], msg.Slice(97, msg.Length - 97));
+            PublicKey nodeId = _nodeIdResolver.GetNodeId(signature.Slice(0, 64).ToArray(), signature[64], msg.AsSpan().Slice(97, msg.Length - 97));
             T message = _messageFactory.CreateIncomingMessage<T>(nodeId);
-            return (message, mdc, data);
+            return (message, mdc.ToArray(), data);
         }
 
         protected Rlp Encode(IPEndPoint address)
