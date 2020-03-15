@@ -37,11 +37,11 @@ namespace Nethermind.BeaconNode
         private readonly ICryptographyService _cryptographyService;
         private readonly IEth1DataProvider _eth1DataProvider;
         private readonly ForkChoice _forkChoice;
+        private readonly IStore _store;
         private readonly IOptionsMonitor<HonestValidatorConstants> _honestValidatorConstantOptions;
         private readonly ILogger _logger;
         private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
         private readonly IOperationPool _operationPool;
-        private readonly IStoreProvider _storeProvider;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
         public BlockProducer(ILogger<BlockProducer> logger,
@@ -51,7 +51,7 @@ namespace Nethermind.BeaconNode
             ICryptographyService cryptographyService,
             BeaconStateTransition beaconStateTransition,
             ForkChoice forkChoice,
-            IStoreProvider storeProvider,
+            IStore store,
             IEth1DataProvider eth1DataProvider,
             IOperationPool operationPool)
         {
@@ -62,7 +62,7 @@ namespace Nethermind.BeaconNode
             _cryptographyService = cryptographyService;
             _beaconStateTransition = beaconStateTransition;
             _forkChoice = forkChoice;
-            _storeProvider = storeProvider;
+            _store = store;
             _eth1DataProvider = eth1DataProvider;
             _operationPool = operationPool;
         }
@@ -75,24 +75,17 @@ namespace Nethermind.BeaconNode
                 throw new ArgumentException("Can't generate new block for slot 0, as it is the genesis block.");
             }
 
-            if (!_storeProvider.TryGetStore(out IStore? retrievedStore))
-            {
-                throw new Exception("Beacon chain is currently syncing or waiting for genesis.");
-            }
-
-            IStore store = retrievedStore!;
-
             Slot previousSlot = slot - Slot.One;
-            Root head = await _forkChoice.GetHeadAsync(store).ConfigureAwait(false);
-            BeaconBlock headBeaconBlock = await store.GetBlockAsync(head).ConfigureAwait(false);
+            Root head = await _forkChoice.GetHeadAsync(_store).ConfigureAwait(false);
+            BeaconBlock headBeaconBlock = await _store.GetBlockAsync(head).ConfigureAwait(false);
 
             BeaconState parentState;
             Root parentRoot;
             if (headBeaconBlock!.Slot > previousSlot)
             {
                 // Requesting a block for a past slot?
-                Root ancestorRoot = await _forkChoice.GetAncestorAsync(store, head, previousSlot).ConfigureAwait(false);
-                parentState = await store.GetBlockStateAsync(ancestorRoot).ConfigureAwait(false);
+                Root ancestorRoot = await _forkChoice.GetAncestorAsync(_store, head, previousSlot).ConfigureAwait(false);
+                parentState = await _store.GetBlockStateAsync(ancestorRoot).ConfigureAwait(false);
                 parentRoot = ancestorRoot;
             }
             else
@@ -103,7 +96,7 @@ namespace Nethermind.BeaconNode
                         LogDebug.NewBlockSkippedSlots(_logger, slot, randaoReveal, headBeaconBlock.Slot, null);
                 }
 
-                parentState = await store.GetBlockStateAsync(head).ConfigureAwait(false);
+                parentState = await _store.GetBlockStateAsync(head).ConfigureAwait(false);
                 parentRoot = head;
             }
 

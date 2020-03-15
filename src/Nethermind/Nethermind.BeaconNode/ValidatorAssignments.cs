@@ -36,8 +36,8 @@ namespace Nethermind.BeaconNode
         private readonly BeaconStateAccessor _beaconStateAccessor;
         private readonly BeaconStateTransition _beaconStateTransition;
         private readonly ForkChoice _forkChoice;
+        private readonly IStore _store;
         private readonly ILogger<ValidatorAssignments> _logger;
-        private readonly IStoreProvider _storeProvider;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
         public ValidatorAssignments(ILogger<ValidatorAssignments> logger,
@@ -46,7 +46,7 @@ namespace Nethermind.BeaconNode
             BeaconStateAccessor beaconStateAccessor,
             BeaconStateTransition beaconStateTransition,
             ForkChoice forkChoice,
-            IStoreProvider storeProvider)
+            IStore store)
         {
             _logger = logger;
             _timeParameterOptions = timeParameterOptions;
@@ -54,7 +54,7 @@ namespace Nethermind.BeaconNode
             _beaconStateAccessor = beaconStateAccessor;
             _beaconStateTransition = beaconStateTransition;
             _forkChoice = forkChoice;
-            _storeProvider = storeProvider;
+            _store = store;
         }
 
         public bool CheckIfValidatorActive(BeaconState state, ValidatorIndex validatorIndex)
@@ -112,14 +112,8 @@ namespace Nethermind.BeaconNode
 
         public async Task<ValidatorDuty> GetValidatorDutyAsync(BlsPublicKey validatorPublicKey, Epoch epoch)
         {
-            if (!_storeProvider.TryGetStore(out IStore? retrievedStore))
-            {
-                throw new Exception("Beacon chain is currently syncing or waiting for genesis.");
-            }
-
-            IStore store = retrievedStore!;
-            Root head = await _forkChoice.GetHeadAsync(store).ConfigureAwait(false);
-            BeaconState headState = await store.GetBlockStateAsync(head).ConfigureAwait(false);
+            Root head = await _forkChoice.GetHeadAsync(_store).ConfigureAwait(false);
+            BeaconState headState = await _store.GetBlockStateAsync(head).ConfigureAwait(false);
 
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(headState);
             Epoch nextEpoch = currentEpoch + Epoch.One;
@@ -176,13 +170,13 @@ namespace Nethermind.BeaconNode
                 // Check historical states
                 if (startSlot < fromSlot && (duty.AttestationSlot == Slot.None || duty.BlockProposalSlot == Slot.None))
                 {
-                    duty = await CheckHistoricalSlotsAsync(store, historicalBlockRoots, fromSlot, startSlot, validatorIndex, duty).ConfigureAwait(false);
+                    duty = await CheckHistoricalSlotsAsync(_store, historicalBlockRoots, fromSlot, startSlot, validatorIndex, duty).ConfigureAwait(false);
                 }
             }
             else
             {
-                Root endRoot = await _forkChoice.GetAncestorAsync(store, head, endSlot - Slot.One);
-                BeaconState state = await store.GetBlockStateAsync(endRoot).ConfigureAwait(false);
+                Root endRoot = await _forkChoice.GetAncestorAsync(_store, head, endSlot - Slot.One);
+                BeaconState state = await _store.GetBlockStateAsync(endRoot).ConfigureAwait(false);
                 
                 // Check base state
                 ValidatorIndex validatorIndex = CheckValidatorIndex(state, validatorPublicKey);
@@ -193,7 +187,7 @@ namespace Nethermind.BeaconNode
                 if (duty.AttestationSlot == Slot.None || duty.BlockProposalSlot == Slot.None)
                 {
                     Slot fromSlot = state.Slot;
-                    duty = await CheckHistoricalSlotsAsync(store, historicalBlockRoots, fromSlot, startSlot, validatorIndex, duty).ConfigureAwait(false);
+                    duty = await CheckHistoricalSlotsAsync(_store, historicalBlockRoots, fromSlot, startSlot, validatorIndex, duty).ConfigureAwait(false);
                 }
             }
 

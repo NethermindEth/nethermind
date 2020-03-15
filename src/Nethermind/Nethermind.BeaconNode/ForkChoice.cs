@@ -35,6 +35,7 @@ namespace Nethermind.BeaconNode
         private readonly BeaconChainUtility _beaconChainUtility;
         private readonly BeaconStateAccessor _beaconStateAccessor;
         private readonly BeaconStateTransition _beaconStateTransition;
+        private readonly IStore _store;
         private readonly ChainConstants _chainConstants;
         private readonly ICryptographyService _cryptographyService;
         private readonly IOptionsMonitor<ForkChoiceConfiguration> _forkChoiceConfigurationOptions;
@@ -44,7 +45,6 @@ namespace Nethermind.BeaconNode
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<SignatureDomains> _signatureDomainOptions;
         private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
-        private readonly IStoreProvider _storeProvider;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
         public ForkChoice(
@@ -61,7 +61,7 @@ namespace Nethermind.BeaconNode
             BeaconChainUtility beaconChainUtility,
             BeaconStateAccessor beaconStateAccessor,
             BeaconStateTransition beaconStateTransition,
-            IStoreProvider storeProvider)
+            IStore store)
         {
             _logger = logger;
             _chainConstants = chainConstants;
@@ -76,7 +76,7 @@ namespace Nethermind.BeaconNode
             _beaconChainUtility = beaconChainUtility;
             _beaconStateAccessor = beaconStateAccessor;
             _beaconStateTransition = beaconStateTransition;
-            _storeProvider = storeProvider;
+            _store = store;
         }
 
         public Slot ComputeSlotsSinceEpochStart(Slot slot)

@@ -32,9 +32,6 @@ namespace Nethermind.BeaconNode.Storage
                 services.Configure<InMemoryConfiguration>(x => configuration.Bind("Storage:InMemory", x));
                 services.AddSingleton<IStore, MemoryStore>();
                 services.TryAddTransient<IFileSystem, FileSystem>();
-
-                // TODO: Remove IStoreProvider
-                services.AddSingleton<IStoreProvider, MemoryStoreProvider>();
             }
             else
             {

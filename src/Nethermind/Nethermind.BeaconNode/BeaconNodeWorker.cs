@@ -31,6 +31,7 @@ namespace Nethermind.BeaconNode
     public class BeaconNodeWorker : BackgroundService
     {
         private readonly IClientVersion _clientVersion;
+        private readonly IStore _store;
         private readonly IClock _clock;
         private readonly DataDirectory _dataDirectory;
         private readonly IHostEnvironment _environment;
@@ -38,7 +39,6 @@ namespace Nethermind.BeaconNode
         private readonly ILogger _logger;
         private readonly INodeStart _nodeStart;
         private bool _stopped;
-        private readonly IStoreProvider _storeProvider;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
         public BeaconNodeWorker(ILogger<BeaconNodeWorker> logger,
@@ -46,7 +46,7 @@ namespace Nethermind.BeaconNode
             IClock clock,
             IHostEnvironment environment,
             IClientVersion clientVersion,
-            IStoreProvider storeProvider,
+            IStore store,
             DataDirectory dataDirectory,
             ForkChoice forkChoice,
             INodeStart nodeStart)
@@ -56,7 +56,7 @@ namespace Nethermind.BeaconNode
             _clock = clock;
             _environment = environment;
             _clientVersion = clientVersion;
-            _storeProvider = storeProvider;
+            _store = store;
             _dataDirectory = dataDirectory;
             _forkChoice = forkChoice;
             _nodeStart = nodeStart;
@@ -73,37 +73,36 @@ namespace Nethermind.BeaconNode
             {
                 await _nodeStart.InitializeNodeAsync();
 
-                IStore? store = null;
+                bool started = false;
                 while (!stoppingToken.IsCancellationRequested && !_stopped)
                 {
                     try
                     {
                         DateTimeOffset clockTime = _clock.UtcNow();
                         ulong time = (ulong) clockTime.ToUnixTimeSeconds();
-
-                        if (store == null)
+                        
+                        if (_store.IsInitialized)
                         {
-                            if (_storeProvider.TryGetStore(out store))
+                            if (!started)
                             {
                                 if (_logger.IsInfo())
                                 {
-                                    long slotValue = ((long) time - (long) store!.GenesisTime) /
+                                    long slotValue = ((long) time - (long) _store.GenesisTime) /
                                                      _timeParameterOptions.CurrentValue.SecondsPerSlot;
-                                    Log.WorkerStoreAvailableTickStarted(_logger, store!.GenesisTime, time, slotValue,
+                                    Log.WorkerStoreAvailableTickStarted(_logger, _store!.GenesisTime, time, slotValue,
                                         Thread.CurrentThread.ManagedThreadId, null);
                                 }
-                            }
-                        }
 
-                        if (store != null)
-                        {
-                            if (time >= store.GenesisTime)
+                                started = true;
+                            }
+                            
+                            if (time >= _store.GenesisTime)
                             {
-                                await _forkChoice.OnTickAsync(store, time);
+                                await _forkChoice.OnTickAsync(_store, time);
                             }
                             else
                             {
-                                long timeToGenesis = (long) store.GenesisTime - (long) time;
+                                long timeToGenesis = (long) _store.GenesisTime - (long) time;
                                 if (timeToGenesis < 10 || timeToGenesis % 10 == 0)
                                 {
                                     if (_logger.IsInfo()) Log.GenesisCountdown(_logger, timeToGenesis, null);
