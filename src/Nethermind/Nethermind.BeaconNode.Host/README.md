@@ -33,6 +33,8 @@ dotnet run --project src/Nethermind/Nethermind.BeaconNode.Host -- --QuickStart:G
 
 ### Test it works
 
+**NOTE: OpenAPI not currently fixed after upgrade to 0.10.1, so this section is not working (yet)** 
+
 Run, as above, then open a browser to ```https://localhost:8230/node/version``` and it should respond with the name and version.
 
 Other GET queries:

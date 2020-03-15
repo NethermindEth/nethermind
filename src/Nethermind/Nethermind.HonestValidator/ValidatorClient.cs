@@ -225,6 +225,13 @@ namespace Nethermind.HonestValidator
             IList<BlsPublicKey> publicKeys = _validatorKeyProvider.GetPublicKeys();
 
             ApiResponse<IList<ValidatorDuty>> validatorDutiesResponse = await _beaconNodeApi.ValidatorDutiesAsync(publicKeys, epoch, cancellationToken);
+            if (validatorDutiesResponse.StatusCode != StatusCode.Success)
+            {
+                Log.ErrorGettingValidatorDuties(_logger, (int) validatorDutiesResponse.StatusCode,
+                    validatorDutiesResponse.StatusCode, null);
+                return;
+            }
+            
             IList<ValidatorDuty> validatorDuties = validatorDutiesResponse.Content;
 
             foreach (ValidatorDuty validatorDuty in validatorDuties)

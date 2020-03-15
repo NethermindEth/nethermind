@@ -16,6 +16,7 @@
 
 using System;
 using Microsoft.Extensions.Logging;
+using Nethermind.Core2.Api;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
@@ -92,6 +93,10 @@ namespace Nethermind.HonestValidator
             LoggerMessage.Define(LogLevel.Error,
                 new EventId(5450, nameof(HonestValidatorWorkerLoopError)),
                 "Unexpected error caught in honest validator worker, loop continuing.");
+        public static readonly Action<ILogger, int, StatusCode, Exception?> ErrorGettingValidatorDuties =
+            LoggerMessage.Define<int, StatusCode>(LogLevel.Error,
+                new EventId(5451, nameof(ErrorGettingValidatorDuties)),
+                "Error getting updated validator duties from bacon node, response: {StatusCodeNumeric} {StatusCode}.");
 
         // 8bxx finalization
 
