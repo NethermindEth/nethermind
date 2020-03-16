@@ -1,11 +1,9 @@
 name: Smoke Test Init
 
-# on:
-#   push:
-#     tags:
-#     - '*'
-
-on: push
+on:
+  push:
+    tags:
+    - '*'
 
 jobs:
   smoke-test:
