@@ -17,7 +17,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core2;
@@ -30,22 +29,22 @@ namespace Nethermind.HonestValidator
 {
     public class HonestValidatorWorker : BackgroundService
     {
+        private readonly BeaconChainInformation _beaconChainInformation;
         private readonly IBeaconNodeApi _beaconNodeApi;
-        private readonly BeaconChain _beaconChain;
-        private readonly ValidatorClient _validatorClient;
         private readonly IClientVersion _clientVersion;
-        private readonly ILogger _logger;
         private readonly IClock _clock;
-        private readonly IHostEnvironment _environment;
         private readonly DataDirectory _dataDirectory;
+        private readonly IHostEnvironment _environment;
+        private readonly ILogger _logger;
         private bool _stopped;
+        private readonly ValidatorClient _validatorClient;
 
         public HonestValidatorWorker(ILogger<HonestValidatorWorker> logger,
             IClock clock,
             IHostEnvironment environment,
             DataDirectory dataDirectory,
             IBeaconNodeApi beaconNodeApi,
-            BeaconChain beaconChain,
+            BeaconChainInformation beaconChainInformation,
             ValidatorClient validatorClient,
             IClientVersion clientVersion)
         {
@@ -54,30 +53,17 @@ namespace Nethermind.HonestValidator
             _environment = environment;
             _dataDirectory = dataDirectory;
             _beaconNodeApi = beaconNodeApi;
-            _beaconChain = beaconChain;
+            _beaconChainInformation = beaconChainInformation;
             _validatorClient = validatorClient;
             _clientVersion = clientVersion;
-        }
-
-        public override async Task StopAsync(CancellationToken cancellationToken)
-        {
-            if (_logger.IsDebug()) LogDebug.HonestValidatorWorkerStopping(_logger, null);
-            _stopped = true;
-            await base.StopAsync(cancellationToken);
-        }
-
-        public override async Task StartAsync(CancellationToken cancellationToken)
-        {
-            if (_logger.IsDebug()) LogDebug.HonestValidatorWorkerStarting(_logger, null);
-            await base.StartAsync(cancellationToken);
-            if (_logger.IsDebug()) LogDebug.HonestValidatorWorkerStarted(_logger, null);
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             if (_logger.IsInfo())
                 Log.HonestValidatorWorkerExecuteStarted(_logger, _clientVersion.Description,
-                    _dataDirectory.ResolvedPath, _environment.EnvironmentName, Thread.CurrentThread.ManagedThreadId, null);
+                    _dataDirectory.ResolvedPath, _environment.EnvironmentName, Thread.CurrentThread.ManagedThreadId,
+                    null);
 
             try
             {
@@ -85,13 +71,14 @@ namespace Nethermind.HonestValidator
                 // List of nodes
                 // Validator private keys (or quickstart)
                 // Seconds per slot
-                
+
                 string nodeVersion = string.Empty;
                 while (nodeVersion == string.Empty)
                 {
                     try
                     {
-                        ApiResponse<string> nodeVersionResponse = await _beaconNodeApi.GetNodeVersionAsync(stoppingToken).ConfigureAwait(false);
+                        ApiResponse<string> nodeVersionResponse =
+                            await _beaconNodeApi.GetNodeVersionAsync(stoppingToken).ConfigureAwait(false);
                         if (nodeVersionResponse.StatusCode == StatusCode.Success)
                         {
                             nodeVersion = nodeVersionResponse.Content;
@@ -109,7 +96,8 @@ namespace Nethermind.HonestValidator
                 {
                     try
                     {
-                        ApiResponse<ulong> genesisTimeResponse = await _beaconNodeApi.GetGenesisTimeAsync(stoppingToken).ConfigureAwait(false);
+                        ApiResponse<ulong> genesisTimeResponse =
+                            await _beaconNodeApi.GetGenesisTimeAsync(stoppingToken).ConfigureAwait(false);
                         if (genesisTimeResponse.StatusCode == StatusCode.Success)
                         {
                             genesisTime = genesisTimeResponse.Content;
@@ -123,9 +111,9 @@ namespace Nethermind.HonestValidator
                 }
 
                 Log.HonestValidatorWorkerConnected(_logger, nodeVersion, genesisTime, null);
-                
-                await _beaconChain.SetGenesisTimeAsync(genesisTime).ConfigureAwait(false);
-                
+
+                await _beaconChainInformation.SetGenesisTimeAsync(genesisTime).ConfigureAwait(false);
+
                 while (!stoppingToken.IsCancellationRequested && !_stopped)
                 {
                     try
@@ -135,11 +123,11 @@ namespace Nethermind.HonestValidator
 
                         if (time > genesisTime)
                         {
-                            await _validatorClient.OnTickAsync(_beaconChain, time, stoppingToken).ConfigureAwait(false);
+                            await _validatorClient.OnTickAsync(_beaconChainInformation, time, stoppingToken)
+                                .ConfigureAwait(false);
                         }
 
                         // Wait for remaining time, if any
-                        // NOTE: To fast forward time during testing, have the second call to test _clock.Now() jump forward to avoid waiting.
                         DateTimeOffset nextClockTime = DateTimeOffset.FromUnixTimeSeconds((long) time + 1);
                         TimeSpan remaining = nextClockTime - _clock.UtcNow();
                         if (remaining > TimeSpan.Zero)
@@ -163,7 +151,22 @@ namespace Nethermind.HonestValidator
                 throw;
             }
 
-            if (_logger.IsDebug()) LogDebug.HonestValidatorWorkerExecuteExiting(_logger, Thread.CurrentThread.ManagedThreadId, null);
+            if (_logger.IsDebug())
+                LogDebug.HonestValidatorWorkerExecuteExiting(_logger, Thread.CurrentThread.ManagedThreadId, null);
+        }
+
+        public override async Task StartAsync(CancellationToken cancellationToken)
+        {
+            if (_logger.IsDebug()) LogDebug.HonestValidatorWorkerStarting(_logger, null);
+            await base.StartAsync(cancellationToken);
+            if (_logger.IsDebug()) LogDebug.HonestValidatorWorkerStarted(_logger, null);
+        }
+
+        public override async Task StopAsync(CancellationToken cancellationToken)
+        {
+            if (_logger.IsDebug()) LogDebug.HonestValidatorWorkerStopping(_logger, null);
+            _stopped = true;
+            await base.StopAsync(cancellationToken);
         }
     }
 }

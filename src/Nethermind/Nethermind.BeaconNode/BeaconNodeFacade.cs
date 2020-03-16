@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -66,7 +65,7 @@ namespace Nethermind.BeaconNode
                     // Beacon chain is currently syncing or waiting for genesis.
                     return ApiResponse.Create<ulong>(StatusCode.InternalError);
                 }
-                
+
                 BeaconState state = await GetHeadStateAsync().ConfigureAwait(false);
                 return ApiResponse.Create(StatusCode.Success, state.GenesisTime);
             }
@@ -139,7 +138,8 @@ namespace Nethermind.BeaconNode
         {
             try
             {
-                BeaconBlock unsignedBlock = await _blockProducer.NewBlockAsync(slot, randaoReveal).ConfigureAwait(false);
+                BeaconBlock unsignedBlock =
+                    await _blockProducer.NewBlockAsync(slot, randaoReveal).ConfigureAwait(false);
                 return ApiResponse.Create(StatusCode.Success, unsignedBlock);
             }
             catch (Exception ex)
@@ -149,7 +149,8 @@ namespace Nethermind.BeaconNode
             }
         }
 
-        public async Task<ApiResponse> PublishBlockAsync(SignedBeaconBlock signedBlock, CancellationToken cancellationToken)
+        public async Task<ApiResponse> PublishBlockAsync(SignedBeaconBlock signedBlock,
+            CancellationToken cancellationToken)
         {
             try
             {
@@ -188,19 +189,21 @@ namespace Nethermind.BeaconNode
             }
         }
 
-        public async Task<ApiResponse<IList<ValidatorDuty>>> ValidatorDutiesAsync(IList<BlsPublicKey> validatorPublicKeys,
-            Epoch? epoch, [EnumeratorCancellation] CancellationToken cancellationToken)
+        public async Task<ApiResponse<IList<ValidatorDuty>>> ValidatorDutiesAsync(
+            IList<BlsPublicKey> validatorPublicKeys,
+            Epoch? epoch, CancellationToken cancellationToken)
         {
             if (validatorPublicKeys.Count < 1)
             {
                 return ApiResponse.Create<IList<ValidatorDuty>>(StatusCode.InvalidRequest);
             }
+
             if (!_store.IsInitialized)
             {
                 // Beacon chain is currently syncing or waiting for genesis.
                 return ApiResponse.Create<IList<ValidatorDuty>>(StatusCode.CurrentlySyncing);
             }
-            
+
             // TODO: Rather than check one by one (each of which loops through potentially all slots for the epoch), optimise by either checking multiple, or better possibly caching or pre-calculating
             IList<ValidatorDuty> validatorDuties = new List<ValidatorDuty>();
             foreach (BlsPublicKey validatorPublicKey in validatorPublicKeys)
@@ -224,7 +227,7 @@ namespace Nethermind.BeaconNode
 
                 validatorDuties.Add(validatorDuty);
             }
-            
+
             ApiResponse<IList<ValidatorDuty>> response = ApiResponse.Create(StatusCode.Success, validatorDuties);
             return response;
         }
