@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -192,7 +191,7 @@ namespace Nethermind.BeaconNode
 
         public async Task<ApiResponse<IList<ValidatorDuty>>> ValidatorDutiesAsync(
             IList<BlsPublicKey> validatorPublicKeys,
-            Epoch? epoch, [EnumeratorCancellation] CancellationToken cancellationToken)
+            Epoch? epoch, CancellationToken cancellationToken)
         {
             if (validatorPublicKeys.Count < 1)
             {

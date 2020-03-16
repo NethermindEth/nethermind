@@ -15,19 +15,30 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
-using Nethermind.Core2.Configuration;
+using Nethermind.Core2.Api;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.HonestValidator.Services
 {
-    public class BeaconChain
+    public class BeaconChainInformation
     {
-        public ulong GenesisTime { get; private set;  }
+        public Fork Fork { get; private set; } = Fork.Zero;
+        public ulong GenesisTime { get; private set; }
 
-        public ulong Time { get; private set;  }
+        public Slot LastSlotChecked { get; private set; }
 
-        public Fork Fork { get; private set; }
+        public bool NodeIsSyncing { get; private set; }
+
+        public SyncingStatus SyncStatus { get; private set; } = SyncingStatus.Zero;
+
+        public ulong Time { get; private set; }
+
+        public Task SetForkAsync(Fork fork)
+        {
+            Fork = fork;
+            return Task.CompletedTask;
+        }
 
         public Task SetGenesisTimeAsync(ulong time)
         {
@@ -35,15 +46,26 @@ namespace Nethermind.HonestValidator.Services
             return Task.CompletedTask;
         }
 
-        public Task SetTimeAsync(ulong time)
+        public Task SetLastSlotChecked(Slot slot)
         {
-            Time = time;
+            LastSlotChecked = slot;
             return Task.CompletedTask;
         }
 
-        public Task SetForkAsync(Fork fork)
+        public Task SetSyncStatus(Syncing syncing)
         {
-            Fork = fork;
+            NodeIsSyncing = syncing.IsSyncing;
+            if (syncing.SyncStatus != null)
+            {
+                SyncStatus = syncing.SyncStatus;
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public Task SetTimeAsync(ulong time)
+        {
+            Time = time;
             return Task.CompletedTask;
         }
     }

@@ -20,6 +20,8 @@ namespace Nethermind.Core2.Api
 {
     public class SyncingStatus
     {
+        public static SyncingStatus Zero = new SyncingStatus(Slot.Zero, Slot.Zero, Slot.Zero);
+
         public SyncingStatus(Slot startingSlot, Slot currentSlot, Slot highestSlot)
         {
             StartingSlot = startingSlot;

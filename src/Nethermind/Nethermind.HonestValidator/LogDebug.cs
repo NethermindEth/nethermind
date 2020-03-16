@@ -55,6 +55,10 @@ namespace Nethermind.HonestValidator
             LoggerMessage.Define<BlsPublicKey, Epoch, Slot, Shard>(LogLevel.Debug,
                 new EventId(6455, nameof(ValidatorDutyAttestationChanged)),
                 "Validator {PublicKey} epoch {Epoch} duty attestation slot {Slot} for shard {Shard}.");
+        public static readonly Action<ILogger, Slot, Slot, Slot, Exception?> ProcessingSlot =
+            LoggerMessage.Define<Slot, Slot, Slot>(LogLevel.Debug,
+                new EventId(6455, nameof(ProcessingSlot)),
+                "Processing slot {CheckSlot}, at clock time slot {ClockSlot}, with last sync status current (head) slot {NodeCurrentSlot}.");
 
     }
 }
