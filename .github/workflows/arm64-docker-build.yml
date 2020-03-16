@@ -1,9 +1,8 @@
 name: Publish Debian arm64 image to docker registry
 
 on:
-  push:
-    tags:
-    - '*'
+  repository_dispatch:
+    types: docker_arm64_debian
 
 jobs:
   arm64-build:

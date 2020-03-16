@@ -11,7 +11,7 @@ print(emoji.emojize("Fast Sync configuration settings initialization     :white_
 
 def fastBlocksSettings(configuration, apiUrl, blockReduced):
     latestBlock = int(json.loads(subprocess.getoutput(f'curl --silent "https://{apiUrl}/api?module=proxy&action=eth_blockNumber&apikey={key}"'))['result'],16)
-    baseBlock = latestBlock - blockReduced
+    baseBlock = round(latestBlock - blockReduced, -3)
     pivot = subprocess.getoutput(f'curl --silent "https://{apiUrl}/api?module=proxy&action=eth_getBlockByNumber&tag={hex(baseBlock)}&boolean=true&apikey={key}"')
     pivotHash = json.loads(pivot)['result']['hash']
     pivotTotalDifficulty = int(json.loads(pivot)['result']['totalDifficulty'],16)
@@ -32,7 +32,7 @@ def fastBlocksSettings(configuration, apiUrl, blockReduced):
 # Mainnet 
 print(emoji.emojize("Mainnet section                                     :white_check_mark: ", use_aliases=True))
 mainnetApiUrl = 'api.etherscan.io'
-mainnetBlockReduced = 16000
+mainnetBlockReduced = 8192
 
 fastBlocksSettings('mainnet', mainnetApiUrl, mainnetBlockReduced)
 
@@ -46,7 +46,7 @@ fastBlocksSettings('goerli', goerliApiUrl, goerliBlockReduced)
 # Ropsten
 print(emoji.emojize("Ropsten section                                     :white_check_mark: ", use_aliases=True))
 ropstenApiUrl = 'api-ropsten.etherscan.io'
-ropstenBlockReduced = 8000
+ropstenBlockReduced = 8192
 
 fastBlocksSettings('ropsten', ropstenApiUrl, ropstenBlockReduced)
 
