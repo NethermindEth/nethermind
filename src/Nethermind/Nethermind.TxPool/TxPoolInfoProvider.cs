@@ -24,16 +24,16 @@ namespace Nethermind.TxPool
 {
     public class TxPoolInfoProvider : ITxPoolInfoProvider
     {
-        private readonly IStateProvider _stateProvider;
+        private readonly IStateReader _stateProvider;
         private readonly ITxPool _txPool;
 
-        public TxPoolInfoProvider(IStateProvider stateProvider, ITxPool txPool)
+        public TxPoolInfoProvider(IStateReader stateReader, ITxPool txPool)
         {
-            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _stateProvider = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
         }
 
-        public TxPoolInfo GetInfo()
+        public TxPoolInfo GetInfo(BlockHeader head)
         {
             var transactions = _txPool.GetPendingTransactions();
             var groupedTransactions = transactions.GroupBy(t => t.SenderAddress);
@@ -47,7 +47,7 @@ namespace Nethermind.TxPool
                     continue;
                 }
 
-                var accountNonce = _stateProvider.GetNonce(address);
+                var accountNonce = _stateProvider.GetNonce(head.StateRoot, address);
                 var expectedNonce = accountNonce;
                 var pending = new Dictionary<ulong, Transaction>();
                 var queued = new Dictionary<ulong, Transaction>();
