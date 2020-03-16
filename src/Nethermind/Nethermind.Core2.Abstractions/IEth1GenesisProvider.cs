@@ -14,16 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Core2.Containers
-{
-    public class Eth1Block
-    {
-        public ulong Timestamp { get; }
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Core2.Eth1;
 
-        public Eth1Block(ulong timestamp)
-        {
-            Timestamp = timestamp;
-        }
-        
+namespace Nethermind.Core2
+{
+    public interface IEth1GenesisProvider
+    {
+        Task<Eth1GenesisData> GetEth1GenesisDataAsync(CancellationToken cancellationToken);
     }
 }

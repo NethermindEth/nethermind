@@ -174,11 +174,6 @@ namespace Nethermind.BeaconNode
                 new EventId(4408, nameof(ApiErrorPublishBlock)),
                 "Exception result from API publish Block (post).");
 
-        public static readonly Action<ILogger, ulong, ulong, Exception?> MockedQuickStart =
-            LoggerMessage.Define<ulong, ulong>(LogLevel.Warning,
-                new EventId(4900, nameof(MockedQuickStart)),
-                "Mocked quick start with genesis time {GenesisTime:n0} and {ValidatorCount} validators.");
-
         public static readonly Action<ILogger, long, Exception?> QuickStartClockCreated =
             LoggerMessage.Define<long>(LogLevel.Warning,
                 new EventId(4901, nameof(QuickStartClockCreated)),
