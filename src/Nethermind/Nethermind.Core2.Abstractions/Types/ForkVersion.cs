@@ -30,7 +30,7 @@ namespace Nethermind.Core2.Types
             return MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref this, 1));
         }
         
-        public ForkVersion(Span<byte> span)
+        public ForkVersion(ReadOnlySpan<byte> span)
         {
             if (span.Length != sizeof(uint))
             {

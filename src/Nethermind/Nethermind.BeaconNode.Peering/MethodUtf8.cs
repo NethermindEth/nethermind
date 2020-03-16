@@ -14,37 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core2.Types;
+using System.Text;
 
 namespace Nethermind.BeaconNode.Peering
 {
-    public class PeerSyncStatus
+    public static class MethodUtf8
     {
-        private Slot _highestPeerSlot;
+        public static readonly byte[] BeaconBlocksByRange =
+            Encoding.UTF8.GetBytes("/eth2/beacon_chain/req/beacon_blocks_by_range/1/");
 
-        public Slot HighestPeerSlot
-        {
-            get => _highestPeerSlot;
-        }
-
-        public Slot SyncStartingSlot { get; private set; }
-
-        public void StartSync(Slot slot)
-        {
-            SyncStartingSlot = slot;
-        }
-
-        public void UpdateMostRecentSlot(Slot slot)
-        {
-            Slot initialValue;
-            do
-            {
-                initialValue = _highestPeerSlot;
-                if (slot <= initialValue)
-                {
-                    break;
-                }
-            } while (initialValue != Slot.InterlockedCompareExchange(ref _highestPeerSlot, slot, initialValue));
-        }
+        public static readonly byte[] Status = Encoding.UTF8.GetBytes("/eth2/beacon_chain/req/status/1/");
     }
 }

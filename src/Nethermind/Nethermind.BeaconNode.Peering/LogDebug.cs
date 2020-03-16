@@ -49,7 +49,7 @@ namespace Nethermind.BeaconNode.Peering
         public static readonly Action<ILogger, bool, string, string, int, Exception?> RpcReceived =
             LoggerMessage.Define<bool, string, string, int>(LogLevel.Debug,
                 new EventId(6054, nameof(RpcReceived)),
-                "RPC (response {IsResponse}) received, method '{Method}', peer {Peer}, {ByteCount} bytes.");
+                "RPC received (response {IsResponse}), method '{Method}', peer {Peer}, {ByteCount} bytes.");
         
         public static readonly Action<ILogger, string, int, Exception?> GossipSend =
             LoggerMessage.Define<string, int>(LogLevel.Debug,
@@ -65,5 +65,10 @@ namespace Nethermind.BeaconNode.Peering
             LoggerMessage.Define<string, string>(LogLevel.Debug,
                 new EventId(6057, nameof(CreatingMothraLogDirectory)),
                 "Creating Mothra log directory {LogDirectoryName} in {MothraBasePath}.");
+
+        public static readonly Action<ILogger, bool, string, string, int, Exception?> RpcSend =
+            LoggerMessage.Define<bool, string, string, int>(LogLevel.Debug,
+                new EventId(6058, nameof(RpcSend)),
+                "RPC send (response {IsResponse}), method '{Method}', peer {Peer}, {ByteCount} bytes.");
     }
 }

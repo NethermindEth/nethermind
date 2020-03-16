@@ -29,6 +29,7 @@ using Nethermind.Core2;
 using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Json;
+using Nethermind.Core2.P2p;
 using Nethermind.Logging.Microsoft;
 using Nethermind.Peering.Mothra;
 
@@ -47,8 +48,9 @@ namespace Nethermind.BeaconNode.Peering
         private readonly ILogger _logger;
         private readonly IOptionsMonitor<MothraConfiguration> _mothraConfigurationOptions;
         private readonly IMothraLibp2p _mothraLibp2p;
-        private readonly PeerSyncStatus _peerSyncStatus;
+        private readonly PeerManager _peerManager;
         private readonly IStore _store;
+        private readonly Synchronization _synchronization;
         private const string MothraDirectory = "mothra";
 
         public MothraPeeringWorker(ILogger<MothraPeeringWorker> logger,
@@ -58,8 +60,9 @@ namespace Nethermind.BeaconNode.Peering
             IFileSystem fileSystem,
             IOptionsMonitor<MothraConfiguration> mothraConfigurationOptions,
             IMothraLibp2p mothraLibp2p,
-            PeerSyncStatus peerSyncStatus,
+            PeerManager peerManager,
             ForkChoice forkChoice,
+            Synchronization synchronization,
             IStore store)
         {
             _logger = logger;
@@ -69,8 +72,9 @@ namespace Nethermind.BeaconNode.Peering
             _fileSystem = fileSystem;
             _mothraConfigurationOptions = mothraConfigurationOptions;
             _mothraLibp2p = mothraLibp2p;
-            _peerSyncStatus = peerSyncStatus;
+            _peerManager = peerManager;
             _forkChoice = forkChoice;
+            _synchronization = synchronization;
             _store = store;
             _jsonSerializerOptions = new JsonSerializerOptions {WriteIndented = true};
             _jsonSerializerOptions.ConfigureNethermindCore2();
@@ -116,6 +120,7 @@ namespace Nethermind.BeaconNode.Peering
                 foreach (string bootNode in mothraConfiguration.BootNodes)
                 {
                     mothraSettings.BootNodes.Add(bootNode);
+                    _peerManager.AddExpectedPeer(bootNode);
                 }
 
                 if (_logger.IsDebug())
@@ -201,7 +206,7 @@ namespace Nethermind.BeaconNode.Peering
 
                 // Update the most recent slot seen (even if we can't add it to the chain yet, e.g. if we are missing prior blocks)
                 // Note: a peer could lie and send a signed block that isn't part of the chain (but it could like on status as well)
-                _peerSyncStatus.UpdateMostRecentSlot(signedBeaconBlock.Message.Slot);
+                _peerManager.UpdateMostRecentSlot(signedBeaconBlock.Message.Slot);
 
                 await _forkChoice.OnBlockAsync(_store, signedBeaconBlock).ConfigureAwait(false);
             }
@@ -209,6 +214,43 @@ namespace Nethermind.BeaconNode.Peering
             {
                 if (_logger.IsError())
                     Log.HandleSignedBeaconBlockError(_logger, signedBeaconBlock.Message, ex.Message, ex);
+            }
+        }
+
+        private async void HandlePeerDiscoveredAsync(string peerId)
+        {
+            try
+            {
+                if (_peerManager.AddPeer(peerId))
+                {
+                    await _synchronization.OnPeerDialOutConnected(peerId);
+                }
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError())
+                    Log.HandlePeerDiscoveredError(_logger, peerId, ex.Message, ex);
+            }
+        }
+
+        private async void HandleRpcStatusAsync(RpcMessage<PeeringStatus> statusRpcMessage)
+        {
+            try
+            {
+                _peerManager.UpdatePeerStatus(statusRpcMessage.PeerId, statusRpcMessage.Content);
+                if (statusRpcMessage.IsResponse)
+                {
+                    await _synchronization.OnStatusResponseReceived(statusRpcMessage.PeerId, statusRpcMessage.Content);
+                }
+                else
+                {
+                    await _synchronization.OnStatusRequestReceived(statusRpcMessage.PeerId, statusRpcMessage.Content);
+                }
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError())
+                    Log.HandleRpcStatusError(_logger, statusRpcMessage.PeerId, ex.Message, ex);
             }
         }
 
@@ -244,14 +286,19 @@ namespace Nethermind.BeaconNode.Peering
 
         private void OnPeerDiscovered(ReadOnlySpan<byte> peerUtf8)
         {
+            string peerId = Encoding.UTF8.GetString(peerUtf8);
             try
             {
-                if (_logger.IsInfo()) Log.PeerDiscovered(_logger, Encoding.UTF8.GetString(peerUtf8), null);
+                if (_logger.IsInfo()) Log.PeerDiscovered(_logger, peerId, null);
+                if (!ThreadPool.QueueUserWorkItem(HandlePeerDiscoveredAsync, peerId, true))
+                {
+                    throw new Exception($"Could not queue handling of peer discovered for {peerId}.");
+                }
             }
             catch (Exception ex)
             {
                 if (_logger.IsError())
-                    Log.PeerDiscoveredError(_logger, Encoding.UTF8.GetString(peerUtf8), ex.Message, ex);
+                    Log.PeerDiscoveredError(_logger, peerId, ex.Message, ex);
             }
         }
 
@@ -260,11 +307,29 @@ namespace Nethermind.BeaconNode.Peering
         {
             try
             {
-                if (_logger.IsDebug())
-                    LogDebug.RpcReceived(_logger, isResponse, Encoding.UTF8.GetString(methodUtf8),
-                        Encoding.UTF8.GetString(peerUtf8), data.Length,
-                        null);
-                // TODO: handle RPC
+                string peerId = Encoding.UTF8.GetString(peerUtf8);
+
+                if (methodUtf8.SequenceEqual(MethodUtf8.Status))
+                {
+                    if (_logger.IsDebug())
+                        LogDebug.RpcReceived(_logger, isResponse, nameof(MethodUtf8.Status), peerId, data.Length, null);
+
+                    PeeringStatus peeringStatus = Ssz.Ssz.DecodePeeringStatus(data);
+                    RpcMessage<PeeringStatus> statusRpcMessage =
+                        new RpcMessage<PeeringStatus>(peerId, isResponse, peeringStatus);
+                    if (!ThreadPool.QueueUserWorkItem(HandleRpcStatusAsync, statusRpcMessage, true))
+                    {
+                        throw new Exception($"Could not queue handling of Status from peer {peerId}.");
+                    }
+                }
+                else
+                {
+                    // TODO: handle other RPC
+                    if (_logger.IsDebug())
+                        LogDebug.RpcReceived(_logger, isResponse, Encoding.UTF8.GetString(methodUtf8),
+                            peerId, data.Length,
+                            null);
+                }
             }
             catch (Exception ex)
             {

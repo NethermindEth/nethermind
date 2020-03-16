@@ -84,6 +84,16 @@ namespace Nethermind.BeaconNode.Peering
             LoggerMessage.Define<BeaconBlock, string>(LogLevel.Error,
                 new EventId(5053, nameof(HandleSignedBeaconBlockError)),
                 "Error handling signed beacon block, {BeaconBlock}: {ErrorMessage}");
+        
+        public static readonly Action<ILogger, string, string, Exception?> HandleRpcStatusError =
+            LoggerMessage.Define<string, string>(LogLevel.Error,
+                new EventId(5054, nameof(HandleRpcStatusError)),
+                "Error handling status from peer {PeerId}: {ErrorMessage}");
+        
+        public static readonly Action<ILogger, string, string, Exception?> HandlePeerDiscoveredError =
+            LoggerMessage.Define<string, string>(LogLevel.Error,
+                new EventId(5055, nameof(HandlePeerDiscoveredError)),
+                "Error handling peer discovered for {PeerId}: {ErrorMessage}");
 
         // 8bxx finalization
 

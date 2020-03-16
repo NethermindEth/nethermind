@@ -3,8 +3,10 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Types;
+using NSubstitute;
 using NUnit.Framework;
 using Shouldly;
 
@@ -22,8 +24,8 @@ namespace Nethermind.BeaconNode.Peering.Test
         public void UpdateSlotShouldBeThreadSafe()
         {
             // arrange
-            PeerSyncStatus peerSyncStatus = new PeerSyncStatus();
-            peerSyncStatus.UpdateMostRecentSlot(new Slot(5));
+            PeerManager peerManager = new PeerManager(Substitute.For<ILogger<PeerManager>>(), null!);
+            peerManager.UpdateMostRecentSlot(new Slot(5));
 
             ManualResetEventSlim startEvent = new ManualResetEventSlim();
             Random random = new Random();
@@ -34,7 +36,7 @@ namespace Nethermind.BeaconNode.Peering.Test
                 Task task = Task.Run(() =>
                 {
                     startEvent.Wait();
-                    peerSyncStatus.UpdateMostRecentSlot(slot);
+                    peerManager.UpdateMostRecentSlot(slot);
                 });
                 taskList.Add(task);
             }
@@ -42,7 +44,7 @@ namespace Nethermind.BeaconNode.Peering.Test
             {
                 Slot slot = new Slot((ulong) 50);
                 startEvent.Wait();
-                peerSyncStatus.UpdateMostRecentSlot(slot);
+                peerManager.UpdateMostRecentSlot(slot);
             }));
             for (int i = 0; i < 10; i++)
             {
@@ -50,7 +52,7 @@ namespace Nethermind.BeaconNode.Peering.Test
                 Task task = Task.Run(() =>
                 {
                     startEvent.Wait();
-                    peerSyncStatus.UpdateMostRecentSlot(slot);
+                    peerManager.UpdateMostRecentSlot(slot);
                 });
                 taskList.Add(task);
             }
@@ -60,7 +62,7 @@ namespace Nethermind.BeaconNode.Peering.Test
             Task.WaitAll(taskList.ToArray());
             
             // assert
-            peerSyncStatus.HighestPeerSlot.ShouldBe(new Slot(50));
+            peerManager.HighestPeerSlot.ShouldBe(new Slot(50));
         }
 
         [Test]

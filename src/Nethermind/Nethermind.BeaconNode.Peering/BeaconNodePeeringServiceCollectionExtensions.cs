@@ -31,7 +31,7 @@ namespace Nethermind.BeaconNode.Peering
             if (configuration.GetSection("Peering:Mothra").Exists())
             {
                 services.Configure<MothraConfiguration>(x => configuration.Bind("Peering:Mothra", x));
-                services.AddSingleton<PeerSyncStatus>();
+                services.AddSingleton<PeerManager>();
                 services.AddSingleton<INetworkPeering, MothraNetworkPeering>();
                 services.AddHostedService<MothraPeeringWorker>();
                 services.AddSingleton<IMothraLibp2p, MothraLibp2p>();
