@@ -9,6 +9,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Nethermind.BeaconNode.Eth1Bridge;
+using Nethermind.BeaconNode.Eth1Bridge.MockedStart;
 using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.MockedStart;
 using Nethermind.BeaconNode.Services;
@@ -25,7 +27,7 @@ using Shouldly;
 namespace Nethermind.BeaconNode.Test
 {
     [TestClass]
-    public class BlockProducerTest
+    public class BlockProducerTests
     {
         [TestMethod]
         public async Task BasicNewBlock()
@@ -42,11 +44,13 @@ namespace Nethermind.BeaconNode.Test
                 })
                 .Build();
             testServiceCollection.AddBeaconNodeQuickStart(configuration);
+            testServiceCollection.AddBeaconNodeEth1Bridge(configuration);
             testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
-            QuickStart quickStart = (QuickStart)testServiceProvider.GetService<INodeStart>();
-            await quickStart.InitializeNodeAsync();
+            Eth1BridgeWorker eth1BridgeWorker =
+                testServiceProvider.GetServices<IHostedService>().OfType<Eth1BridgeWorker>().First();
+            await eth1BridgeWorker.ExecuteEth1GenesisAsync(CancellationToken.None);
             
             IBeaconNodeApi beaconNode = testServiceProvider.GetService<IBeaconNodeApi>();
             ApiResponse<Fork> forkResponse = await beaconNode.GetNodeForkAsync(CancellationToken.None);
@@ -56,12 +60,16 @@ namespace Nethermind.BeaconNode.Test
             // Act
             BlockProducer blockProducer = testServiceProvider.GetService<BlockProducer>();
             Slot targetSlot = new Slot(1);
+
             // With QuickStart64, proposer for Slot 1 is validator index 29, 0xa98ed496...
-            byte[] privateKey = quickStart.GeneratePrivateKey(29);
+            QuickStartMockEth1GenesisProvider quickStartMockEth1GenesisProvider =
+                testServiceProvider.GetService<IEth1GenesisProvider>() as QuickStartMockEth1GenesisProvider;
+            byte[] privateKey = quickStartMockEth1GenesisProvider.GeneratePrivateKey(29);
             BlsSignature randaoReveal = GetEpochSignature(testServiceProvider, privateKey, fork.CurrentVersion, targetSlot);
+            
             // value for quickstart 20/64, fork 0, slot 1
             randaoReveal.ToString().StartsWith("0x932f8730");
-            BeaconBlock newBlock = await blockProducer.NewBlockAsync(targetSlot, randaoReveal);
+            BeaconBlock newBlock = await blockProducer.NewBlockAsync(targetSlot, randaoReveal, CancellationToken.None);
             
             // Assert
             newBlock.Slot.ShouldBe(targetSlot);

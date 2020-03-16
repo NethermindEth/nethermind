@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,26 +14,23 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Nethermind.BeaconNode.MockedStart;
-using Nethermind.BeaconNode.Services;
-using Nethermind.BeaconNode.Storage;
+using Microsoft.Extensions.Hosting;
+using Nethermind.BeaconNode.Eth1Bridge.MockedStart;
 using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
+using NUnit.Framework;
 using Shouldly;
 
-namespace Nethermind.BeaconNode.Test.MockedStart
+namespace Nethermind.BeaconNode.Eth1Bridge.Test.MockedStart
 {
-    [TestClass]
-    public class QuickStartTest
+    [TestFixture]
+    public class QuickStartTests
     {
         private readonly TestData[] _testDataItems = 
         {
@@ -89,49 +86,55 @@ namespace Nethermind.BeaconNode.Test.MockedStart
             ),
         };
 
-        [TestMethod]
+        [Test]
         public async Task TestGenerationOfFirstValidator()
         {
             // Arrange
-            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
-            IConfigurationRoot configuration = new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string> {["QuickStart:ValidatorCount"] = "1"})
-                .Build();
-            testServiceCollection.AddBeaconNodeQuickStart(configuration);
+            var overrideConfiguration = new Dictionary<string, string>
+            {
+                ["QuickStart:GenesisTime"] = "1578009600",
+                ["QuickStart:ValidatorCount"] = "1",
+                ["BeaconChain:MiscellaneousParameters:MinimumGenesisActiveValidatorCount"] = "1"
+            };
+            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(overrideConfiguration);
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
             // Act
-            INodeStart quickStart = testServiceProvider.GetService<INodeStart>();
-            await quickStart.InitializeNodeAsync();
+            Eth1BridgeWorker eth1BridgeWorker =
+                testServiceProvider.GetServices<IHostedService>().OfType<Eth1BridgeWorker>().First();
+            await eth1BridgeWorker.ExecuteEth1GenesisAsync(CancellationToken.None);
 
             // Assert
+            testServiceProvider.GetService<IEth1GenesisProvider>().ShouldBeOfType<QuickStartMockEth1GenesisProvider>();
             IStore store = testServiceProvider.GetService<IStore>();
-
             BeaconState state = await store.GetBlockStateAsync(store.FinalizedCheckpoint.Root);
 
             BlsPublicKey expectedKey0 = new BlsPublicKey(_testDataItems[0].PublicKey);
             state.Validators[0].PublicKey.ShouldBe(expectedKey0);
         }
         
-        [TestMethod]
+        [Test]
         public async Task TestValidatorKeyGeneration10()
         {
             // Arrange
-            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
-            IConfigurationRoot configuration = new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string> {["QuickStart:ValidatorCount"] = "10"})
-                .Build();
-            testServiceCollection.AddBeaconNodeQuickStart(configuration);
+            var overrideConfiguration = new Dictionary<string, string>
+            {
+                ["QuickStart:GenesisTime"] = "1578009600",
+                ["QuickStart:ValidatorCount"] = "10",
+                ["BeaconChain:MiscellaneousParameters:MinimumGenesisActiveValidatorCount"] = "10"
+            };
+            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(overrideConfiguration);
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
             // Act
-            INodeStart quickStart = testServiceProvider.GetService<INodeStart>();
-            await quickStart.InitializeNodeAsync();
+            Eth1BridgeWorker eth1BridgeWorker =
+                testServiceProvider.GetServices<IHostedService>().OfType<Eth1BridgeWorker>().First();
+            await eth1BridgeWorker.ExecuteEth1GenesisAsync(CancellationToken.None);
 
             // Assert
-            IStoreProvider storeProvider = testServiceProvider.GetService<IStoreProvider>();
-            storeProvider.TryGetStore(out IStore? store).ShouldBeTrue();
-            BeaconState state = await store!.GetBlockStateAsync(store!.FinalizedCheckpoint.Root);
+            testServiceProvider.GetService<IEth1GenesisProvider>().ShouldBeOfType<QuickStartMockEth1GenesisProvider>();
+            IStore store = testServiceProvider.GetService<IStore>();
+            BeaconState state = await store.GetBlockStateAsync(store.FinalizedCheckpoint.Root);
 
             for (int index = 1; index < 10; index++)
             {
@@ -140,25 +143,27 @@ namespace Nethermind.BeaconNode.Test.MockedStart
             }
         }
 
-        [TestMethod]
+        [Test]
         public async Task TestValidatorKeyGeneration64()
         {
             // Arrange
-            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
-            IConfigurationRoot configuration = new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string> {["QuickStart:ValidatorCount"] = "64"})
-                .Build();
-            testServiceCollection.AddBeaconNodeQuickStart(configuration);
+            var overrideConfiguration = new Dictionary<string, string>
+            {
+                ["QuickStart:GenesisTime"] = "1578009600",
+                ["QuickStart:ValidatorCount"] = "64"
+            };
+            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(overrideConfiguration);
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
             // Act
-            INodeStart quickStart = testServiceProvider.GetService<INodeStart>();
-            await quickStart.InitializeNodeAsync();
+            Eth1BridgeWorker eth1BridgeWorker =
+                testServiceProvider.GetServices<IHostedService>().OfType<Eth1BridgeWorker>().First();
+            await eth1BridgeWorker.ExecuteEth1GenesisAsync(CancellationToken.None);
 
             // Assert
-            IStoreProvider storeProvider = testServiceProvider.GetService<IStoreProvider>();
-            storeProvider.TryGetStore(out IStore? store).ShouldBeTrue();
-            BeaconState state = await store!.GetBlockStateAsync(store!.FinalizedCheckpoint.Root);
+            testServiceProvider.GetService<IEth1GenesisProvider>().ShouldBeOfType<QuickStartMockEth1GenesisProvider>();
+            IStore store = testServiceProvider.GetService<IStore>();
+            BeaconState state = await store.GetBlockStateAsync(store.FinalizedCheckpoint.Root);
 
             state.Validators.Count.ShouldBe(64);
         }
@@ -193,7 +198,7 @@ namespace Nethermind.BeaconNode.Test.MockedStart
 //            Console.WriteLine("Generate quickstart 10,000, took {0}", stopwatch.Elapsed);
 //        }
 
-        [TestMethod]
+        [Test]
         public void GeneratePrivateKey63()
         {
             // Hash of the validator index (as little endian bytes), is converted to integer as little endian,
@@ -211,16 +216,18 @@ namespace Nethermind.BeaconNode.Test.MockedStart
             //      0x006edac0cf64bfd91bc691c4165efe1eb5cf80672ac06d2096f72a48a5dad4bd
             
             // Arrange
-            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
-            IConfigurationRoot configuration = new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string> {["QuickStart:ValidatorCount"] = "64"})
-                .Build();
-            testServiceCollection.AddBeaconNodeQuickStart(configuration);
+            var overrideConfiguration = new Dictionary<string, string>
+            {
+                ["QuickStart:GenesisTime"] = "1578009600",
+                ["QuickStart:ValidatorCount"] = "64"
+            };
+            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(overrideConfiguration);
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
             // Act
-            QuickStart quickStart = (testServiceProvider.GetService<INodeStart>() as QuickStart)!;
-            byte[] privateKey = quickStart.GeneratePrivateKey(63);
+            QuickStartMockEth1GenesisProvider quickStartMockEth1GenesisProvider =
+                testServiceProvider.GetService<IEth1GenesisProvider>() as QuickStartMockEth1GenesisProvider;
+            byte[] privateKey = quickStartMockEth1GenesisProvider.GeneratePrivateKey(63);
 
             // Assert
             privateKey.Length.ShouldBe(32);

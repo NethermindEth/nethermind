@@ -25,6 +25,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Nethermind.BeaconNode.Eth1Bridge;
+using Nethermind.BeaconNode.Eth1Bridge.MockedStart;
 using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.MockedStart;
 using Nethermind.BeaconNode.Services;
@@ -41,7 +43,7 @@ using Shouldly;
 namespace Nethermind.BeaconNode.Test
 {
     [TestClass]
-    public class BeaconNodeFacadeTest
+    public class BeaconNodeFacadeTests
     {
         [TestMethod]
         public async Task ShouldReturnDefaultForkVersion()
@@ -216,16 +218,17 @@ namespace Nethermind.BeaconNode.Test
                     ["QuickStart:GenesisTime"] = $"{genesisTime}"
                 })
                 .Build();
+            testServiceCollection.AddBeaconNodeEth1Bridge(configuration);
             testServiceCollection.AddBeaconNodeQuickStart(configuration);
             testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
             
-            INodeStart quickStart = testServiceProvider.GetService<INodeStart>();
-            await quickStart.InitializeNodeAsync();
+            Eth1BridgeWorker eth1BridgeWorker =
+                testServiceProvider.GetServices<IHostedService>().OfType<Eth1BridgeWorker>().First();
+            await eth1BridgeWorker.ExecuteEth1GenesisAsync(CancellationToken.None);
 
-            IStoreProvider storeProvider = testServiceProvider.GetService<IStoreProvider>();
-            storeProvider.TryGetStore(out IStore? store).ShouldBeTrue();
-            BeaconState state = await store!.GetBlockStateAsync(store!.FinalizedCheckpoint.Root);
+            IStore store = testServiceProvider.GetService<IStore>();
+            BeaconState state = await store!.GetBlockStateAsync(store.FinalizedCheckpoint.Root);
             
             // Act
             Epoch targetEpoch = new Epoch(0);

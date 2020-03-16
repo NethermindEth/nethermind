@@ -68,8 +68,8 @@ namespace Nethermind.BeaconNode.Test
             FastTestClock fastTestClock = new FastTestClock(testTimes);
             testServiceCollection.AddSingleton<IClock>(fastTestClock);
             
-            IStoreProvider mockStoreProvider = Substitute.For<IStoreProvider>();
-            testServiceCollection.AddSingleton<IStoreProvider>(mockStoreProvider);
+            IStore mockStore = Substitute.For<IStore>();
+            testServiceCollection.AddSingleton<IStore>(mockStore);
 
             testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
 
@@ -86,7 +86,8 @@ namespace Nethermind.BeaconNode.Test
 
             // Assert
             signal.ShouldBeTrue();
-            mockStoreProvider.Received(4).TryGetStore(out IStore? store);
+            var receivedCalls = mockStore.ReceivedCalls().ToList();
+            receivedCalls.Count(x => x.GetMethodInfo().Name == "get_IsInitialized").ShouldBe(4);
         }
 
         [TestMethod]
@@ -118,10 +119,10 @@ namespace Nethermind.BeaconNode.Test
             FastTestClock fastTestClock = new FastTestClock(testTimes);
             testServiceCollection.AddSingleton<IClock>(fastTestClock);
             
-            IStoreProvider mockStoreProvider = Substitute.For<IStoreProvider>();
-            testServiceCollection.AddSingleton<IStoreProvider>(mockStoreProvider);
+            IStore mockStore = Substitute.For<IStore>();
+            testServiceCollection.AddSingleton<IStore>(mockStore);
 
-            testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
+            testServiceCollection.AddSingleton(Substitute.For<IHostEnvironment>());
 
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 

@@ -138,8 +138,8 @@ namespace Nethermind.BeaconNode
         {
             try
             {
-                BeaconBlock unsignedBlock =
-                    await _blockProducer.NewBlockAsync(slot, randaoReveal).ConfigureAwait(false);
+                BeaconBlock unsignedBlock = await _blockProducer.NewBlockAsync(slot, randaoReveal, cancellationToken)
+                    .ConfigureAwait(false);
                 return ApiResponse.Create(StatusCode.Success, unsignedBlock);
             }
             catch (Exception ex)

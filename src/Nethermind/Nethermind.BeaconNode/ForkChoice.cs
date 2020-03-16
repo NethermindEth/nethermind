@@ -38,37 +38,29 @@ namespace Nethermind.BeaconNode
         private readonly ChainConstants _chainConstants;
         private readonly ICryptographyService _cryptographyService;
         private readonly IOptionsMonitor<ForkChoiceConfiguration> _forkChoiceConfigurationOptions;
-        private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly ILogger _logger;
         private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<SignatureDomains> _signatureDomainOptions;
-        private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
-        private readonly IStoreProvider _storeProvider;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
         public ForkChoice(
             ILogger<ForkChoice> logger,
             ChainConstants chainConstants,
             IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
-            IOptionsMonitor<InitialValues> initialValueOptions,
             IOptionsMonitor<TimeParameters> timeParameterOptions,
-            IOptionsMonitor<StateListLengths> stateListLengthOptions,
             IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions,
             IOptionsMonitor<ForkChoiceConfiguration> forkChoiceConfigurationOptions,
             IOptionsMonitor<SignatureDomains> signatureDomainOptions,
             ICryptographyService cryptographyService,
             BeaconChainUtility beaconChainUtility,
             BeaconStateAccessor beaconStateAccessor,
-            BeaconStateTransition beaconStateTransition,
-            IStoreProvider storeProvider)
+            BeaconStateTransition beaconStateTransition)
         {
             _logger = logger;
             _chainConstants = chainConstants;
             _miscellaneousParameterOptions = miscellaneousParameterOptions;
-            _initialValueOptions = initialValueOptions;
             _timeParameterOptions = timeParameterOptions;
-            _stateListLengthOptions = stateListLengthOptions;
             _maxOperationsPerBlockOptions = maxOperationsPerBlockOptions;
             _forkChoiceConfigurationOptions = forkChoiceConfigurationOptions;
             _signatureDomainOptions = signatureDomainOptions;
@@ -76,7 +68,6 @@ namespace Nethermind.BeaconNode
             _beaconChainUtility = beaconChainUtility;
             _beaconStateAccessor = beaconStateAccessor;
             _beaconStateTransition = beaconStateTransition;
-            _storeProvider = storeProvider;
         }
 
         public Slot ComputeSlotsSinceEpochStart(Slot slot)
@@ -175,6 +166,8 @@ namespace Nethermind.BeaconNode
         public async Task<Root> GetHeadAsync(IStore store)
         {
             // NOTE: This method should probably live in a separate object, for different implementations, possibly part of Store (for efficiency).
+
+            // TODO: Also, should cache, i.e. will only change if store is updated (so should be easy to cache if in store)
 
             // Get filtered block tree that only includes viable branches
             IDictionary<Root, BeaconBlock> blocks = await GetFilteredBlockTreeAsync(store).ConfigureAwait(false);
