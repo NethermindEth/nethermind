@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
@@ -23,9 +25,9 @@ namespace Nethermind.Db
     public static class DbExtensions
     {
         public static void Set(this IDb db, Keccak key, byte[] value)
-        {
-            db[key.Bytes] = value;
-        }
+         {
+             db[key.Bytes] = value;
+         }
         
         public static byte[] Get(this IDb db, Keccak key)
         {
@@ -37,6 +39,12 @@ namespace Nethermind.Db
             #endif
             
             return db[key.Bytes];
+        }
+        
+        public static KeyValuePair<byte[], byte[]>[] MultiGet(this IDb db, IEnumerable<Keccak> keys)
+        {
+            var k = keys.Select(k => k.Bytes).ToArray();
+            return db[k];
         }
         
         public static Span<byte> GetSpan(this IDbWithSpan db, Keccak key)

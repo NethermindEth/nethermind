@@ -36,5 +36,6 @@ namespace Nethermind.Blockchain.Receipts
         public TxReceipt[] Get(Block block) => Array.Empty<TxReceipt>();
 
         public long? LowestInsertedReceiptBlock => long.MaxValue;
+        public long MigratedBlockNumber { get; set; } = 0;
     }
 }

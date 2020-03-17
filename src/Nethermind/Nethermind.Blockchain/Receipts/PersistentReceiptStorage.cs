@@ -61,6 +61,11 @@ namespace Nethermind.Blockchain.Receipts
         private TxReceipt FindObsolete(Keccak hash)
         {
             var receiptData = _database.Get(hash);
+            return DeserializeObsolete(hash, receiptData);
+        }
+
+        private static TxReceipt DeserializeObsolete(Keccak hash, byte[] receiptData)
+        {
             if (receiptData != null)
             {
                 try
@@ -94,13 +99,16 @@ namespace Nethermind.Blockchain.Receipts
             }
             else
             {
-                TxReceipt[] result = new TxReceipt[block.Transactions.Length];
-                for (int i = 0; i < block.Transactions.Length; i++)
-                {
-                    result[i] = FindObsolete(block.Transactions[i].Hash);
-                }
+                var data = _database.MultiGet(block.Transactions.Select(t => t.Hash));
+                return data.Select(kvp => DeserializeObsolete(new Keccak(kvp.Key), kvp.Value)).ToArray();
 
-                return result;
+                // TxReceipt[] result = new TxReceipt[block.Transactions.Length];
+                // for (int i = 0; i < block.Transactions.Length; i++)
+                // {
+                //     result[i] = FindObsolete(block.Transactions[i].Hash);
+                // }
+                //
+                // return result;
             }
         }
 
@@ -125,6 +133,7 @@ namespace Nethermind.Blockchain.Receipts
             }
 
             LowestInsertedReceiptBlock = Math.Min(LowestInsertedReceiptBlock ?? long.MaxValue, blockNumber);
+            MigratedBlockNumber = Math.Min(MigratedBlockNumber, blockNumber);
         }
 
         public long? LowestInsertedReceiptBlock

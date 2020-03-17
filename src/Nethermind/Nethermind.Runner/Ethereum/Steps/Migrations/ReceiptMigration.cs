@@ -67,41 +67,76 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
             if (_context.DbProvider == null) throw new StepDependencyException(nameof( _context.DbProvider));
             if (_context.DisposeStack == null) throw new StepDependencyException(nameof(_context.DisposeStack));
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
-
-            _toBlock = MigrateToBlockNumber;
-            var initConfig = _context.Config<IInitConfig>();
+            if (_context.Synchronizer == null) throw new StepDependencyException(nameof(_context.Synchronizer));
             
-            if (_toBlock > 0)
+            var initConfig = _context.Config<IInitConfig>();
+
+            if (initConfig.StoreReceipts)
             {
                 if (initConfig.ReceiptsMigration)
                 {
-                    RunMigration();
+                    if (CanMigrate(_context.Synchronizer.SyncMode))
+                    {
+                        RunMigration();
+                    }
+                    else
+                    {
+                        _context.Synchronizer.SyncModeChanged += SynchronizerOnSyncModeChanged;
+                    }
                 }
                 else
                 {
                     if (_logger.IsInfo) _logger.Info($"ReceiptsDb migration disabled. Finding logs when multiple blocks receipts need to be scanned might be slow.");
                 }
             }
-            else
+        }
+        
+        private bool CanMigrate(SyncMode syncMode)
+        {
+            switch (syncMode)
             {
-                if (_logger.IsDebug) _logger.Debug("ReceiptsDb migration not needed.");
+                case SyncMode.NotStarted:
+                case SyncMode.FastBlocks:
+                case SyncMode.Beam:
+                    return false;
+                default:
+                    return true;
+            }
+        }
+
+        private void SynchronizerOnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
+        {
+            if (CanMigrate(e.Current))
+            {
+                if (_context.Synchronizer == null) throw new StepDependencyException(nameof(_context.Synchronizer));
+                RunMigration();
+                _context.Synchronizer.SyncModeChanged -= SynchronizerOnSyncModeChanged;
             }
         }
 
         private void RunMigration()
         {
-            _cancellationTokenSource = new CancellationTokenSource();
-            _context.DisposeStack.Push(this);
-            _stopwatch = Stopwatch.StartNew();
-            _migrationTask = Task.Run(() => RunMigration(_cancellationTokenSource.Token))
-                .ContinueWith(x =>
-                {
-                    if (x.IsFaulted && _logger.IsError)
+            _toBlock = MigrateToBlockNumber;
+            
+            if (_toBlock > 0)
+            {
+                _cancellationTokenSource = new CancellationTokenSource();
+                _context.DisposeStack.Push(this);
+                _stopwatch = Stopwatch.StartNew();
+                _migrationTask = Task.Run(() => RunMigration(_cancellationTokenSource.Token))
+                    .ContinueWith(x =>
                     {
-                        _stopwatch.Stop();
-                        _logger.Error(GetLogMessage("failed", $"Error: {x.Exception}"), x.Exception);
-                    }
-                });
+                        if (x.IsFaulted && _logger.IsError)
+                        {
+                            _stopwatch.Stop();
+                            _logger.Error(GetLogMessage("failed", $"Error: {x.Exception}"), x.Exception);
+                        }
+                    });
+            }
+            else
+            {
+                if (_logger.IsDebug) _logger.Debug("ReceiptsDb migration not needed.");
+            }
         }
 
         private void RunMigration(CancellationToken token)
@@ -137,17 +172,22 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                         receiptsDb.StartBatch();
                         try
                         {
-                            if (block.ReceiptsRoot == Keccak.EmptyTreeHash)
+                            var receipts = storage.Get(block);
+                            var notNullReceipts = receipts.Where(r => r != null).ToArray();
+                            if (notNullReceipts.Length != receipts.Length) // if its equal its just receipts are not there yet.
                             {
-                                storage.Insert(block, Array.Empty<TxReceipt>());
+                                storage.Insert(block, notNullReceipts);
+                                for (int i = 0; i < notNullReceipts.Length; i++)
+                                {
+                                    receiptsDb.Delete(notNullReceipts[i].TxHash);
+                                }
+                                storage.MigratedBlockNumber = block.Number;
+                                
+                                if (notNullReceipts.Length != 0)
+                                {
+                                    if(_logger.IsWarn) _logger.Warn(GetLogMessage("error", $"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing receipts!"));
+                                }
                             }
-                            else
-                            {
-                                var receipts = storage.Get(block);
-                                storage.Insert(block, receipts);
-                            }
-
-                            storage.MigratedBlockNumber = block.Number;
                         }
                         finally
                         {
@@ -227,7 +267,9 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
 
         private long MigrateToBlockNumber =>
             _context.ReceiptStorage.MigratedBlockNumber == long.MaxValue
-                ? _context.BlockTree.BestKnownNumber
+                ? _context.Synchronizer.SyncMode == SyncMode.Full 
+                    ? _context.BlockTree.Head?.Number ?? 0
+                    : _context.BlockTree.BestKnownNumber
                 : _context.ReceiptStorage.MigratedBlockNumber - 1;
     }
 }
