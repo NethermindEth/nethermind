@@ -133,7 +133,6 @@ namespace Nethermind.Blockchain.Receipts
             }
 
             LowestInsertedReceiptBlock = Math.Min(LowestInsertedReceiptBlock ?? long.MaxValue, blockNumber);
-            MigratedBlockNumber = Math.Min(MigratedBlockNumber, blockNumber);
         }
 
         public long? LowestInsertedReceiptBlock

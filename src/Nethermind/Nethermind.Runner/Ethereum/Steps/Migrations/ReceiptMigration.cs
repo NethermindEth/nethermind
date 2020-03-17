@@ -141,10 +141,11 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
 
         private void RunMigration(CancellationToken token)
         {
-            Block GetMissingBlock(long i)
+            Block GetMissingBlock(long i, Keccak? blockHash)
             {
                 if (_logger.IsWarn) _logger.Warn(GetLogMessage("warning", $"Block {i} not found. Logs will not be searchable for this block."));
                 EmptyBlock.Header.Number = i;
+                EmptyBlock.Header.Hash = blockHash;
                 return EmptyBlock;
             }
 
@@ -169,29 +170,22 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                 {
                     foreach (var block in GetBlockBodiesForMigration())
                     {
-                        receiptsDb.StartBatch();
-                        try
+                        var receipts = storage.Get(block);
+                        var notNullReceipts = receipts.Where(r => r != null).ToArray();
+                        if (receipts.Length == 0 || notNullReceipts.Length != receipts.Length) // if its equal its just receipts are not there yet.
                         {
-                            var receipts = storage.Get(block);
-                            var notNullReceipts = receipts.Where(r => r != null).ToArray();
-                            if (notNullReceipts.Length != receipts.Length) // if its equal its just receipts are not there yet.
+                            storage.Insert(block, notNullReceipts);
+                            storage.MigratedBlockNumber = block.Number;
+                            
+                            for (int i = 0; i < notNullReceipts.Length; i++)
                             {
-                                storage.Insert(block, notNullReceipts);
-                                for (int i = 0; i < notNullReceipts.Length; i++)
-                                {
-                                    receiptsDb.Delete(notNullReceipts[i].TxHash);
-                                }
-                                storage.MigratedBlockNumber = block.Number;
-                                
-                                if (notNullReceipts.Length != 0)
-                                {
-                                    if(_logger.IsWarn) _logger.Warn(GetLogMessage("error", $"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing receipts!"));
-                                }
+                                receiptsDb.Delete(notNullReceipts[i].TxHash);
                             }
-                        }
-                        finally
-                        {
-                            receiptsDb.CommitBatch();
+                            
+                            if (notNullReceipts.Length != 0)
+                            {
+                                if(_logger.IsWarn) _logger.Warn(GetLogMessage("error", $"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing receipts!"));
+                            }
                         }
                     }
                 }
@@ -228,7 +222,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                         }
                     }
                     
-                    for (long i = _toBlock - 1; i > 0; i++)
+                    for (long i = _toBlock - 1; i > 0; i--)
                     {
                         if (token.IsCancellationRequested)
                         {
@@ -240,11 +234,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                         if (TryGetMainChainBlockHashFromLevel(i, out var blockHash))
                         {
                             var header = blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
-                            yield return header ?? GetMissingBlock(i);
-                        }
-                        else
-                        {
-                            yield return GetMissingBlock(i);
+                            yield return header ?? GetMissingBlock(i, blockHash);
                         }
 
                         _progress.Update(++synced);
@@ -270,6 +260,6 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                 ? _context.Synchronizer.SyncMode == SyncMode.Full 
                     ? _context.BlockTree.Head?.Number ?? 0
                     : _context.BlockTree.BestKnownNumber
-                : _context.ReceiptStorage.MigratedBlockNumber - 1;
+                : _context.ReceiptStorage.MigratedBlockNumber;
     }
 }
