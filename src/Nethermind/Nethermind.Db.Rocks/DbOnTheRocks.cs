@@ -213,15 +213,22 @@ namespace Nethermind.Db.Rocks
             Db.Remove(key, null, WriteOptions);
         }
 
-        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll()
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
         {
-            using Iterator iterator = Db.NewIterator();
+            using Iterator iterator = CreateIterator(ordered);
             return GetAllCore(iterator);
         }
 
-        public IEnumerable<byte[]> GetAllValues()
+        protected internal Iterator CreateIterator(bool ordered = false, ColumnFamilyHandle ch = null)
         {
-            using Iterator iterator = Db.NewIterator();
+            var readOptions = new ReadOptions();
+            readOptions.SetTailing(!ordered);
+            return Db.NewIterator(ch, readOptions);
+        }
+
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false)
+        {
+            using Iterator iterator = CreateIterator(ordered);
             return GetAllValuesCore(iterator);
         }
 

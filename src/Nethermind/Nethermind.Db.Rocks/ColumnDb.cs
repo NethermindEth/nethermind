@@ -75,15 +75,15 @@ namespace Nethermind.Db.Rocks
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => _rocksDb.MultiGet(keys, keys.Select(k => _columnFamily).ToArray());
 
-        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll()
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
         {
-            using Iterator iterator = _rocksDb.NewIterator(_columnFamily);
+            using Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
             return _mainDb.GetAllCore(iterator);
         }
 
-        public IEnumerable<byte[]> GetAllValues()
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false)
         {
-            using Iterator iterator = _rocksDb.NewIterator(_columnFamily);
+            using Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
             return _mainDb.GetAllValuesCore(iterator);
         }
 

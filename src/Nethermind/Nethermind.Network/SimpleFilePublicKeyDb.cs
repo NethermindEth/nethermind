@@ -79,9 +79,9 @@ namespace Nethermind.Network
         public IDb Innermost => this;
         public void Flush() { }
 
-        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll() => _cache;
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _cache;
 
-        public IEnumerable<byte[]> GetAllValues() => _cache.Values;
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _cache.Values;
 
         public void StartBatch()
         {

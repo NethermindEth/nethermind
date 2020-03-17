@@ -104,9 +104,9 @@ namespace Nethermind.Db
         {
         }
 
-        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll() => _db;
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _db;
 
-        public IEnumerable<byte[]> GetAllValues() => Values;
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => Values;
 
         public void StartBatch()
         {

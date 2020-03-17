@@ -34,6 +34,7 @@ namespace Nethermind.Runner
         public string StaticNodesPath { get; set; } = "Data/static-nodes.json";
         public string? LogDirectory { get; set; }
         public bool StoreReceipts { get; set; } = true;
+        public bool ReceiptsMigration { get; set; } = false;
         public DiagnosticMode DiagnosticMode { get; set; } = DiagnosticMode.None;
         public string RpcDbUrl { get; set; } = String.Empty;
 

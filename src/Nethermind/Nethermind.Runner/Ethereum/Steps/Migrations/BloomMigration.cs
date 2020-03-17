@@ -147,7 +147,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
 
         private void RunBloomMigration(CancellationToken token)
         {
-            BlockHeader GetMissingBLockHeader(long i)
+            BlockHeader GetMissingBlockHeader(long i)
             {
                 if (_logger.IsWarn) _logger.Warn(GetLogMessage("warning", $"Header for block {i} not found. Logs will not be searchable for this block."));
                 return EmptyHeader;
@@ -222,15 +222,14 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                             yield break;
                         }
 
-                        var level = chainLevelInfoRepository.LoadLevel(i);
                         if (TryGetMainChainBlockHashFromLevel(i, out var blockHash))
                         {
                             var header = blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
-                            yield return header ?? GetMissingBLockHeader(i);
+                            yield return header ?? GetMissingBlockHeader(i);
                         }
                         else
                         {
-                            yield return GetMissingBLockHeader(i);
+                            yield return GetMissingBlockHeader(i);
                         }
 
                         _progress.Update(++synced);

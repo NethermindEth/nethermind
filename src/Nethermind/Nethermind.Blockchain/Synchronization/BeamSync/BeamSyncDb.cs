@@ -166,12 +166,12 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, this[k])).ToArray();
 
-        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll()
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
         {
             throw new NotSupportedException();
         }
 
-        public IEnumerable<byte[]> GetAllValues()
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false)
         {
             throw new NotSupportedException();
         }

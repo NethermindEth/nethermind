@@ -62,6 +62,9 @@ namespace Nethermind.Runner
         [ConfigItem(Description = "If set to 'false' then transaction receipts will not be stored in the database after a new block is processed. This setting is independent from downloading receipts in fast sync mode.", DefaultValue = "true")]
         bool StoreReceipts { get; set; }
         
+        [ConfigItem(Description = "If set to 'true' then receipts db will be migrated to new schema.", DefaultValue = "false")]
+        bool ReceiptsMigration { get; set; }
+        
         [ConfigItem(Description = "Diagnostics modes", DefaultValue = "None")]
         DiagnosticMode DiagnosticMode { get; set; }
         

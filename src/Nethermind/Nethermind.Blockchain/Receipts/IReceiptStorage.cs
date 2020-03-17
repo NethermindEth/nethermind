@@ -24,5 +24,6 @@ namespace Nethermind.Blockchain.Receipts
     {
         void Insert(Block block, params TxReceipt[] txReceipts);
         long? LowestInsertedReceiptBlock { get; }
+        long MigratedBlockNumber { get; set; }
     }
 }

@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Specs;
@@ -34,9 +35,13 @@ namespace Nethermind.Blockchain.Receipts
         private long? _lowestInsertedReceiptBlock;
         private readonly IDb _blocksDb;
         private readonly IDb _transactionDb;
+        private static readonly Keccak MigrationBlockNumberKey = Keccak.Compute(nameof(MigratedBlockNumber));
+        private long _migratedBlockNumber;
 
         public PersistentReceiptStorage(IColumnsDb<ReceiptsColumns> receiptsDb, ISpecProvider specProvider)
         {
+            long Get(Keccak key, long defaultValue) => _database.Get(key)?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
+            
             _database = receiptsDb ?? throw new ArgumentNullException(nameof(receiptsDb));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blocksDb = _database.GetColumnDb(ReceiptsColumns.Blocks);
@@ -44,6 +49,7 @@ namespace Nethermind.Blockchain.Receipts
 
             byte[] lowestBytes = _database.Get(Keccak.Zero);
             _lowestInsertedReceiptBlock = lowestBytes == null ? (long?) null : new RlpStream(lowestBytes).DecodeLong();
+            _migratedBlockNumber = Get(MigrationBlockNumberKey, long.MaxValue);
         }
 
         public Keccak Find(Keccak hash)
@@ -131,6 +137,16 @@ namespace Nethermind.Blockchain.Receipts
                 {
                     _database.Set(Keccak.Zero, Rlp.Encode(value.Value).Bytes);
                 }
+            }
+        }
+        
+        public long MigratedBlockNumber
+        {
+            get => _migratedBlockNumber;
+            set
+            {
+                _migratedBlockNumber = value;
+                _database.Set(MigrationBlockNumberKey, MigratedBlockNumber.ToBigEndianByteArrayWithoutLeadingZeros());
             }
         }
     }
