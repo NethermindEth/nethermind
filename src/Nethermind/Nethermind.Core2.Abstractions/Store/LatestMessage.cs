@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,37 +14,21 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading.Tasks;
-using Nethermind.Core2.Configuration;
-using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
-namespace Nethermind.HonestValidator.Services
+namespace Nethermind.Core2.Store
 {
-    public class BeaconChain
+    // Data Class
+    public class LatestMessage
     {
-        public ulong GenesisTime { get; private set;  }
-
-        public ulong Time { get; private set;  }
-
-        public Fork Fork { get; private set; }
-
-        public Task SetGenesisTimeAsync(ulong time)
+        public LatestMessage(Epoch epoch, Root root)
         {
-            GenesisTime = time;
-            return Task.CompletedTask;
+            Epoch = epoch;
+            Root = root;
         }
 
-        public Task SetTimeAsync(ulong time)
-        {
-            Time = time;
-            return Task.CompletedTask;
-        }
-
-        public Task SetForkAsync(Fork fork)
-        {
-            Fork = fork;
-            return Task.CompletedTask;
-        }
+        public Epoch Epoch { get; }
+        public Root Root { get; }
     }
 }

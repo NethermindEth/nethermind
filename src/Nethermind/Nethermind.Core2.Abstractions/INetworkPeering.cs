@@ -17,11 +17,14 @@
 using System.Threading.Tasks;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2
 {
     public interface INetworkPeering
     {
         Task PublishBeaconBlockAsync(SignedBeaconBlock signedBlock);
+        Slot HighestPeerSlot { get; }
+        Slot SyncStartingSlot { get; }
     }
 }

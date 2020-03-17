@@ -2,8 +2,8 @@
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core2;
-using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 using Nethermind.Peering.Mothra;
 
 namespace Nethermind.BeaconNode.Peering
@@ -12,12 +12,19 @@ namespace Nethermind.BeaconNode.Peering
     {
         private readonly ILogger _logger;
         private readonly IMothraLibp2p _mothraLibp2p;
+        private readonly PeerSyncStatus _peerSyncStatus;
 
-        public MothraNetworkPeering(ILogger<MothraNetworkPeering> logger, IMothraLibp2p mothraLibp2p)
+        public MothraNetworkPeering(ILogger<MothraNetworkPeering> logger, IMothraLibp2p mothraLibp2p,
+            PeerSyncStatus peerSyncStatus)
         {
             _logger = logger;
             _mothraLibp2p = mothraLibp2p;
+            _peerSyncStatus = peerSyncStatus;
         }
+
+        public Slot HighestPeerSlot => _peerSyncStatus.HighestPeerSlot;
+
+        public Slot SyncStartingSlot => _peerSyncStatus.SyncStartingSlot;
 
         public Task PublishBeaconBlockAsync(SignedBeaconBlock signedBlock)
         {

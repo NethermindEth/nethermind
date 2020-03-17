@@ -29,7 +29,7 @@ using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Shouldly;
 
-namespace Nethermind.BeaconNode.Test.Fork
+namespace Nethermind.BeaconNode.Test.ForkTests
 {
     [TestClass]
     public class OnTickTest

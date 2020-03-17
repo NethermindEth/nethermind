@@ -16,6 +16,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2;
@@ -27,20 +28,22 @@ using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode
 {
-    public class Genesis
+    public class GenesisChainStart : IEth1Genesis
     {
         private readonly BeaconStateAccessor _beaconStateAccessor;
         private readonly BeaconStateTransition _beaconStateTransition;
+        private readonly ForkChoice _forkChoice;
         private readonly ChainConstants _chainConstants;
         private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly ILogger _logger;
         private readonly ICryptographyService _cryptographyService;
+        private readonly IStore _store;
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
-        public Genesis(ILogger<Genesis> logger,
+        public GenesisChainStart(ILogger<GenesisChainStart> logger,
             ChainConstants chainConstants,
             IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
             IOptionsMonitor<GweiValues> gweiValueOptions,
@@ -48,12 +51,15 @@ namespace Nethermind.BeaconNode
             IOptionsMonitor<TimeParameters> timeParameterOptions,
             IOptionsMonitor<StateListLengths> stateListLengthOptions,
             ICryptographyService cryptographyService,
+            IStore store,
             BeaconStateAccessor beaconStateAccessor,
-            BeaconStateTransition beaconStateTransition)
+            BeaconStateTransition beaconStateTransition,
+            ForkChoice forkChoice)
         {
             _logger = logger;
             _beaconStateAccessor = beaconStateAccessor;
             _beaconStateTransition = beaconStateTransition;
+            _forkChoice = forkChoice;
             _chainConstants = chainConstants;
             _miscellaneousParameterOptions = miscellaneousParameterOptions;
             _gweiValueOptions = gweiValueOptions;
@@ -61,6 +67,25 @@ namespace Nethermind.BeaconNode
             _timeParameterOptions = timeParameterOptions;
             _stateListLengthOptions = stateListLengthOptions;
             _cryptographyService = cryptographyService;
+            _store = store;
+        }
+
+        /// <param name="eth1BlockHash"></param>
+        /// <param name="eth1Timestamp"></param>
+        /// <param name="deposits"></param>
+        /// <returns></returns>
+        public async Task<bool> TryGenesisAsync(Bytes32 eth1BlockHash, ulong eth1Timestamp, IList<Deposit> deposits)
+        {
+            if (_logger.IsDebug()) LogDebug.TryGenesis(_logger, eth1BlockHash, eth1Timestamp, deposits.Count, null);
+
+            BeaconState candidateState = InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp, deposits);
+            if (IsValidGenesisState(candidateState))
+            {
+                BeaconState genesisState = candidateState;
+                await _forkChoice.InitializeForkChoiceStoreAsync(_store, genesisState);
+                return true;
+            }
+            return false;
         }
 
         public BeaconState InitializeBeaconStateFromEth1(Bytes32 eth1BlockHash, ulong eth1Timestamp, IList<Deposit> deposits)

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,25 +14,23 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core2.Crypto;
+using System.Collections.Generic;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Types;
 
-namespace Nethermind.Core2
+namespace Nethermind.Core2.Eth1
 {
-    public class ValidatorDuty
+    public class Eth1GenesisData
     {
-        public ValidatorDuty(BlsPublicKey validatorPublicKey, Slot attestationSlot, Shard attestationShard,
-            Slot blockProposalSlot)
+        public Eth1GenesisData(Bytes32 blockHash, ulong timestamp, IList<Deposit> deposits)
         {
-            ValidatorPublicKey = validatorPublicKey;
-            AttestationSlot = attestationSlot;
-            AttestationShard = attestationShard;
-            BlockProposalSlot = blockProposalSlot;
+            BlockHash = blockHash;
+            Timestamp = timestamp;
+            Deposits = deposits;
         }
 
-        public Shard AttestationShard { get; }
-        public Slot AttestationSlot { get; }
-        public Slot BlockProposalSlot { get; }
-        public BlsPublicKey ValidatorPublicKey { get; }
+        public Bytes32 BlockHash { get; }
+        public ulong Timestamp { get; }
+        public IList<Deposit> Deposits { get; }
     }
 }

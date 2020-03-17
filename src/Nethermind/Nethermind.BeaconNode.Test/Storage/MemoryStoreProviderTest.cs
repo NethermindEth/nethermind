@@ -66,10 +66,8 @@ namespace Nethermind.BeaconNode.Test.Storage
             TestContext.WriteLine("");
             
             // Act
-            IStoreProvider storeProvider = testServiceProvider.GetService<IStoreProvider>();
-            storeProvider.ShouldBeOfType(typeof(MemoryStoreProvider));
-            storeProvider.TryGetStore(out IStore? retrievedStore).ShouldBeTrue();
-            retrievedStore!.ShouldBeOfType(typeof(MemoryStore));
+            IStore retrievedStore = testServiceProvider.GetService<IStore>();
+            retrievedStore.ShouldBeOfType(typeof(MemoryStore));
 
             Root headRoot = await forkChoice.GetHeadAsync(store);
             Root block2Root = await forkChoice.GetAncestorAsync(store, headRoot, new Slot(2));

@@ -23,7 +23,7 @@ namespace Nethermind.HonestValidator.Services
 {
     public interface IValidatorKeyProvider
     {
-        IEnumerable<BlsPublicKey> GetPublicKeys();
+        IList<BlsPublicKey> GetPublicKeys();
         BlsSignature SignRoot(BlsPublicKey blsPublicKey, Root root);
     }
 }

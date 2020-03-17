@@ -1,0 +1,15 @@
+name: Smoke Test Init
+
+on:
+  push:
+    tags:
+    - '*'
+
+jobs:
+  smoke-test:
+    name:  Smoke Test
+    runs-on: ubuntu-latest
+    steps:
+    - name: Trigger Smoke Test on build server
+      run: |
+        curl ${{ secrets.BUILD_SERVER }}/smoke

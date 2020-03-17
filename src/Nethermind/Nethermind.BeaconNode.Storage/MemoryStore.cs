@@ -28,6 +28,7 @@ using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Json;
+using Nethermind.Core2.Store;
 using Nethermind.Core2.Types;
 using Nethermind.Logging.Microsoft;
 

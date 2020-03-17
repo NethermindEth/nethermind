@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,21 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Types;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Core2.Eth1;
 
 namespace Nethermind.Core2
 {
-    // Data Class
-    public class LatestMessage
+    public interface IEth1GenesisProvider
     {
-        public LatestMessage(Epoch epoch, Root root)
-        {
-            Epoch = epoch;
-            Root = root;
-        }
-
-        public Epoch Epoch { get; }
-        public Root Root { get; }
+        Task<Eth1GenesisData> GetEth1GenesisDataAsync(CancellationToken cancellationToken);
     }
 }

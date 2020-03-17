@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,18 +22,15 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Nethermind.Core2.Configuration;
-using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.Core2;
+using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
-using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Cryptography;
 using Nethermind.Core2.Types;
 using NSubstitute;
 using Shouldly;
 
-namespace Nethermind.BeaconNode.Test
+namespace Nethermind.BeaconNode.Test.Genesis
 {
     [TestClass]
     public class ChainStartTest
@@ -74,21 +71,19 @@ namespace Nethermind.BeaconNode.Test
             BeaconStateTransition beaconStateTransition = new BeaconStateTransition(loggerFactory.CreateLogger<BeaconStateTransition>(),
                 chainConstants, gweiValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions, signatureDomainOptions,
                 cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator);
-            BeaconNode.Genesis beaconChain = new BeaconNode.Genesis(loggerFactory.CreateLogger<BeaconNode.Genesis>(),
-                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions,
-                cryptographyService,  beaconStateAccessor, beaconStateTransition);
             MemoryStore store = new MemoryStore(loggerFactory.CreateLogger<MemoryStore>(), inMemoryConfigurationOptions, new DataDirectory("data"), Substitute.For<IFileSystem>());
-            MemoryStoreProvider storeProvider = new MemoryStoreProvider(store);
             ForkChoice forkChoice = new ForkChoice(loggerFactory.CreateLogger<ForkChoice>(),
-                chainConstants, miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, forkChoiceConfigurationOptions, signatureDomainOptions,
-                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateTransition, storeProvider);
-            ChainStart chainStart = new ChainStart(loggerFactory.CreateLogger<ChainStart>(), store, beaconChain, forkChoice);
+                chainConstants, miscellaneousParameterOptions, timeParameterOptions, maxOperationsPerBlockOptions, forkChoiceConfigurationOptions, signatureDomainOptions,
+                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+            GenesisChainStart genesisChainStart = new GenesisChainStart(loggerFactory.CreateLogger<BeaconNode.GenesisChainStart>(),
+                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions,
+                cryptographyService, store,  beaconStateAccessor, beaconStateTransition, forkChoice);
 
             // Act
             Bytes32 eth1BlockHash = Bytes32.Zero;
             ulong eth1Timestamp = 106185600uL; // 1973-05-14
             Deposit[] deposits = Array.Empty<Deposit>();
-            bool success = await chainStart.TryGenesisAsync(eth1BlockHash, eth1Timestamp, deposits);
+            bool success = await genesisChainStart.TryGenesisAsync(eth1BlockHash, eth1Timestamp, deposits);
 
             // Assert
             success.ShouldBeFalse();

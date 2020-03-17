@@ -31,6 +31,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Nethermind.BeaconNode.Eth1Bridge\Nethermind.BeaconNode.Eth1Bridge.csproj" />
     <ProjectReference Include="..\Nethermind.BeaconNode\Nethermind.BeaconNode.csproj" />
     <ProjectReference Include="..\Nethermind.BeaconNode.Storage\Nethermind.BeaconNode.Storage.csproj" />
     <ProjectReference Include="..\Nethermind.Core2.Cryptography\Nethermind.Core2.Cryptography.csproj" />
@@ -47,6 +48,10 @@
       <Link>Development/appsettings.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="MockedStart" />
   </ItemGroup>
 
 </Project>

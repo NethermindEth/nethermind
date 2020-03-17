@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,33 +14,19 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Collections.Generic;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using Nethermind.Core2;
-using Nethermind.Core2.Configuration;
+using System.Threading.Tasks;
 using Nethermind.Core2.Containers;
-using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Storage
+namespace Nethermind.Core2
 {
-    public class MemoryStoreProvider : IStoreProvider
+    public interface IEth1Genesis
     {
-        private IStore _store;
-
-        public MemoryStoreProvider(IStore store)
-        {
-            _store = store;
-        }
-
-        public bool TryGetStore(out IStore? store)
-        {
-            // NOTE: For MemoryStoreProvider, this always needs to have been initialised (MemoryStore has no persistence).
-            // TODO: Remove IStoreProvider... this implementation uses initialization instead of creation.
-            store = _store;
-            return true;
-        }
+        /// <summary>
+        /// Eth1 bridge should call this with Eth1 data
+        /// </summary>
+        /// <returns>true if genesis succeeded; false if the bridge needs to continue gathering deposits</returns>
+        Task<bool> TryGenesisAsync(Bytes32 eth1BlockHash, ulong eth1Timestamp, IList<Deposit> deposits);
     }
 }

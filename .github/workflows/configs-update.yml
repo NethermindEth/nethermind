@@ -1,8 +1,9 @@
 name: Fast Sync Auto Update
 
 on:
-  repository_dispatch:
-    types: configs_update
+  push:
+    tags:
+    - '*'
 
 jobs:
   configs-updating:

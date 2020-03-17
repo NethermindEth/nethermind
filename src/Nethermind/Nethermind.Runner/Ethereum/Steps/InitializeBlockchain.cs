@@ -174,8 +174,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                 ommersValidator,
                 _context.SpecProvider,
                 _context.LogManager);
-
-            _context.TxPoolInfoProvider = new TxPoolInfoProvider(_context.StateProvider, _context.TxPool);
+            
+            ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(_context.DbProvider, false);
+            StateReader stateReader = new StateReader(readOnly.StateDb, readOnly.CodeDb, _context.LogManager);
+            _context.TxPoolInfoProvider = new TxPoolInfoProvider(stateReader, _context.TxPool);
 
             _context.MainBlockProcessor = CreateBlockProcessor();
 

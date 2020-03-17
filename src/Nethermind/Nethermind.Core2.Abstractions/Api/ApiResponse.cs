@@ -14,16 +14,35 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Core2.Containers
+namespace Nethermind.Core2.Api
 {
-    public class Eth1Block
+    public class ApiResponse
     {
-        public ulong Timestamp { get; }
-
-        public Eth1Block(ulong timestamp)
+        public ApiResponse(StatusCode statusCode)
         {
-            Timestamp = timestamp;
+            StatusCode = statusCode;
         }
         
+        public static ApiResponse<T> Create<T>(StatusCode statusCode, T content)
+        {
+            return new ApiResponse<T>(statusCode, content);
+        }
+
+        public static ApiResponse<T> Create<T>(StatusCode statusCode)
+        {
+            return new ApiResponse<T>(statusCode, default!);
+        }
+        
+        public StatusCode StatusCode { get; }
+    }
+    
+    public class ApiResponse<T> : ApiResponse
+    {
+        public ApiResponse(StatusCode statusCode, T content) : base(statusCode)
+        {
+            Content = content;
+        }
+
+        public T Content { get; }
     }
 }
