@@ -613,6 +613,8 @@ namespace Nethermind.Blockchain
             return blockHash == null ? null : FindHeader(blockHash, options);
         }
 
+        public Keccak FindBlockHash(long blockNumber) => GetBlockHashOnMainOrOnlyHash(blockNumber);
+
         public BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options)
         {
             if (blockHash == null || blockHash == Keccak.Zero)

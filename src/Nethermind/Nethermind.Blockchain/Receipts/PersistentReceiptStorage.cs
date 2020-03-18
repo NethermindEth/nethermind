@@ -112,6 +112,12 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
+        public TxReceipt[] Get(Keccak blockHash)
+        {
+            var receiptsData = _blocksDb.Get(blockHash);
+            return receiptsData != null ? Rlp.DecodeArray<TxReceipt>(new RlpStream(receiptsData)) : null;
+        }
+
         public void Insert(Block block, params TxReceipt[] txReceipts)
         {
             txReceipts ??= Array.Empty<TxReceipt>();

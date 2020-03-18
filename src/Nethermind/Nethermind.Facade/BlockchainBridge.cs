@@ -85,7 +85,7 @@ namespace Nethermind.Facade
             _transactionProcessor = transactionProcessor ?? throw new ArgumentException(nameof(transactionProcessor));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             
-            _logFinder = new LogFinder(_blockTree, _receiptFinder, bloomStorage, logManager, findLogBlockDepthLimit);
+            _logFinder = new LogFinder(_blockTree, _receiptFinder, bloomStorage, logManager, new ReceiptsRecovery(), findLogBlockDepthLimit);
         }
 
         public IReadOnlyCollection<Address> GetWalletAccounts()
@@ -357,6 +357,8 @@ namespace Nethermind.Facade
         public Block FindBlock(long blockNumber, BlockTreeLookupOptions options) => _blockTree.FindBlock(blockNumber, options);
         public BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options) => _blockTree.FindHeader(blockHash, options);
         public BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options) => _blockTree.FindHeader(blockNumber, options);
+        public Keccak FindBlockHash(long blockNumber) => _blockTree.FindBlockHash(blockNumber);
+
         public bool IsMainChain(BlockHeader blockHeader) => _blockTree.IsMainChain(blockHeader);
         public bool IsMainChain(Keccak blockHash) => _blockTree.IsMainChain(blockHash);
     }

@@ -33,9 +33,11 @@ namespace Nethermind.Blockchain.Receipts
             return receipt?.BlockHash;
         }
 
-        public TxReceipt[] Get(Block block)
+        public TxReceipt[] Get(Block block) => Get(block.Hash);
+
+        public TxReceipt[] Get(Keccak blockHash)
         {
-            _receipts.TryGetValue(block.Hash, out var receipts);
+            _receipts.TryGetValue(blockHash, out var receipts);
             return receipts;
         }
 
