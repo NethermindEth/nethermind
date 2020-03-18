@@ -14,21 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core2.P2p;
-
-namespace Nethermind.BeaconNode.Peering
+namespace Nethermind.Core2.P2p
 {
-    public class RpcMessage<T>
+    public enum RpcDirection
     {
-        public RpcMessage(string peerId, RpcDirection direction, T content)
-        {
-            PeerId = peerId;
-            Direction = direction;
-            Content = content;
-        }
-
-        public T Content { get; }
-        public RpcDirection Direction { get; }
-        public string PeerId { get; }
+        Unknown = 0,
+        Request = 1,
+        Response = 2
     }
 }

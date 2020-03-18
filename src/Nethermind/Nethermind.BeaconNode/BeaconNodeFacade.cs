@@ -158,7 +158,7 @@ namespace Nethermind.BeaconNode
                 {
                     return new ApiResponse(StatusCode.CurrentlySyncing);
                 }
-
+                
                 bool acceptedLocally = false;
                 try
                 {
@@ -171,6 +171,7 @@ namespace Nethermind.BeaconNode
                     if (_logger.IsWarn()) Log.BlockNotAcceptedLocally(_logger, signedBlock.Message, ex);
                 }
 
+                if (_logger.IsDebug()) LogDebug.PublishingBlockToNetwork(_logger, signedBlock.Message, null);
                 await _networkPeering.PublishBeaconBlockAsync(signedBlock).ConfigureAwait(false);
 
                 if (acceptedLocally)

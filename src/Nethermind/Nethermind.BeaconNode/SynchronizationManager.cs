@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Dynamic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core2;
@@ -53,15 +54,13 @@ namespace Nethermind.BeaconNode
 
         public async Task OnPeerDialOutConnected(string peerId)
         {
-            // Delay to ensure connection is established
-            await Task.Delay(TimeSpan.FromMilliseconds(2000)).ConfigureAwait(false);
-
             Root headRoot = await _forkChoice.GetHeadAsync(_store).ConfigureAwait(false);
             BeaconState beaconState = await _store.GetBlockStateAsync(headRoot).ConfigureAwait(false);
 
             // Send request
             var status = BuildStatusFromHead(headRoot, beaconState);
-            await _networkPeering.SendStatusAsync(peerId, false, status).ConfigureAwait(false);
+            if (_logger.IsDebug()) LogDebug.SendingStatusToPeer(_logger, RpcDirection.Request, status, peerId, null);
+            await _networkPeering.SendStatusAsync(peerId, RpcDirection.Request, status).ConfigureAwait(false);
         }
 
         public async Task OnStatusRequestReceived(string peerId, PeeringStatus peerPeeringStatus)
@@ -71,7 +70,8 @@ namespace Nethermind.BeaconNode
 
             // Send response
             var status = BuildStatusFromHead(headRoot, beaconState);
-            await _networkPeering.SendStatusAsync(peerId, true, status).ConfigureAwait(false);
+            if (_logger.IsDebug()) LogDebug.SendingStatusToPeer(_logger, RpcDirection.Response, status, peerId, null);
+            await _networkPeering.SendStatusAsync(peerId,  RpcDirection.Response, status).ConfigureAwait(false);
 
             // Determine if the peer is valid, and if we need to request blocks
             await HandlePeerStatus(peerId, peerPeeringStatus, headRoot, beaconState);
@@ -169,16 +169,29 @@ namespace Nethermind.BeaconNode
             // Check finalized checkpoint in chain at expected epoch; only if finalized checkpoint is shared (i.e. also finalized for us) 
             if (peerPeeringStatus.FinalizedEpoch <= beaconState.FinalizedCheckpoint.Epoch)
             {
-                Slot peerFinalizedSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(peerPeeringStatus.FinalizedEpoch);
-                Root ancestorAtPeerFinalizedSlot = await _forkChoice
-                    .GetAncestorAsync(_store, headRoot, peerFinalizedSlot)
-                    .ConfigureAwait(false);
-                if (!peerPeeringStatus.FinalizedRoot.Equals(ancestorAtPeerFinalizedSlot))
+                // If the (finalized_root, finalized_epoch) shared by the peer is not in the client's chain at the expected epoch.
+                // For example, if Peer 1 sends (root, epoch) of (A, 5) and Peer 2 sends (B, 3) but Peer 1 has root C at epoch 3,
+                // then Peer 1 would disconnect because it knows that their chains are irreparably disjoint.
+                
+                Root expectedFinalizedRoot;
+                if (peerPeeringStatus.FinalizedEpoch == Epoch.Zero)
+                {
+                    // The genesis checkpoint (epoch 0) has root zero.
+                    expectedFinalizedRoot = Root.Zero;
+                }
+                else
+                {
+                    // Otherwise get the ancestor at the start slot of the peer's finalized epoch
+                    Slot peerFinalizedSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(peerPeeringStatus.FinalizedEpoch);
+                    expectedFinalizedRoot = await _forkChoice
+                        .GetAncestorAsync(_store, headRoot, peerFinalizedSlot)
+                        .ConfigureAwait(false);
+                }
+                if (!peerPeeringStatus.FinalizedRoot.Equals(expectedFinalizedRoot))
                 {
                     if (_logger.IsWarn())
                         Log.PeerStatusInvalidFinalizedCheckpoint(_logger, peerId, peerPeeringStatus.FinalizedRoot,
-                            peerFinalizedSlot,
-                            peerPeeringStatus.FinalizedEpoch, ancestorAtPeerFinalizedSlot, null);
+                            peerPeeringStatus.FinalizedEpoch, expectedFinalizedRoot, null);
                     return false;
                 }
             }

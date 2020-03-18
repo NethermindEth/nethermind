@@ -6,6 +6,7 @@ using Nethermind.Core2;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.P2p;
 using Nethermind.Core2.Types;
+using Nethermind.Logging.Microsoft;
 using Nethermind.Peering.Mothra;
 
 namespace Nethermind.BeaconNode.Peering
@@ -51,26 +52,27 @@ namespace Nethermind.BeaconNode.Peering
         {
             // TODO: BeaconBlocksByRange is separate work item... just log that we got here.
 
-            LogDebug.RpcSend(_logger, false, nameof(MethodUtf8.BeaconBlocksByRange), peerId, 0, null);
+            LogDebug.RpcSend(_logger, RpcDirection.Request, nameof(MethodUtf8.BeaconBlocksByRange), peerId, 0, null);
             //throw new NotImplementedException();
 
             return Task.CompletedTask;
         }
 
-        public Task SendStatusAsync(string peerId, bool isResponse, PeeringStatus peeringStatus)
+        public Task SendStatusAsync(string peerId, RpcDirection rpcDirection, PeeringStatus peeringStatus)
         {
             byte[] peerUtf8 = Encoding.UTF8.GetBytes(peerId);
             Span<byte> encoded = new byte[Ssz.Ssz.PeeringStatusLength];
             Ssz.Ssz.Encode(encoded, peeringStatus);
 
-            LogDebug.RpcSend(_logger, isResponse, nameof(MethodUtf8.Status), peerId, encoded.Length, null);
-            if (isResponse)
+            if (_logger.IsDebug())
+                LogDebug.RpcSend(_logger, rpcDirection, nameof(MethodUtf8.Status), peerId, encoded.Length, null);
+            if (rpcDirection == RpcDirection.Request)
             {
-                _mothraLibp2p.SendRpcResponse(MethodUtf8.Status, peerUtf8, encoded);
+                _mothraLibp2p.SendRpcRequest(MethodUtf8.Status, peerUtf8, encoded);
             }
             else
             {
-                _mothraLibp2p.SendRpcRequest(MethodUtf8.Status, peerUtf8, encoded);
+                _mothraLibp2p.SendRpcResponse(MethodUtf8.Status, peerUtf8, encoded);
             }
 
             return Task.CompletedTask;

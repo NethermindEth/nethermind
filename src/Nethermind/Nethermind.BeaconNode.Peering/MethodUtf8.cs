@@ -24,5 +24,7 @@ namespace Nethermind.BeaconNode.Peering
             Encoding.UTF8.GetBytes("/eth2/beacon_chain/req/beacon_blocks_by_range/1/");
 
         public static readonly byte[] Status = Encoding.UTF8.GetBytes("/eth2/beacon_chain/req/status/1/");
+
+        public static readonly byte[] StatusMothraAlternative = Encoding.UTF8.GetBytes("HELLO");
     }
 }

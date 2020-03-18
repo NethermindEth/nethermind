@@ -16,15 +16,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.Core2.Configuration;
-using Nethermind.BeaconNode.Storage;
 using Nethermind.BeaconNode.Test.Helpers;
 using Nethermind.Core2;
 using Nethermind.Core2.Containers;
@@ -35,7 +32,7 @@ using Shouldly;
 namespace Nethermind.BeaconNode.Test
 {
     [TestClass]
-    public class BeaconStateAccessorTest
+    public class BeaconStateAccessorTests
     {
         [TestMethod]
         public async Task ProposerIndexForFirstTwoEpochsMustBeValid()

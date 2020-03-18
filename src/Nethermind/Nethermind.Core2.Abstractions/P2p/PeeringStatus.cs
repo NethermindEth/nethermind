@@ -36,5 +36,11 @@ namespace Nethermind.Core2.P2p
         public ForkVersion HeadForkVersion { get; }
         public Root HeadRoot { get; }
         public Slot HeadSlot { get; }
+
+        public override string ToString()
+        {
+            return
+                $"fe={FinalizedEpoch}_fr={FinalizedRoot.ToString().Substring(0, 10)}_hs={HeadSlot}_hr={HeadRoot.ToString().Substring(0, 10)}";
+        }
     }
 }

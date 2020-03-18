@@ -107,10 +107,10 @@ namespace Nethermind.BeaconNode
             LoggerMessage.Define<string, ForkVersion, Slot, Epoch, ForkVersion>(LogLevel.Warning,
                 new EventId(4000, nameof(PeerStatusInvalidForkVersion)),
                 "Disconnecting peer {PeerId} because it has fork version {PeerForkVersion} at slot {PeerSlot} (epoch {PeerEpoch}) different from expected {ExpectedForkVersion}.");
-        public static readonly Action<ILogger, string, Root, Slot, Epoch, Root, Exception?> PeerStatusInvalidFinalizedCheckpoint =
-            LoggerMessage.Define<string, Root, Slot, Epoch, Root>(LogLevel.Warning,
+        public static readonly Action<ILogger, string, Root, Epoch, Root, Exception?> PeerStatusInvalidFinalizedCheckpoint =
+            LoggerMessage.Define<string, Root, Epoch, Root>(LogLevel.Warning,
                 new EventId(4001, nameof(PeerStatusInvalidFinalizedCheckpoint)),
-                "Disconnecting peer {PeerId} because it has finalized checkpoint {PeerFinalizedRoot} at slot {PeerFinalizedSlot} (epoch {PeerFinalizedEpoch}) different from expected {ExpectedRoot}.");
+                "Disconnecting peer {PeerId} because it has finalized checkpoint {PeerFinalizedRoot} at epoch {PeerFinalizedEpoch} different from expected {ExpectedRoot}.");
 
         public static readonly Action<ILogger, CommitteeIndex, Slot, int, Exception?> InvalidIndexedAttestationBit1 =
             LoggerMessage.Define<CommitteeIndex, Slot, int>(LogLevel.Warning,

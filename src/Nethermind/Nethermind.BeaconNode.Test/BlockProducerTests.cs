@@ -63,7 +63,7 @@ namespace Nethermind.BeaconNode.Test
 
             // With QuickStart64, proposer for Slot 1 is validator index 29, 0xa98ed496...
             QuickStartMockEth1GenesisProvider quickStartMockEth1GenesisProvider =
-                testServiceProvider.GetService<IEth1GenesisProvider>() as QuickStartMockEth1GenesisProvider;
+                (testServiceProvider.GetService<IEth1GenesisProvider>() as QuickStartMockEth1GenesisProvider)!;
             byte[] privateKey = quickStartMockEth1GenesisProvider.GeneratePrivateKey(29);
             BlsSignature randaoReveal = GetEpochSignature(testServiceProvider, privateKey, fork.CurrentVersion, targetSlot);
             

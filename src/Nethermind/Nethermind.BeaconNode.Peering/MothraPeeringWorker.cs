@@ -242,6 +242,9 @@ namespace Nethermind.BeaconNode.Peering
             {
                 if (_peerManager.AddPeer(peerId))
                 {
+                    // Delay to ensure connection is established
+                    await Task.Delay(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
+
                     await _synchronizationManager.OnPeerDialOutConnected(peerId).ConfigureAwait(false);
                 }
             }
@@ -257,14 +260,14 @@ namespace Nethermind.BeaconNode.Peering
             try
             {
                 _peerManager.UpdatePeerStatus(statusRpcMessage.PeerId, statusRpcMessage.Content);
-                if (statusRpcMessage.IsResponse)
+                if (statusRpcMessage.Direction == RpcDirection.Request)
                 {
-                    await _synchronizationManager.OnStatusResponseReceived(statusRpcMessage.PeerId,
+                    await _synchronizationManager.OnStatusRequestReceived(statusRpcMessage.PeerId,
                         statusRpcMessage.Content);
                 }
                 else
                 {
-                    await _synchronizationManager.OnStatusRequestReceived(statusRpcMessage.PeerId,
+                    await _synchronizationManager.OnStatusResponseReceived(statusRpcMessage.PeerId,
                         statusRpcMessage.Content);
                 }
             }
@@ -323,21 +326,24 @@ namespace Nethermind.BeaconNode.Peering
             }
         }
 
-        private void OnRpcReceived(ReadOnlySpan<byte> methodUtf8, bool isResponse, ReadOnlySpan<byte> peerUtf8,
+        private void OnRpcReceived(ReadOnlySpan<byte> methodUtf8, int requestResponseFlag, ReadOnlySpan<byte> peerUtf8,
             ReadOnlySpan<byte> data)
         {
             try
             {
                 string peerId = Encoding.UTF8.GetString(peerUtf8);
+                RpcDirection rpcDirection = requestResponseFlag == 0 ? RpcDirection.Request : RpcDirection.Response;
 
-                if (methodUtf8.SequenceEqual(MethodUtf8.Status))
+                // Even though the value '/eth2/beacon_chain/req/status/1/' is sent, when Mothra calls the received event it is 'HELLO'
+                if (methodUtf8.SequenceEqual(MethodUtf8.Status)
+                    || methodUtf8.SequenceEqual(MethodUtf8.StatusMothraAlternative))
                 {
                     if (_logger.IsDebug())
-                        LogDebug.RpcReceived(_logger, isResponse, nameof(MethodUtf8.Status), peerId, data.Length, null);
+                        LogDebug.RpcReceived(_logger, rpcDirection, requestResponseFlag, nameof(MethodUtf8.Status), peerId, data.Length, null);
 
                     PeeringStatus peeringStatus = Ssz.Ssz.DecodePeeringStatus(data);
                     RpcMessage<PeeringStatus> statusRpcMessage =
-                        new RpcMessage<PeeringStatus>(peerId, isResponse, peeringStatus);
+                        new RpcMessage<PeeringStatus>(peerId, rpcDirection, peeringStatus);
                     if (!ThreadPool.QueueUserWorkItem(HandleRpcStatusAsync, statusRpcMessage, true))
                     {
                         throw new Exception($"Could not queue handling of Status from peer {peerId}.");
@@ -347,7 +353,7 @@ namespace Nethermind.BeaconNode.Peering
                 {
                     // TODO: handle other RPC
                     if (_logger.IsWarn())
-                        Log.UnknownRpcReceived(_logger, isResponse, Encoding.UTF8.GetString(methodUtf8), peerId,
+                        Log.UnknownRpcReceived(_logger, rpcDirection, requestResponseFlag, Encoding.UTF8.GetString(methodUtf8), peerId,
                             data.Length, null);
                 }
             }

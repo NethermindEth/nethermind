@@ -50,8 +50,4 @@
     </Content>
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="MockedStart" />
-  </ItemGroup>
-
 </Project>

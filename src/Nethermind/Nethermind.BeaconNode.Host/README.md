@@ -82,6 +82,21 @@ And the second node in a second PowerShell terminal:
 $offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())/60) * 60; $offset; dotnet run --no-build --project src/Nethermind/Nethermind.BeaconNode.Host -- --DataDirectory Development9001 --Peering:Mothra:BootNodes:0 $enr --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ClockOffset $offset --QuickStart:ValidatorStartIndex 32 --QuickStart:NumberOfValidators 4
 ```
 
+#### Test synchronisation (second node starting after the first)
+
+The clocks still need to be synchronised, so start the first node as above, and capture the correspond offset in the second terminal:
+
+```
+$offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())/60) * 60; $offset;
+```
+
+The node can then be started later, but still with the same clock offset:
+
+```
+dotnet run --no-build --project src/Nethermind/Nethermind.BeaconNode.Host -- --DataDirectory Development9001 --Peering:Mothra:BootNodes:0 $enr --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ClockOffset $offset --QuickStart:ValidatorStartIndex 32 --QuickStart:NumberOfValidators 4
+```
+
+
 ### Test with separate processes for node and validator
 
 **NOTE: REST API is currently broken (from spec updated to 0.10.1), so can't run in separate processes**

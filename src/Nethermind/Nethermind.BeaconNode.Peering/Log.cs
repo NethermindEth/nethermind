@@ -18,6 +18,7 @@ using System;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.P2p;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.BeaconNode.Peering
@@ -69,10 +70,10 @@ namespace Nethermind.BeaconNode.Peering
                 new EventId(4050, nameof(UnknownGossipReceived)),
                 "Unknown gossip received, unknown topic '{Topic}', {ByteCount} bytes.");
         
-        public static readonly Action<ILogger, bool, string, string, int, Exception?> UnknownRpcReceived =
-            LoggerMessage.Define<bool, string, string, int>(LogLevel.Warning,
+        public static readonly Action<ILogger, RpcDirection, int, string, string, int, Exception?> UnknownRpcReceived =
+            LoggerMessage.Define<RpcDirection, int, string, string, int>(LogLevel.Warning,
                 new EventId(4051, nameof(UnknownRpcReceived)),
-                "Unknown RPC received (response {IsResponse}), unknown method '{Method}', peer {Peer}, {ByteCount} bytes.");
+                "Unknown RPC {RpcDirection} ({RequestResponseFlag}) received, unknown method '{Method}', peer {Peer}, {ByteCount} bytes.");
 
         // 5bxx error
 

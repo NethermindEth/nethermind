@@ -25,10 +25,12 @@ namespace Nethermind.Core2
     {
         Slot HighestPeerSlot { get; }
         Slot SyncStartingSlot { get; }
-        // TODO: Should have CancellationToken, but Mothra won't support it, so add if/when we do a managed implementatino
-        Task PublishBeaconBlockAsync(SignedBeaconBlock signedBlock);
-        Task SendStatusAsync(string peerId, bool isResponse, PeeringStatus peeringStatus);
+
         Task DisconnectPeerAsync(string peerId);
+
+        // TODO: Should have CancellationToken, but Mothra won't support it, so add if/when we do a managed implementation
+        Task PublishBeaconBlockAsync(SignedBeaconBlock signedBlock);
         Task RequestBlocksAsync(string peerId, Root peerHeadRoot, Slot finalizedSlot, Slot peerHeadSlot);
+        Task SendStatusAsync(string peerId, RpcDirection rpcDirection, PeeringStatus peeringStatus);
     }
 }

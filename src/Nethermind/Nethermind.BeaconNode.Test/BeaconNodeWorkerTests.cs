@@ -33,7 +33,7 @@ using Shouldly;
 namespace Nethermind.BeaconNode.Test
 {
     [TestClass]
-    public class BeaconNodeWorkerTest
+    public class BeaconNodeWorkerTests
     {
         [TestMethod]
         public async Task CanRunFastClockForWorkerTest()

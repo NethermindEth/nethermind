@@ -36,7 +36,7 @@ using Shouldly;
 namespace Nethermind.BeaconNode.Test
 {
     [TestClass]
-    public class ValidatorAssignmentsTest
+    public class ValidatorAssignmentsTests
     {
         [DataTestMethod]
         [DataRow(0uL, true)]
