@@ -54,7 +54,7 @@ namespace Nethermind.BeaconNode
         public async Task OnPeerDialOutConnected(string peerId)
         {
             // Delay to ensure connection is established
-            await Task.Delay(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
+            await Task.Delay(TimeSpan.FromMilliseconds(2000)).ConfigureAwait(false);
 
             Root headRoot = await _forkChoice.GetHeadAsync(_store).ConfigureAwait(false);
             BeaconState beaconState = await _store.GetBlockStateAsync(headRoot).ConfigureAwait(false);

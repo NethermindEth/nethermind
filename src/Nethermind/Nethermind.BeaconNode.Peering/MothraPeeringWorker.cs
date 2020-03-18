@@ -294,8 +294,8 @@ namespace Nethermind.BeaconNode.Peering
                 }
                 else
                 {
-                    if (_logger.IsDebug())
-                        LogDebug.GossipReceived(_logger, Encoding.UTF8.GetString(topicUtf8), data.Length, null);
+                    if (_logger.IsWarn())
+                        Log.UnknownGossipReceived(_logger, Encoding.UTF8.GetString(topicUtf8), data.Length, null);
                 }
             }
             catch (Exception ex)
@@ -346,10 +346,9 @@ namespace Nethermind.BeaconNode.Peering
                 else
                 {
                     // TODO: handle other RPC
-                    if (_logger.IsDebug())
-                        LogDebug.RpcReceived(_logger, isResponse, Encoding.UTF8.GetString(methodUtf8),
-                            peerId, data.Length,
-                            null);
+                    if (_logger.IsWarn())
+                        Log.UnknownRpcReceived(_logger, isResponse, Encoding.UTF8.GetString(methodUtf8), peerId,
+                            data.Length, null);
                 }
             }
             catch (Exception ex)

@@ -63,6 +63,17 @@ namespace Nethermind.BeaconNode.Peering
 
         // 4bxx warning
         
+                
+        public static readonly Action<ILogger, string, int, Exception?> UnknownGossipReceived =
+            LoggerMessage.Define<string, int>(LogLevel.Warning,
+                new EventId(4050, nameof(UnknownGossipReceived)),
+                "Unknown gossip received, unknown topic '{Topic}', {ByteCount} bytes.");
+        
+        public static readonly Action<ILogger, bool, string, string, int, Exception?> UnknownRpcReceived =
+            LoggerMessage.Define<bool, string, string, int>(LogLevel.Warning,
+                new EventId(4051, nameof(UnknownRpcReceived)),
+                "Unknown RPC received (response {IsResponse}), unknown method '{Method}', peer {Peer}, {ByteCount} bytes.");
+
         // 5bxx error
 
         public static readonly Action<ILogger, string, string, Exception?> PeerDiscoveredError =

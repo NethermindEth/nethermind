@@ -45,17 +45,17 @@ namespace Nethermind.BeaconNode.Peering
         public static readonly Action<ILogger, string, int, Exception?> GossipReceived =
             LoggerMessage.Define<string, int>(LogLevel.Debug,
                 new EventId(6053, nameof(GossipReceived)),
-                "Gossip received, topic '{Topic}', {ByteCount} bytes.");
+                "Gossip received, topic {Topic}, {ByteCount} bytes.");
         
         public static readonly Action<ILogger, bool, string, string, int, Exception?> RpcReceived =
             LoggerMessage.Define<bool, string, string, int>(LogLevel.Debug,
                 new EventId(6054, nameof(RpcReceived)),
-                "RPC received (response {IsResponse}), method '{Method}', peer {Peer}, {ByteCount} bytes.");
+                "RPC received (response {IsResponse}), method {Method}, peer {Peer}, {ByteCount} bytes.");
         
         public static readonly Action<ILogger, string, int, Exception?> GossipSend =
             LoggerMessage.Define<string, int>(LogLevel.Debug,
                 new EventId(6055, nameof(GossipSend)),
-                "Gossip send, topic '{Topic}', {ByteCount} bytes.");
+                "Gossip send, topic {Topic}, {ByteCount} bytes.");
         
         public static readonly Action<ILogger, string?, int?, int, Exception?> MothraStarting =
             LoggerMessage.Define<string?, int?, int>(LogLevel.Debug,
@@ -70,7 +70,7 @@ namespace Nethermind.BeaconNode.Peering
         public static readonly Action<ILogger, bool, string, string, int, Exception?> RpcSend =
             LoggerMessage.Define<bool, string, string, int>(LogLevel.Debug,
                 new EventId(6058, nameof(RpcSend)),
-                "RPC send (response {IsResponse}), method '{Method}', peer {Peer}, {ByteCount} bytes.");
+                "RPC send (response {IsResponse}), method {Method}, peer {Peer}, {ByteCount} bytes.");
         
         public static readonly Action<ILogger, string, Exception?> AddingExpectedPeer =
             LoggerMessage.Define<string>(LogLevel.Debug,
