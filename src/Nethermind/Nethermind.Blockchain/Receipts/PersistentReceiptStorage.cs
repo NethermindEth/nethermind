@@ -99,16 +99,16 @@ namespace Nethermind.Blockchain.Receipts
             }
             else
             {
-                var data = _database.MultiGet(block.Transactions.Select(t => t.Hash));
-                return data.Select(kvp => DeserializeObsolete(new Keccak(kvp.Key), kvp.Value)).ToArray();
+                // var data = _database.MultiGet(block.Transactions.Select(t => t.Hash));
+                // return data.Select(kvp => DeserializeObsolete(new Keccak(kvp.Key), kvp.Value)).ToArray();
 
-                // TxReceipt[] result = new TxReceipt[block.Transactions.Length];
-                // for (int i = 0; i < block.Transactions.Length; i++)
-                // {
-                //     result[i] = FindObsolete(block.Transactions[i].Hash);
-                // }
-                //
-                // return result;
+                TxReceipt[] result = new TxReceipt[block.Transactions.Length];
+                for (int i = 0; i < block.Transactions.Length; i++)
+                {
+                    result[i] = FindObsolete(block.Transactions[i].Hash);
+                }
+                
+                return result;
             }
         }
 

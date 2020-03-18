@@ -87,7 +87,12 @@ namespace Nethermind.Db.Rocks
 
         private T ReadConfig<T>(IDbConfig dbConfig, string propertyName)
         {
-            string prefixed = string.Concat(Name == "State" ? string.Empty : string.Concat(Name, "Db"), propertyName);
+            return ReadConfig<T>(dbConfig, propertyName, Name);
+        }
+        
+        protected static T ReadConfig<T>(IDbConfig dbConfig, string propertyName, string tableName)
+        {
+            string prefixed = string.Concat(tableName == "State" ? string.Empty : string.Concat(tableName, "Db"), propertyName);
             try
             {
                 return (T) dbConfig.GetType().GetProperty(prefixed, BindingFlags.Public | BindingFlags.Instance).GetValue(dbConfig);

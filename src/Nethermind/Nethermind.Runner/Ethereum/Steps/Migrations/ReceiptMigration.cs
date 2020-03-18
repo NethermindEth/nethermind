@@ -171,8 +171,9 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                     foreach (var block in GetBlockBodiesForMigration())
                     {
                         var receipts = storage.Get(block);
-                        var notNullReceipts = receipts.Where(r => r != null).ToArray();
-                        if (receipts.Length == 0 || notNullReceipts.Length != receipts.Length) // if its equal its just receipts are not there yet.
+                        var notNullReceipts = receipts.Length == 0 ? receipts : receipts.Where(r => r != null).ToArray();
+
+                        if (receipts.Length == 0 || notNullReceipts.Length != 0) // if notNullReceipts.Length is 0 and receipts are not 0 - we are missing all receipts, they are not processed yet.
                         {
                             storage.Insert(block, notNullReceipts);
                             storage.MigratedBlockNumber = block.Number;
@@ -182,9 +183,9 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                                 receiptsDb.Delete(notNullReceipts[i].TxHash);
                             }
                             
-                            if (notNullReceipts.Length != 0)
+                            if (notNullReceipts.Length != receipts.Length)
                             {
-                                if(_logger.IsWarn) _logger.Warn(GetLogMessage("error", $"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing receipts!"));
+                                if(_logger.IsWarn) _logger.Warn(GetLogMessage("warning", $"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing {receipts.Length - notNullReceipts.Length} receipts!"));
                             }
                         }
                     }

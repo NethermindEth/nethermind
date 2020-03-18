@@ -77,17 +77,35 @@ namespace Nethermind.Blockchain.Find
                 return block;
             }
 
-            var enumeration = _bloomStorage.GetBlooms(fromBlock.Number, toBlock.Number);
-            foreach (var bloom in enumeration)
+            // var enumeration = _bloomStorage.GetBlooms(fromBlock.Number, toBlock.Number);
+            // foreach (var bloom in enumeration)
+            // {
+            //     if (filter.Matches(bloom) && enumeration.TryGetBlockNumber(out var blockNumber))
+            //     {
+            //         foreach (var filterLog in FindLogsInBlock(filter, FindBlock(blockNumber)))
+            //         {
+            //             yield return filterLog;
+            //         }
+            //     }
+            // }
+            
+            IEnumerable<long> FilterBlocks(LogFilter f, long from, long to)
             {
-                if (filter.Matches(bloom) && enumeration.TryGetBlockNumber(out var blockNumber))
+                var enumeration = _bloomStorage.GetBlooms(from, to);
+                foreach (var bloom in enumeration)
                 {
-                    foreach (var filterLog in FindLogsInBlock(filter, FindBlock(blockNumber)))
+                    if (f.Matches(bloom) && enumeration.TryGetBlockNumber(out var blockNumber))
                     {
-                        yield return filterLog;
+                        yield return blockNumber;
                     }
                 }
             }
+            
+            return FilterBlocks(filter, fromBlock.Number, toBlock.Number)
+                .AsParallel() // can yield big performance improvements 
+                .AsOrdered() // we want to keep block order
+                .Select(FindBlock)
+                .SelectMany(block => FindLogsInBlock(filter, block));
         }
 
         private bool CanUseBloomDatabase(BlockHeader toBlock, BlockHeader fromBlock) => _bloomStorage.ContainsRange(fromBlock.Number, toBlock.Number) && _blockFinder.IsMainChain(toBlock) && _blockFinder.IsMainChain(fromBlock);
@@ -125,16 +143,18 @@ namespace Nethermind.Blockchain.Find
                 long logIndexInBlock = 0;
                 if (receipts != null)
                 {
-                    foreach (var receipt in receipts)
+                    for (var i = 0; i < receipts.Length; i++)
                     {
+                        var receipt = receipts[i];
+                        
                         if (filter.Matches(receipt.Bloom))
                         {
-                            for (var index = 0; index < receipt.Logs.Length; index++)
+                            for (var j = 0; j < receipt.Logs.Length; j++)
                             {
-                                var log = receipt.Logs[index];
+                                var log = receipt.Logs[j];
                                 if (filter.Accepts(log))
                                 {
-                                    yield return new FilterLog(logIndexInBlock, index, receipt, log);
+                                    yield return new FilterLog(logIndexInBlock, j, receipt, log);
                                 }
 
                                 logIndexInBlock++;

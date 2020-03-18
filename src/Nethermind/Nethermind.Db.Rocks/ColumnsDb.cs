@@ -27,8 +27,9 @@ namespace Nethermind.Db.Rocks
     {
         private readonly IDictionary<T, IDb> _columnDbs = new Dictionary<T, IDb>();
         
-        protected ColumnsDb(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager, params T[] keys) : base(basePath, dbPath, dbConfig, logManager, GetColumnFamilies(GetEnumKeys(keys)))
+        protected ColumnsDb(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager, string name, params T[] keys) : base(basePath, dbPath, dbConfig, logManager, GetColumnFamilies(dbConfig, name, GetEnumKeys(keys)))
         {
+            Name = name;
             keys = GetEnumKeys(keys);
 
             foreach (var key in keys)
@@ -36,6 +37,8 @@ namespace Nethermind.Db.Rocks
                 _columnDbs[key] = new ColumnDb(Db, this, key.ToString()); 
             }
         }
+
+        public override string Name { get; }
 
         private static T[] GetEnumKeys(T[] keys)
         {
@@ -47,12 +50,16 @@ namespace Nethermind.Db.Rocks
             return keys;
         }
 
-        private static ColumnFamilies GetColumnFamilies(T[] keys)
+        private static ColumnFamilies GetColumnFamilies(IDbConfig dbConfig, string name, T[] keys)
         {
             var result = new ColumnFamilies();
+            var blockCacheSize = ReadConfig<ulong>(dbConfig, nameof(dbConfig.BlockCacheSize), name);
             foreach (var key in keys)
             {
-                result.Add(key.ToString(), new ColumnFamilyOptions());
+                var columnFamilyOptions = new ColumnFamilyOptions();
+                columnFamilyOptions.OptimizeForPointLookup(blockCacheSize);
+                columnFamilyOptions.SetBlockBasedTableFactory(new BlockBasedTableOptions().SetFilterPolicy(BloomFilterPolicy.Create()));
+                result.Add(key.ToString(), columnFamilyOptions);
             }
             return result;
         }
