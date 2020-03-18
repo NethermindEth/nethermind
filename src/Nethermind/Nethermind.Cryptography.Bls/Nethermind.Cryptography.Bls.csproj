@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.1</TargetFramework>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
     <Product>Nethermind Eth2.0 blockchain</Product>
     <Copyright>Copyright © 2019 Demerzel Solutions Limited</Copyright>
     <Authors>sgryphon</Authors>
@@ -30,7 +30,7 @@ Based on the Herumi cryptography library.
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="GitVersionTask" Version="5.1.3">
+    <PackageReference Include="GitVersionTask" Version="5.2.4">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
