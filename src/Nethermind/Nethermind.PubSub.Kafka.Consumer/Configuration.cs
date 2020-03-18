@@ -30,9 +30,9 @@ namespace Nethermind.PubSub.Kafka.Consumer
         {
             BootstrapServers = "localhost:19092,localhost:29092,localhost:39092",
             GroupId = "Nethermind",
-            AutoOffsetReset = AutoOffsetResetType.Earliest,
-            SecurityProtocol = SecurityProtocolType.Sasl_Plaintext,
-            SaslMechanism = SaslMechanismType.Plain,
+            AutoOffsetReset = AutoOffsetReset.Earliest,
+            SecurityProtocol = SecurityProtocol.SaslPlaintext,
+            SaslMechanism = SaslMechanism.Plain,
             SaslUsername = "nethermind",
             SaslPassword = "secret",
             SslKeyLocation = "certs/nethermind.pem",

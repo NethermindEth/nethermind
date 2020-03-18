@@ -17,12 +17,13 @@
 using System;
 using System.Collections;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Benchmarks.Evm
 {
     [MemoryDiagnoser]
-    [CoreJob(baseline: true)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class SignExtendBenchmark
     {
         [GlobalSetup]

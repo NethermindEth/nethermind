@@ -16,13 +16,14 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Benchmarks.Evm
 {
     [MemoryDiagnoser]
-    [CoreJob(baseline: true)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class Bn128MulBenchmark
     {
         private IPrecompiledContract _precompile = Bn128MulPrecompiledContract.Instance;

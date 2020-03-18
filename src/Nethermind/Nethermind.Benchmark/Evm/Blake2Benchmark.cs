@@ -16,6 +16,7 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Running;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -26,7 +27,7 @@ namespace Nethermind.Benchmarks.Evm
 {
     [MemoryDiagnoser]
     [DisassemblyDiagnoser]
-    [CoreJob(baseline: true)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class Blake2Benchmark
     {
         private Blake2Compression _blake2Compression = new Blake2Compression();
