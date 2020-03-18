@@ -64,7 +64,6 @@ namespace Nethermind.BeaconNode.Peering
 
         // 4bxx warning
         
-                
         public static readonly Action<ILogger, string, int, Exception?> UnknownGossipReceived =
             LoggerMessage.Define<string, int>(LogLevel.Warning,
                 new EventId(4050, nameof(UnknownGossipReceived)),
@@ -74,6 +73,11 @@ namespace Nethermind.BeaconNode.Peering
             LoggerMessage.Define<RpcDirection, int, string, string, int>(LogLevel.Warning,
                 new EventId(4051, nameof(UnknownRpcReceived)),
                 "Unknown RPC {RpcDirection} ({RequestResponseFlag}) received, unknown method '{Method}', peer {Peer}, {ByteCount} bytes.");
+
+        public static readonly Action<ILogger, string, Exception?> ReceivedMultipleStatusRpc =
+            LoggerMessage.Define<string>(LogLevel.Warning,
+                new EventId(4052, nameof(ReceivedMultipleStatusRpc)),
+                "Received status from {PeerId} when already have status; not raising events to avoid looping.");
 
         // 5bxx error
 

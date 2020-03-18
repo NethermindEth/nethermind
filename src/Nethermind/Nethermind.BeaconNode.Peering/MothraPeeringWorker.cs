@@ -259,16 +259,25 @@ namespace Nethermind.BeaconNode.Peering
         {
             try
             {
-                _peerManager.UpdatePeerStatus(statusRpcMessage.PeerId, statusRpcMessage.Content);
-                if (statusRpcMessage.Direction == RpcDirection.Request)
+                bool statusUpdated = _peerManager.UpdatePeerStatus(statusRpcMessage.PeerId, statusRpcMessage.Content);
+                // Mothra seems to be raising all incoming RPC (sent as request and as response)
+                // with requestResponseFlag 0, so check here if already have the status so we don't go into infinite loop
+                if (statusUpdated)
                 {
-                    await _synchronizationManager.OnStatusRequestReceived(statusRpcMessage.PeerId,
-                        statusRpcMessage.Content);
+                    if (statusRpcMessage.Direction == RpcDirection.Request)
+                    {
+                        await _synchronizationManager.OnStatusRequestReceived(statusRpcMessage.PeerId,
+                            statusRpcMessage.Content);
+                    }
+                    else
+                    {
+                        await _synchronizationManager.OnStatusResponseReceived(statusRpcMessage.PeerId,
+                            statusRpcMessage.Content);
+                    }
                 }
                 else
                 {
-                    await _synchronizationManager.OnStatusResponseReceived(statusRpcMessage.PeerId,
-                        statusRpcMessage.Content);
+                    if (_logger.IsWarn()) Log.ReceivedMultipleStatusRpc(_logger, statusRpcMessage.PeerId, null);
                 }
             }
             catch (Exception ex)

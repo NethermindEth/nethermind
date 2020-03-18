@@ -100,12 +100,18 @@ namespace Nethermind.BeaconNode.Peering
             } while (initialValue != Slot.InterlockedCompareExchange(ref _highestPeerSlot, slot, initialValue));
         }
 
-        public void UpdatePeerStatus(string peerId, PeeringStatus status)
+        public bool UpdatePeerStatus(string peerId, PeeringStatus status)
         {
             PeerDetails emptyPeerDetails = new PeerDetails(peerId);
             var peerDetails = _peers.GetOrAdd(peerId, emptyPeerDetails);
+            if (peerDetails.Status != null)
+            {
+                // Already have a status, i.e. is a response loop
+                return false;
+            }
             peerDetails.SetStatus(status);
             UpdateMostRecentSlot(status.HeadSlot);
+            return true;
         }
     }
 }
