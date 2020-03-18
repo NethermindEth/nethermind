@@ -24,7 +24,7 @@ namespace Nethermind.BeaconNode.Peering.Test
         public void UpdateSlotShouldBeThreadSafe()
         {
             // arrange
-            PeerManager peerManager = new PeerManager(Substitute.For<ILogger<PeerManager>>(), null!);
+            PeerManager peerManager = new PeerManager(Substitute.For<ILogger<PeerManager>>());
             peerManager.UpdateMostRecentSlot(new Slot(5));
 
             ManualResetEventSlim startEvent = new ManualResetEventSlim();

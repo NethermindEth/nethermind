@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Types;
@@ -29,12 +30,12 @@ namespace Nethermind.BeaconNode.Peering
         public static readonly Action<ILogger, Exception?> PeeringWorkerExecute =
             LoggerMessage.Define(LogLevel.Debug,
                 new EventId(6050, nameof(PeeringWorkerExecute)),
-                "Peering worker execute running.");
+                "Peering worker execute running, awaiting store to be initialised with anchor state.");
         
-        public static readonly Action<ILogger, Exception?> PeeringWorkerStarted =
+        public static readonly Action<ILogger, Exception?> PeeringWorkerExecuteCompleted =
             LoggerMessage.Define(LogLevel.Debug,
-                new EventId(6051, nameof(PeeringWorkerStarted)),
-                "Peering worker started.");
+                new EventId(6051, nameof(PeeringWorkerExecuteCompleted)),
+                "Peering worker execute completed, peering now running.");
         
         public static readonly Action<ILogger, Exception?> PeeringWorkerStopping =
             LoggerMessage.Define(LogLevel.Debug,
@@ -70,5 +71,20 @@ namespace Nethermind.BeaconNode.Peering
             LoggerMessage.Define<bool, string, string, int>(LogLevel.Debug,
                 new EventId(6058, nameof(RpcSend)),
                 "RPC send (response {IsResponse}), method '{Method}', peer {Peer}, {ByteCount} bytes.");
+        
+        public static readonly Action<ILogger, string, Exception?> AddingExpectedPeer =
+            LoggerMessage.Define<string>(LogLevel.Debug,
+                new EventId(6059, nameof(AddingExpectedPeer)),
+                "Adding expected peer with ENR {PeerEnr}.");
+        
+        public static readonly Action<ILogger, string, DialDirection, Exception?> SettingPeerDialDirection =
+            LoggerMessage.Define<string, DialDirection>(LogLevel.Debug,
+                new EventId(6060, nameof(SettingPeerDialDirection)),
+                "Setting peer {Peer} dial direction {DialDirection}.");
+        
+        public static readonly Action<ILogger, Exception?> StoreInitializedStartingPeering =
+            LoggerMessage.Define(LogLevel.Debug,
+                new EventId(6061, nameof(StoreInitializedStartingPeering)),
+                "Store initialized, peering worker starting peer-to-peer.");
     }
 }

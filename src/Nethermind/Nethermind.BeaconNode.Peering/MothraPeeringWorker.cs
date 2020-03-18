@@ -50,7 +50,7 @@ namespace Nethermind.BeaconNode.Peering
         private readonly IMothraLibp2p _mothraLibp2p;
         private readonly PeerManager _peerManager;
         private readonly IStore _store;
-        private readonly Synchronization _synchronization;
+        private readonly SynchronizationManager _synchronizationManager;
         private const string MothraDirectory = "mothra";
 
         public MothraPeeringWorker(ILogger<MothraPeeringWorker> logger,
@@ -62,7 +62,7 @@ namespace Nethermind.BeaconNode.Peering
             IMothraLibp2p mothraLibp2p,
             PeerManager peerManager,
             ForkChoice forkChoice,
-            Synchronization synchronization,
+            SynchronizationManager synchronizationManager,
             IStore store)
         {
             _logger = logger;
@@ -74,7 +74,7 @@ namespace Nethermind.BeaconNode.Peering
             _mothraLibp2p = mothraLibp2p;
             _peerManager = peerManager;
             _forkChoice = forkChoice;
-            _synchronization = synchronization;
+            _synchronizationManager = synchronizationManager;
             _store = store;
             _jsonSerializerOptions = new JsonSerializerOptions {WriteIndented = true};
             _jsonSerializerOptions.ConfigureNethermindCore2();
@@ -84,20 +84,16 @@ namespace Nethermind.BeaconNode.Peering
             }
         }
 
-        protected override Task ExecuteAsync(CancellationToken stoppingToken)
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            if (_logger.IsDebug()) LogDebug.PeeringWorkerExecute(_logger, null);
-            return Task.CompletedTask;
-        }
-
-        public override async Task StartAsync(CancellationToken cancellationToken)
-        {
-            if (_logger.IsInfo())
-                Log.PeeringWorkerStarting(_logger, _clientVersion.Description,
-                    _environment.EnvironmentName, Thread.CurrentThread.ManagedThreadId, null);
-
             try
             {
+                if (_logger.IsDebug()) LogDebug.PeeringWorkerExecute(_logger, null);
+                
+                await EnsureInitializedWithAnchorState(stoppingToken).ConfigureAwait(false);
+
+                if (_logger.IsDebug()) LogDebug.StoreInitializedStartingPeering(_logger, null);
+
                 _mothraLibp2p.PeerDiscovered += OnPeerDiscovered;
                 _mothraLibp2p.GossipReceived += OnGossipReceived;
                 _mothraLibp2p.RpcReceived += OnRpcReceived;
@@ -129,20 +125,43 @@ namespace Nethermind.BeaconNode.Peering
 
                 _mothraLibp2p.Start(mothraSettings);
 
-                if (_logger.IsDebug()) LogDebug.PeeringWorkerStarted(_logger, null);
+                if (_logger.IsDebug()) LogDebug.PeeringWorkerExecuteCompleted(_logger, null);
             }
             catch (Exception ex)
             {
                 if (_logger.IsError()) Log.PeeringWorkerCriticalError(_logger, ex);
             }
+        }
 
-            await base.StartAsync(cancellationToken);
+        public override async Task StartAsync(CancellationToken cancellationToken)
+        {
+            if (_logger.IsInfo())
+                Log.PeeringWorkerStarting(_logger, _clientVersion.Description,
+                    _environment.EnvironmentName, Thread.CurrentThread.ManagedThreadId, null);
+            await base.StartAsync(cancellationToken).ConfigureAwait(false);
         }
 
         public override async Task StopAsync(CancellationToken cancellationToken)
         {
             if (_logger.IsDebug()) LogDebug.PeeringWorkerStopping(_logger, null);
-            await base.StopAsync(cancellationToken);
+            await base.StopAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        private async Task EnsureInitializedWithAnchorState(CancellationToken stoppingToken)
+        {
+            // If the store is not initialized (no anchor block), then can not participate peer-to-peer
+            // e.g. can't send status message if we don't have a status.
+            // If this is pre-genesis, then the peering will wait until genesis has created the anchor block.
+            while (!_store.IsInitialized)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(1000), stoppingToken).ConfigureAwait(false);
+            }
+
+            // Secondary instances wait an additional time, to allow the primary node to initialize
+            if (_mothraConfigurationOptions.CurrentValue.BootNodes.Length > 0)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(500), stoppingToken).ConfigureAwait(false);
+            }
         }
 
         private string GetLogDirectory()
@@ -223,7 +242,7 @@ namespace Nethermind.BeaconNode.Peering
             {
                 if (_peerManager.AddPeer(peerId))
                 {
-                    await _synchronization.OnPeerDialOutConnected(peerId);
+                    await _synchronizationManager.OnPeerDialOutConnected(peerId).ConfigureAwait(false);
                 }
             }
             catch (Exception ex)
@@ -240,11 +259,13 @@ namespace Nethermind.BeaconNode.Peering
                 _peerManager.UpdatePeerStatus(statusRpcMessage.PeerId, statusRpcMessage.Content);
                 if (statusRpcMessage.IsResponse)
                 {
-                    await _synchronization.OnStatusResponseReceived(statusRpcMessage.PeerId, statusRpcMessage.Content);
+                    await _synchronizationManager.OnStatusResponseReceived(statusRpcMessage.PeerId,
+                        statusRpcMessage.Content);
                 }
                 else
                 {
-                    await _synchronization.OnStatusRequestReceived(statusRpcMessage.PeerId, statusRpcMessage.Content);
+                    await _synchronizationManager.OnStatusRequestReceived(statusRpcMessage.PeerId,
+                        statusRpcMessage.Content);
                 }
             }
             catch (Exception ex)

@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core2;
@@ -25,7 +26,7 @@ using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode
 {
-    public class Synchronization
+    public class SynchronizationManager
     {
         private readonly BeaconChainUtility _beaconChainUtility;
         private readonly BeaconStateAccessor _beaconStateAccessor;
@@ -34,8 +35,8 @@ namespace Nethermind.BeaconNode
         private readonly INetworkPeering _networkPeering;
         private readonly IStore _store;
 
-        public Synchronization(
-            ILogger<Synchronization> logger,
+        public SynchronizationManager(
+            ILogger<SynchronizationManager> logger,
             BeaconChainUtility beaconChainUtility,
             BeaconStateAccessor beaconStateAccessor,
             ForkChoice forkChoice,
@@ -52,6 +53,9 @@ namespace Nethermind.BeaconNode
 
         public async Task OnPeerDialOutConnected(string peerId)
         {
+            // Delay to ensure connection is established
+            await Task.Delay(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
+
             Root headRoot = await _forkChoice.GetHeadAsync(_store).ConfigureAwait(false);
             BeaconState beaconState = await _store.GetBlockStateAsync(headRoot).ConfigureAwait(false);
 

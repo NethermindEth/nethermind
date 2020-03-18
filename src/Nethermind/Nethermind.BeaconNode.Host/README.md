@@ -67,7 +67,7 @@ dotnet build src/Nethermind/Nethermind.BeaconNode.Host
 In the second terminal, get the ENR record details:
 
 ```
-$enr = Get-Content 'src/Nethermind/Nethermind.BeaconNode.Host/bin/Debug/netcoreapp3.0/Development/mothra/network/enr.dat'
+$enr = Get-Content 'src/Nethermind/Nethermind.BeaconNode.Host/bin/Debug/netcoreapp3.1/Development/mothra/network/enr.dat'
 ```
 
 Then, at the same time start the first node in one terminal (see below for clock synchronisation details):
