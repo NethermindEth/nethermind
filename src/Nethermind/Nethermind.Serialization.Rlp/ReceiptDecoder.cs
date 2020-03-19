@@ -71,8 +71,8 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Check(lastCheck);
             }
             
-            // since error was added later we can only rely on it in cases where we read receipt only and no data follows
-            if (isStorage && !allowExtraData && rlpStream.Position != rlpStream.Length)
+            // since error was added later we can only rely on it in cases where we read receipt only and no data follows, empty errors might not be serialized
+            if (!allowExtraData && rlpStream.Position != rlpStream.Length)
             {
                 txReceipt.Error = rlpStream.DecodeString();
             }
@@ -85,10 +85,12 @@ namespace Nethermind.Serialization.Rlp
         {
             bool isStorage = (rlpBehaviors & RlpBehaviors.Storage) != 0;
 
+            var status = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts ? Rlp.Encode(item.StatusCode) : Rlp.Encode(item.PostTransactionState);
+            
             if (isStorage)
             {
                 return Rlp.Encode(
-                    (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts ? Rlp.Encode(item.StatusCode) : Rlp.Encode(item.PostTransactionState),
+                    status,
                     Rlp.Encode(item.BlockHash),
                     Rlp.Encode(item.BlockNumber),
                     Rlp.Encode(item.Index),
@@ -102,11 +104,18 @@ namespace Nethermind.Serialization.Rlp
                     Rlp.Encode(item.Error));
             }
 
-            return Rlp.Encode(
-                (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts ? Rlp.Encode(item.StatusCode) : Rlp.Encode(item.PostTransactionState),
-                Rlp.Encode(item.GasUsedTotal),
-                Rlp.Encode(item.Bloom),
-                Rlp.Encode(item.Logs));
+            return item.Error == null
+                ? Rlp.Encode(
+                    status,
+                    Rlp.Encode(item.GasUsedTotal),
+                    Rlp.Encode(item.Bloom),
+                    Rlp.Encode(item.Logs))
+                : Rlp.Encode(
+                    status,
+                    Rlp.Encode(item.GasUsedTotal),
+                    Rlp.Encode(item.Bloom),
+                    Rlp.Encode(item.Logs),
+                    Rlp.Encode(item.Error));
         }
 
         public void Encode(RlpStream rlpStream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -164,6 +173,11 @@ namespace Nethermind.Serialization.Rlp
                 {
                     rlpStream.Encode(item.Logs[i]);
                 }
+
+                if (item.Error != null)
+                {
+                    rlpStream.Encode(item.Error);
+                }
             }    
         }
         
@@ -199,7 +213,6 @@ namespace Nethermind.Serialization.Rlp
                 contentLength += Rlp.LengthOf(item.Recipient);
                 contentLength += Rlp.LengthOf(item.ContractAddress);
                 contentLength += Rlp.LengthOf(item.GasUsed);
-                contentLength += Rlp.LengthOf(item.Error);
             }
             
             contentLength += Rlp.LengthOf(item.GasUsedTotal);
@@ -218,6 +231,8 @@ namespace Nethermind.Serialization.Rlp
             {
                 contentLength += Rlp.LengthOf(item.PostTransactionState);
             }
+            
+            contentLength += item.Error != null ? Rlp.LengthOf(item.Error) : 0;
 
             return (contentLength, logsLength);
         }
