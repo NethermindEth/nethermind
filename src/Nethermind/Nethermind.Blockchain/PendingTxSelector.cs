@@ -24,10 +24,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
-<<<<<<< HEAD:src/Nethermind/Nethermind.Blockchain/PendingTransactionSelector.cs
-=======
 using Nethermind.Trie;
->>>>>>> de10ed870f68041d3bdf21034c11142e2657ed56:src/Nethermind/Nethermind.Blockchain/PendingTxSelector.cs
 using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain
