@@ -159,6 +159,12 @@ namespace Nethermind.Network
         {
             foreach (Peer peer in _peerLoader.LoadPeers(_staticNodesManager.Nodes))
             {
+                if (peer.Node.Id == _rlpxPeer.LocalNodeId)
+                {
+                    if (_logger.IsWarn) _logger.Warn("Skipping a static peer with same ID as this node");
+                    continue;
+                }
+                
                 if (peer.Node.IsStatic)
                 {
                     _staticNodes.TryAdd(peer.Node.Id, peer);
