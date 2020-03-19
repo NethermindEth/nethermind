@@ -77,7 +77,7 @@ namespace Nethermind.Db.Rocks
 
         public IEnumerable<byte[]> GetAll()
         {
-            using Iterator iterator = _rocksDb.NewIterator(_columnFamily);
+            Iterator iterator = _rocksDb.NewIterator(_columnFamily);
             return _mainDb.GetAllCore(iterator);
         }
 

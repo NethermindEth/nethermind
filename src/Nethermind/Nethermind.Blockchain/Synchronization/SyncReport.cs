@@ -153,7 +153,7 @@ namespace Nethermind.Blockchain.Synchronization
                 WriteFastBlocksReport();
             }
 
-            if (!_syncPeerPool.UsefulPeers.Any())
+            if (_syncPeerPool.UsefulPeerCount == 0)
             {
                 if (_lastTimeComplainedAboutNoPeers == 0 || _reportId - _lastTimeComplainedAboutNoPeers > 60)
                 {

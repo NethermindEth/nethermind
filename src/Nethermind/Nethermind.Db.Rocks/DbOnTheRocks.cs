@@ -215,7 +215,7 @@ namespace Nethermind.Db.Rocks
 
         public IEnumerable<byte[]> GetAll()
         {
-            using Iterator iterator = Db.NewIterator();
+            Iterator iterator = Db.NewIterator();
             return GetAllCore(iterator);
         }
 
@@ -227,6 +227,8 @@ namespace Nethermind.Db.Rocks
                 yield return iterator.Value();
                 iterator.Next();
             }
+            
+            iterator.Dispose();
         }
 
         private ILogger _logger;
