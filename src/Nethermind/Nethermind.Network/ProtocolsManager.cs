@@ -250,7 +250,8 @@ namespace Nethermind.Network
                     if (_syncPeers.TryAdd(session.SessionId, handler))
                     {
                         _syncPool.AddPeer(handler);
-                        _txPool.AddPeer(handler);
+                        if (handler.ProtocolCode != Protocol.Les)
+                            _txPool.AddPeer(handler);
                         if (_logger.IsDebug) _logger.Debug($"{handler.ClientId} sync peer {session} created.");
                     }
                     else
