@@ -85,7 +85,7 @@ namespace Nethermind.Runner
                 IConfigProvider configProvider = buildConfigProvider();
                 IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
                 _logger = new NLogLogger(initConfig.LogFileName, initConfig.LogDirectory);
-                if (_logger.IsInfo) _logger.Info($"Nethermind version: {ClientVersion.Description}");
+                if (_logger.IsDebug) _logger.Debug($"Nethermind version: {ClientVersion.Description}");
                 LogMemoryConfiguration();
 
                 string? pathDbPath = getDbBasePath();
@@ -100,7 +100,7 @@ namespace Nethermind.Runner
                 Console.CancelKeyPress += ConsoleOnCancelKeyPress;
 
                 EthereumJsonSerializer serializer = new EthereumJsonSerializer();
-                if (_logger.IsInfo) _logger.Info($"Nethermind config:\n{serializer.Serialize(initConfig, true)}\n");
+                if (_logger.IsDebug) _logger.Debug($"Nethermind config:\n{serializer.Serialize(initConfig, true)}\n");
 
                 _cancelKeySource = new TaskCompletionSource<object?>();
 

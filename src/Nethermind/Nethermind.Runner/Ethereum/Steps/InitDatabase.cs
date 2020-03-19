@@ -20,6 +20,7 @@ using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.BeamSync;
+using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
@@ -83,6 +84,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         private async Task<RocksDbProvider> GetRocksDbProvider(IDbConfig dbConfig, string basePath, bool useReceiptsDb)
         {
             RocksDbProvider debugRecorder = new RocksDbProvider(_context.LogManager);
+            ThisNodeInfo.AddInfo("DB location  :", $"{basePath}");
             await debugRecorder.Init(basePath, dbConfig, useReceiptsDb);
             return debugRecorder;
         }

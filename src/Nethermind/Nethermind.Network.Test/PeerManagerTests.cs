@@ -115,7 +115,7 @@ namespace Nethermind.Network.Test
             public int LocalPort { get; }
             public event EventHandler<SessionEventArgs> SessionCreated;
 
-            public void CreateIncoming(Session[] sessions)
+            public void CreateIncoming(params Session[] sessions)
             {
                 List<Session> incomingSessions = new List<Session>();
                 foreach (Session session in sessions)
@@ -242,6 +242,61 @@ namespace Nethermind.Network.Test
             _peerManager.Start();
             Thread.Sleep(_travisDelay);
             Assert.AreEqual(25, _rlpxPeer.ConnectAsyncCallsCount);
+        }
+        
+        [Test]
+        public void Will_discard_a_duplicate_incoming_session()
+        {
+            _peerManager.Init();
+            Session session1 = new Session(30303, LimboLogs.Instance, Substitute.For<IChannel>());
+            Session session2 = new Session(30303, LimboLogs.Instance, Substitute.For<IChannel>());
+            session1.RemoteHost = "1.2.3.4";
+            session1.RemotePort = 12345;
+            session1.RemoteNodeId = TestItem.PublicKeyA;
+            session2.RemoteHost = "1.2.3.4";
+            session2.RemotePort = 12345;
+            session2.RemoteNodeId = TestItem.PublicKeyA;
+            
+            _rlpxPeer.CreateIncoming(session1, session2);
+            _peerManager.ActivePeers.Count.Should().Be(1);
+        }
+        
+        [TestCase(true, ConnectionDirection.In)]
+        [TestCase(false, ConnectionDirection.In)]
+        // [TestCase(true, ConnectionDirection.Out)] // cannot create an active peer waiting for the test
+        [TestCase(false, ConnectionDirection.Out)]
+        public void Will_agree_on_which_session_to_disconnect_when_connecting_at_once(bool shouldLose, ConnectionDirection firstDirection)
+        {
+            _peerManager.Init();
+            Session session1 = new Session(30303, LimboLogs.Instance, Substitute.For<IChannel>());
+            session1.RemoteHost = "1.2.3.4";
+            session1.RemotePort = 12345;
+            session1.RemoteNodeId = shouldLose ? TestItem.PublicKeyA : TestItem.PublicKeyC;
+
+            if (firstDirection == ConnectionDirection.In)
+            {
+                _rlpxPeer.CreateIncoming(session1);
+                _rlpxPeer.ConnectAsync(session1.Node);
+                if(session1.State < SessionState.HandshakeComplete) session1.Handshake(session1.Node.Id);
+                (_peerManager.ActivePeers.First().OutSession?.IsClosing ?? true).Should().Be(shouldLose);
+                (_peerManager.ActivePeers.First().InSession?.IsClosing ?? true).Should().Be(!shouldLose);
+            }
+            else
+            {
+                _rlpxPeer.SessionCreated += HandshakeOnCreate;
+                _rlpxPeer.ConnectAsync(session1.Node);
+                _rlpxPeer.SessionCreated -= HandshakeOnCreate;
+                _rlpxPeer.CreateIncoming(session1);
+                (_peerManager.ActivePeers.First().OutSession?.IsClosing ?? true).Should().Be(!shouldLose);
+                (_peerManager.ActivePeers.First().InSession?.IsClosing ?? true).Should().Be(shouldLose);
+            }
+
+            _peerManager.ActivePeers.Count.Should().Be(1);
+        }
+
+        private void HandshakeOnCreate(object? sender, SessionEventArgs e)
+        {
+            e.Session.Handshake(e.Session.RemoteNodeId);
         }
 
         private List<Session> _sessions = new List<Session>();
