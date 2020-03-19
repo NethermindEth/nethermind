@@ -21,14 +21,21 @@ using Nethermind.Crypto;
 
 namespace Nethermind.Stats.Model
 {   
+    /// <summary>
+    /// Represents a physical network node address and attributes that we assign to it (static, bootnode, trusted, etc.)
+    /// </summary>
     public class Node : IFormattable
     {
         private PublicKey _id;
 
+        /// <summary>
+        /// Node public key - same as in enode. 
+        /// </summary>
+        /// <exception cref="InvalidOperationException"></exception>
         public PublicKey Id
         {
             get => _id;
-            set
+            private set
             {
                 if (_id != null)
                 {
@@ -40,14 +47,44 @@ namespace Nethermind.Stats.Model
             }
         }
 
+        /// <summary>
+        /// Hash of the node ID used extensively in discovery and kept here to avoid rehashing.
+        /// </summary>
         public Keccak IdHash { get; private set; }
+        
+        /// <summary>
+        /// Host part of the network node.
+        /// </summary>
         public string Host { get; private set; }
+        
+        /// <summary>
+        /// Port part of the network node.
+        /// </summary>
         public int Port { get; set; }
+        
+        /// <summary>
+        /// Network address of the node.
+        /// </summary>
         public IPEndPoint Address { get; private set; }
+        
+        /// <summary>
+        /// Means that the discovery process is aware of this network node. 
+        /// </summary>
         public bool AddedToDiscovery { get; set; }
+        
+        /// <summary>
+        /// We use bootnodes to bootstrap the discovery process.
+        /// </summary>
         public bool IsBootnode { get; set; }
+        
+        /// <summary>
+        /// We give trusted peers much better reputation upfront.
+        /// </summary>
         public bool IsTrusted { get; set; }
-
+        
+        /// <summary>
+        /// We try to maintain connection with static nodes at all time.
+        /// </summary>
         public bool IsStatic { get; set; }
 
         public string ClientId { get; set; }
@@ -56,14 +93,14 @@ namespace Nethermind.Stats.Model
         {
             Id = id;
             AddedToDiscovery = false;
-            InitializeAddress(address);
+            SetIPEndPoint(address);
         }
 
         public Node(PublicKey id, string host, int port, bool addedToDiscovery = false)
         {
             Id = id;
             AddedToDiscovery = addedToDiscovery;
-            InitializeAddress(host, port);
+            SetIPEndPoint(host, port);
         }
 
         public Node(string host, int port, bool isStatic = false)
@@ -72,17 +109,17 @@ namespace Nethermind.Stats.Model
             Id = new PublicKey(socketHash.Bytes);
             AddedToDiscovery = true;
             IsStatic = isStatic;
-            InitializeAddress(host, port);
+            SetIPEndPoint(host, port);
         }
 
-        private void InitializeAddress(IPEndPoint address)
+        private void SetIPEndPoint(IPEndPoint address)
         {
             Host = address.Address.ToString();
             Port = address.Port;
             Address = address;
         }
 
-        private void InitializeAddress(string host, int port)
+        private void SetIPEndPoint(string host, int port)
         {
             Host = host;
             Port = port;

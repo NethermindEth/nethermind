@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,18 +15,21 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
-using System.Threading.Tasks;
-using Nethermind.Config;
 
 namespace Nethermind.Network
 {
-    public interface IPeerManager
+    internal class PeerEqualityComparer : IEqualityComparer<Peer>
     {
-        void Init();
-        void Start();
-        Task StopAsync();
-        IReadOnlyCollection<Peer> ActivePeers { get; }
-        void AddPeer(NetworkNode node);
-        bool RemovePeer(NetworkNode node);
+        public bool Equals(Peer x, Peer y)
+        {
+            if (x is null || y is null)
+            {
+                return false;
+            }
+
+            return x.Node.Id.Equals(y.Node.Id);
+        }
+
+        public int GetHashCode(Peer obj) => obj?.Node is null ? 0 : obj.Node.GetHashCode();
     }
 }

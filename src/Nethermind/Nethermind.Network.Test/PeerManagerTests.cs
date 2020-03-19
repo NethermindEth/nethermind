@@ -574,26 +574,25 @@ namespace Nethermind.Network.Test
             _peerManager.AddPeer(node);
             Thread.Sleep(_travisDelayLong);
 
+            void DisconnectHandler(object o, DisconnectEventArgs e) => disconnections++;
             _peerManager.ActivePeers.Select(p => p.Node.Id).Should().BeEquivalentTo(node.NodeId);
 
-            void DisconnectHandler(object o, DisconnectEventArgs e) => disconnections++;
             _sessions.ForEach(s => s.Disconnected += DisconnectHandler);
 
             _peerManager.RemovePeer(node).Should().BeTrue();
-
             _peerManager.ActivePeers.Should().BeEmpty();
             disconnections.Should().Be(1);
         }
 
         [Test]
-        public void Multiple_addPeer_will_fail_if_peer_already_added()
+        public void Will_only_add_same_peer_once()
         {
             _peerManager.Init();
             _peerManager.Start();
             var node = new NetworkNode(GenerateEnode());
-            _peerManager.AddPeer(node).Should().BeTrue();
-            _peerManager.AddPeer(node).Should().BeFalse();
-            _peerManager.AddPeer(node).Should().BeFalse();
+            _peerManager.AddPeer(node);
+            _peerManager.AddPeer(node);
+            _peerManager.AddPeer(node);
             Thread.Sleep(_travisDelayLong);
             _peerManager.ActivePeers.Should().HaveCount(1);
         }

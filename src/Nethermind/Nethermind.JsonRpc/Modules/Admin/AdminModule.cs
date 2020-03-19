@@ -42,7 +42,8 @@ namespace Nethermind.JsonRpc.Modules.Admin
             }
             else
             {
-                added = _peerManager.AddPeer(new NetworkNode(enode));
+                _peerManager.AddPeer(new NetworkNode(enode));
+                added = true;
             }
 
             return added
