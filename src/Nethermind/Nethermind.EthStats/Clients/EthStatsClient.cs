@@ -68,8 +68,8 @@ namespace Nethermind.EthStats.Clients
             Uri url = new Uri(_webSocketsUrl);
             _client = new WebsocketClient(url)
             {
-                ErrorReconnectTimeoutMs = _reconnectionInterval,
-                ReconnectTimeoutMs = int.MaxValue
+                ErrorReconnectTimeout = TimeSpan.FromMilliseconds(_reconnectionInterval),
+                ReconnectTimeout = null
             };
             _client.MessageReceived.Subscribe(async message =>
             {
@@ -97,7 +97,7 @@ namespace Nethermind.EthStats.Clients
             long latency = clientTime >= serverTime ? clientTime - serverTime : serverTime - clientTime;
             string pong = $"\"primus::pong::{serverTime}\"";
             if (_logger.IsDebug) _logger.Debug($"Sending 'pong' message to ETH stats...");
-            await _client.Send(pong);
+            _client.Send(pong);
             await _messageSender.SendAsync(_client, new LatencyMessage(latency));
         }
 

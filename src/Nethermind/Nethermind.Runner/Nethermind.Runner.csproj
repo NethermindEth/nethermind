@@ -15,8 +15,8 @@
     <PackageReference Include="Microsoft.Extensions.CommandLineUtils" Version="1.1.1" />
     <PackageReference Include="NLog.Targets.Seq" Version="1.1.0" />
     <PackageReference Include="NLog" Version="4.6.8" />
-    <PackageReference Include="Seq.Api" Version="5.1.1" />
-    <PackageReference Include="YamlDotNet" Version="8.0.0" />
+    <PackageReference Include="Seq.Api" Version="5.1.2" />
+    <PackageReference Include="YamlDotNet" Version="8.1.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Cli\Nethermind.Cli.csproj" />

@@ -16,12 +16,13 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Benchmarks.Rlp
 {
     [MemoryDiagnoser]
-    [CoreJob(baseline: true)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class RlpDecodeIntBenchmark
     {
         private int[] _scenarios;

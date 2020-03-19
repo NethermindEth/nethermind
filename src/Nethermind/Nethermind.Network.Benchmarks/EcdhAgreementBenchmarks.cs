@@ -17,6 +17,7 @@
 using System;
 using System.Linq;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -31,7 +32,7 @@ using Org.BouncyCastle.Utilities;
 namespace Nethermind.Network.Benchmarks
 {
     [MemoryDiagnoser]
-    [CoreJob(true)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class EcdhAgreementBenchmarks
     {
         [GlobalSetup]
