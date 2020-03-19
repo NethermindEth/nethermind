@@ -105,7 +105,7 @@ namespace Nethermind.Network
             LoadPersistedPeers();
 
             _discoveryApp.NodeDiscovered += OnNodeDiscovered;
-            _staticNodesManager.NodeAdded += (sender, args) => { _peerPool.GetOrCreate(args.Node, true); };
+            _staticNodesManager.NodeAdded += (sender, args) => { _peerPool.GetOrAdd(args.Node, true); };
             _staticNodesManager.NodeRemoved += (sender, args) => { _peerPool.TryRemove(args.Node.NodeId, out _); };
 
             _rlpxPeer.SessionCreated += (sender, args) =>
@@ -121,10 +121,9 @@ namespace Nethermind.Network
             };
         }
 
-        public bool AddPeer(NetworkNode node)
+        public void AddPeer(NetworkNode node)
         {
-            _peerPool.GetOrCreate(node, false);
-            return true;
+            _peerPool.GetOrAdd(node, false);
         }
         
         public bool RemovePeer(NetworkNode node)
@@ -142,7 +141,7 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                _peerPool.GetOrCreate(peer.Node);
+                _peerPool.GetOrAdd(peer.Node);
             }
         }
 
@@ -616,7 +615,7 @@ namespace Nethermind.Network
                 }
             }
 
-            Peer peer = _peerPool.GetOrCreate(session.Node);
+            Peer peer = _peerPool.GetOrAdd(session.Node);
             AddSession(session, peer);
         }
 
@@ -781,7 +780,7 @@ namespace Nethermind.Network
         private void OnNodeDiscovered(object sender, NodeEventArgs nodeEventArgs)
         {
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {nodeEventArgs.Node:e} node discovered");
-            Peer peer = _peerPool.GetOrCreate(nodeEventArgs.Node);
+            Peer peer = _peerPool.GetOrAdd(nodeEventArgs.Node);
             _stats.ReportEvent(nodeEventArgs.Node, NodeStatsEventType.NodeDiscovered);
             if (_pending < AvailableActivePeersCount)
             {
@@ -891,7 +890,7 @@ namespace Nethermind.Network
             NetworkNode[] storedNodes = _peerStorage.GetPersistedNodes();
             foreach (NetworkNode node in storedNodes)
             {
-                Peer peer = _peerPool.GetOrCreate(node, false);
+                Peer peer = _peerPool.GetOrAdd(node, false);
                 long newRep = _stats.GetNewPersistedReputation(peer.Node);
                 if (newRep != node.Reputation)
                 {

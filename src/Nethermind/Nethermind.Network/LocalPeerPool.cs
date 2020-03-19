@@ -41,7 +41,7 @@ namespace Nethermind.Network
             _logger = logger;
         }
 
-        public Peer GetOrCreate(NetworkNode node, bool isStatic)
+        public Peer GetOrAdd(NetworkNode node, bool isStatic)
         {
             static Peer CreateNew(PublicKey key, (NetworkNode Node, bool IsStatic, ConcurrentDictionary<PublicKey, Peer> Statics) arg)
             {
@@ -57,7 +57,7 @@ namespace Nethermind.Network
             return _allPeers.GetOrAdd(node.NodeId, CreateNew, (node, isStatic, _staticPeers));
         }
 
-        public Peer GetOrCreate(Node node)
+        public Peer GetOrAdd(Node node)
         {
             if (node.IsBootnode || node.IsStatic || node.IsTrusted)
             {
@@ -66,7 +66,7 @@ namespace Nethermind.Network
 
             static Peer CreateNew(PublicKey key, (Node Node, ConcurrentDictionary<PublicKey, Peer> Statics) arg)
             {
-                Peer peer = new Peer(new Node(arg.Node.Id, arg.Node.Host, arg.Node.Port, arg.Node.IsStatic));
+                Peer peer = new Peer(arg.Node);
                 if (arg.Node.IsStatic)
                 {
                     arg.Statics.TryAdd(arg.Node.Id, peer);
@@ -114,7 +114,7 @@ namespace Nethermind.Network
                 }
             }
 
-            return GetOrCreate(session.Node);
+            return GetOrAdd(session.Node);
         }
     }
 }

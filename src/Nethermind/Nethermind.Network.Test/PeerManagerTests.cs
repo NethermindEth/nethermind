@@ -586,14 +586,14 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public void Multiple_addPeer_will_fail_if_peer_already_added()
+        public void Will_only_add_same_peer_once()
         {
             _peerManager.Init();
             _peerManager.Start();
             var node = new NetworkNode(GenerateEnode());
-            _peerManager.AddPeer(node).Should().BeTrue();
-            _peerManager.AddPeer(node).Should().BeFalse();
-            _peerManager.AddPeer(node).Should().BeFalse();
+            _peerManager.AddPeer(node);
+            _peerManager.AddPeer(node);
+            _peerManager.AddPeer(node);
             Thread.Sleep(_travisDelayLong);
             _peerManager.ActivePeers.Should().HaveCount(1);
         }
