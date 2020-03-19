@@ -72,7 +72,7 @@ namespace Nethermind.Db.Rocks
                 DbOptions options = BuildOptions(dbConfig);
                 
                 // ReSharper disable once VirtualMemberCallInConstructor
-                if (_logger.IsInfo) _logger.Info($"Loading {Name.PadRight(16)} from {fullPath} with max memory footprint of {_maxThisDbSize / 1024 / 1024}MB");
+                if (_logger.IsDebug) _logger.Debug($"Loading DB {Name.PadRight(13)} from {fullPath} with max memory footprint of {_maxThisDbSize / 1024 / 1024}MB");
                 Db = DbsByPath.GetOrAdd(fullPath, path => Open(options, path, columnFamilies));
             }
             catch (DllNotFoundException e) when (e.Message.Contains("libdl"))
