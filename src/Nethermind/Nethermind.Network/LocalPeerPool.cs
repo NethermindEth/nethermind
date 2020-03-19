@@ -85,6 +85,8 @@ namespace Nethermind.Network
                 _staticPeers.TryRemove(id, out _);
                 peer.InSession?.MarkDisconnected(DisconnectReason.DisconnectRequested, DisconnectType.Local, "admin_removePeer");
                 peer.OutSession?.MarkDisconnected(DisconnectReason.DisconnectRequested, DisconnectType.Local, "admin_removePeer");
+                peer.InSession = null;
+                peer.OutSession = null;
                 return true;
             }
 
@@ -106,7 +108,9 @@ namespace Nethermind.Network
                     // (what with the other session?)
 
                     _staticPeers.TryRemove(session.ObsoleteRemoteNodeId, out _);
-                    _allPeers.TryRemove(session.ObsoleteRemoteNodeId, out _);
+                    _allPeers.TryRemove(session.ObsoleteRemoteNodeId, out Peer oldPeer);
+                    oldPeer.InSession = null;
+                    oldPeer.OutSession = null;
                 }
                 else
                 {
@@ -114,7 +118,10 @@ namespace Nethermind.Network
                 }
             }
 
-            return GetOrAdd(session.Node);
+            Peer newPeer = GetOrAdd(session.Node);
+            newPeer.InSession = session.Direction == ConnectionDirection.In ? session : null;
+            newPeer.OutSession = session.Direction == ConnectionDirection.Out ? session : null;
+            return newPeer;
         }
     }
 }

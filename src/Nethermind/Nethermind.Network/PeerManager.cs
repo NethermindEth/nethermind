@@ -767,14 +767,11 @@ namespace Nethermind.Network
                 return;
             }
 
-            _peerPool.Replace(session);
-
-            // // check here - why do we assume that it has been in active?
-            // RemoveActivePeer(session.ObsoleteRemoteNodeId, $"handshake difference old: {session.ObsoleteRemoteNodeId}, new: {session.RemoteNodeId}");
-            // AddActivePeer(newPeer.Node.Id, newPeer, $"handshake difference old: {session.ObsoleteRemoteNodeId}, new: {session.RemoteNodeId}");
-            // _candidatePeers.TryRemove(session.ObsoleteRemoteNodeId, out _);
-            // _candidatePeers.TryAdd(newPeer.Node.Id, newPeer);
-            // if (_logger.IsTrace) _logger.Trace($"RemoteNodeId was updated due to handshake difference, old: {session.ObsoleteRemoteNodeId}, new: {session.RemoteNodeId}, new peer not present in candidate collection");
+            Peer newPeer = _peerPool.Replace(session);
+            
+            RemoveActivePeer(session.ObsoleteRemoteNodeId, $"handshake difference old: {session.ObsoleteRemoteNodeId}, new: {session.RemoteNodeId}");
+            AddActivePeer(session.RemoteNodeId, newPeer, $"handshake difference old: {session.ObsoleteRemoteNodeId}, new: {session.RemoteNodeId}");
+            if (_logger.IsTrace) _logger.Trace($"RemoteNodeId was updated due to handshake difference, old: {session.ObsoleteRemoteNodeId}, new: {session.RemoteNodeId}, new peer not present in candidate collection");
         }
 
         private void OnNodeDiscovered(object sender, NodeEventArgs nodeEventArgs)
