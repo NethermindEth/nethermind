@@ -883,7 +883,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             int rightFillerSize = (int) (batch.Headers.EndNumber - addedLast);
             if (added + leftFillerSize + rightFillerSize != batch.Headers.RequestSize)
             {
-                throw new Exception($"Added {added} + left {leftFillerSize} + right {rightFillerSize} != request size {batch.Headers.RequestSize} in  {batch}");
+                throw new Exception($"Added {added} + left {leftFillerSize} + right {rightFillerSize} != request size {batch.Headers.RequestSize} in {batch}");
             }
 
             added = Math.Max(0, added);

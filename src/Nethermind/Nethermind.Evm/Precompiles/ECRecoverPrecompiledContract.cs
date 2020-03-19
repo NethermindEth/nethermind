@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -44,7 +45,7 @@ namespace Nethermind.Evm.Precompiles
             return 3000L;
         }
 
-        private readonly EthereumEcdsa _ecdsa = new EthereumEcdsa(OlympicSpecProvider.Instance, NullLogManager.Instance);
+        private readonly EthereumEcdsa _ecdsa = new EthereumEcdsa(OlympicSpecProvider.Instance, new NullLogManager());
         
         public (byte[], bool) Run(byte[] inputData)
         {
@@ -81,6 +82,29 @@ namespace Nethermind.Evm.Precompiles
             }
             
             return (recovered.Bytes.PadLeft(32), true); // TODO: change recovery code to return bytes?
+        }
+        
+        private class NullLogManager : ILogManager
+        {
+            public ILogger GetClassLogger(Type type)
+            {
+                return NullLogger.Instance;
+            }
+
+            public ILogger GetClassLogger<T>()
+            {
+                return NullLogger.Instance;
+            }
+
+            public ILogger GetClassLogger()
+            {
+                return NullLogger.Instance;
+            }
+
+            public ILogger GetLogger(string loggerName)
+            {
+                return NullLogger.Instance;
+            }
         }
     }
 }

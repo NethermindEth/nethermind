@@ -76,22 +76,26 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
 
         public async Task StartSessionAsync(Session session, INdmPeer provider)
         {
-//            var providerPeer = _providerService.GetPeer(provider.ProviderAddress);
-//            if (!_providers.TryGetValue(provider.NodeId, out var providerPeer))
-//            {
-//                if (_logger.IsWarn) _logger.Warn($"Cannot start the session: '{session.Id}', provider: '{provider.NodeId}' was not found.");
-//
-//                return;
-//            }
-
             DepositDetails? deposit = await _depositProvider.GetAsync(session.DepositId);
             if (deposit is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Cannot start the session: '{session.Id}', deposit: '{session.DepositId}' was not found.");
                 return;
             }
+            
+            if(session.StartTimestamp < deposit.ConfirmationTimestamp)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Cannot start the session: '{session.Id}', session timestamp {session.StartTimestamp} is before deposit confirmation timestamp {deposit.ConfirmationTimestamp}.");
+                return;
+            }
 
             Keccak dataAssetId = deposit.DataAsset.Id;
+            if (dataAssetId != session.DataAssetId)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Inconsistent data - data asset ID on deposit is '{dataAssetId}' while on session is '{session.DataAssetId}'.");
+                return;
+            }
+            
             DataAsset? dataAsset = _dataAssetService.GetDiscovered(dataAssetId);
             if (dataAsset is null)
             {
@@ -202,8 +206,6 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Services
             {
                 if (!provider.ProviderAddress.Equals(session.ProviderAddress))
                 {
-                    if (_logger.IsInfo) _logger.Info($"Provider: '{provider.ProviderAddress}' address is invalid.");
-
                     continue;
                 }
 

@@ -60,11 +60,13 @@ namespace Nethermind.Core2.Configuration
             List<string> parts = new List<string>();
 
             Assembly assembly = typeof(ClientVersion).Assembly;
-            
-            AssemblyProductAttribute productAttribute = assembly.GetCustomAttributes(false).OfType<AssemblyProductAttribute>().FirstOrDefault();
+
+            AssemblyProductAttribute productAttribute =
+                assembly.GetCustomAttributes(false).OfType<AssemblyProductAttribute>().FirstOrDefault();
             string productToken = productAttribute.Product;
-            
-            AssemblyInformationalVersionAttribute versionAttribute = assembly.GetCustomAttributes(false).OfType<AssemblyInformationalVersionAttribute>().FirstOrDefault();
+
+            AssemblyInformationalVersionAttribute versionAttribute = assembly.GetCustomAttributes(false)
+                .OfType<AssemblyInformationalVersionAttribute>().FirstOrDefault();
             string version = versionAttribute.InformationalVersion;
             string product1 = $"{productToken}/{version}";
             parts.Add(product1);
@@ -76,6 +78,7 @@ namespace Nethermind.Core2.Configuration
                 int indexOfHash = osDescription.IndexOf('#');
                 osDescription = osDescription.Substring(0, Math.Max(0, indexOfHash - 1));
             }
+
             string frameworkDescription = RuntimeInformation.FrameworkDescription;
             string osFrameworkComment = $"({osArchiteture}-{osDescription}/{frameworkDescription})";
             parts.Add(osFrameworkComment);

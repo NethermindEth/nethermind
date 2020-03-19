@@ -126,6 +126,12 @@ namespace Nethermind.Stats
             stats.AddNodeStatsEth62InitializedEvent(ethNodeDetails);
         }
 
+        public void ReportLesInitializeEvent(Node node, LesNodeDetails lesNodeDetails)
+        {
+            INodeStats stats = GetOrAdd(node);
+            stats.AddNodeStatsLesInitializedEvent(lesNodeDetails);
+        }
+
         public void ReportFailedValidation(Node node, CompatibilityValidationType validationType)
         {
             INodeStats stats = GetOrAdd(node);

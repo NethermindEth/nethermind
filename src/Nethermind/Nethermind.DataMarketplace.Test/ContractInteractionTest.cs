@@ -260,7 +260,7 @@ namespace Nethermind.DataMarketplace.Test
                 return new Facade.BlockchainBridge.CallOutput(tracer.ReturnValue, tracer.GasSpent, tracer.Error);
             }
 
-            public long EstimateGas(BlockHeader header, Transaction transaction)
+            public Facade.BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx)
             {
                 throw new NotImplementedException();
             }

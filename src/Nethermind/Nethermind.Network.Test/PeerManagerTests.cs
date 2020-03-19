@@ -246,7 +246,7 @@ namespace Nethermind.Network.Test
 
         private List<Session> _sessions = new List<Session>();
 
-        [Test]
+        [Test, Retry(5)]
         public void Will_fill_up_on_disconnects()
         {
             SetupPersistedPeers(50);

@@ -1,9 +1,8 @@
 name: Publish Alpine amd64 image to docker registry
 
 on:
-  push:
-    tags:
-    - '*'
+  repository_dispatch:
+    types: docker_amd64_alpine
 
 jobs:
   amd64-alpine-build:

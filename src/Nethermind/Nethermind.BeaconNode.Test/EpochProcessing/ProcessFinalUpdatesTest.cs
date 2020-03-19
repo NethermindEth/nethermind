@@ -34,10 +34,10 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
         public void Eth1VoteNoReset()
         {
             // Arrange
-            var testServiceProvider = TestSystem.BuildTestServiceProvider();
-            var state = TestState.PrepareTestState(testServiceProvider);
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
+            BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
 
             timeParameters.SlotsPerEth1VotingPeriod.ShouldBeGreaterThan(timeParameters.SlotsPerEpoch);
 
@@ -45,12 +45,12 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
             state.SetSlot((Slot)(timeParameters.SlotsPerEpoch - 1UL));
 
             // add a vote for each skipped slot.
-            for (var index = Slot.Zero; index < state.Slot + new Slot(1); index += new Slot(1))
+            for (Slot index = Slot.Zero; index < state.Slot + new Slot(1); index += new Slot(1))
             {
-                var eth1DepositIndex = state.Eth1DepositIndex;
-                var depositRoot = new Hash32(Enumerable.Repeat((byte)0xaa, 32).ToArray());
-                var blockHash = new Hash32(Enumerable.Repeat((byte)0xbb, 32).ToArray());
-                var eth1Data = new Eth1Data(depositRoot, eth1DepositIndex, blockHash);
+                ulong eth1DepositIndex = state.Eth1DepositIndex;
+                Root depositRoot = new Root(Enumerable.Repeat((byte)0xaa, 32).ToArray());
+                Bytes32 blockHash = new Bytes32(Enumerable.Repeat((byte)0xbb, 32).ToArray());
+                Eth1Data eth1Data = new Eth1Data(depositRoot, eth1DepositIndex, blockHash);
                 state.AddEth1DataVote(eth1Data);
             }
 
@@ -65,21 +65,21 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
         public void Eth1VoteReset()
         {
             // Arrange
-            var testServiceProvider = TestSystem.BuildTestServiceProvider();
-            var state = TestState.PrepareTestState(testServiceProvider);
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
+            BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
 
             //  skip ahead to the end of the voting period
             state.SetSlot((Slot)(timeParameters.SlotsPerEth1VotingPeriod - 1UL));
 
             // add a vote for each skipped slot.
-            for (var index = Slot.Zero; index < state.Slot + new Slot(1); index += new Slot(1))
+            for (Slot index = Slot.Zero; index < state.Slot + new Slot(1); index += new Slot(1))
             {
-                var eth1DepositIndex = state.Eth1DepositIndex;
-                var depositRoot = new Hash32(Enumerable.Repeat((byte)0xaa, 32).ToArray());
-                var blockHash = new Hash32(Enumerable.Repeat((byte)0xbb, 32).ToArray());
-                var eth1Data = new Eth1Data(depositRoot, eth1DepositIndex, blockHash);
+                ulong eth1DepositIndex = state.Eth1DepositIndex;
+                Root depositRoot = new Root(Enumerable.Repeat((byte)0xaa, 32).ToArray());
+                Bytes32 blockHash = new Bytes32(Enumerable.Repeat((byte)0xbb, 32).ToArray());
+                Eth1Data eth1Data = new Eth1Data(depositRoot, eth1DepositIndex, blockHash);
                 state.AddEth1DataVote(eth1Data);
             }
 
@@ -94,26 +94,26 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
         public void EffectiveBalanceHysteresis()
         {
             // Arrange
-            var testServiceProvider = TestSystem.BuildTestServiceProvider();
-            var state = TestState.PrepareTestState(testServiceProvider);
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
+            BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
             //# Prepare state up to the final-updates.
             //# Then overwrite the balances, we only want to focus to be on the hysteresis based changes.
             TestProcessUtility.RunEpochProcessingTo(testServiceProvider, state, TestProcessStep.ProcessFinalUpdates);
 
-            var gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
+            GweiValues gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
 
-            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
-            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
-            var beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
+            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+            BeaconStateTransition beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
 
             // Set some edge cases for balances
-            var maximum = gweiValues.MaximumEffectiveBalance;
-            var minimum = gweiValues.EjectionBalance;
-            var increment = gweiValues.EffectiveBalanceIncrement;
-            var halfIncrement = increment / 2;
+            Gwei maximum = gweiValues.MaximumEffectiveBalance;
+            Gwei minimum = gweiValues.EjectionBalance;
+            Gwei increment = gweiValues.EffectiveBalanceIncrement;
+            Gwei halfIncrement = increment / 2;
 
-            var testCases = new[] {
+            EffectiveBalanceCase[] testCases = new[] {
                 new EffectiveBalanceCase(maximum, maximum, maximum, "as-is"),
                 new EffectiveBalanceCase(maximum, (Gwei)(maximum - 1), maximum - increment, "round down, step lower"),
                 new EffectiveBalanceCase(maximum, (Gwei)(maximum + 1), maximum, "round down"),
@@ -127,16 +127,16 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
                 new EffectiveBalanceCase(minimum, (Gwei)(minimum + (halfIncrement * 4) + 1), minimum + (increment * 2), "over two steps, round down"),
             };
 
-            var currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
-            for (var index = 0; index < testCases.Length; index++)
+            Epoch currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
+            for (int index = 0; index < testCases.Length; index++)
             {
-                var validator = state.Validators[index];
-                var isActive = beaconChainUtility.IsActiveValidator(validator, currentEpoch);
+                Validator validator = state.Validators[index];
+                bool isActive = beaconChainUtility.IsActiveValidator(validator, currentEpoch);
                 isActive.ShouldBeTrue();
 
-                var testCase = testCases[index];
+                EffectiveBalanceCase testCase = testCases[index];
                 validator.SetEffectiveBalance(testCase.PreEffective);
-                var validatorIndex = new ValidatorIndex((ulong)index);
+                ValidatorIndex validatorIndex = new ValidatorIndex((ulong)index);
                 state.SetBalance(validatorIndex, testCase.Balance);
             }
 
@@ -144,10 +144,10 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
             beaconStateTransition.ProcessFinalUpdates(state);
 
             // Assert
-            for (var index = 0; index < testCases.Length; index++)
+            for (int index = 0; index < testCases.Length; index++)
             {
-                var testCase = testCases[index];
-                var validator = state.Validators[index];
+                EffectiveBalanceCase testCase = testCases[index];
+                Validator validator = state.Validators[index];
                 validator.EffectiveBalance.ShouldBe(testCase.PostEffective, testCase.Name);
             }
         }
@@ -156,14 +156,14 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
         public void HistoricalRootAccumulator()
         {
             // Arrange
-            var testServiceProvider = TestSystem.BuildTestServiceProvider();
-            var state = TestState.PrepareTestState(testServiceProvider);
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
+            BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
 
             // skip ahead to near the end of the historical roots period (excl block before epoch processing)
             state.SetSlot((Slot)(timeParameters.SlotsPerHistoricalRoot - 1UL));
-            var historyLength = state.HistoricalRoots.Count;
+            int historyLength = state.HistoricalRoots.Count;
 
             // Act
             RunProcessFinalUpdates(testServiceProvider, state);

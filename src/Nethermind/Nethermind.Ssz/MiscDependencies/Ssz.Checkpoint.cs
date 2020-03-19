@@ -25,7 +25,7 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
-        public const int CheckpointLength = Ssz.Hash32Length + Ssz.EpochLength;
+        public const int CheckpointLength = Ssz.RootLength + Ssz.EpochLength;
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, Checkpoint value, ref int offset)
@@ -44,19 +44,19 @@ namespace Nethermind.Ssz
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static Checkpoint DecodeCheckpoint(Span<byte> span, ref int offset)
+        private static Checkpoint DecodeCheckpoint(ReadOnlySpan<byte> span, ref int offset)
         {
             Checkpoint checkpoint = DecodeCheckpoint(span.Slice(offset, Ssz.CheckpointLength));
             offset += Ssz.CheckpointLength;
             return checkpoint;
         }
         
-        public static Checkpoint DecodeCheckpoint(Span<byte> span)
+        public static Checkpoint DecodeCheckpoint(ReadOnlySpan<byte> span)
         {
             if (span.Length != Ssz.CheckpointLength) ThrowSourceLength<Checkpoint>(span.Length, Ssz.CheckpointLength);
             int offset = 0;
             Epoch epoch = DecodeEpoch(span, ref offset);
-            Hash32 root = DecodeSha256(span, ref offset);
+            Root root = DecodeRoot(span, ref offset);
             return new Checkpoint(epoch, root);
         }
     }

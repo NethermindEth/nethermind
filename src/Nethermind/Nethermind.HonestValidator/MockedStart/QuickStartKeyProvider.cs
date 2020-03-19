@@ -19,7 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
-using Cortex.Cryptography;
+using Nethermind.Cryptography;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2;
 using Nethermind.Core2.Configuration;
@@ -43,32 +43,37 @@ namespace Nethermind.HonestValidator.MockedStart
             _quickStartParameterOptions = quickStartParameterOptions;
         }
 
-        public IEnumerable<BlsPublicKey> GetPublicKeys()
+        public IList<BlsPublicKey> GetPublicKeys()
         {
-            QuickStartParameters _quickStartParameters = _quickStartParameterOptions.CurrentValue;
-
-            var endIndex = _quickStartParameters.ValidatorStartIndex + _quickStartParameters.NumberOfValidators;
-            for (var validatorIndex = _quickStartParameters.ValidatorStartIndex; validatorIndex < endIndex; validatorIndex++)
+            if (_publicKeyToBls.Count == 0)
             {
-                byte[] privateKey = GeneratePrivateKey(validatorIndex);
+                QuickStartParameters _quickStartParameters = _quickStartParameterOptions.CurrentValue;
 
-                BLSParameters blsParameters = new BLSParameters()
+                ulong endIndex = _quickStartParameters.ValidatorStartIndex + _quickStartParameters.NumberOfValidators;
+                for (ulong validatorIndex = _quickStartParameters.ValidatorStartIndex;
+                    validatorIndex < endIndex;
+                    validatorIndex++)
                 {
-                    PrivateKey = privateKey
-                };
-                BLS bls = BLS.Create(blsParameters);
-                byte[] publicKeyBytes = new byte[BlsPublicKey.Length];
-                bls.TryExportBLSPublicKey(publicKeyBytes, out int publicKeyBytesWritten);
-                BlsPublicKey publicKey = new BlsPublicKey(publicKeyBytes);
+                    byte[] privateKey = GeneratePrivateKey(validatorIndex);
 
-                // Cache the BLS class, for easy signing
-                _publicKeyToBls[publicKey] = bls;
-                
-                yield return publicKey;
+                    BLSParameters blsParameters = new BLSParameters()
+                    {
+                        PrivateKey = privateKey
+                    };
+                    BLS bls = BLS.Create(blsParameters);
+                    byte[] publicKeyBytes = new byte[BlsPublicKey.Length];
+                    bls.TryExportBlsPublicKey(publicKeyBytes, out int publicKeyBytesWritten);
+                    BlsPublicKey publicKey = new BlsPublicKey(publicKeyBytes);
+
+                    // Cache the BLS class, for easy signing
+                    _publicKeyToBls[publicKey] = bls;
+                }
             }
+
+            return _publicKeyToBls.Keys.ToList();
         }
 
-        public BlsSignature SignHashWithDomain(BlsPublicKey blsPublicKey, Hash32 hash, Domain domain)
+        public BlsSignature SignRoot(BlsPublicKey blsPublicKey, Root root)
         {
             if (_publicKeyToBls.Count == 0)
             {
@@ -78,10 +83,10 @@ namespace Nethermind.HonestValidator.MockedStart
             BLS bls = _publicKeyToBls[blsPublicKey];
             
             Span<byte> destination = stackalloc byte[BlsSignature.Length];
-            bool success = bls.TrySignHash(hash.AsSpan(), destination, out int bytesWritten, domain.AsSpan());
+            bool success = bls.TrySignData(root.AsSpan(), destination, out int bytesWritten);
             if (!success || bytesWritten != BlsSignature.Length)
             {
-                throw new Exception($"Failure signing hash {hash}, domain {domain} for public key {blsPublicKey}.");
+                throw new Exception($"Failure signing hash {root} for public key {blsPublicKey}.");
             }
             BlsSignature blsSignature = new BlsSignature(destination.ToArray());
             return blsSignature;
@@ -98,8 +103,8 @@ namespace Nethermind.HonestValidator.MockedStart
                 throw new Exception("Error getting input for quick start private key generation.");
             }
 
-            Hash32 hash32 = Sha256.Compute(input);
-            ReadOnlySpan<byte> hash = hash32.AsSpan();
+            Bytes32 bytes32 = Sha256.Compute(input);
+            ReadOnlySpan<byte> hash = bytes32.AsSpan();
             // Mocked start interop specifies to convert the hash as little endian (which is the default for BigInteger)
             BigInteger value = new BigInteger(hash.ToArray(), isUnsigned: true);
             BigInteger privateKey = value % s_curveOrder;

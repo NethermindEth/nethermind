@@ -95,8 +95,13 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.ReceiptStorage = new PersistentReceiptStorage(_context.DbProvider.ReceiptsDb, _context.SpecProvider, _context.LogManager);
 
             var bloomConfig = _context.Config<IBloomConfig>();
+            
+            var fileStoreFactory = initConfig.DiagnosticMode == DiagnosticMode.MemDb 
+                ? (IFileStoreFactory) new InMemoryDictionaryFileStoreFactory() 
+                : new FixedSizeFileStoreFactory(Path.Combine(initConfig.BaseDbPath, DbNames.Bloom), DbNames.Bloom, Bloom.ByteLength); 
+           
             _context.BloomStorage = bloomConfig.Index
-                ? new BloomStorage(bloomConfig, _context.DbProvider.BloomDb, new FixedSizeFileStoreFactory(Path.Combine(initConfig.BaseDbPath, DbNames.Bloom), DbNames.Bloom, Bloom.ByteLength))
+                ? new BloomStorage(bloomConfig, _context.DbProvider.BloomDb, fileStoreFactory)
                 : (IBloomStorage) NullBloomStorage.Instance;
 
             _context.DisposeStack.Push(_context.BloomStorage);
@@ -168,8 +173,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                 ommersValidator,
                 _context.SpecProvider,
                 _context.LogManager);
-
-            _context.TxPoolInfoProvider = new TxPoolInfoProvider(_context.StateProvider, _context.TxPool);
+            
+            ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(_context.DbProvider, false);
+            StateReader stateReader = new StateReader(readOnly.StateDb, readOnly.CodeDb, _context.LogManager);
+            _context.TxPoolInfoProvider = new TxPoolInfoProvider(stateReader, _context.TxPool);
 
             _context.MainBlockProcessor = CreateBlockProcessor();
 

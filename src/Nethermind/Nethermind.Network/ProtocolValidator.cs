@@ -88,6 +88,9 @@ namespace Nethermind.Network
                     }
 
                     break;
+                case Protocol.Les:
+                      // todo validate session
+                    break;
             }
 
             return true;
@@ -105,6 +108,7 @@ namespace Nethermind.Network
 
         private bool ValidateCapabilities(IEnumerable<Capability> capabilities)
         {
+            // todo - this is duplicated from P2PProtocolHandler.HandleHello. One should probably be removed
             return capabilities.Any(x => x.ProtocolCode == Protocol.Eth && (x.Version == 62 || x.Version == 63));
         }
 

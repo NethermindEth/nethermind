@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -21,6 +22,7 @@ using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Store.Bloom;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Bloom
@@ -80,7 +82,7 @@ namespace Nethermind.Blockchain.Test.Bloom
             
             return storage.ContainsRange(from, to);
         }
-
+        
         public static IEnumerable GetBloomsTestCases
         {
             get
@@ -120,6 +122,45 @@ namespace Nethermind.Blockchain.Test.Bloom
             ranges.Should().BeEquivalentTo(expectedBlocks);
             bloomsChecked.Should().Be(expectedBloomsChecked);
         }
+        
+        [TestCase(1, 10, new long[] {4}, new int[] {4})]
+        [TestCase(0, 4, new long[] {4}, new int[] {4})]
+        [TestCase(1, 10, new long[] {1, 4, 6, 8}, new int[] {4})]
+        [TestCase(1, 10, new long[] {4, 6, 8}, new int[] {4, 4})]
+        [TestCase(1, 10, new long[] {4, 8, 16, 32}, new int[] {4, 4})]
+        [TestCase(1, 48, new long[] {4, 8, 16, 32}, new int[] {4, 4})]
+        [TestCase(5, 60, new long[] {4, 8, 49}, new int[] {8, 3})]
+        [TestCase(1, 120, new long[] {4, 8, 64, 65}, new int[] {4, 4, 4})]
+        [TestCase(0, 120, new long[] {0, 1, 2, 3, 5, 7, 11, 120}, new int[] {9, 3})]
+        public void Can_find_bloom_with_fromBlock_offset(long from, long to, long[] blocksSet, int[] levels)
+        {
+            var storage = CreateBloomStorage(new BloomConfig() {IndexLevelBucketSizes = levels});
+            var bloom = new Core.Bloom();
+            byte[] bytes = {1, 2, 3};
+            bloom.Set(bytes);
+            foreach (var blockNumber in blocksSet)
+            {
+                if (blockNumber > storage.MaxBlockNumber + 1)
+                {
+                    // Assert.Fail($"Missing blocks. Trying inserting {blockNumber}, when current max block is {storage.MaxBlockNumber}.");
+                }
+                storage.Store(blockNumber, bloom);
+            }
+            
+            var bloomEnumeration = storage.GetBlooms(from, to);
+            IList<long> foundBlocks = new List<long>(blocksSet.Length);
+            foreach (var b in bloomEnumeration)
+            {
+                if (b.Matches(bytes) && bloomEnumeration.TryGetBlockNumber(out var block))
+                {
+                    foundBlocks.Add(block);
+                }
+            }
+
+            var expectedFoundBlocks = blocksSet.Where(b => b >= from && b <= to).ToArray();
+            TestContext.Out.WriteLine($"Expected found blocks: {string.Join(", ", expectedFoundBlocks)}");
+            foundBlocks.Should().BeEquivalentTo(expectedFoundBlocks);
+        }
 
         private const int Buckets = 3;
         private const int Levels = 3;
@@ -137,5 +178,49 @@ namespace Nethermind.Blockchain.Test.Bloom
 
             return storage;
         }
+        
+        private class MockFileStore : IFileStore
+        {
+            public void Dispose()
+            {
+                
+            }
+
+            public void Write(long index, ReadOnlySpan<byte> element)
+            {
+                
+            }
+
+            public int Read(long index, Span<byte> element)
+            {
+                return Core.Bloom.ByteLength;
+            }
+
+            public IFileReader GetFileReader()
+            {
+                return new InMemoryDictionaryFileReader(this);
+            }
+
+            public void Flush()
+            {
+                Flushes++;
+            }
+
+            public int Flushes { get; private set; }
+        }
+
+        [Test]
+        public void Flushes_on_get_after_store()
+        {
+            var fileStoreFactory = Substitute.For<IFileStoreFactory>();
+            var fileStore = new MockFileStore();
+            fileStoreFactory.Create(Arg.Any<string>()).Returns(fileStore);
+            var storage = new BloomStorage(_config, _bloomDb, fileStoreFactory);
+            storage.Store(1, Core.Bloom.Empty);
+            foreach (var _ in storage.GetBlooms(0, 1)) { }
+            fileStoreFactory.Received().Create(Arg.Any<string>());
+            fileStore.Flushes.Should().BeGreaterThan(0);
+        }
+
     }
 }

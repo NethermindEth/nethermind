@@ -22,16 +22,33 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
 {
-    public class MemDb : IDb
+    public class MemDb : IFullDb
     {
         private readonly int _writeDelay; // for testing scenarios
         private readonly int _readDelay; // for testing scenarios
         public long ReadsCount { get; private set; }
         public long WritesCount { get; private set; }
-        
-        internal readonly ConcurrentDictionary<byte[], byte[]> _db;
 
-        public string Name { get; } = "MemDb";
+        private readonly ConcurrentDictionary<byte[], byte[]> _db;
+
+        public MemDb(string name)
+            : this(0, 0)
+        {
+            Name = name;
+        }
+
+        public MemDb() : this(0, 0)
+        {
+        }
+
+        public MemDb(int writeDelay, int readDelay)
+        {
+            _writeDelay = writeDelay;
+            _readDelay = readDelay;
+            _db = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
+        }
+
+        public string Name { get; }
 
         public byte[] this[byte[] key]
         {
@@ -41,7 +58,7 @@ namespace Nethermind.Db
                 {
                     Thread.Sleep(_readDelay);
                 }
-                
+
                 ReadsCount++;
                 return _db.ContainsKey(key) ? _db[key] : null;
             }
@@ -51,7 +68,7 @@ namespace Nethermind.Db
                 {
                     Thread.Sleep(_writeDelay);
                 }
-                
+
                 WritesCount++;
                 _db[key] = value;
             }
@@ -82,7 +99,10 @@ namespace Nethermind.Db
         }
 
         public IDb Innermost => this;
-        public void Flush() { }
+
+        public void Flush()
+        {
+        }
 
         public IEnumerable<byte[]> GetAll() => Values;
 
@@ -97,23 +117,11 @@ namespace Nethermind.Db
         public ICollection<byte[]> Keys => _db.Keys;
         public ICollection<byte[]> Values => _db.Values;
 
-        public MemDb()
-        {
-            _db = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
-        }
-        
-        public MemDb(int writeDelay, int readDelay)
-        {
-            _writeDelay = writeDelay;
-            _readDelay = readDelay;
-            _db = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
-        }
-
         public void Clear()
         {
             _db.Clear();
         }
-        
+
         public void Dispose()
         {
         }

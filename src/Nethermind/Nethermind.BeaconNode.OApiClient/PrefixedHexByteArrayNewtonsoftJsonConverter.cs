@@ -31,7 +31,7 @@ namespace Nethermind.BeaconNode.OApiClient
         public override byte[] ReadJson(JsonReader reader, Type objectType, byte[] existingValue, bool hasExistingValue,
             JsonSerializer serializer)
         {
-            string s = (string) reader.Value;
+            string s = reader.Value as string ?? string.Empty;
             return Bytes.FromHexString(s);
         }
     }

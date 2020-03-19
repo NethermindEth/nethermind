@@ -25,6 +25,7 @@ using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Network.P2P.Subprotocols.Les;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -183,6 +184,13 @@ namespace Nethermind.Network
                     InitEthProtocol(session, handler);
 
                     return handler;
+                },
+                [Protocol.Les] = (session, version) =>
+                {
+                    LesProtocolHandler handler = new LesProtocolHandler(session, _serializer, _stats, _syncServer, _logManager, _txPool);
+                    InitLesProtocol(session, handler);
+
+                    return handler;
                 }
             };
         
@@ -220,6 +228,19 @@ namespace Nethermind.Network
             };
         }
 
+        private void InitLesProtocol(ISession session, LesProtocolHandler handler)
+        {
+            handler.ProtocolInitialized += (sender, args) =>
+            {   //todo - add basic checks
+                if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
+                LesProtocolInitializedEventArgs typedArgs = (LesProtocolInitializedEventArgs)args;
+                _stats.ReportLesInitializeEvent(session.Node, new LesNodeDetails
+                {
+
+                });
+            };
+        }
+
         private void InitEthProtocol(ISession session, Eth62ProtocolHandler handler)
         {
             handler.ProtocolInitialized += (sender, args) =>
@@ -239,12 +260,12 @@ namespace Nethermind.Network
                 if (isValid)
                 {
                     handler.ClientId = session.Node.ClientId;
-                    
+
                     if (_syncPeers.TryAdd(session.SessionId, handler))
                     {
                         _syncPool.AddPeer(handler);
                         _txPool.AddPeer(handler);
-                        if(_logger.IsDebug) _logger.Debug($"{handler.ClientId} sync peer {session} created.");
+                        if (_logger.IsDebug) _logger.Debug($"{handler.ClientId} sync peer {session} created.");
                     }
                     else
                     {

@@ -80,10 +80,10 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public bool IsTracingOpLevelStorage => false;
         public bool IsTracingMemory => false;
         public bool IsTracingInstructions { get; }
+        public bool IsTracingRefunds => false;
         public bool IsTracingCode { get; }
         public bool IsTracingStack => false;
         public bool IsTracingState { get; }
-        
         public bool IsTracingBlockHash => false;
         
         private static string GetCallType(ExecutionType executionType)
@@ -93,6 +93,8 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 case ExecutionType.Transaction:
                     return "call";
                 case ExecutionType.Create:
+                    return "create";
+                case ExecutionType.Create2:
                     return "create";
                 case ExecutionType.Call:
                     return "call";
@@ -114,6 +116,8 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 case ExecutionType.Transaction:
                     return "call";
                 case ExecutionType.Create:
+                    return "create";
+                case ExecutionType.Create2:
                     return "create";
                 case ExecutionType.Call:
                     return "call";
@@ -249,7 +253,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress.Length}");
             }
 
-            _trace.Output = Bytes.Empty;
+            _trace.Output = output;
             
             // quick tx fail (before execution)
             if (_trace.Action == null)
@@ -259,8 +263,9 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 _trace.Action.To = _tx.To;
                 _trace.Action.Value = _tx.Value;
                 _trace.Action.Input = _tx.Data;
-                _trace.Action.Gas = (long)_tx.GasLimit;
+                _trace.Action.Gas = _tx.GasLimit;
                 _trace.Action.CallType = _tx.IsMessageCall ? "call" : "init";
+                _trace.Action.Error = error;
             }
         }
 
@@ -407,8 +412,9 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             action.Gas = gas;
             action.CallType = GetCallType(callType);
             action.Type = GetActionType(callType);
+            action.CreationMethod = GetCreateMethod(callType);
 
-            if (_currentOperation != null && callType == ExecutionType.Create)
+            if (_currentOperation != null && callType.IsAnyCreate())
             {
                 // another Parity quirkiness
                 _currentOperation.Cost += gas;
@@ -416,7 +422,12 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             
             PushAction(action);
         }
-        
+
+        private string GetCreateMethod(ExecutionType callType)
+        {
+            return callType == ExecutionType.Create ? "create" : "create2";
+        }
+
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
         {
             ParityTraceAction action = new ParityTraceAction();
@@ -462,13 +473,19 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _currentVmTrace.VmTrace.Code = byteCode;
         }
 
-        public void ReportRefundForVmTrace(long refund, long gasAvailable)
+        public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
         {
             _currentOperation.Used = gasAvailable;
         }
 
         public void ReportRefund(long refund)
         {
+            throw new NotSupportedException();
+        }
+
+        public void ReportExtraGasPressure(long extraGasPressure)
+        {
+            throw new NotSupportedException();
         }
     }
 }

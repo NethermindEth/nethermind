@@ -28,7 +28,7 @@ namespace Nethermind.Core.Test.Builders
         {   
             TestObjectInternal = new Transaction(isSystem);
             TestObjectInternal.GasPrice = 1;
-            TestObjectInternal.GasLimit = 21000;
+            TestObjectInternal.GasLimit = Transaction.BaseTxGasCost;
             TestObjectInternal.To = Address.Zero;
             TestObjectInternal.Nonce = 0;
             TestObjectInternal.Value = 1;
@@ -56,12 +56,14 @@ namespace Nethermind.Core.Test.Builders
         
         public TransactionBuilder WithData(byte[] data)
         {
+            TestObjectInternal.Init = null;
             TestObjectInternal.Data = data;
             return this;
         }
         
         public TransactionBuilder WithInit(byte[] initCode)
         {
+            TestObjectInternal.Data = null;
             TestObjectInternal.Init = initCode;
             return this;
         }

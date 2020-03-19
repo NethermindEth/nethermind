@@ -203,9 +203,9 @@ namespace Nethermind.PerfTest
 
             public event EventHandler<BlockEventArgs> NewHeadBlock;
 
-            public void DeleteChainSlice(in long startNumber, in long endNumber)
+            public int DeleteChainSlice(in long startNumber, long? endNumber)
             {
-                _blockTree.DeleteChainSlice(startNumber, endNumber);
+                return _blockTree.DeleteChainSlice(startNumber, endNumber);
             }
         }
 
@@ -228,8 +228,6 @@ namespace Nethermind.PerfTest
 
         private static async Task RunBenchmarkBlocks()
         {
-            Rlp.RegisterDecoders(typeof(ParityTraceDecoder).Assembly);
-
             /* logging & instrumentation */
             _logManager = new NLogManager("perfTest.logs.txt", null);
             _logger = _logManager.GetClassLogger();

@@ -33,7 +33,7 @@ namespace Nethermind.Ssz
         }
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static Epoch DecodeEpoch(Span<byte> span, ref int offset)
+        private static Epoch DecodeEpoch(ReadOnlySpan<byte> span, ref int offset)
         {
             Epoch epoch = new Epoch(BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(offset)));
             offset += Ssz.EpochLength;

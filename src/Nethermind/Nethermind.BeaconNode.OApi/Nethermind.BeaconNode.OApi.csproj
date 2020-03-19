@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netcoreapp3.0</TargetFramework>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
     <Product>Nethermind Eth2.0 blockchain</Product>
     <Authors>sgryphon</Authors>
     <Copyright>Copyright © 2019 Demerzel Solutions Limited</Copyright>
@@ -36,7 +36,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <DotNetCliToolReference Include="NSwag.ConsoleCore" Version="13.1.6" />
+    <DotNetCliToolReference Include="NSwag.ConsoleCore" Version="13.2.3" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Core2.Abstractions\Nethermind.Core2.Abstractions.csproj" />

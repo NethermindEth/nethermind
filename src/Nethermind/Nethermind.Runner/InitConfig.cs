@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+
 namespace Nethermind.Runner
 {
     public class InitConfig : IInitConfig
@@ -32,6 +34,14 @@ namespace Nethermind.Runner
         public string StaticNodesPath { get; set; } = "Data/static-nodes.json";
         public string? LogDirectory { get; set; }
         public bool StoreReceipts { get; set; } = true;
-        public bool UseMemDb { get; set; } = false;
+        public DiagnosticMode DiagnosticMode { get; set; } = DiagnosticMode.None;
+        public string RpcDbUrl { get; set; } = String.Empty;
+
+        [Obsolete("Use DiagnosticMode with MemDb instead")]
+        public bool UseMemDb
+        {
+            get => DiagnosticMode == DiagnosticMode.MemDb;
+            set => DiagnosticMode = DiagnosticMode.MemDb;
+        }
     }
 }

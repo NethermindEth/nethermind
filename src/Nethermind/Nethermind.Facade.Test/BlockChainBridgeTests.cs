@@ -25,6 +25,7 @@ using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Store;
 using Nethermind.Store.Bloom;
@@ -35,7 +36,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Facade.Test
 {
-    public class BlockChainBridgeTests
+    public class BlockchainBridgeTests
     {
         private BlockchainBridge _blockchainBridge;
         private IStateReader _stateReader;
@@ -81,7 +82,8 @@ namespace Nethermind.Facade.Test
                 _transactionProcessor,
                 _ethereumEcdsa,
                 _bloomStorage,
-                _receiptsRecovery);
+                _receiptsRecovery,
+                LimboLogs.Instance);
         }
 
         [Test]
@@ -137,10 +139,10 @@ namespace Nethermind.Facade.Test
         {
             BlockHeader header = Build.A.BlockHeader.WithNumber(10).TestObject;
             Transaction tx = new Transaction();
-            tx.GasLimit = 1000;
+            tx.GasLimit = Transaction.BaseTxGasCost;
             
-            long gas = _blockchainBridge.EstimateGas(header, tx);
-            gas.Should().Be(1000);
+            var gas = _blockchainBridge.EstimateGas(header, tx);
+            gas.GasSpent.Should().Be(Transaction.BaseTxGasCost);
             
             _transactionProcessor.Received().CallAndRestore(
                 tx,

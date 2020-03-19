@@ -38,7 +38,6 @@ using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Store;
 using Nethermind.Store.Bloom;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
@@ -57,7 +56,7 @@ namespace Nethermind.Clique.Test
             private ILogger _logger;
             private static Timestamper _timestamper = new Timestamper();
             private CliqueConfig _cliqueConfig;
-            private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(GoerliSpecProvider.Instance, NullLogManager.Instance);
+            private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(GoerliSpecProvider.Instance, LimboLogs.Instance);
             private Dictionary<PrivateKey, ILogManager> _logManagers = new Dictionary<PrivateKey, ILogManager>();
             private Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new Dictionary<PrivateKey, ISnapshotManager>();
             private Dictionary<PrivateKey, BlockTree> _blockTrees = new Dictionary<PrivateKey, BlockTree>();
@@ -99,6 +98,7 @@ namespace Nethermind.Clique.Test
 
                 ISpecProvider specProvider = RinkebySpecProvider.Instance;
 
+                StateReader stateReader = new StateReader(stateDb, codeDb, nodeLogManager);
                 StateProvider stateProvider = new StateProvider(stateDb, codeDb, nodeLogManager);
                 stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
                 stateProvider.Commit(GoerliSpecProvider.Instance.GenesisSpec);
@@ -142,7 +142,7 @@ namespace Nethermind.Clique.Test
                     ProcessGenesis(privateKey);
                 }
 
-                PendingTxSelector pendingTxSelector = new PendingTxSelector(txPool, stateProvider, nodeLogManager);
+                PendingTxSelector pendingTxSelector = new PendingTxSelector(txPool, stateReader, nodeLogManager);
                 CliqueBlockProducer blockProducer = new CliqueBlockProducer(pendingTxSelector, minerProcessor, minerStateProvider, blockTree, _timestamper, new CryptoRandom(), snapshotManager, cliqueSealer, privateKey.Address, _cliqueConfig, nodeLogManager);
                 blockProducer.Start();
 

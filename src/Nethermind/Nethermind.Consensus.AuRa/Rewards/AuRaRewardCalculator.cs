@@ -15,10 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Specs.ChainSpecStyle;
@@ -28,30 +31,73 @@ namespace Nethermind.Consensus.AuRa.Rewards
     public class AuRaRewardCalculator : IRewardCalculator
     {
         private readonly ITransactionProcessor _transactionProcessor;
-        private readonly long? _blockRewardContractTransition;
         private readonly StaticRewardCalculator _blockRewardCalculator;
-        private readonly RewardContract _contract;
+        private readonly IList<RewardContract> _contracts;
         private readonly CallOutputTracer _tracer = new CallOutputTracer();
 
         public AuRaRewardCalculator(AuRaParameters auRaParameters, IAbiEncoder abiEncoder, ITransactionProcessor transactionProcessor)
         {
-            if (auRaParameters == null) throw new ArgumentNullException(nameof(AuRaParameters));
-            _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
-            _blockRewardContractTransition = auRaParameters.BlockRewardContractTransition;
-            if (_blockRewardContractTransition.HasValue)
+            IList<RewardContract> BuildTransitions()
             {
-                _contract = new RewardContract(abiEncoder, auRaParameters.BlockRewardContractAddress);
+                var contracts = new List<RewardContract>();
+
+                if (auRaParameters.BlockRewardContractTransitions != null)
+                {
+                    contracts.AddRange(auRaParameters.BlockRewardContractTransitions.Select(t => new RewardContract(abiEncoder, t.Value, t.Key)));
+                }
+                
+                contracts.Sort((a, b) => a.TransitionBlock.CompareTo(b.TransitionBlock));
+                
+                if (auRaParameters.BlockRewardContractAddress != null)
+                {
+                    var contractTransition = auRaParameters.BlockRewardContractTransition ?? 0;
+                    if (contractTransition > (contracts.FirstOrDefault()?.TransitionBlock ?? long.MaxValue))
+                    {
+                        throw new ArgumentException($"{nameof(auRaParameters.BlockRewardContractTransition)} provided for {nameof(auRaParameters.BlockRewardContractAddress)} is higher than first {nameof(auRaParameters.BlockRewardContractTransitions)}.");
+                    }
+                    
+                    contracts.Insert(0, new RewardContract(abiEncoder, auRaParameters.BlockRewardContractAddress, contractTransition));
+                }
+
+                return contracts;
             }
 
+            if (auRaParameters == null) throw new ArgumentNullException(nameof(AuRaParameters));
+            _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
+            _contracts = BuildTransitions();
             _blockRewardCalculator = new StaticRewardCalculator(auRaParameters.BlockReward);
         }
 
         public BlockReward[] CalculateRewards(Block block)
-            => block.Number >= _blockRewardContractTransition
-                ? CalculateRewardsWithContract(block)
+            => TryGetContract(block.Number, out var contract)
+                ? CalculateRewardsWithContract(block, contract)
                 : _blockRewardCalculator.CalculateRewards(block);
 
-        private BlockReward[] CalculateRewardsWithContract(Block block)
+        private bool TryGetContract(in long blockNumber, out RewardContract contract)
+        {
+            var index = _contracts.BinarySearch(blockNumber, (b, c) => b.CompareTo(c.TransitionBlock));
+            if (index >= 0)
+            {
+                contract = _contracts[index];
+                return true;
+            }
+            else
+            {
+                var largerIndex = ~index;
+                if (largerIndex != 0)
+                {
+                    contract = _contracts[largerIndex - 1];
+                    return true;
+                }
+                else
+                {
+                    contract = default;
+                    return false;
+                }
+            }
+        }
+
+        private BlockReward[] CalculateRewardsWithContract(Block block, RewardContract contract)
         {
             (Address[] beneficieries, ushort[] kinds) GetBeneficiaries()
             {
@@ -76,9 +122,9 @@ namespace Nethermind.Consensus.AuRa.Rewards
             }
 
             var (beneficiaries, kinds) = GetBeneficiaries();
-            var transaction = _contract.Reward(beneficiaries, kinds);
-            _contract.InvokeTransaction(block.Header, _transactionProcessor, transaction, _tracer);
-            var (addresses, rewards) = _contract.DecodeRewards(_tracer.ReturnValue);
+            var transaction = contract.Reward(beneficiaries, kinds);
+            contract.Call(block.Header, _transactionProcessor, transaction, _tracer);
+            var (addresses, rewards) = contract.DecodeRewards(_tracer.ReturnValue);
 
             var blockRewards = new BlockReward[addresses.Length];
             for (int index = 0; index < addresses.Length; index++)

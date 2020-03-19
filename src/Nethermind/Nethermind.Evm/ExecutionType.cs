@@ -14,11 +14,20 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Attributes;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Evm
 {
-    [Todo(Improve.Refactor, "We can have an EVM without the execution type IMHO")]
+    public static class ExecutionTypeExtensions
+    {
+        // did not want to use flags here specifically
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsAnyCreate(this ExecutionType executionType)
+        {
+            return executionType == ExecutionType.Create || executionType == ExecutionType.Create2;
+        }
+    }
+    
     public enum ExecutionType
     {
         Transaction,
@@ -26,6 +35,7 @@ namespace Nethermind.Evm
         StaticCall,
         CallCode,
         DelegateCall,
-        Create
+        Create,
+        Create2
     }
 }

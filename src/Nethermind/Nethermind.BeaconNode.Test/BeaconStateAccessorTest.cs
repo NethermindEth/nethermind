@@ -47,7 +47,8 @@ namespace Nethermind.BeaconNode.Test
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
-            IStore store = forkChoice.GetGenesisStore(state);
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
             
             // Move forward time
             BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
@@ -75,9 +76,9 @@ namespace Nethermind.BeaconNode.Test
 
                 await forkChoice.OnTickAsync(store, time);
                 time++;
-                BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
-                TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
-                await forkChoice.OnBlockAsync(store, block);
+                BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, BlsSignature.Zero);
+                SignedBeaconBlock signedBlock = TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
+                await forkChoice.OnBlockAsync(store, signedBlock);
                 await forkChoice.OnTickAsync(store, time);
                 time++;
 

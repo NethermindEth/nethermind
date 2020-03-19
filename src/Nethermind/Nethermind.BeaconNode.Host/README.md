@@ -28,10 +28,12 @@ dotnet test src/Nethermind/Nethermind.BeaconNode.Test
 To run the beacon node with default Development settings (minimal config), with mocked quick start:
 
 ```
-dotnet run --project src/Nethermind/Nethermind.BeaconNode.Host --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64
+dotnet run --project src/Nethermind/Nethermind.BeaconNode.Host -- --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64
 ```
 
 ### Test it works
+
+**NOTE: OpenAPI not currently fixed after upgrade to 0.10.1, so this section is not working (yet)** 
 
 Run, as above, then open a browser to ```https://localhost:8230/node/version``` and it should respond with the name and version.
 
@@ -49,10 +51,40 @@ Note: With QuickStart validator count 64, validators index 20, with public key 0
 This will run both the beacon node and an in-process honest validator, both using quick start mocked keys. For testing and devleopment it is easiest to run both components in a single host:
 
 ```
-dotnet run --project src/Nethermind/Nethermind.BeaconNode.Host --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ValidatorStartIndex 0 --QuickStart:NumberOfValidators 32
+dotnet run --project src/Nethermind/Nethermind.BeaconNode.Host -- --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ValidatorStartIndex 0 --QuickStart:NumberOfValidators 32
+```
+
+### Test with multiple nodes
+
+Running the node will create an ENR record in the configured data directory. You need to get the value for the first node and pass it to the second (the example below uses PowerShell).
+
+Ensure the host is build:
+
+```
+dotnet build src/Nethermind/Nethermind.BeaconNode.Host
+``` 
+
+In the second terminal, get the ENR record details:
+
+```
+$enr = Get-Content 'src/Nethermind/Nethermind.BeaconNode.Host/bin/Debug/netcoreapp3.0/Development/mothra/network/enr.dat'
+```
+
+Then, at the same time start the first node in one terminal (see below for clock synchronisation details):
+
+```
+$offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())/60) * 60; $offset; dotnet run --no-build --project src/Nethermind/Nethermind.BeaconNode.Host --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ClockOffset $offset --QuickStart:ValidatorStartIndex 0 --QuickStart:NumberOfValidators 32
+```
+
+And the second node in a second PowerShell terminal:
+
+```
+$offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())/60) * 60; $offset; dotnet run --no-build --project src/Nethermind/Nethermind.BeaconNode.Host -- --DataDirectory Development9001 --Peering:Mothra:BootNodes:0 $enr --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ClockOffset $offset --QuickStart:ValidatorStartIndex 32 --QuickStart:NumberOfValidators 4
 ```
 
 ### Test with separate processes for node and validator
+
+**NOTE: REST API is currently broken (from spec updated to 0.10.1), so can't run in separate processes**
 
 This will run the Beacon Node and Honest Validator in separate host processes, communicating via the REST API.
 
@@ -65,7 +97,7 @@ dotnet build src/Nethermind/Nethermind.BeaconNode.Host
 dotnet build src/Nethermind/Nethermind.HonestValidator.Host
 ```
 
-Then run the node in one shell:
+Then run the node in one shell (using PowerShell):
 
 ```
 $offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())/60) * 60; $offset; dotnet run --no-build --project src/Nethermind/Nethermind.BeaconNode.Host --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ClockOffset $offset
@@ -93,6 +125,29 @@ Note that the different processess (nodes and validators) need to use the same o
 
 The clock will also be useful in future testing to reproduce specific scenarios starting from particular states at past clock dates (using a negative offset).
 
+#### Example: Slot catch up when a test net is missing time
+
+The default quickstart clock offset starts the effective clock at genesis time. You can run the host with a past genesis time and offset = 0 (current time clock) to simulate what might happen if a test net is missing some time.
+
+e.g. To simulate the first test validator starting 120 seconds after genesis:
+
+```
+dotnet run --project src/Nethermind/Nethermind.BeaconNode.Host --QuickStart:GenesisTime ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - 120) --QuickStart:ClockOffset 0 --QuickStart:ValidatorCount 64 --QuickStart:ValidatorStartIndex 0 --QuickStart:NumberOfValidators 32
+```
+
+Normally other nodes would have produced blocks and the chain head will match the clock time; if it is behind the clock time, it would simply mean that the node needs to sync to catch up.
+
+However, with a test network there might have been no nodes/validators active, e.g. if the entire network was stopped. This means no blocks would have been produced (by anyone) and the head will be old.
+
+If nodes only checked based on clock time, and the head was too many epochs in the past, then every node would simply get 406 DutiesNotAvailableForRequestedEpoch errors.
+
+e.g. If a test network was stopped at slot 100 (epoch 12), and restarted at clock time slot 150 (epoch 18) then if validators used the clock time to start requesting duties and they all requested for epoch 18, they would all get 406 errors.
+
+The Nethermind validator client will start at whatever head the beacon node has, i.e. slot 101, even if it is in the past (compared to the clock).
+
+If it was only one node that was stopped, i.e. it is simply out of date and needs to sync, then it might produce some useless blocks (but there is no penalty to this), and once the beacon node has updated the head, the validator will know which duties to check next.
+
+
 ### Optional requirements
 
 * PowerShell Core, to run build scripts
@@ -112,21 +167,37 @@ Then run the DLL that was published:
 dotnet ./src/Nethermind/Nethermind.BeaconNode.Host/release/latest/Nethermind.BeaconNode.Host.dll
 ```
 
-From the published version you can also start with Development (minimal) configuration, and quick start parameters:
+The published host is configured to use the data directory '{LocalApplicationData}/Nethermind/BeaconHost/Production'.
+
+On Linux & OSX this is '/home/<user>/.local/share/Nethermind/BeaconHost/Production', and on Windows it is 'C:\Users\<user>\AppData\Local\Nethermind\BeaconHost\Production'
+
+From the published version you can also start with relative data directory 'Development', which contains the minimal configuration, and quick start parameters:
 
 ```
-dotnet ./src/Nethermind/Nethermind.BeaconNode.Host/release/latest/Nethermind.BeaconNode.Host.dll --Environment Development --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64
+dotnet ./src/Nethermind/Nethermind.BeaconNode.Host/release/latest/Nethermind.BeaconNode.Host.dll --DataDirectory Development --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64
 ```
 
 ## Development
 
 ### Configuration files
 
-Primary configuration files use .NET Core JSON settings files, with overrides from envrionment variables and command line.
+Primary configuration is based on a separate data directory for each instance, using the --DataDirectory parameter.
 
-There is a script in src/Nethermind/Nethermind.BeaconNode.Host/configuration that will convert from the specification YAML files to fragments to insert into the relevant Production and Development configuration JSON files.
+The main data directory is configured in the hostsettings.json file; for development this is set to 'Development', a relative directory.
+ 
+The published version has '{LocalApplicationData}/Nethermind/BeaconHost/Production', which is resolved to a subfolder within a standard system folder.
 
-For backwards compatibility, the application can also use the YAML files directly if necessary (although values are overwritten by anything from the full appsettings).
+Supported special directory tokens are:
+
+* {CommonApplicationData}: '/usr/share' on Linux/OSX, 'C:\ProgramData' on Windows.
+* {LocalApplicationData}: '/home/<user>/.local/share' on Linux/OSX, 'C:\Users\<user>\AppData\Local' on Windows.
+* {ApplicationData}: '/home/<user>/.config' on Linux/OSX, 'C:\Users\<user>\AppData\Roaming' on Windows.
+
+Configuration is loaded from the default appsettings.json in the application directory, and then overriden by the appsettings.json in the data directory, with additional overrides from envrionment variables and command line.
+
+There is a script in src/Nethermind/Nethermind.BeaconNode.Host/configuration that will convert from the specification YAML files to fragments to insert into the relevant default Production and Development configuration JSON files.
+
+For backwards compatibility, the application can also use the YAML files from the data directory by passing the --config parameter.
 
 ### API generation
 

@@ -28,7 +28,7 @@ namespace Nethermind.Ssz
     {
         private const int VarOffsetSize = sizeof(uint);
 
-        private static void DecodeDynamicOffset(Span<byte> span, ref int offset, out int dynamicOffset)
+        private static void DecodeDynamicOffset(ReadOnlySpan<byte> span, ref int offset, out int dynamicOffset)
         {
             dynamicOffset = (int) DecodeUInt(span.Slice(offset, VarOffsetSize));
             offset += sizeof(uint);

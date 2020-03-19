@@ -29,6 +29,7 @@ using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Store.Bloom;
 using Nethermind.Trie;
@@ -69,6 +70,7 @@ namespace Nethermind.Facade
             IEthereumEcdsa ecdsa,
             IBloomStorage bloomStorage, 
             IReceiptsRecovery receiptsRecovery,
+            ILogManager logManager,
             int findLogBlockDepthLimit = 1000)
         {
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
@@ -82,7 +84,7 @@ namespace Nethermind.Facade
             _wallet = wallet ?? throw new ArgumentException(nameof(wallet));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentException(nameof(transactionProcessor));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-            _logFinder = new LogFinder(_blockTree, _receiptStorage, bloomStorage, receiptsRecovery, findLogBlockDepthLimit);
+            _logFinder = new LogFinder(_blockTree, _receiptStorage, bloomStorage, receiptsRecovery, logManager, findLogBlockDepthLimit);
         }
 
         public IReadOnlyCollection<Address> GetWalletAccounts()
@@ -203,11 +205,12 @@ namespace Nethermind.Facade
             return new CallOutput {Error = callOutputTracer.Error, GasSpent = callOutputTracer.GasSpent, OutputData = callOutputTracer.ReturnValue};
         }
 
-        public long EstimateGas(BlockHeader header, Transaction transaction)
+        public CallOutput EstimateGas(BlockHeader header, Transaction tx)
         {
             EstimateGasTracer estimateGasTracer = new EstimateGasTracer();
-            CallAndRestore(header, transaction, estimateGasTracer);
-            return transaction.GasLimit - estimateGasTracer.ExcessiveGas;
+            CallAndRestore(header, tx, estimateGasTracer);
+            long estimate = estimateGasTracer.CalculateEstimate(tx);
+            return new CallOutput {Error = estimateGasTracer.Error, GasSpent = estimate};
         }
 
         private void CallAndRestore(BlockHeader blockHeader, Transaction transaction, ITxTracer tracer)

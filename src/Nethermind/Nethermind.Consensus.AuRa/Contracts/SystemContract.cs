@@ -53,7 +53,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             return transaction;
         }
         
-        public void InvokeTransaction(BlockHeader header, ITransactionProcessor transactionProcessor, Transaction transaction, CallOutputTracer tracer)
+        public void Call(BlockHeader header, ITransactionProcessor transactionProcessor, Transaction transaction, CallOutputTracer tracer)
         {
             bool failure;
             

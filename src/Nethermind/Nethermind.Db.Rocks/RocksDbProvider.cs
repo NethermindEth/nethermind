@@ -91,7 +91,7 @@ namespace Nethermind.Db.Rocks
             {
                 if (_ethRequestsDb == null)
                 {
-                    LazyInitializer.EnsureInitialized(ref _ethRequestsDb, () => new ConfigsRocksDb(_basePath, _dbConfig, _logManager));
+                    LazyInitializer.EnsureInitialized(ref _ethRequestsDb, () => new EthRequestsRocksDb(_basePath, _dbConfig, _logManager));
                 }
 
                 return _ethRequestsDb;
@@ -111,6 +111,7 @@ namespace Nethermind.Db.Rocks
             PendingTxsDb?.Dispose();
             _configsDb?.Dispose();
             _ethRequestsDb?.Dispose();
+            BloomDb?.Dispose();
         }
     }
 }

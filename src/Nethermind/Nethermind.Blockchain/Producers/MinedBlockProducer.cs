@@ -55,16 +55,17 @@ namespace Nethermind.Blockchain.Producers
             }
         }
 
-        private async void OnBlockProcessorQueueEmpty(object sender, EventArgs e)
+        private void OnBlockProcessorQueueEmpty(object sender, EventArgs e)
         {
             CancellationToken token;
             lock (_syncToken)
             {
+                _cancellationTokenSource?.Cancel();
                 _cancellationTokenSource = new CancellationTokenSource();
                 token = _cancellationTokenSource.Token;
             }
 
-            await base.TryProduceNewBlock(token);
+            TryProduceNewBlock(token);
         }
 
         public override void Start()

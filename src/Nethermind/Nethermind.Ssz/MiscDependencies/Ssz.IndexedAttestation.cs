@@ -57,7 +57,7 @@ namespace Nethermind.Ssz
             Encode(span, container.Signature, ref offset);
         }
 
-        public static IndexedAttestation DecodeIndexedAttestation(Span<byte> span)
+        public static IndexedAttestation DecodeIndexedAttestation(ReadOnlySpan<byte> span)
         {
             int offset = 0;
             DecodeDynamicOffset(span, ref offset, out int dynamicOffset1);

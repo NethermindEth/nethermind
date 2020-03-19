@@ -25,6 +25,8 @@ namespace Nethermind.Core
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
     public class Transaction
     {
+        public const int BaseTxGasCost = 21000;
+        
         private readonly bool _isSystem;
 
         public Transaction() { }
@@ -55,6 +57,11 @@ namespace Nethermind.Core
         public PublicKey DeliveredBy { get; set; } // tks: this is added so we do not send the pending tx back to original sources, not used yet
         public UInt256 Timestamp { get; set; }
 
+        public string ToShortString()
+        {
+            return $"[TX: from {SenderAddress} to {To} with data {Data?.ToHexString() ?? Init?.ToHexString()}, gas price {GasPrice} and limit {GasLimit}, nonce {Nonce}]";
+        }
+        
         public string ToString(string indent)
         {
             StringBuilder builder = new StringBuilder();

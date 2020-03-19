@@ -332,7 +332,7 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
 
             var oneSlot = new Slot(1);
             var oneCommitteeIndex = new CommitteeIndex(1);
-            var beaconBlockRoot = new Hash32(Enumerable.Repeat((byte)0xff, 32).ToArray()); // irrelevant to testing
+            var beaconBlockRoot = new Root(Enumerable.Repeat((byte)0xff, 32).ToArray()); // irrelevant to testing
             for (var slot = startSlot; slot < startSlot + timeParameters.SlotsPerEpoch; slot += oneSlot)
             {
                 var committeesPerSlot = beaconStateAccessor.GetCommitteeCountAtSlot(state, slot);
@@ -369,7 +369,7 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
                     Checkpoint attestationTarget;
                     if (messedUpTarget)
                     {
-                        var messedUpRoot = new Hash32(Enumerable.Repeat((byte)0x99, 32).ToArray());
+                        var messedUpRoot = new Root(Enumerable.Repeat((byte)0x99, 32).ToArray());
                         attestationTarget = new Checkpoint(target.Epoch, messedUpRoot);
                     }
                     else

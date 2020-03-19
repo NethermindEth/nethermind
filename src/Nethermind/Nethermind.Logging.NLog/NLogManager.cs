@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using NLog;
 
 namespace Nethermind.Logging.NLog
 {
@@ -55,6 +56,11 @@ namespace Nethermind.Logging.NLog
         public ILogger GetLogger(string loggerName)
         {
             return new NLogLogger(_logFileName, _logDirectory, loggerName);
+        }
+
+        public void SetGlobalVariable(string name, object value)
+        {
+            GlobalDiagnosticsContext.Set(name, value);
         }
     }
 }

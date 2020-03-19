@@ -61,6 +61,8 @@ namespace Nethermind.Stats
 
         public EthNodeDetails EthNodeDetails { get; private set; }
 
+        public LesNodeDetails LesNodeDetails { get; private set; }
+
         public CompatibilityValidationType? FailedCompatibilityValidation { get; set; }
 
         public Node Node { get; }
@@ -113,6 +115,11 @@ namespace Nethermind.Stats
         {
             EthNodeDetails = nodeDetails;
             Increment(NodeStatsEventType.Eth62Initialized);
+        }
+        public void AddNodeStatsLesInitializedEvent(LesNodeDetails nodeDetails)
+        {
+            LesNodeDetails = nodeDetails;
+            Increment(NodeStatsEventType.LesInitialized);
         }
 
         public void AddNodeStatsSyncEvent(NodeStatsEventType nodeStatsEventType)

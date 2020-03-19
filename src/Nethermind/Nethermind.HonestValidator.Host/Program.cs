@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -57,7 +58,9 @@ namespace Nethermind.HonestValidator.Host
                     config.AddJsonFile("appsettings.json");
                     
                     // Override with environment specific JSON files
-                    config.AddJsonFile("appsettings." + hostContext.HostingEnvironment.EnvironmentName + ".json", true, true);
+                    DataDirectory dataDirectory = new DataDirectory(hostContext.Configuration.GetValue<string>(DataDirectory.Key));
+                    string settingsPath = Path.Combine(dataDirectory.ResolvedPath, $"appsettings.json");
+                    config.AddJsonFile(settingsPath, true, true);
 
                     config.AddCommandLine(args);
                 })

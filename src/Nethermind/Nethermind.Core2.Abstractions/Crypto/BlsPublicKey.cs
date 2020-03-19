@@ -23,34 +23,29 @@ namespace Nethermind.Core2.Crypto
     {
         public const int Length = 48;
 
-        public static BlsPublicKey Empty = new BlsPublicKey(new byte[Length]);
+        public static readonly BlsPublicKey Zero = new BlsPublicKey(new byte[Length]);
 
         public BlsPublicKey(string hexString)
             : this(Core2.Bytes.FromHexString(hexString))
         {
         }
-        
+
+        public BlsPublicKey(ReadOnlySpan<byte> span)
+        {
+            if (span.Length != Length)
+            {
+                throw new ArgumentException($"{nameof(BlsPublicKey)} should be {Length} bytes long", nameof(span));
+            }
+
+            Bytes = span.ToArray();
+        }
+
+        public byte[] Bytes { get; }
+
         public ReadOnlySpan<byte> AsSpan()
         {
             return new ReadOnlySpan<byte>(Bytes);
         }
-
-        public BlsPublicKey(byte[] bytes)
-        {
-            if (bytes == null)
-            {
-                throw new ArgumentNullException(nameof(bytes));
-            }
-
-            if (bytes.Length != Length)
-            {
-                throw new ArgumentException($"{nameof(BlsPublicKey)} should be {Length} bytes long", nameof(bytes));
-            }
-
-            Bytes = bytes;
-        }
-
-        public byte[] Bytes { get; }
 
         public bool Equals(BlsPublicKey? other)
         {
@@ -65,18 +60,6 @@ namespace Nethermind.Core2.Crypto
         public override int GetHashCode()
         {
             return MemoryMarshal.Read<int>(Bytes);
-        }
-
-        public override string ToString()
-        {
-            return Bytes.ToHexString(true);
-        }
-
-        public string ToShortString()
-        {
-            var value = Bytes.ToHexString(false);
-            return $"{value.Substring(0, 6)}...{value.Substring(value.Length - 6)}";
-            ;
         }
 
         public static bool operator ==(BlsPublicKey? a, BlsPublicKey? b)
@@ -97,6 +80,18 @@ namespace Nethermind.Core2.Crypto
         public static bool operator !=(BlsPublicKey? a, BlsPublicKey? b)
         {
             return !(a == b);
+        }
+
+        public string ToShortString()
+        {
+            var value = Bytes.ToHexString(false);
+            return $"{value.Substring(0, 6)}...{value.Substring(value.Length - 6)}";
+            ;
+        }
+
+        public override string ToString()
+        {
+            return Bytes.ToHexString(true);
         }
     }
 }

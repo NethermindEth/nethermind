@@ -27,6 +27,11 @@ namespace Nethermind.EvmPlayground
         {
         }
 
+        /// <summary>
+        /// Do not use in test. Use <see cref="Nethermind.Logging.LimboLogs"/> or <see cref="Nethermind.Logging.LimboTraceLogger"/> instead.
+        /// </summary>
+        /// <returns></returns>
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
         public static NullLogger Instance
         {
             get { return LazyInitializer.EnsureInitialized(ref _instance, () => new NullLogger()); }

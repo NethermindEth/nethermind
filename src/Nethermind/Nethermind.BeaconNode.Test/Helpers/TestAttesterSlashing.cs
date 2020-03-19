@@ -34,7 +34,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
 
             Attestation attestation1 = TestAttestation.GetValidAttestation(testServiceProvider, state, Slot.None, CommitteeIndex.None, signed1);
 
-            Hash32 targetRoot2 = new Hash32(Enumerable.Repeat((byte) 0x01, 32).ToArray());
+            Root targetRoot2 = new Root(Enumerable.Repeat((byte) 0x01, 32).ToArray());
             Attestation attestation2 = new Attestation(
                 attestation1.AggregationBits,
                 new AttestationData(attestation1.Data.Slot,
@@ -45,7 +45,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
                         attestation1.Data.Target.Epoch,
                         targetRoot2
                         )), 
-                BlsSignature.Empty
+                BlsSignature.Zero
                 );
             if (signed2)
             {

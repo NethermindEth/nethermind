@@ -31,6 +31,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingOpLevelStorage => _currentTxTracer.IsTracingOpLevelStorage;
         public bool IsTracingMemory => _currentTxTracer.IsTracingMemory;
         public bool IsTracingInstructions => _currentTxTracer.IsTracingInstructions;
+        public bool IsTracingRefunds => _currentTxTracer.IsTracingRefunds;
         public bool IsTracingCode => _currentTxTracer.IsTracingCode;
         public bool IsTracingStack => _currentTxTracer.IsTracingStack;
         public bool IsTracingState => _currentTxTracer.IsTracingState;
@@ -202,14 +203,19 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.ReportByteCode(byteCode);
         }
 
-        public void ReportRefundForVmTrace(long refund, long gasAvailable)
+        public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
         {
-            _currentTxTracer.ReportRefundForVmTrace(refund, gasAvailable);
+            _currentTxTracer.ReportGasUpdateForVmTrace(refund, gasAvailable);
         }
 
         public void ReportRefund(long refund)
         {
             _currentTxTracer.ReportRefund(refund);
+        }
+
+        public void ReportExtraGasPressure(long extraGasPressure)
+        {
+            _currentTxTracer.ReportExtraGasPressure(extraGasPressure);
         }
 
         public void SetOperationStack(List<string> stackTrace)

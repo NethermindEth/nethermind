@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
 
   <PropertyGroup>
-    <TargetFramework>netcoreapp3.0</TargetFramework>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
     <OutputType>Exe</OutputType>
     <IsTransformWebConfigDisabled>true</IsTransformWebConfigDisabled>
     <UserSecretsId>dotnet-Nethermind.BeaconNode.Host-376091C2-AFFA-41D5-A229-A31991A2A89F</UserSecretsId>
@@ -24,6 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Nethermind.BeaconNode.Eth1Bridge\Nethermind.BeaconNode.Eth1Bridge.csproj" />
     <ProjectReference Include="..\Nethermind.BeaconNode.OApi\Nethermind.BeaconNode.OApi.csproj" />
     <ProjectReference Include="..\Nethermind.BeaconNode.Peering\Nethermind.BeaconNode.Peering.csproj" />
     <ProjectReference Include="..\Nethermind.BeaconNode\Nethermind.BeaconNode.csproj" />
@@ -37,6 +38,10 @@
     <Content Remove="release\**" />
     <None Include="configuration\**" CopyToOutputDirectory="Never" />
     <None Include="release\**" CopyToOutputDirectory="Never" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Production" />
   </ItemGroup>
   
 </Project>

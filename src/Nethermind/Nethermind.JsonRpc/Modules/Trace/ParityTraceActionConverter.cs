@@ -51,6 +51,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
             {
                 writer.WriteProperty("callType", value.CallType);
             }
+            else
+            {
+                writer.WriteProperty("creationMethod", value.CreationMethod);
+            }
 
             writer.WriteProperty("from", value.From, serializer);
             writer.WriteProperty("gas", value.Gas, serializer);

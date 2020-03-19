@@ -16,7 +16,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -24,50 +27,166 @@ using Nethermind.Core2;
 using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Json;
+using Nethermind.Core2.Store;
 using Nethermind.Core2.Types;
+using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode.Storage
 {
     // Data Class
     public class MemoryStore : IStore
     {
-        private readonly Dictionary<Hash32, BeaconBlock> _blocks;
-        private readonly Dictionary<Hash32, BeaconState> _blockStates;
-        private readonly Dictionary<Checkpoint, BeaconState> _checkpointStates;
-        private readonly Dictionary<ValidatorIndex, LatestMessage> _latestMessages;
+        private readonly Dictionary<Root, BeaconBlock> _blocks = new Dictionary<Root, BeaconBlock>();
+        private readonly Dictionary<Root, BeaconState> _blockStates = new Dictionary<Root, BeaconState>();
+        private readonly Dictionary<Checkpoint, BeaconState> _checkpointStates =
+            new Dictionary<Checkpoint, BeaconState>();
+        private readonly DataDirectory _dataDirectory;
+        private readonly IFileSystem _fileSystem;
+        private readonly IOptionsMonitor<InMemoryConfiguration> _inMemoryConfigurationOptions;
+        private readonly JsonSerializerOptions _jsonSerializerOptions;
+        private readonly Dictionary<ValidatorIndex, LatestMessage> _latestMessages =
+            new Dictionary<ValidatorIndex, LatestMessage>();
+        private string? _logDirectoryPath;
+        private readonly object _logDirectoryPathLock = new object();
         private readonly ILogger _logger;
-        private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
+        private const string InMemoryDirectory = "memorystore";
 
-        public MemoryStore(ulong time,
-            ulong genesisTime,
-            Checkpoint justifiedCheckpoint,
-            Checkpoint finalizedCheckpoint,
-            Checkpoint bestJustifiedCheckpoint,
-            IDictionary<Hash32, BeaconBlock> blocks,
-            IDictionary<Hash32, BeaconState> blockStates,
-            IDictionary<Checkpoint, BeaconState> checkpointStates,
-            IDictionary<ValidatorIndex, LatestMessage> latestMessages,
-            ILogger<MemoryStore> logger,
-            IOptionsMonitor<TimeParameters> timeParameterOptions)
+        public MemoryStore(ILogger<MemoryStore> logger,
+            IOptionsMonitor<InMemoryConfiguration> inMemoryConfigurationOptions,
+            DataDirectory dataDirectory,
+            IFileSystem fileSystem)
         {
+            _logger = logger;
+            _inMemoryConfigurationOptions = inMemoryConfigurationOptions;
+            _dataDirectory = dataDirectory;
+            _fileSystem = fileSystem;
+            _jsonSerializerOptions = new JsonSerializerOptions {WriteIndented = true};
+            _jsonSerializerOptions.ConfigureNethermindCore2();
+            if (_inMemoryConfigurationOptions.CurrentValue.LogBlockJson ||
+                inMemoryConfigurationOptions.CurrentValue.LogBlockStateJson)
+            {
+                _ = GetLogDirectory();
+            }
+        }
+
+        public Checkpoint BestJustifiedCheckpoint { get; private set; } = Checkpoint.Zero;
+        public Checkpoint FinalizedCheckpoint { get; private set; } = Checkpoint.Zero;
+        public ulong GenesisTime { get; private set; }
+        public bool IsInitialized { get; private set; }
+        public Checkpoint JustifiedCheckpoint { get; private set; } = Checkpoint.Zero;
+        public ulong Time { get; private set; }
+
+        public ValueTask<BeaconBlock> GetBlockAsync(Root blockRoot)
+        {
+            if (!_blocks.TryGetValue(blockRoot, out BeaconBlock? beaconBlock))
+            {
+                throw new ArgumentOutOfRangeException(nameof(blockRoot), blockRoot, "Block not found in store.");
+            }
+
+            return new ValueTask<BeaconBlock>(beaconBlock!);
+        }
+
+        public ValueTask<BeaconState> GetBlockStateAsync(Root blockRoot)
+        {
+            if (!_blockStates.TryGetValue(blockRoot, out BeaconState? state))
+            {
+                throw new ArgumentOutOfRangeException(nameof(blockRoot), blockRoot, "State not found in store.");
+            }
+
+            return new ValueTask<BeaconState>(state!);
+        }
+
+        public ValueTask<BeaconState?> GetCheckpointStateAsync(Checkpoint checkpoint, bool throwIfMissing)
+        {
+            if (!_checkpointStates.TryGetValue(checkpoint, out BeaconState? state))
+            {
+                if (throwIfMissing)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(checkpoint), checkpoint,
+                        "Checkpoint state not found in store.");
+                }
+            }
+
+            return new ValueTask<BeaconState?>(state);
+        }
+
+        public async IAsyncEnumerable<Root> GetChildKeysAfterSlotAsync(Root parent, Slot slot)
+        {
+            await Task.CompletedTask;
+            IEnumerable<Root> childKeys = _blocks
+                .Where(kvp =>
+                    kvp.Value.ParentRoot.Equals(parent)
+                    && kvp.Value.Slot > slot)
+                .Select(kvp => kvp.Key);
+            foreach (Root childKey in childKeys)
+            {
+                yield return childKey;
+            }
+        }
+
+        public async IAsyncEnumerable<Root> GetChildKeysAsync(Root parent)
+        {
+            await Task.CompletedTask;
+            IEnumerable<Root> childKeys = _blocks
+                .Where(kvp =>
+                    kvp.Value.ParentRoot.Equals(parent))
+                .Select(kvp => kvp.Key);
+            foreach (Root childKey in childKeys)
+            {
+                yield return childKey;
+            }
+        }
+
+        public ValueTask<LatestMessage?> GetLatestMessageAsync(ValidatorIndex validatorIndex, bool throwIfMissing)
+        {
+            if (!_latestMessages.TryGetValue(validatorIndex, out LatestMessage? latestMessage))
+            {
+                if (throwIfMissing)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(validatorIndex), validatorIndex,
+                        "Latest message not found in store.");
+                }
+            }
+
+            return new ValueTask<LatestMessage?>(latestMessage);
+        }
+
+        public Task InitializeForkChoiceStoreAsync(ulong time, ulong genesisTime, Checkpoint justifiedCheckpoint,
+            Checkpoint finalizedCheckpoint, Checkpoint bestJustifiedCheckpoint, IDictionary<Root, BeaconBlock> blocks,
+            IDictionary<Root, BeaconState> states,
+            IDictionary<Checkpoint, BeaconState> checkpointStates)
+        {
+            if (IsInitialized)
+            {
+                throw new Exception("Store already initialized.");
+            }
+
+            Log.MemoryStoreInitialized(_logger, time, genesisTime, finalizedCheckpoint, null);
+
             Time = time;
             GenesisTime = genesisTime;
             JustifiedCheckpoint = justifiedCheckpoint;
             FinalizedCheckpoint = finalizedCheckpoint;
             BestJustifiedCheckpoint = bestJustifiedCheckpoint;
-            _blocks = new Dictionary<Hash32, BeaconBlock>(blocks);
-            _blockStates = new Dictionary<Hash32, BeaconState>(blockStates);
-            _checkpointStates = new Dictionary<Checkpoint, BeaconState>(checkpointStates);
-            _latestMessages = new Dictionary<ValidatorIndex, LatestMessage>(latestMessages);
-            _logger = logger;
-            _timeParameterOptions = timeParameterOptions;
-        }
+            foreach (KeyValuePair<Root, BeaconBlock> kvp in blocks)
+            {
+                _blocks[kvp.Key] = kvp.Value;
+            }
 
-        public Checkpoint BestJustifiedCheckpoint { get; private set; }
-        public Checkpoint FinalizedCheckpoint { get; private set; }
-        public ulong GenesisTime { get; }
-        public Checkpoint JustifiedCheckpoint { get; private set; }
-        public ulong Time { get; private set; }
+            foreach (KeyValuePair<Root, BeaconState> kvp in states)
+            {
+                _blockStates[kvp.Key] = kvp.Value;
+            }
+
+            foreach (KeyValuePair<Checkpoint, BeaconState> kvp in checkpointStates)
+            {
+                _checkpointStates[kvp.Key] = kvp.Value;
+            }
+
+            IsInitialized = true;
+            return Task.CompletedTask;
+        }
 
         public Task SetBestJustifiedCheckpointAsync(Checkpoint checkpoint)
         {
@@ -75,16 +194,34 @@ namespace Nethermind.BeaconNode.Storage
             return Task.CompletedTask;
         }
 
-        public Task SetBlockAsync(Hash32 signingRoot, BeaconBlock block)
+        public async Task SetBlockAsync(Root blockHashTreeRoot, BeaconBlock beaconBlock)
         {
-            _blocks[signingRoot] = block;
-            return Task.CompletedTask;
+            _blocks[blockHashTreeRoot] = beaconBlock;
+            if (_inMemoryConfigurationOptions.CurrentValue.LogBlockJson)
+            {
+                string logDirectoryPath = GetLogDirectory();
+                string fileName = string.Format("block{0:0000}_{1}.json", (int) beaconBlock.Slot, blockHashTreeRoot);
+                string path = _fileSystem.Path.Combine(logDirectoryPath, fileName);
+                using (Stream fileStream = _fileSystem.File.OpenWrite(path))
+                {
+                    await JsonSerializer.SerializeAsync(fileStream, beaconBlock, _jsonSerializerOptions).ConfigureAwait(false);
+                }
+            }
         }
 
-        public Task SetBlockStateAsync(Hash32 signingRoot, BeaconState state)
+        public async Task SetBlockStateAsync(Root blockHashTreeRoot, BeaconState beaconState)
         {
-            _blockStates[signingRoot] = state;
-            return Task.CompletedTask;
+            _blockStates[blockHashTreeRoot] = beaconState;
+            if (_inMemoryConfigurationOptions.CurrentValue.LogBlockJson)
+            {
+                string logDirectoryPath = GetLogDirectory();
+                string fileName = string.Format("state{0:0000}_{1}.json", (int) beaconState.Slot, blockHashTreeRoot);
+                string path = _fileSystem.Path.Combine(logDirectoryPath, fileName);
+                using (Stream fileStream = _fileSystem.File.OpenWrite(path))
+                {
+                    await JsonSerializer.SerializeAsync(fileStream, beaconState, _jsonSerializerOptions).ConfigureAwait(false);
+                }
+            }
         }
 
         public Task SetCheckpointStateAsync(Checkpoint checkpoint, BeaconState state)
@@ -117,62 +254,44 @@ namespace Nethermind.BeaconNode.Storage
             return Task.CompletedTask;
         }
 
-        public ValueTask<BeaconBlock> GetBlockAsync(Hash32 signingRoot)
+        private string GetLogDirectory()
         {
-            if (!_blocks.TryGetValue(signingRoot, out BeaconBlock? block))
+            if (_logDirectoryPath == null)
             {
-                throw new ArgumentOutOfRangeException(nameof(signingRoot), signingRoot, "Block not found in store.");
-            }
-            return new ValueTask<BeaconBlock>(block!);
-        }
-
-        public ValueTask<BeaconState> GetBlockStateAsync(Hash32 signingRoot)
-        {
-            if (!_blockStates.TryGetValue(signingRoot, out BeaconState? state))
-            {
-                throw new ArgumentOutOfRangeException(nameof(signingRoot), signingRoot, "State not found in store.");
-            }
-            return new ValueTask<BeaconState>(state!);
-        }
-
-        public ValueTask<BeaconState?> GetCheckpointStateAsync(Checkpoint checkpoint, bool throwIfMissing)
-        {
-            if (!_checkpointStates.TryGetValue(checkpoint, out BeaconState? state))
-            {
-                if (throwIfMissing)
+                lock (_logDirectoryPathLock)
                 {
-                    throw new ArgumentOutOfRangeException(nameof(checkpoint), checkpoint,
-                        "Checkpoint state not found in store."); 
+                    if (_logDirectoryPath == null)
+                    {
+                        string basePath = _fileSystem.Path.Combine(_dataDirectory.ResolvedPath, InMemoryDirectory);
+                        IDirectoryInfo baseDirectoryInfo = _fileSystem.DirectoryInfo.FromDirectoryName(basePath);
+                        if (!baseDirectoryInfo.Exists)
+                        {
+                            baseDirectoryInfo.Create();
+                        }
+
+                        IDirectoryInfo[] existingLogDirectories = baseDirectoryInfo.GetDirectories("log*");
+                        int existingSuffix = existingLogDirectories.Select(x =>
+                            {
+                                if (int.TryParse(x.Name.Substring(3), out int suffix))
+                                {
+                                    return suffix;
+                                }
+
+                                return 0;
+                            })
+                            .DefaultIfEmpty()
+                            .Max();
+                        int newSuffix = existingSuffix + 1;
+                        string logDirectoryName = $"log{newSuffix:0000}";
+
+                        if (_logger.IsDebug()) LogDebug.CreatingMemoryStoreLogDirectory(_logger, logDirectoryName, baseDirectoryInfo.FullName, null);
+                        IDirectoryInfo logDirectory = baseDirectoryInfo.CreateSubdirectory(logDirectoryName);
+                        _logDirectoryPath = logDirectory.FullName;
+                    }
                 }
             }
-            return new ValueTask<BeaconState?>(state);
-        }
 
-        public async IAsyncEnumerable<Hash32> GetChildKeysAfterSlotAsync(Hash32 parent, Slot slot)
-        {
-            await Task.CompletedTask;
-            IEnumerable<Hash32> childKeys = _blocks
-                .Where(kvp =>
-                    kvp.Value.ParentRoot.Equals(parent)
-                    && kvp.Value.Slot > slot)
-                .Select(kvp => kvp.Key);
-            foreach (Hash32 childKey in childKeys)
-            {
-                yield return childKey;
-            }
-        }
-
-        public ValueTask<LatestMessage?> GetLatestMessageAsync(ValidatorIndex validatorIndex, bool throwIfMissing)
-        {
-            if (!_latestMessages.TryGetValue(validatorIndex, out LatestMessage? latestMessage))
-            {
-                if (throwIfMissing)
-                {
-                    throw new ArgumentOutOfRangeException(nameof(validatorIndex), validatorIndex,
-                        "Latest message not found in store.");
-                }
-            }
-            return new ValueTask<LatestMessage?>(latestMessage);
+            return _logDirectoryPath;
         }
     }
 }

@@ -16,11 +16,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.VisualBasic.FileIO;
+using Nethermind.BeaconNode.Eth1Bridge;
 using Nethermind.BeaconNode.MockedStart;
 using Nethermind.BeaconNode.Peering;
 using Nethermind.BeaconNode.Storage;
@@ -33,9 +36,7 @@ namespace Nethermind.BeaconNode.Host
 {
     public class Program
     {
-        private const string DefaultProductionYamlConfig = "mainnet";
-        private const string DefaultNonProductionYamlConfig = "minimal";
-        private const string YamlConfigKey = "config";
+        private const string _yamlConfigKey = "config";
 
         public static IHostBuilder CreateHostBuilder(string[] args) =>
             Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder(args)
@@ -65,18 +66,21 @@ namespace Nethermind.BeaconNode.Host
                     // Base JSON settings
                     config.AddJsonFile("appsettings.json");
 
-                    // Support standard YAML config files
-                    var yamlConfig = hostContext.Configuration[YamlConfigKey];
-                    if (string.IsNullOrWhiteSpace(yamlConfig))
+                    // Other settings are based on data directory; can be relative, or start with a special folder token,
+                    // e.g. "{CommonApplicationData}/Nethermind/BeaconHost/Production"
+                    DataDirectory dataDirectory = new DataDirectory(hostContext.Configuration.GetValue<string>(DataDirectory.Key));
+                        
+                    // Support standard YAML config files, if specified
+                    string yamlConfig = hostContext.Configuration[_yamlConfigKey];
+                    if (!string.IsNullOrWhiteSpace(yamlConfig))
                     {
-                        yamlConfig = hostContext.HostingEnvironment.IsProduction()
-                            ? DefaultProductionYamlConfig : DefaultNonProductionYamlConfig;
-                        config.AddInMemoryCollection(new Dictionary<string, string> { { YamlConfigKey, yamlConfig } });
+                        string yamlPath = Path.Combine(dataDirectory.ResolvedPath, $"{yamlConfig}.yaml");
+                        config.AddYamlFile(yamlPath, true, true);
                     }
-                    config.AddYamlFile($"{yamlConfig}.yaml", true, true);
-
+                    
                     // Override with environment specific JSON files
-                    config.AddJsonFile("appsettings." + hostContext.HostingEnvironment.EnvironmentName + ".json", true, true);
+                    string settingsPath = Path.Combine(dataDirectory.ResolvedPath, $"appsettings.json");
+                    config.AddJsonFile(settingsPath, true, true);
 
                     config.AddCommandLine(args);
                 })
@@ -86,6 +90,7 @@ namespace Nethermind.BeaconNode.Host
                     services.AddBeaconNode(hostContext.Configuration);
                     services.AddBeaconNodeStorage(hostContext.Configuration);
                     services.AddBeaconNodePeering(hostContext.Configuration);
+                    services.AddBeaconNodeEth1Bridge(hostContext.Configuration);
                     services.AddCryptographyService(hostContext.Configuration);
 
                     if (hostContext.Configuration.GetValue<ulong>("QuickStart:GenesisTime") > 0)
@@ -93,6 +98,7 @@ namespace Nethermind.BeaconNode.Host
                         services.AddBeaconNodeQuickStart(hostContext.Configuration);
                     }
                     
+                    // TODO: Add non-quickstart validator check
                     if (hostContext.Configuration.GetSection("QuickStart:ValidatorStartIndex").Exists())
                     {
                         services.AddHonestValidator(hostContext.Configuration);

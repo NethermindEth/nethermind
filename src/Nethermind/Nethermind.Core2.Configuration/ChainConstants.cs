@@ -26,10 +26,12 @@ namespace Nethermind.Core2.Configuration
 
         public Epoch FarFutureEpoch { get; } = new Epoch(ulong.MaxValue);
 
+        public Epoch GenesisEpoch { get; } = Epoch.Zero;
+
+        public Slot GenesisSlot { get; } = Slot.Zero;
+
         public int JustificationBitsLength { get; } = 4;
 
-        public ulong MaximumDepositContracts { get; } = (ulong)1 << (1 << 5);
-
-        public ulong SecondsPerDay { get; } = 24 * 60 * 60;
+        public ulong MaximumDepositContracts { get; } = (ulong) 1 << (1 << 5);
     }
 }

@@ -16,6 +16,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core2.Types;
 using Nethermind.HashLib;
@@ -25,75 +26,100 @@ namespace Nethermind.Core2.Crypto
     [DebuggerStepThrough]
     public static class Sha256
     {
-        private static readonly IHash Hash = HashFactory.Crypto.CreateSHA256();  
+        private static readonly IHash Hash = HashFactory.Crypto.CreateSHA256();
 
         /// <returns>
         ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>
         /// </returns>
-        public static readonly Hash32 OfAnEmptyString = InternalCompute(new byte[] { });
+        public static readonly Root RootOfAnEmptyString = new Root(ComputeBytes(new byte[0]));
+
+        public static readonly Bytes32 Bytes32OfAnEmptyString = new Bytes32(ComputeBytes(new byte[0]));
 
         /// <returns>
         ///     <string>0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347</string>
         /// </returns>
-        public static readonly Hash32 OfAnEmptySequenceRlp = InternalCompute(new byte[] {192});
+        public static readonly Bytes32 OfAnEmptySequenceRlp = InternalCompute(new byte[] {192});
 
+        /*
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
         /// </summary>
-        public static Hash32 EmptyTreeHash = InternalCompute(new byte[] {128});
-
+        public static Bytes32 EmptyTreeHash = InternalCompute(new byte[] {128});
+        */
+        
+        /*
         /// <returns>
         ///     <string>0x0000000000000000000000000000000000000000000000000000000000000000</string>
         /// </returns>
-        public static Hash32 Zero { get; } = Hash32.Zero;
-
-        [DebuggerStepThrough]
-        public static Hash32 Compute(byte[] input)
+        public static Bytes32 Zero { get; } = Bytes32.Zero;
+        */
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static byte[] ComputeBytes(ReadOnlySpan<byte> input)
         {
-            if (input == null || input.Length == 0)
-            {
-                return OfAnEmptyString;
-            }
-
-            return Compute(input.AsSpan());
+            // NOTE: API only supports bytes, so need allocation to copy to an array;
+            // the result is then a second array allocation.
+            // More efficient would be something like core TryComputeHash(ReadOnlySpan<byte> source, Span<byte> destination),
+            // which would allow zero allocation (if source and destination already allocated).
+            
+            // NOTE: Even for writeable Span<>, you still need to allocate an array: see https://docs.microsoft.com/en-us/dotnet/api/system.span-1.toarray
+            
+            return ComputeBytes(input.ToArray());
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static byte[] ComputeBytes(byte[] input)
+        {
+            return Hash.ComputeBytes(input).GetBytes();
+        }
+
+        // [DebuggerStepThrough]
+        // public static Bytes32 Compute(byte[] input)
+        // {
+        //     if (input == null || input.Length == 0)
+        //     {
+        //         return Bytes32OfAnEmptyString;
+        //     }
+        //
+        //     return Compute(input.AsSpan());
+        // }
+
         [DebuggerStepThrough]
-        public static Hash32 Compute(Span<byte> input)
+        public static Bytes32 Compute(Span<byte> input)
         {
             if (input == null || input.Length == 0)
             {
-                return OfAnEmptyString;
+                return Bytes32OfAnEmptyString;
             }
 
             return InternalCompute(input.ToArray());
         }
         
-        public static void ComputeInPlace(Span<byte> input)
-        {
-            if (input == null || input.Length == 0)
-            {
-                OfAnEmptyString.Bytes.AsSpan().CopyTo(input);
-            }
+        // public static void ComputeInPlace(Span<byte> input)
+        // {
+        //     if (input == null || input.Length == 0)
+        //     {
+        //         RootOfAnEmptyString.AsSpan().CopyTo(input);
+        //     }
+        //
+        //     byte[] bytes = Hash.ComputeBytes(input.ToArray()).GetBytes();
+        //     bytes.AsSpan().CopyTo(input);
+        // }
 
-            byte[] bytes = Hash.ComputeBytes(input.ToArray()).GetBytes();
-            bytes.AsSpan().CopyTo(input);
+        private static Bytes32 InternalCompute(byte[] input)
+        {
+            return new Bytes32(Hash.ComputeBytes(input).GetBytes());
         }
 
-        private static Hash32 InternalCompute(byte[] input)
-        {
-            return new Hash32(Hash.ComputeBytes(input).GetBytes());
-        }
-
-        [DebuggerStepThrough]
-        public static Hash32 Compute(string input)
-        {
-            if (string.IsNullOrWhiteSpace(input))
-            {
-                return OfAnEmptyString;
-            }
-
-            return InternalCompute(System.Text.Encoding.UTF8.GetBytes(input));
-        }
+        // [DebuggerStepThrough]
+        // public static Bytes32 Compute(string input)
+        // {
+        //     if (string.IsNullOrWhiteSpace(input))
+        //     {
+        //         return Bytes32OfAnEmptyString;
+        //     }
+        //
+        //     return InternalCompute(System.Text.Encoding.UTF8.GetBytes(input));
+        // }
     }
 }

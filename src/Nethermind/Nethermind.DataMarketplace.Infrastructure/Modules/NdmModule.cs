@@ -65,6 +65,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 services.Ecdsa,
                 services.BloomStorage,
                 new ReceiptsRecovery(),
+                logManager,
                 jsonRpcConfig.FindLogBlockDepthLimit);
             var dataAssetRlpDecoder = new DataAssetDecoder();
             var encoder = new AbiEncoder();

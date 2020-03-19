@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain.Validators
 
             return hashAsExpected;
         }
-        
+
         /// <summary>
         /// Note that this does not validate seal which is the responsibility of <see cref="ISealValidator"/>>
         /// </summary>
@@ -65,7 +65,7 @@ namespace Nethermind.Blockchain.Validators
         public bool Validate(BlockHeader header, BlockHeader parent, bool isOmmer = false)
         {
             bool hashAsExpected = ValidateHash(header);
-            
+
             IReleaseSpec spec = _specProvider.GetSpec(header.Number);
             bool extraDataValid = header.ExtraData.Length <= spec.MaximumExtraDataSize
                                   && (isOmmer
@@ -75,7 +75,7 @@ namespace Nethermind.Blockchain.Validators
                                       || Bytes.AreEqual(header.ExtraData, DaoExtraData));
             if (!extraDataValid)
             {
-                if(_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - DAO extra data not valid");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - DAO extra data not valid");
             }
 
             if (parent == null)
@@ -96,49 +96,60 @@ namespace Nethermind.Blockchain.Validators
                 return false;
             }
 
+            bool totalDifficultyCorrect = true;
+            if (header.TotalDifficulty != null)
+            {
+                if (parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Invalid total difficulty");
+                    totalDifficultyCorrect = false;
+                }
+            }
+
             // seal is validated when synchronizing so we can remove it from here - review and test
             bool sealParamsCorrect = _sealValidator.ValidateParams(parent, header);
             if (!sealParamsCorrect)
             {
-                if(_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
             }
 
             bool gasUsedBelowLimit = header.GasUsed <= header.GasLimit;
             if (!gasUsedBelowLimit)
             {
-                if(_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas used above gas limit");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas used above gas limit");
             }
 
             long maxGasLimitDifference = parent.GasLimit / spec.GasLimitBoundDivisor;
             bool gasLimitNotTooHigh = header.GasLimit <= parent.GasLimit + maxGasLimitDifference;
             if (!gasLimitNotTooHigh)
             {
-                if(_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too high");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too high");
             }
 
             bool gasLimitNotTooLow = header.GasLimit >= parent.GasLimit - maxGasLimitDifference
                                      && header.GasLimit >= spec.MinGasLimit;
             if (!gasLimitNotTooLow)
             {
-                if(_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too low");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too low");
             }
 
             // bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // described in the YellowPaper but not followed
             bool timestampMoreThanAtParent = header.Timestamp > parent.Timestamp;
             if (!timestampMoreThanAtParent)
             {
-                if(_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - timestamp before parent");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - timestamp before parent");
             }
 
             bool numberIsParentPlusOne = header.Number == parent.Number + 1;
             if (!numberIsParentPlusOne)
             {
-                if(_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - block number is not parent + 1");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - block number is not parent + 1");
             }
 
-            if (_logger.IsTrace)  _logger.Trace($"Validating block {header.ToString(BlockHeader.Format.Short)}, extraData {header.ExtraData.ToHexString(true)}");
+            if (_logger.IsTrace) _logger.Trace($"Validating block {header.ToString(BlockHeader.Format.Short)}, extraData {header.ExtraData.ToHexString(true)}");
 
             return
+                totalDifficultyCorrect &&
                 gasUsedBelowLimit &&
                 gasLimitNotTooLow &&
                 gasLimitNotTooHigh &&

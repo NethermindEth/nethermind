@@ -203,7 +203,7 @@ namespace Nethermind.Ssz
             dynamicOffset += value.Length;
         }
         
-        public static void Encode(Span<byte> span, Span<byte> value)
+        public static void Encode(Span<byte> span, ReadOnlySpan<byte> value)
         {
             const int typeSize = 1;
             if (span.Length != value.Length * typeSize)
@@ -244,7 +244,7 @@ namespace Nethermind.Ssz
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static uint DecodeUInt(Span<byte> span)
+        public static uint DecodeUInt(ReadOnlySpan<byte> span)
         {
             const int expectedLength = 4;
             if (span.Length != expectedLength)
@@ -256,7 +256,7 @@ namespace Nethermind.Ssz
         }
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ulong DecodeULong(Span<byte> span)
+        public static ulong DecodeULong(ReadOnlySpan<byte> span)
         {
             const int expectedLength = 8;
             if (span.Length != expectedLength)
@@ -371,20 +371,7 @@ namespace Nethermind.Ssz
             
             return MemoryMarshal.Cast<byte, ushort>(span);
         }
-        
-        public static Span<byte> DecodeBytes(Span<byte> span)
-        {
-            return span;
-        }
-        
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static byte[] DecodeBytes32(Span<byte> span, ref int offset)
-        {
-            byte[] bytes = span.Slice(offset, 32).ToArray();
-            offset += 32;
-            return bytes;
-        }
-        
+
         public static Span<bool> DecodeBools(Span<byte> span)
         {
             return MemoryMarshal.Cast<byte, bool>(span);

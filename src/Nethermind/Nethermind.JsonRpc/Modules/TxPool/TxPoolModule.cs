@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Blockchain.Find;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 
@@ -22,16 +23,18 @@ namespace Nethermind.JsonRpc.Modules.TxPool
 {
     public class TxPoolModule : ITxPoolModule
     {
+        private readonly IBlockFinder _blockFinder;
         private readonly ITxPoolInfoProvider _txPoolInfoProvider;
 
-        public TxPoolModule(ILogManager logManager, ITxPoolInfoProvider txPoolInfoProvider)
+        public TxPoolModule(IBlockFinder blockFinder, ITxPoolInfoProvider txPoolInfoProvider, ILogManager logManager)
         {
+            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _txPoolInfoProvider = txPoolInfoProvider ?? throw new ArgumentNullException(nameof(txPoolInfoProvider));
         }
 
         public ResultWrapper<TxPoolStatus> txpool_status()
         {
-            var poolInfo = _txPoolInfoProvider.GetInfo();
+            var poolInfo = _txPoolInfoProvider.GetInfo(_blockFinder.Head);
             var poolStatus = new TxPoolStatus(poolInfo);
          
             return ResultWrapper<TxPoolStatus>.Success(poolStatus);
@@ -39,13 +42,13 @@ namespace Nethermind.JsonRpc.Modules.TxPool
 
         public ResultWrapper<TxPoolContent> txpool_content()
         {
-            var poolInfo = _txPoolInfoProvider.GetInfo();
+            var poolInfo = _txPoolInfoProvider.GetInfo(_blockFinder.Head);
             return ResultWrapper<TxPoolContent>.Success(new TxPoolContent(poolInfo));
         }
 
         public ResultWrapper<TxPoolInspection> txpool_inspect()
         {
-            var poolInfo = _txPoolInfoProvider.GetInfo();
+            var poolInfo = _txPoolInfoProvider.GetInfo(_blockFinder.Head);
             return ResultWrapper<TxPoolInspection>.Success(new TxPoolInspection(poolInfo));
         }
     }

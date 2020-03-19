@@ -47,7 +47,7 @@ namespace Ethereum.VM.Test
         private IBlockhashProvider _blockhashProvider;
         private IStateProvider _stateProvider;
         private ISpecProvider _specProvider;
-        private ILogManager _logManager = NullLogManager.Instance;
+        private ILogManager _logManager = LimboLogs.Instance;
 
         [SetUp]
         public void Setup()

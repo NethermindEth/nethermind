@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>netcoreapp3.0</TargetFramework>
+        <TargetFramework>netcoreapp3.1</TargetFramework>
         <Product>Nethermind Eth2.0 blockchain</Product>
         <Authors>sgryphon</Authors>
         <Copyright>Copyright © 2019 Demerzel Solutions Limited</Copyright>
@@ -15,10 +15,7 @@
         <Content Include="..\Nethermind.HonestValidator.Host\appsettings.json" Link="appsettings.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
-        <Content Include="..\Nethermind.HonestValidator.Host\appsettings.Development.json" Link="appsettings.Development.json">
-            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-        </Content>
-        <Content Include="..\Nethermind.HonestValidator.Host\appsettings.Production.json" Link="appsettings.Production.json">
+        <Content Include="..\Nethermind.HonestValidator.Host\Development\appsettings.json" Link="Development/appsettings.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
     </ItemGroup>

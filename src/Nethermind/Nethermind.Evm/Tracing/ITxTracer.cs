@@ -43,6 +43,10 @@ namespace Nethermind.Evm.Tracing
         bool IsTracingMemory { get; }
         bool IsTracingInstructions { get; }
         /// <summary>
+        /// Updates of refund counter
+        /// </summary>
+        bool IsTracingRefunds { get; }
+        /// <summary>
         /// Code deployment
         /// </summary>
         bool IsTracingCode { get; }
@@ -98,8 +102,14 @@ namespace Nethermind.Evm.Tracing
 
         void ReportByteCode(byte[] byteCode);
 
-        void ReportRefundForVmTrace(long refund, long gasAvailable);
+        /// <summary>
+        /// Special case for VM trace in Parity but we consider removing support for it
+        /// </summary>
+        /// <param name="refund"></param>
+        /// <param name="gasAvailable"></param>
+        void ReportGasUpdateForVmTrace(long refund, long gasAvailable);
 
         void ReportRefund(long refund);
+        void ReportExtraGasPressure(long extraGasPressure);
     }
 }

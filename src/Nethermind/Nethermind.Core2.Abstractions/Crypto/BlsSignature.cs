@@ -21,42 +21,45 @@ namespace Nethermind.Core2.Crypto
 {
     public class BlsSignature : IEquatable<BlsSignature>
     {
-        public BlsSignature(byte[] bytes)
+        public const int Length = 96;
+
+        public static readonly BlsSignature Zero = new BlsSignature(new byte[Length]);
+
+        private BlsSignature(byte[] bytes)
         {
             Bytes = bytes;
         }
 
-        public const int Length = 96;
+        public BlsSignature(ReadOnlySpan<byte> span)
+        {
+            if (span.Length != Length)
+            {
+                throw new ArgumentOutOfRangeException(nameof(span), span.Length,
+                    $"{nameof(Root)} must have exactly {Length} bytes");
+            }
+            Bytes = span.ToArray();
+        }
+
+        /// <summary>
+        /// Creates a BlsSignature directly using the provided buffer; it is up to the caller to ensure the buffer is unique.
+        /// </summary>
+        public static BlsSignature WithBuffer(byte[] bytes)
+        {
+            return new BlsSignature(bytes);
+        }
 
         public byte[] Bytes { get; }
-
-        public static BlsSignature Empty = new BlsSignature(new byte[Length]);
-        
-        public bool Equals(BlsSignature? other)
-        {
-            return other != null && Core2.Bytes.AreEqual(Bytes, other.Bytes);
-        }
-        
-        public static bool operator !=(BlsSignature? left, BlsSignature? right)
-        {
-            return !(left == right);
-        }
-
-        public static bool operator ==(BlsSignature? left, BlsSignature? right)
-        {
-            if (left is null)
-            {
-                return right is null;
-            }
-            
-            return left.Equals(right);
-        }
 
         public ReadOnlySpan<byte> AsSpan()
         {
             return new ReadOnlySpan<byte>(Bytes);
         }
-        
+
+        public bool Equals(BlsSignature? other)
+        {
+            return other != null && Core2.Bytes.AreEqual(Bytes, other.Bytes);
+        }
+
         public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
@@ -67,6 +70,21 @@ namespace Nethermind.Core2.Crypto
         public override int GetHashCode()
         {
             return Bytes != null ? BinaryPrimitives.ReadInt32LittleEndian(Bytes) : 0;
+        }
+
+        public static bool operator ==(BlsSignature? left, BlsSignature? right)
+        {
+            if (left is null)
+            {
+                return right is null;
+            }
+
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(BlsSignature? left, BlsSignature? right)
+        {
+            return !(left == right);
         }
 
         public override string ToString()

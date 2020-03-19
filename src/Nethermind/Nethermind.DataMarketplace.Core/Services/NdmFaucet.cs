@@ -87,6 +87,8 @@ namespace Nethermind.DataMarketplace.Core.Services
             });
         }
 
+        public bool IsInitialized => _initialized;
+
         public async Task<FaucetResponse> TryRequestEthAsync(string node, Address address, UInt256 value)
         {
             if (!_enabled)
@@ -182,7 +184,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 var transaction = new Transaction
                 {
                     Value = value,
-                    GasLimit = 21000,
+                    GasLimit = Transaction.BaseTxGasCost,
                     GasPrice = 20.GWei(),
                     To = address,
                     SenderAddress = _faucetAddress,

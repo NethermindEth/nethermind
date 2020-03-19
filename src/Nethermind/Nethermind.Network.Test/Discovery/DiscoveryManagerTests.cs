@@ -57,7 +57,7 @@ namespace Nethermind.Network.Test.Discovery
             NetworkNodeDecoder.Init();
             var privateKey = new PrivateKey(TestPrivateKeyHex);
             _publicKey = privateKey.PublicKey;
-            var logManager = NullLogManager.Instance;
+            var logManager = LimboLogs.Instance;
 
             IDiscoveryConfig discoveryConfig = new DiscoveryConfig();
             discoveryConfig.PongTimeout = 100;
