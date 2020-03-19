@@ -25,6 +25,7 @@ namespace Nethermind.Blockchain.Receipts
         Keccak Find(Keccak txHash);
         TxReceipt[] Get(Block block);
         TxReceipt[] Get(Keccak blockHash);
+        bool CanGetReceiptsByHash(long blockNumber);
         public TxReceipt Get(Block block, Keccak txHash) => Get(block).First(r => r.TxHash == txHash);
     }
 }

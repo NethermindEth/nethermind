@@ -35,7 +35,14 @@ namespace Nethermind.Blockchain.Receipts
         
         public TxReceipt[] Get(Block block) => Array.Empty<TxReceipt>();
         public TxReceipt[] Get(Keccak blockHash) => Array.Empty<TxReceipt>();
-        public long? LowestInsertedReceiptBlock => long.MaxValue;
+        public bool CanGetReceiptsByHash(long blockNumber) => true;
+
+        public long? LowestInsertedReceiptBlock
+        {
+            get => long.MaxValue;
+            set { }
+        }
+
         public long MigratedBlockNumber { get; set; } = 0;
     }
 }

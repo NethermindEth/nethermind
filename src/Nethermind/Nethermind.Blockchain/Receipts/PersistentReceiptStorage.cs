@@ -115,8 +115,10 @@ namespace Nethermind.Blockchain.Receipts
         public TxReceipt[] Get(Keccak blockHash)
         {
             var receiptsData = _blocksDb.Get(blockHash);
-            return receiptsData != null ? Rlp.DecodeArray<TxReceipt>(new RlpStream(receiptsData)) : null;
+            return receiptsData != null ? Rlp.DecodeArray<TxReceipt>(new RlpStream(receiptsData)) : Array.Empty<TxReceipt>();
         }
+
+        public bool CanGetReceiptsByHash(long blockNumber) => blockNumber >= MigratedBlockNumber;
 
         public void Insert(Block block, params TxReceipt[] txReceipts)
         {
@@ -138,13 +140,21 @@ namespace Nethermind.Blockchain.Receipts
                 _transactionDb.Set(txHash, block.Hash.Bytes);
             }
 
-            LowestInsertedReceiptBlock = Math.Min(LowestInsertedReceiptBlock ?? long.MaxValue, blockNumber);
+            if (blockNumber < (LowestInsertedReceiptBlock ?? long.MaxValue))
+            {
+                LowestInsertedReceiptBlock = blockNumber;
+            }
+
+            if (blockNumber < MigratedBlockNumber)
+            {
+                MigratedBlockNumber = blockNumber;
+            }
         }
 
         public long? LowestInsertedReceiptBlock
         {
             get => _lowestInsertedReceiptBlock;
-            private set
+            set
             {
                 _lowestInsertedReceiptBlock = value;
                 if (value.HasValue)

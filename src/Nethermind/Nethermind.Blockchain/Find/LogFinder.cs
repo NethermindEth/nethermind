@@ -95,8 +95,7 @@ namespace Nethermind.Blockchain.Find
             return FilterBlocks(filter, fromBlock.Number, toBlock.Number)
                 .AsParallel() // can yield big performance improvements 
                 .AsOrdered() // we want to keep block order
-                .Select(FindBlockHash)
-                .SelectMany(blockHash => FindLogsInBlock(filter, blockHash));
+                .SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHash(blockNumber), blockNumber));
         }
 
         private bool CanUseBloomDatabase(BlockHeader toBlock, BlockHeader fromBlock) => _bloomStorage.ContainsRange(fromBlock.Number, toBlock.Number) && _blockFinder.IsMainChain(toBlock) && _blockFinder.IsMainChain(fromBlock);
@@ -123,15 +122,37 @@ namespace Nethermind.Blockchain.Find
 
         private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, BlockHeader block) =>
             filter.Matches(block.Bloom)
-                ? FindLogsInBlock(filter, block.Hash)
+                ? FindLogsInBlock(filter, block.Hash, block.Number)
                 : Enumerable.Empty<FilterLog>();
 
-        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Keccak blockHash)
+        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Keccak blockHash, long blockNumber)
         {
+            TxReceipt[] GetReceipts(Keccak hash, long number, out bool needRecover)
+            {
+                needRecover = _receiptFinder.CanGetReceiptsByHash(number);
+                if (needRecover)
+                {
+                    return _receiptFinder.Get(hash);
+                }
+                else
+                {
+                    var block = _blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.None);
+                    return block == null ? null : _receiptFinder.Get(block);
+                }
+            }
+            
+            void RecoverReceiptsData(Keccak hash, TxReceipt[] receipts)
+            {
+                var block = _blockFinder.FindBlock(hash, BlockTreeLookupOptions.None);
+                if (block != null)
+                {
+                    _receiptsRecovery.TryRecover(block, receipts);
+                }
+            }
+
             if (blockHash != null)
             {
-                bool needRecover = true;
-                var receipts = _receiptFinder.Get(blockHash);
+                var receipts = GetReceipts(blockHash, blockNumber, out var needRecover);
                 long logIndexInBlock = 0;
                 if (receipts != null)
                 {
@@ -148,12 +169,7 @@ namespace Nethermind.Blockchain.Find
                                 {
                                     if (needRecover)
                                     {
-                                        var block = _blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.None);
-                                        if (block != null)
-                                        {
-                                            _receiptsRecovery.TryRecover(block, receipts);
-                                        }
-
+                                        RecoverReceiptsData(blockHash, receipts);
                                         needRecover = false;
                                     }
                                     

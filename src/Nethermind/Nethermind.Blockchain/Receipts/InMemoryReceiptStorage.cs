@@ -41,6 +41,8 @@ namespace Nethermind.Blockchain.Receipts
             return receipts;
         }
 
+        public bool CanGetReceiptsByHash(long blockNumber) => true;
+
         public void Insert(Block block, params TxReceipt[] txReceipts)
         {
             _receipts[block.Hash] = txReceipts;
@@ -53,7 +55,7 @@ namespace Nethermind.Blockchain.Receipts
             LowestInsertedReceiptBlock = block.Number;
         }
 
-        public long? LowestInsertedReceiptBlock { get; private set; }
+        public long? LowestInsertedReceiptBlock { get; set; }
 
         public long MigratedBlockNumber { get; set; } = 0;
 
