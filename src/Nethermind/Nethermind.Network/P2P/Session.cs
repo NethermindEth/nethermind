@@ -371,7 +371,7 @@ namespace Nethermind.Network.P2P
             DisconnectMetrics.Update(disconnectType, disconnectReason);
             if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportDisconnect(Node.Host, $"{disconnectType} {disconnectReason} {details}");
 
-            if (_logger.IsWarn) _logger.Warn($"{this} invoking 'Disconnecting' event {disconnectReason} {disconnectType} {details}");
+            if (_logger.IsDebug) _logger.Debug($"{this} invoking 'Disconnecting' event {disconnectReason} {disconnectType} {details}");
             Disconnecting?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType, details));
 
             //Possible in case of disconnect before p2p initialization
