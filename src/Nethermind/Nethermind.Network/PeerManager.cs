@@ -930,13 +930,18 @@ namespace Nethermind.Network
             int countToRemove = candidates.Count - _networkConfig.MaxCandidatePeerCount;
             Peer[] failedValidationCandidates = candidates.Where(x => _stats.HasFailedValidation(x.Node))
                 .OrderBy(x => _stats.GetCurrentReputation(x.Node)).ToArray();
-            Peer[] otherCandidates = candidates.Except(failedValidationCandidates).OrderBy(x => _stats.GetCurrentReputation(x.Node)).ToArray();
-            Peer[] nodesToRemove = failedValidationCandidates.Take(countToRemove).ToArray();
+            Peer[] otherCandidates = candidates.Except(failedValidationCandidates).Except(_activePeers.Values).OrderBy(x => _stats.GetCurrentReputation(x.Node)).ToArray();
+            Peer[] nodesToRemove = failedValidationCandidates.Length <= countToRemove
+                ? failedValidationCandidates
+                : failedValidationCandidates.Take(countToRemove).ToArray();
             int failedValidationRemovedCount = nodesToRemove.Length;
             int remainingCount = countToRemove - failedValidationRemovedCount;
             if (remainingCount > 0)
             {
-                nodesToRemove = nodesToRemove.Concat(otherCandidates.Take(remainingCount).ToArray()).ToArray();
+                Peer[] otherToRemove = otherCandidates.Take(remainingCount).ToArray();
+                nodesToRemove = nodesToRemove.Length == 0
+                    ? otherToRemove :
+                    nodesToRemove.Concat(otherToRemove).ToArray();
             }
 
             if (nodesToRemove.Length > 0)
