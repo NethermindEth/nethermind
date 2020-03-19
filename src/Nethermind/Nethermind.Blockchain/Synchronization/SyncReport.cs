@@ -259,7 +259,6 @@ namespace Nethermind.Blockchain.Synchronization
         {
             if (FullSyncBlocksKnown == 0)
             {
-                _logger.Info($"{prefix} | Waiting for peers to learn about the head number.");
                 return;
             }
 
