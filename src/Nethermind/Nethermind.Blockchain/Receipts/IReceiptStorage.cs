@@ -16,7 +16,6 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Receipts
 {

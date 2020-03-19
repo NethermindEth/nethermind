@@ -14,9 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core;
 using Nethermind.DataMarketplace.Core.Domain;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Network.P2P;
 
 namespace Nethermind.DataMarketplace.Subprotocols.Messages

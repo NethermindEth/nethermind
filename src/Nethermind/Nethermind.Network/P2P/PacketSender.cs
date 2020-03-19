@@ -16,10 +16,8 @@
 
 using System;
 using DotNetty.Buffers;
-using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
-using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P
 {

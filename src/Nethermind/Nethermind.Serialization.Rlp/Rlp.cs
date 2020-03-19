@@ -17,7 +17,6 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.IO;
 using System.Numerics;
 using System.Reflection;
 using Nethermind.Core;

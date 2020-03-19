@@ -29,7 +29,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
-using Nethermind.State;
 using Nethermind.Store.Bloom;
 using Nethermind.TxPool;
 using NSubstitute;

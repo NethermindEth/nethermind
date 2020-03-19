@@ -7,7 +7,7 @@
     <RootNamespace>Nethermind.Benchmarks</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="BenchmarkDotNet" Version="0.11.5" />
+    <PackageReference Include="BenchmarkDotNet" Version="0.12.0" />
     <PackageReference Include="HexMate" Version="0.0.2" />
   </ItemGroup>
   <ItemGroup>

@@ -53,7 +53,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             return new FaucetRequestDetails(host, address, value, date, transactionHash);
         }
 
-        public Serialization.Rlp.Rlp Encode(FaucetRequestDetails? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Serialization.Rlp.Rlp Encode(FaucetRequestDetails item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {

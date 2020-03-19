@@ -21,7 +21,6 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Newtonsoft.Json;
@@ -60,7 +59,7 @@ namespace Nethermind.Network.StaticNodes
             if (_logger.IsInfo) _logger.Info($"Loaded {nodes.Length} static nodes from file: {Path.GetFullPath(_staticNodesPath)}");
             if (nodes.Length != 0)
             {
-                if (_logger.IsInfo) _logger.Info($"Static nodes: {Environment.NewLine}{data}");
+                if (_logger.IsDebug) _logger.Debug($"Static nodes: {Environment.NewLine}{data}");
             }
             
             _nodes = new ConcurrentDictionary<PublicKey, NetworkNode>(nodes.Select(n => new NetworkNode(n))
@@ -76,7 +75,7 @@ namespace Nethermind.Network.StaticNodes
                 return false;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Static node was added: {enode}");
+            if (_logger.IsInfo) _logger.Info($"Static node added: {enode}");
             NodeAdded?.Invoke(this, new NetworkNodeEventArgs(node));
             if (updateFile)
             {

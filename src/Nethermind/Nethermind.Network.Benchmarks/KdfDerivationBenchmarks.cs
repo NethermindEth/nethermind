@@ -17,13 +17,14 @@
 using System;
 using System.Linq;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.Crypto;
 
 namespace Nethermind.Network.Benchmarks
 {
     [MemoryDiagnoser]
-    [CoreJob(true)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class KdfDerivationBenchmarks
     {
         private static byte[] z = Bytes.FromHexString("22ca1111ca383ef9d090ca567245eb72f80d8730fd4e1507e9a23bcdb3bb5a87");

@@ -17,6 +17,7 @@
 using System;
 using System.Linq;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
@@ -29,7 +30,7 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Benchmarks.Rlp
 {
     [MemoryDiagnoser]
-    [CoreJob(baseline: true)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class RlpEncodeHeaderBenchmark
     {
         private static HeaderDecoder _headerDecoder = new HeaderDecoder();

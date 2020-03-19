@@ -15,9 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Confluent.Kafka;
-using Confluent.Kafka.Serialization;
+using Confluent.Kafka.SyncOverAsync;
+using Confluent.SchemaRegistry;
+using Confluent.SchemaRegistry.Serdes;
 using Nethermind.Logging;
 using Nethermind.PubSub.Kafka.Avro.Models;
 
@@ -30,9 +33,8 @@ namespace Nethermind.PubSub.Kafka.Avro
         private readonly string _schemaRegistryUrl;
         private readonly IAvroMapper _mapper;
         private readonly ILogger _logger;
-        private Producer<Null, Block> _producerBlocks;
-        private Producer<Null, FullTransaction> _producerTransactions;
-        private AvroSerdeProvider _serdeProvider;
+        private IProducer<Null, Block> _producerBlocks;
+        private IProducer<Null, FullTransaction> _producerTransactions;
 
         public AvroTypeProducer(ProducerConfig config, string schemaRegistryUrl, IAvroMapper mapper, ILogger logger)
         {
@@ -50,14 +52,22 @@ namespace Nethermind.PubSub.Kafka.Avro
             }
             try
             {
-                _serdeProvider = new AvroSerdeProvider(new AvroSerdeProviderConfig
-                    {SchemaRegistryUrl = _schemaRegistryUrl});
-                _producerBlocks =
-                    new Producer<Null, Block>(config, null, _serdeProvider.GetSerializerGenerator<Block>());
-                _producerTransactions = new Producer<Null, FullTransaction>(config, null,
-                    _serdeProvider.GetSerializerGenerator<FullTransaction>());
-                _producerBlocks.OnError += (s, e) => _logger.Error(e.ToString());
-                _producerTransactions.OnError += (s, e) => _logger.Error(e.ToString());
+                CachedSchemaRegistryClient schemaRegistry = new CachedSchemaRegistryClient(new[]
+                {
+                    new KeyValuePair<string, string>(SchemaRegistryConfig.PropertyNames.SchemaRegistryUrl, _schemaRegistryUrl)
+                });
+
+                var blockAvroSerializer = new AvroSerializer<Block>(schemaRegistry).AsSyncOverAsync();
+                var txAvroSerializer = new AvroSerializer<FullTransaction>(schemaRegistry).AsSyncOverAsync();
+                ProducerBuilder<Null, Block> blockProducerBuilder = new ProducerBuilder<Null, Block>(config);
+                blockProducerBuilder.SetValueSerializer(blockAvroSerializer);
+                blockProducerBuilder.SetErrorHandler((s, e) => _logger.Error(e.ToString()));
+                ProducerBuilder<Null, FullTransaction> txProducerBuilder = new ProducerBuilder<Null, FullTransaction>(config);
+                txProducerBuilder.SetValueSerializer(txAvroSerializer);
+                txProducerBuilder.SetErrorHandler((s, e) => _logger.Error(e.ToString()));
+                
+                _producerBlocks = blockProducerBuilder.Build();
+                _producerTransactions = txProducerBuilder.Build();
                 _initialized = true;
                 if (_logger.IsDebug)
                 {
@@ -123,7 +133,6 @@ namespace Nethermind.PubSub.Kafka.Avro
 
             _producerBlocks?.Dispose();
             _producerTransactions?.Dispose();
-            _serdeProvider?.Dispose();
         }
     }
 }

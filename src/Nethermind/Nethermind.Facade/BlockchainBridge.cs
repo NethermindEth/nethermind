@@ -31,7 +31,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Store;
 using Nethermind.Store.Bloom;
 using Nethermind.Trie;
 using Nethermind.TxPool;

@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
@@ -31,7 +30,6 @@ using Nethermind.Config;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Network.StaticNodes;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
@@ -161,6 +159,12 @@ namespace Nethermind.Network
         {
             foreach (Peer peer in _peerLoader.LoadPeers(_staticNodesManager.Nodes))
             {
+                if (peer.Node.Id == _rlpxPeer.LocalNodeId)
+                {
+                    if (_logger.IsWarn) _logger.Warn("Skipping a static peer with same ID as this node");
+                    continue;
+                }
+                
                 if (peer.Node.IsStatic)
                 {
                     _staticNodes.TryAdd(peer.Node.Id, peer);
@@ -774,7 +778,7 @@ namespace Nethermind.Network
                     {
                         peer.OutSession = session;
                         if (_logger.IsDebug) _logger.Debug($"Disconnecting an existing {session} - {directionToKeep} session to replace");
-                        peer.OutSession?.InitiateDisconnect(DisconnectReason.AlreadyConnected, "same");
+                        peer.InSession?.InitiateDisconnect(DisconnectReason.AlreadyConnected, "same");
                     }
                 }
             }

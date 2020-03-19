@@ -50,7 +50,6 @@ using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Stats;
-using Nethermind.Store;
 using Nethermind.Store.Bloom;
 using Nethermind.TxPool;
 using Nethermind.Wallet;

@@ -72,7 +72,7 @@ namespace Nethermind.Db.Rocks
                 DbOptions options = BuildOptions(dbConfig);
                 
                 // ReSharper disable once VirtualMemberCallInConstructor
-                if (_logger.IsInfo) _logger.Info($"Loading {Name.PadRight(16)} from {fullPath} with max memory footprint of {_maxThisDbSize / 1024 / 1024}MB");
+                if (_logger.IsDebug) _logger.Debug($"Loading DB {Name.PadRight(13)} from {fullPath} with max memory footprint of {_maxThisDbSize / 1024 / 1024}MB");
                 Db = DbsByPath.GetOrAdd(fullPath, path => Open(options, path, columnFamilies));
             }
             catch (DllNotFoundException e) when (e.Message.Contains("libdl"))
@@ -220,7 +220,7 @@ namespace Nethermind.Db.Rocks
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
         {
-            using Iterator iterator = CreateIterator(ordered);
+            using Iterator iterator = Db.NewIterator();
             return GetAllCore(iterator);
         }
 
@@ -245,6 +245,8 @@ namespace Nethermind.Db.Rocks
                 yield return iterator.Value();
                 iterator.Next();
             }
+            
+            iterator.Dispose();
         }
         
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAllCore(Iterator iterator)
@@ -255,6 +257,8 @@ namespace Nethermind.Db.Rocks
                 yield return new KeyValuePair<byte[], byte[]>(iterator.Key(), iterator.Value());
                 iterator.Next();
             }
+            
+            iterator.Dispose();
         }
 
 

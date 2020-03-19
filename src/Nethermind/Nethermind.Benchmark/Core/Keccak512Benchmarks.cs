@@ -16,6 +16,7 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -24,7 +25,7 @@ using Nethermind.HashLib;
 namespace Nethermind.Benchmarks.Core
 {
     [MemoryDiagnoser]
-    [CoreJob(baseline: true)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class Keccak512Benchmarks
     {
         private static HashLib.Crypto.SHA3.Keccak512 _hash = HashFactory.Crypto.SHA3.CreateKeccak512();

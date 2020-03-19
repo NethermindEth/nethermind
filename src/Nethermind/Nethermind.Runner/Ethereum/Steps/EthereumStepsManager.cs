@@ -218,7 +218,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     }
                     else
                     {
-                        if (_logger.IsInfo) _logger.Info($"Step {step.GetType().Name.PadRight(24)} executed in {stopwatch.ElapsedMilliseconds}ms");
+                        if (_logger.IsDebug) _logger.Debug($"Step {step.GetType().Name.PadRight(24)} executed in {stopwatch.ElapsedMilliseconds}ms");
                         _hasFinishedExecution[stepBaseType] = true;
                     }
                 });

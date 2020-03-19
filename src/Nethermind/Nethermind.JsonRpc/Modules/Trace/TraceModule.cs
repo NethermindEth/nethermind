@@ -22,11 +22,8 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
-using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.JsonRpc.Modules.Trace

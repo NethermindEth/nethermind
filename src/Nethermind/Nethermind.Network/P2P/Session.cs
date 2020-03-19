@@ -22,7 +22,6 @@ using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats.Model;

@@ -35,7 +35,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
-using Nethermind.State;
 using Nethermind.Store.Bloom;
 using Nethermind.TxPool;
 
@@ -141,7 +140,7 @@ namespace Nethermind.Blockchain
             }
 
             if (_logger.IsInfo) _logger.Info($"Block tree initialized, last processed is {Head?.ToString(BlockHeader.Format.Short) ?? "0"}, best queued is {BestSuggestedHeader?.Number.ToString() ?? "0"}, best known is {BestKnownNumber}, lowest inserted header {LowestInsertedHeader?.Number}, body {LowestInsertedBody?.Number}");
-            ThisNodeInfo.AddInfo("Chain        :", $"{Nethermind.Core.ChainId.GetChainName(ChainId)}");
+            ThisNodeInfo.AddInfo("Chain ID     :", $"{Nethermind.Core.ChainId.GetChainName(ChainId)}");
             ThisNodeInfo.AddInfo("Chain head   :", $"{Head?.ToString(BlockHeader.Format.Short) ?? "0"}");
         }
 

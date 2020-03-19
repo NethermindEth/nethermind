@@ -28,13 +28,6 @@ Based on the Herumi cryptography library.
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="GitVersionTask" Version="5.1.3">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-  </ItemGroup>
   
   <ItemGroup>
     <None Include="runtimes\linux-x64\native\libbls384_256.so" Link="libbls384_256.so">

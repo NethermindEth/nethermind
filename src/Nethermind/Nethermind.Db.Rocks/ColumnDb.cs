@@ -83,7 +83,7 @@ namespace Nethermind.Db.Rocks
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false)
         {
-            using Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
+            Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
             return _mainDb.GetAllValuesCore(iterator);
         }
 

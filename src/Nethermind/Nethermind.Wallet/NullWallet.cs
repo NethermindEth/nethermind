@@ -19,7 +19,6 @@ using System.Security;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Logging;
 
 namespace Nethermind.Wallet
 {

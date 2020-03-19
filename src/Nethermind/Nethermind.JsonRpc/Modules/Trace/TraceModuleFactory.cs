@@ -17,21 +17,13 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Validators;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Specs;
-using Nethermind.Facade;
 using Nethermind.Logging;
-using Nethermind.PubSub.Models;
-using Nethermind.Store;
-using Nethermind.Wallet;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Trace

@@ -16,7 +16,6 @@
 
 using System;
 using DotNetty.Buffers;
-using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx

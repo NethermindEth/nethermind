@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Logging;
 using Nethermind.Stats;
@@ -26,25 +27,34 @@ namespace Nethermind.Blockchain.Test.Synchronization
     [TestFixture]
     public class SyncReportTest
     {
-        [Test]
-        public void Smoke()
+        [TestCase(true, false)]
+        [TestCase(true, true)]
+        [TestCase(false, false)]
+        public void Smoke(bool fastSync, bool fastBlocks)
         {
-            SyncReport syncReport = new SyncReport(Substitute.For<IEthSyncPeerPool>(), Substitute.For<INodeStatsManager>(), new SyncConfig(), Substitute.For<ISyncProgressResolver>(), Substitute.For<ISyncModeSelector>(),  LimboLogs.Instance, 10);
-            Thread.Sleep(20);
-            syncReport.CurrentSyncMode = SyncMode.FastSync;
-            Thread.Sleep(20);
-            syncReport.CurrentSyncMode = SyncMode.Full;
-            Thread.Sleep(20);
-            syncReport.CurrentSyncMode = SyncMode.FastBlocks;
-            Thread.Sleep(20);
-            syncReport.CurrentSyncMode = SyncMode.StateNodes;
-            Thread.Sleep(20);
-            syncReport.CurrentSyncMode = SyncMode.WaitForProcessor;
-            Thread.Sleep(20);
+            ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
+            IEthSyncPeerPool pool = Substitute.For<IEthSyncPeerPool>();
+            pool.UsefulPeerCount.Returns(1);
+            
+            Queue<SyncMode> _syncModes = new Queue<SyncMode>();
+            _syncModes.Enqueue(SyncMode.NotStarted);
+            _syncModes.Enqueue(SyncMode.DbSync);
+            _syncModes.Enqueue(SyncMode.FastSync);
+            _syncModes.Enqueue(SyncMode.Full);
+            _syncModes.Enqueue(SyncMode.FastBlocks);
+            _syncModes.Enqueue(SyncMode.StateNodes);
+            _syncModes.Enqueue(SyncMode.WaitForProcessor);
+
+            SyncConfig syncConfig = new SyncConfig();
+            syncConfig.FastBlocks = fastBlocks;
+            syncConfig.FastSync = fastSync;
+            
+            SyncReport syncReport = new SyncReport(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<ISyncProgressResolver>(), selector,  LimboLogs.Instance, 10);
+            selector.Current.Returns((ci) => _syncModes.Count > 0 ? _syncModes.Dequeue() : SyncMode.WaitForProcessor);
+            Thread.Sleep(200);
             syncReport.FastBlocksHeaders.MarkEnd();
             syncReport.FastBlocksBodies.MarkEnd();
             syncReport.FastBlocksReceipts.MarkEnd();
-            syncReport.CurrentSyncMode = SyncMode.WaitForProcessor;
             Thread.Sleep(20);
         }
     }

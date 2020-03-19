@@ -32,7 +32,6 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Stats.Model;
-using Nethermind.Store;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Consensus;

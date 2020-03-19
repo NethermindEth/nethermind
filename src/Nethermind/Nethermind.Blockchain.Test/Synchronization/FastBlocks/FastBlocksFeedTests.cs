@@ -25,7 +25,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
-using Nethermind.Store;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.FastBlocks;
 using Nethermind.Blockchain.Synchronization.FastSync;

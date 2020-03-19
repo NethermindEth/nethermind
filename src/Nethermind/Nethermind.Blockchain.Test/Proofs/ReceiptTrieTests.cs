@@ -22,7 +22,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.State.Proofs;
-using Nethermind.Store;
 using Nethermind.Trie;
 using NUnit.Framework;
 

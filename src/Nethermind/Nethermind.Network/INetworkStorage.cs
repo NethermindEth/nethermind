@@ -16,7 +16,6 @@
 
 using System.Collections.Generic;
 using Nethermind.Config;
-using Nethermind.Core;
 
 namespace Nethermind.Network
 {

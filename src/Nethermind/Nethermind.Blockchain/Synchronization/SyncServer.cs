@@ -17,7 +17,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Threading;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
@@ -29,7 +28,6 @@ using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
-using Nethermind.State;
 
 namespace Nethermind.Blockchain.Synchronization
 {
