@@ -24,7 +24,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
-using Nethermind.State;
 
 namespace Nethermind.Blockchain.Synchronization.BeamSync
 {

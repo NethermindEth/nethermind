@@ -20,7 +20,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Consumers.Sessions.Domain;
 using Nethermind.DataMarketplace.Consumers.Sessions.Queries;
 using Nethermind.DataMarketplace.Consumers.Sessions.Repositories;
@@ -28,7 +27,6 @@ using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.Repositories
 {

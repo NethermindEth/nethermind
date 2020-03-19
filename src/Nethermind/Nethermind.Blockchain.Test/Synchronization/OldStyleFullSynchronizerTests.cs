@@ -29,9 +29,7 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Network;
 using Nethermind.Stats;
-using Nethermind.Store;
 using NSubstitute;
 using NUnit.Framework;
 

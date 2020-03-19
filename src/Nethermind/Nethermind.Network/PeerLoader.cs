@@ -18,7 +18,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Stats;

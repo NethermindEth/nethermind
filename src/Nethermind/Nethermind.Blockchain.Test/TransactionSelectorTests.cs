@@ -17,7 +17,6 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using Castle.Components.DictionaryAdapter;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Specs.Forks;
@@ -26,11 +25,9 @@ using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Store;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
-using NUnit.Framework.Internal;
 
 namespace Nethermind.Blockchain.Test
 {

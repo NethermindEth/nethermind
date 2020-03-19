@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -29,7 +28,6 @@ using Nethermind.Facade.Proxy.Models;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
-using Nethermind.Store;
 using Nethermind.Wallet;
 
 namespace Nethermind.JsonRpc.Modules.Eth

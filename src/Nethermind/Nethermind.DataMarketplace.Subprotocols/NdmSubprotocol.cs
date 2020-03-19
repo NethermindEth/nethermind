@@ -24,7 +24,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.DataMarketplace.Channels;
-using Nethermind.DataMarketplace.Consumers;
 using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;

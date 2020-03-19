@@ -23,10 +23,8 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
-using Nethermind.Store;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Proof

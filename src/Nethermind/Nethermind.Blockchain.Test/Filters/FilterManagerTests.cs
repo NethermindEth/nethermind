@@ -22,7 +22,6 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using NSubstitute;

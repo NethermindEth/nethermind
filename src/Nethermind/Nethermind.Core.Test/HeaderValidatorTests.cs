@@ -29,7 +29,6 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
-using Nethermind.State;
 using Nethermind.Store.Bloom;
 using Nethermind.TxPool;
 using NSubstitute;

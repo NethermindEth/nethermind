@@ -22,7 +22,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Stats.Model;
 using Nethermind.TxPool;
-using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Blockchain
 {

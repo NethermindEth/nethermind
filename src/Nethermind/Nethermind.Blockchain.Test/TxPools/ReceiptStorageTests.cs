@@ -23,7 +23,6 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.Store;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.TxPools

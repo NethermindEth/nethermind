@@ -22,7 +22,6 @@ using System.Linq;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Store;
 
 namespace Nethermind.Network
 {

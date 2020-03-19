@@ -14,12 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Network;
 using NSubstitute;
 using NUnit.Framework;
 

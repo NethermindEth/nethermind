@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 namespace Nethermind.Network.P2P.Subprotocols.Les
 {
     public class RequestCostItem

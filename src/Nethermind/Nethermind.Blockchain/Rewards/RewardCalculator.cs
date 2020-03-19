@@ -20,7 +20,6 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Specs;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Rewards

@@ -16,7 +16,6 @@
 
 using System;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Newtonsoft.Json;
 

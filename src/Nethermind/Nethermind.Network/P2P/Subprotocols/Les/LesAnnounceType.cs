@@ -1,5 +1,4 @@
-﻿using System;
-namespace Nethermind.Network.P2P.Subprotocols.Les
+﻿namespace Nethermind.Network.P2P.Subprotocols.Les
 {
     public class LesAnnounceType
     {

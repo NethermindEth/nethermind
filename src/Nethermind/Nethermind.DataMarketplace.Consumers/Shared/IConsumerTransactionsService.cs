@@ -17,7 +17,6 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
-using Nethermind.DataMarketplace.Consumers.Shared.Domain;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.Dirichlet.Numerics;

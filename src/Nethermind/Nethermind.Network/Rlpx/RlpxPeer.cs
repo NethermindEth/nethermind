@@ -21,21 +21,17 @@ using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
-using DotNetty.Common;
 using DotNetty.Common.Concurrency;
-using DotNetty.Common.Internal.Logging;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
-using Microsoft.Extensions.Logging.Console;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Stats.Model;
-using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace Nethermind.Network.Rlpx
 {

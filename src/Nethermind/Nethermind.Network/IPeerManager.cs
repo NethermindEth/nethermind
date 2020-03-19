@@ -17,7 +17,6 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Config;
-using Nethermind.Core;
 
 namespace Nethermind.Network
 {
