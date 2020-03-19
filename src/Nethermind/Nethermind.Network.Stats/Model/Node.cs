@@ -28,7 +28,7 @@ namespace Nethermind.Stats.Model
         public PublicKey Id
         {
             get => _id;
-            set
+            private set
             {
                 if (_id != null)
                 {
@@ -45,9 +45,9 @@ namespace Nethermind.Stats.Model
         public int Port { get; set; }
         public IPEndPoint Address { get; private set; }
         public bool AddedToDiscovery { get; set; }
+        
         public bool IsBootnode { get; set; }
         public bool IsTrusted { get; set; }
-
         public bool IsStatic { get; set; }
 
         public string ClientId { get; set; }

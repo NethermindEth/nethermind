@@ -19,6 +19,15 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network
 {
+    /// <summary>
+    /// Peer represents a connection state with another node of the P2P network.
+    /// Because peers are actively searching for each other and initializing connections it may happen that
+    /// the peers will simultaneously connect and we will have both incoming and outgoing connections to the same
+    /// node.
+    /// In such cases we manage the sessions by disconnecting one of the sessions and keeping the other.
+    /// The logic for choosing which connection to drop has to be consistent between two peers - we use the PublicKey
+    /// comparison to choose the connection direction in the same way on both nodes.
+    /// </summary>
     public class Peer
     {
         public Peer(Node node)
@@ -26,8 +35,16 @@ namespace Nethermind.Network
             Node = node;
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
         public Node Node { get; }
         public ISession InSession { get; set; }
         public ISession OutSession { get; set; }
+
+        public override string ToString()
+        {
+            return $"[Peer|{Node:s}|{InSession}|{OutSession}]";
+        }
     }
 }
