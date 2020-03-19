@@ -35,6 +35,8 @@ namespace Nethermind.Network
             Node = node;
         }
 
+        public bool IsAwaitingConnection { get; set; }
+        
         /// <summary>
         /// A physical network node with a network address combined with information about the client version
         /// and any extra attributes that we assign to a network node (static / trusted / bootnode).

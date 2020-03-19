@@ -128,7 +128,14 @@ namespace Nethermind.Network
         
         public bool RemovePeer(NetworkNode node)
         {
-            return _peerPool.TryRemove(node.NodeId, out Peer peer);
+            bool removed =_peerPool.TryRemove(node.NodeId, out Peer peer);
+            if (removed)
+            {
+                peer.IsAwaitingConnection = false;
+                _activePeers.TryRemove(peer.Node.Id, out Peer activePeer);
+            }
+
+            return removed;
         }
 
         private void LoadPersistedPeers()
@@ -376,6 +383,7 @@ namespace Nethermind.Network
                     peer.OutSession?.MarkDisconnected(DisconnectReason.ReceiveMessageTimeout, DisconnectType.Local, "timeout");
                 }
 
+                peer.IsAwaitingConnection = false;
                 DeactivatePeerIfDisconnected(peer, "Failed to initialize connections");
                 return;
             }
@@ -385,6 +393,7 @@ namespace Nethermind.Network
 
         private bool AddActivePeer(PublicKey nodeId, Peer peer, string reason)
         {
+            peer.IsAwaitingConnection = false;
             bool added = _activePeers.TryAdd(nodeId, peer);
             if (added)
             {
@@ -409,7 +418,7 @@ namespace Nethermind.Network
         private void DeactivatePeerIfDisconnected(Peer peer, string reason)
         {
             _logger.Warn($"DEACTIVATING IF DISCONNECTED {peer}");
-            if (IsDisconnected(peer))
+            if (!IsConnected(peer) && !peer.IsAwaitingConnection)
             {
                 // dropping references to sessions so they can be garbage collected
                 peer.InSession = null;
@@ -440,7 +449,7 @@ namespace Nethermind.Network
                 
                 // node can be active but not connected (for some short times between sending connection request and
                 // establishing a session)
-                if(!IsDisconnected(peer) && !_activePeers.TryGetValue(peer.Node.Id, out _))
+                if(peer.IsAwaitingConnection || IsConnected(peer) || _activePeers.TryGetValue(peer.Node.Id, out _))
                 {
                     continue;
                 }
@@ -498,7 +507,7 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                if (!IsDisconnected(preCandidate))
+                if (IsConnected(preCandidate))
                 {
                     // in transition
                     continue;
@@ -531,6 +540,7 @@ namespace Nethermind.Network
             try
             {
                 _logger.Warn($"CONNECTING TO {candidate}");
+                candidate.IsAwaitingConnection = true;
                 await _rlpxPeer.ConnectAsync(candidate.Node);
                 return true;
             }
@@ -553,7 +563,7 @@ namespace Nethermind.Network
 
             if (!_activePeers.TryGetValue(id, out Peer peer))
             {
-                if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Initiated rlpx connection (out) with Peer without adding it to Active collection: {id}");
+                session.MarkDisconnected(DisconnectReason.DisconnectRequested, DisconnectType.Local, "peer removed");
                 return;
             }
 
@@ -624,9 +634,9 @@ namespace Nethermind.Network
             _logger.Warn($"ADDING {session} {peer}");
             bool newSessionIsIn = session.Direction == ConnectionDirection.In;
             bool newSessionIsOut = !newSessionIsIn;
-            bool peerIsDisconnected = IsDisconnected(peer);
+            bool peerIsDisconnected = !IsConnected(peer);
 
-            if (peerIsDisconnected)
+            if (peerIsDisconnected || (peer.IsAwaitingConnection && session.Direction == ConnectionDirection.Out))
             {
                 if (newSessionIsIn)
                 {
@@ -676,9 +686,9 @@ namespace Nethermind.Network
             AddActivePeer(peer.Node.Id, peer, newSessionIsIn ? "new IN session" : "new OUT session");
         }
 
-        private static bool IsDisconnected(Peer peer)
+        private static bool IsConnected(Peer peer)
         {
-            return (peer.InSession?.IsClosing ?? true) && (peer.OutSession?.IsClosing ?? true);
+            return !(peer.InSession?.IsClosing ?? true) || !(peer.OutSession?.IsClosing ?? true);
         }
 
         private void OnDisconnected(object sender, DisconnectEventArgs e)
@@ -699,6 +709,12 @@ namespace Nethermind.Network
                 // this happens when we have a disconnect on incoming connection before handshake
                 if (_logger.IsTrace) _logger.Trace($"Disconnect on session with no RemoteNodeId - {session}");
                 return;
+            }
+
+            Peer peer = _peerPool.GetOrAdd(session.Node);
+            if (session.Direction == ConnectionDirection.Out)
+            {
+                peer.IsAwaitingConnection = false;
             }
 
             if (_activePeers.TryGetValue(session.RemoteNodeId, out Peer activePeer))

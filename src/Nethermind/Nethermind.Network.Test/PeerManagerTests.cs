@@ -574,13 +574,12 @@ namespace Nethermind.Network.Test
             _peerManager.AddPeer(node);
             Thread.Sleep(_travisDelayLong);
 
+            void DisconnectHandler(object o, DisconnectEventArgs e) => disconnections++;
             _peerManager.ActivePeers.Select(p => p.Node.Id).Should().BeEquivalentTo(node.NodeId);
 
-            void DisconnectHandler(object o, DisconnectEventArgs e) => disconnections++;
             _sessions.ForEach(s => s.Disconnected += DisconnectHandler);
 
             _peerManager.RemovePeer(node).Should().BeTrue();
-
             _peerManager.ActivePeers.Should().BeEmpty();
             disconnections.Should().Be(1);
         }
