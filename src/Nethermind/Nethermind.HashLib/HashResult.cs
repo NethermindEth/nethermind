@@ -16,7 +16,6 @@
 
 using System;
 using System.Diagnostics;
-using System.Linq;
 using Nethermind.HashLib.Extensions;
 
 namespace Nethermind.HashLib

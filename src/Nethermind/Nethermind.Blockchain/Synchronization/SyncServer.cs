@@ -27,7 +27,6 @@ using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
-using Nethermind.State;
 
 namespace Nethermind.Blockchain.Synchronization
 {

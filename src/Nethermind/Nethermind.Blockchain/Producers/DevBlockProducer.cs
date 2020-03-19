@@ -22,7 +22,6 @@ using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Producers

@@ -20,9 +20,7 @@ using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Specs;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.State;
 using Nethermind.TxPool;
 

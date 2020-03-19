@@ -18,7 +18,6 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Nethermind.Core.Extensions;
 
 // ReSharper disable InconsistentNaming
 namespace Nethermind.Core.Crypto

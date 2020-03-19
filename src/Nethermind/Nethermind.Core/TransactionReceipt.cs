@@ -16,7 +16,6 @@
 
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core
 {

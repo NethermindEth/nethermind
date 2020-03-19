@@ -19,11 +19,9 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Net.Http.Headers;
 using System.Numerics;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test

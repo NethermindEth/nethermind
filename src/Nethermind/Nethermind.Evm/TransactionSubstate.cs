@@ -20,7 +20,6 @@ using System.Numerics;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm
 {

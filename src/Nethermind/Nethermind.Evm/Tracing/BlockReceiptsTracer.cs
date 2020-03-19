@@ -18,8 +18,6 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
-using Nethermind.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.State;
 

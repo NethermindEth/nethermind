@@ -25,7 +25,6 @@ using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
-using Nethermind.Store;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Modules
 {

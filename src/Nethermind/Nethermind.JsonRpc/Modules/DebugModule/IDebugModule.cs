@@ -17,9 +17,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
 {

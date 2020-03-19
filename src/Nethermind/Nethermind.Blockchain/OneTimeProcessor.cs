@@ -19,7 +19,6 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
-using Nethermind.State;
 
 namespace Nethermind.Blockchain
 {

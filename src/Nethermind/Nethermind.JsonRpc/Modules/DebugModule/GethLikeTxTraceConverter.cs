@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.JsonRpc.Modules.Trace;
 using Newtonsoft.Json;

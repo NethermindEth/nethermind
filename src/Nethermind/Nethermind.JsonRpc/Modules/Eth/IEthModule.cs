@@ -23,7 +23,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.Data;
 using Nethermind.State.Proofs;
-using Nethermind.Store;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {

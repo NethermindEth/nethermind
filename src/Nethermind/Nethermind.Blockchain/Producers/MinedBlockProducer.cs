@@ -23,7 +23,6 @@ using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.State;
 
 namespace Nethermind.Blockchain.Producers
 {

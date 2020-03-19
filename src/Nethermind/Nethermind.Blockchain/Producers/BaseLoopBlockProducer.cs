@@ -21,7 +21,6 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.State;
 
 namespace Nethermind.Blockchain.Producers
 {

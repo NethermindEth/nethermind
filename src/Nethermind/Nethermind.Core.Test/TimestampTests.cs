@@ -16,7 +16,6 @@
 
 using System;
 using FluentAssertions;
-using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
