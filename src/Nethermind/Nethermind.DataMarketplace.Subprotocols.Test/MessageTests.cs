@@ -22,7 +22,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.DataMarketplace.Core.Domain;
-using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Network;
@@ -36,28 +35,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
     [TestFixture]
     public class MessageTests
     {
-        private MessageSerializationService _service = new MessageSerializationService();
-
-        public MessageTests()
-        {
-            _service.Register(typeof(HiMessage).Assembly);
-
-            DataAssetDecoder.Init();
-            DataAssetRulesDecoder.Init();
-            DataAssetRuleDecoder.Init();
-            DataAssetProviderDecoder.Init();
-            DataDeliveryReceiptDecoder.Init();
-            DataRequestDecoder.Init();
-            EarlyRefundTicketDecoder.Init();
-            FaucetResponseDecoder.Init();
-            FaucetRequestDetailsDecoder.Init();
-            DataDeliveryReceiptDecoder.Init();
-            DataDeliveryReceiptRequestDecoder.Init();
-            UnitsRangeDecoder.Init();
-            SessionDecoder.Init();
-            DepositApprovalDecoder.Init();
-            DataDeliveryReceiptToMergeDecoder.Init();
-        }
+        private IMessageSerializationService _service = SerializationService.WithAllSerializers;
 
         [Test]
         public void Message_have_valid_protocol_and_can_serialize_and_deserialize()
@@ -105,7 +83,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
             Test(new HiMessage(1, TestItem.AddressA, TestItem.AddressB, TestItem.PublicKeyA, signature));
             Test(new InvalidDataMessage(Keccak.OfAnEmptyString, InvalidDataReason.InvalidResult));
             Test(new ProviderAddressChangedMessage(Address.SystemUser));
-            Test(new RequestDataDeliveryReceiptMessage(new DataDeliveryReceiptRequest(1, Keccak.OfAnEmptyString, new UnitsRange(2, 3), true, new [] {new DataDeliveryReceiptToMerge(new UnitsRange(7, 8), signature)})));
+            Test(new RequestDataDeliveryReceiptMessage(new DataDeliveryReceiptRequest(1, Keccak.OfAnEmptyString, new UnitsRange(2, 3), true, new[] {new DataDeliveryReceiptToMerge(new UnitsRange(7, 8), signature)})));
             Test(new RequestDepositApprovalMessage(Keccak.OfAnEmptyString, Address.SystemUser, "kyc"));
             Test(new RequestEthMessage(Address.SystemUser, UInt256.One));
             Test(new SessionFinishedMessage(session));
