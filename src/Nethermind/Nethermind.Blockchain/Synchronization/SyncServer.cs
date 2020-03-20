@@ -269,7 +269,7 @@ namespace Nethermind.Blockchain.Synchronization
             for (int blockIndex = 0; blockIndex < blockHashes.Count; blockIndex++)
             {
                 Block block = Find(blockHashes[blockIndex]);
-                var txReceipts = block != null ? _receiptFinder.GetInProtocolFormat(block) : Array.Empty<TxReceipt>();
+                var txReceipts = block != null ? _receiptFinder.Get(block) : Array.Empty<TxReceipt>();
                 receipts[blockIndex] = txReceipts;
             }
 

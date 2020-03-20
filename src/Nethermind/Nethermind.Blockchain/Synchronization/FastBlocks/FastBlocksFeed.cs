@@ -590,9 +590,12 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 {
                     if (added == receiptSyncBatch.Request.Length && receiptSyncBatch.IsFinal)
                     {
-                        _receiptStorage.LowestInsertedReceiptBlock = 1;
+                        if (validReceipts.All(i => i.Item1.Number != 1))
+                        {
+                            validReceipts.Add((_blockTree.FindBlock(1), Array.Empty<TxReceipt>()));
+                        }
                     }
-
+                    
                     if (lastPredecessor.HasValue && lastPredecessor.Value != _receiptStorage.LowestInsertedReceiptBlock)
                     {
                         _receiptDependencies.TryAdd(lastPredecessor.Value, validReceipts);

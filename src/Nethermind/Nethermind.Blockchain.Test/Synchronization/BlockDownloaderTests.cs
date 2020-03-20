@@ -177,14 +177,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 foreach (Keccak keccak in blockHash)
                 {
                     Block block = BlockTree.FindBlock(keccak, BlockTreeLookupOptions.None);
-                    TxReceipt[] blockReceipts = new TxReceipt[block.Transactions.Length];
-
-                    int receiptIndex = 0;
-                    foreach (Transaction transaction in block.Transactions)
-                    {
-                        // blockReceipts[receiptIndex++] = _receiptStorage.Find(transaction.Hash);
-                    }
-
+                    TxReceipt[] blockReceipts = _receiptStorage.Get(block);
                     receipts[i++] = blockReceipts;
                 }
 

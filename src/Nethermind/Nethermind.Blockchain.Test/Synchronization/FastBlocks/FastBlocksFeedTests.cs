@@ -895,9 +895,10 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             {
                 Block block = tree.FindBlock(receiptSyncBatch.Request[i], BlockTreeLookupOptions.None);
                 receiptSyncBatch.Response[i] = new TxReceipt[block.Transactions.Length];
+                var receipts = _remoteReceiptStorage.Get(block);
                 for (int j = 0; j < block.Transactions.Length; j++)
                 {
-                    // receiptSyncBatch.Response[i][j] = _remoteReceiptStorage.Find(block.Transactions[j].Hash);
+                    receiptSyncBatch.Response[i][j] = receipts[j];
 
                     if (i < 10 && j == 0 && _maliciousByInvalidReceipts.Contains(syncPeer))
                     {

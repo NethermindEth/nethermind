@@ -157,10 +157,15 @@ namespace Nethermind.Core.Test.Builders
                 }
 
                 currentBlock.Header.TxRoot = new TxTrie(currentBlock.Transactions).RootHash;
-                currentBlock.Header.ReceiptsRoot = new ReceiptTrie(currentBlock.Number, _specProvider, receipts.ToArray()).RootHash;
+                var txReceipts = receipts.ToArray();
+                currentBlock.Header.ReceiptsRoot = new ReceiptTrie(currentBlock.Number, _specProvider, txReceipts).RootHash;
                 currentBlock.Header.Hash = currentBlock.CalculateHash();
+                foreach (var txReceipt in txReceipts)
+                {
+                    txReceipt.BlockHash = currentBlock.Hash;
+                }
 
-                _receiptStorage.Insert(currentBlock, receipts.ToArray());
+                _receiptStorage.Insert(currentBlock, txReceipts);
             }
             else
             {

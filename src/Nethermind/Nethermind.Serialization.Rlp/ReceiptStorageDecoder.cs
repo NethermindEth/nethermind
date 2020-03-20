@@ -20,10 +20,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp
 {
-    /// <remarks>
-    /// <see cref="RlpBehaviors.Storage"/> is now obsolete. Used only for backward compatibility with old receipt format. Receipts are stored and retrieved in simple format as arrays per block.
-    /// </remarks>
-    public class ReceiptDecoder : IRlpDecoder<TxReceipt>
+    public class ReceiptStorageDecoder : IRlpDecoder<TxReceipt>
     {
         public TxReceipt Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -83,7 +80,7 @@ namespace Nethermind.Serialization.Rlp
         public Rlp Encode(TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             bool isStorage = (rlpBehaviors & RlpBehaviors.Storage) != 0;
-
+            
             var status = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts ? Rlp.Encode(item.StatusCode) : Rlp.Encode(item.PostTransactionState);
             
             if (isStorage)
@@ -103,18 +100,12 @@ namespace Nethermind.Serialization.Rlp
                     Rlp.Encode(item.Error));
             }
 
-            return item.Error == null
-                ? Rlp.Encode(
-                    status,
-                    Rlp.Encode(item.GasUsedTotal),
-                    Rlp.Encode(item.Bloom),
-                    Rlp.Encode(item.Logs))
-                : Rlp.Encode(
-                    status,
-                    Rlp.Encode(item.GasUsedTotal),
-                    Rlp.Encode(item.Bloom),
-                    Rlp.Encode(item.Logs),
-                    Rlp.Encode(item.Error));
+            return Rlp.Encode(
+                status,
+                Rlp.Encode(item.GasUsedTotal),
+                Rlp.Encode(item.Bloom),
+                Rlp.Encode(item.Logs),
+                Rlp.Encode(item.Error));
         }
 
         public void Encode(RlpStream rlpStream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -173,26 +164,10 @@ namespace Nethermind.Serialization.Rlp
                     rlpStream.Encode(item.Logs[i]);
                 }
 
-                if (item.Error != null)
-                {
-                    rlpStream.Encode(item.Error);
-                }
+                rlpStream.Encode(item.Error);
             }    
         }
         
-        public byte[] EncodeNew(TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item == null)
-            {
-                return Rlp.OfEmptySequence.Bytes;
-            }
-            
-            var length = GetLength(item, rlpBehaviors);
-            RlpStream stream = new RlpStream(length);
-            Encode(stream, item, rlpBehaviors);
-            return stream.Data;
-        }
-
         private (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
             var contentLength = 0;
@@ -202,7 +177,7 @@ namespace Nethermind.Serialization.Rlp
                 return (contentLength, 0);
             }
             bool isStorage = (rlpBehaviors & RlpBehaviors.Storage) != 0;
-
+            
             if (isStorage)
             {
                 contentLength += Rlp.LengthOf(item.BlockHash);
@@ -220,9 +195,9 @@ namespace Nethermind.Serialization.Rlp
             logsLength = GetLogsLength(item);
             contentLength += Rlp.GetSequenceRlpLength(logsLength);
 
-            bool isEip658receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
+            bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
-            if (isEip658receipts)
+            if (isEip658Receipts)
             {
                 contentLength += Rlp.LengthOf(item.StatusCode);
             }
@@ -230,8 +205,8 @@ namespace Nethermind.Serialization.Rlp
             {
                 contentLength += Rlp.LengthOf(item.PostTransactionState);
             }
-            
-            contentLength += item.Error != null ? Rlp.LengthOf(item.Error) : 0;
+
+            contentLength += Rlp.LengthOf(item.Error);
 
             return (contentLength, logsLength);
         }

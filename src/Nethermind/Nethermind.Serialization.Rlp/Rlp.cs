@@ -101,7 +101,11 @@ namespace Nethermind.Serialization.Rlp
                             continue;
                         }
 
-                        Decoders[implementedInterface.GenericTypeArguments[0]] = (IRlpDecoder) Activator.CreateInstance(type);
+                        var key = implementedInterface.GenericTypeArguments[0];
+                        if (!Decoders.ContainsKey(key))
+                        {
+                            Decoders[key] = (IRlpDecoder) Activator.CreateInstance(type);
+                        }
                     }
                 }
             }

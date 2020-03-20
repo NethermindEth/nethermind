@@ -37,6 +37,7 @@ namespace Nethermind.Blockchain.Receipts
         private readonly IDb _transactionDb;
         private static readonly Keccak MigrationBlockNumberKey = Keccak.Compute(nameof(MigratedBlockNumber));
         private long _migratedBlockNumber;
+        private static readonly ReceiptStorageDecoder StorageDecoder = new ReceiptStorageDecoder();
 
         public PersistentReceiptStorage(IColumnsDb<ReceiptsColumns> receiptsDb, ISpecProvider specProvider)
         {
@@ -70,13 +71,13 @@ namespace Nethermind.Blockchain.Receipts
             {
                 try
                 {
-                    var receipt = Rlp.Decode<TxReceipt>(new Rlp(receiptData), RlpBehaviors.Storage);
+                    var receipt = StorageDecoder.Decode(new RlpStream(receiptData), RlpBehaviors.Storage);
                     receipt.TxHash = hash;
                     return receipt;
                 }
                 catch (RlpException)
                 {
-                    var receipt = Rlp.Decode<TxReceipt>(new Rlp(receiptData));
+                    var receipt = StorageDecoder.Decode(new RlpStream(receiptData));
                     receipt.TxHash = hash;
                     return receipt;
                 }
@@ -95,7 +96,7 @@ namespace Nethermind.Blockchain.Receipts
             var receiptsData = _blocksDb.Get(block.Hash);
             if (receiptsData != null)
             {
-                return Rlp.DecodeArray<TxReceipt>(new RlpStream(receiptsData));
+                return StorageDecoder.DecodeArray(new RlpStream(receiptsData));
             }
             else
             {
@@ -115,7 +116,7 @@ namespace Nethermind.Blockchain.Receipts
         public TxReceipt[] Get(Keccak blockHash)
         {
             var receiptsData = _blocksDb.Get(blockHash);
-            return receiptsData != null ? Rlp.DecodeArray<TxReceipt>(new RlpStream(receiptsData)) : Array.Empty<TxReceipt>();
+            return receiptsData != null ? StorageDecoder.DecodeArray(new RlpStream(receiptsData)) : Array.Empty<TxReceipt>();
         }
 
         public bool CanGetReceiptsByHash(long blockNumber) => blockNumber >= MigratedBlockNumber;
@@ -132,7 +133,7 @@ namespace Nethermind.Blockchain.Receipts
             var blockNumber = block.Number;
             var spec = _specProvider.GetSpec(blockNumber);
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
-            _blocksDb.Set(block.Hash, Rlp.Encode(txReceipts, behaviors).Bytes);
+            _blocksDb.Set(block.Hash, StorageDecoder.Encode(txReceipts, behaviors).Bytes);
             
             for (int i = 0; i < txReceipts.Length; i++)
             {
