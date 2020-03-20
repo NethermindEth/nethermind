@@ -87,7 +87,12 @@ namespace Nethermind.Db.Rocks
 
         private T ReadConfig<T>(IDbConfig dbConfig, string propertyName)
         {
-            string prefixed = string.Concat(Name == "State" ? string.Empty : string.Concat(Name, "Db"), propertyName);
+            return ReadConfig<T>(dbConfig, propertyName, Name);
+        }
+        
+        protected static T ReadConfig<T>(IDbConfig dbConfig, string propertyName, string tableName)
+        {
+            string prefixed = string.Concat(tableName == "State" ? string.Empty : string.Concat(tableName, "Db"), propertyName);
             try
             {
                 return (T) dbConfig.GetType().GetProperty(prefixed, BindingFlags.Public | BindingFlags.Instance).GetValue(dbConfig);
@@ -213,13 +218,26 @@ namespace Nethermind.Db.Rocks
             Db.Remove(key, null, WriteOptions);
         }
 
-        public IEnumerable<byte[]> GetAll()
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
         {
-            Iterator iterator = Db.NewIterator();
+            Iterator iterator = CreateIterator(ordered);
             return GetAllCore(iterator);
         }
 
-        internal IEnumerable<byte[]> GetAllCore(Iterator iterator)
+        protected internal Iterator CreateIterator(bool ordered = false, ColumnFamilyHandle ch = null)
+        {
+            var readOptions = new ReadOptions();
+            readOptions.SetTailing(!ordered);
+            return Db.NewIterator(ch, readOptions);
+        }
+
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false)
+        {
+            Iterator iterator = CreateIterator(ordered);
+            return GetAllValuesCore(iterator);
+        }
+
+        internal IEnumerable<byte[]> GetAllValuesCore(Iterator iterator)
         {
             iterator.SeekToFirst();
             while (iterator.Valid())
@@ -230,6 +248,19 @@ namespace Nethermind.Db.Rocks
             
             iterator.Dispose();
         }
+        
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAllCore(Iterator iterator)
+        {
+            iterator.SeekToFirst();
+            while (iterator.Valid())
+            {
+                yield return new KeyValuePair<byte[], byte[]>(iterator.Key(), iterator.Value());
+                iterator.Next();
+            }
+            
+            iterator.Dispose();
+        }
+
 
         private ILogger _logger;
 
@@ -284,6 +315,6 @@ namespace Nethermind.Db.Rocks
                     Handle = IntPtr.Zero;
                 }
             }
-        }
+        } 
     }
 }

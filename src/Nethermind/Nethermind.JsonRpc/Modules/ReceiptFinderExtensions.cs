@@ -14,23 +14,20 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.Receipts
+namespace Nethermind.JsonRpc.Modules
 {
-    public static class ReceiptStorageExtensions
+    public static class ReceiptFinderExtensions
     {
-        public static TxReceipt[] FindForBlock(this IReceiptStorage receiptStorage, Block block, IReceiptsRecovery receiptsRecovery)
+        public static SearchResult<Keccak> SearchForReceiptBlockHash(this IReceiptFinder receiptFinder, Keccak txHash)
         {
-            TxReceipt[] result = new TxReceipt[block.Body.Transactions.Length];
-            for (int i = 0; i < result.Length; i++)
-            {
-                result[i] = receiptStorage.Find(block.Body.Transactions[i].Hash);
-            }
-
-            receiptsRecovery.TryRecover(block, result);
-
-            return result;
+            Keccak blockHash = receiptFinder.FindBlockHash(txHash);
+            return blockHash == null
+                ? new SearchResult<Keccak>($"{txHash} receipt could not be found", ErrorCodes.ResourceNotFound)
+                : new SearchResult<Keccak>(blockHash);
         }
     }
 }

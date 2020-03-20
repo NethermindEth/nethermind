@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,20 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using System;
 
-namespace Nethermind.JsonRpc.Modules
+namespace Nethermind.Runner.Ethereum.Steps.Migrations
 {
-    public static class ReceiptStorageExtensions
+    public interface IDatabaseMigration : IAsyncDisposable
     {
-        public static SearchResult<TxReceipt> SearchForReceipt(this IReceiptStorage receiptStorage, Keccak txHash)
-        {
-            TxReceipt receipt = receiptStorage.Find(txHash);
-            return receipt == null
-                ? new SearchResult<TxReceipt>($"{txHash} receipt could not be found", ErrorCodes.ResourceNotFound)
-                : new SearchResult<TxReceipt>(receipt);
-        }
+        void Run();
     }
 }

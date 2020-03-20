@@ -24,7 +24,8 @@ namespace Nethermind.Db
     {
         string Name { get; }
         KeyValuePair<byte[],byte[]>[] this[byte[][] keys] { get; }
-        IEnumerable<byte[]> GetAll();
+        IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false);
+        IEnumerable<byte[]> GetAllValues(bool ordered = false);
         void StartBatch();
         void CommitBatch();
         void Remove(byte[] key);

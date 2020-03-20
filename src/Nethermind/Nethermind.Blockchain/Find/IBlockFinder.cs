@@ -38,6 +38,8 @@ namespace Nethermind.Blockchain.Find
         
         BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options);
         
+        Keccak FindBlockHash(long blockNumber);
+        
         /// <summary>
         /// Checks if the block is currently in the canonical chain
         /// </summary>

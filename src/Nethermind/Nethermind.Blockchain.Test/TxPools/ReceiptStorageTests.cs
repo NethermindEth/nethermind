@@ -46,29 +46,35 @@ namespace Nethermind.Blockchain.Test.TxPools
 
         [Test]
         public void should_add_and_fetch_receipt_from_persistent_storage()
-            => TestAddAndGetReceipt(new PersistentReceiptStorage(new MemDb(), _specProvider, LimboLogs.Instance));
+            => TestAddAndGetReceipt(new PersistentReceiptStorage(new MemColumnsDb<ReceiptsColumns>(), _specProvider));
         
         [Test]
         public void should_add_and_fetch_receipt_from_persistent_storage_with_eip_658()
-            => TestAddAndGetReceiptEip658(new PersistentReceiptStorage(new MemDb(), _specProvider, LimboLogs.Instance));
+            => TestAddAndGetReceiptEip658(new PersistentReceiptStorage(new MemColumnsDb<ReceiptsColumns>(), _specProvider));
 
         private void TestAddAndGetReceipt(IReceiptStorage storage)
         {
             var transaction = GetSignedTransaction();
-            var receipt = GetReceipt(transaction);
-            storage.Add(receipt, true);
-            var fetchedReceipt = storage.Find(transaction.Hash);
+            var block = GetBlock(transaction);
+            var receipt = GetReceipt(transaction, block);
+            storage.Insert(block, receipt);
+            var blockHash = storage.FindBlockHash(transaction.Hash);
+            blockHash.Should().Be(block.Hash);
+            var fetchedReceipt = storage.Get(block, transaction.Hash);
             receipt.StatusCode.Should().Be(fetchedReceipt.StatusCode);
             receipt.PostTransactionState.Should().Be(fetchedReceipt.PostTransactionState);
             receipt.TxHash.Should().Be(transaction.Hash);
         }
-        
+
         private void TestAddAndGetReceiptEip658(IReceiptStorage storage)
         {
             var transaction = GetSignedTransaction();
-            var receipt = GetReceipt(transaction);
-            storage.Add(receipt, true);
-            var fetchedReceipt = storage.Find(transaction.Hash);
+            var block = GetBlock(transaction);
+            var receipt = GetReceipt(transaction, block);
+            storage.Insert(block, receipt);
+            var blockHash = storage.FindBlockHash(transaction.Hash);
+            blockHash.Should().Be(block.Hash);
+            var fetchedReceipt = storage.Get(block, transaction.Hash);
             receipt.StatusCode.Should().Be(fetchedReceipt.StatusCode);
             receipt.PostTransactionState.Should().Be(fetchedReceipt.PostTransactionState);
             receipt.TxHash.Should().Be(transaction.Hash);
@@ -77,8 +83,11 @@ namespace Nethermind.Blockchain.Test.TxPools
         private Transaction GetSignedTransaction(Address to = null)
             => Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).TestObject;
 
-        private static TxReceipt GetReceipt(Transaction transaction)
+        private static TxReceipt GetReceipt(Transaction transaction, Block block)
             => Build.A.Receipt.WithState(TestItem.KeccakB)
-                .WithTransactionHash(transaction.Hash).TestObject;
+                .WithTransactionHash(transaction.Hash)
+                .WithBlockHash(block.Hash).TestObject;
+        
+        private Block GetBlock(Transaction transaction) => Build.A.Block.WithTransactions(transaction).WithReceiptsRoot(TestItem.KeccakA).TestObject;
     }
 }

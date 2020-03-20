@@ -19,124 +19,162 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.Receipts
 {
     public class PersistentReceiptStorage : IReceiptStorage
     {
-        private readonly IDb _database;
+        private readonly IColumnsDb<ReceiptsColumns> _database;
         private readonly ISpecProvider _specProvider;
-        private readonly ILogger _logger;
+        private long? _lowestInsertedReceiptBlock;
+        private readonly IDb _blocksDb;
+        private readonly IDb _transactionDb;
+        private static readonly Keccak MigrationBlockNumberKey = Keccak.Compute(nameof(MigratedBlockNumber));
+        private long _migratedBlockNumber;
+        private static readonly ReceiptStorageDecoder StorageDecoder = new ReceiptStorageDecoder();
 
-        public PersistentReceiptStorage(IDb receiptsDb, ISpecProvider specProvider, ILogManager logManager)
+        public PersistentReceiptStorage(IColumnsDb<ReceiptsColumns> receiptsDb, ISpecProvider specProvider)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            long Get(Keccak key, long defaultValue) => _database.Get(key)?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
+            
             _database = receiptsDb ?? throw new ArgumentNullException(nameof(receiptsDb));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _blocksDb = _database.GetColumnDb(ReceiptsColumns.Blocks);
+            _transactionDb = _database.GetColumnDb(ReceiptsColumns.Transactions);
 
             byte[] lowestBytes = _database.Get(Keccak.Zero);
-            LowestInsertedReceiptBlock = lowestBytes == null ? (long?) null : new RlpStream(lowestBytes).DecodeLong();
+            _lowestInsertedReceiptBlock = lowestBytes == null ? (long?) null : new RlpStream(lowestBytes).DecodeLong();
+            _migratedBlockNumber = Get(MigrationBlockNumberKey, long.MaxValue);
         }
 
-        public TxReceipt Find(Keccak hash)
+        public Keccak FindBlockHash(Keccak txHash)
+        {
+            var blockHashData = _transactionDb.Get(txHash);
+            return blockHashData == null ? FindReceiptObsolete(txHash).BlockHash : new Keccak(blockHashData);
+        }
+
+        // Find receipt stored with old - obsolete format.
+        private TxReceipt FindReceiptObsolete(Keccak hash)
         {
             var receiptData = _database.Get(hash);
+            return DeserializeReceiptObsolete(hash, receiptData);
+        }
+
+        private static TxReceipt DeserializeReceiptObsolete(Keccak hash, byte[] receiptData)
+        {
             if (receiptData != null)
             {
                 try
                 {
-                    var receipt = Rlp.Decode<TxReceipt>(new Rlp(receiptData), RlpBehaviors.Storage);
+                    var receipt = StorageDecoder.Decode(new RlpStream(receiptData), RlpBehaviors.Storage);
                     receipt.TxHash = hash;
                     return receipt;
                 }
                 catch (RlpException)
                 {
-                    var receipt = Rlp.Decode<TxReceipt>(new Rlp(receiptData));
+                    var receipt = StorageDecoder.Decode(new RlpStream(receiptData));
                     receipt.TxHash = hash;
                     return receipt;
                 }
             }
+
             return null;
         }
 
-        public void Add(TxReceipt txReceipt, bool isProcessed)
+        public TxReceipt[] Get(Block block)
         {
-            if (txReceipt == null)
+            if (block.ReceiptsRoot == Keccak.EmptyTreeHash)
             {
-                throw new ArgumentNullException(nameof(txReceipt));
+                return Array.Empty<TxReceipt>();
             }
+            
+            var receiptsData = _blocksDb.Get(block.Hash);
+            if (receiptsData != null)
+            {
+                return StorageDecoder.DecodeArray(new RlpStream(receiptsData));
+            }
+            else
+            {
+                // didn't bring performance uplift that was expected
+                // var data = _database.MultiGet(block.Transactions.Select(t => t.Hash));
+                // return data.Select(kvp => DeserializeObsolete(new Keccak(kvp.Key), kvp.Value)).ToArray();
 
-            var spec = _specProvider.GetSpec(txReceipt.BlockNumber);
+                TxReceipt[] result = new TxReceipt[block.Transactions.Length];
+                for (int i = 0; i < block.Transactions.Length; i++)
+                {
+                    result[i] = FindReceiptObsolete(block.Transactions[i].Hash);
+                }
+                
+                return result;
+            }
+        }
+
+        public TxReceipt[] Get(Keccak blockHash)
+        {
+            var receiptsData = _blocksDb.Get(blockHash);
+            return receiptsData != null ? StorageDecoder.DecodeArray(new RlpStream(receiptsData)) : Array.Empty<TxReceipt>();
+        }
+
+        public bool CanGetReceiptsByHash(long blockNumber) => blockNumber >= MigratedBlockNumber;
+
+        public void Insert(Block block, params TxReceipt[] txReceipts)
+        {
+            txReceipts ??= Array.Empty<TxReceipt>();
+            
+            if (block.Transactions.Length != txReceipts.Length)
+            {
+                throw new ArgumentException($"Block {block.ToString(Block.Format.FullHashAndNumber)} has different number of transactions than receipts.");
+            }
+            
+            var blockNumber = block.Number;
+            var spec = _specProvider.GetSpec(blockNumber);
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
-            if (isProcessed)
+            _blocksDb.Set(block.Hash, StorageDecoder.Encode(txReceipts, behaviors).Bytes);
+            
+            for (int i = 0; i < txReceipts.Length; i++)
             {
-                behaviors = behaviors | RlpBehaviors.Storage;
+                var txHash = block.Transactions[i].Hash;
+                _transactionDb.Set(txHash, block.Hash.Bytes);
             }
 
-            _database.Set(txReceipt.TxHash,
-                Rlp.Encode(txReceipt, behaviors).Bytes);
-        }
-
-        public void Insert(long blockNumber, TxReceipt txReceipt)
-        {
-            if (txReceipt == null && blockNumber != 1L)
+            if (blockNumber < (LowestInsertedReceiptBlock ?? long.MaxValue))
             {
-                throw new ArgumentNullException(nameof(txReceipt));
-            }
-
-            if (txReceipt != null)
-            {
-                var spec = _specProvider.GetSpec(blockNumber);
-                RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
-                _database.Set(txReceipt.TxHash, Rlp.Encode(txReceipt, behaviors).Bytes);
-            }
-
-            LowestInsertedReceiptBlock = blockNumber;
-//            LowestInsertedReceiptBlock = Math.Min(LowestInsertedReceiptBlock ?? long.MaxValue, blockNumber);
-            _database.Set(Keccak.Zero, Rlp.Encode(LowestInsertedReceiptBlock.Value).Bytes);
-        }
-
-        public void Insert(List<(long blockNumber, TxReceipt txReceipt)> receipts)
-        {
-            if (!receipts.Any())
-            {
-                return;
-            }
-
-            long? blockNumber = null;
-            foreach ((long blockNumber, TxReceipt txReceipt) tuple in receipts)
-            {
-                blockNumber = tuple.blockNumber;
-                TxReceipt txReceipt = tuple.txReceipt;
-                if (txReceipt == null && blockNumber != 1L)
-                {
-                    throw new ArgumentNullException(nameof(txReceipt));
-                }
-
-                if (txReceipt != null)
-                {
-                    var spec = _specProvider.GetSpec(blockNumber.Value);
-                    RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
-                    _database.Set(txReceipt.TxHash, Rlp.Encode(txReceipt, behaviors).Bytes);
-                }
-            }
-
-            if (blockNumber.HasValue)
-            {
-                if (blockNumber > LowestInsertedReceiptBlock)
-                {
-                    _logger.Error($"{blockNumber} > {LowestInsertedReceiptBlock}");
-                }
-
                 LowestInsertedReceiptBlock = blockNumber;
-                _database.Set(Keccak.Zero, Rlp.Encode(LowestInsertedReceiptBlock.Value).Bytes);
+            }
+
+            if (blockNumber < MigratedBlockNumber)
+            {
+                MigratedBlockNumber = blockNumber;
             }
         }
 
-        public long? LowestInsertedReceiptBlock { get; private set; }
+        public long? LowestInsertedReceiptBlock
+        {
+            get => _lowestInsertedReceiptBlock;
+            set
+            {
+                _lowestInsertedReceiptBlock = value;
+                if (value.HasValue)
+                {
+                    _database.Set(Keccak.Zero, Rlp.Encode(value.Value).Bytes);
+                }
+            }
+        }
+        
+        public long MigratedBlockNumber
+        {
+            get => _migratedBlockNumber;
+            set
+            {
+                _migratedBlockNumber = value;
+                _database.Set(MigrationBlockNumberKey, MigratedBlockNumber.ToBigEndianByteArrayWithoutLeadingZeros());
+            }
+        }
     }
 }

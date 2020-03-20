@@ -33,12 +33,12 @@ namespace Nethermind.Consensus.AuRa.Validators
             ITransactionProcessor transactionProcessor,
             IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource,
             IBlockTree blockTree,
-            IReceiptStorage receiptStorage,
+            IReceiptFinder receiptFinder,
             IValidatorStore validatorStore,
             IValidSealerStrategy validSealerStrategy,
             ILogManager logManager,
             long startBlockNumber) 
-            : base(validator, stateProvider, abiEncoder, transactionProcessor, readOnlyTransactionProcessorSource, blockTree, receiptStorage, validatorStore, validSealerStrategy, logManager, startBlockNumber)
+            : base(validator, stateProvider, abiEncoder, transactionProcessor, readOnlyTransactionProcessorSource, blockTree, receiptFinder, validatorStore, validSealerStrategy, logManager, startBlockNumber)
         {
         }
     }

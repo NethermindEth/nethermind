@@ -42,7 +42,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
         
         public ISnapshotableDb StateDb { get; }
         public ISnapshotableDb CodeDb { get; }
-        public IDb ReceiptsDb { get; }
+        public IColumnsDb<ReceiptsColumns> ReceiptsDb { get; }
         public IDb BlocksDb { get; }
         public IDb HeadersDb { get; }
         public IDb BlockInfosDb { get; }

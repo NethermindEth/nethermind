@@ -51,7 +51,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
 
         private IEnumerable<DepositDetails> GetAll()
         {
-            byte[][] depositsBytes = _database.GetAll().ToArray();
+            byte[][] depositsBytes = _database.GetAllValues().ToArray();
             if (depositsBytes.Length == 0)
             {
                 yield break;

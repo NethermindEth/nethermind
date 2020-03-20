@@ -30,14 +30,14 @@ namespace Nethermind.JsonRpc.Modules.Trace
 {
     public class TraceModule : ITraceModule
     {
-        private readonly IReceiptStorage _receiptStorage;
+        private readonly IReceiptFinder _receiptFinder;
         private readonly ITracer _tracer;
         private readonly IBlockFinder _blockFinder;
         private readonly TransactionDecoder _txDecoder = new TransactionDecoder();
 
-        public TraceModule(IReceiptStorage receiptStorage, ITracer tracer, IBlockFinder blockFinder)
+        public TraceModule(IReceiptFinder receiptFinder, ITracer tracer, IBlockFinder blockFinder)
         {
-            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         }
@@ -91,14 +91,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public ResultWrapper<ParityTxTraceFromReplay> trace_replayTransaction(Keccak txHash, string[] traceTypes)
         {
-            SearchResult<TxReceipt> receiptSearch = _receiptStorage.SearchForReceipt(txHash);
-            if (receiptSearch.IsError)
+            SearchResult<Keccak> blockHashSearch = _receiptFinder.SearchForReceiptBlockHash(txHash);
+            if (blockHashSearch.IsError)
             {
-                return ResultWrapper<ParityTxTraceFromReplay>.Fail(receiptSearch);
+                return ResultWrapper<ParityTxTraceFromReplay>.Fail(blockHashSearch);
             }
 
-            TxReceipt receipt = receiptSearch.Object;
-            SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(new BlockParameter(receipt.BlockHash));
+            SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(new BlockParameter(blockHashSearch.Object));
             if (blockSearch.IsError)
             {
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(blockSearch);
@@ -152,14 +151,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public ResultWrapper<ParityTxTraceFromStore[]> trace_transaction(Keccak txHash)
         {
-            SearchResult<TxReceipt> receiptSearch = _receiptStorage.SearchForReceipt(txHash);
-            if (receiptSearch.IsError)
+            SearchResult<Keccak> blockHashSearch = _receiptFinder.SearchForReceiptBlockHash(txHash);
+            if (blockHashSearch.IsError)
             {
-                return ResultWrapper<ParityTxTraceFromStore[]>.Fail(receiptSearch);
+                return ResultWrapper<ParityTxTraceFromStore[]>.Fail(blockHashSearch);
             }
-
-            TxReceipt receipt = receiptSearch.Object;
-            SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(new BlockParameter(receipt.BlockHash));
+            
+            SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(new BlockParameter(blockHashSearch.Object));
             if (blockSearch.IsError)
             {
                 return ResultWrapper<ParityTxTraceFromStore[]>.Fail(blockSearch);

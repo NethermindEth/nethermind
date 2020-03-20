@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
     public class ProofModuleFactory : ModuleFactoryBase<IProofModule>
     {
         private readonly IBlockDataRecoveryStep _recoveryStep;
-        private readonly IReceiptStorage _receiptStorage;
+        private readonly IReceiptFinder _receiptFinder;
         private readonly ISpecProvider _specProvider;
         private readonly IDbProvider _dbProvider;
         private readonly ILogManager _logManager;
@@ -42,12 +42,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
             IDbProvider dbProvider,
             IBlockTree blockTree,
             IBlockDataRecoveryStep recoveryStep,
-            IReceiptStorage receiptStorage,
+            IReceiptFinder receiptFinder,
             ISpecProvider specProvider,
             ILogManager logManager)
         {
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
-            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -65,10 +65,10 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 readOnlyTxProcessingEnv.StateProvider,
                 readOnlyChainProcessingEnv.ChainProcessor);
             
-            return new ProofModule(tracer, _blockTree, _receiptStorage, _specProvider, _logManager);
+            return new ProofModule(tracer, _blockTree, _receiptFinder, _specProvider, _logManager);
         }
 
-        private static List<JsonConverter> _converters = new List<JsonConverter>
+        private static readonly List<JsonConverter> _converters = new List<JsonConverter>
         {
             new ProofConverter()
         };

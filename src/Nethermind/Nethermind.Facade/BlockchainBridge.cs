@@ -50,7 +50,7 @@ namespace Nethermind.Facade
         private readonly IEthereumEcdsa _ecdsa;
         private readonly IFilterManager _filterManager;
         private readonly IStateProvider _stateProvider;
-        private readonly IReceiptStorage _receiptStorage;
+        private readonly IReceiptFinder _receiptFinder;
         private readonly IStorageProvider _storageProvider;
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly ILogFinder _logFinder;
@@ -62,14 +62,13 @@ namespace Nethermind.Facade
             IStorageProvider storageProvider,
             IBlockTree blockTree,
             ITxPool txPool,
-            IReceiptStorage receiptStorage,
+            IReceiptFinder receiptStorage,
             IFilterStore filterStore,
             IFilterManager filterManager,
             IWallet wallet,
             ITransactionProcessor transactionProcessor,
             IEthereumEcdsa ecdsa,
-            IBloomStorage bloomStorage, 
-            IReceiptsRecovery receiptsRecovery,
+            IBloomStorage bloomStorage,
             ILogManager logManager,
             int findLogBlockDepthLimit = 1000)
         {
@@ -78,13 +77,14 @@ namespace Nethermind.Facade
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(_txPool));
-            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _receiptFinder = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _filterStore = filterStore ?? throw new ArgumentException(nameof(filterStore));
             _filterManager = filterManager ?? throw new ArgumentException(nameof(filterManager));
             _wallet = wallet ?? throw new ArgumentException(nameof(wallet));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentException(nameof(transactionProcessor));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-            _logFinder = new LogFinder(_blockTree, _receiptStorage, bloomStorage, receiptsRecovery, logManager, findLogBlockDepthLimit);
+            
+            _logFinder = new LogFinder(_blockTree, _receiptFinder, bloomStorage, logManager, new ReceiptsRecovery(), findLogBlockDepthLimit);
         }
 
         public IReadOnlyCollection<Address> GetWalletAccounts()
@@ -110,10 +110,11 @@ namespace Nethermind.Facade
 
         public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
         {
-            TxReceipt txReceipt = _receiptStorage.Find(transactionHash);
-            if (txReceipt?.BlockHash != null)
+            Keccak blockHash = _receiptFinder.FindBlockHash(transactionHash);
+            if (blockHash != null)
             {
-                Block block = _blockTree.FindBlock(txReceipt.BlockHash, BlockTreeLookupOptions.RequireCanonical);
+                Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
+                TxReceipt txReceipt = _receiptFinder.Get(block, transactionHash);
                 return (txReceipt, block?.Transactions[txReceipt.Index]);
             }
             else if (_txPool.TryGetPendingTransaction(transactionHash, out var transaction))
@@ -169,13 +170,14 @@ namespace Nethermind.Facade
 
         public TxReceipt GetReceipt(Keccak txHash)
         {
-            var txReceipt = _receiptStorage.Find(txHash);
-            if (txReceipt != null)
+            var blockHash = _receiptFinder.FindBlockHash(txHash);
+            if (blockHash != null)
             {
-                txReceipt.TxHash = txHash;
+                var block = _blockTree.FindBlock(blockHash);
+                return _receiptFinder.Get(block, txHash);
             }
 
-            return txReceipt;
+            return null;
         }
 
         public class CallOutput
@@ -354,6 +356,8 @@ namespace Nethermind.Facade
         public Block FindBlock(long blockNumber, BlockTreeLookupOptions options) => _blockTree.FindBlock(blockNumber, options);
         public BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options) => _blockTree.FindHeader(blockHash, options);
         public BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options) => _blockTree.FindHeader(blockNumber, options);
+        public Keccak FindBlockHash(long blockNumber) => _blockTree.FindBlockHash(blockNumber);
+
         public bool IsMainChain(BlockHeader blockHeader) => _blockTree.IsMainChain(blockHeader);
         public bool IsMainChain(Keccak blockHash) => _blockTree.IsMainChain(blockHash);
     }

@@ -34,14 +34,14 @@ namespace Nethermind.JsonRpc.Modules.Parity
         private readonly IEcdsa _ecdsa;
         private readonly ITxPool _txPool;
         private readonly IBlockFinder _blockFinder;
-        private readonly IReceiptStorage _receiptStorage;
+        private readonly IReceiptFinder _receiptFinder;
         
-        public ParityModule(IEcdsa ecdsa, ITxPool txPool, IBlockFinder blockFinder, IReceiptStorage  receiptStorage, ILogManager logManager)
+        public ParityModule(IEcdsa ecdsa, ITxPool txPool, IBlockFinder blockFinder, IReceiptFinder receiptFinder, ILogManager logManager)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
-            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
         }
 
         public ResultWrapper<ParityTransaction[]> parity_pendingTransactions()
@@ -51,8 +51,14 @@ namespace Nethermind.JsonRpc.Modules.Parity
         
         public ResultWrapper<ReceiptForRpc[]> parity_getBlockReceipts(BlockParameter blockParameter)
         {
-            Block block = _blockFinder.FindBlock(blockParameter);
-            TxReceipt[] receipts = _receiptStorage.FindForBlock(block, new ReceiptsRecovery());
+            SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
+            if (searchResult.IsError)
+            {
+                return ResultWrapper<ReceiptForRpc[]>.Fail(searchResult);
+            }
+
+            Block block = searchResult.Object;
+            TxReceipt[] receipts = _receiptFinder.Get(block) ?? new TxReceipt[block.Transactions.Length];
             IEnumerable<ReceiptForRpc> result = receipts.Zip(block.Transactions, (r, t) => new ReceiptForRpc(t.Hash, r));
             return ResultWrapper<ReceiptForRpc[]>.Success(result.ToArray());
         }

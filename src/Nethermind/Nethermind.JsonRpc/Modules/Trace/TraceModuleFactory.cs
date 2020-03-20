@@ -44,7 +44,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             IBlockTree blockTree,
             IBlockDataRecoveryStep recoveryStep,
             IRewardCalculatorSource rewardCalculatorSource,
-            IReceiptStorage receiptStorage,
+            IReceiptStorage receiptFinder,
             ISpecProvider specProvider,
             ILogManager logManager)
         {
@@ -52,7 +52,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _rewardCalculatorSource = rewardCalculatorSource ?? throw new ArgumentNullException(nameof(rewardCalculatorSource));
-            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _receiptStorage = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger();

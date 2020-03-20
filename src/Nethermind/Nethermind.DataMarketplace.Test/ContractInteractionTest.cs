@@ -217,6 +217,7 @@ namespace Nethermind.DataMarketplace.Test
             public BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options) => _headBlock.Hash == blockHash ? _headBlock.Header : null;
 
             public BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options) => _headBlock.Number == blockNumber ? _headBlock.Header : null;
+            public Keccak FindBlockHash(long blockNumber) => _headBlock.Number == blockNumber ? _headBlock.Hash : null;
 
             public bool IsMainChain(BlockHeader blockHeader) => blockHeader.Number == _headBlock.Number;
 

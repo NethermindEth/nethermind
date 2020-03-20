@@ -38,7 +38,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositori
         
         public Task<EthRequest?> GetLatestAsync(string host)
         {
-            var requestsBytes = _database.GetAll().ToArray();
+            var requestsBytes = _database.GetAllValues().ToArray();
             if (requestsBytes.Length == 0)
             {
                 return Task.FromResult<EthRequest?>(null);
@@ -59,7 +59,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositori
         
         public Task<UInt256> SumDailyRequestsTotalValueAsync(DateTime date)
         {
-            var requestsBytes = _database.GetAll().ToArray();
+            var requestsBytes = _database.GetAllValues().ToArray();
             if (requestsBytes.Length == 0)
             {
                 return Task.FromResult<UInt256>(0);

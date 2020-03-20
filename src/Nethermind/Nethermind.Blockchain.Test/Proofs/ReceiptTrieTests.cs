@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Test.Proofs
         {
             TrieNode node = new TrieNode(NodeType.Unknown, new Rlp(proof.Last()));
             node.ResolveNode(null);
-            TxReceipt receipt = new ReceiptDecoder().Decode(node.Value.AsRlpStream());
+            TxReceipt receipt = new ReceiptMessageDecoder().Decode(node.Value.AsRlpStream());
             Assert.NotNull(receipt.Bloom);
             
             for (int i = proof.Length; i > 0; i--)
