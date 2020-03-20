@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading.Tasks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
@@ -27,11 +28,11 @@ namespace Nethermind.Network.Test.Rlpx
     public class RlpxPeerTests
     {
         [Test]
-        public void Start_stop()
+        public async Task Start_stop()
         {
             RlpxPeer peer = new RlpxPeer(Substitute.For<IMessageSerializationService>(), TestItem.PublicKeyA, 30303, Substitute.For<IHandshakeService>(), LimboLogs.Instance, Substitute.For<ISessionMonitor>());
-            peer.Init();
-            peer.Shutdown();
+            await peer.Init();
+            await peer.Shutdown();
         }
     }
 }
