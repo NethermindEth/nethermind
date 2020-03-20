@@ -220,7 +220,7 @@ namespace Nethermind.Db.Rocks
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
         {
-            using Iterator iterator = Db.NewIterator();
+            Iterator iterator = CreateIterator(ordered);
             return GetAllCore(iterator);
         }
 
@@ -233,7 +233,7 @@ namespace Nethermind.Db.Rocks
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false)
         {
-            using Iterator iterator = CreateIterator(ordered);
+            Iterator iterator = CreateIterator(ordered);
             return GetAllValuesCore(iterator);
         }
 
