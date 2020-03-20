@@ -28,11 +28,11 @@ namespace Nethermind.Network.P2P
         SessionState State { get; }
         SessionState BestStateReached { get; }
         bool IsClosing { get; }
-        PublicKey RemoteNodeId { get; set; }
-        PublicKey ObsoleteRemoteNodeId { get; set; }
+        PublicKey RemoteNodeId { get; }
+        PublicKey ObsoleteRemoteNodeId { get; }
         string RemoteHost { get; set; }
         int RemotePort { get; set; }
-        int LocalPort { get; set; }
+        int LocalPort { get; }
         ConnectionDirection Direction { get; }
         Guid SessionId { get; }
         Node Node { get; }

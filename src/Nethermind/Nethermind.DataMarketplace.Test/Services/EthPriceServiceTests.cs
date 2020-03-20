@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -44,18 +45,22 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task update_async_should_set_usd_price()
         {
             const decimal price = 187;
-            var results = new[]
+            var results = new Dictionary<string, EthPriceService.Result>
             {
-                new EthPriceService.Result
                 {
-                    PriceUsd = price
+                    "USDT_ETH",
+                    new EthPriceService.Result
+                    {
+                        PriceUsd = price
+                    }
                 }
             };
-            _client.GetAsync<EthPriceService.Result[]>(Arg.Any<string>()).ReturnsForAnyArgs(results);
+            
+            _client.GetAsync<Dictionary<string, EthPriceService.Result>>(Arg.Any<string>()).ReturnsForAnyArgs(results);
             await _ethPriceService.UpdateAsync();
             _ethPriceService.UsdPrice.Should().Be(price);
             _ethPriceService.UpdatedAt.Should().Be(_timestamper.EpochSeconds);
-            await _client.ReceivedWithAnyArgs().GetAsync<EthPriceService.Result[]>(Arg.Any<string>());
+            await _client.ReceivedWithAnyArgs().GetAsync<Dictionary<string, EthPriceService.Result>>(Arg.Any<string>());
         }
     }
 }
