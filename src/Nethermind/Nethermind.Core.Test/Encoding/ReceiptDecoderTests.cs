@@ -142,7 +142,7 @@ namespace Nethermind.Core.Test.Encoding
             ReceiptStorageDecoder decoder = new ReceiptStorageDecoder();
 
             byte[] rlpStreamResult = decoder.Encode(txReceipt, RlpBehaviors.Storage).Bytes;
-            TxReceipt deserialized = Rlp.Decode<TxReceipt>(rlpStreamResult, RlpBehaviors.Storage);
+            TxReceipt deserialized = decoder.Decode(new RlpStream(rlpStreamResult), RlpBehaviors.Storage);
 
             Assert.AreEqual(txReceipt.BlockHash, deserialized.BlockHash, "block hash");
             Assert.AreEqual(txReceipt.BlockNumber, deserialized.BlockNumber, "block number");

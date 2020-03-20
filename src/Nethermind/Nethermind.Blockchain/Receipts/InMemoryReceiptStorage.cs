@@ -49,6 +49,7 @@ namespace Nethermind.Blockchain.Receipts
             for (int i = 0; i < txReceipts.Length; i++)
             {
                 var txReceipt = txReceipts[i];
+                txReceipt.BlockHash = block.Hash;
                 _transactions[txReceipt.TxHash] = txReceipt;
             }
 

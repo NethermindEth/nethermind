@@ -55,8 +55,8 @@ namespace Nethermind.Blockchain.Test.TxPools
         private void TestAddAndGetReceipt(IReceiptStorage storage)
         {
             var transaction = GetSignedTransaction();
-            var receipt = GetReceipt(transaction);
             var block = GetBlock(transaction);
+            var receipt = GetReceipt(transaction, block);
             storage.Insert(block, receipt);
             var blockHash = storage.Find(transaction.Hash);
             blockHash.Should().Be(block.Hash);
@@ -69,8 +69,8 @@ namespace Nethermind.Blockchain.Test.TxPools
         private void TestAddAndGetReceiptEip658(IReceiptStorage storage)
         {
             var transaction = GetSignedTransaction();
-            var receipt = GetReceipt(transaction);
             var block = GetBlock(transaction);
+            var receipt = GetReceipt(transaction, block);
             storage.Insert(block, receipt);
             var blockHash = storage.Find(transaction.Hash);
             blockHash.Should().Be(block.Hash);
@@ -83,10 +83,11 @@ namespace Nethermind.Blockchain.Test.TxPools
         private Transaction GetSignedTransaction(Address to = null)
             => Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).TestObject;
 
-        private static TxReceipt GetReceipt(Transaction transaction)
+        private static TxReceipt GetReceipt(Transaction transaction, Block block)
             => Build.A.Receipt.WithState(TestItem.KeccakB)
-                .WithTransactionHash(transaction.Hash).TestObject;
+                .WithTransactionHash(transaction.Hash)
+                .WithBlockHash(block.Hash).TestObject;
         
-        private Block GetBlock(Transaction transaction) => Build.A.Block.WithTransactions(transaction).TestObject;
+        private Block GetBlock(Transaction transaction) => Build.A.Block.WithTransactions(transaction).WithReceiptsRoot(TestItem.KeccakA).TestObject;
     }
 }
