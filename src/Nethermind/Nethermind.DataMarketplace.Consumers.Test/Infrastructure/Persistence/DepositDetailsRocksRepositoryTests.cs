@@ -27,10 +27,9 @@ using Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Db;
-using Nethermind.Store;
 using NUnit.Framework;
 
-namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
+namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
 {
     [TestFixture]
     public class DepositDetailsRocksRepositoryTests

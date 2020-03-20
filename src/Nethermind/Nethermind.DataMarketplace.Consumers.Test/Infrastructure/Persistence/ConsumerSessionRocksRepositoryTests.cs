@@ -17,20 +17,16 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.DataMarketplace.Consumers.Deposits.Queries;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.Repositories;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp;
 using Nethermind.DataMarketplace.Consumers.Sessions.Domain;
 using Nethermind.DataMarketplace.Consumers.Sessions.Queries;
 using Nethermind.DataMarketplace.Core.Domain;
-using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Db;
-using Nethermind.Store;
 using NUnit.Framework;
 
-namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
+namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
 {
     [TestFixture]
     public class ConsumerSessionRocksRepositoryTests

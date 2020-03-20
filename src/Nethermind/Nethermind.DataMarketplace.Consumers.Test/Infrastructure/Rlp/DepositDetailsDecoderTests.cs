@@ -26,12 +26,12 @@ using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
-namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
+namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Rlp
 {
     [TestFixture]
-    public class DataDetailsDecoderTests
+    public class DepositDetailsDecoderTests
     {
-        static DataDetailsDecoderTests()
+        static DepositDetailsDecoderTests()
         {
             if (_cases == null)
             {

@@ -100,6 +100,11 @@ namespace Nethermind.Db
             _db.Flush();
         }
 
+        public void Clear()
+        {
+            _db.Clear();
+        }
+
         public void Restore(int snapshot)
         {
             if (snapshot > _currentPosition) throw new InvalidOperationException($"Trying to restore snapshot beyond current positions at {nameof(StateDb)}");

@@ -37,7 +37,7 @@ namespace Nethermind.Db.Rocks
         public abstract string Name { get; }
 
         private static long _maxRocksSize;
-        
+
         private long _maxThisDbSize;
 
         public DbOnTheRocks(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
@@ -47,22 +47,15 @@ namespace Nethermind.Db.Rocks
                 return families == null ? RocksDb.Open(options, path) : RocksDb.Open(options, path, families);
             }
 
-            string fullPath = dbPath.GetApplicationResourcePath(basePath);
+            _fullPath = dbPath.GetApplicationResourcePath(basePath);
             _logger = logManager?.GetClassLogger() ?? NullLogger.Instance;
-            if (!Directory.Exists(fullPath))
+            if (!Directory.Exists(_fullPath))
             {
-                Directory.CreateDirectory(fullPath);
+                Directory.CreateDirectory(_fullPath);
             }
-            else if(deleteOnStart)
+            else if (deleteOnStart)
             {
-                try
-                {
-                    Directory.Delete(fullPath, true);
-                }
-                catch (Exception e)
-                {
-                    if(_logger.IsWarn) _logger.Warn($"This is not a problem but I could not delete the pending tx database on startup. {e.Message}");
-                }
+                Clear();
             }
 
             try
@@ -70,10 +63,10 @@ namespace Nethermind.Db.Rocks
                 // ReSharper disable once VirtualMemberCallInConstructor
                 if (_logger.IsDebug) _logger.Debug($"Building options for {Name} DB");
                 DbOptions options = BuildOptions(dbConfig);
-                
+
                 // ReSharper disable once VirtualMemberCallInConstructor
-                if (_logger.IsDebug) _logger.Debug($"Loading DB {Name.PadRight(13)} from {fullPath} with max memory footprint of {_maxThisDbSize / 1024 / 1024}MB");
-                Db = DbsByPath.GetOrAdd(fullPath, path => Open(options, path, columnFamilies));
+                if (_logger.IsDebug) _logger.Debug($"Loading DB {Name.PadRight(13)} from {_fullPath} with max memory footprint of {_maxThisDbSize / 1024 / 1024}MB");
+                Db = DbsByPath.GetOrAdd(_fullPath, path => Open(options, path, columnFamilies));
             }
             catch (DllNotFoundException e) when (e.Message.Contains("libdl"))
             {
@@ -89,7 +82,7 @@ namespace Nethermind.Db.Rocks
         {
             return ReadConfig<T>(dbConfig, propertyName, Name);
         }
-        
+
         protected static T ReadConfig<T>(IDbConfig dbConfig, string propertyName, string tableName)
         {
             string prefixed = string.Concat(tableName == "State" ? string.Empty : string.Concat(tableName, "Db"), propertyName);
@@ -143,7 +136,7 @@ namespace Nethermind.Db.Rocks
             int writeBufferNumber = (int) ReadConfig<uint>(dbConfig, nameof(dbConfig.WriteBufferNumber));
             options.SetMaxWriteBufferNumber(writeBufferNumber);
             options.SetMinWriteBufferNumberToMerge(2);
-            
+
             lock (DbsByPath)
             {
                 _maxThisDbSize += (long) writeBufferSize * writeBufferNumber;
@@ -170,6 +163,7 @@ namespace Nethermind.Db.Rocks
         {
             get
             {
+                UpdateReadMetrics();
                 return Db.Get(key);
             }
             set
@@ -200,7 +194,7 @@ namespace Nethermind.Db.Rocks
             }
         }
 
-        public KeyValuePair<byte[],byte[]>[] this[byte[][] keys] => Db.MultiGet(keys);
+        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => Db.MultiGet(keys);
 
         public Span<byte> GetSpan(byte[] key)
         {
@@ -245,10 +239,10 @@ namespace Nethermind.Db.Rocks
                 yield return iterator.Value();
                 iterator.Next();
             }
-            
+
             iterator.Dispose();
         }
-        
+
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAllCore(Iterator iterator)
         {
             iterator.SeekToFirst();
@@ -257,12 +251,13 @@ namespace Nethermind.Db.Rocks
                 yield return new KeyValuePair<byte[], byte[]>(iterator.Key(), iterator.Value());
                 iterator.Next();
             }
-            
+
             iterator.Dispose();
         }
 
 
         private ILogger _logger;
+        private string _fullPath;
 
         public bool KeyExists(byte[] key)
         {
@@ -296,15 +291,27 @@ namespace Nethermind.Db.Rocks
             Native.Instance.rocksdb_flush(Db.Handle, FlushOptions.DefaultFlushOptions.Handle);
         }
 
+        public void Clear()
+        {
+            try
+            {
+                Directory.Delete(_fullPath, true);
+            }
+            catch (Exception e)
+            {
+                if(_logger.IsWarn) _logger.Warn($"This is not a problem but I could not delete the pending tx database on startup. {e.Message}");
+            }
+        }
+
         private class FlushOptions
         {
             internal static FlushOptions DefaultFlushOptions { get; } = new FlushOptions();
-            
+
             public FlushOptions()
             {
                 Handle = Native.Instance.rocksdb_flushoptions_create();
             }
-            
+
             public IntPtr Handle { get; protected set; }
 
             ~FlushOptions()
@@ -315,6 +322,6 @@ namespace Nethermind.Db.Rocks
                     Handle = IntPtr.Zero;
                 }
             }
-        } 
+        }
     }
 }

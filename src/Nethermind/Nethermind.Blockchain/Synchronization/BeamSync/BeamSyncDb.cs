@@ -200,6 +200,11 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             _db.Flush();
         }
 
+        public void Clear()
+        {
+            _db.Clear();
+        }
+
         public event EventHandler NeedMoreData;
 
         public DataConsumerRequest[] PrepareRequests()
