@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
@@ -122,6 +123,15 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
             DepositDetails retrieved = await repository.GetAsync(details.Id);
             retrieved.Should().BeEquivalentTo(details);
         }
+        
+        [Test]
+        public async Task Get_null()
+        {
+            IDb db = new MemDb();
+            DepositDetailsRocksRepository repository = new DepositDetailsRocksRepository(db, new DepositDetailsDecoder());
+            DepositDetails retrieved = await repository.GetAsync(Keccak.Zero);
+            retrieved.Should().BeNull();
+        }
 
         [TestCaseSource(nameof(TestCaseSource))]
         public async Task Update_get(DepositDetails details)
@@ -221,6 +231,14 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
             DepositDetailsRocksRepository repository = new DepositDetailsRocksRepository(db, new DepositDetailsDecoder());
             PagedResult<DepositDetails> result = await repository.BrowseAsync(new GetDeposits());
             result.Items.Should().HaveCount(0);
+        }
+        
+        [Test]
+        public void Null_query_throws()
+        {
+            IDb db = new MemDb();
+            DepositDetailsRocksRepository repository = new DepositDetailsRocksRepository(db, new DepositDetailsDecoder());
+            Assert.Throws<ArgumentNullException>(() => repository.BrowseAsync(null));
         }
     }
 }

@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -151,6 +152,14 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
             await repository.AddAsync(_cases[0]);
             ConsumerSession retrieved = await repository.GetPreviousAsync(_cases[1]);
             retrieved.Should().BeEquivalentTo(_cases[0]);
+        }
+        
+        [Test]
+        public void Null_query_throws()
+        {
+            IDb db = new MemDb();
+            ConsumerSessionRocksRepository repository = new ConsumerSessionRocksRepository(db, new ConsumerSessionDecoder());
+            Assert.Throws<ArgumentNullException>(() => repository.BrowseAsync(null));
         }
         
         [Test]

@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -142,6 +143,14 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
 
             PagedResult<DepositApproval> depositApprovals = await repository.BrowseAsync(new GetConsumerDepositApprovals {OnlyPending = true});
             depositApprovals.Items.Should().ContainSingle(da => da.State == DepositApprovalState.Pending);
+        }
+        
+        [Test]
+        public void Null_query_throws()
+        {
+            IDb db = new MemDb();
+            ConsumerDepositApprovalRocksRepository repository = new ConsumerDepositApprovalRocksRepository(db, new DepositApprovalDecoder());
+            Assert.Throws<ArgumentNullException>(() => repository.BrowseAsync(null));
         }
 
         [Test]
