@@ -93,7 +93,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
             Test(new DataStreamEnabledMessage(Keccak.OfAnEmptyString, "client", new string[] {"a", "b", "c"}));
             Test(new DepositApprovalConfirmedMessage(Keccak.OfAnEmptyString, Address.SystemUser));
             Test(new DepositApprovalRejectedMessage(Keccak.OfAnEmptyString, Address.SystemUser));
-            Test(new DepositApprovalsMessage(new DepositApproval[] {new DepositApproval(Keccak.EmptyTreeHash, Keccak.OfAnEmptyString, "asset", "kyc", Address.SystemUser, TestItem.AddressA, 1, DepositApprovalState.Confirmed)}));
+            Test(new DepositApprovalsMessage(new DepositApproval[] {new DepositApproval(Keccak.OfAnEmptyString, "asset", "kyc", Address.SystemUser, TestItem.AddressA, 1, DepositApprovalState.Confirmed)}));
             Test(new DisableDataStreamMessage(Keccak.OfAnEmptyString, "client"));
             Test(new EarlyRefundTicketMessage(new EarlyRefundTicket(Keccak.OfAnEmptyString, 1, signature), RefundReason.InvalidDataAsset));
             Test(new EnableDataStreamMessage(Keccak.OfAnEmptyString, "client", new string[] {"a", "b", "c"}));

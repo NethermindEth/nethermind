@@ -38,7 +38,6 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             {
                 _cases = new List<DepositApproval>();
                 _cases.Add(new DepositApproval(
-                    TestItem.KeccakA,
                     TestItem.KeccakB,
                     "asset_name",
                     "kyc", TestItem.AddressA,
@@ -47,7 +46,6 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
                     DepositApprovalState.Rejected));
 
                 _cases.Add(new DepositApproval(
-                    TestItem.KeccakC,
                     TestItem.KeccakD,
                     "asset_name",
                     "kyc",
@@ -57,7 +55,6 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
                     DepositApprovalState.Confirmed));
 
                 _cases.Add(new DepositApproval(
-                    TestItem.KeccakC,
                     TestItem.KeccakD,
                     "asset_name",
                     "kyc",

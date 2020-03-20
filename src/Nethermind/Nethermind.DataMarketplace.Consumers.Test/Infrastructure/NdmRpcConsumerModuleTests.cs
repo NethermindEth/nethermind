@@ -387,7 +387,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         public async Task get_deposit_approvals_should_return_approvals()
         {
             var query = new GetConsumerDepositApprovals();
-            var approval = new DepositApproval(Keccak.Zero, TestItem.KeccakA, "test", "kyc",
+            var approval = new DepositApproval(TestItem.KeccakA, "test", "kyc",
                 TestItem.AddressA, TestItem.AddressB, 1, DepositApprovalState.Pending);
             _consumerService.GetDepositApprovalsAsync(query)
                 .Returns(PagedResult<DepositApproval>.Create(new[] {approval}, 1, 1, 1, 1));
