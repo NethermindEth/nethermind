@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain.Tracing
 
         public GethLikeTxTrace Trace(Keccak txHash, GethTraceOptions traceOptions)
         {
-            Keccak blockHash = _receiptStorage.Find(txHash);
+            Keccak blockHash = _receiptStorage.FindBlockHash(txHash);
             if (blockHash == null)
             {
                 return null;

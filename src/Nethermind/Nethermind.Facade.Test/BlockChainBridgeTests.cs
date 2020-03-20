@@ -95,7 +95,7 @@ namespace Nethermind.Facade.Test
         public void get_transaction_returns_null_when_block_not_found()
         {
             var receipt = Build.A.Receipt.WithBlockHash(TestItem.KeccakB).TestObject;
-            _receiptStorage.Find(TestItem.KeccakA).Returns(TestItem.KeccakB);
+            _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
             _blockchainBridge.GetTransaction(TestItem.KeccakA).Should().Be((null, null));
         }
         
@@ -106,7 +106,7 @@ namespace Nethermind.Facade.Test
             var receipt = Build.A.Receipt.WithBlockHash(TestItem.KeccakB).WithTransactionHash(TestItem.KeccakA).WithIndex(index).TestObject;
             var block = Build.A.Block.WithTransactions(Enumerable.Range(0, 10).Select(i => Build.A.Transaction.WithNonce((UInt256) i).TestObject).ToArray()).TestObject;
             _blockTree.FindBlock(TestItem.KeccakB, BlockTreeLookupOptions.RequireCanonical).Returns(block);
-            _receiptStorage.Find(TestItem.KeccakA).Returns(TestItem.KeccakB);
+            _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
             _receiptStorage.Get(block, TestItem.KeccakA).Returns(receipt);
             _blockchainBridge.GetTransaction(TestItem.KeccakA).Should()
                 .BeEquivalentTo((receipt, Build.A.Transaction.WithNonce((UInt256) index).TestObject));

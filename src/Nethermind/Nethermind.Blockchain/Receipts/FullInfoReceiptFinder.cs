@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.Receipts
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
         }
         
-        public Keccak Find(Keccak txHash) => _innerFinder.Find(txHash);
+        public Keccak FindBlockHash(Keccak txHash) => _innerFinder.FindBlockHash(txHash);
 
         public TxReceipt[] Get(Block block)
         {

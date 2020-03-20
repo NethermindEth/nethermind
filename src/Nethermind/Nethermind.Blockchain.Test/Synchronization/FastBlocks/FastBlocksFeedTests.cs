@@ -733,7 +733,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                             int txIndex = 0;
                             foreach (Transaction transaction in expectedBlock.Transactions)
                             {
-                                Assert.NotNull(_localReceiptStorage.Find(transaction.Hash), $"receipt {expectedBlock.Number}.{txIndex}");
+                                Assert.NotNull(_localReceiptStorage.FindBlockHash(transaction.Hash), $"receipt {expectedBlock.Number}.{txIndex}");
                                 txIndex++;
                             }
                         }

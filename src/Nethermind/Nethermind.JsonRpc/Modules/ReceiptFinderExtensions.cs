@@ -24,7 +24,7 @@ namespace Nethermind.JsonRpc.Modules
     {
         public static SearchResult<Keccak> SearchForReceiptBlockHash(this IReceiptFinder receiptFinder, Keccak txHash)
         {
-            Keccak blockHash = receiptFinder.Find(txHash);
+            Keccak blockHash = receiptFinder.FindBlockHash(txHash);
             return blockHash == null
                 ? new SearchResult<Keccak>($"{txHash} receipt could not be found", ErrorCodes.ResourceNotFound)
                 : new SearchResult<Keccak>(blockHash);

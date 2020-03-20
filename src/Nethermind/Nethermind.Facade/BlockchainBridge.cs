@@ -110,7 +110,7 @@ namespace Nethermind.Facade
 
         public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
         {
-            Keccak blockHash = _receiptFinder.Find(transactionHash);
+            Keccak blockHash = _receiptFinder.FindBlockHash(transactionHash);
             if (blockHash != null)
             {
                 Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
@@ -170,7 +170,7 @@ namespace Nethermind.Facade
 
         public TxReceipt GetReceipt(Keccak txHash)
         {
-            var blockHash = _receiptFinder.Find(txHash);
+            var blockHash = _receiptFinder.FindBlockHash(txHash);
             if (blockHash != null)
             {
                 var block = _blockTree.FindBlock(blockHash);

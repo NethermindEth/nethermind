@@ -53,19 +53,20 @@ namespace Nethermind.Blockchain.Receipts
             _migratedBlockNumber = Get(MigrationBlockNumberKey, long.MaxValue);
         }
 
-        public Keccak Find(Keccak hash)
+        public Keccak FindBlockHash(Keccak txHash)
         {
-            var blockHashData = _transactionDb.Get(hash);
-            return blockHashData == null ? FindObsolete(hash).BlockHash : new Keccak(blockHashData);
+            var blockHashData = _transactionDb.Get(txHash);
+            return blockHashData == null ? FindReceiptObsolete(txHash).BlockHash : new Keccak(blockHashData);
         }
 
-        private TxReceipt FindObsolete(Keccak hash)
+        // Find receipt stored with old - obsolete format.
+        private TxReceipt FindReceiptObsolete(Keccak hash)
         {
             var receiptData = _database.Get(hash);
-            return DeserializeObsolete(hash, receiptData);
+            return DeserializeReceiptObsolete(hash, receiptData);
         }
 
-        private static TxReceipt DeserializeObsolete(Keccak hash, byte[] receiptData)
+        private static TxReceipt DeserializeReceiptObsolete(Keccak hash, byte[] receiptData)
         {
             if (receiptData != null)
             {
@@ -100,13 +101,14 @@ namespace Nethermind.Blockchain.Receipts
             }
             else
             {
+                // didn't bring performance uplift that was expected
                 // var data = _database.MultiGet(block.Transactions.Select(t => t.Hash));
                 // return data.Select(kvp => DeserializeObsolete(new Keccak(kvp.Key), kvp.Value)).ToArray();
 
                 TxReceipt[] result = new TxReceipt[block.Transactions.Length];
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
-                    result[i] = FindObsolete(block.Transactions[i].Hash);
+                    result[i] = FindReceiptObsolete(block.Transactions[i].Hash);
                 }
                 
                 return result;

@@ -23,7 +23,7 @@ namespace Nethermind.Blockchain.Receipts
 {
     public interface IReceiptFinder
     {
-        Keccak Find(Keccak txHash);
+        Keccak FindBlockHash(Keccak txHash);
         TxReceipt[] Get(Block block);
         TxReceipt[] Get(Keccak blockHash);
         bool CanGetReceiptsByHash(long blockNumber);

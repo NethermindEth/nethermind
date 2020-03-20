@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain.Receipts
     {
         public static NullReceiptStorage Instance { get; } = new NullReceiptStorage();
         
-        public Keccak Find(Keccak hash) => null;
+        public Keccak FindBlockHash(Keccak hash) => null;
         
         private NullReceiptStorage()
         {
