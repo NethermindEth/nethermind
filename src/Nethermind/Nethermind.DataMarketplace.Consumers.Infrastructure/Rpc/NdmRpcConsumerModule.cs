@@ -292,12 +292,20 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
             => ResultWrapper<UpdatedTransactionInfoForRpc>.Success(
                 new UpdatedTransactionInfoForRpc(await _transactionsService.CancelRefundAsync(depositId)));
 
-        public async Task<ResultWrapper<IEnumerable<PendingTransactionForRpc>>> ndm_getConsumerPendingTransactions()
+        public async Task<ResultWrapper<IEnumerable<ResourceTransactionForRpc>>> ndm_getConsumerPendingTransactions()
         {
-            IEnumerable<PendingTransaction> transactions = await _transactionsService.GetPendingAsync();
+            IEnumerable<ResourceTransaction> transactions = await _transactionsService.GetPendingAsync();
 
-            return ResultWrapper<IEnumerable<PendingTransactionForRpc>>.Success(transactions
-                .Select(t => new PendingTransactionForRpc(t)));
+            return ResultWrapper<IEnumerable<ResourceTransactionForRpc>>.Success(transactions
+                .Select(t => new ResourceTransactionForRpc(t)));
+        }
+        
+        public async Task<ResultWrapper<IEnumerable<ResourceTransactionForRpc>>> ndm_getAllConsumerTransactions()
+        {
+            IEnumerable<ResourceTransaction> transactions = await _transactionsService.GetAllTransactionsAsync();
+
+            return ResultWrapper<IEnumerable<ResourceTransactionForRpc>>.Success(transactions
+                .Select(t => new ResourceTransactionForRpc(t)));
         }
 
         public ResultWrapper<GasLimitsForRpc> ndm_getConsumerGasLimits()

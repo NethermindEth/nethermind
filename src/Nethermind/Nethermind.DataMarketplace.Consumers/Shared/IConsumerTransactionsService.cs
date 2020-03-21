@@ -25,7 +25,8 @@ namespace Nethermind.DataMarketplace.Consumers.Shared
 {
     public interface IConsumerTransactionsService
     {
-        Task<IEnumerable<PendingTransaction>> GetPendingAsync();
+        Task<IEnumerable<ResourceTransaction>> GetAllTransactionsAsync();
+        Task<IEnumerable<ResourceTransaction>> GetPendingAsync();
         Task<UpdatedTransactionInfo> UpdateDepositGasPriceAsync(Keccak depositId, UInt256 gasPrice);
         Task<UpdatedTransactionInfo> UpdateRefundGasPriceAsync(Keccak depositId, UInt256 gasPrice);
         Task<UpdatedTransactionInfo> CancelDepositAsync(Keccak depositId);

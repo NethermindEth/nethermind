@@ -16,13 +16,13 @@
 
 namespace Nethermind.DataMarketplace.Core.Domain
 {
-    public class PendingTransaction
+    public class ResourceTransaction
     {
         public string ResourceId { get; }
         public string Type { get; }
         public TransactionInfo Transaction { get; }
         
-        public PendingTransaction(string resourceId, string type, TransactionInfo transaction)
+        public ResourceTransaction(string resourceId, string type, TransactionInfo transaction)
         {
             ResourceId = resourceId;
             Type = type;
