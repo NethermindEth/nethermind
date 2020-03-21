@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -57,13 +58,92 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
             _subprotocol = new NdmSubprotocol(session, nodeStatsManager, serializationService, LimboLogs.Instance, consumerService, consumerChannelManager, ecdsa, new DevWallet(new WalletConfig(), LimboLogs.Instance), Substitute.For<INdmFaucet>(), TestItem.PublicKeyB, TestItem.AddressB, TestItem.AddressA, false);
         }
 
+        [TearDown]
+        public void TearDownAttribute()
+        {
+            _subprotocol?.Dispose();
+        }
+
+        [Test]
+        public void Can_change_address()
+        {
+            BuildSubprotocol();
+            _subprotocol.ChangeConsumerAddress(TestItem.AddressA);
+            _subprotocol.ChangeProviderAddress(TestItem.AddressB);
+            _subprotocol.ChangeHostConsumerAddress(TestItem.AddressC);
+            _subprotocol.ChangeHostProviderAddress(TestItem.AddressD);
+        }
+        
         [Test]
         public void Can_init()
         {
             BuildSubprotocol();
             _subprotocol.Init();
         }
-        
+
+        [Test]
+        public void Smoke_for_send_finish_session()
+        {
+            BuildSubprotocol();
+            _subprotocol.SendFinishSession(TestItem.KeccakA);
+        }
+
+        [Test]
+        public void Smoke_for_send_consumer_address_changed()
+        {
+            BuildSubprotocol();
+            _subprotocol.SendConsumerAddressChanged(TestItem.AddressA);
+        }
+
+        [Test]
+        public void Smoke_for_send_data_delivery_receipt()
+        {
+            BuildSubprotocol();
+            _subprotocol.SendDataDeliveryReceipt(TestItem.KeccakA, new DataDeliveryReceipt(StatusCodes.Ok, 1, 1, new Signature(new byte[65])));
+        }
+
+        [Test]
+        public void Smoke_for_send_data_request()
+        {
+            BuildSubprotocol();
+            _subprotocol.SendDataRequestAsync(new DataRequest(TestItem.KeccakA, 1, 1, 1, new byte[0], TestItem.AddressA, TestItem.AddressB, new Signature(new byte[65])), 1, CancellationToken.None);
+        }
+
+        [Test]
+        public void Smoke_for_send_disable_data_stream()
+        {
+            BuildSubprotocol();
+            _subprotocol.SendDisableDataStream(Keccak.Zero, "client");
+        }
+
+        [Test]
+        public void Smoke_for_send_enable_data_stream()
+        {
+            BuildSubprotocol();
+            _subprotocol.SendEnableDataStream(Keccak.Zero, "client", new string[] {"a"});
+        }
+
+        [Test]
+        public void Smoke_for_send_get_deposit_approvals()
+        {
+            BuildSubprotocol();
+            _subprotocol.SendGetDepositApprovals(TestItem.KeccakA);
+        }
+
+        [Test]
+        public void Smoke_for_send_request_deposit_approval()
+        {
+            BuildSubprotocol();
+            _subprotocol.SendRequestDepositApproval(TestItem.KeccakA, TestItem.AddressA, "kyc");
+        }
+
+        [Test]
+        public void Smoke_for_send_request_eth()
+        {
+            BuildSubprotocol();
+            _subprotocol.SendRequestEthAsync(TestItem.AddressA, 1, CancellationToken.None);
+        }
+
         [Test]
         public void Fails_if_receives_any_message_before_hi()
         {
