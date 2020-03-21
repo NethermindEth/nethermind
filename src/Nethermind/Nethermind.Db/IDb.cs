@@ -37,6 +37,8 @@ namespace Nethermind.Db
         public IDb Innermost { get; }
 
         void Flush();
+        
+        void Clear();
     }
 
     public interface IDbWithSpan : IDisposable

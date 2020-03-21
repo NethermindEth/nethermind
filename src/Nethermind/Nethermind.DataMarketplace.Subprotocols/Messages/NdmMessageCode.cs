@@ -49,5 +49,25 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
         public const int RequestEth = 0x1C;
         public const int EthRequested = 0x1D;
         public const int GraceUnitsExceeded = 0x1E;
+
+        public static bool IsProviderOnly(int messageCode)
+        {
+            return messageCode == ConsumerAddressChanged
+                   || messageCode == GetDataAssets
+                   || messageCode == GetDepositApprovals
+                   || messageCode == DataDeliveryReceipt
+                   || messageCode == DataRequest
+                   || messageCode == EnableDataStream
+                   || messageCode == DisableDataStream
+                   || messageCode == FinishSession
+                   || messageCode == RequestDepositApproval
+                   || messageCode == RequestEth;
+        }
+
+        public static bool IsRequestResponse(int messageCode)
+        {
+            return messageCode == DataRequestResult
+                   || messageCode == EthRequested;
+        }
     }
 }

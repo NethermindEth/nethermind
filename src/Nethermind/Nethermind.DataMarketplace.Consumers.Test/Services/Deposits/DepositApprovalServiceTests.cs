@@ -48,11 +48,11 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         private Keccak _pendingAssetId = TestItem.KeccakB;
         private Keccak _confirmedAssetId = TestItem.KeccakC;
         private Keccak _rejectedAssetId = TestItem.KeccakD;
-        
+
         private Address _invalidConsumer = TestItem.AddressC;
         private Address _consumerAddress = TestItem.AddressA;
         private Address _providerAddress = TestItem.AddressB;
-        
+
         private DepositApproval _pendingApproval;
         private DepositApproval _confirmedApproval;
         private DepositApproval _rejectedApproval;
@@ -68,7 +68,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             peer.NodeId.Returns(_providerId);
 
             DataAssetProvider provider = new DataAssetProvider(_providerAddress, "name");
-            
+
             DataAsset newPendingAsset = new DataAsset(_newPendingAssetId, "name", "desc", 1, DataAssetUnitType.Unit, 1000, 10000, new DataAssetRules(new DataAssetRule(1), null), provider);
             DataAsset pendingAsset = new DataAsset(_pendingAssetId, "name", "desc", 1, DataAssetUnitType.Unit, 1000, 10000, new DataAssetRules(new DataAssetRule(1), null), provider);
             DataAsset rejectedAsset = new DataAsset(_rejectedAssetId, "name", "desc", 1, DataAssetUnitType.Unit, 1000, 10000, new DataAssetRules(new DataAssetRule(1), null), provider);
@@ -80,7 +80,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             _ndmNotifier = Substitute.For<INdmNotifier>();
             ConsumerNotifier notifier = new ConsumerNotifier(_ndmNotifier);
             DataAssetService dataAssetService = new DataAssetService(providerRepository, notifier, LimboLogs.Instance);
-            
+
             dataAssetService.AddDiscovered(newPendingAsset, peer);
             dataAssetService.AddDiscovered(pendingAsset, peer);
             dataAssetService.AddDiscovered(rejectedAsset, peer);
@@ -91,9 +91,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
 
             _service = new DepositApprovalService(dataAssetService, _providerService, _cdaRepo, Timestamper.Default, notifier, LimboLogs.Instance);
 
-            _confirmedApproval = new DepositApproval(Keccak.Compute(Rlp.Encode(Rlp.Encode(_confirmedAssetId), Rlp.Encode(_consumerAddress)).Bytes), _confirmedAssetId, "asset", "kyc", _consumerAddress, _providerAddress, 1, DepositApprovalState.Confirmed);
-            _pendingApproval = new DepositApproval(Keccak.Compute(Rlp.Encode(Rlp.Encode(_pendingAssetId), Rlp.Encode(_consumerAddress)).Bytes), _pendingAssetId, "asset", "kyc", _consumerAddress, _providerAddress, 1, DepositApprovalState.Pending);
-            _rejectedApproval = new DepositApproval(Keccak.Compute(Rlp.Encode(Rlp.Encode(_rejectedAssetId), Rlp.Encode(_consumerAddress)).Bytes), _rejectedAssetId, "asset", "kyc", _consumerAddress, _providerAddress, 1, DepositApprovalState.Rejected);
+            _confirmedApproval = new DepositApproval(_confirmedAssetId, "asset", "kyc", _consumerAddress, _providerAddress, 1, DepositApprovalState.Confirmed);
+            _pendingApproval = new DepositApproval(_pendingAssetId, "asset", "kyc", _consumerAddress, _providerAddress, 1, DepositApprovalState.Pending);
+            _rejectedApproval = new DepositApproval(_rejectedAssetId, "asset", "kyc", _consumerAddress, _providerAddress, 1, DepositApprovalState.Rejected);
 
             _cdaRepo.AddAsync(_confirmedApproval);
             _cdaRepo.AddAsync(_pendingApproval);
@@ -130,7 +130,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             var result = await _service.BrowseAsync(new GetConsumerDepositApprovals());
             result.Items.Should().HaveCount(4);
         }
-        
+
         [Test]
         public async Task Cannot_request_when_provider_is_missing()
         {
@@ -149,7 +149,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             var result = await _service.BrowseAsync(new GetConsumerDepositApprovals());
             result.Items.Where(i => i.State == DepositApprovalState.Rejected).Should().HaveCount(2);
         }
-        
+
         [Test]
         public async Task Ignore_reject_on_rejected()
         {
@@ -171,7 +171,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             var result = await _service.BrowseAsync(new GetConsumerDepositApprovals());
             result.Items.Where(i => i.State == DepositApprovalState.Confirmed).Should().HaveCount(2);
         }
-        
+
         [Test]
         public async Task Ignore_approve_on_approved()
         {
@@ -190,43 +190,43 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             var result = await _service.BrowseAsync(new GetConsumerDepositApprovals());
             result.Items.Should().HaveCount(3);
         }
-        
+
         [Test]
         public async Task Update_to_reject_will_proceed_without_errors()
         {
-            DepositApproval updateToReject = new DepositApproval(_pendingApproval.Id, _pendingApproval.AssetId, _pendingApproval.AssetName, _pendingApproval.Kyc, _pendingApproval.Consumer, _pendingApproval.Provider, _pendingApproval.Timestamp, DepositApprovalState.Rejected);
+            DepositApproval updateToReject = new DepositApproval(_pendingApproval.AssetId, _pendingApproval.AssetName, _pendingApproval.Kyc, _pendingApproval.Consumer, _pendingApproval.Provider, _pendingApproval.Timestamp, DepositApprovalState.Rejected);
             await _service.UpdateAsync(new DepositApproval[] {updateToReject}, _providerAddress);
             var result = await _service.BrowseAsync(new GetConsumerDepositApprovals());
             result.Items.Where(i => i.State == DepositApprovalState.Rejected).Should().HaveCount(2);
         }
-        
+
         [Test]
         public async Task Update_to_confirm_will_proceed_without_errors()
         {
-            DepositApproval updateToConfirm = new DepositApproval(_pendingApproval.Id, _pendingApproval.AssetId, _pendingApproval.AssetName, _pendingApproval.Kyc, _pendingApproval.Consumer, _pendingApproval.Provider, _pendingApproval.Timestamp, DepositApprovalState.Confirmed);
+            DepositApproval updateToConfirm = new DepositApproval(_pendingApproval.AssetId, _pendingApproval.AssetName, _pendingApproval.Kyc, _pendingApproval.Consumer, _pendingApproval.Provider, _pendingApproval.Timestamp, DepositApprovalState.Confirmed);
             await _service.UpdateAsync(new DepositApproval[] {updateToConfirm}, _providerAddress);
             var result = await _service.BrowseAsync(new GetConsumerDepositApprovals());
             result.Items.Where(i => i.State == DepositApprovalState.Confirmed).Should().HaveCount(2);
         }
-        
+
         [Test]
         public async Task Update_to_pending_will_be_ignored()
         {
-            DepositApproval updateToPending = new DepositApproval(_confirmedApproval.Id, _confirmedApproval.AssetId, _confirmedApproval.AssetName, _confirmedApproval.Kyc, _confirmedApproval.Consumer, _confirmedApproval.Provider, _confirmedApproval.Timestamp, DepositApprovalState.Pending);
+            DepositApproval updateToPending = new DepositApproval(_confirmedApproval.AssetId, _confirmedApproval.AssetName, _confirmedApproval.Kyc, _confirmedApproval.Consumer, _confirmedApproval.Provider, _confirmedApproval.Timestamp, DepositApprovalState.Pending);
             await _service.UpdateAsync(new DepositApproval[] {updateToPending}, _providerAddress);
             var result = await _service.BrowseAsync(new GetConsumerDepositApprovals());
             result.Items.Where(i => i.State == DepositApprovalState.Pending).Should().HaveCount(1);
         }
-        
+
         [Test]
         public async Task Update_unknown_will_be_ignored()
         {
-            DepositApproval unknown = new DepositApproval(Keccak.Compute("unknown"), _pendingApproval.AssetId, _pendingApproval.AssetName, _pendingApproval.Kyc, _pendingApproval.Consumer, _pendingApproval.Provider, _pendingApproval.Timestamp, DepositApprovalState.Confirmed);
+            DepositApproval unknown = new DepositApproval(_pendingApproval.AssetId, _pendingApproval.AssetName, _pendingApproval.Kyc, _pendingApproval.Consumer, _pendingApproval.Provider, _pendingApproval.Timestamp, DepositApprovalState.Confirmed);
             await _service.UpdateAsync(new DepositApproval[] {unknown}, _providerAddress);
             var result = await _service.BrowseAsync(new GetConsumerDepositApprovals());
             result.Items.Should().HaveCount(3);
         }
-        
+
         [Test]
         public async Task Update_empty_will_proceed_without_errors()
         {
@@ -234,7 +234,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             var result = await _service.BrowseAsync(new GetConsumerDepositApprovals());
             result.Items.Should().HaveCount(3);
         }
-        
+
         [Test]
         public async Task Various_ignored_cases()
         {

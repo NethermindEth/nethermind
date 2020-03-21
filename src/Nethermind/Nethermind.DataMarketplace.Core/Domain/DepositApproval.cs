@@ -17,6 +17,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Core.Domain
 {
@@ -31,8 +32,12 @@ namespace Nethermind.DataMarketplace.Core.Domain
         public ulong Timestamp { get; }
         public DepositApprovalState State { get; private set; }
 
+        public static Keccak CalculateId(Keccak assetId, Address consumer)
+        {
+            return Keccak.Compute(Rlp.Encode(Rlp.Encode(assetId), Rlp.Encode(consumer)).Bytes);
+        }
+        
         public DepositApproval(
-            Keccak id,
             Keccak assetId,
             string assetName,
             string kyc,
@@ -41,7 +46,6 @@ namespace Nethermind.DataMarketplace.Core.Domain
             ulong timestamp,
             DepositApprovalState state)
         {
-            Id = id ?? throw new ArgumentNullException(nameof(id));
             AssetId = assetId ?? throw new ArgumentNullException(nameof(assetId));
             AssetName = assetName ?? throw new ArgumentNullException(nameof(assetName));
             Kyc = kyc ?? throw new ArgumentNullException(nameof(kyc));
@@ -49,6 +53,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
             Provider = provider ?? throw new ArgumentNullException(nameof(provider));
             Timestamp = timestamp;
             State = state;
+            Id = CalculateId(assetId, consumer);
         }
 
         public void Confirm()

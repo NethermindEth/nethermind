@@ -100,6 +100,8 @@ namespace Nethermind.Db
             _memDb.Flush();
         }
 
+        public void Clear() { throw new InvalidOperationException(); }
+
         public virtual void ClearTempChanges()
         {
             _memDb.Clear();
