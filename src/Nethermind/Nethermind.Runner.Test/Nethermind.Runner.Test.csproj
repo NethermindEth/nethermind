@@ -19,6 +19,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
       <ProjectReference Include="..\Nethermind.Runner\Nethermind.Runner.csproj" />
 
         <Content Include="..\Nethermind.Runner\configs\*.cfg" Link="configs\%(RecursiveDir)%(Filename)%(Extension)">
