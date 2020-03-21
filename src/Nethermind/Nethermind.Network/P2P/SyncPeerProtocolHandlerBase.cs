@@ -286,6 +286,13 @@ namespace Nethermind.Network.P2P
             //     return;
             // }
 
+            Send(FulfillBlockHeadersRequest(getBlockHeadersMessage));
+            stopwatch.Stop();
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockHeaders to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+        }
+
+        protected BlockHeadersMessage FulfillBlockHeadersRequest(GetBlockHeadersMessage getBlockHeadersMessage)
+        {
             if (getBlockHeadersMessage.MaxHeaders > 1024)
             {
                 throw new EthSynchronizationException("Incoming headers request for more than 1024 headers");
@@ -304,9 +311,7 @@ namespace Nethermind.Network.P2P
 
             headers = FixHeadersForGeth(headers);
 
-            Send(new BlockHeadersMessage(headers));
-            stopwatch.Stop();
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockHeaders to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            return new BlockHeadersMessage(headers);
         }
 
         protected void Handle(BlockHeadersMessage message, long size)
