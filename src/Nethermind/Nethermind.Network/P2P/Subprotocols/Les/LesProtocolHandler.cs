@@ -44,7 +44,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             ILogManager logManager,
             ITxPool txPool): base(session, serializer, statsManager, syncServer, logManager, txPool)
         {
-
+            _lastSentBlock = SyncServer.Head;
         }
 
         public override void Init()
@@ -179,8 +179,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
 
             TotalDifficultyOnSessionStart = status.TotalDifficulty;
             RequestedAnnounceType = (LesAnnounceType)status.AnnounceType.Value;
+            if (RequestedAnnounceType == LesAnnounceType.Signed) throw new NotImplementedException("Signed announcements are not yet supported.");
 
             ProtocolInitialized?.Invoke(this, eventArgs);
+        }
+
+        public void Handle(GetBlockHeadersMessage getBlockHeaders)
+        {
+            Eth.BlockHeadersMessage ethBlockHeadersMessage = FulfillBlockHeadersRequest(getBlockHeaders.EthMessage);
+                // todo - implement cost tracking
+            Send(new BlockHeadersMessage(ethBlockHeadersMessage, getBlockHeaders.RequestId, int.MaxValue));
         }
 
         public override bool HasAgreedCapability(Capability capability) => false;
@@ -188,17 +196,37 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
         public override bool HasAvailableCapability(Capability capability) => false;
 
         private BlockHeader _lastSentBlock;
+
         public override void NotifyOfNewBlock(Block block, SendBlockPriority priorty)
         {
             if (RequestedAnnounceType == LesAnnounceType.None) return;
+            if (!block.TotalDifficulty.HasValue)
+            {
+                throw new InvalidOperationException($"Trying to send a block {block.Hash} with null total difficulty");
+            }
+
+            if (block.TotalDifficulty <= _lastSentBlock.TotalDifficulty) return;
+
+            AnnounceMessage announceMessage = new AnnounceMessage();
+            announceMessage.HeadHash = block.Hash;
+            announceMessage.HeadBlockNo = block.Number;
+            announceMessage.TotalDifficulty = block.TotalDifficulty.Value;
+            if (_lastSentBlock == null || block.ParentHash == _lastSentBlock.Hash)
+                announceMessage.ReorgDepth = 0;
+            else
+            {
+                BlockHeader lowestCommonAncestor = SyncServer.FindLowestCommonAncestor(block.Header, _lastSentBlock);
+                announceMessage.ReorgDepth = _lastSentBlock.Number - lowestCommonAncestor.Number;
+            }
 
             _lastSentBlock = block.Header;
 
+            Send(announceMessage);
         }
 
         Task<BlockHeader> ISyncPeer.GetHeadBlockHeader(Keccak hash, CancellationToken token)
         {
-            return Task.FromResult(_lastSentBlock ?? SyncServer.Head);
+            return Task.FromResult(_lastSentBlock);
         }
 
         protected override void OnDisposed() { }
