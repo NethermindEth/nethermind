@@ -26,11 +26,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
         {
             // here to register with RLP in static constructor
         }
-
-        public DataDeliveryReceiptDetailsDecoder()
-        {
-        }
-
+        
         static DataDeliveryReceiptDetailsDecoder()
         {
             Serialization.Rlp.Rlp.Decoders[typeof(DataDeliveryReceiptDetails)] =

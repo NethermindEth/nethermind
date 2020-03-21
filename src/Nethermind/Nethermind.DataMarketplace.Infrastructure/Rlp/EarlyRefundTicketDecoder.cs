@@ -28,10 +28,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             // here to register with RLP in static constructor
         }
 
-        private EarlyRefundTicketDecoder()
-        {
-        }
-
         static EarlyRefundTicketDecoder()
         {
             Serialization.Rlp.Rlp.Decoders[typeof(EarlyRefundTicket)] = new EarlyRefundTicketDecoder();

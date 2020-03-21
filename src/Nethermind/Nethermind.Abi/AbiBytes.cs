@@ -16,6 +16,7 @@
 
 using System;
 using System.Text;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Abi
@@ -66,6 +67,11 @@ namespace Nethermind.Abi
             if (arg is string stringInput)
             {
                 return Encode(Encoding.ASCII.GetBytes(stringInput), packed);
+            }
+            
+            if (arg is Keccak hash && Length == 32)
+            {
+                return Encode(hash.Bytes, packed);
             }
 
             throw new AbiException(AbiEncodingExceptionMessage);

@@ -25,11 +25,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
         {
             // here to register with RLP in static constructor
         }
-
-        public FaucetResponseDecoder()
-        {
-        }
-
+        
         static FaucetResponseDecoder()
         {
             Serialization.Rlp.Rlp.Decoders[typeof(FaucetResponse)] = new FaucetResponseDecoder();

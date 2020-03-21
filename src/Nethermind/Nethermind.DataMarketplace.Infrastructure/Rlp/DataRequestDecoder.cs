@@ -30,10 +30,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             // here to register with RLP in static constructor
         }
 
-        private DataRequestDecoder()
-        {
-        }
-
         static DataRequestDecoder()
         {
             Serialization.Rlp.Rlp.Decoders[typeof(DataRequest)] = new DataRequestDecoder();

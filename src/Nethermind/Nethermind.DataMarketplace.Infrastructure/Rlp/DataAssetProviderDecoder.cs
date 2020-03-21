@@ -28,10 +28,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             // here to register with RLP in static constructor
         }
 
-        private DataAssetProviderDecoder()
-        {
-        }
-
         static DataAssetProviderDecoder()
         {
             Serialization.Rlp.Rlp.Decoders[typeof(DataAssetProvider)] = new DataAssetProviderDecoder();

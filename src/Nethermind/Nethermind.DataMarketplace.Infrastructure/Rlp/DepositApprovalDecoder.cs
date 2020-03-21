@@ -28,10 +28,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             // here to register with RLP in static constructor
         }
 
-        public DepositApprovalDecoder()
-        {
-        }
-
         static DepositApprovalDecoder()
         {
             Serialization.Rlp.Rlp.Decoders[typeof(DepositApproval)] = new DepositApprovalDecoder();

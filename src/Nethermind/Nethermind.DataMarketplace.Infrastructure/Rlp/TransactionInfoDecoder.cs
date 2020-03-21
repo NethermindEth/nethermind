@@ -29,10 +29,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             // here to register with RLP in static constructor
         }
 
-        private TransactionInfoDecoder()
-        {
-        }
-
         static TransactionInfoDecoder()
         {
             Serialization.Rlp.Rlp.Decoders[typeof(TransactionInfo)] = new TransactionInfoDecoder();
