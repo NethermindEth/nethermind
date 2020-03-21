@@ -129,6 +129,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
                     if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, statusMessage.ToString());
                     Handle(statusMessage);
                     break;
+                case LesMessageCode.GetBlockHeaders:
+                    GetBlockHeadersMessage getBlockHeadersMessage = Deserialize<GetBlockHeadersMessage>(message.Content);
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, getBlockHeadersMessage.ToString());
+                    Handle(getBlockHeadersMessage);
+                    break;
             }
         }
 
@@ -215,8 +220,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
                 announceMessage.ReorgDepth = 0;
             else
             {
-                BlockHeader lowestCommonAncestor = SyncServer.FindLowestCommonAncestor(block.Header, _lastSentBlock);
-                announceMessage.ReorgDepth = _lastSentBlock.Number - lowestCommonAncestor.Number;
+                BlockHeader firstCommonAncestor = SyncServer.FindLowestCommonAncestor(block.Header, _lastSentBlock);
+                announceMessage.ReorgDepth = _lastSentBlock.Number - firstCommonAncestor.Number;
             }
 
             _lastSentBlock = block.Header;
