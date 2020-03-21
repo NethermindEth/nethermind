@@ -113,7 +113,7 @@ namespace Nethermind.Facade
             Keccak blockHash = _receiptFinder.FindBlockHash(transactionHash);
             if (blockHash != null)
             {
-                Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
+                Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 TxReceipt txReceipt = _receiptFinder.Get(block, transactionHash);
                 return (txReceipt, block?.Transactions[txReceipt.Index]);
             }
