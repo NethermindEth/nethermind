@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -24,10 +25,9 @@ using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.Repo
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Db;
-using Nethermind.Store;
 using NUnit.Framework;
 
-namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
+namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
 {
     [TestFixture]
     public class ConsumerDepositApprovalRocksRepositoryTests
@@ -38,7 +38,6 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             {
                 _cases = new List<DepositApproval>();
                 _cases.Add(new DepositApproval(
-                    TestItem.KeccakA,
                     TestItem.KeccakB,
                     "asset_name",
                     "kyc", TestItem.AddressA,
@@ -47,7 +46,6 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
                     DepositApprovalState.Rejected));
 
                 _cases.Add(new DepositApproval(
-                    TestItem.KeccakC,
                     TestItem.KeccakD,
                     "asset_name",
                     "kyc",
@@ -57,7 +55,6 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
                     DepositApprovalState.Confirmed));
 
                 _cases.Add(new DepositApproval(
-                    TestItem.KeccakC,
                     TestItem.KeccakD,
                     "asset_name",
                     "kyc",
@@ -146,6 +143,14 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
 
             PagedResult<DepositApproval> depositApprovals = await repository.BrowseAsync(new GetConsumerDepositApprovals {OnlyPending = true});
             depositApprovals.Items.Should().ContainSingle(da => da.State == DepositApprovalState.Pending);
+        }
+        
+        [Test]
+        public void Null_query_throws()
+        {
+            IDb db = new MemDb();
+            ConsumerDepositApprovalRocksRepository repository = new ConsumerDepositApprovalRocksRepository(db, new DepositApprovalDecoder());
+            Assert.Throws<ArgumentNullException>(() => repository.BrowseAsync(null));
         }
 
         [Test]

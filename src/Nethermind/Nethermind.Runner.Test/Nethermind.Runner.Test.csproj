@@ -21,6 +21,45 @@
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
       <ProjectReference Include="..\Nethermind.Runner\Nethermind.Runner.csproj" />
+      <Content Include="..\Chains\AuRaTest.json">
+        <Link>Chains\AuRaTest.json</Link>
+      </Content>
+      <Content Include="..\Chains\foundation.json">
+        <Link>Chains\foundation.json</Link>
+      </Content>
+      <Content Include="..\Chains\genesis.json">
+        <Link>Chains\genesis.json</Link>
+      </Content>
+      <Content Include="..\Chains\goerli.json">
+        <Link>Chains\goerli.json</Link>
+      </Content>
+      <Content Include="..\Chains\hive.json">
+        <Link>Chains\hive.json</Link>
+      </Content>
+      <Content Include="..\Chains\ndmlocal.json">
+        <Link>Chains\ndmlocal.json</Link>
+      </Content>
+      <Content Include="..\Chains\poacore.json">
+        <Link>Chains\poacore.json</Link>
+      </Content>
+      <Content Include="..\Chains\rinkeby.json">
+        <Link>Chains\rinkeby.json</Link>
+      </Content>
+      <Content Include="..\Chains\ropsten.json">
+        <Link>Chains\ropsten.json</Link>
+      </Content>
+      <Content Include="..\Chains\sokol.json">
+        <Link>Chains\sokol.json</Link>
+      </Content>
+      <Content Include="..\Chains\spaceneth.json">
+        <Link>Chains\spaceneth.json</Link>
+      </Content>
+      <Content Include="..\Chains\volta.json">
+        <Link>Chains\volta.json</Link>
+      </Content>
+      <Content Include="..\Chains\xdai.json">
+        <Link>Chains\xdai.json</Link>
+      </Content>
 
         <Content Include="..\Nethermind.Runner\configs\*.cfg" Link="configs\%(RecursiveDir)%(Filename)%(Extension)">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

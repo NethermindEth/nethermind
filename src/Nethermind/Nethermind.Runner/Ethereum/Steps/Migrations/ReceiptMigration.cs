@@ -223,7 +223,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                         }
                     }
                     
-                    for (long i = _toBlock; i > 0; i--)
+                    for (long i = _toBlock - 1; i > 0; i--)
                     {
                         if (token.IsCancellationRequested)
                         {

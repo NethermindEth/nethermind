@@ -38,10 +38,10 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks
 
         public void Dispose()
         {
-            ConsumerDepositApprovalsDb?.Dispose();
-            ConsumerReceiptsDb?.Dispose();
-            ConsumerSessionsDb?.Dispose();
-            DepositsDb?.Dispose();
+            ConsumerDepositApprovalsDb.Dispose();
+            ConsumerReceiptsDb.Dispose();
+            ConsumerSessionsDb.Dispose();
+            DepositsDb.Dispose();
         }
     }
 }

@@ -15,33 +15,41 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Linq;
+using System.IO;
+using FluentAssertions;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.Databases;
+using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.Logging;
 using NUnit.Framework;
 
-namespace Nethermind.Db.Test
+namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.Rocks
 {
     [TestFixture]
-    public class DbOnTheRocksTests
+    [Parallelizable(ParallelScope.Default)]
+    public class DatabasesTests
     {
         [Test]
-        public void Smoke_test()
+        public void SmokeTest()
         {
-            IDbConfig config = new DbConfig();
-            DbOnTheRocks db = new BlocksRocksDb("blocks", config);
-            db[new byte[] {1, 2, 3}] = new byte[] {4, 5, 6};
-            Assert.AreEqual(new byte[] {4, 5, 6}, db[new byte[] {1, 2, 3}]);
+            string tempPath = Path.GetTempPath();
+            DbConfig config = DbConfig.Default;
+            TestDb(new ConsumerDepositApprovalsRocksDb(tempPath, config, LimboLogs.Instance));
+            TestDb(new ConsumerSessionsRocksDb(tempPath, config, LimboLogs.Instance));
+            TestDb(new ConsumerReceiptsRocksDb(tempPath, config, LimboLogs.Instance));
+            TestDb(new DepositsRocksDb(tempPath, config, LimboLogs.Instance));
         }
 
-        [Test]
-        public void Can_get_all_on_empty()
+        private static void TestDb<T>(T db) where T : DbOnTheRocks
         {
-            IDbConfig config = new DbConfig();
-            DbOnTheRocks db = new BlocksRocksDb("testIterator", config);
             try
             {
-                db.GetAll().ToList();
+                db.Set(Keccak.Zero, Bytes.Empty);
+                db.Get(Keccak.Zero);
+                db.Name.Should().Be(typeof(T).Name.Replace("RocksDb", string.Empty));
             }
             finally
             {

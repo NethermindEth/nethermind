@@ -39,7 +39,7 @@ using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataRequets
+namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataRequests
 {
     public class DataRequestServiceTests
     {

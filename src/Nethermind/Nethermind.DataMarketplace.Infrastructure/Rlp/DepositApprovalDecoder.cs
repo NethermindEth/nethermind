@@ -41,7 +41,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             rlpStream.ReadSequenceLength();
-            Keccak id = rlpStream.DecodeKeccak();
             Keccak assetId = rlpStream.DecodeKeccak();
             string assetName = rlpStream.DecodeString();
             string kyc = rlpStream.DecodeString();
@@ -50,7 +49,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             ulong timestamp = rlpStream.DecodeUlong();
             DepositApprovalState state = (DepositApprovalState) rlpStream.DecodeInt();
 
-            return new DepositApproval(id, assetId, assetName, kyc, consumer, provider, timestamp, state);
+            return new DepositApproval(assetId, assetName, kyc, consumer, provider, timestamp, state);
         }
 
         public Serialization.Rlp.Rlp Encode(DepositApproval item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -61,7 +60,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             }
 
             return Serialization.Rlp.Rlp.Encode(
-                Serialization.Rlp.Rlp.Encode(item.Id),
                 Serialization.Rlp.Rlp.Encode(item.AssetId),
                 Serialization.Rlp.Rlp.Encode(item.AssetName),
                 Serialization.Rlp.Rlp.Encode(item.Kyc),
