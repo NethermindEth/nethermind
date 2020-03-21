@@ -68,6 +68,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
             if (_context.DisposeStack == null) throw new StepDependencyException(nameof(_context.DisposeStack));
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
             if (_context.Synchronizer == null) throw new StepDependencyException(nameof(_context.Synchronizer));
+            if (_context.ChainLevelInfoRepository == null) throw new StepDependencyException(nameof(_context.ChainLevelInfoRepository));
             
             var initConfig = _context.Config<IInitConfig>();
 
@@ -108,7 +109,6 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
         {
             if (CanMigrate(e.Current))
             {
-                if (_context.Synchronizer == null) throw new StepDependencyException(nameof(_context.Synchronizer));
                 RunMigration();
                 _context.Synchronizer.SyncModeChanged -= SynchronizerOnSyncModeChanged;
             }
@@ -223,7 +223,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                         }
                     }
                     
-                    for (long i = _toBlock - 1; i >= 0; i--)
+                    for (long i = _toBlock - 1; i > 0; i--)
                     {
                         if (token.IsCancellationRequested)
                         {
@@ -261,6 +261,6 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                 ? _context.Synchronizer.SyncMode == SyncMode.Full 
                     ? _context.BlockTree.Head?.Number ?? 0
                     : _context.BlockTree.BestKnownNumber
-                : _context.ReceiptStorage.MigratedBlockNumber;
+                : _context.ReceiptStorage.MigratedBlockNumber - 1;
     }
 }
