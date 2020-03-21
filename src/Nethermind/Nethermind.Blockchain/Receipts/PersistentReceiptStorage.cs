@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain.Receipts
         public Keccak FindBlockHash(Keccak txHash)
         {
             var blockHashData = _transactionDb.Get(txHash);
-            return blockHashData == null ? FindReceiptObsolete(txHash).BlockHash : new Keccak(blockHashData);
+            return blockHashData == null ? FindReceiptObsolete(txHash)?.BlockHash : new Keccak(blockHashData);
         }
 
         // Find receipt stored with old - obsolete format.
