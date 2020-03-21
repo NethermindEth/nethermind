@@ -22,7 +22,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
 {
     public class StatusMessage : P2PMessage
     {
-
         public static class KeyNames
         {
             public const string ProtocolVersion = "protocolVersion";
@@ -44,7 +43,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
         }
 
         public override int PacketType { get; } = LesMessageCode.Status;
-        public override string Protocol => "les";
+        public override string Protocol => P2P.Protocol.Les;
         public byte ProtocolVersion { get; set; }
         public UInt256 ChainId { get; set; }
         public UInt256 TotalDifficulty { get; set; }
