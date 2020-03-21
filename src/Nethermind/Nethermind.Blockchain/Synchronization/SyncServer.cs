@@ -312,6 +312,11 @@ namespace Nethermind.Blockchain.Synchronization
             return values;
         }
 
+        public BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant)
+        {
+            return _blockTree.FindLowestCommonAncestor(firstDescendant, secondDescendant);
+        }
+
         public Block Find(Keccak hash)
         {
             return _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);

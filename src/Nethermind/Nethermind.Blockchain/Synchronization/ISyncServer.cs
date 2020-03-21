@@ -27,6 +27,7 @@ namespace Nethermind.Blockchain.Synchronization
         void AddNewBlock(Block block, Node node);
         TxReceipt[][] GetReceipts(IList<Keccak> blockHashes);
         Block Find(Keccak hash);
+        BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant);
         Keccak FindHash(long number);
         BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse);
         byte[][] GetNodeData(IList<Keccak> keys);

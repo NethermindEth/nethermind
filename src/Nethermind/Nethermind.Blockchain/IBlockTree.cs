@@ -128,6 +128,8 @@ namespace Nethermind.Blockchain
         Keccak FindHash(long blockNumber);
 
         BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse);
+
+        BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant);
         
         void DeleteInvalidBlock(Block invalidBlock);
 
