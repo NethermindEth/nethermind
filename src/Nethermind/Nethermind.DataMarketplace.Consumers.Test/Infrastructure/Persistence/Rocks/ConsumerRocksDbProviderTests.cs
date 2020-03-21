@@ -24,15 +24,15 @@ using NUnit.Framework;
 namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.Rocks
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.Default)]
     public class ConsumerRocksDbProviderTests
     {
         [Test]
         public void Create_dispose()
         {
             ConsumerRocksDbProvider provider = new ConsumerRocksDbProvider(Path.GetTempPath(), DbConfig.Default, LimboLogs.Instance);
-            provider.Dispose();
-            
             ClearTemp(provider);
+            provider.Dispose();
         }
 
         private static void ClearTemp(ConsumerRocksDbProvider provider)
@@ -56,6 +56,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.R
             provider.ConsumerSessionsDb.Should().NotBeSameAs(provider.ConsumerDepositApprovalsDb);
             
             ClearTemp(provider);
+            provider.Dispose();
         }
         
         [Test]
@@ -69,6 +70,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.R
             provider.ConsumerDepositApprovalsDb.Should().BeSameAs(provider.ConsumerDepositApprovalsDb);
             
             ClearTemp(provider);
+            provider.Dispose();
         }
     }
 }

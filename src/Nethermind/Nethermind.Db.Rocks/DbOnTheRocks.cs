@@ -282,6 +282,7 @@ namespace Nethermind.Db.Rocks
 
         public void Dispose()
         {
+            DbsByPath.Remove(_fullPath, out _);
             Db?.Dispose();
             CurrentBatch?.Dispose();
         }

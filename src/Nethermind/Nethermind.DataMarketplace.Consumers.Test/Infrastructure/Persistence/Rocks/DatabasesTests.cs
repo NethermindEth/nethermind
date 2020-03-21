@@ -29,6 +29,7 @@ using NUnit.Framework;
 namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.Rocks
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.Default)]
     public class DatabasesTests
     {
         [Test]
@@ -53,6 +54,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.R
             finally
             {
                 db.Clear();
+                db.Dispose();
             }
         }
     }

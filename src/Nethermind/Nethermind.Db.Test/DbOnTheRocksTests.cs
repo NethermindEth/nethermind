@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Linq;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
@@ -32,13 +33,21 @@ namespace Nethermind.Db.Test
             db[new byte[] {1, 2, 3}] = new byte[] {4, 5, 6};
             Assert.AreEqual(new byte[] {4, 5, 6}, db[new byte[] {1, 2, 3}]);
         }
-        
+
         [Test]
         public void Can_get_all_on_empty()
         {
             IDbConfig config = new DbConfig();
             DbOnTheRocks db = new BlocksRocksDb("testIterator", config);
-            db.GetAll().ToList();
+            try
+            {
+                db.GetAll().ToList();
+            }
+            finally
+            {
+                db.Clear();
+                db.Dispose();
+            }
         }
     }
 }
