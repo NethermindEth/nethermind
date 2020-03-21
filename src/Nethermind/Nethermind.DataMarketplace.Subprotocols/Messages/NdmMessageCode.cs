@@ -14,6 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
+using System.Reflection;
+
 namespace Nethermind.DataMarketplace.Subprotocols.Messages
 {
     public class NdmMessageCode
@@ -68,6 +71,23 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
         {
             return messageCode == DataRequestResult
                    || messageCode == EthRequested;
+        }
+        
+        private static Dictionary<int, string> _descriptions;
+        
+        public static string GetDescription(int messageCode)
+        {
+            if (_descriptions == null)
+            {
+                _descriptions = new Dictionary<int, string>();
+                foreach (FieldInfo fieldInfo in typeof(NdmMessageCode).GetFields(BindingFlags.Static | BindingFlags.Public))
+                {
+                    _descriptions.Add((int)fieldInfo.GetValue(null),fieldInfo.Name);
+                }
+            }
+
+            bool success = _descriptions.TryGetValue(messageCode, out string description);
+            return success ? description : "unknown";
         }
     }
 }
