@@ -105,7 +105,7 @@ namespace Nethermind.Facade.Test
             int index = 5;
             var receipt = Build.A.Receipt.WithBlockHash(TestItem.KeccakB).WithTransactionHash(TestItem.KeccakA).WithIndex(index).TestObject;
             var block = Build.A.Block.WithTransactions(Enumerable.Range(0, 10).Select(i => Build.A.Transaction.WithNonce((UInt256) i).TestObject).ToArray()).TestObject;
-            _blockTree.FindBlock(TestItem.KeccakB, BlockTreeLookupOptions.RequireCanonical).Returns(block);
+            _blockTree.FindBlock(TestItem.KeccakB, Arg.Any<BlockTreeLookupOptions>()).Returns(block);
             _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
             _receiptStorage.Get(block, TestItem.KeccakA).Returns(receipt);
             _blockchainBridge.GetTransaction(TestItem.KeccakA).Should()
