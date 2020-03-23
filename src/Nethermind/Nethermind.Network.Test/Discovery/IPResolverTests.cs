@@ -22,12 +22,12 @@ using NUnit.Framework;
 namespace Nethermind.Network.Test.Discovery
 {
     [TestFixture]
-    public class NetworkHelperTests
+    public class IPResolverTests
     {
         [Test]
         public void Can_resolve_external_ip()
         {
-            var ipResolver = new IpResolver(new NetworkConfig(), LimboLogs.Instance);
+            var ipResolver = new IPResolver(new NetworkConfig(), LimboLogs.Instance);
             var address = ipResolver.ExternalIp;
             Assert.IsNotNull(address);
         }
@@ -38,7 +38,7 @@ namespace Nethermind.Network.Test.Discovery
             string ipOverride = "99.99.99.99";
             INetworkConfig networkConfig = new NetworkConfig();
             networkConfig.ExternalIp = ipOverride;
-            var ipResolver = new IpResolver(networkConfig, LimboLogs.Instance);
+            var ipResolver = new IPResolver(networkConfig, LimboLogs.Instance);
             var address = ipResolver.ExternalIp;
             Assert.AreEqual(IPAddress.Parse(ipOverride), address);
         }
@@ -46,9 +46,20 @@ namespace Nethermind.Network.Test.Discovery
         [Test]
         public void Can_resolve_internal_ip()
         {
-            var ipResolver = new IpResolver(new NetworkConfig(), LimboLogs.Instance);
+            var ipResolver = new IPResolver(new NetworkConfig(), LimboLogs.Instance);
             var address = ipResolver.LocalIp;
             Assert.IsNotNull(address);
+        }
+        
+        [Test]
+        public void Can_resolve_local_ip_with_override()
+        {
+            string ipOverride = "99.99.99.99";
+            INetworkConfig networkConfig = new NetworkConfig();
+            networkConfig.LocalIp = ipOverride;
+            var ipResolver = new IPResolver(networkConfig, LimboLogs.Instance);
+            var address = ipResolver.LocalIp;
+            Assert.AreEqual(IPAddress.Parse(ipOverride), address);
         }
     }
 }

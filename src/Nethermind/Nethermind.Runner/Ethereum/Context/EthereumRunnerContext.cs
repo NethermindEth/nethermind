@@ -76,7 +76,7 @@ namespace Nethermind.Runner.Ethereum.Context
         public IGrpcServer? GrpcServer { get; set; }
         public INodeDataConsumer NodeDataConsumer { get; set; } = NullDataConsumer.Instance;
         public IRpcModuleProvider? RpcModuleProvider { get; set; }
-        public IIpResolver? IpResolver { get; set; }
+        public IIPResolver? IpResolver { get; set; }
         public PrivateKey? NodeKey { get; set; }
         public ChainSpec? ChainSpec { get; set; }
         public ICryptoRandom CryptoRandom { get; } = new CryptoRandom();
