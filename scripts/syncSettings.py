@@ -11,7 +11,7 @@ print(emoji.emojize("Fast Sync configuration settings initialization     :white_
 
 def fastBlocksSettings(configuration, apiUrl, blockReduced):
     latestBlock = int(json.loads(subprocess.getoutput(f'curl --silent "https://{apiUrl}/api?module=proxy&action=eth_blockNumber&apikey={key}"'))['result'],16)
-    baseBlock = round(latestBlock - blockReduced, -3)
+    baseBlock = round(latestBlock - blockReduced, -4)
     pivot = subprocess.getoutput(f'curl --silent "https://{apiUrl}/api?module=proxy&action=eth_getBlockByNumber&tag={hex(baseBlock)}&boolean=true&apikey={key}"')
     pivotHash = json.loads(pivot)['result']['hash']
     pivotTotalDifficulty = int(json.loads(pivot)['result']['totalDifficulty'],16)
