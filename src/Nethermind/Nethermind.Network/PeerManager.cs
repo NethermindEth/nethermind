@@ -221,6 +221,8 @@ namespace Nethermind.Network
             {
                 try
                 {
+                    ClearCurrentSelection();
+                    
                     if (loopCount++ % 100 == 0)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Running peer update loop {loopCount - 1} - active: {_activePeers.Count} | candidates : {_peerPool.CandidatePeerCount}");
@@ -427,14 +429,13 @@ namespace Nethermind.Network
 
         private void SelectAndRankCandidates()
         {
-            _currentSelection.PreCandidates.Clear();
-            _currentSelection.Candidates.Clear();
-            _currentSelection.Incompatible.Clear();
-            foreach (ActivePeerSelectionCounter value in Enum.GetValues(typeof(ActivePeerSelectionCounter)))
+            if (_currentSelection.PreCandidates.Count != 0
+                || _currentSelection.Candidates.Count != 0
+                || _currentSelection.Incompatible.Count != 0)
             {
-                _currentSelection.Counters[value] = 0;
+                throw new InvalidAsynchronousStateException("Select and rank should start with an empty current selection.");
             }
-
+            
             if (AvailableActivePeersCount <= 0)
             {
                 return;
@@ -520,6 +521,18 @@ namespace Nethermind.Network
             }
 
             _currentSelection.Candidates.Sort(_peerComparer);
+        }
+        
+        private void ClearCurrentSelection()
+        {
+            // to limit the time the links are held
+            _currentSelection.PreCandidates.Clear();
+            _currentSelection.Candidates.Clear();
+            _currentSelection.Incompatible.Clear();
+            foreach (ActivePeerSelectionCounter value in Enum.GetValues(typeof(ActivePeerSelectionCounter)))
+            {
+                _currentSelection.Counters[value] = 0;
+            }
         }
 
         private string GetIncompatibleDesc(IReadOnlyCollection<Peer> incompatibleNodes)

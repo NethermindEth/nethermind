@@ -60,7 +60,7 @@ namespace Nethermind.Blockchain.Test.Proofs
         
         private void VerifyProof(byte[][] proof, Keccak receiptRoot)
         {
-            TrieNode node = new TrieNode(NodeType.Unknown, new Rlp(proof.Last()));
+            TrieNode node = new TrieNode(NodeType.Unknown, proof.Last());
             node.ResolveNode(null);
             TxReceipt receipt = new ReceiptMessageDecoder().Decode(node.Value.AsRlpStream());
             Assert.NotNull(receipt.Bloom);
