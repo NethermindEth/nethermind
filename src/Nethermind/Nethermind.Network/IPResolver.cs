@@ -15,23 +15,29 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.IP;
 
 namespace Nethermind.Network
 {
-    public class IpResolver : IIpResolver
+    public class IPResolver : IIPResolver
     {
-        private ILogger _logger;
-        private INetworkConfig _networkConfig;
+        private readonly ILogger _logger;
+        private readonly INetworkConfig _networkConfig;
+        private readonly ILogManager _logManager;
 
-        public IpResolver(INetworkConfig networkConfig, ILogManager logManager)
+        public IPResolver(INetworkConfig networkConfig, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
+            _logManager = logManager;
 
             try
             {
@@ -58,57 +64,60 @@ namespace Nethermind.Network
 
         private IPAddress InitializeExternalIp()
         {
-            string externalIpSetInEnv = Environment.GetEnvironmentVariable("NETHERMIND_ENODE_IPADDRESS");
-            if (externalIpSetInEnv != null)
+            IEnumerable<IIPSource> GetIPSources()
             {
-                return IPAddress.Parse(externalIpSetInEnv);
-            }
-            
-            if (_networkConfig.ExternalIp != null)
-            {
-                if(_logger.IsWarn) _logger.Warn($"Using the external IP override: {nameof(NetworkConfig)}.{nameof(NetworkConfig.ExternalIp)} = {_networkConfig.ExternalIp}");
-                return IPAddress.Parse(_networkConfig.ExternalIp);
+                yield return new EnvironmentVariableIPSource();
+                yield return new NetworkConfigExternalIPSource(_networkConfig, _logManager);
+                yield return new WebIPSource("http://checkip.amazonaws.com", _logManager);
+                yield return new WebIPSource("http://icanhazip.com", _logManager);
+                yield return new WebIPSource("http://bot.whatismyipaddress.com", _logManager);
+                yield return new WebIPSource("http://ipinfo.io/ip", _logManager);
+                yield return new WebIPSource("http://api.ipify.org", _logManager);
             }
             
             try
             {
-                const string url = "http://checkip.amazonaws.com";
-                if(_logger.IsInfo) _logger.Info($"Using {url} to get external ip");
-                string ip = new WebClient().DownloadString(url).Trim();
-                if(_logger.IsDebug) _logger.Debug($"External ip: {ip}");
-                ThisNodeInfo.AddInfo("External IP  :", $"{ip}");
-                
-                return IPAddress.Parse(ip);
+                foreach (var s in GetIPSources())
+                {
+                    if (s.TryGetIP(out var ip))
+                    {
+                        ThisNodeInfo.AddInfo("External IP  :", $"{ip}");
+                        return ip;
+                    }
+                }
             }
             catch (Exception e)
             {
                 if(_logger.IsError) _logger.Error("Error while getting external ip", e);
-                return IPAddress.Loopback;
             }
+            
+            return IPAddress.Loopback;
         }
 
         private IPAddress InitializeLocalIp()
         {
-            if (_networkConfig.LocalIp != null)
+            IEnumerable<IIPSource> GetIPSources()
             {
-                if(_logger.IsWarn) _logger.Warn($"Using the local IP override: {nameof(NetworkConfig)}.{nameof(NetworkConfig.LocalIp)} = {_networkConfig.LocalIp}");
-                return IPAddress.Parse(_networkConfig.LocalIp);
+                yield return new NetworkConfigLocalIPSource(_networkConfig, _logManager);
+                yield return new SocketIPSource( _logManager);
             }
             
             try
             {
-                using Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0);
-                socket.Connect("www.google.com", 80);
-                IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
-                IPAddress address = endPoint?.Address;
-                if(_logger.IsDebug) _logger.Debug($"Local ip: {address}");
-                return address;
+                foreach (var s in GetIPSources())
+                {
+                    if (s.TryGetIP(out var ip))
+                    {
+                        return ip;
+                    }
+                }
             }
             catch (Exception e)
             {
                 if(_logger.IsError) _logger.Error("Error while getting local ip", e);
-                return IPAddress.Loopback;
             }
+            
+            return IPAddress.Loopback;
         }
     }
 }
