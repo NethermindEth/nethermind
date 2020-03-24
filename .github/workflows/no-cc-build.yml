@@ -87,21 +87,33 @@ jobs:
     - name: Nethermind.Runner.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Runner.Test
+    - name: Nethermind.State.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.State.Test
     - name: Nethermind.Ssz.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Ssz.Test
-    - name: Nethermind.Store.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.State.Test
     - name: Nethermind.Wallet.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Wallet.Test
     - name: Nethermind.DataMarketplace.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Test
+    - name: Nethermind.DataMarketplace.Channels.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Channels.Test
     - name: Nethermind.DataMarketplace.Consumers.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Consumers.Test
+    - name: Nethermind.DataMarketplace.Infrastructure.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Infrastructure.Test
+    - name: Nethermind.DataMarketplace.Subprotocols.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Subprotocols.Test
+    - name: Nethermind.DataMarketplace.WebSockets.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.WebSockets.Test
   eth-tests:
     name: Ethereum Tests
     runs-on: ${{ matrix.os }}

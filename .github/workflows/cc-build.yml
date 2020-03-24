@@ -21,27 +21,33 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Unshallow fetching
-      run: git fetch --unshallow
+      run: git fetch --unshallow --progress --prune origin +refs/heads/*:refs/remotes/origin/*
     - name: Updating submodules
       run: git submodule update --init src/Dirichlet src/rocksdb-sharp
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
       run: sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: Installing macOS packages
+      if: matrix.os == 'macOS'
+      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
     - name: Nethermind.Abi.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Abi.Test
     - name: Nethermind.AuRa.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.AuRa.Test
-    # - name: Nethermind.BeaconNode.Test
-    #   run: |
-    #     dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.BeaconNode.Test
+    - name: Nethermind.BeaconNode.Eth1Bridge.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.BeaconNode.Eth1Bridge.Test
+    - name: Nethermind.BeaconNode.Peering.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.BeaconNode.Peering.Test
+    - name: Nethermind.BeaconNode.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.BeaconNode.Test
     - name: Nethermind.Blockchain.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Blockchain.Test
-    - name: Nethermind.Bls.Test
-      run: |
-        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Bls.Test
     - name: Nethermind.Cli.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Cli.Test
@@ -54,12 +60,24 @@ jobs:
     - name: Nethermind.Core.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Core.Test
-    - name: Nethermind.Evm.Test
+    - name: Nethermind.Core2.Configuration.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Core2.Configuration.Test
+    - name: Nethermind.Core2.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Core2.Test
+    - name: Nethermind.Cryptography.Bls.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Cryptography.Bls.Test
+     - name: Nethermind.Evm.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Evm.Test
     - name: Nethermind.Facade.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Facade.Test
+    - name: Nethermind.HonestValidator.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.HonestValidator.Test
     - name: Nethermind.Logging.NLog.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Logging.NLog.Test
@@ -78,15 +96,12 @@ jobs:
     - name: Nethermind.Runner.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Runner.Test
-    - name: Nethermind.Ssz.Test
-      run: |
-        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Ssz.Test
-    - name: Nethermind.Core2.Test
-      run: |
-        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Core2.Test
     - name: Nethermind.State.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.State.Test
+    - name: Nethermind.Ssz.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Ssz.Test
     - name: Nethermind.Wallet.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Wallet.Test
@@ -177,6 +192,8 @@ jobs:
 #        os: [ubuntu-latest]
 #    steps:
 #    - uses: actions/checkout@v2-beta
+#      with:
+#        lfs: true
 #    - name: Updating submodules
 #      run: git -c submodule."src/tests".update=none submodule update --init
 #    - name: Ethereum.Bls.Test
