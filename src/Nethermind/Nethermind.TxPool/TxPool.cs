@@ -244,6 +244,10 @@ namespace Nethermind.TxPool
             if (tx.SenderAddress == null)
             {
                 tx.SenderAddress = _ecdsa.RecoverAddress(tx, blockNumber);
+                if (tx.SenderAddress == null)
+                {
+                    return AddTxResult.PotentiallyUseless;
+                }
             }
             
             /*
