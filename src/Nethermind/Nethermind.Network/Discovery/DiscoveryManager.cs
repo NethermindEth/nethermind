@@ -178,6 +178,10 @@ namespace Nethermind.Network.Discovery
             {
                 delayCancellation.Cancel();
             }
+            else
+            {
+                RemoveCompletionSource(senderIdHash, (int)messageType);
+            }
             
             return result;
         }

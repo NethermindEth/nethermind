@@ -59,7 +59,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             context.Synchronizer.SyncMode.Returns(SyncMode.Full);
 
             int txIndex = 0;
-            for (int i = 0; i < chainLength; i++)
+            for (int i = 1; i < chainLength; i++)
             {
                 var block = context.BlockTree.FindBlock(i);
                 inMemoryReceiptStorage.Insert(block, 
@@ -74,7 +74,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             migration.Run();
             
             guard.WaitOne(TimeSpan.FromSeconds(5));
-            var txCount = (chainLength - 1) * 2;
+            var txCount = (chainLength - 1 - 1) * 2;
             context.DbProvider.ReceiptsDb.Received(Quantity.Exactly(txCount)).Remove(Arg.Any<byte[]>());
             outMemoryReceiptStorage.Count.Should().Be(txCount);
         }
