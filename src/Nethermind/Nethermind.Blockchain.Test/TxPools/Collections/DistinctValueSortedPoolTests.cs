@@ -14,7 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
@@ -46,8 +48,8 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
             get
             {
                 yield return new TestCaseData(new object[] {GenerateTransactions()});
-                yield return new TestCaseData(new object[] {GenerateTransactions(gasPrice:5, nonce:5)});
-                yield return new TestCaseData(new object[] {GenerateTransactions(gasPrice:5, address:TestItem.AddressA)});
+                yield return new TestCaseData(new object[] {GenerateTransactions(gasPrice: 5, nonce: 5)});
+                yield return new TestCaseData(new object[] {GenerateTransactions(gasPrice: 5, address: TestItem.AddressA)});
             }
         }
 
@@ -55,7 +57,7 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
         public void Distinct_transactions_are_all_added(Transaction[] transactions)
         {
             var pool = new DistinctValueSortedPool<Keccak, Transaction>(Capacity, (t1, t2) => t1.GasPrice.CompareTo(t2.GasPrice), PendingTransactionComparer.Default);
-            
+
             foreach (var transaction in transactions)
             {
                 pool.TryInsert(transaction.Hash, transaction);
@@ -63,17 +65,17 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
 
             pool.Count.Should().Be(transactions.Length);
         }
-       
+
         [TestCase(true)]
         [TestCase(false)]
         public void Same_transactions_are_all_replaced_with_highest_gas_price(bool gasPriceAscending)
         {
             var pool = new DistinctValueSortedPool<Keccak, Transaction>(Capacity, (t1, t2) => t1.GasPrice.CompareTo(t2.GasPrice), PendingTransactionComparer.Default);
-            
-            var transactions = gasPriceAscending 
-                ? GenerateTransactions(address:TestItem.AddressB, nonce:3).OrderBy(t => t.GasPrice)
-                : GenerateTransactions(address:TestItem.AddressB, nonce:3).OrderByDescending(t => t.GasPrice);
-            
+
+            var transactions = gasPriceAscending
+                ? GenerateTransactions(address: TestItem.AddressB, nonce: 3).OrderBy(t => t.GasPrice)
+                : GenerateTransactions(address: TestItem.AddressB, nonce: 3).OrderByDescending(t => t.GasPrice);
+
             foreach (var transaction in transactions)
             {
                 pool.TryInsert(transaction.Hash, transaction);
@@ -81,6 +83,56 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
 
             pool.Count.Should().Be(1);
             pool.GetSnapshot().First().GasPrice.Should().Be(Capacity - 1);
+        }
+
+        private static int _finalizedCount;
+        private static int _allCount;
+
+        private class WithFinalizer
+        {
+            public int Index { get; }
+
+            public WithFinalizer()
+            {
+                Index = _allCount++;
+            }
+
+            ~WithFinalizer()
+            {
+                _finalizedCount++;
+            }
+        }
+
+        [Test]
+        public void Capacity_is_never_exceeded()
+        {
+            var pool = new DistinctValueSortedPool<int, WithFinalizer>(Capacity, (t1, t2) =>
+            {
+                int t1Oddity = t1.Index % 2;
+                int t2Oddity = t2.Index % 2;
+
+                if (t1Oddity.CompareTo(t2Oddity) != 0)
+                {
+                    return t1Oddity.CompareTo(t2Oddity);
+                }
+
+                return t1.Index.CompareTo(t2.Index);
+            }, EqualityComparer<WithFinalizer>.Default);
+
+            int capacityMultiplier = 10;
+            
+            for (int i = 0; i < Capacity * capacityMultiplier; i++)
+            {
+                pool.TryInsert(i, new WithFinalizer());
+            }
+            
+            GC.Collect(2, GCCollectionMode.Forced);
+            GC.WaitForFullGCComplete();
+            GC.Collect(2, GCCollectionMode.Forced);
+            GC.WaitForPendingFinalizers();
+
+            _finalizedCount.Should().Be(Capacity * (capacityMultiplier - 1));
+            _allCount.Should().Be(Capacity * capacityMultiplier);
         }
     }
 }
