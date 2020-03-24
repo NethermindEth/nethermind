@@ -69,7 +69,7 @@ jobs:
     - name: Nethermind.Cryptography.Bls.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Cryptography.Bls.Test
-     - name: Nethermind.Evm.Test
+    - name: Nethermind.Evm.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Evm.Test
     - name: Nethermind.Facade.Test
