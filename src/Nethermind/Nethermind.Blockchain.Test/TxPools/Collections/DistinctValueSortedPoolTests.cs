@@ -18,6 +18,8 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -29,6 +31,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.TxPools.Collections
 {
+    [TestFixture]
+    [Parallelizable(ParallelScope.None)]
     public class DistinctValueSortedPoolTests
     {
         private const int Capacity = 16;
@@ -43,18 +47,31 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
                 return transaction;
             }).ToArray();
 
+        [SetUp]
+        public void Setup()
+        {
+            CollectAndFinalize();
+            _finalizedCount = 0;
+            _allCount = 0;
+        }
+
         public static IEnumerable DistinctTestCases
         {
             get
             {
-                yield return new TestCaseData(new object[] {GenerateTransactions()});
-                yield return new TestCaseData(new object[] {GenerateTransactions(gasPrice: 5, nonce: 5)});
-                yield return new TestCaseData(new object[] {GenerateTransactions(gasPrice: 5, address: TestItem.AddressA)});
+                yield return new TestCaseData(new object[] {GenerateTransactions(), Capacity});
+                yield return new TestCaseData(new object[] {GenerateTransactions(gasPrice: 5, nonce: 5), Capacity});
+                yield return new TestCaseData(new object[] {GenerateTransactions(gasPrice: 5, address: TestItem.AddressA), Capacity});
+                yield return new TestCaseData(new object[] {GenerateTransactions(gasPrice: null, nonce: 5, address: TestItem.AddressA), 1});
+                yield return new TestCaseData(new object[] {GenerateTransactions(Capacity * 10), Capacity});
+                yield return new TestCaseData(new object[] {GenerateTransactions(Capacity * 10, gasPrice: 5, nonce: 5), Capacity});
+                yield return new TestCaseData(new object[] {GenerateTransactions(Capacity * 10, gasPrice: 5, address: TestItem.AddressA), Capacity});
+                yield return new TestCaseData(new object[] {GenerateTransactions(Capacity * 10, gasPrice: null, nonce: 5, address: TestItem.AddressA), 1});
             }
         }
 
         [TestCaseSource(nameof(DistinctTestCases))]
-        public void Distinct_transactions_are_all_added(Transaction[] transactions)
+        public void Distinct_transactions_are_all_added(Transaction[] transactions, int expectedCount)
         {
             var pool = new DistinctValueSortedPool<Keccak, Transaction>(Capacity, (t1, t2) => t1.GasPrice.CompareTo(t2.GasPrice), PendingTransactionComparer.Default);
 
@@ -63,7 +80,7 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
                 pool.TryInsert(transaction.Hash, transaction);
             }
 
-            pool.Count.Should().Be(transactions.Length);
+            pool.Count.Should().Be(expectedCount);
         }
 
         [TestCase(true)]
@@ -94,12 +111,31 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
 
             public WithFinalizer()
             {
-                Index = _allCount++;
+                Index = Interlocked.Increment(ref _allCount);
+            }
+
+            public WithFinalizer(int index)
+            {
+                Index = index;
+                Interlocked.Increment(ref _allCount);
             }
 
             ~WithFinalizer()
             {
-                _finalizedCount++;
+                Interlocked.Increment(ref _finalizedCount);
+            }
+        }
+
+        private class WithFinalizerComparer : IEqualityComparer<WithFinalizer>
+        {
+            public bool Equals(WithFinalizer x, WithFinalizer y)
+            {
+                return x?.Index == y?.Index;
+            }
+
+            public int GetHashCode(WithFinalizer obj)
+            {
+                return obj.Index.GetHashCode();
             }
         }
 
@@ -117,22 +153,117 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
                 }
 
                 return t1.Index.CompareTo(t2.Index);
-            }, EqualityComparer<WithFinalizer>.Default);
+            }, new WithFinalizerComparer());
 
             int capacityMultiplier = 10;
-            
+            int expectedAllCount = Capacity * capacityMultiplier;
+
+            WithFinalizer newOne;
+            for (int i = 0; i < expectedAllCount; i++)
+            {
+                newOne = new WithFinalizer();
+                pool.TryInsert(newOne.Index, newOne);
+            }
+
+            newOne = null;
+
+            CollectAndFinalize();
+
+            _allCount.Should().Be(expectedAllCount);
+            _finalizedCount.Should().Be(expectedAllCount - Capacity - 1);
+        }
+
+        [Test]
+        public void Capacity_is_never_exceeded_when_there_are_duplicates()
+        {
+            var pool = new DistinctValueSortedPool<int, WithFinalizer>(Capacity, (t1, t2) =>
+            {
+                int t1Oddity = t1.Index % 2;
+                int t2Oddity = t2.Index % 2;
+
+                if (t1Oddity.CompareTo(t2Oddity) != 0)
+                {
+                    return t1Oddity.CompareTo(t2Oddity);
+                }
+
+                return t1.Index.CompareTo(t2.Index);
+            }, new WithFinalizerComparer());
+
+            int capacityMultiplier = 10;
+
             for (int i = 0; i < Capacity * capacityMultiplier; i++)
             {
-                pool.TryInsert(i, new WithFinalizer());
+                WithFinalizer newOne = new WithFinalizer(i % (Capacity * 2));
+                pool.TryInsert(newOne.Index, newOne);
             }
-            
+
+            CollectAndFinalize();
+
+            _finalizedCount.Should().Be(Capacity * (capacityMultiplier - 1) - 1);
+            _allCount.Should().Be(Capacity * capacityMultiplier);
+        }
+
+        [Test]
+        public async Task Capacity_is_never_exceeded_with_multiple_threads()
+        {
+            int capacityMultiplier = 10;
+            _finalizedCount.Should().Be(0);
+            _allCount.Should().Be(0);
+
+            var pool = new DistinctValueSortedPool<int, WithFinalizer>(Capacity, (t1, t2) =>
+            {
+                int t1Oddity = t1.Index % 2;
+                int t2Oddity = t2.Index % 2;
+
+                if (t1Oddity.CompareTo(t2Oddity) != 0)
+                {
+                    return t1Oddity.CompareTo(t2Oddity);
+                }
+
+                return t1.Index.CompareTo(t2.Index);
+            }, new WithFinalizerComparer());
+
+            void KeepGoing(int iterations)
+            {
+                for (int i = 0; i < iterations; i++)
+                {
+                    if (i % 3 == 2)
+                    {
+                        pool.TryRemove(i - 1, out _);
+                    }
+
+                    pool.TryInsert(i, new WithFinalizer(i));
+
+                    if (i % 3 == 1)
+                    {
+                        pool.GetSnapshot();
+                    }
+                }
+            }
+
+            Task a = new Task(() => KeepGoing(Capacity * capacityMultiplier));
+            Task b = new Task(() => KeepGoing(Capacity * capacityMultiplier));
+            Task c = new Task(() => KeepGoing(Capacity * capacityMultiplier));
+
+            a.Start();
+            b.Start();
+            c.Start();
+
+            await Task.WhenAll(a, b, c);
+
+            CollectAndFinalize();
+
+            int expectedAllCount = Capacity * capacityMultiplier * 3;
+            _allCount.Should().Be(expectedAllCount);
+            _finalizedCount.Should().BeGreaterOrEqualTo(expectedAllCount - Capacity);
+        }
+
+        private static void CollectAndFinalize()
+        {
             GC.Collect(2, GCCollectionMode.Forced);
             GC.WaitForFullGCComplete();
             GC.Collect(2, GCCollectionMode.Forced);
             GC.WaitForPendingFinalizers();
-
-            _finalizedCount.Should().Be(Capacity * (capacityMultiplier - 1));
-            _allCount.Should().Be(Capacity * capacityMultiplier);
         }
     }
 }
