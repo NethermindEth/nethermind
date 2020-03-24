@@ -32,7 +32,7 @@ namespace Nethermind.Network.P2P
             _initialPosition = byteBuffer.ReaderIndex;
         }
 
-        protected override void Write(Span<byte> bytesToWrite)
+        public override void Write(Span<byte> bytesToWrite)
         {
             _byteBuffer.EnsureWritable(bytesToWrite.Length, true);
 
@@ -42,7 +42,7 @@ namespace Nethermind.Network.P2P
             _byteBuffer.SetWriterIndex(newWriterIndex);
         }
 
-        protected override void WriteByte(byte byteToWrite)
+        public override void WriteByte(byte byteToWrite)
         {
             _byteBuffer.EnsureWritable(1, true);
             _byteBuffer.WriteByte(byteToWrite);

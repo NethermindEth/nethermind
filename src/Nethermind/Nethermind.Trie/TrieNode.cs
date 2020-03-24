@@ -569,7 +569,7 @@ namespace Nethermind.Trie
                     // so E - - - - - - - - - - - - - - - 
                     // so |
                     // so |
-                    rlpStream.Encode(nodeRef.FullRlp);
+                    rlpStream.Write(nodeRef.FullRlp);
                 }
                 else
                 {
