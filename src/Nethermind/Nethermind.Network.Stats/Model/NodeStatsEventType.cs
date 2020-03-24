@@ -36,6 +36,7 @@ namespace Nethermind.Stats.Model
         HandshakeCompleted,
         P2PInitialized,
         Eth62Initialized,
+        LesInitialized,
         SyncInitFailed,
         SyncInitCancelled,
         SyncInitCompleted,

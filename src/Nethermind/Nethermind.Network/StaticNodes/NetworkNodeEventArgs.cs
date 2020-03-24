@@ -16,7 +16,6 @@
 
 using System;
 using Nethermind.Config;
-using Nethermind.Core;
 
 namespace Nethermind.Network.StaticNodes
 {

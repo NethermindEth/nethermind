@@ -23,10 +23,10 @@ namespace Nethermind.Core2.Cryptography.Ssz
 {
     public static class AttestationDataExtensions
     {
-        public static Hash32 HashTreeRoot(this AttestationData item)
+        public static Root HashTreeRoot(this AttestationData item)
         {
             var tree = new SszTree(item.ToSszContainer());
-            return new Hash32(tree.HashTreeRoot());
+            return new Root(tree.HashTreeRoot());
         }
 
         public static SszContainer ToSszContainer(this AttestationData item)

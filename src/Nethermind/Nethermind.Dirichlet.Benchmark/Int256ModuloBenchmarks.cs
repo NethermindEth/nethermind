@@ -17,12 +17,13 @@
 using System;
 using System.Numerics;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Dirichlet.Benchmark
 {
     [MemoryDiagnoser]
-    [CoreJob(baseline: true)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class Int256ModuloBenchmarks
     {
         private byte[] _stack = new byte[64];

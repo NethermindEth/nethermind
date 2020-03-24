@@ -16,11 +16,12 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 
 namespace Nethermind.Benchmarks.Evm
 {
     [MemoryDiagnoser]
-    [CoreJob(baseline: true)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class RipemdBenchmark
     {
         [GlobalSetup]

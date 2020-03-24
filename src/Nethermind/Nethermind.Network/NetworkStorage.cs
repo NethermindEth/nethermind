@@ -22,7 +22,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store;
 
 namespace Nethermind.Network
 {
@@ -89,7 +88,7 @@ namespace Nethermind.Network
 
         public void Commit()
         {
-            if (_logger.IsTrace) _logger.Trace($"[{_fullDb.Description}] Committing nodes, updates: {_updateCounter}, removes: {_removeCounter}");
+            if (_logger.IsTrace) _logger.Trace($"[{_fullDb.Name}] Committing nodes, updates: {_updateCounter}, removes: {_removeCounter}");
             _fullDb.CommitBatch();
             if (_logger.IsTrace)
             {
@@ -111,7 +110,7 @@ namespace Nethermind.Network
         private void LogDbContent(IEnumerable<byte[]> values)
         {
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine($"[{_fullDb.Description}]");
+            sb.AppendLine($"[{_fullDb.Name}]");
             foreach (byte[] value in values)
             {
                 NetworkNode node = GetNode(value);

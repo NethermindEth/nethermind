@@ -17,7 +17,6 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using Nethermind.HashLib.Extensions;
 
 namespace Nethermind.HashLib.Crypto.SHA3
 {

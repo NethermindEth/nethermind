@@ -18,7 +18,6 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Specs;
 
 namespace Nethermind.Evm.Precompiles
 {

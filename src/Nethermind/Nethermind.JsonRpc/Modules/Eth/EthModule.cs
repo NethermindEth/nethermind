@@ -33,7 +33,6 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
-using Nethermind.Store;
 using Nethermind.TxPool;
 
 namespace Nethermind.JsonRpc.Modules.Eth

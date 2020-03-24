@@ -15,9 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.IO;
 using System.Numerics;
-using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;

@@ -16,15 +16,19 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using System.Threading;
 
 namespace Nethermind.Core2.Types
 {
     [DebuggerDisplay("{Number}")]
     public struct Slot : IEquatable<Slot>, IComparable<Slot>
     {
+        private ulong _number;
+
         public Slot(ulong number)
         {
-            Number = number;
+            _number = number;
         }
 
         public static Slot None => new Slot(ulong.MaxValue - 1);
@@ -33,31 +37,31 @@ namespace Nethermind.Core2.Types
         
         public static Slot One => new Slot(1);
 
-        public ulong Number { get; }
+        public ulong Number => _number;
 
         public static bool operator <(Slot a, Slot b)
         {
-            return a.Number < b.Number;
+            return a._number < b._number;
         }
 
         public static bool operator >(Slot a, Slot b)
         {
-            return a.Number > b.Number;
+            return a._number > b._number;
         }
 
         public static bool operator <=(Slot a, Slot b)
         {
-            return a.Number <= b.Number;
+            return a._number <= b._number;
         }
 
         public static bool operator >=(Slot a, Slot b)
         {
-            return a.Number >= b.Number;
+            return a._number >= b._number;
         }
 
         public static bool operator ==(Slot a, Slot b)
         {
-            return a.Number == b.Number;
+            return a._number == b._number;
         }
 
         public static bool operator !=(Slot a, Slot b)
@@ -67,32 +71,32 @@ namespace Nethermind.Core2.Types
 
         public static Slot operator -(Slot left, Slot right)
         {
-            return new Slot(left.Number - right.Number);
+            return new Slot(left._number - right._number);
         }
 
         public static Slot operator %(Slot left, Slot right)
         {
-            return new Slot(left.Number % right.Number);
+            return new Slot(left._number % right._number);
         }
 
         public static Slot operator *(Slot left, ulong right)
         {
-            return new Slot(left.Number * right);
+            return new Slot(left._number * right);
         }
 
         public static ulong operator /(Slot left, Slot right)
         {
-            return left.Number / right.Number;
+            return left._number / right._number;
         }
 
         public static Slot operator +(Slot left, Slot right)
         {
-            return new Slot(left.Number + right.Number);
+            return new Slot(left._number + right._number);
         }
 
         public bool Equals(Slot other)
         {
-            return Number == other.Number;
+            return _number == other._number;
         }
 
         public override bool Equals(object? obj)
@@ -102,7 +106,7 @@ namespace Nethermind.Core2.Types
 
         public override int GetHashCode()
         {
-            return Number.GetHashCode();
+            return _number.GetHashCode();
         }
 
         public static explicit operator Slot(ulong value)
@@ -122,12 +126,17 @@ namespace Nethermind.Core2.Types
 
         public static implicit operator ulong(Slot slot)
         {
-            return slot.Number;
+            return slot._number;
         }
 
         public static explicit operator int(Slot slot)
         {
-            return (int) slot.Number;
+            return (int) slot._number;
+        }
+        
+        public static Slot Max(Slot val1, Slot val2)
+        {
+            return val1 >= val2 ? val1 : val2;
         }
         
         public static Slot Min(Slot val1, Slot val2)
@@ -137,12 +146,20 @@ namespace Nethermind.Core2.Types
 
         public override string ToString()
         {
-            return Number.ToString();
+            return _number.ToString();
         }
 
         public int CompareTo(Slot other)
         {
-            return Number.CompareTo(other.Number);
+            return _number.CompareTo(other._number);
+        }
+
+        public static Slot InterlockedCompareExchange(ref Slot location1, Slot value, Slot comparand)
+        {
+            // Interlocked doesn't support ulong yet (planned for .NET 5), but isomorphic with Int64
+            ref long longRef = ref Unsafe.As<ulong, long>(ref location1._number);
+            long originalNumber = Interlocked.CompareExchange(ref longRef, (long)value._number, (long)comparand._number);
+            return new Slot((ulong)originalNumber);
         }
     }
 }

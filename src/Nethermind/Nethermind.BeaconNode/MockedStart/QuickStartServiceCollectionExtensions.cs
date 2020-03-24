@@ -15,65 +15,45 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Linq;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.Services;
 using Nethermind.Core2;
-using Nethermind.Core2.Types;
-using Nethermind.Logging.Microsoft;
-using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Configuration.MockedStart;
-using Nethermind.Core2.Crypto;
+using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode.MockedStart
 {
     public static class QuickStartServiceCollectionExtensions
     {
-        private const ulong DefaultEth1Timestamp = (ulong)1 << 40;
-        private static readonly byte[] s_defaultEth1BlockHash = Enumerable.Repeat((byte)0x42, 32).ToArray();
-
         public static void AddBeaconNodeQuickStart(this IServiceCollection services, IConfiguration configuration)
         {
-            services.AddSingleton<INodeStart, QuickStart>();
-            services.AddSingleton<IEth1DataProvider, MockedEth1DataProvider>();
             services.AddSingleton<IOperationPool, MockedOperationPool>();
-            services.Configure<QuickStartParameters>(x =>
-            {
-                configuration.Bind("QuickStart", section =>
-                {
-                    x.GenesisTime = section.GetValue<ulong>("GenesisTime");
-                    x.ValidatorCount = section.GetValue<ulong>("ValidatorCount");
-                    x.Eth1BlockHash = new Hash32(section.GetBytesFromPrefixedHex("Eth1BlockHash", () => s_defaultEth1BlockHash));
-                    x.Eth1Timestamp = section.GetValue("Eth1Timestamp", DefaultEth1Timestamp);
-                    x.UseSystemClock = section.GetValue<bool>("UseSystemClock");
-                    x.ValidatorStartIndex = section.GetValue<ulong>("ValidatorStartIndex");
-                    x.NumberOfValidators = section.GetValue<ulong>("NumberOfValidators");
-                    x.ClockOffset = section.GetValue<long>("ClockOffset");
-                });
-            });
 
             if (!configuration.GetValue<bool>("QuickStart:UseSystemClock"))
             {
-                long clockOffset;
+                long clockOffset = 0L;
                 if (configuration.GetSection("QuickStart:ClockOffset").Exists())
                 {
                     clockOffset = configuration.GetValue<long>("QuickStart:ClockOffset");
                 }
-                else
+                else if (configuration.GetSection("QuickStart:GenesisTime").Exists())
                 {
                     ulong genesisTime = configuration.GetValue<ulong>("QuickStart:GenesisTime");
                     clockOffset = (long) genesisTime - DateTimeOffset.Now.ToUnixTimeSeconds();
                 }
 
-                services.AddSingleton<IClock>(serviceProvider =>
+                if (clockOffset != 0)
                 {
-                    ILogger<QuickStartClock> logger = serviceProvider.GetService<ILogger<QuickStartClock>>();
-                    if (logger.IsWarn()) Log.QuickStartClockCreated(logger, clockOffset, null);
-                    QuickStartClock quickStartClock = new QuickStartClock(clockOffset);
-                    return quickStartClock;
-                });
+                    services.AddSingleton<IClock>(serviceProvider =>
+                    {
+                        ILogger<QuickStartClock> logger = serviceProvider.GetService<ILogger<QuickStartClock>>();
+                        if (logger.IsWarn()) Log.QuickStartClockCreated(logger, clockOffset, null);
+                        QuickStartClock quickStartClock = new QuickStartClock(clockOffset);
+                        return quickStartClock;
+                    });
+                }
             }
         }
     }

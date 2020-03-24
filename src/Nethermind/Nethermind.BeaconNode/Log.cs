@@ -55,8 +55,8 @@ namespace Nethermind.BeaconNode
                 new EventId(1000, nameof(BeaconNodeWorkerExecuteStarted)),
                 "Beacon Node {ProductTokenVersion} worker started; data directory '{DataDirectory}' (environment {Environment}) [{ThreadId}]");
         
-        public static readonly Action<ILogger, Hash32, ulong, int, Exception?> InitializeBeaconState =
-            LoggerMessage.Define<Hash32, ulong, int>(LogLevel.Information,
+        public static readonly Action<ILogger, Bytes32, ulong, int, Exception?> InitializeBeaconState =
+            LoggerMessage.Define<Bytes32, ulong, int>(LogLevel.Information,
                 new EventId(1300, nameof(InitializeBeaconState)),
                 "Initialise beacon state from ETH1 block {Eth1BlockHash}, time {Eth1Timestamp}, with {DepositCount} deposits.");
 
@@ -67,25 +67,25 @@ namespace Nethermind.BeaconNode
                 new EventId(2000, nameof(WorkerStoreAvailableTickStarted)),
                 "Store available with genesis time {GenesisTime}, at clock time {Time} (slot {SlotValue}), starting clock tick [{ThreadId}]");
         
-        public static readonly Action<ILogger, Hash32, BeaconState, Hash32, BeaconBlock, Exception?> ValidatedStateTransition =
-            LoggerMessage.Define<Hash32, BeaconState, Hash32, BeaconBlock>(LogLevel.Information,
+        public static readonly Action<ILogger, Root, BeaconState, Root, BeaconBlock, Exception?> ValidatedStateTransition =
+            LoggerMessage.Define<Root, BeaconState, Root, BeaconBlock>(LogLevel.Information,
                 new EventId(2100, nameof(ValidatedStateTransition)),
-                "Validated state transition to new state root {StateRoot} ({BeaconState}) by block {BlockSigningRoot} ({BeaconBlock})");
+                "Validated state transition to new state root {StateRoot} ({BeaconState}) by block {BlockRoot} ({BeaconBlock})");
 
-        public static readonly Action<ILogger, BeaconBlock, BeaconState, Checkpoint, Hash32, Exception?> CreateGenesisStore =
-            LoggerMessage.Define<BeaconBlock, BeaconState, Checkpoint, Hash32>(LogLevel.Information,
+        public static readonly Action<ILogger, Fork, Root, ulong, BeaconState, BeaconBlock, Checkpoint, Exception?> CreateGenesisStore =
+            LoggerMessage.Define<Fork, Root, ulong, BeaconState, BeaconBlock, Checkpoint>(LogLevel.Information,
                 new EventId(2200, nameof(CreateGenesisStore)),
-                "Creating genesis store with block {BeaconBlock} for state {BeaconState}, with checkpoint {JustifiedCheckpoint}, with signing root {SigningRoot}");
+                "Initializing store on fork {Fork} with anchor root {AnchorRoot}, genesis {GenesisTime} (state {AnchorState}, block {AnchorBlock}, checkpoint {AnchorCheckpoint})");
 
         public static readonly Action<ILogger, Attestation, Exception?> OnAttestation =
             LoggerMessage.Define<Attestation>(LogLevel.Information,
                 new EventId(2201, nameof(OnAttestation)),
                 "Fork choice received attestation {Attestation}");
 
-        public static readonly Action<ILogger, Hash32, BeaconBlock, Exception?> OnBlock =
-            LoggerMessage.Define<Hash32, BeaconBlock>(LogLevel.Information,
+        public static readonly Action<ILogger, Root, BeaconBlock, BlsSignature, Exception?> OnBlock =
+            LoggerMessage.Define<Root, BeaconBlock, BlsSignature>(LogLevel.Information,
                 new EventId(2202, nameof(OnBlock)),
-                "Fork choice received block {BlockSigningRoot} ({BeaconBlock})");
+                "Fork choice received block {BlockRoot} ({BeaconBlock}) with signature {Signature}");
 
         public static readonly Action<ILogger, Epoch, Slot, ulong, Exception?> OnTickNewEpoch =
             LoggerMessage.Define<Epoch, Slot, ulong>(LogLevel.Information,
@@ -119,6 +119,10 @@ namespace Nethermind.BeaconNode
                 LoggerMessage.Define<CommitteeIndex, Slot>(LogLevel.Warning,
                     new EventId(4104, nameof(InvalidIndexedAttestationSignature)),
                 "Invalid indexed attestation from committee {CommitteeIndex} for slot {Slot}, because the aggregate signature does not match.");
+        public static readonly Action<ILogger, CommitteeIndex, Slot, int, int, Exception?> InvalidIndexedAttestationNotUnique =
+            LoggerMessage.Define<CommitteeIndex, Slot, int, int>(LogLevel.Warning,
+                new EventId(4105, nameof(InvalidIndexedAttestationNotUnique)),
+                "Invalid indexed attestation from committee {CommitteeIndex} for slot {Slot}, because custody bit {CustodyBit} index {IndexNumber} is not unique.");
 
         public static readonly Action<ILogger, Exception?> ApiErrorGetVersion =
             LoggerMessage.Define(LogLevel.Warning,
@@ -140,19 +144,22 @@ namespace Nethermind.BeaconNode
             LoggerMessage.Define(LogLevel.Warning,
                 new EventId(4404, nameof(ApiErrorNewBlock)),
                 "Exception result from API Block (get).");
-        public static readonly Action<ILogger, Slot, Slot, Hash32, Slot, Exception?> NoBlocksSinceEth1VotingPeriodDefaulting =
-            LoggerMessage.Define<Slot, Slot, Hash32, Slot>(LogLevel.Warning,
+        public static readonly Action<ILogger, Slot, Slot, Root, Slot, Exception?> NoBlocksSinceEth1VotingPeriodDefaulting =
+            LoggerMessage.Define<Slot, Slot, Root, Slot>(LogLevel.Warning,
                 new EventId(4405, nameof(NoBlocksSinceEth1VotingPeriodDefaulting)),
                 "New block for state slot {StateSlot} is slot {Eth1VotingPeriodSlot} of the Eth1 voting period, but parent root {ParentRoot} is before slot {CheckSlot}, so using the parent's follow distance for start of Eth1 voting period.");
         public static readonly Action<ILogger, BeaconBlock, Exception?> BlockNotAcceptedLocally =
             LoggerMessage.Define<BeaconBlock>(LogLevel.Warning,
                 new EventId(4406, nameof(BlockNotAcceptedLocally)),
                 "Block {BeaconBlock} not accepted by local chain (but will still try to publish to peers).");
-
-        public static readonly Action<ILogger, ulong, ulong, Exception?> MockedQuickStart =
-            LoggerMessage.Define<ulong, ulong>(LogLevel.Warning,
-                new EventId(4900, nameof(MockedQuickStart)),
-                "Mocked quick start with genesis time {GenesisTime:n0} and {ValidatorCount} validators.");
+        public static readonly Action<ILogger, Exception?> ApiErrorGetSyncing =
+            LoggerMessage.Define(LogLevel.Warning,
+                new EventId(4407, nameof(ApiErrorGetSyncing)),
+                "Exception result from API get syncing.");
+        public static readonly Action<ILogger, Exception?> ApiErrorPublishBlock =
+            LoggerMessage.Define(LogLevel.Warning,
+                new EventId(4408, nameof(ApiErrorPublishBlock)),
+                "Exception result from API publish Block (post).");
 
         public static readonly Action<ILogger, long, Exception?> QuickStartClockCreated =
             LoggerMessage.Define<long>(LogLevel.Warning,

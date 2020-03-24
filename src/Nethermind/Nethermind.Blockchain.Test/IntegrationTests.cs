@@ -36,7 +36,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Store;
 using Nethermind.Store.Bloom;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
@@ -70,13 +69,14 @@ namespace Nethermind.Blockchain.Test
             StateDb stateDb = new StateDb();
             StateProvider stateProvider = new StateProvider(stateDb, codeDb, logManager);
             StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, logManager);
+            StateReader stateReader = new StateReader(stateDb, codeDb, logManager);
             
             /* store & validation */
 
             EthereumEcdsa ecdsa = new EthereumEcdsa(specProvider, logManager);
-            MemDb receiptsDb = new MemDb();
+            MemColumnsDb<ReceiptsColumns> receiptsDb = new MemColumnsDb<ReceiptsColumns>();
             TxPool.TxPool txPool = new TxPool.TxPool(NullTxStorage.Instance, Timestamper.Default, ecdsa, specProvider, new TxPoolConfig(), stateProvider, logManager);
-            IReceiptStorage receiptStorage = new PersistentReceiptStorage(receiptsDb, specProvider, logManager);
+            IReceiptStorage receiptStorage = new PersistentReceiptStorage(receiptsDb, specProvider);
             var blockInfoDb = new MemDb();
             BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, txPool, NullBloomStorage.Instance, logManager);
             Timestamper timestamper = new Timestamper();
@@ -122,7 +122,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(chainSpec.Genesis);
             blockchainProcessor.Start();
 
-            var transactionSelector = new PendingTxSelector(txPool, stateProvider, logManager);
+            var transactionSelector = new PendingTxSelector(txPool, stateReader, logManager);
             MinedBlockProducer minedBlockProducer = new MinedBlockProducer(transactionSelector, blockchainProcessor, sealer, blockTree, blockchainProcessor, stateProvider, timestamper, LimboLogs.Instance, difficultyCalculator);
             minedBlockProducer.Start();
 

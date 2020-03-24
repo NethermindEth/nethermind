@@ -16,7 +16,6 @@
 
 using System;
 using Nethermind.Db;
-using Nethermind.Store;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks
 {

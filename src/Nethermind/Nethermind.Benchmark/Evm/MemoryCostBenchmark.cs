@@ -15,13 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 
 namespace Nethermind.Benchmarks.Evm
 {
     [MemoryDiagnoser]
-    [CoreJob(baseline: true)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class MemoryCostBenchmark
     {
         private IEvmMemory _current = new EvmPooledMemory();

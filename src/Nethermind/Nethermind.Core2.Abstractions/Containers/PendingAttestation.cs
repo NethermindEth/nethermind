@@ -22,6 +22,9 @@ namespace Nethermind.Core2.Containers
 {
     public class PendingAttestation
     {
+        public static readonly PendingAttestation Zero =
+            new PendingAttestation(new BitArray(0), AttestationData.Zero, Slot.Zero, ValidatorIndex.Zero);
+
         public PendingAttestation(
             BitArray aggregationBits,
             AttestationData data,

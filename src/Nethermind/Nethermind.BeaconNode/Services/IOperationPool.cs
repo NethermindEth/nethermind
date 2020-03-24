@@ -16,6 +16,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 
 namespace Nethermind.BeaconNode.Services
 {
@@ -24,6 +25,6 @@ namespace Nethermind.BeaconNode.Services
         IAsyncEnumerable<Attestation> GetAttestationsAsync(ulong maximum);
         IAsyncEnumerable<AttesterSlashing> GetAttesterSlashingsAsync(ulong maximum);
         IAsyncEnumerable<ProposerSlashing> GetProposerSlashingsAsync(ulong maximum);
-        IAsyncEnumerable<VoluntaryExit> GetVoluntaryExits(ulong maximum);
+        IAsyncEnumerable<SignedVoluntaryExit> GetSignedVoluntaryExits(ulong maximum);
     }
 }

@@ -24,7 +24,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
-using Nethermind.State;
 
 namespace Nethermind.Blockchain.Synchronization.BeamSync
 {
@@ -180,7 +179,12 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, this[k])).ToArray();
 
-        public IEnumerable<byte[]> GetAll()
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
+        {
+            throw new NotSupportedException();
+        }
+
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false)
         {
             throw new NotSupportedException();
         }
@@ -208,6 +212,11 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
         public void Flush()
         {
             _tempDb.Flush();
+        }
+
+        public void Clear()
+        {
+            _tempDb.Clear();
         }
 
         public event EventHandler NeedMoreData;

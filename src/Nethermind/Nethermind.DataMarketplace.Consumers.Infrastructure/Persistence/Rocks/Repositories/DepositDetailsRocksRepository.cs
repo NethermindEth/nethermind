@@ -26,7 +26,6 @@ using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.Repositories
 {
@@ -61,7 +60,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
                 throw new ArgumentNullException(nameof(query));
             }
             
-            var depositsBytes = _database.GetAll().ToArray();
+            var depositsBytes = _database.GetAllValues().ToArray();
             if (depositsBytes.Length == 0)
             {
                 return Task.FromResult(PagedResult<DepositDetails>.Empty);

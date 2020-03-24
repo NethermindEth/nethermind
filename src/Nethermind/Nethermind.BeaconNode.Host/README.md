@@ -33,6 +33,8 @@ dotnet run --project src/Nethermind/Nethermind.BeaconNode.Host -- --QuickStart:G
 
 ### Test it works
 
+**NOTE: OpenAPI not currently fixed after upgrade to 0.10.1, so this section is not working (yet)** 
+
 Run, as above, then open a browser to ```https://localhost:8230/node/version``` and it should respond with the name and version.
 
 Other GET queries:
@@ -62,20 +64,27 @@ Ensure the host is build:
 dotnet build src/Nethermind/Nethermind.BeaconNode.Host
 ``` 
 
-Run the first node in one shell:
-
-```
-dotnet run --no-build --project src/Nethermind/Nethermind.BeaconNode.Host -- --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ValidatorStartIndex 0 --QuickStart:NumberOfValidators 32
-```
-
-And at the same time start the second node in a second PowerShell terminal, getting the ENR value (and see below for notes on clock synchronisation):
+In the second terminal, get the ENR record details:
 
 ```
 $enr = Get-Content 'src/Nethermind/Nethermind.BeaconNode.Host/bin/Debug/netcoreapp3.0/Development/mothra/network/enr.dat'
-dotnet run --no-build --project src/Nethermind/Nethermind.BeaconNode.Host -- --DataDirectory Development9001 --Peering:BootNodes:0 $enr --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ValidatorStartIndex 32 --QuickStart:NumberOfValidators 32
+```
+
+Then, at the same time start the first node in one terminal (see below for clock synchronisation details):
+
+```
+$offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())/60) * 60; $offset; dotnet run --no-build --project src/Nethermind/Nethermind.BeaconNode.Host --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ClockOffset $offset --QuickStart:ValidatorStartIndex 0 --QuickStart:NumberOfValidators 32
+```
+
+And the second node in a second PowerShell terminal:
+
+```
+$offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())/60) * 60; $offset; dotnet run --no-build --project src/Nethermind/Nethermind.BeaconNode.Host -- --DataDirectory Development9001 --Peering:Mothra:BootNodes:0 $enr --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ClockOffset $offset --QuickStart:ValidatorStartIndex 32 --QuickStart:NumberOfValidators 4
 ```
 
 ### Test with separate processes for node and validator
+
+**NOTE: REST API is currently broken (from spec updated to 0.10.1), so can't run in separate processes**
 
 This will run the Beacon Node and Honest Validator in separate host processes, communicating via the REST API.
 
@@ -115,6 +124,29 @@ For example, with genesis time 1,578,009,600 this clock can be set to start at a
 Note that the different processess (nodes and validators) need to use the same offset to be synchronised. 
 
 The clock will also be useful in future testing to reproduce specific scenarios starting from particular states at past clock dates (using a negative offset).
+
+#### Example: Slot catch up when a test net is missing time
+
+The default quickstart clock offset starts the effective clock at genesis time. You can run the host with a past genesis time and offset = 0 (current time clock) to simulate what might happen if a test net is missing some time.
+
+e.g. To simulate the first test validator starting 120 seconds after genesis:
+
+```
+dotnet run --project src/Nethermind/Nethermind.BeaconNode.Host --QuickStart:GenesisTime ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - 120) --QuickStart:ClockOffset 0 --QuickStart:ValidatorCount 64 --QuickStart:ValidatorStartIndex 0 --QuickStart:NumberOfValidators 32
+```
+
+Normally other nodes would have produced blocks and the chain head will match the clock time; if it is behind the clock time, it would simply mean that the node needs to sync to catch up.
+
+However, with a test network there might have been no nodes/validators active, e.g. if the entire network was stopped. This means no blocks would have been produced (by anyone) and the head will be old.
+
+If nodes only checked based on clock time, and the head was too many epochs in the past, then every node would simply get 406 DutiesNotAvailableForRequestedEpoch errors.
+
+e.g. If a test network was stopped at slot 100 (epoch 12), and restarted at clock time slot 150 (epoch 18) then if validators used the clock time to start requesting duties and they all requested for epoch 18, they would all get 406 errors.
+
+The Nethermind validator client will start at whatever head the beacon node has, i.e. slot 101, even if it is in the past (compared to the clock).
+
+If it was only one node that was stopped, i.e. it is simply out of date and needs to sync, then it might produce some useless blocks (but there is no penalty to this), and once the beacon node has updated the head, the validator will know which duties to check next.
+
 
 ### Optional requirements
 

@@ -25,7 +25,6 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
-using Nethermind.Store;
 using Nethermind.Trie;
 using NUnit.Framework;
 

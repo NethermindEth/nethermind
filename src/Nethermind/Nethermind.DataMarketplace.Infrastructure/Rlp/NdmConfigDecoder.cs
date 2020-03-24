@@ -95,7 +95,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                     PluginsPath = pluginsPath,
                     DatabasePath = databasePath,
                     ProxyEnabled = proxyEnabled,
-                    JsonRpcUrlProxies = jsonRpcUrlProxies,
+                    JsonRpcUrlProxies = jsonRpcUrlProxies!,
                     GasPriceType = gasPriceType,
                     GasPrice = gasPrice,
                     CancelTransactionGasPricePercentageMultiplier = cancelTransactionGasPricePercentageMultiplier,

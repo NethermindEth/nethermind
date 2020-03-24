@@ -20,7 +20,6 @@ using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Metrics;
 using Prometheus;
-using Nethermind.Config;
 using Nethermind.Monitoring.Config;
 
 namespace Nethermind.Monitoring

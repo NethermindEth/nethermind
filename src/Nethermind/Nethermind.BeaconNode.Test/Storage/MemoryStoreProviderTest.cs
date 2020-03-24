@@ -37,18 +37,15 @@ namespace Nethermind.BeaconNode.Test.Storage
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
+            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
-            IStore store = forkChoice.GetGenesisStore(state);
+            IStore store = testServiceProvider.GetService<IStore>();
+            await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
 
-            MiscellaneousParameters miscellaneousParameters =
-                testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
-            TimeParameters timeParameters =
-                testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            StateListLengths stateListLengths =
-                testServiceProvider.GetService<IOptions<StateListLengths>>().Value;
-            MaxOperationsPerBlock maxOperationsPerBlock =
-                testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
+            InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
+            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            SignatureDomains signatureDomains = testServiceProvider.GetService<IOptions<SignatureDomains>>().Value;
 
             // Move forward time
             ulong targetTime = 10 * 6; // part way into epoch 2
@@ -58,9 +55,9 @@ namespace Nethermind.BeaconNode.Test.Storage
                 await forkChoice.OnTickAsync(store, time);
                 if (timeSinceGenesis % timeParameters.SecondsPerSlot == 0)
                 {
-                    BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
-                    TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
-                    await forkChoice.OnBlockAsync(store, block);
+                    BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, BlsSignature.Zero);
+                    SignedBeaconBlock signedBlock = TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
+                    await forkChoice.OnBlockAsync(store, signedBlock);
                 }
             }
             
@@ -69,15 +66,13 @@ namespace Nethermind.BeaconNode.Test.Storage
             TestContext.WriteLine("");
             
             // Act
-            IStoreProvider storeProvider = testServiceProvider.GetService<IStoreProvider>();
-            storeProvider.ShouldBeOfType(typeof(MemoryStoreProvider));
-            storeProvider.TryGetStore(out IStore? retrievedStore).ShouldBeTrue();
-            retrievedStore!.ShouldBeOfType(typeof(MemoryStore));
+            IStore retrievedStore = testServiceProvider.GetService<IStore>();
+            retrievedStore.ShouldBeOfType(typeof(MemoryStore));
 
-            Hash32 headRoot = await forkChoice.GetHeadAsync(store);
-            Hash32 block2Root = await forkChoice.GetAncestorAsync(store, headRoot, new Slot(2));
-            Hash32 block1Root = await forkChoice.GetAncestorAsync(store, block2Root, Slot.One);
-            Hash32 genesisRoot = await forkChoice.GetAncestorAsync(store, block1Root, Slot.Zero);
+            Root headRoot = await forkChoice.GetHeadAsync(store);
+            Root block2Root = await forkChoice.GetAncestorAsync(store, headRoot, new Slot(2));
+            Root block1Root = await forkChoice.GetAncestorAsync(store, block2Root, Slot.One);
+            Root genesisRoot = await forkChoice.GetAncestorAsync(store, block1Root, Slot.Zero);
 
             BeaconBlock headBlock = await store.GetBlockAsync(headRoot);
             BeaconBlock block2 = await store.GetBlockAsync(block2Root);
@@ -94,16 +89,19 @@ namespace Nethermind.BeaconNode.Test.Storage
             TestContext.WriteLine("Block 2 lookup root: {0}", block2Root);
             TestContext.WriteLine("");
 
-            Hash32 genesisSigningRoot = cryptographyService.SigningRoot(genesisBlock!);
-            Hash32 genesisHashTreeRoot = cryptographyService.HashTreeRoot(genesisBlock!);
-            Hash32 block1SigningRoot = cryptographyService.SigningRoot(block1!);
-            Hash32 block1HashTreeRoot = cryptographyService.HashTreeRoot(block1!);
-            Hash32 block2SigningRoot = cryptographyService.SigningRoot(block2!);
-            Hash32 block2HashTreeRoot = cryptographyService.HashTreeRoot(block2!);
+            Domain domain =
+                beaconChainUtility.ComputeDomain(signatureDomains.BeaconProposer, initialValues.GenesisForkVersion);
+
+            Root genesisHashTreeRoot = cryptographyService.HashTreeRoot(genesisBlock!);
+            Root genesisSigningRoot = beaconChainUtility.ComputeSigningRoot(genesisHashTreeRoot, domain);
+            Root block1HashTreeRoot = cryptographyService.HashTreeRoot(block1!);
+            Root block1SigningRoot = beaconChainUtility.ComputeSigningRoot(block1HashTreeRoot, domain);
+            Root block2HashTreeRoot = cryptographyService.HashTreeRoot(block2!);
+            Root block2SigningRoot = beaconChainUtility.ComputeSigningRoot(block2HashTreeRoot, domain);
 
             TestContext.WriteLine("Genesis sign root: {0}, hash root: {1}", genesisSigningRoot, genesisHashTreeRoot);
             TestContext.WriteLine("Block 1 sign root: {0}, hash root: {1}", block1SigningRoot, block1HashTreeRoot);
-            TestContext.WriteLine("Block2 sign root: {0}, hash root: {1}", block2SigningRoot, block2HashTreeRoot);
+            TestContext.WriteLine("Block 2 sign root: {0}, hash root: {1}", block2SigningRoot, block2HashTreeRoot);
             TestContext.WriteLine("");
 
             TestContext.WriteLine("Genesis state root: {0}", genesisBlock!.StateRoot);
@@ -119,12 +117,15 @@ namespace Nethermind.BeaconNode.Test.Storage
                 cryptographyService.HashTreeRoot(block2State!));
             TestContext.WriteLine("");
 
-            TestContext.WriteLine("Genesis state last block root: {0}, latest block header parent {1}, signing root {2}",
-                genesisState!.BlockRoots.Last(), genesisState!.LatestBlockHeader.ParentRoot, genesisState!.LatestBlockHeader.SigningRoot());
-            TestContext.WriteLine("State 1 last block root: {0}, latest block header parent {1}, signing root {2}",
-                block1State!.BlockRoots.Last(), block1State!.LatestBlockHeader.ParentRoot, block1State!.LatestBlockHeader.SigningRoot());
-            TestContext.WriteLine("State 2 last block root: {0}, latest block header parent {1}, signing root {2}",
-                block2State!.BlockRoots.Last(), block2State!.LatestBlockHeader.ParentRoot, block2State!.LatestBlockHeader.SigningRoot());
+            TestContext.WriteLine("Genesis state last block root: {0}, latest block header parent {1}, hash tree root {2}",
+                genesisState!.BlockRoots.Last(), genesisState!.LatestBlockHeader.ParentRoot, 
+                cryptographyService.HashTreeRoot(genesisState!.LatestBlockHeader));
+            TestContext.WriteLine("State 1 last block root: {0}, latest block header parent {1}, hash tree root {2}",
+                block1State!.BlockRoots.Last(), block1State!.LatestBlockHeader.ParentRoot, 
+                cryptographyService.HashTreeRoot(block1State!.LatestBlockHeader));
+            TestContext.WriteLine("State 2 last block root: {0}, latest block header parent {1}, hash tree root {2}",
+                block2State!.BlockRoots.Last(), block2State!.LatestBlockHeader.ParentRoot, 
+                cryptographyService.HashTreeRoot(block2State!.LatestBlockHeader));
             TestContext.WriteLine("");
 
             TestContext.WriteLine("Genesis state last state root: {0}, last historical root {1}",
@@ -139,13 +140,17 @@ namespace Nethermind.BeaconNode.Test.Storage
 
             BeaconBlockHeader state1LatestHeader = block1State!.LatestBlockHeader;
             TestContext.WriteLine(
-                "State 1 latest header, slot: {0}, parent {1}, body root {2}, state root {3}, signature {4}, signing root {5}",
+                "State 1 latest header, slot: {0}, parent {1}, body root {2}, state root {3}, signature {4}, header hash tree root (without state) {5}",
                 state1LatestHeader.Slot, state1LatestHeader.ParentRoot, state1LatestHeader.BodyRoot,
-                state1LatestHeader.StateRoot, state1LatestHeader.Signature,
-                state1LatestHeader.SigningRoot());
+                state1LatestHeader.StateRoot, state1LatestHeader,
+                cryptographyService.HashTreeRoot(state1LatestHeader));
             
-            Hash32 block1BodyHashTreeRootResult = cryptographyService.HashTreeRoot(block1!.Body);
-            Hash32 block1SigningRootResult = cryptographyService.SigningRoot(block1!);
+            // NOTE: cryptographyService.HashTreeRoot(beaconBlockHeader) == cryptographyService.HashTreeRoot(beaconBlock)
+            //       likewise, the ComputeSigningRoot() of both will be the same
+            
+            Root block1BodyHashTreeRootResult = cryptographyService.HashTreeRoot(block1!.Body);
+            Root block1HashTreeRootResult = cryptographyService.HashTreeRoot(block1!);
+            Root block1SigningRootResult = beaconChainUtility.ComputeSigningRoot(block1HashTreeRootResult, domain);
 //            Hash32 block1HashTreeRootResult = cryptographyService.HashTreeRoot(block1!,
 //                maxOperationsPerBlock.MaximumProposerSlashings,
 //                maxOperationsPerBlock.MaximumAttesterSlashings, maxOperationsPerBlock.MaximumAttestations,
@@ -153,20 +158,23 @@ namespace Nethermind.BeaconNode.Test.Storage
 //                miscellaneousParameters.MaximumValidatorsPerCommittee);
 
             TestContext.WriteLine(
-                "-- compare to Block 1, slot: {0}, parent {1}, body root {2}, state root {3}, signature {4}, signing root {5}",
+                "-- compare to Block 1, slot: {0}, parent {1}, body root {2}, state root {3}, hash tree root {4}, signing root {5}",
                 block1!.Slot, block1!.ParentRoot, block1BodyHashTreeRootResult,
-                block1!.StateRoot, block1!.Signature,
+                block1!.StateRoot, 
+                block1HashTreeRootResult,
                 block1SigningRootResult);
 
             // Assert
             block2!.ParentRoot.ShouldBe(block1Root);
             
-            block1SigningRootResult.ShouldBe(block1Root);
+            block1HashTreeRootResult.ShouldBe(block1Root);
             
-            block1.ParentRoot.ToString().ShouldStartWith("0x89e36b63");
-            block1.StateRoot.ToString().ShouldStartWith("0x35c6537a");
-            block1SigningRootResult.ToString().ShouldStartWith("0xcdaa0640");
-            block1State.LatestBlockHeader.BodyRoot.ToString().ShouldStartWith("0xaea12492");
+            // These values just captured from output
+            block1.ParentRoot.ToString().ShouldStartWith("0xc5ba9857");
+            block1.StateRoot.ToString().ShouldStartWith("0xfadf79e4");
+            block1HashTreeRootResult.ToString().ShouldStartWith("0xe29b9bf1");
+            block1SigningRootResult.ToString().ShouldStartWith("0x11c26e7f");
+            block1State.LatestBlockHeader.BodyRoot.ToString().ShouldStartWith("0x123ae93e");
         }
     }
 }

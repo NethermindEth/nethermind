@@ -36,7 +36,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Facade.Test
 {
-    public class BlockChainBridgeTests
+    public class BlockchainBridgeTests
     {
         private BlockchainBridge _blockchainBridge;
         private IStateReader _stateReader;
@@ -82,7 +82,6 @@ namespace Nethermind.Facade.Test
                 _transactionProcessor,
                 _ethereumEcdsa,
                 _bloomStorage,
-                _receiptsRecovery,
                 LimboLogs.Instance);
         }
 
@@ -93,25 +92,24 @@ namespace Nethermind.Facade.Test
         }
         
         [Test]
-        public void get_transaction_returns_receipt_when_found()
+        public void get_transaction_returns_null_when_block_not_found()
         {
             var receipt = Build.A.Receipt.WithBlockHash(TestItem.KeccakB).TestObject;
-            _receiptStorage.Find(TestItem.KeccakA).Returns(receipt);
-            _blockchainBridge.GetTransaction(TestItem.KeccakA).Should().BeEquivalentTo((receipt, (Transaction) null));
+            _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
+            _blockchainBridge.GetTransaction(TestItem.KeccakA).Should().Be((null, null));
         }
         
         [Test]
         public void get_transaction_returns_receipt_and_transaction_when_found()
         {
             int index = 5;
-            var receipt = Build.A.Receipt.WithBlockHash(TestItem.KeccakB).WithIndex(index).TestObject;
-            _blockTree.FindBlock(TestItem.KeccakB, BlockTreeLookupOptions.RequireCanonical).Returns(
-                Build.A.Block.WithTransactions(
-                    Enumerable.Range(0, 10).Select(i => Build.A.Transaction.WithNonce((UInt256) i).TestObject).ToArray()
-                ).TestObject);
-            _receiptStorage.Find(TestItem.KeccakA).Returns(receipt);
+            var receipt = Build.A.Receipt.WithBlockHash(TestItem.KeccakB).WithTransactionHash(TestItem.KeccakA).WithIndex(index).TestObject;
+            var block = Build.A.Block.WithTransactions(Enumerable.Range(0, 10).Select(i => Build.A.Transaction.WithNonce((UInt256) i).TestObject).ToArray()).TestObject;
+            _blockTree.FindBlock(TestItem.KeccakB, Arg.Any<BlockTreeLookupOptions>()).Returns(block);
+            _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
+            _receiptStorage.Get(block, TestItem.KeccakA).Returns(receipt);
             _blockchainBridge.GetTransaction(TestItem.KeccakA).Should()
-                .BeEquivalentTo((receipt, (Transaction) Build.A.Transaction.WithNonce((UInt256) index).TestObject));
+                .BeEquivalentTo((receipt, Build.A.Transaction.WithNonce((UInt256) index).TestObject));
         }
         
         [Test]

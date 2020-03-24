@@ -118,7 +118,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
         
         #region DataStreams
         
-        public Task<Keccak?> EnableDataStreamAsync(Keccak depositId, string client, string[] args)
+        public Task<Keccak?> EnableDataStreamAsync(Keccak depositId, string client, string?[] args)
             => _dataStreamService.EnableDataStreamAsync(depositId, client, args);
 
         public Task<Keccak?> DisableDataStreamAsync(Keccak depositId, string client)
@@ -127,7 +127,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
         public Task<Keccak?> DisableDataStreamsAsync(Keccak depositId)
             => _dataStreamService.DisableDataStreamsAsync(depositId);
 
-        public Task SetEnabledDataStreamAsync(Keccak depositId, string client, string[] args)
+        public Task SetEnabledDataStreamAsync(Keccak depositId, string client, string?[] args)
             => _dataStreamService.SetEnabledDataStreamAsync(depositId, client, args);
 
         public Task SetDisabledDataStreamAsync(Keccak depositId, string client)

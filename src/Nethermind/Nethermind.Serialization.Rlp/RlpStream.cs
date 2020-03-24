@@ -28,7 +28,7 @@ namespace Nethermind.Serialization.Rlp
         private static HeaderDecoder _headerDecoder = new HeaderDecoder();
         private static BlockDecoder _blockDecoder = new BlockDecoder();
         private static TransactionDecoder _txDecoder = new TransactionDecoder();
-        private static ReceiptDecoder _receiptDecoder = new ReceiptDecoder();
+        private static ReceiptMessageDecoder _receiptDecoder = new ReceiptMessageDecoder();
         private static LogEntryDecoder _logEntryDecoder = new LogEntryDecoder();
 
         protected RlpStream()

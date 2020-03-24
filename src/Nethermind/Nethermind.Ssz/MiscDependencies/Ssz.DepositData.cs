@@ -24,7 +24,7 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
-        public const int DepositDataLength = Ssz.BlsPublicKeyLength + Ssz.Hash32Length + Ssz.GweiLength + Ssz.BlsSignatureLength;
+        public const int DepositDataLength = Ssz.BlsPublicKeyLength + Ssz.Bytes32Length + Ssz.GweiLength + Ssz.BlsSignatureLength;
         
         public static void Encode(Span<byte> span, DepositData? container)
         {
@@ -46,7 +46,7 @@ namespace Nethermind.Ssz
             if (span.Length != Ssz.DepositDataLength) ThrowSourceLength<DepositData>(span.Length, Ssz.DepositDataLength);
             int offset = 0;
             BlsPublicKey publicKey = DecodeBlsPublicKey(span, ref offset);
-            Hash32 withdrawalCredentials = DecodeSha256(span, ref offset);
+            Bytes32 withdrawalCredentials = DecodeBytes32(span, ref offset);
             Gwei amount = DecodeGwei(span, ref offset);
             BlsSignature signature = DecodeBlsSignature(span, ref offset);
             DepositData container = new DepositData(publicKey, withdrawalCredentials, amount, signature);

@@ -23,18 +23,18 @@ namespace Nethermind.Core2.Containers
 {
     public class HistoricalBatch
     {
-        private readonly Hash32[] _blockRoots;
-        private readonly Hash32[] _stateRoots;
+        private readonly Root[] _blockRoots;
+        private readonly Root[] _stateRoots;
 
-        public HistoricalBatch(Hash32[] blockRoots, Hash32[] stateRoots)
+        public HistoricalBatch(Root[] blockRoots, Root[] stateRoots)
         {
             _blockRoots = blockRoots;
             _stateRoots = stateRoots;
         }
 
-        public IReadOnlyList<Hash32> BlockRoots { get { return _blockRoots; } }
+        public IReadOnlyList<Root> BlockRoots { get { return _blockRoots; } }
 
-        public IReadOnlyList<Hash32> StateRoots { get { return _stateRoots; } }
+        public IReadOnlyList<Root> StateRoots { get { return _stateRoots; } }
         
         public bool Equals(HistoricalBatch other)
         {
@@ -52,11 +52,11 @@ namespace Nethermind.Core2.Containers
         public override int GetHashCode()
         {
             HashCode hashCode = new HashCode();
-            foreach (Hash32 value in BlockRoots)
+            foreach (Root value in BlockRoots)
             {
                 hashCode.Add(value);
             }
-            foreach (Hash32 value in StateRoots)
+            foreach (Root value in StateRoots)
             {
                 hashCode.Add(value);
             }

@@ -1,0 +1,77 @@
+schemas:
+  BeaconBlock:
+    description: "The [`BeaconBlock`](https://github.com/ethereum/eth2.0-specs/blob/master/specs/core/0_beacon-chain.md#beaconblock) object from the Eth2.0 spec."
+    allOf:
+      - $ref: '#/schemas/BeaconBlockCommon'
+      - type: object
+        properties:
+          body:
+            $ref: '#/schemas/BeaconBlockBody'
+  BeaconBlockHeader:
+    description: "The [`BeaconBlockHeader`](https://github.com/ethereum/eth2.0-specs/blob/master/specs/core/0_beacon-chain.md#beaconblockheader) object from the Eth2.0 spec."
+    allOf:
+      - $ref: '#/schemas/BeaconBlockCommon'
+      - type: object
+        properties:
+          body_root:
+            allOf:
+              - $ref: './misc.yaml#/schemas/Hash'
+              - description: "The tree hash merkle root of the `BeaconBlockBody` for the `BeaconBlock`"
+  BeaconBlockCommon:
+    # An abstract object to collect the common fields between the BeaconBlockHeader and the BeaconBlock objects
+    type: object
+    properties:
+      slot:
+        type: integer
+        format: uint64
+        description: "The slot to which this block corresponds."
+      parent_root:
+        allOf:
+          - $ref: './misc.yaml#/schemas/Hash'
+          - description: "The signing merkle root of the parent `BeaconBlock`."
+      state_root:
+        allOf:
+          - $ref: './misc.yaml#/schemas/Hash'
+          - description: "The tree hash merkle root of the `BeaconState` for the `BeaconBlock`."
+      signature:
+        allOf:
+          - $ref: './misc.yaml#/schemas/Signature'
+          - description: "The BLS signature of the `BeaconBlock` made by the validator of the block."
+  BeaconBlockBody:
+    type: object
+    description: "The [`BeaconBlockBody`](https://github.com/ethereum/eth2.0-specs/blob/master/specs/core/0_beacon-chain.md#beaconblockbody) object from the Eth2.0 spec."
+    properties:
+      randao_reveal:
+        allOf:
+          - $ref: './misc.yaml#/schemas/Signature'
+          - description: "The RanDAO reveal value provided by the validator."
+      eth1_data:
+        $ref: 'eth1.yaml#/schemas/Eth1Data'
+      graffiti:
+        type: string
+        format: byte
+        pattern: "^0x[a-fA-F0-9]{64}$"
+      proposer_slashings:
+        type: array
+        items:
+          $ref: 'operations/proposer_slashing.yaml#/schemas/ProposerSlashing'
+      attester_slashings:
+        type: array
+        items:
+          $ref: 'operations/attester_slashing.yaml#/schemas/AttesterSlashing'
+      attestations:
+        type: array
+        items:
+          $ref: 'operations/attestation.yaml#/schemas/Attestation'
+      deposits:
+        type: array
+        items:
+          $ref: 'operations/deposit.yaml#/schemas/Deposit'
+      voluntary_exits:
+        type: array
+        items:
+          $ref: 'operations/voluntary_exit.yaml#/schemas/VoluntaryExit'
+      transfers:
+        type: array
+        items:
+          $ref: 'operations/transfer.yaml#/schemas/Transfer'

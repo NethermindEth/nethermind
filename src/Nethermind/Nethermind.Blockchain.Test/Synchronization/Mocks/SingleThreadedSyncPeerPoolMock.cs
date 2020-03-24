@@ -22,7 +22,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
-using Nethermind.Network;
 using Nethermind.Stats;
 
 namespace Nethermind.Blockchain.Test.Synchronization.Mocks

@@ -18,7 +18,6 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Network;
 
 namespace Nethermind.JsonRpc.Modules.Admin
@@ -43,7 +42,8 @@ namespace Nethermind.JsonRpc.Modules.Admin
             }
             else
             {
-                added = _peerManager.AddPeer(new NetworkNode(enode));
+                _peerManager.AddPeer(new NetworkNode(enode));
+                added = true;
             }
 
             return added

@@ -22,32 +22,24 @@ namespace Nethermind.Core2.Types
     public struct ForkVersion : IEquatable<ForkVersion>
     {
         public const int Length = sizeof(uint);
-        
+        public static ForkVersion Zero = new ForkVersion();
+
         private readonly uint _number;
 
-        public ReadOnlySpan<byte> AsSpan()
-        {
-            return MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref this, 1));
-        }
-        
         public ForkVersion(Span<byte> span)
         {
             if (span.Length != sizeof(uint))
             {
-                throw new ArgumentOutOfRangeException(nameof(span), span.Length, $"{nameof(ForkVersion)} must have exactly {sizeof(uint)} bytes");
+                throw new ArgumentOutOfRangeException(nameof(span), span.Length,
+                    $"{nameof(ForkVersion)} must have exactly {sizeof(uint)} bytes");
             }
-            
+
             _number = MemoryMarshal.Cast<byte, uint>(span)[0];
         }
 
-        public static bool operator ==(ForkVersion a, ForkVersion b)
+        public ReadOnlySpan<byte> AsSpan()
         {
-            return a._number == b._number;
-        }
-
-        public static bool operator !=(ForkVersion a, ForkVersion b)
-        {
-            return !(a == b);
+            return MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref this, 1));
         }
 
         public bool Equals(ForkVersion other)
@@ -63,6 +55,16 @@ namespace Nethermind.Core2.Types
         public override int GetHashCode()
         {
             return _number.GetHashCode();
+        }
+
+        public static bool operator ==(ForkVersion a, ForkVersion b)
+        {
+            return a._number == b._number;
+        }
+
+        public static bool operator !=(ForkVersion a, ForkVersion b)
+        {
+            return !(a == b);
         }
 
         public override string ToString()

@@ -19,22 +19,23 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices.ComTypes;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2.Containers
 {
     public class Deposit
     {
-        private readonly List<Hash32> _proof;
+        private readonly List<Bytes32> _proof;
 
-        public Deposit(IEnumerable<Hash32> proof, DepositData data)
+        public Deposit(IEnumerable<Bytes32> proof, DepositData data)
         {
-            _proof = new List<Hash32>(proof);
+            _proof = new List<Bytes32>(proof);
             Data = data;
         }
 
         public DepositData Data { get; }
 
-        public IReadOnlyList<Hash32> Proof => _proof.AsReadOnly();
+        public IReadOnlyList<Bytes32> Proof => _proof.AsReadOnly();
 
         public override string ToString()
         {           
@@ -57,7 +58,7 @@ namespace Nethermind.Core2.Containers
         public override int GetHashCode()
         {
             HashCode hashCode = new HashCode();
-            foreach (Hash32 value in Proof)
+            foreach (Bytes32 value in Proof)
             {
                 hashCode.Add(value);
             }

@@ -72,7 +72,9 @@ namespace Nethermind.Db
             }
         }
 
-        public IEnumerable<byte[]> GetAll() => _memDb.GetAll();
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _memDb.GetAll();
+
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _memDb.GetAllValues();
 
         public void StartBatch()
         {
@@ -97,6 +99,8 @@ namespace Nethermind.Db
             _wrappedDb.Flush();
             _memDb.Flush();
         }
+
+        public void Clear() { throw new InvalidOperationException(); }
 
         public virtual void ClearTempChanges()
         {

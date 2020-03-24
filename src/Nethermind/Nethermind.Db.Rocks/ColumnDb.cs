@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using RocksDbSharp;
@@ -75,10 +76,16 @@ namespace Nethermind.Db.Rocks
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => _rocksDb.MultiGet(keys, keys.Select(k => _columnFamily).ToArray());
 
-        public IEnumerable<byte[]> GetAll()
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
         {
-            using Iterator iterator = _rocksDb.NewIterator(_columnFamily);
+            using Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
             return _mainDb.GetAllCore(iterator);
+        }
+
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false)
+        {
+            Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
+            return _mainDb.GetAllValuesCore(iterator);
         }
 
         public void StartBatch()
@@ -103,6 +110,12 @@ namespace Nethermind.Db.Rocks
         {
             _mainDb.Flush();
         }
+        
+        /// <summary>
+        /// Not sure how to handle delete of the columns DB
+        /// </summary>
+        /// <exception cref="NotSupportedException"></exception>
+        public void Clear() { throw new NotSupportedException();}
 
         private void UpdateWriteMetrics() => _mainDb.UpdateWriteMetrics();
 

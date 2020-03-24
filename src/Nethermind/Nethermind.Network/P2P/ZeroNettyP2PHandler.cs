@@ -17,7 +17,6 @@
 using System;
 using System.Net.Sockets;
 using DotNetty.Buffers;
-using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;

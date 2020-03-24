@@ -30,59 +30,85 @@ namespace Nethermind.BeaconNode.Test.Helpers
 {
     public static class TestBlock
     {
-        public static BeaconBlock BuildEmptyBlock(IServiceProvider testServiceProvider, BeaconState state, Slot slot, bool signed)
+        public static BeaconBlock BuildEmptyBlock(IServiceProvider testServiceProvider, BeaconState state, Slot slot, BlsSignature randaoReveal)
         {
             //if (slot) is none
 
-            MiscellaneousParameters miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            StateListLengths stateListLengths = testServiceProvider.GetService<IOptions<StateListLengths>>().Value;
-            MaxOperationsPerBlock maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
+            SignatureDomains signatureDomains = testServiceProvider.GetService<IOptions<SignatureDomains>>().Value;
+
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
+            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+            BeaconStateTransition beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
 
-            Eth1Data eth1Data = new Eth1Data(state.Eth1DepositIndex, Hash32.Zero);
+            Eth1Data eth1Data = new Eth1Data(Root.Zero, state.Eth1DepositIndex, Bytes32.Zero);
 
-            BeaconBlockHeader previousBlockHeader = BeaconBlockHeader.Clone(state.LatestBlockHeader);
-            if (previousBlockHeader.StateRoot == Hash32.Zero)
+            Root stateRoot = !state.LatestBlockHeader.StateRoot.Equals(Root.Zero)
+                ? state.LatestBlockHeader.StateRoot
+                : cryptographyService.HashTreeRoot(state);
+            BeaconBlockHeader previousBlockHeader = new BeaconBlockHeader(state.LatestBlockHeader.Slot,
+                state.LatestBlockHeader.ParentRoot, stateRoot, state.LatestBlockHeader.BodyRoot);
+            Root previousBlockHashTreeRoot = cryptographyService.HashTreeRoot(previousBlockHeader);
+
+            if (randaoReveal.Equals(BlsSignature.Zero))
             {
-                Hash32 stateRoot = cryptographyService.HashTreeRoot(state);
-                previousBlockHeader.SetStateRoot(stateRoot);
-            }
-            Hash32 previousBlockSigningRoot = previousBlockHeader.SigningRoot();
+                Epoch blockEpoch = beaconChainUtility.ComputeEpochAtSlot(slot);
+                ValidatorIndex proposerIndex;
+                if (slot == state.Slot)
+                {
+                    proposerIndex = beaconStateAccessor.GetBeaconProposerIndex(state);
+                }
+                else
+                {
+                    Epoch stateEpoch = beaconChainUtility.ComputeEpochAtSlot(state.Slot);
+                    if (blockEpoch > stateEpoch + 1)
+                    {
+                        Console.WriteLine("WARNING: Block slot (epoch {0}) far away from state (epoch {1}), and no proposer index manually given."
+                                          + " Signing block is slow due to transition for proposer index calculation.", blockEpoch, stateEpoch);
+                    }
 
+                    // use stub state to get proposer index of future slot
+                    BeaconState stubState = BeaconState.Clone(state);
+                    beaconStateTransition.ProcessSlots(stubState, slot);
+                    proposerIndex = beaconStateAccessor.GetBeaconProposerIndex(stubState);
+                }
+
+                byte[][] privateKeys = TestKeys.PrivateKeys(timeParameters).ToArray();
+                byte[] privateKey = privateKeys[(int) (ulong) proposerIndex];
+
+                Domain randaoDomain = beaconStateAccessor.GetDomain(state, signatureDomains.Randao, blockEpoch);
+                Root epochHashTreeRoot = cryptographyService.HashTreeRoot(blockEpoch);
+                Root randaoSigningRoot = beaconChainUtility.ComputeSigningRoot(epochHashTreeRoot, randaoDomain);
+                randaoReveal = TestSecurity.BlsSign(randaoSigningRoot, privateKey);
+            }
+            
             BeaconBlock emptyBlock = new BeaconBlock(slot,
-                previousBlockSigningRoot,
-                Hash32.Zero,
+                previousBlockHashTreeRoot,
+                Root.Zero,
                 new BeaconBlockBody(
-                    BlsSignature.Empty,
+                    randaoReveal,
                     eth1Data,
                     new Bytes32(),
                     Array.Empty<ProposerSlashing>(),
                     Array.Empty<AttesterSlashing>(),
                     Array.Empty<Attestation>(),
                     Array.Empty<Deposit>(),
-                    Array.Empty<VoluntaryExit>()
-                ),
-                BlsSignature.Empty);
-
-            if (signed)
-            {
-                SignBlock(testServiceProvider, state, emptyBlock, ValidatorIndex.None);
-            }
+                    Array.Empty<SignedVoluntaryExit>()
+                ));
 
             return emptyBlock;
         }
 
-        public static BeaconBlock BuildEmptyBlockForNextSlot(IServiceProvider testServiceProvider, BeaconState state, bool signed)
+        // randao = BlsSignature.Zero to generate randao
+        public static BeaconBlock BuildEmptyBlockForNextSlot(IServiceProvider testServiceProvider, BeaconState state, BlsSignature randaoReveal)
         {
-            return BuildEmptyBlock(testServiceProvider, state, state.Slot + new Slot(1), signed);
+            return BuildEmptyBlock(testServiceProvider, state, state.Slot + new Slot(1), randaoReveal);
         }
 
-        public static void SignBlock(IServiceProvider testServiceProvider, BeaconState state, BeaconBlock block, ValidatorIndex proposerIndex)
+        public static SignedBeaconBlock SignBlock(IServiceProvider testServiceProvider, BeaconState state, BeaconBlock block, ValidatorIndex proposerIndex)
         {
-            MiscellaneousParameters miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            MaxOperationsPerBlock maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
             SignatureDomains signatureDomains = testServiceProvider.GetService<IOptions<SignatureDomains>>().Value;
 
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
@@ -120,15 +146,12 @@ namespace Nethermind.BeaconNode.Test.Helpers
             byte[][] privateKeys = TestKeys.PrivateKeys(timeParameters).ToArray();
             byte[] privateKey = privateKeys[(int)(ulong)proposerIndex];
 
-            Domain randaoDomain = beaconStateAccessor.GetDomain(state, signatureDomains.Randao, blockEpoch);
-            Hash32 randaoRevealHash = blockEpoch.HashTreeRoot();
-            BlsSignature randaoReveal = TestSecurity.BlsSign(randaoRevealHash, privateKey, randaoDomain);
-            block.Body.SetRandaoReveal(randaoReveal);
-
-            Domain signatureDomain = beaconStateAccessor.GetDomain(state, signatureDomains.BeaconProposer, blockEpoch);
-            Hash32 signingRoot = cryptographyService.SigningRoot(block);
-            BlsSignature signature = TestSecurity.BlsSign(signingRoot, privateKey, signatureDomain);
-            block.SetSignature(signature);
+            Root blockHashTreeRoot = cryptographyService.HashTreeRoot(block);
+            Domain proposerDomain = beaconStateAccessor.GetDomain(state, signatureDomains.BeaconProposer, blockEpoch);
+            Root signingRoot = beaconChainUtility.ComputeSigningRoot(blockHashTreeRoot, proposerDomain);
+            BlsSignature signature = TestSecurity.BlsSign(signingRoot, privateKey);
+            
+            return new SignedBeaconBlock(block, signature);
         }
     }
 }

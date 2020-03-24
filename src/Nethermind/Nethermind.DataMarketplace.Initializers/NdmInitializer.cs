@@ -50,7 +50,6 @@ using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Stats;
-using Nethermind.Store;
 using Nethermind.Store.Bloom;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -83,7 +82,7 @@ namespace Nethermind.DataMarketplace.Initializers
             IBlockTree blockTree,
             ITxPool txPool,
             ISpecProvider specProvider,
-            IReceiptStorage receiptStorage,
+            IReceiptFinder receiptFinder,
             IWallet wallet,
             IFilterStore filterStore,
             IFilterManager filterManager,
@@ -126,7 +125,7 @@ namespace Nethermind.DataMarketplace.Initializers
                 blockTree,
                 txPool,
                 specProvider,
-                receiptStorage,
+                receiptFinder,
                 wallet,
                 filterStore,
                 filterManager,
@@ -156,17 +155,12 @@ namespace Nethermind.DataMarketplace.Initializers
             ProtocolHandlerFactory protocolHandlerFactory = new ProtocolHandlerFactory(subprotocolFactory, protocolValidator,
                 ethRequestService, logManager);
 
-            if (ndmConfig.ProviderAddress == null)
-            {
-                return NullNdmCapabilityConnector.Instance; 
-            }
-            
             NdmCapabilityConnector capabilityConnector = new NdmCapabilityConnector(
                 protocolsManager,
                 protocolHandlerFactory,
                 accountService,
                 logManager,
-                new Address(ndmConfig.ProviderAddress));
+                ndmConfig.ProviderAddress == null ? Address.Zero : new Address(ndmConfig.ProviderAddress));
 
             return capabilityConnector;
         }
@@ -181,7 +175,7 @@ namespace Nethermind.DataMarketplace.Initializers
                 IBlockTree blockTree,
                 ITxPool txPool,
                 ISpecProvider specProvider,
-                IReceiptStorage receiptStorage,
+                IReceiptFinder receiptFinder,
                 IWallet wallet,
                 IFilterStore filterStore,
                 IFilterManager filterManager,
@@ -206,7 +200,7 @@ namespace Nethermind.DataMarketplace.Initializers
                 IBloomStorage bloomStorage)
         {
             // what is block processor doing here?
-            
+
             if (!(configProvider.GetConfig<INdmConfig>() is NdmConfig defaultConfig))
             {
                 return default;
@@ -234,7 +228,7 @@ namespace Nethermind.DataMarketplace.Initializers
                     {
                         throw new ApplicationException("Failed to initialize Mongo database");
                     }
-                    
+
                     configRepository = new ConfigMongoRepository(database);
                     ethRequestRepository = new EthRequestMongoRepository(database);
                     break;
@@ -266,7 +260,7 @@ namespace Nethermind.DataMarketplace.Initializers
                 new NdmRequiredServices(
                     configProvider,
                     configManager,
-                    ndmConfig, 
+                    ndmConfig,
                     DbPath,
                     dbProvider,
                     mongoProvider,
@@ -274,7 +268,7 @@ namespace Nethermind.DataMarketplace.Initializers
                     blockTree,
                     txPool,
                     specProvider,
-                    receiptStorage, 
+                    receiptFinder,
                     filterStore,
                     filterManager,
                     wallet,
@@ -282,19 +276,19 @@ namespace Nethermind.DataMarketplace.Initializers
                     ecdsa,
                     keyStore,
                     rpcModuleProvider,
-                    jsonSerializer, 
+                    jsonSerializer,
                     cryptoRandom,
                     enode,
                     consumerChannelManager,
                     dataPublisher,
                     grpcServer,
                     ethRequestService,
-                    notifier, 
+                    notifier,
                     enableUnsecuredDevWallet,
                     blockProcessor,
                     jsonRpcClientProxy,
                     ethJsonRpcClientProxy,
-                    httpClient, 
+                    httpClient,
                     monitoringService,
                     bloomStorage));
 

@@ -16,7 +16,6 @@
 
 using System;
 using System.Numerics;
-using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Crypto.ZkSnarks;
 using NUnit.Framework;

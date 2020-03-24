@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netcoreapp3.0</TargetFramework>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
     <Product>Nethermind Eth2.0 blockchain</Product>
     <Authors>sgryphon</Authors>
     <Copyright>Copyright © 2019 Demerzel Solutions Limited</Copyright>
@@ -12,11 +12,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="3.0.1" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="3.0.1" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.4.0" />
-    <PackageReference Include="MSTest.TestAdapter" Version="1.4.0" />
-    <PackageReference Include="MSTest.TestFramework" Version="1.4.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="3.1.2" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="3.1.2" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.5.0" />
+    <PackageReference Include="MSTest.TestAdapter" Version="2.1.0" />
+    <PackageReference Include="MSTest.TestFramework" Version="2.1.0" />
     <PackageReference Include="coverlet.msbuild" Version="2.8.0">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
@@ -27,9 +27,11 @@
     </PackageReference>
     <PackageReference Include="NSubstitute" Version="4.2.1" />
     <PackageReference Include="Shouldly" Version="3.0.2" />
+    <PackageReference Include="System.IO.Abstractions.TestingHelpers" Version="9.0.5" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Nethermind.BeaconNode.Eth1Bridge\Nethermind.BeaconNode.Eth1Bridge.csproj" />
     <ProjectReference Include="..\Nethermind.BeaconNode\Nethermind.BeaconNode.csproj" />
     <ProjectReference Include="..\Nethermind.BeaconNode.Storage\Nethermind.BeaconNode.Storage.csproj" />
     <ProjectReference Include="..\Nethermind.Core2.Cryptography\Nethermind.Core2.Cryptography.csproj" />
@@ -46,6 +48,10 @@
       <Link>Development/appsettings.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="MockedStart" />
   </ItemGroup>
 
 </Project>

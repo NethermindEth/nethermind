@@ -360,7 +360,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.BlockTree,
                     _context.TxPool,
                     _context.SpecProvider,
-                    _context.ReceiptStorage,
+                    _context.ReceiptFinder,
                     _context.Wallet,
                     filterStore,
                     filterManager,

@@ -20,7 +20,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm
 {

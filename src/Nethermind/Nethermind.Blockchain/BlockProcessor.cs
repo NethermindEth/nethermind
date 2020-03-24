@@ -235,10 +235,9 @@ namespace Nethermind.Blockchain
 
         private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
         {
+            _receiptStorage.Insert(block, txReceipts);
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                txReceipts[i].BlockHash = block.Hash;
-                _receiptStorage.Add(txReceipts[i], true);
                 _txPool.RemoveTransaction(txReceipts[i].TxHash, block.Number);
             }
         }

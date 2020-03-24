@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
@@ -25,13 +24,23 @@ namespace Nethermind.HonestValidator
     {
         private readonly Dictionary<BlsPublicKey, Shard> _attestationShard = new Dictionary<BlsPublicKey, Shard>();
         private readonly Dictionary<BlsPublicKey, Slot> _attestationSlot = new Dictionary<BlsPublicKey, Slot>();
-        private readonly Dictionary<BlsPublicKey, Slot> _proposalSlot = new Dictionary<BlsPublicKey, Slot>();
 
         private readonly Dictionary<Slot, BlsPublicKey> _proposalDutyBySlot = new Dictionary<Slot, BlsPublicKey>();
+        private readonly Dictionary<BlsPublicKey, Slot> _proposalSlot = new Dictionary<BlsPublicKey, Slot>();
 
         public IReadOnlyDictionary<BlsPublicKey, Shard> AttestationShard => _attestationShard;
         public IReadOnlyDictionary<BlsPublicKey, Slot> AttestationSlot => _attestationSlot;
         public IReadOnlyDictionary<BlsPublicKey, Slot> ProposalSlot => _proposalSlot;
+
+        public void ClearProposalDutyForSlot(Slot slot)
+        {
+            _proposalDutyBySlot.Remove(slot);
+        }
+
+        public BlsPublicKey? GetProposalDutyForSlot(Slot slot)
+        {
+            return _proposalDutyBySlot.GetValueOrDefault(slot);
+        }
 
         public void SetAttestationDuty(BlsPublicKey key, Slot slot, Shard shard)
         {
@@ -44,16 +53,6 @@ namespace Nethermind.HonestValidator
         {
             _proposalSlot[key] = slot;
             _proposalDutyBySlot[slot] = key;
-        }
-
-        public BlsPublicKey? GetProposalDutyForSlot(Slot slot)
-        {
-            return _proposalDutyBySlot.GetValueOrDefault(slot);
-        }
-
-        public void ClearProposalDutyForSlot(Slot slot)
-        {
-            _proposalDutyBySlot.Remove(slot);
         }
     }
 }

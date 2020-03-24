@@ -17,7 +17,6 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
-using Nethermind.DataMarketplace.Consumers.Shared.Domain;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.Dirichlet.Numerics;
@@ -26,7 +25,8 @@ namespace Nethermind.DataMarketplace.Consumers.Shared
 {
     public interface IConsumerTransactionsService
     {
-        Task<IEnumerable<PendingTransaction>> GetPendingAsync();
+        Task<IEnumerable<ResourceTransaction>> GetAllTransactionsAsync();
+        Task<IEnumerable<ResourceTransaction>> GetPendingAsync();
         Task<UpdatedTransactionInfo> UpdateDepositGasPriceAsync(Keccak depositId, UInt256 gasPrice);
         Task<UpdatedTransactionInfo> UpdateRefundGasPriceAsync(Keccak depositId, UInt256 gasPrice);
         Task<UpdatedTransactionInfo> CancelDepositAsync(Keccak depositId);

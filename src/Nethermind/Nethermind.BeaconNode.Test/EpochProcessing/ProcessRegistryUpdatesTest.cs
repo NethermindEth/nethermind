@@ -21,6 +21,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Test.Helpers;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Shouldly;
 namespace Nethermind.BeaconNode.Test.EpochProcessing
@@ -49,6 +50,10 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
             {
                 TestState.NextEpoch(testServiceProvider, state);
             }
+            
+            // eligibility must be finalized
+            Epoch currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
+            state.SetFinalizedCheckpoint(new Checkpoint(currentEpoch +new Epoch(2), Root.Zero));
 
             // Act
             RunProcessRegistryUpdates(testServiceProvider, state);
@@ -56,9 +61,8 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
             // Assert
             Validator validator = state.Validators[index];
             validator.ActivationEligibilityEpoch.ShouldNotBe(chainConstants.FarFutureEpoch);
-            validator.ActivationEpoch.ShouldNotBe(chainConstants.FarFutureEpoch);
-            Epoch currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
-            bool isActive = beaconChainUtility.IsActiveValidator(validator, currentEpoch);
+            validator.ActivationEpoch.ShouldNotBe(chainConstants.FarFutureEpoch); 
+            bool isActive = beaconChainUtility.IsActiveValidator(validator, currentEpoch + timeParameters.MaximumSeedLookahead + Epoch.One);
             isActive.ShouldBeTrue();
         }
 
@@ -79,6 +83,9 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
                 MockDeposit(testServiceProvider, state, index);
                 state.Validators[index].SetEligible(currentEpoch + Epoch.One);
             }
+
+            // eligibility must be finalized
+            state.SetFinalizedCheckpoint(new Checkpoint(currentEpoch +new Epoch(2), Root.Zero));
 
             // give the last priority over the others
             state.Validators[mockActivations - 1].SetEligible(currentEpoch);

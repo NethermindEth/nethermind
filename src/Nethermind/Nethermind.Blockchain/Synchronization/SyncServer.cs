@@ -16,7 +16,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading;
+using System.IO;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
@@ -28,7 +28,6 @@ using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
-using Nethermind.State;
 
 namespace Nethermind.Blockchain.Synchronization
 {
@@ -37,7 +36,7 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
         private readonly IEthSyncPeerPool _pool;
-        private readonly IReceiptStorage _receiptStorage;
+        private readonly IReceiptFinder _receiptFinder;
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
         private readonly ISnapshotableDb _stateDb;
@@ -48,7 +47,7 @@ namespace Nethermind.Blockchain.Synchronization
         private LruCache<Keccak, object> _recentlySuggested = new LruCache<Keccak, object>(128);
         private long _pivotNumber;
 
-        public SyncServer(ISnapshotableDb stateDb, ISnapshotableDb codeDb, IBlockTree blockTree, IReceiptStorage receiptStorage, IBlockValidator blockValidator, ISealValidator sealValidator, IEthSyncPeerPool pool, ISynchronizer synchronizer, ISyncConfig syncConfig, ILogManager logManager)
+        public SyncServer(ISnapshotableDb stateDb, ISnapshotableDb codeDb, IBlockTree blockTree, IReceiptFinder receiptFinder, IBlockValidator blockValidator, ISealValidator sealValidator, IEthSyncPeerPool pool, ISynchronizer synchronizer, ISyncConfig syncConfig, ILogManager logManager)
         {
             _synchronizer = synchronizer ?? throw new ArgumentNullException(nameof(synchronizer));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
@@ -57,7 +56,7 @@ namespace Nethermind.Blockchain.Synchronization
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _pivotNumber = _syncConfig.PivotNumberParsed;
@@ -104,14 +103,10 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void AddNewBlock(Block block, Node nodeWhoSentTheBlock)
         {
-            // we ignore blocks that are below the sync config pivot block
-            // some peers will send very old blocks to us and we should ignore them
-            if (block.Number < _pivotNumber)
+            if (block.TotalDifficulty == null)
             {
-                return;
+                throw new InvalidDataException("Cannot add a block with unknown total difficulty");
             }
-
-            if (block.TotalDifficulty == null) throw new InvalidOperationException("Cannot add a block with unknown total difficulty");
 
             _pool.TryFind(nodeWhoSentTheBlock.Id, out PeerInfo peerInfo);
             if (peerInfo == null)
@@ -136,41 +131,35 @@ namespace Nethermind.Blockchain.Synchronization
             // The other risky scenario (as happened in the past) is when we nor validate the TotalDifficulty
             // neither nullify it and then BlockTree may end up saving a header or block with incorrect value set.
             // This may lead to corrupted block tree history.
-            if ((block.TotalDifficulty ?? 0) > peerInfo.TotalDifficulty)
-            {
-                if (_logger.IsTrace) _logger.Trace($"ADD NEW BLOCK Updating header of {peerInfo} from {peerInfo.HeadNumber} {peerInfo.TotalDifficulty} to {block.Number} {block.TotalDifficulty}");
-                peerInfo.HeadNumber = block.Number;
-                peerInfo.HeadHash = block.Hash;
-                peerInfo.TotalDifficulty = block.TotalDifficulty ?? peerInfo.TotalDifficulty;
-            }
+            UpdatePeerInfoBasedOnBlockData(block, peerInfo);
 
-            if ((block.TotalDifficulty ?? 0) < _blockTree.BestSuggestedHeader.TotalDifficulty) return;
-            block.Header.TotalDifficulty = null; // important line - read the long comment above
-
-            // note that we only want to do that after updating peer information
+            // Now it is important that all the following checks happen after the peer information was updated
+            // even if the block is not something that we want to include in the block tree
+            // it delivers information about the peer's chain.
+            
+            bool isBlockBeforeTheSyncPivot = block.Number < _pivotNumber;
+            bool isBlockOlderThanMaxReorgAllows = block.Number < (_blockTree.Head?.Number ?? 0) - Sync.MaxReorgLength;
+            bool isBlockTotalDifficultyLow = block.TotalDifficulty < _blockTree.BestSuggestedHeader.TotalDifficulty;
+            if(isBlockBeforeTheSyncPivot || isBlockTotalDifficultyLow || isBlockOlderThanMaxReorgAllows) return;
+            
             lock (_recentlySuggested)
             {
                 if (_recentlySuggested.Get(block.Hash) != null) return;
                 _recentlySuggested.Set(block.Hash, _dummyValue);
             }
 
-            if (block.Number < (_blockTree.Head?.Number ?? 0) - Sync.MaxReorganizationLength)
+            ValidateSeal(block, peerInfo);
+            if (_synchronizer.SyncMode == SyncMode.Full)
             {
-                // notice that we return here even if total difficulty is higher than our total difficulty
-                return;
+                LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
+                SyncBlock(block, peerInfo);
             }
+        }
 
-            if (block.Number > _blockTree.BestKnownNumber + 1)
-            {
-                // If we receive a future block then we just give a hint to the synchronizer that synchronization
-                // is needed. Most likely receiving a future block means that we currently synchronizing or
-                // need to downloaded a small batch of blocks to reorg.
-                _synchronizer.RequestSynchronization(SyncTriggerType.NewDistantBlock);
-                return;
-            }
-
-            if (_logger.IsTrace) _logger.Trace($"Adding new block {block.ToString(Block.Format.Short)}) from {nodeWhoSentTheBlock:c}");
-
+        private void ValidateSeal(Block block, PeerInfo peerInfo)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Validating seal of {block.ToString(Block.Format.Short)}) from {peerInfo:c}");
+            
             // We hint validation range mostly to help ethash to cache epochs.
             // It is important that we only do that here, after we ensured that the block is
             // in the range of [Head - MaxReorganizationLength, Head].
@@ -182,52 +171,67 @@ namespace Nethermind.Blockchain.Synchronization
                 if (_logger.IsDebug) _logger.Debug($"Peer {peerInfo.SyncPeer?.Node:c} sent a block with an invalid seal");
                 throw new EthSynchronizationException(message);
             }
+        }
 
-            if (_logger.IsInfo)
+        private void UpdatePeerInfoBasedOnBlockData(Block block, PeerInfo peerInfo)
+        {
+            if ((block.TotalDifficulty ?? 0) > peerInfo.TotalDifficulty)
             {
-                string authorString = GetNiceBlockAuthorDescription(block);
-                if (_logger.IsInfo) _logger.Info($"Discovered a new block {string.Empty.PadLeft(9 - block.Number.ToString().Length, ' ')}{block.ToString(Block.Format.HashNumberAndTx)} {authorString}, sent by {nodeWhoSentTheBlock:s}");
-            }
-
-            if (_logger.IsTrace) _logger.Trace($"{block}");
-
-            if (_synchronizer.SyncMode == SyncMode.Full)
-            {
-                AddBlockResult result = AddBlockResult.UnknownParent;
-                bool isKnownParent = _blockTree.IsKnownBlock(block.Number - 1, block.ParentHash);
-                if (isKnownParent)
-                {
-                    if (!_blockValidator.ValidateSuggestedBlock(block))
-                    {
-                        string message = $"Peer {peerInfo.SyncPeer?.Node:c} sent an invalid block";
-                        if (_logger.IsDebug) _logger.Debug(message);
-                        lock (_recentlySuggested)
-                        {
-                            _recentlySuggested.Delete(block.Hash);
-                        }
-
-                        throw new EthSynchronizationException(message);
-                    }
-
-                    result = _blockTree.SuggestBlock(block, true);
-                    if (_logger.IsTrace) _logger.Trace($"{block.Hash} ({block.Number}) adding result is {result}");
-                }
-
-                if (result == AddBlockResult.UnknownParent)
-                {
-                    _synchronizer.RequestSynchronization(SyncTriggerType.Reorganization);
-                }
+                if (_logger.IsTrace) _logger.Trace($"ADD NEW BLOCK Updating header of {peerInfo} from {peerInfo.HeadNumber} {peerInfo.TotalDifficulty} to {block.Number} {block.TotalDifficulty}");
+                peerInfo.HeadNumber = block.Number;
+                peerInfo.HeadHash = block.Hash;
+                peerInfo.TotalDifficulty = block.TotalDifficulty ?? peerInfo.TotalDifficulty;
             }
         }
 
-        private static string GetNiceBlockAuthorDescription(Block block)
+        private void SyncBlock(Block block, PeerInfo peerInfo)
+        {
+            if (_logger.IsTrace) _logger.Trace($"{block}");
+
+            // we do not trust total difficulty from peers
+            // Parity sends invalid data here and it is equally expensive to validate and to set from null
+            block.Header.TotalDifficulty = null;
+            
+            AddBlockResult result = AddBlockResult.UnknownParent;
+            bool isKnownParent = _blockTree.IsKnownBlock(block.Number - 1, block.ParentHash);
+            if (isKnownParent)
+            {
+                if (!_blockValidator.ValidateSuggestedBlock(block))
+                {
+                    string message = $"Peer {peerInfo.SyncPeer?.Node:c} sent an invalid block";
+                    if (_logger.IsDebug) _logger.Debug(message);
+                    lock (_recentlySuggested)
+                    {
+                        _recentlySuggested.Delete(block.Hash);
+                    }
+
+                    throw new EthSynchronizationException(message);
+                }
+
+                result = _blockTree.SuggestBlock(block, true);
+                if (_logger.IsTrace) _logger.Trace($"{block.Hash} ({block.Number}) adding result is {result}");
+            }
+
+            // do not change to if..else
+            // there are some rare cases when it did not work...
+            // do not remember why
+            if (result == AddBlockResult.UnknownParent)
+            {
+                _synchronizer.RequestSynchronization(SyncTriggerType.NewBlock);
+            }
+        }
+
+        private void LogBlockAuthorNicely(Block block, Node nodeWhoSentTheBlock)
         {
             // This line is not particularly important (just for logging)
             // and somehow it got refactored by ReSharper into some nightmare line.
             // It would be worth to split it back into something readable.
             // Generally it tries to find the sealer / miner name.
             string authorString = (block.Author == null ? null : "sealed by " + (KnownAddresses.GoerliValidators.ContainsKey(block.Author) ? KnownAddresses.GoerliValidators[block.Author] : block.Author?.ToString())) ?? (block.Beneficiary == null ? string.Empty : "mined by " + (KnownAddresses.KnownMiners.ContainsKey(block.Beneficiary) ? KnownAddresses.KnownMiners[block.Beneficiary] : block.Beneficiary?.ToString()));
-            return authorString;
+            if (_logger.IsInfo)
+            {
+                if (_logger.IsInfo) _logger.Info($"Discovered a new block {string.Empty.PadLeft(9 - block.Number.ToString().Length, ' ')}{block.ToString(Block.Format.HashNumberAndTx)} {authorString}, sent by {nodeWhoSentTheBlock:s}");
+            }
         }
 
         public void HintBlock(Keccak hash, long number, Node node)
@@ -254,7 +258,7 @@ namespace Nethermind.Blockchain.Synchronization
                 if (!_blockTree.IsKnownBlock(number, hash))
                 {
                     _pool.RefreshTotalDifficulty(peerInfo, hash);
-                    _synchronizer.RequestSynchronization(SyncTriggerType.NewDistantBlock);
+                    _synchronizer.RequestSynchronization(SyncTriggerType.NewBlock);
                 }
             }
         }
@@ -265,24 +269,8 @@ namespace Nethermind.Blockchain.Synchronization
             for (int blockIndex = 0; blockIndex < blockHashes.Count; blockIndex++)
             {
                 Block block = Find(blockHashes[blockIndex]);
-                var blockReceipts = new TxReceipt[block?.Transactions.Length ?? 0];
-                bool setNullForBlock = false;
-                for (int receiptIndex = 0; receiptIndex < (block?.Transactions.Length ?? 0); receiptIndex++)
-                {
-                    if (block == null) continue;
-
-                    TxReceipt receipt = _receiptStorage.Find(block.Transactions[receiptIndex].Hash);
-                    if (receipt == null)
-                    {
-                        setNullForBlock = true;
-                        break;
-                    }
-
-                    receipt.BlockNumber = block.Number;
-                    blockReceipts[receiptIndex] = receipt;
-                }
-
-                receipts[blockIndex] = setNullForBlock ? null : blockReceipts;
+                var txReceipts = block != null ? _receiptFinder.Get(block) : Array.Empty<TxReceipt>();
+                receipts[blockIndex] = txReceipts;
             }
 
             return receipts;

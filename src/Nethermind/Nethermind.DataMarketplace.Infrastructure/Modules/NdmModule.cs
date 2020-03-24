@@ -17,7 +17,6 @@
 using System.IO;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core.Services;
@@ -25,7 +24,6 @@ using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
-using Nethermind.Store;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Modules
 {
@@ -58,14 +56,13 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 readOnlyTxProcessingEnv.StorageProvider,
                 readOnlyTxProcessingEnv.BlockTree,
                 services.TransactionPool,
-                services.ReceiptStorage,
+                services.ReceiptFinder,
                 services.FilterStore,
                 services.FilterManager,
                 wallet,
                 readOnlyTxProcessingEnv.TransactionProcessor,
                 services.Ecdsa,
                 services.BloomStorage,
-                new ReceiptsRecovery(),
                 logManager,
                 jsonRpcConfig.FindLogBlockDepthLimit);
             var dataAssetRlpDecoder = new DataAssetDecoder();

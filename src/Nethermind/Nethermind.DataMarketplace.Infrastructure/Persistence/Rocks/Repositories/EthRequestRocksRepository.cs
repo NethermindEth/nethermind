@@ -17,13 +17,11 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Repositories;
 using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositories
 {
@@ -40,7 +38,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositori
         
         public Task<EthRequest?> GetLatestAsync(string host)
         {
-            var requestsBytes = _database.GetAll().ToArray();
+            var requestsBytes = _database.GetAllValues().ToArray();
             if (requestsBytes.Length == 0)
             {
                 return Task.FromResult<EthRequest?>(null);
@@ -61,7 +59,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositori
         
         public Task<UInt256> SumDailyRequestsTotalValueAsync(DateTime date)
         {
-            var requestsBytes = _database.GetAll().ToArray();
+            var requestsBytes = _database.GetAllValues().ToArray();
             if (requestsBytes.Length == 0)
             {
                 return Task.FromResult<UInt256>(0);

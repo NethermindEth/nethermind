@@ -29,7 +29,7 @@ namespace Nethermind.HonestValidator
         public static void AddHonestValidator(this IServiceCollection services, IConfiguration configuration)
         {
             services.AddSingleton<IClock, SystemClock>();
-            services.AddSingleton<BeaconChain>();
+            services.AddSingleton<BeaconChainInformation>();
             services.AddSingleton<ValidatorClient>();
             
             services.AddHostedService<HonestValidatorWorker>();

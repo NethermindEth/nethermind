@@ -95,7 +95,7 @@ namespace Nethermind.BeaconNode
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             Epoch activationExitEpoch = _beaconChainUtility.ComputeActivationExitEpoch(currentEpoch);
             Epoch exitQueueEpoch = Epoch.Max(maxExitEpoch, activationExitEpoch);
-            int exitQueueChurn = state.Validators.Where(x => x.ExitEpoch == exitQueueEpoch).Count();
+            int exitQueueChurn = state.Validators.Count(x => x.ExitEpoch == exitQueueEpoch);
             ulong validatorChurnLimit = _beaconStateAccessor.GetValidatorChurnLimit(state);
             if ((ulong)exitQueueChurn >= validatorChurnLimit)
             {

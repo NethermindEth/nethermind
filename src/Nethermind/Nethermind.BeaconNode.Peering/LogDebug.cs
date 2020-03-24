@@ -25,7 +25,7 @@ namespace Nethermind.BeaconNode.Peering
     { 
         // 6bxx debug
 
-        // 605x debug - peering
+        // 605x debug - peering (Mothra)
         public static readonly Action<ILogger, Exception?> PeeringWorkerExecute =
             LoggerMessage.Define(LogLevel.Debug,
                 new EventId(6050, nameof(PeeringWorkerExecute)),
@@ -55,5 +55,15 @@ namespace Nethermind.BeaconNode.Peering
             LoggerMessage.Define<string, int>(LogLevel.Debug,
                 new EventId(6055, nameof(GossipSend)),
                 "Gossip send, topic '{Topic}', {ByteCount} bytes.");
+        
+        public static readonly Action<ILogger, string?, int?, int, Exception?> MothraStarting =
+            LoggerMessage.Define<string?, int?, int>(LogLevel.Debug,
+                new EventId(6056, nameof(MothraStarting)),
+                "Starting MothraLibp2p on {MothraAddress} port {MothraPort} with {MothraBootNodeCount} boot nodes.");
+        
+        public static readonly Action<ILogger, string, string, Exception?> CreatingMothraLogDirectory =
+            LoggerMessage.Define<string, string>(LogLevel.Debug,
+                new EventId(6057, nameof(CreatingMothraLogDirectory)),
+                "Creating Mothra log directory {LogDirectoryName} in {MothraBasePath}.");
     }
 }

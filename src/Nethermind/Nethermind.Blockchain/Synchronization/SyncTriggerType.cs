@@ -20,8 +20,7 @@ namespace Nethermind.Blockchain.Synchronization
     {
         SyncTimer,
         PeerChange,
-        NewDistantBlock,
-        Reorganization,
+        NewBlock,
         PeerRefresh,
         PeerAdded
     }

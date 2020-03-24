@@ -21,6 +21,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Test.Helpers;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Shouldly;
 
@@ -47,11 +48,13 @@ namespace Nethermind.BeaconNode.Test.BlockProcessing
             Epoch currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
             ValidatorIndex validatorIndex = beaconStateAccessor.GetActiveValidatorIndices(state, currentEpoch)[0];
             Validator validator = state.Validators[(int)(ulong)validatorIndex];
-            var privateKey = TestKeys.PublicKeyToPrivateKey(validator.PublicKey, timeParameters);
+            byte[] privateKey = TestKeys.PublicKeyToPrivateKey(validator.PublicKey, timeParameters);
 
-            VoluntaryExit voluntaryExit = TestVoluntaryExit.BuildVoluntaryExit(testServiceProvider, state, currentEpoch, validatorIndex, privateKey, signed: true);
+            VoluntaryExit voluntaryExit = TestVoluntaryExit.BuildVoluntaryExit(testServiceProvider, currentEpoch, validatorIndex);
+            SignedVoluntaryExit signedVoluntaryExit =
+                TestVoluntaryExit.SignVoluntaryExit(testServiceProvider, state, voluntaryExit, privateKey);
 
-            RunVoluntaryExitProcessing(testServiceProvider, state, voluntaryExit, expectValid: true);
+            RunVoluntaryExitProcessing(testServiceProvider, state, signedVoluntaryExit, expectValid: true);
         }
 
         [TestMethod]
@@ -72,11 +75,12 @@ namespace Nethermind.BeaconNode.Test.BlockProcessing
             Epoch currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
             ValidatorIndex validatorIndex = beaconStateAccessor.GetActiveValidatorIndices(state, currentEpoch)[0];
             Validator validator = state.Validators[(int)(ulong)validatorIndex];
-            var privateKey = TestKeys.PublicKeyToPrivateKey(validator.PublicKey, timeParameters);
+            byte[] privateKey = TestKeys.PublicKeyToPrivateKey(validator.PublicKey, timeParameters);
 
-            VoluntaryExit voluntaryExit = TestVoluntaryExit.BuildVoluntaryExit(testServiceProvider, state, currentEpoch, validatorIndex, privateKey, signed: false);
+            VoluntaryExit voluntaryExit = TestVoluntaryExit.BuildVoluntaryExit(testServiceProvider, currentEpoch, validatorIndex);
+            SignedVoluntaryExit signedVoluntaryExit = new SignedVoluntaryExit(voluntaryExit, BlsSignature.Zero);
 
-            RunVoluntaryExitProcessing(testServiceProvider, state, voluntaryExit, expectValid: false);
+            RunVoluntaryExitProcessing(testServiceProvider, state, signedVoluntaryExit, expectValid: false);
         }
 
         //    Run ``process_voluntary_exit``, yielding:
@@ -84,7 +88,7 @@ namespace Nethermind.BeaconNode.Test.BlockProcessing
         //  - voluntary_exit('voluntary_exit')
         //  - post-state('post').
         //If ``valid == False``, run expecting ``AssertionError``
-        private void RunVoluntaryExitProcessing(IServiceProvider testServiceProvider, BeaconState state, VoluntaryExit voluntaryExit, bool expectValid)
+        private void RunVoluntaryExitProcessing(IServiceProvider testServiceProvider, BeaconState state, SignedVoluntaryExit signedVoluntaryExit, bool expectValid)
         {
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
             MaxOperationsPerBlock maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
@@ -98,16 +102,16 @@ namespace Nethermind.BeaconNode.Test.BlockProcessing
             {
                 Should.Throw<Exception>(() =>
                 {
-                    beaconStateTransition.ProcessVoluntaryExit(state, voluntaryExit);
+                    beaconStateTransition.ProcessVoluntaryExit(state, signedVoluntaryExit);
                 });
                 return;
             }
 
-            ValidatorIndex validatorIndex = voluntaryExit.ValidatorIndex;
+            ValidatorIndex validatorIndex = signedVoluntaryExit.Message.ValidatorIndex;
 
             Epoch preExitEpoch = state.Validators[(int)(ulong)validatorIndex].ExitEpoch;
 
-            beaconStateTransition.ProcessVoluntaryExit(state, voluntaryExit);
+            beaconStateTransition.ProcessVoluntaryExit(state, signedVoluntaryExit);
 
             // Assert
             preExitEpoch.ShouldBe(chainConstants.FarFutureEpoch);

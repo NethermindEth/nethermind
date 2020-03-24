@@ -17,12 +17,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Services;
 using Nethermind.Core2;
+using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -32,82 +33,71 @@ namespace Nethermind.BeaconNode
 {
     public class BlockProducer
     {
-        private readonly ILogger _logger;
-        private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
-        private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
-        private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
-        private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
-        private readonly IOptionsMonitor<HonestValidatorConstants> _honestValidatorConstantOptions;
-        private readonly ICryptographyService _cryptographyService;
         private readonly BeaconStateTransition _beaconStateTransition;
-        private readonly ForkChoice _forkChoice;
-        private readonly IStoreProvider _storeProvider;
+        private readonly ICryptographyService _cryptographyService;
         private readonly IEth1DataProvider _eth1DataProvider;
+        private readonly ForkChoice _forkChoice;
+        private readonly IOptionsMonitor<HonestValidatorConstants> _honestValidatorConstantOptions;
+        private readonly ILogger _logger;
+        private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
         private readonly IOperationPool _operationPool;
+        private readonly IStore _store;
+        private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
-        public BlockProducer(ILogger<BlockProducer> logger, 
-            IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
+        public BlockProducer(ILogger<BlockProducer> logger,
             IOptionsMonitor<TimeParameters> timeParameterOptions,
-            IOptionsMonitor<StateListLengths> stateListLengthOptions,
             IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions,
             IOptionsMonitor<HonestValidatorConstants> honestValidatorConstantOptions,
             ICryptographyService cryptographyService,
             BeaconStateTransition beaconStateTransition,
-            ForkChoice forkChoice, 
-            IStoreProvider storeProvider,
+            ForkChoice forkChoice,
+            IStore store,
             IEth1DataProvider eth1DataProvider,
             IOperationPool operationPool)
         {
             _logger = logger;
-            _miscellaneousParameterOptions = miscellaneousParameterOptions;
             _timeParameterOptions = timeParameterOptions;
-            _stateListLengthOptions = stateListLengthOptions;
             _maxOperationsPerBlockOptions = maxOperationsPerBlockOptions;
             _honestValidatorConstantOptions = honestValidatorConstantOptions;
             _cryptographyService = cryptographyService;
             _beaconStateTransition = beaconStateTransition;
             _forkChoice = forkChoice;
-            _storeProvider = storeProvider;
+            _store = store;
             _eth1DataProvider = eth1DataProvider;
             _operationPool = operationPool;
         }
-        
-        public async Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal)
+
+        public async Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal,
+            CancellationToken cancellationToken)
         {
             if (slot == Slot.Zero)
             {
                 throw new ArgumentException("Can't generate new block for slot 0, as it is the genesis block.");
             }
-            
-            if (!_storeProvider.TryGetStore(out IStore? retrievedStore))
-            {
-                throw new Exception("Beacon chain is currently syncing or waiting for genesis.");
-            }
-            IStore store = retrievedStore!;
 
             Slot previousSlot = slot - Slot.One;
-            Hash32 head = await _forkChoice.GetHeadAsync(store).ConfigureAwait(false);
-            BeaconBlock headBlock = await store.GetBlockAsync(head).ConfigureAwait(false);
+            Root head = await _forkChoice.GetHeadAsync(_store).ConfigureAwait(false);
+            BeaconBlock headBeaconBlock = await _store.GetBlockAsync(head).ConfigureAwait(false);
 
-            BeaconBlock parentBlock;
             BeaconState parentState;
-            Hash32 parentRoot;
-            if (headBlock!.Slot > previousSlot)
+            Root parentRoot;
+            if (headBeaconBlock!.Slot > previousSlot)
             {
                 // Requesting a block for a past slot?
-                Hash32 ancestorSigningRoot = await _forkChoice.GetAncestorAsync(store, head, previousSlot);
-                parentBlock = await store.GetBlockAsync(ancestorSigningRoot).ConfigureAwait(false);
-                parentState = await store.GetBlockStateAsync(ancestorSigningRoot).ConfigureAwait(false);
-                parentRoot = ancestorSigningRoot;
+                Root ancestorRoot =
+                    await _forkChoice.GetAncestorAsync(_store, head, previousSlot).ConfigureAwait(false);
+                parentState = await _store.GetBlockStateAsync(ancestorRoot).ConfigureAwait(false);
+                parentRoot = ancestorRoot;
             }
             else
             {
-                parentBlock = headBlock!;
-                if (parentBlock.Slot < previousSlot)
+                if (headBeaconBlock.Slot < previousSlot)
                 {
-                    if (_logger.IsDebug()) LogDebug.NewBlockSkippedSlots(_logger, slot, randaoReveal, parentBlock.Slot, null);
+                    if (_logger.IsDebug())
+                        LogDebug.NewBlockSkippedSlots(_logger, slot, randaoReveal, headBeaconBlock.Slot, null);
                 }
-                parentState = await store.GetBlockStateAsync(head).ConfigureAwait(false);
+
+                parentState = await _store.GetBlockStateAsync(head).ConfigureAwait(false);
                 parentRoot = head;
             }
 
@@ -118,13 +108,14 @@ namespace Nethermind.BeaconNode
             MaxOperationsPerBlock maxOperationsPerBlock = _maxOperationsPerBlockOptions.CurrentValue;
 
             // Eth 1 Data
-            Eth1Data eth1Vote = await GetEth1VoteAsync(state, store, parentRoot).ConfigureAwait(false);
+            Eth1Data eth1Vote = await GetEth1VoteAsync(state, cancellationToken).ConfigureAwait(false);
 
             List<Deposit> deposits = new List<Deposit>();
             if (eth1Vote.DepositCount > state.Eth1DepositIndex)
             {
-                await foreach (Deposit deposit in _eth1DataProvider.GetDepositsAsync(eth1Vote.DepositRoot,
-                    state.Eth1DepositIndex, maxOperationsPerBlock.MaximumDeposits).ConfigureAwait(false))
+                await foreach (Deposit deposit in _eth1DataProvider.GetDepositsAsync(eth1Vote.BlockHash,
+                        state.Eth1DepositIndex, maxOperationsPerBlock.MaximumDeposits, cancellationToken)
+                    .ConfigureAwait(false))
                 {
                     deposits.Add(deposit);
                 }
@@ -144,7 +135,7 @@ namespace Nethermind.BeaconNode
             {
                 attesterSlashings.Add(attesterSlashing);
             }
-            
+
             List<ProposerSlashing> proposerSlashings = new List<ProposerSlashing>();
             await foreach (ProposerSlashing proposerSlashing in _operationPool.GetProposerSlashingsAsync(
                 maxOperationsPerBlock.MaximumProposerSlashings).ConfigureAwait(false))
@@ -152,25 +143,25 @@ namespace Nethermind.BeaconNode
                 proposerSlashings.Add(proposerSlashing);
             }
 
-            List<VoluntaryExit> voluntaryExits = new List<VoluntaryExit>();
-            await foreach (VoluntaryExit voluntaryExit in _operationPool.GetVoluntaryExits(
+            List<SignedVoluntaryExit> signedVoluntaryExits = new List<SignedVoluntaryExit>();
+            await foreach (SignedVoluntaryExit signedVoluntaryExit in _operationPool.GetSignedVoluntaryExits(
                 maxOperationsPerBlock.MaximumVoluntaryExits).ConfigureAwait(false))
             {
-                voluntaryExits.Add(voluntaryExit);
+                signedVoluntaryExits.Add(signedVoluntaryExit);
             }
-            
+
             // Graffiti
             var graffitiBytes = new byte[32];
-            graffitiBytes[0] = 0x4e; // 'N'
+            //graffitiBytes[0] = 0x4e; // 'N'
             Bytes32 graffiti = new Bytes32(graffitiBytes);
 
             // Build block
             BeaconBlockBody body = new BeaconBlockBody(randaoReveal, eth1Vote, graffiti, proposerSlashings,
-                attesterSlashings, attestations, deposits, voluntaryExits);
-            BeaconBlock block = new BeaconBlock(slot, parentRoot, Hash32.Zero, body, BlsSignature.Empty);
-            
+                attesterSlashings, attestations, deposits, signedVoluntaryExits);
+            BeaconBlock block = new BeaconBlock(slot, parentRoot, Root.Zero, body);
+
             // Apply block to state transition and calculate resulting state root
-            Hash32 stateRoot = ComputeNewStateRoot(state, block);
+            Root stateRoot = ComputeNewStateRoot(state, block);
             block.SetStateRoot(stateRoot);
 
             // Unsigned block
@@ -178,88 +169,88 @@ namespace Nethermind.BeaconNode
             if (_logger.IsDebug())
                 LogDebug.NewBlockProduced(_logger, block.Slot, block.Body.RandaoReveal.ToString().Substring(0, 10),
                     block, block.Body.Graffiti.ToString().Substring(0, 10), null);
-            
+
             return block;
         }
 
-        private Hash32 ComputeNewStateRoot(BeaconState state, BeaconBlock block)
+        private Root ComputeNewStateRoot(BeaconState state, BeaconBlock block)
         {
             _beaconStateTransition.ProcessSlots(state, block.Slot);
-            _beaconStateTransition.ProcessBlock(state, block, validateStateRoot: false);
-            Hash32 stateRoot = _cryptographyService.HashTreeRoot(state);
+            _beaconStateTransition.ProcessBlock(state, block);
+            Root stateRoot = _cryptographyService.HashTreeRoot(state);
             return stateRoot;
         }
-        
-        private async Task<ulong> GetPreviousEth1Distance(IStore store, BeaconState state, Hash32 parentRoot)
+
+        private ulong ComputeTimeAtSlot(BeaconState state, Slot slot)
         {
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
-            Slot eth1VotingPeriodSlot = new Slot(state.Slot % timeParameters.SlotsPerEth1VotingPeriod);
-            Slot startOfEth1VotingPeriodSlot = state.Slot - eth1VotingPeriodSlot;
-            Hash32 startOfEth1VotingPeriodSigningRoot = await _forkChoice.GetAncestorAsync(store, parentRoot, startOfEth1VotingPeriodSlot);
-
-            if (startOfEth1VotingPeriodSigningRoot == Hash32.Zero)
-            {
-                // Don't have blocks for slot yet
-                // i.e. parent/head < eth1 vote start for new block < slot new block is for
-                // This is supposed to be caught by the tail check, need to get at least sqrt(eth1 vote period) into new cycle
-                // But may not happen in test environment, so use parent's distance (or could use default, i.e. follow distance * 2)
-                if (_logger.IsWarn())
-                    Log.NoBlocksSinceEth1VotingPeriodDefaulting(_logger, state.Slot, eth1VotingPeriodSlot, parentRoot,
-                        startOfEth1VotingPeriodSlot, null);
-                startOfEth1VotingPeriodSigningRoot = parentRoot;
-            }
-
-            BeaconState startOfEth1VotingPeriodState =
-                await store.GetBlockStateAsync(startOfEth1VotingPeriodSigningRoot).ConfigureAwait(false);
-            Hash32 startOfEth1VotingPeriodBlockHash = startOfEth1VotingPeriodState.Eth1Data.BlockHash;
-            ulong distance = await _eth1DataProvider.GetDistanceAsync(startOfEth1VotingPeriodBlockHash).ConfigureAwait(false);
-            return distance;
+            return state.GenesisTime + (slot * timeParameters.SecondsPerSlot);
         }
 
-        private async Task<Eth1Data> GetEth1VoteAsync(BeaconState state, IStore store, Hash32 parentRoot)
+        private async Task<Eth1Data> GetEth1VoteAsync(BeaconState state, CancellationToken cancellationToken)
         {
+            // Algorithm in spec:
+            // * get all candidate eth1 blocks, between follow distance & 2 * follow distance
+            // * filter votes already cast by candidate blocks (e.g. could be on different eth1 fork)
+            // * take the highest votes already cast, tiebreak by smallest eth1votes index
+            // * if no valid votes, default to most recent candidate, or if no candidates then previous state.eth1_data
+
+            // Note: if no candidates (Eth1 chain not live), then valid votes will be empty
+
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             HonestValidatorConstants honestValidatorConstants = _honestValidatorConstantOptions.CurrentValue;
 
-            ulong eth1VotingPeriodSlot = (ulong)state.Slot % timeParameters.SlotsPerEth1VotingPeriod;
-            ulong tailThreshold = ((ulong) timeParameters.SlotsPerEth1VotingPeriod).SquareRoot(); // This is an integer square root
-            bool isTailPeriod = eth1VotingPeriodSlot >= tailThreshold;
+            var periodStart = VotingPeriodStartTime(state);
 
-            ulong maximumDistance;
-            if (isTailPeriod)
+            // `eth1_chain` abstractly represents all blocks in the eth1 chain sorted by ascending block height
+            ulong maximumTimestampInclusive = periodStart -
+                                              (timeParameters.SecondsPerSlot *
+                                               honestValidatorConstants.Eth1FollowDistance);
+            ulong minimumTimestampInclusive = periodStart -
+                                              (timeParameters.SecondsPerSlot *
+                                               honestValidatorConstants.Eth1FollowDistance * 2);
+            // is_candidate_block filter passed in as max+min inclusive
+            List<Eth1Data> votesToConsider = new List<Eth1Data>();
+            await foreach (Eth1Data eth1Data in _eth1DataProvider
+                .GetEth1DataDescendingAsync(maximumTimestampInclusive, minimumTimestampInclusive, cancellationToken)
+                .ConfigureAwait(false))
             {
-                ulong previousEth1Distance = await GetPreviousEth1Distance(store, state, parentRoot).ConfigureAwait(false);
-                maximumDistance = previousEth1Distance;
-            }
-            else
-            {
-                maximumDistance = 2 * honestValidatorConstants.Eth1FollowDistance;
-            }
-            
-            Dictionary<Eth1Data, int> voteCount = state.Eth1DataVotes
-                .GroupBy(x => x)
-                .ToDictionary(x => x.Key, x => x.Count());
-
-            Eth1Data bestEth1Data = await _eth1DataProvider.GetEth1DataAsync(honestValidatorConstants.Eth1FollowDistance).ConfigureAwait(false);
-            if (!voteCount.TryGetValue(bestEth1Data, out int bestEth1DataVotes))
-            {
-                bestEth1DataVotes = 0;
-            }
-            
-            for (ulong distance = honestValidatorConstants.Eth1FollowDistance + 1; distance < maximumDistance; distance++)
-            {
-                Eth1Data eth1Data = await _eth1DataProvider.GetEth1DataAsync(distance).ConfigureAwait(false);
-                if (voteCount.TryGetValue(eth1Data, out int eth1DataVotes))
-                {
-                    if (eth1DataVotes > bestEth1DataVotes)
-                    {
-                        bestEth1Data = eth1Data;
-                        bestEth1DataVotes = eth1DataVotes;
-                    }
-                }
+                votesToConsider.Add(eth1Data);
             }
 
-            return bestEth1Data;
+            // Valid votes already cast during this period
+            IEnumerable<Eth1Data> validVotes = state.Eth1DataVotes
+                .Where(x => votesToConsider.Contains((x)));
+
+            // Default vote on latest eth1 block data in the period range unless eth1 chain is not live
+            if (votesToConsider.Count == 0)
+            {
+                return state.Eth1Data;
+            }
+
+            Eth1Data? bestEth1Data = validVotes
+                .Select((eth1Data, index) => (eth1Data, index))
+                .GroupBy(x => x.eth1Data)
+                .OrderByDescending(x => x.Count())
+                .ThenBy(x => x.First().index)
+                .Select(x => x.Key)
+                .FirstOrDefault();
+
+            if (bestEth1Data is null)
+            {
+                return votesToConsider.First();
+            }
+
+            return bestEth1Data!;
+        }
+
+        private ulong VotingPeriodStartTime(BeaconState state)
+        {
+            TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
+            Slot eth1VotingPeriodStartSlot =
+                new Slot(state.Slot - state.Slot % timeParameters.SlotsPerEth1VotingPeriod);
+            ulong timeAtSlot = ComputeTimeAtSlot(state, eth1VotingPeriodStartSlot);
+            return timeAtSlot;
         }
     }
 }

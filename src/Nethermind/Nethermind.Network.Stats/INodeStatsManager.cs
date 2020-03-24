@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Crypto;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Stats
@@ -29,6 +28,7 @@ namespace Nethermind.Stats
         long GetCurrentReputation(Node node);
         void ReportP2PInitializationEvent(Node node, P2PNodeDetails p2PNodeDetails);
         void ReportEthInitializeEvent(Node node, EthNodeDetails ethNodeDetails);
+        void ReportLesInitializeEvent(Node node, LesNodeDetails lesNodeDetails);
         void ReportFailedValidation(Node node, CompatibilityValidationType p2PVersion);
         void ReportDisconnect(Node node, DisconnectType disconnectType, DisconnectReason disconnectReason);
         long GetNewPersistedReputation(Node node);

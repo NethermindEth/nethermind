@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>netcoreapp3.0</TargetFramework>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
     <LangVersion>8.0</LangVersion>
   </PropertyGroup>
   <ItemGroup>
@@ -19,8 +19,8 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="DotNetty.Handlers" Version="0.6.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="3.0.0" />
-    <PackageReference Include="Portable.BouncyCastle" Version="1.8.5.2" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="3.1.2" />
+    <PackageReference Include="Portable.BouncyCastle" Version="1.8.6" />
     <PackageReference Include="Snappy.Standard" Version="0.2.0" />
   </ItemGroup>
   <ItemGroup>

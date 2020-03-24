@@ -18,7 +18,6 @@ using System;
 using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2.Configuration;
@@ -32,25 +31,26 @@ namespace Nethermind.BeaconNode
     public class BeaconStateAccessor
     {
         private readonly BeaconChainUtility _beaconChainUtility;
+        private readonly ChainConstants _chainConstants;
         private readonly ICryptographyService _cryptographyService;
-        private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
         private readonly IOptionsMonitor<SignatureDomains> _signatureDomainOptions;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
-        public BeaconStateAccessor(IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
-            IOptionsMonitor<InitialValues> initialValueOptions,
+        public BeaconStateAccessor(
+            ChainConstants chainConstants,
+            IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
             IOptionsMonitor<TimeParameters> timeParameterOptions,
             IOptionsMonitor<StateListLengths> stateListLengthOptions,
             IOptionsMonitor<SignatureDomains> signatureDomainOptions,
             ICryptographyService cryptographyService,
             BeaconChainUtility beaconChainUtility)
         {
+            _chainConstants = chainConstants;
             _cryptographyService = cryptographyService;
             _beaconChainUtility = beaconChainUtility;
             _miscellaneousParameterOptions = miscellaneousParameterOptions;
-            _initialValueOptions = initialValueOptions;
             _timeParameterOptions = timeParameterOptions;
             _stateListLengthOptions = stateListLengthOptions;
             _signatureDomainOptions = signatureDomainOptions;
@@ -84,10 +84,13 @@ namespace Nethermind.BeaconNode
         /// <summary>
         /// Return the set of attesting indices corresponding to ``data`` and ``bits``.
         /// </summary>
-        public IEnumerable<ValidatorIndex> GetAttestingIndices(BeaconState state, AttestationData data, BitArray bits)
+        public IReadOnlyList<ValidatorIndex> GetAttestingIndices(BeaconState state, AttestationData data, BitArray bits)
         {
             IReadOnlyList<ValidatorIndex> committee = GetBeaconCommittee(state, data.Slot, data.Index);
-            return committee.Where((x, index) => bits[index]);
+            return committee
+                .Where((x, index) => bits[index])
+                .ToList()
+                .AsReadOnly();
         }
 
         /// <summary>
@@ -97,13 +100,11 @@ namespace Nethermind.BeaconNode
         {
             Epoch epoch = _beaconChainUtility.ComputeEpochAtSlot(slot);
             ulong committeesPerSlot = GetCommitteeCountAtSlot(state, slot);
-            //var committeeCount = GetCommitteeCount(state, epoch);
 
             IList<ValidatorIndex> indices = GetActiveValidatorIndices(state, epoch);
-            Hash32 seed = GetSeed(state, epoch, _signatureDomainOptions.CurrentValue.BeaconAttester);
-            //var index = (shard + miscellaneousParameters.ShardCount - GetStartShard(state, epoch)) % miscellaneousParameters.ShardCount;
-            ulong committeeIndex = (ulong)(slot % _timeParameterOptions.CurrentValue.SlotsPerEpoch) * committeesPerSlot + (ulong)index;
-            ulong committeeCount = committeesPerSlot * (ulong)_timeParameterOptions.CurrentValue.SlotsPerEpoch;
+            Bytes32 seed = GetSeed(state, epoch, _signatureDomainOptions.CurrentValue.BeaconAttester);
+            ulong committeeIndex = (slot % _timeParameterOptions.CurrentValue.SlotsPerEpoch) * committeesPerSlot + (ulong)index;
+            ulong committeeCount = committeesPerSlot * _timeParameterOptions.CurrentValue.SlotsPerEpoch;
 
             IReadOnlyList<ValidatorIndex> committee = _beaconChainUtility.ComputeCommittee(indices, seed, committeeIndex, committeeCount);
             return committee;
@@ -117,10 +118,10 @@ namespace Nethermind.BeaconNode
             Epoch epoch = GetCurrentEpoch(state);
 
             Span<byte> seedBytes = stackalloc byte[40];
-            Hash32 initialSeed = GetSeed(state, epoch, _signatureDomainOptions.CurrentValue.BeaconProposer);
+            Bytes32 initialSeed = GetSeed(state, epoch, _signatureDomainOptions.CurrentValue.BeaconProposer);
             initialSeed.AsSpan().CopyTo(seedBytes);
-            BinaryPrimitives.WriteUInt64LittleEndian(seedBytes.Slice(32), (ulong)state.Slot);
-            Hash32 seed = _cryptographyService.Hash(seedBytes);
+            BinaryPrimitives.WriteUInt64LittleEndian(seedBytes.Slice(32), state.Slot);
+            Bytes32 seed = _cryptographyService.Hash(seedBytes);
 
             IList<ValidatorIndex> indices = GetActiveValidatorIndices(state, epoch);
             ValidatorIndex proposerIndex = _beaconChainUtility.ComputeProposerIndex(state, indices, seed);
@@ -142,7 +143,7 @@ namespace Nethermind.BeaconNode
         /// <summary>
         /// Return the block root at the start of a recent ``epoch``.
         /// </summary>
-        public Hash32 GetBlockRoot(BeaconState state, Epoch epoch)
+        public Root GetBlockRoot(BeaconState state, Epoch epoch)
         {
             Slot startSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(epoch);
             return GetBlockRootAtSlot(state, startSlot);
@@ -151,7 +152,7 @@ namespace Nethermind.BeaconNode
         /// <summary>
         /// Return the block root at a recent ``slot``.
         /// </summary>
-        public Hash32 GetBlockRootAtSlot(BeaconState state, Slot slot)
+        public Root GetBlockRootAtSlot(BeaconState state, Slot slot)
         {
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             // NOTE: Need to use '+' to avoid underflow issues
@@ -166,38 +167,7 @@ namespace Nethermind.BeaconNode
             ulong blockIndex = slot % timeParameters.SlotsPerHistoricalRoot;
             return state.BlockRoots[(int)blockIndex];
         }
-
-        ///// <summary>
-        ///// Return the number of committees at ``epoch``.
-        ///// </summary>
-        //public ulong GetCommitteeCount(BeaconState state, Epoch epoch)
-        //{
-        //    var miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
-        //    var timeParameters = _timeParameterOptions.CurrentValue;
-
-        //    var shardsPerEpoch = (ulong)miscellaneousParameters.ShardCount / (ulong)timeParameters.SlotsPerEpoch;
-        //    var activeValidators = (ulong)GetActiveValidatorIndices(state, epoch).Count;
-        //    var availableValidatorCommittees = (activeValidators / (ulong)timeParameters.SlotsPerEpoch) / miscellaneousParameters.TargetCommitteeSize;
-
-        //    var committeesPerSlot = Math.Max(1, Math.Min(shardsPerEpoch, availableValidatorCommittees));
-        //    return committeesPerSlot * (ulong)timeParameters.SlotsPerEpoch;
-        //}
-
-        ///// <summary>
-        ///// Return the crosslink committee at ``epoch`` for ``shard``.
-        ///// </summary>
-        //public IReadOnlyList<ValidatorIndex> GetCrosslinkCommittee(BeaconState state, Epoch epoch, Shard shard)
-        //{
-        //    var miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
-
-        //    var indices = GetActiveValidatorIndices(state, epoch);
-        //    var seed = GetSeed(state, epoch, DomainType.BeaconAttester);
-        //    var index = (shard + miscellaneousParameters.ShardCount - GetStartShard(state, epoch)) % miscellaneousParameters.ShardCount;
-        //    var committeeCount = GetCommitteeCount(state, epoch);
-        //    var committee = _beaconChainUtility.ComputeCommittee(indices, seed, index, committeeCount);
-        //    return committee;
-        //}
-
+        
         /// <summary>
         /// Return the number of committees at ``slot``.
         /// </summary>
@@ -206,7 +176,7 @@ namespace Nethermind.BeaconNode
             Epoch epoch = _beaconChainUtility.ComputeEpochAtSlot(slot);
             IList<ValidatorIndex> indices = GetActiveValidatorIndices(state, epoch);
             ulong committeeCount = (ulong)indices.Count
-                / (ulong)_timeParameterOptions.CurrentValue.SlotsPerEpoch
+                / _timeParameterOptions.CurrentValue.SlotsPerEpoch
                 / _miscellaneousParameterOptions.CurrentValue.TargetCommitteeSize;
 
             return Math.Max(1, Math.Min(_miscellaneousParameterOptions.CurrentValue.MaximumCommitteesPerSlot, committeeCount));
@@ -223,16 +193,11 @@ namespace Nethermind.BeaconNode
         /// <summary>
         /// Return the signature domain (fork version concatenated with domain type) of a message.
         /// </summary>
-        public Domain GetDomain(BeaconState state, DomainType domainType, Epoch messageEpoch)
+        public Domain GetDomain(BeaconState state, DomainType domainType, Epoch epoch)
         {
-            Epoch epoch;
-            if (messageEpoch == Epoch.None)
+            if (epoch == Epoch.None)
             {
                 epoch = GetCurrentEpoch(state);
-            }
-            else
-            {
-                epoch = messageEpoch;
             }
 
             ForkVersion forkVersion;
@@ -254,9 +219,9 @@ namespace Nethermind.BeaconNode
         public Epoch GetPreviousEpoch(BeaconState state)
         {
             Epoch currentEpoch = GetCurrentEpoch(state);
-            if (currentEpoch == _initialValueOptions.CurrentValue.GenesisEpoch)
+            if (currentEpoch == _chainConstants.GenesisEpoch)
             {
-                return _initialValueOptions.CurrentValue.GenesisEpoch;
+                return _chainConstants.GenesisEpoch;
             }
             return currentEpoch - new Epoch(1);
         }
@@ -264,70 +229,31 @@ namespace Nethermind.BeaconNode
         /// <summary>
         /// Return the randao mix at a recent ``epoch``
         /// </summary>
-        public Hash32 GetRandaoMix(BeaconState state, Epoch epoch)
+        public Bytes32 GetRandaoMix(BeaconState state, Epoch epoch)
         {
             int index = (int)(epoch % _stateListLengthOptions.CurrentValue.EpochsPerHistoricalVector);
-            Hash32 mix = state.RandaoMixes[index];
+            Bytes32 mix = state.RandaoMixes[index];
             return mix;
         }
 
         /// <summary>
         /// Return the seed at ``epoch``.
         /// </summary>
-        public Hash32 GetSeed(BeaconState state, Epoch epoch, DomainType domainType)
+        public Bytes32 GetSeed(BeaconState state, Epoch epoch, DomainType domainType)
         {
             Epoch mixEpoch = (Epoch)(epoch + _stateListLengthOptions.CurrentValue.EpochsPerHistoricalVector
                 - _timeParameterOptions.CurrentValue.MinimumSeedLookahead - 1UL);
             // # Avoid underflow
-            Hash32 mix = GetRandaoMix(state, mixEpoch);
+            Bytes32 mix = GetRandaoMix(state, mixEpoch);
             
-            Span<byte> seedHashInput = stackalloc byte[DomainType.Length + sizeof(ulong) + Hash32.Length];
+            Span<byte> seedHashInput = stackalloc byte[DomainType.Length + sizeof(ulong) + Bytes32.Length];
             domainType.AsSpan().CopyTo(seedHashInput);
             BinaryPrimitives.WriteUInt64LittleEndian(seedHashInput.Slice(DomainType.Length), epoch);
             mix.AsSpan().CopyTo(seedHashInput.Slice(DomainType.Length + sizeof(ulong)));
-            Hash32 seed = _cryptographyService.Hash(seedHashInput);
+            Bytes32 seed = _cryptographyService.Hash(seedHashInput);
             return seed;
         }
-
-        ///// <summary>
-        ///// Return the number of shards to increment ``state.start_shard`` at ``epoch``.
-        ///// </summary>
-        //public Shard GetShardDelta(BeaconState state, Epoch epoch)
-        //{
-        //    var miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
-        //    var committeeCount = GetCommitteeCount(state, epoch);
-        //    var maxShard = miscellaneousParameters.ShardCount - (miscellaneousParameters.ShardCount / (ulong)_timeParameterOptions.CurrentValue.SlotsPerEpoch);
-        //    return Shard.Min(new Shard(committeeCount), maxShard);
-        //}
-
-        ///// <summary>
-        ///// Return the start shard of the 0th committee at ``epoch``.
-        ///// </summary>
-        //public Shard GetStartShard(BeaconState state, Epoch epoch)
-        //{
-        //    var miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
-        //    var currentEpoch = GetCurrentEpoch(state);
-        //    var oneEpoch = new Epoch(1);
-        //    var checkEpoch = currentEpoch + oneEpoch;
-        //    if (epoch > checkEpoch)
-        //    {
-        //        throw new ArgumentOutOfRangeException(nameof(epoch), epoch, "Epoch is too far in the future");
-        //    }
-
-        //    var initialShardDelta = GetShardDelta(state, currentEpoch);
-        //    throw new NotImplementedException();
-        //    //var shard = (state.StartShard + initialShardDelta) % miscellaneousParameters.ShardCount;
-
-        //    //while (checkEpoch > epoch)
-        //    //{
-        //    //    checkEpoch -= oneEpoch;
-        //    //    var shardDelta = GetShardDelta(state, checkEpoch);
-        //    //    shard = (shard + miscellaneousParameters.ShardCount + shardDelta) % miscellaneousParameters.ShardCount;
-        //    //}
-
-        //    //return shard;
-        //}
-
+        
         /// <summary>
         /// Return the combined effective balance of the active validators
         /// </summary>

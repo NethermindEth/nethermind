@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Stats.Model;
 
@@ -61,6 +60,8 @@ namespace Nethermind.Stats
         public P2PNodeDetails P2PNodeDetails { get; private set; }
 
         public EthNodeDetails EthNodeDetails { get; private set; }
+
+        public LesNodeDetails LesNodeDetails { get; private set; }
 
         public CompatibilityValidationType? FailedCompatibilityValidation { get; set; }
 
@@ -114,6 +115,11 @@ namespace Nethermind.Stats
         {
             EthNodeDetails = nodeDetails;
             Increment(NodeStatsEventType.Eth62Initialized);
+        }
+        public void AddNodeStatsLesInitializedEvent(LesNodeDetails nodeDetails)
+        {
+            LesNodeDetails = nodeDetails;
+            Increment(NodeStatsEventType.LesInitialized);
         }
 
         public void AddNodeStatsSyncEvent(NodeStatsEventType nodeStatsEventType)

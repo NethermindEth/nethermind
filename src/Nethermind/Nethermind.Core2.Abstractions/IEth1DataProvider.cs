@@ -15,17 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2
 {
     public interface IEth1DataProvider
     {
-        // NOTE: Eth1Data.Deposit root is the deposit root of the contract
-        Task<ulong> GetDistanceAsync(Hash32 eth1BlockHash);
-        Task<Eth1Data> GetEth1DataAsync(ulong distance);
-        IAsyncEnumerable<Deposit> GetDepositsAsync(Hash32 eth1BlockHash, ulong startIndex, ulong maximum);
+        IAsyncEnumerable<Eth1Data> GetEth1DataDescendingAsync(ulong maximumTimestampInclusive, ulong minimumTimestampInclusive, CancellationToken cancellationToken);
+        IAsyncEnumerable<Deposit> GetDepositsAsync(Bytes32 eth1BlockHash, ulong startIndex, ulong maximum, CancellationToken cancellationToken);
     }
 }

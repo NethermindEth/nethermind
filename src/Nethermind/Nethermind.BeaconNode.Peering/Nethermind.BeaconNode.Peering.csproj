@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>netcoreapp3.0</TargetFramework>
+        <TargetFramework>netcoreapp3.1</TargetFramework>
         <Product>Nethermind Eth2.0 blockchain</Product>
         <Authors>sgryphon</Authors>
         <Copyright>Copyright © 2019 Demerzel Solutions Limited</Copyright>
@@ -13,19 +13,23 @@
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.BeaconNode\Nethermind.BeaconNode.csproj" />
       <ProjectReference Include="..\Nethermind.Core2.Abstractions\Nethermind.Core2.Abstractions.csproj" />
+      <ProjectReference Include="..\Nethermind.Core2.Json\Nethermind.Core2.Json.csproj" />
       <ProjectReference Include="..\Nethermind.Logging.Microsoft\Nethermind.Logging.Microsoft.csproj" />
       <ProjectReference Include="..\Nethermind.Peering.Mothra\Nethermind.Peering.Mothra.csproj" />
       <ProjectReference Include="..\Nethermind.Ssz\Nethermind.Ssz.csproj" />
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="GitVersionTask" Version="5.1.3">
-            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-            <PrivateAssets>all</PrivateAssets>
-        </PackageReference>
-        <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="3.0.1" />
-        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="3.0.1" />
-        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="3.0.1" />
+        <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="3.1.2" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="3.1.2" />
+        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="3.1.2" />
+        <PackageReference Include="System.IO.Abstractions" Version="9.0.5" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Reference Include="System.IO.Abstractions, Version=9.0.0.0, Culture=neutral, PublicKeyToken=96bf224d23c43e59">
+        <HintPath>..\..\..\..\..\.nuget\packages\system.io.abstractions\9.0.4\lib\netstandard2.1\System.IO.Abstractions.dll</HintPath>
+      </Reference>
     </ItemGroup>
     
 

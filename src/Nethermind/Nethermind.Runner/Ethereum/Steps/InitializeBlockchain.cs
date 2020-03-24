@@ -92,7 +92,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.StateProvider,
                 _context.LogManager);
 
-            _context.ReceiptStorage = new PersistentReceiptStorage(_context.DbProvider.ReceiptsDb, _context.SpecProvider, _context.LogManager);
+            _context.ReceiptStorage = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_context.DbProvider.ReceiptsDb, _context.SpecProvider) : NullReceiptStorage.Instance;
+            _context.ReceiptFinder = new FullInfoReceiptFinder(_context.ReceiptStorage, new ReceiptsRecovery()); 
 
             var bloomConfig = _context.Config<IBloomConfig>();
             
@@ -173,8 +174,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                 ommersValidator,
                 _context.SpecProvider,
                 _context.LogManager);
-
-            _context.TxPoolInfoProvider = new TxPoolInfoProvider(_context.StateProvider, _context.TxPool);
+            
+            ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(_context.DbProvider, false);
+            StateReader stateReader = new StateReader(readOnly.StateDb, readOnly.CodeDb, _context.LogManager);
+            _context.TxPoolInfoProvider = new TxPoolInfoProvider(stateReader, _context.TxPool);
 
             _context.MainBlockProcessor = CreateBlockProcessor();
 

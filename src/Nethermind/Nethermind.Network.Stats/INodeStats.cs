@@ -14,8 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.Collections.Generic;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Stats
@@ -27,6 +25,7 @@ namespace Nethermind.Stats
         void AddNodeStatsDisconnectEvent(DisconnectType disconnectType, DisconnectReason disconnectReason);
         void AddNodeStatsP2PInitializedEvent(P2PNodeDetails nodeDetails);
         void AddNodeStatsEth62InitializedEvent(EthNodeDetails nodeDetails);
+        void AddNodeStatsLesInitializedEvent(LesNodeDetails nodeDetails);
         void AddNodeStatsSyncEvent(NodeStatsEventType nodeStatsEventType);
 
         bool DidEventHappen(NodeStatsEventType nodeStatsEventType);

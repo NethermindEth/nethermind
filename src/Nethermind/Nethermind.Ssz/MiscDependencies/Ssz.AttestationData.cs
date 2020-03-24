@@ -24,7 +24,7 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
-        public const int AttestationDataLength = Ssz.SlotLength + Ssz.CommitteeIndexLength + Ssz.Hash32Length + 2 * Ssz.CheckpointLength;
+        public const int AttestationDataLength = Ssz.SlotLength + Ssz.CommitteeIndexLength + Ssz.RootLength + 2 * Ssz.CheckpointLength;
 
         public static void Encode(Span<byte> span, AttestationData container)
         {
@@ -52,7 +52,7 @@ namespace Nethermind.Ssz
             AttestationData container = new AttestationData(
                 DecodeSlot(span, ref offset),
                 DecodeCommitteeIndex(span, ref offset),
-                DecodeSha256(span, ref offset),
+                DecodeRoot(span, ref offset),
                 DecodeCheckpoint(span, ref offset),
                 DecodeCheckpoint(span, ref offset));
             return container;
@@ -62,7 +62,7 @@ namespace Nethermind.Ssz
         {
             Slot slot = DecodeSlot(span, ref offset);
             CommitteeIndex index = DecodeCommitteeIndex(span, ref offset);
-            Hash32 beaconBlockRoot = DecodeSha256(span, ref offset);
+            Root beaconBlockRoot = DecodeRoot(span, ref offset);
             Checkpoint source = DecodeCheckpoint(span, ref offset);
             Checkpoint target = DecodeCheckpoint(span, ref offset);
             AttestationData container = new AttestationData(slot, index, beaconBlockRoot, source, target);

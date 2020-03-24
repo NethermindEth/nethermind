@@ -1,0 +1,33 @@
+schemas:
+  PublicKey:
+    type: string
+    format: byte
+    pattern: "^0x[a-fA-F0-9]{96}$"
+    description: "The validator's BLS public key, uniquely identifying them. _48-bytes, hex encoded with 0x prefix, case insensitive._"
+    example: "0x1b66ac1fb663c9bc59509846d6ec05345bd908eda73e670af888da41af171505cc411d61252fb6cb3fa0017b679f8bb2305b26a285fa2737f175668d0dff91cc"
+
+  Version:
+    type: string
+    description: "A string which uniquely identifies the client implementation and its version; similar to [HTTP User-Agent](https://tools.ietf.org/html/rfc7231#section-5.5.3)."
+    example: "Lighthouse / v0.1.5 (Linux x86_64)"
+
+  GenesisTime:
+    type: integer
+    format: uint64
+    description: "The genesis_time configured for the beacon node, which is the unix time at which the Eth2.0 chain began."
+    example: 1557716289
+
+  Uint64:
+    type: string
+    example: "1213123123123123123123123122"
+
+  Hash:
+    type: string
+    format: hex
+    pattern: "^0x[a-fA-F0-9]{64}$"
+
+  Signature:
+    type: string
+    format: bytes
+    pattern: "^0x[a-fA-F0-9]{192}$"
+    example: "0x1b66ac1fb663c9bc59509846d6ec05345bd908eda73e670af888da41af171505cc411d61252fb6cb3fa0017b679f8bb2305b26a285fa2737f175668d0dff91cc1b66ac1fb663c9bc59509846d6ec05345bd908eda73e670af888da41af171505"

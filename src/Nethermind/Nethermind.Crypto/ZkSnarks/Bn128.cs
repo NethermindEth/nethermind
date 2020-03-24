@@ -16,7 +16,6 @@
 
 using System.Collections.Generic;
 using System.Numerics;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Crypto.ZkSnarks
 {

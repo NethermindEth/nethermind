@@ -20,9 +20,8 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Nethermind.Core2.Configuration;
-using Nethermind.BeaconNode.Services;
 using Nethermind.Core2;
+using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -38,20 +37,16 @@ namespace Nethermind.BeaconNode
         private readonly ChainConstants _chainConstants;
         private readonly ICryptographyService _cryptographyService;
         private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
-        private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly ILogger _logger;
         private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
         private readonly IOptionsMonitor<SignatureDomains> _signatureDomainOptions;
-        private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<RewardsAndPenalties> _rewardsAndPenaltiesOptions;
         private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
         public BeaconStateTransition(ILogger<BeaconStateTransition> logger,
             ChainConstants chainConstants,
-            IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
             IOptionsMonitor<GweiValues> gweiValueOptions,
-            IOptionsMonitor<InitialValues> initialValueOptions,
             IOptionsMonitor<TimeParameters> timeParameterOptions,
             IOptionsMonitor<StateListLengths> stateListLengthOptions,
             IOptionsMonitor<RewardsAndPenalties> rewardsAndPenaltiesOptions,
@@ -64,9 +59,7 @@ namespace Nethermind.BeaconNode
         {
             _logger = logger;
             _chainConstants = chainConstants;
-            _miscellaneousParameterOptions = miscellaneousParameterOptions;
             _gweiValueOptions = gweiValueOptions;
-            _initialValueOptions = initialValueOptions;
             _timeParameterOptions = timeParameterOptions;
             _stateListLengthOptions = stateListLengthOptions;
             _rewardsAndPenaltiesOptions = rewardsAndPenaltiesOptions;
@@ -147,7 +140,7 @@ namespace Nethermind.BeaconNode
                 rewards[(int)attestation.ProposerIndex] += proposerReward;
 
                 Gwei maxAttesterReward = baseReward - proposerReward;
-                Gwei attesterReward = maxAttesterReward / (ulong)attestation.InclusionDelay;
+                Gwei attesterReward = maxAttesterReward / attestation.InclusionDelay;
                 if(_logger.IsDebug()) LogDebug.RewardForValidator(_logger, attestation.ProposerIndex, "attester inclusion delay", proposerReward, null);
                 rewards[(int)index] += attesterReward;
             }
@@ -166,7 +159,7 @@ namespace Nethermind.BeaconNode
                     if (!matchingTargetAttestingIndices.Contains(index))
                     {
                         Gwei effectiveBalance = state.Validators[(int)index].EffectiveBalance;
-                        Gwei additionalInactivityPenalty = (effectiveBalance * (ulong)finalityDelay) / rewardsAndPenalties.InactivityPenaltyQuotient;
+                        Gwei additionalInactivityPenalty = (effectiveBalance * finalityDelay) / rewardsAndPenalties.InactivityPenaltyQuotient;
                         if(_logger.IsDebug()) LogDebug.PenaltyForValidator(_logger, index, "inactivity", additionalInactivityPenalty, null);
                         penalties[(int)index] += additionalInactivityPenalty;
                     }
@@ -192,23 +185,25 @@ namespace Nethermind.BeaconNode
             return baseReward;
         }
 
-        public IEnumerable<PendingAttestation> GetMatchingHeadAttestations(BeaconState state, Epoch epoch)
+        public IReadOnlyList<PendingAttestation> GetMatchingHeadAttestations(BeaconState state, Epoch epoch)
         {
             IEnumerable<PendingAttestation> sourceAttestations = GetMatchingSourceAttestations(state, epoch);
             return sourceAttestations.Where(x =>
-            {
-                Hash32 blockRootAtSlot = _beaconStateAccessor.GetBlockRootAtSlot(state, x.Data.Slot);
-                return x.Data.BeaconBlockRoot == blockRootAtSlot;
-            });
+                {
+                    Root blockRootAtSlot = _beaconStateAccessor.GetBlockRootAtSlot(state, x.Data.Slot);
+                    return x.Data.BeaconBlockRoot.Equals(blockRootAtSlot);
+                })
+                .ToList()
+                .AsReadOnly();
         }
 
-        public IEnumerable<PendingAttestation> GetMatchingSourceAttestations(BeaconState state, Epoch epoch)
+        public IReadOnlyList<PendingAttestation> GetMatchingSourceAttestations(BeaconState state, Epoch epoch)
         {
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             Epoch previousEpoch = _beaconStateAccessor.GetPreviousEpoch(state);
             if (epoch != currentEpoch && epoch != previousEpoch)
             {
-                throw new ArgumentOutOfRangeException(nameof(epoch), epoch, $"The epoch for attestions must be either the current epoch {currentEpoch} or previous epoch {previousEpoch}.");
+                throw new ArgumentOutOfRangeException(nameof(epoch), epoch, $"The epoch for attestations must be either the current epoch {currentEpoch} or previous epoch {previousEpoch}.");
             }
 
             if (epoch == currentEpoch)
@@ -218,14 +213,16 @@ namespace Nethermind.BeaconNode
             return state.PreviousEpochAttestations;
         }
 
-        public IEnumerable<PendingAttestation> GetMatchingTargetAttestations(BeaconState state, Epoch epoch)
+        public IReadOnlyList<PendingAttestation> GetMatchingTargetAttestations(BeaconState state, Epoch epoch)
         {
-            Hash32 blockRoot = _beaconStateAccessor.GetBlockRoot(state, epoch);
+            Root blockRoot = _beaconStateAccessor.GetBlockRoot(state, epoch);
             IEnumerable<PendingAttestation> sourceAttestations = GetMatchingSourceAttestations(state, epoch);
-            return sourceAttestations.Where(x => x.Data.Target.Root == blockRoot);
+            return sourceAttestations.Where(x => x.Data.Target.Root.Equals(blockRoot))
+                .ToList()
+                .AsReadOnly();
         }
 
-        public IEnumerable<ValidatorIndex> GetUnslashedAttestingIndices(BeaconState state, IEnumerable<PendingAttestation> attestations)
+        public IReadOnlyList<ValidatorIndex> GetUnslashedAttestingIndices(BeaconState state, IEnumerable<PendingAttestation> attestations)
         {
             IEnumerable<ValidatorIndex> output = new List<ValidatorIndex>();
             foreach (PendingAttestation attestation in attestations)
@@ -233,12 +230,14 @@ namespace Nethermind.BeaconNode
                 IEnumerable<ValidatorIndex> attestingIndices = _beaconStateAccessor.GetAttestingIndices(state, attestation.Data, attestation.AggregationBits);
                 output = output.Union(attestingIndices);
             }
-            return output.Where(x => !state.Validators[(int)x].IsSlashed);
+            return output.Where(x => !state.Validators[(int)x].IsSlashed)
+                .ToList()
+                .AsReadOnly();
         }
 
         public void ProcessAttestation(BeaconState state, Attestation attestation)
         {
-            if(_logger.IsDebug()) LogDebug.ProcessAttestation(_logger, attestation, state, null);
+            if(_logger.IsDebug()) LogDebug.ProcessAttestation(_logger, attestation, null);
 
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             AttestationData data = attestation.Data;
@@ -248,17 +247,25 @@ namespace Nethermind.BeaconNode
             {
                 throw new ArgumentOutOfRangeException("attestation.Data.Index", data.Index, $"Attestation data committee index must be less that the committee count {committeeCount}.");
             }
+            
             Epoch previousEpoch = _beaconStateAccessor.GetPreviousEpoch(state);
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             if (data.Target.Epoch != previousEpoch && data.Target.Epoch != currentEpoch)
             {
                 throw new ArgumentOutOfRangeException("attestation.Data.Target.Epoch", data.Target.Epoch, $"Attestation data target epoch must be either the previous epoch {previousEpoch} or the current epoch {currentEpoch}.");
             }
+
+            Epoch dataSlotEpoch = _beaconChainUtility.ComputeEpochAtSlot(data.Slot);
+            if (data.Target.Epoch != dataSlotEpoch)
+            {
+                throw new ArgumentOutOfRangeException("attestation.Data.Target.Epoch", data.Target.Epoch, $"Attestation data target epoch must match the attestation data slot {data.Slot} (epoch {dataSlotEpoch}).");
+            }
+
             Slot minimumSlot = data.Slot + timeParameters.MinimumAttestationInclusionDelay;
             Slot maximumSlot = (Slot)(data.Slot + timeParameters.SlotsPerEpoch);
             if (state.Slot < minimumSlot)
             {
-                throw new Exception($"Current state slot {state.Slot} must be equal or greater than the attestion slot {data.Slot} plus minimum delay {timeParameters.MinimumAttestationInclusionDelay}.");
+                throw new Exception($"Current state slot {state.Slot} must be equal or greater than the attestation slot {data.Slot} plus minimum delay {timeParameters.MinimumAttestationInclusionDelay}.");
             }
             if (state.Slot > maximumSlot)
             {
@@ -292,7 +299,7 @@ namespace Nethermind.BeaconNode
                 state.AddPreviousAttestation(pendingAttestation);
             }
 
-            // Check signature
+            // Verify signature
             IndexedAttestation indexedAttestation = _beaconStateAccessor.GetIndexedAttestation(state, attestation);
             Domain domain = _beaconStateAccessor.GetDomain(state, _signatureDomainOptions.CurrentValue.BeaconAttester, data.Target.Epoch);
             bool isValid = _beaconChainUtility.IsValidIndexedAttestation(state, indexedAttestation, domain);
@@ -352,38 +359,37 @@ namespace Nethermind.BeaconNode
             }
         }
 
-        public void ProcessBlock(BeaconState state, BeaconBlock block, bool validateStateRoot)
+        public void ProcessBlock(BeaconState state, BeaconBlock block)
         {
-            if(_logger.IsDebug()) LogDebug.ProcessBlock(_logger, validateStateRoot, block, state, null);
-            ProcessBlockHeader(state, block, validateStateRoot);
-            ProcessRandao(state, block.Body);
-            ProcessEth1Data(state, block.Body);
-            ProcessOperations(state, block.Body);
+            if(_logger.IsDebug()) LogDebug.ProcessBlock(_logger, block, state, null);
+            ProcessBlockHeader(state, block);
+            ProcessBlockRandao(state, block.Body);
+            ProcessBlockEth1Data(state, block.Body);
+            ProcessBlockOperations(state, block.Body);
         }
 
-        public void ProcessBlockHeader(BeaconState state, BeaconBlock block, bool validateStateRoot)
+        public void ProcessBlockHeader(BeaconState state, BeaconBlock block)
         {
-            if(_logger.IsDebug()) LogDebug.ProcessBlockHeader(_logger, block, null);
             // Verify that the slots match
             if (block.Slot != state.Slot)
             {
                 throw new ArgumentOutOfRangeException("block.Slot", block.Slot, $"Block slot must match state slot {state.Slot}.");
             }
             // Verify that the parent matches
-            Hash32 latestBlockSigningRoot = _cryptographyService.SigningRoot(state.LatestBlockHeader);
-            if (block.ParentRoot != latestBlockSigningRoot)
+            Root latestBlockHashTreeRoot = _cryptographyService.HashTreeRoot(state.LatestBlockHeader);
+            if (!block.ParentRoot.Equals(latestBlockHashTreeRoot))
             {
-                throw new ArgumentOutOfRangeException("block.ParentRoot", block.ParentRoot, $"Block parent root must match latest block header root {latestBlockSigningRoot}.");
+                throw new ArgumentOutOfRangeException("block.ParentRoot", block.ParentRoot, $"Block parent root must match latest block header root {latestBlockHashTreeRoot}.");
             }
 
-            // Save current block as the new latest block
-            Hash32 bodyRoot = _cryptographyService.HashTreeRoot(block.Body);
+            // Cache current block as the new latest block
+            Root bodyRoot = _cryptographyService.HashTreeRoot(block.Body);
             BeaconBlockHeader newBlockHeader = new BeaconBlockHeader(block.Slot,
                 block.ParentRoot,
-                Hash32.Zero, // `state_root` is zeroed and overwritten in the next `process_slot` call
-                bodyRoot,
-                BlsSignature.Empty //`signature` is zeroed
+                Root.Zero, // `state_root` is zeroed and overwritten in the next `process_slot` call
+                bodyRoot
                 );
+            if(_logger.IsDebug()) LogDebug.ProcessingBlockHeader(_logger, state.Slot, newBlockHeader, null);
             state.SetLatestBlockHeader(newBlockHeader);
 
             // Verify proposer is not slashed
@@ -392,20 +398,6 @@ namespace Nethermind.BeaconNode
             if (proposer.IsSlashed)
             {
                 throw new Exception("Beacon proposer must not be slashed.");
-            }
-
-            // Verify proposer signature
-            if (validateStateRoot)
-            {
-                Hash32 signingRoot = _cryptographyService.SigningRoot(block);
-                Domain domain = _beaconStateAccessor.GetDomain(state,
-                    _signatureDomainOptions.CurrentValue.BeaconProposer, Epoch.None);
-                bool validSignature =
-                    _cryptographyService.BlsVerify(proposer.PublicKey, signingRoot, block.Signature, domain);
-                if (!validSignature)
-                {
-                    throw new Exception($"Block signature must match proposer public key {proposer.PublicKey}");
-                }
             }
         }
 
@@ -416,15 +408,16 @@ namespace Nethermind.BeaconNode
             GweiValues gweiValues = _gweiValueOptions.CurrentValue;
 
             // Verify the Merkle branch
+            Root depositDataRoot = _cryptographyService.HashTreeRoot(deposit.Data);
             bool isValid = _beaconChainUtility.IsValidMerkleBranch(
-                _cryptographyService.HashTreeRoot(deposit.Data),
+                new Bytes32(depositDataRoot.AsSpan()), 
                 deposit.Proof,
-                _chainConstants.DepositContractTreeDepth + 1, // Add 1 for the 'List' length mix-in
+                _chainConstants.DepositContractTreeDepth + 1, // Add 1 for the List length mix-in
                 state.Eth1DepositIndex,
                 state.Eth1Data.DepositRoot);
             if (!isValid)
             {
-                throw new Exception($"Invalid Merkle branch for deposit for validator poublic key {deposit.Data.PublicKey}");
+                throw new Exception($"Invalid Merkle branch for deposit for validator public key {deposit.Data.PublicKey}");
             }
 
             // Deposits must be processed in order
@@ -436,13 +429,18 @@ namespace Nethermind.BeaconNode
 
             if (!validatorPublicKeys.Contains(publicKey))
             {
-                // Verify the deposit signature (proof of possession) for new validators
-                // Note: The deposit contract does not check signatures.
-                // Note: Deposits are valid across forks, thus the deposit domain is retrieved directly from 'computer_domain'.
-
-                Hash32 signingRoot = _cryptographyService.SigningRoot(deposit.Data);
+                // Verify the deposit signature (proof of possession) which is not checked by the deposit contract
+                DepositMessage depositMessage = new DepositMessage(
+                    deposit.Data.PublicKey,
+                    deposit.Data.WithdrawalCredentials,
+                    deposit.Data.Amount);
+                // Fork-agnostic domain since deposits are valid across forks
                 Domain domain = _beaconChainUtility.ComputeDomain(_signatureDomainOptions.CurrentValue.Deposit);
-                if (!_cryptographyService.BlsVerify(publicKey, signingRoot, deposit.Data.Signature, domain))
+
+                Root depositMessageRoot = _cryptographyService.HashTreeRoot(depositMessage);
+                Root signingRoot = _beaconChainUtility.ComputeSigningRoot(depositMessageRoot, domain);
+
+                if (!_cryptographyService.BlsVerify(publicKey, signingRoot, deposit.Data.Signature))
                 {
                     return;
                 }
@@ -461,19 +459,15 @@ namespace Nethermind.BeaconNode
             }
             else
             {
-                ValidatorIndex index = (ValidatorIndex)(ulong)validatorPublicKeys.IndexOf(publicKey);
+                ValidatorIndex index = (ulong)validatorPublicKeys.IndexOf(publicKey);
                 _beaconStateMutator.IncreaseBalance(state, index, amount);
             }
         }
 
         public void ProcessEpoch(BeaconState state)
         {
-            if (_logger.IsDebug()) LogDebug.ProcessEpoch(_logger, state, null);
+            if (_logger.IsDebug()) LogDebug.ProcessEpoch(_logger, state.Slot, null);
             ProcessJustificationAndFinalization(state);
-
-            // Was removed from phase 0 spec
-            //ProcessCrosslinks(state);
-
             ProcessRewardsAndPenalties(state);
             ProcessRegistryUpdates(state);
 
@@ -489,9 +483,9 @@ namespace Nethermind.BeaconNode
             //# @after_process_final_updates
         }
 
-        public void ProcessEth1Data(BeaconState state, BeaconBlockBody body)
+        public void ProcessBlockEth1Data(BeaconState state, BeaconBlockBody body)
         {
-            if (_logger.IsDebug()) LogDebug.ProcessEth1Data(_logger, body, null);
+            if (_logger.IsDebug()) LogDebug.ProcessEth1Data(_logger, state.Slot, body.Eth1Data, null);
 
             state.AddEth1DataVote(body.Eth1Data);
             int eth1DataVoteCount = state.Eth1DataVotes.Count(x => x.Equals(body.Eth1Data));
@@ -503,7 +497,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessFinalUpdates(BeaconState state)
         {
-            if (_logger.IsDebug()) LogDebug.ProcessFinalUpdates(_logger, state, null);
+            if (_logger.IsDebug()) LogDebug.ProcessFinalUpdates(_logger, state.Slot, null);
 
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             GweiValues gweiValues = _gweiValueOptions.CurrentValue;
@@ -539,7 +533,7 @@ namespace Nethermind.BeaconNode
 
             // Set randao mix
             Epoch randaoIndex = (Epoch)(nextEpoch % stateListLengths.EpochsPerHistoricalVector);
-            Hash32 randaoMix = _beaconStateAccessor.GetRandaoMix(state, currentEpoch);
+            Bytes32 randaoMix = _beaconStateAccessor.GetRandaoMix(state, currentEpoch);
             state.SetRandaoMix(randaoIndex, randaoMix);
 
             // Set historical root accumulator
@@ -547,7 +541,7 @@ namespace Nethermind.BeaconNode
             if ((ulong)nextEpoch % divisor == 0)
             {
                 HistoricalBatch historicalBatch = new HistoricalBatch(state.BlockRoots.ToArray(), state.StateRoots.ToArray());
-                Hash32 historicalRoot = _cryptographyService.HashTreeRoot(historicalBatch);
+                Root historicalRoot = _cryptographyService.HashTreeRoot(historicalBatch);
                 state.AddHistoricalRoot(historicalRoot);
             }
 
@@ -558,9 +552,9 @@ namespace Nethermind.BeaconNode
 
         public void ProcessJustificationAndFinalization(BeaconState state)
         {
-            if (_logger.IsDebug()) LogDebug.ProcessJustificationAndFinalization(_logger, state, null);
+            if (_logger.IsDebug()) LogDebug.ProcessJustificationAndFinalization(_logger, state.Slot, null);
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
-            if (currentEpoch <= _initialValueOptions.CurrentValue.GenesisEpoch + new Epoch(1))
+            if (currentEpoch <= _chainConstants.GenesisEpoch + new Epoch(1))
             {
                 return;
                 //throw new ArgumentOutOfRangeException(nameof(state), currentEpoch, "Current epoch of state must be more than one away from genesis epoch.");
@@ -580,7 +574,7 @@ namespace Nethermind.BeaconNode
             Gwei totalActiveBalance = _beaconStateAccessor.GetTotalActiveBalance(state);
             if (attestingBalancePreviousEpoch * 3 >= totalActiveBalance * 2)
             {
-                Hash32 blockRoot = _beaconStateAccessor.GetBlockRoot(state, previousEpoch);
+                Root blockRoot = _beaconStateAccessor.GetBlockRoot(state, previousEpoch);
                 Checkpoint checkpoint = new Checkpoint(previousEpoch, blockRoot);
                 state.SetCurrentJustifiedCheckpoint(checkpoint);
                 state.JustificationBits.Set(1, true);
@@ -591,7 +585,7 @@ namespace Nethermind.BeaconNode
             Gwei attestingBalanceCurrentEpoch = GetAttestingBalance(state, matchingTargetAttestationsCurrentEpoch);
             if (attestingBalanceCurrentEpoch * 3 >= totalActiveBalance * 2)
             {
-                Hash32 blockRoot = _beaconStateAccessor.GetBlockRoot(state, currentEpoch);
+                Root blockRoot = _beaconStateAccessor.GetBlockRoot(state, currentEpoch);
                 Checkpoint checkpoint = new Checkpoint(currentEpoch, blockRoot);
                 state.SetCurrentJustifiedCheckpoint(checkpoint);
                 state.JustificationBits.Set(0, true);
@@ -626,9 +620,9 @@ namespace Nethermind.BeaconNode
             }
         }
 
-        public void ProcessOperations(BeaconState state, BeaconBlockBody body)
+        public void ProcessBlockOperations(BeaconState state, BeaconBlockBody body)
         {
-            if (_logger.IsDebug()) LogDebug.ProcessOperations(_logger, body, null);
+            if (_logger.IsDebug()) LogDebug.ProcessOperations(_logger, state.Slot, body, null);
             // Verify that outstanding deposits are processed up to the maximum number of deposits
             ulong outstandingDeposits = state.Eth1Data.DepositCount - state.Eth1DepositIndex;
             ulong expectedDeposits = Math.Min(_maxOperationsPerBlockOptions.CurrentValue.MaximumDeposits, outstandingDeposits);
@@ -653,9 +647,9 @@ namespace Nethermind.BeaconNode
             {
                 ProcessDeposit(state, deposit);
             }
-            foreach (VoluntaryExit voluntaryExit in body.VoluntaryExits)
+            foreach (SignedVoluntaryExit signedVoluntaryExit in body.VoluntaryExits)
             {
-                ProcessVoluntaryExit(state, voluntaryExit);
+                ProcessVoluntaryExit(state, signedVoluntaryExit);
             }
             //ProcessShareReceiptProof();
         }
@@ -663,39 +657,41 @@ namespace Nethermind.BeaconNode
         public void ProcessProposerSlashing(BeaconState state, ProposerSlashing proposerSlashing)
         {
             if (_logger.IsDebug()) LogDebug.ProcessProposerSlashing(_logger, proposerSlashing, null);
-            Validator proposer = state.Validators[(int)proposerSlashing.ProposerIndex];
-            // Verify slots match
-            if (proposerSlashing.Header1.Slot != proposerSlashing.Header2.Slot)
+            // Verify header slots match
+            if (proposerSlashing.SignedHeader1.Message.Slot != proposerSlashing.SignedHeader2.Message.Slot)
             {
-                throw new Exception($"Proposer slashing header 1 slot {proposerSlashing.Header1.Slot} must match header 2 slot {proposerSlashing.Header2.Slot}.");
+                throw new Exception($"Proposer slashing header 1 slot {proposerSlashing.SignedHeader1.Message.Slot} must match header 2 slot {proposerSlashing.SignedHeader2.Message.Slot}.");
             }
             // But the headers are different
-            if (proposerSlashing.Header1.Equals(proposerSlashing.Header2))
+            if (proposerSlashing.SignedHeader1.Equals(proposerSlashing.SignedHeader2))
             {
-                throw new Exception($"Proposer slashing must be for two different headers.");
+                throw new Exception("Proposer slashing must be for two different headers.");
             }
-            // Check proposer is slashable
+            // Verify the proposer is slashable
+            Validator proposer = state.Validators[(int)proposerSlashing.ProposerIndex];
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             bool isSlashable = _beaconChainUtility.IsSlashableValidator(proposer, currentEpoch);
             if (!isSlashable)
             {
                 throw new Exception($"Proposer {proposerSlashing.ProposerIndex} is not slashable at epoch {currentEpoch}.");
             }
-            // Signatures are valid
-            Epoch slashingEpoch = _beaconChainUtility.ComputeEpochAtSlot(proposerSlashing.Header1.Slot);
+            // Verify signatures
+            Epoch slashingEpoch = _beaconChainUtility.ComputeEpochAtSlot(proposerSlashing.SignedHeader1.Message.Slot);
             Domain domain = _beaconStateAccessor.GetDomain(state, _signatureDomainOptions.CurrentValue.BeaconProposer, slashingEpoch);
 
-            Hash32 signingRoot1 = _cryptographyService.SigningRoot(proposerSlashing.Header1);
-            BlsSignature signature1 = proposerSlashing.Header1.Signature;
-            bool header1Valid = _cryptographyService.BlsVerify(proposer.PublicKey, signingRoot1, signature1, domain);
+            Root headerRoot1 = _cryptographyService.HashTreeRoot(proposerSlashing.SignedHeader1.Message);
+            Root signingRoot1 = _beaconChainUtility.ComputeSigningRoot(headerRoot1, domain);
+            BlsSignature signature1 = proposerSlashing.SignedHeader1.Signature;
+            bool header1Valid = _cryptographyService.BlsVerify(proposer.PublicKey, signingRoot1, signature1);
             if (!header1Valid)
             {
                 throw new Exception("Proposer slashing header 1 signature is not valid.");
             }
 
-            Hash32 signingRoot2 = _cryptographyService.SigningRoot(proposerSlashing.Header2);
-            BlsSignature signature2 = proposerSlashing.Header2.Signature;
-            bool header2Valid = _cryptographyService.BlsVerify(proposer.PublicKey, signingRoot2, signature2, domain);
+            Root headerRoot2 = _cryptographyService.HashTreeRoot(proposerSlashing.SignedHeader2.Message);
+            Root signingRoot2 = _beaconChainUtility.ComputeSigningRoot(headerRoot2, domain);
+            BlsSignature signature2 = proposerSlashing.SignedHeader2.Signature;
+            bool header2Valid = _cryptographyService.BlsVerify(proposer.PublicKey, signingRoot2, signature2);
             if (!header2Valid)
             {
                 throw new Exception("Proposer slashing header 2 signature is not valid.");
@@ -704,43 +700,44 @@ namespace Nethermind.BeaconNode
             _beaconStateMutator.SlashValidator(state, proposerSlashing.ProposerIndex, ValidatorIndex.None);
         }
 
-        public void ProcessRandao(BeaconState state, BeaconBlockBody body)
+        public void ProcessBlockRandao(BeaconState state, BeaconBlockBody body)
         {
-            if (_logger.IsDebug()) LogDebug.ProcessRandao(_logger, body, null);
+            if (_logger.IsDebug()) LogDebug.ProcessRandao(_logger, state.Slot, body.RandaoReveal, null);
             Epoch epoch = _beaconStateAccessor.GetCurrentEpoch(state);
             // Verify RANDAO reveal
             ValidatorIndex beaconProposerIndex = _beaconStateAccessor.GetBeaconProposerIndex(state);
             Validator proposer = state.Validators[(int)beaconProposerIndex];
-            Hash32 epochRoot = _cryptographyService.HashTreeRoot(epoch);
+            Root epochRoot = _cryptographyService.HashTreeRoot(epoch);
             Domain domain = _beaconStateAccessor.GetDomain(state, _signatureDomainOptions.CurrentValue.Randao, Epoch.None);
-            bool validRandaoReveal = _cryptographyService.BlsVerify(proposer.PublicKey, epochRoot, body.RandaoReveal, domain);
+            Root signingRoot = _beaconChainUtility.ComputeSigningRoot(epochRoot, domain);
+            bool validRandaoReveal = _cryptographyService.BlsVerify(proposer.PublicKey, signingRoot, body.RandaoReveal);
             if (!validRandaoReveal)
             {
                 throw new Exception($"Randao reveal {body.RandaoReveal} must match proposer public key {proposer.PublicKey}");
             }
             // Mix in RANDAO reveal
-            Hash32 randaoMix = _beaconStateAccessor.GetRandaoMix(state, epoch);
-            Hash32 randaoHash = _cryptographyService.Hash(body.RandaoReveal.AsSpan());
-            Hash32 mix = randaoMix.Xor(randaoHash);
+            Bytes32 randaoMix = _beaconStateAccessor.GetRandaoMix(state, epoch);
+            Bytes32 randaoHash = _cryptographyService.Hash(body.RandaoReveal.AsSpan());
+            Bytes32 mix = randaoMix.Xor(randaoHash);
             Epoch randaoIndex = (Epoch)(epoch % _stateListLengthOptions.CurrentValue.EpochsPerHistoricalVector);
             state.SetRandaoMix(randaoIndex, mix);
         }
 
         public void ProcessRegistryUpdates(BeaconState state)
         {
-            if (_logger.IsDebug()) LogDebug.ProcessRegistryUpdates(_logger, state, null);
+            if (_logger.IsDebug()) LogDebug.ProcessRegistryUpdates(_logger, state.Slot, null);
 
             GweiValues gweiValues = _gweiValueOptions.CurrentValue;
 
             // Process activation eligibility and ejections
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            Epoch nextEpoch = currentEpoch + Epoch.One;
             for (int index = 0; index < state.Validators.Count; index++)
             {
                 Validator validator = state.Validators[index];
-                if (validator.ActivationEligibilityEpoch == _chainConstants.FarFutureEpoch
-                    && validator.EffectiveBalance == gweiValues.MaximumEffectiveBalance)
+                if (_beaconChainUtility.IsEligibleForActivationQueue(validator))
                 {
-                    validator.SetEligible(currentEpoch);
+                    validator.SetEligible(nextEpoch);
                 }
 
                 bool isActive = _beaconChainUtility.IsActiveValidator(validator, currentEpoch);
@@ -750,35 +747,30 @@ namespace Nethermind.BeaconNode
                 }
             }
 
-            // Queue validators eligible for activation and not dequeued for activation prior to finalized epoch
-            Epoch activationExitEpoch = _beaconChainUtility.ComputeActivationExitEpoch(state.FinalizedCheckpoint.Epoch);
-
-            IEnumerable<int> activationQueue = state.Validators
+            // Queue validators eligible for activation and not yet dequeued for activation
+            IEnumerable<Validator> activationQueue = state.Validators
                 .Select((validator, index) => new { index, validator })
-                .Where(x => x.validator.ActivationEligibilityEpoch != _chainConstants.FarFutureEpoch
-                    && x.validator.ActivationEpoch >= activationExitEpoch)
+                .Where(x => _beaconChainUtility.IsEligibleForActivation(state, x.validator))
+                // # Order by the sequence of activation_eligibility_epoch setting and then index
                 .OrderBy(x => x.validator.ActivationEligibilityEpoch)
-                .Select(x => x.index);
+                .ThenBy(x => x.index)
+                .Select(x => x.validator);
 
-            // Dequeued validators for activation up to churn limit (without resetting activation epoch)
+            // Dequeued validators for activation up to churn limit
             ulong validatorChurnLimit = _beaconStateAccessor.GetValidatorChurnLimit(state);
             Epoch activationEpoch = _beaconChainUtility.ComputeActivationExitEpoch(currentEpoch);
-            foreach (int index in activationQueue.Take((int)validatorChurnLimit))
+            foreach (Validator validator in activationQueue.Take((int)validatorChurnLimit))
             {
-                Validator validator = state.Validators[index];
-                if (validator.ActivationEpoch == _chainConstants.FarFutureEpoch)
-                {
-                    validator.SetActive(activationEpoch);
-                }
+                validator.SetActive(activationEpoch);
             }
         }
 
         public void ProcessRewardsAndPenalties(BeaconState state)
         {
-            if (_logger.IsDebug()) LogDebug.ProcessRewardsAndPenalties(_logger, state, null);
+            if (_logger.IsDebug()) LogDebug.ProcessRewardsAndPenalties(_logger, state.Slot, null);
 
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
-            if (currentEpoch == _initialValueOptions.CurrentValue.GenesisEpoch)
+            if (currentEpoch == _chainConstants.GenesisEpoch)
             {
                 return;
             }
@@ -794,12 +786,12 @@ namespace Nethermind.BeaconNode
 
         public void ProcessSlashings(BeaconState state)
         {
-            if (_logger.IsDebug()) LogDebug.ProcessSlashings(_logger, state, null);
+            if (_logger.IsDebug()) LogDebug.ProcessSlashings(_logger, state.Slot, null);
 
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             Gwei totalBalance = _beaconStateAccessor.GetTotalActiveBalance(state);
 
-            Epoch targetEpoch = currentEpoch + new Epoch((ulong)_stateListLengthOptions.CurrentValue.EpochsPerSlashingsVector / 2);
+            Epoch targetEpoch = currentEpoch + new Epoch(_stateListLengthOptions.CurrentValue.EpochsPerSlashingsVector / 2);
 
             Gwei totalSlashings = state.Slashings.Aggregate(Gwei.Zero, (accumulator, x) => accumulator + x);
             Gwei minimumFactor = Gwei.Min(totalSlashings * 3, totalBalance);
@@ -822,22 +814,34 @@ namespace Nethermind.BeaconNode
         {
             if(_logger.IsDebug()) LogDebug.ProcessSlot(_logger, state.Slot, state, null);
             // Cache state root
-            Hash32 previousStateRoot = _cryptographyService.HashTreeRoot(state);
+            Root previousStateRoot = _cryptographyService.HashTreeRoot(state);
             Slot previousRootIndex = (Slot)(state.Slot % _timeParameterOptions.CurrentValue.SlotsPerHistoricalRoot);
             state.SetStateRoot(previousRootIndex, previousStateRoot);
             // Cache latest block header state root
-            if (state.LatestBlockHeader.StateRoot == Hash32.Zero)
+            if (state.LatestBlockHeader.StateRoot.Equals(Root.Zero))
             {
+                // TODO: Validate if the below is correct.
+                // NOTE: For slots that have a block, when the block is added, LatestBlockHeader.StateRoot = Root.Zero
+                // the state HashTreeRoot is then calculated (with the zero value) and included in the block.
+                // The value is set here as part of ProcessSlot and used during processing (during this time HashTreeRoot of
+                // state would be different), but is *reset* to Root.Zero which the block is added. 
+                // That means HashTreeRoot(state) for slots with blocks always have LatestBlockHeader.StateRoot = Root.Zero.
+                // But where slots are *skipped* this LatestBlockHeader.StateRoot is not cleared.
+                // i.e.
+                // State { slot 5, LatestBlockHeader { slot 5, parent = 0xa4a4, state = 0x0000, body = 0xb5b5 }} => state root 0xc5c5 => Block { slot 5, parent = 0xa4a4, state = 0xc5c5, body = 0xb5b5 } => block root 0xa5a5 
+                // State { slot 6, LatestBlockHeader { slot 6, parent = 0xa5a5, state = 0x0000, body = 0xb6b6 }} => state root 0xc6c6 => Block { slot 5, parent = 0xa5a5, state = 0xc6c6, body = 0xb6b6 } => block root 0xa5a5 
+                // State { slot 7, LatestBlockHeader { slot 6, parent = 0xa5a5, state = 0xc6c6, body = 0xb6b6 }} => state root 0x1234 => skip block (would have been 0xc7c7 if state root = 0x0000; the calculated state root goes into the history as well) 
+                // State { slot 8, LatestBlockHeader { slot 8, parent = 0xa5a5, state = 0x0000, body = 0xb8b8 }} => state root 0xc8c8 => Block { slot 8, parent = 0xa5a5, state = 0xc8c8, body = 0x85b8 } => block root 0xa8a8 
                 state.LatestBlockHeader.SetStateRoot(previousStateRoot);
             }
             // Cache block root
-            Hash32 previousBlockRoot = _cryptographyService.SigningRoot(state.LatestBlockHeader);
+            Root previousBlockRoot = _cryptographyService.HashTreeRoot(state.LatestBlockHeader);
             state.SetBlockRoot(previousRootIndex, previousBlockRoot);
         }
 
         public void ProcessSlots(BeaconState state, Slot slot)
         {
-            if(_logger.IsDebug()) LogDebug.ProcessSlots(_logger, slot, state, null);
+            if(_logger.IsDebug()) LogDebug.ProcessSlots(_logger, state, slot, null);
             if (state.Slot > slot)
             {
                 throw new ArgumentOutOfRangeException(nameof(slot), slot, $"Slot to process should be greater than current state slot {state.Slot}");
@@ -855,32 +859,34 @@ namespace Nethermind.BeaconNode
             }
         }
 
-        public void ProcessVoluntaryExit(BeaconState state, VoluntaryExit exit)
+        public void ProcessVoluntaryExit(BeaconState state, SignedVoluntaryExit signedVoluntaryExit)
         {
-            if (_logger.IsDebug()) LogDebug.ProcessVoluntaryExit(_logger, exit, state, null);
+            VoluntaryExit voluntaryExit = signedVoluntaryExit.Message;
+            
+            if (_logger.IsDebug()) LogDebug.ProcessVoluntaryExit(_logger, voluntaryExit, null);
 
-            Validator validator = state.Validators[(int)exit.ValidatorIndex];
+            Validator validator = state.Validators[(int)voluntaryExit.ValidatorIndex];
 
             //#Verify the validator is active
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             bool isActiveValidator = _beaconChainUtility.IsActiveValidator(validator, currentEpoch);
             if (!isActiveValidator)
             {
-                throw new Exception($"Validator {exit.ValidatorIndex} must be active in order to exit.");
+                throw new Exception($"Validator {voluntaryExit.ValidatorIndex} must be active in order to exit.");
             }
 
-            //# Verify the validator has not yet exited
+            //# Verify exit has not been initiated
             bool hasExited = validator.ExitEpoch != _chainConstants.FarFutureEpoch;
             if (hasExited)
             {
-                throw new Exception($"Validator {exit.ValidatorIndex} already has exit epoch {validator.ExitEpoch}.");
+                throw new Exception($"Validator {voluntaryExit.ValidatorIndex} already has exit epoch {validator.ExitEpoch}.");
             }
 
             //# Exits must specify an epoch when they become valid; they are not valid before then
-            bool isCurrentAtOrAfterExit = currentEpoch >= exit.Epoch;
+            bool isCurrentAtOrAfterExit = currentEpoch >= voluntaryExit.Epoch;
             if (!isCurrentAtOrAfterExit)
             {
-                throw new Exception($"Validator {exit.ValidatorIndex} can not exit because the current epoch {currentEpoch} has not yet reached their exit epoch {validator.ExitEpoch}.");
+                throw new Exception($"Validator {voluntaryExit.ValidatorIndex} can not exit because the current epoch {currentEpoch} has not yet reached their exit epoch {validator.ExitEpoch}.");
             }
 
             //# Verify the validator has been active long enough
@@ -889,50 +895,78 @@ namespace Nethermind.BeaconNode
             bool isCurrentAtOrAfterMinimum = currentEpoch >= minimumActiveEpoch;
             if (!isCurrentAtOrAfterMinimum)
             {
-                throw new Exception($"Validator {exit.ValidatorIndex} can not exit because the current epoch {currentEpoch} has not yet reached the minimum active epoch of {timeParameters.PersistentCommitteePeriod} after their activation epoch {validator.ActivationEpoch}.");
+                throw new Exception($"Validator {voluntaryExit.ValidatorIndex} can not exit because the current epoch {currentEpoch} has not yet reached the minimum active epoch of {timeParameters.PersistentCommitteePeriod} after their activation epoch {validator.ActivationEpoch}.");
             }
 
             //# Verify signature
-            Domain domain = _beaconStateAccessor.GetDomain(state, _signatureDomainOptions.CurrentValue.VoluntaryExit, exit.Epoch);
-            Hash32 signingRoot = _cryptographyService.SigningRoot(exit);
-            bool validSignature = _cryptographyService.BlsVerify(validator.PublicKey, signingRoot, exit.Signature, domain);
+            Domain domain = _beaconStateAccessor.GetDomain(state, _signatureDomainOptions.CurrentValue.VoluntaryExit, voluntaryExit.Epoch);
+            Root voluntaryExitRoot = _cryptographyService.HashTreeRoot(voluntaryExit);
+            Root signingRoot = _beaconChainUtility.ComputeSigningRoot(voluntaryExitRoot, domain);
+            bool validSignature = _cryptographyService.BlsVerify(validator.PublicKey, signingRoot, signedVoluntaryExit.Signature);
             if (!validSignature)
             {
                 throw new Exception("Voluntary exit signature is not valid.");
             }
 
             //# Initiate exit
-            _beaconStateMutator.InitiateValidatorExit(state, exit.ValidatorIndex);
+            _beaconStateMutator.InitiateValidatorExit(state, voluntaryExit.ValidatorIndex);
         }
 
-        public BeaconState StateTransition(BeaconState state, BeaconBlock block, bool validateStateRoot)
+        public BeaconState StateTransition(BeaconState state, SignedBeaconBlock signedBlock, bool validateResult)
         {
-            if (_logger.IsDebug()) LogDebug.StateTransition(_logger, validateStateRoot, state, block, null);
+            BeaconBlock block = signedBlock.Message;
+
+            if (_logger.IsDebug()) LogDebug.StateTransition(_logger, validateResult, state, block, null);
 
             // Process slots (including those with no blocks) since block
             ProcessSlots(state, block.Slot);
+            
+            // Verify signature
+            if (validateResult)
+            {
+                bool isValidBlockSignature = VerifyBlockSignature(state, signedBlock);
+                if (!isValidBlockSignature)
+                {
+                    throw new Exception($"Block {block} signature must be valid (when processing state transition for {state}).");
+                }
+            }
+            
             // Process block
-            ProcessBlock(state, block, validateStateRoot);
+            ProcessBlock(state, block);
+            
             // Validate state root (True in production)
-            if (validateStateRoot)
+            if (validateResult)
             {
                 //var options = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
                 //options.AddCortexContainerConverters();
                 //var debugState = System.Text.Json.JsonSerializer.Serialize(state, options);
 
-                Hash32 checkStateRoot = _cryptographyService.HashTreeRoot(state);
-                if (block.StateRoot != checkStateRoot)
+                Root checkStateRoot = _cryptographyService.HashTreeRoot(state);
+                if (!block.StateRoot.Equals(checkStateRoot))
                 {
                     throw new Exception($"Mismatch between calculated state root {checkStateRoot} and block state root {block.StateRoot}.");
                 }
 
                 if (_logger.IsInfo())
                 {
-                    Hash32 blockSigningRoot = _cryptographyService.SigningRoot(block);
-                    Log.ValidatedStateTransition(_logger, checkStateRoot, state, blockSigningRoot, block, null);
+                    Root blockRoot = _cryptographyService.HashTreeRoot(block);
+                    Log.ValidatedStateTransition(_logger, checkStateRoot, state, blockRoot, block, null);
                 }
             }
             return state;
+        }
+
+        private bool VerifyBlockSignature(BeaconState state, SignedBeaconBlock signedBlock)
+        {
+            ValidatorIndex beaconProposerIndex = _beaconStateAccessor.GetBeaconProposerIndex(state);
+            Validator proposer = state.Validators[(int)beaconProposerIndex];
+            Root blockRoot = _cryptographyService.HashTreeRoot(signedBlock.Message);
+            Domain domain = _beaconStateAccessor.GetDomain(state, _signatureDomainOptions.CurrentValue.BeaconProposer,
+                Epoch.None);
+            Root signingRoot = _beaconChainUtility.ComputeSigningRoot(blockRoot, domain);
+            bool isValid = _cryptographyService.BlsVerify(proposer.PublicKey, signingRoot, signedBlock.Signature);
+            if (_logger.IsDebug()) LogDebug.VerifiedBlockSignature(_logger, blockRoot, signedBlock.Message, signingRoot, beaconProposerIndex, isValid, null);
+            return isValid;
         }
     }
 }

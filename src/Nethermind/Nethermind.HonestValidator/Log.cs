@@ -16,6 +16,7 @@
 
 using System;
 using Microsoft.Extensions.Logging;
+using Nethermind.Core2.Api;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
@@ -60,20 +61,15 @@ namespace Nethermind.HonestValidator
 
         // 2bxx 
         
-        public static readonly Action<ILogger, BlsPublicKey, Epoch, Slot, Shard, Exception?> ValidatorDutyAttestationChanged =
-            LoggerMessage.Define<BlsPublicKey, Epoch, Slot, Shard>(LogLevel.Information,
-                new EventId(2450, nameof(ValidatorDutyAttestationChanged)),
-                "Validator {PublicKey} epoch {Epoch} duty attestation slot {Slot} for shard {Shard}.");
-
         public static readonly Action<ILogger, BlsPublicKey, Epoch, Slot, Exception?> ValidatorDutyProposalChanged =
             LoggerMessage.Define<BlsPublicKey, Epoch, Slot>(LogLevel.Information,
                 new EventId(2451, nameof(ValidatorDutyProposalChanged)),
                 "Validator {PublicKey} epoch {Epoch} duty proposal slot {Slot}.");
 
-        public static readonly Action<ILogger, Slot, BlsPublicKey, Exception?> ProposalDutyFor =
-            LoggerMessage.Define<Slot, BlsPublicKey>(LogLevel.Information,
+        public static readonly Action<ILogger, Slot, ulong, BlsPublicKey, Exception?> ProposalDutyFor =
+            LoggerMessage.Define<Slot, ulong, BlsPublicKey>(LogLevel.Information,
                 new EventId(2452, nameof(ProposalDutyFor)),
-                "Running block proposal duty for slot {Slot} for validator {PublicKey}.");
+                "Running block proposal duty for slot {Slot} at time {Time} for validator {PublicKey}.");
 
         // 4bxx warning
         
@@ -97,6 +93,30 @@ namespace Nethermind.HonestValidator
             LoggerMessage.Define(LogLevel.Error,
                 new EventId(5450, nameof(HonestValidatorWorkerLoopError)),
                 "Unexpected error caught in honest validator worker, loop continuing.");
+        public static readonly Action<ILogger, int, StatusCode, Exception?> ErrorGettingValidatorDuties =
+            LoggerMessage.Define<int, StatusCode>(LogLevel.Error,
+                new EventId(5451, nameof(ErrorGettingValidatorDuties)),
+                "Error getting updated validator duties from beacon node, response: {StatusCodeNumeric} {StatusCode}.");
+        public static readonly Action<ILogger, int, StatusCode, Exception?> ErrorGettingForkVersion =
+            LoggerMessage.Define<int, StatusCode>(LogLevel.Error,
+                new EventId(5452, nameof(ErrorGettingForkVersion)),
+                "Error getting updated fork version from beacon node, response: {StatusCodeNumeric} {StatusCode}.");
+        public static readonly Action<ILogger, int, StatusCode, Exception?> ErrorGettingSyncStatus =
+            LoggerMessage.Define<int, StatusCode>(LogLevel.Error,
+                new EventId(5453, nameof(ErrorGettingSyncStatus)),
+                "Error getting updated sync status from beacon node, response: {StatusCodeNumeric} {StatusCode}.");
+        public static readonly Action<ILogger, string, Exception?> ExceptionGettingValidatorDuties =
+            LoggerMessage.Define<string>(LogLevel.Error,
+                new EventId(5454, nameof(ErrorGettingValidatorDuties)),
+                "Exception getting updated validator duties from beacon node, error message: {ErrorMessage}");
+        public static readonly Action<ILogger, string, Exception?> ExceptionGettingForkVersion =
+            LoggerMessage.Define<string>(LogLevel.Error,
+                new EventId(5455, nameof(ErrorGettingForkVersion)),
+                "Exception getting updated fork version from beacon node, error message: {ErrorMessage}");
+        public static readonly Action<ILogger, string, Exception?> ExceptionGettingSyncStatus =
+            LoggerMessage.Define<string>(LogLevel.Error,
+                new EventId(5456, nameof(ErrorGettingSyncStatus)),
+                "Exception getting updated sync status from beacon node, error message: {ErrorMessage}");
 
         // 8bxx finalization
 

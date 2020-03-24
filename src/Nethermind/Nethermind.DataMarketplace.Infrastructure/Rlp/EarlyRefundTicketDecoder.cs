@@ -14,8 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.IO;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Core.Domain;
@@ -28,10 +26,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
         public static void Init()
         {
             // here to register with RLP in static constructor
-        }
-
-        private EarlyRefundTicketDecoder()
-        {
         }
 
         static EarlyRefundTicketDecoder()

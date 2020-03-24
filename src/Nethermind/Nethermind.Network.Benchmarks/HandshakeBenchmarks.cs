@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Specs;
@@ -27,7 +28,7 @@ using Nethermind.Network.Test;
 namespace Nethermind.Network.Benchmarks
 {
     [MemoryDiagnoser]
-    [CoreJob(true)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class HandshakeBenchmarks
     {
         [GlobalSetup]

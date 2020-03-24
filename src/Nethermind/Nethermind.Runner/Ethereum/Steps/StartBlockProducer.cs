@@ -28,6 +28,7 @@ using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Subsystems;
+using Nethermind.State;
 using Nethermind.Store;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -36,6 +37,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     public abstract class StartBlockProducer : IStep, ISubsystemStateAware
     {
         private readonly EthereumRunnerContext _context;
+        private ReadOnlyDbProvider _readOnlyDbProvider;
 
         public StartBlockProducer(EthereumRunnerContext context)
         {
@@ -47,6 +49,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             IInitConfig initConfig = _context.Config<IInitConfig>();
             if (initConfig.IsMining)
             {
+                _readOnlyDbProvider = new ReadOnlyDbProvider(_context.DbProvider, false);
                 BuildProducer();
                 if (_context.BlockProducer == null) throw new StepDependencyException(nameof(_context.BlockProducer));
 
@@ -66,11 +69,10 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected BlockProducerContext GetProducerChain()
         {
-            ReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_context.DbProvider, false);
             ReadOnlyBlockTree readOnlyBlockTree = new ReadOnlyBlockTree(_context.BlockTree);
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyBlockTree, _context.SpecProvider, _context.LogManager);
-            BlockProcessor blockProcessor = CreateBlockProcessor(readOnlyTxProcessingEnv, readOnlyDbProvider);
-            OneTimeChainProcessor chainProcessor = new OneTimeChainProcessor(readOnlyDbProvider, new BlockchainProcessor(readOnlyBlockTree, blockProcessor, _context.RecoveryStep, _context.LogManager, false));
+            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(_readOnlyDbProvider, readOnlyBlockTree, _context.SpecProvider, _context.LogManager);
+            BlockProcessor blockProcessor = CreateBlockProcessor(readOnlyTxProcessingEnv, _readOnlyDbProvider);
+            OneTimeChainProcessor chainProcessor = new OneTimeChainProcessor(_readOnlyDbProvider, new BlockchainProcessor(readOnlyBlockTree, blockProcessor, _context.RecoveryStep, _context.LogManager, false));
             var pendingTxSelector = CreatePendingTxSelector();
 
             return new BlockProducerContext
@@ -81,7 +83,12 @@ namespace Nethermind.Runner.Ethereum.Steps
             };
         }
 
-        protected virtual IPendingTxSelector CreatePendingTxSelector() => new PendingTxSelector(_context.TxPool, _context.StateProvider, _context.LogManager);
+        protected virtual IPendingTxSelector CreatePendingTxSelector()
+        {
+            StateReader reader = new StateReader(_readOnlyDbProvider.StateDb, _readOnlyDbProvider.CodeDb, _context.LogManager);
+            var txSelector = new PendingTxSelector(_context.TxPool, reader, _context.LogManager);
+            return txSelector;
+        }
 
         protected virtual BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, IReadOnlyDbProvider readOnlyDbProvider)
         {

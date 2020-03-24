@@ -17,7 +17,6 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
-using Nethermind.HashLib;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json;

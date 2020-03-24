@@ -16,6 +16,7 @@
 
 using System;
 using Microsoft.Extensions.Logging;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
@@ -51,7 +52,7 @@ namespace Nethermind.BeaconNode.Peering
         public static readonly Action<ILogger, string, string, int, Exception?> PeeringWorkerStarting =
             LoggerMessage.Define<string, string, int>(LogLevel.Information,
                 new EventId(1050, nameof(PeeringWorkerStarting)),
-                "Peering {ProductTokenVersion} worker started; {Environment} environment [{ThreadId}]");
+                "Peering {ProductTokenVersion} worker starting; {Environment} environment [{ThreadId}]");
 
         // 2bxx 
         
@@ -63,7 +64,27 @@ namespace Nethermind.BeaconNode.Peering
         // 4bxx warning
         
         // 5bxx error
-        
+
+        public static readonly Action<ILogger, string, string, Exception?> PeerDiscoveredError =
+            LoggerMessage.Define<string, string>(LogLevel.Error,
+                new EventId(5050, nameof(PeerDiscoveredError)),
+                "Error processing peer discovered, peer '{Peer}': {ErrorMessage}");
+
+        public static readonly Action<ILogger, string, string, Exception?> GossipReceivedError =
+            LoggerMessage.Define<string, string>(LogLevel.Error,
+                new EventId(5051, nameof(GossipReceivedError)),
+                "Error processing gossip received, topic '{Topic}': {ErrorMessage}");
+
+        public static readonly Action<ILogger, string, string, Exception?> RpcReceivedError =
+            LoggerMessage.Define<string, string>(LogLevel.Error,
+                new EventId(5052, nameof(RpcReceivedError)),
+                "Peer error processing RPC method, '{Method}': {ErrorMessage}");
+
+        public static readonly Action<ILogger, BeaconBlock, string, Exception?> HandleSignedBeaconBlockError =
+            LoggerMessage.Define<BeaconBlock, string>(LogLevel.Error,
+                new EventId(5053, nameof(HandleSignedBeaconBlockError)),
+                "Error handling signed beacon block, {BeaconBlock}: {ErrorMessage}");
+
         // 8bxx finalization
 
         // 9bxx critical

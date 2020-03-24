@@ -16,7 +16,6 @@
 
 using System;
 using System.Linq;
-using System.Security.Cryptography.X509Certificates;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -76,6 +75,8 @@ namespace Nethermind.Evm
         private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, bool isCall)
         {
             var notSystemTransaction = !transaction.IsSystem();
+            var wasSenderAccountCreatedInsideACall = false;
+            
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             if (!notSystemTransaction)
             {
@@ -136,8 +137,9 @@ namespace Nethermind.Evm
                 else
                 {
                     TraceLogInvalidTx(transaction, $"SENDER_ACCOUNT_DOES_NOT_EXIST {sender}");
-                    if (gasPrice == UInt256.Zero)
+                    if (isCall || gasPrice == UInt256.Zero)
                     {
+                        wasSenderAccountCreatedInsideACall = isCall;
                         _stateProvider.CreateAccount(sender, UInt256.Zero);
                     }
                 }
@@ -146,7 +148,7 @@ namespace Nethermind.Evm
             if (notSystemTransaction)
             {
                 UInt256 senderBalance = _stateProvider.GetBalance(sender);
-                if ((ulong) intrinsicGas * gasPrice + value > senderBalance)
+                if (!isCall && (ulong) intrinsicGas * gasPrice + value > senderBalance)
                 {
                     TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({sender})_BALANCE = {senderBalance}");
                     QuickFail(transaction, block, txTracer, "insufficient sender balance");
@@ -163,7 +165,7 @@ namespace Nethermind.Evm
                 _stateProvider.IncrementNonce(sender);
             }
 
-            UInt256 senderReservedGasPayment = (ulong) gasLimit * gasPrice;
+            UInt256 senderReservedGasPayment = isCall ? UInt256.Zero : (ulong) gasLimit * gasPrice;
             
             _stateProvider.SubtractFromBalance(sender, senderReservedGasPayment, spec);
             _stateProvider.Commit(spec, txTracer.IsTracingState ? txTracer : null);
@@ -298,8 +300,16 @@ namespace Nethermind.Evm
                 _storageProvider.Reset();
                 _stateProvider.Reset();
                 
-                _stateProvider.AddToBalance(sender, senderReservedGasPayment, spec);
-                _stateProvider.DecrementNonce(sender);
+                if (wasSenderAccountCreatedInsideACall)
+                {
+                    _stateProvider.DeleteAccount(sender);
+                }
+                else
+                {
+                    _stateProvider.AddToBalance(sender, senderReservedGasPayment, spec);
+                    _stateProvider.DecrementNonce(sender);    
+                }
+                
                 _stateProvider.Commit(spec);
             }
 

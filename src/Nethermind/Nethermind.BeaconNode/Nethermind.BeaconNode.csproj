@@ -2,22 +2,18 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Core2.Configuration\Nethermind.Core2.Configuration.csproj" />
+    <ProjectReference Include="..\Nethermind.Cryptography.Bls\Nethermind.Cryptography.Bls.csproj" />
     <ProjectReference Include="..\Nethermind.Logging.Microsoft\Nethermind.Logging.Microsoft.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Cortex.Cryptography.Bls" Version="0.4.0" />
     <PackageReference Include="Cortex.SimpleSerialize" Version="0.2.0" />
-    <PackageReference Include="GitVersionTask" Version="5.1.3">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="3.0.1" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="3.0.1" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="3.0.1" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="3.1.0" />
-    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="3.0.1" />
-    <PackageReference Include="System.Text.Json" Version="4.6.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="3.1.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="3.1.2" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="3.1.2" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="3.1.2" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="3.1.2" />
+    <PackageReference Include="System.Text.Json" Version="4.7.1" />
   </ItemGroup>
 
   <PropertyGroup>
