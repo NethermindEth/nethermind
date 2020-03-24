@@ -142,11 +142,11 @@ namespace Nethermind.Store.Test
         private static PatriciaTree BuildATreeFromNode(TrieNode node)
         {
             TrieNode.AllowBranchValues = true;
-            Rlp rlp = node.RlpEncode();
+            byte[] rlp = node.RlpEncode();
             node.ResolveKey(true);
 
             MemDb memDb = new MemDb();
-            memDb[node.Keccak.Bytes] = rlp.Bytes;
+            memDb[node.Keccak.Bytes] = rlp;
 
             PatriciaTree tree = new PatriciaTree(memDb, node.Keccak, false, true);
             return tree;

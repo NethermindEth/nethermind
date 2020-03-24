@@ -31,7 +31,7 @@ namespace Nethermind.State.Proofs
                 return null;
             }
 
-            TrieNode trieNode = new TrieNode(NodeType.Unknown, new Rlp(proof.Last()));
+            TrieNode trieNode = new TrieNode(NodeType.Unknown, proof.Last());
             trieNode.ResolveNode(null);
             for (int i = proof.Length; i > 0; i--)
             {

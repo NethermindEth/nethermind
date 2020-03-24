@@ -117,12 +117,12 @@ namespace Nethermind.Serialization.Rlp
             WriteByte((byte) value);
         }
 
-        protected virtual void WriteByte(byte byteToWrite)
+        public virtual void WriteByte(byte byteToWrite)
         {
             Data[Position++] = byteToWrite;
         }
 
-        protected virtual void Write(Span<byte> bytesToWrite)
+        public virtual void Write(Span<byte> bytesToWrite)
         {
             bytesToWrite.CopyTo(Data.AsSpan(Position, bytesToWrite.Length));
             Position += bytesToWrite.Length;
