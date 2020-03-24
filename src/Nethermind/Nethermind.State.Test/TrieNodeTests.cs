@@ -65,7 +65,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Throws_trie_exception_on_unexpected_format()
         {
-            TrieNode trieNode = new TrieNode(NodeType.Unknown, new Rlp(new byte[42]));
+            TrieNode trieNode = new TrieNode(NodeType.Unknown, new byte[42]);
             Assert.Throws<TrieException>(() => trieNode.ResolveNode(new PatriciaTree()));
         }
 
@@ -139,7 +139,7 @@ namespace Nethermind.Store.Test
                     trieNode.SetChild(j, _tiniestLeaf);
                 }
 
-                Rlp rlp = trieNode.RlpEncode();
+                byte[] rlp = trieNode.RlpEncode();
                 TrieNode restoredNode = new TrieNode(NodeType.Branch, rlp);
 
                 for (int childIndex = 0; childIndex < 16; childIndex++)
@@ -164,7 +164,7 @@ namespace Nethermind.Store.Test
             TrieNode trieNode = new TrieNode(NodeType.Branch);
             trieNode.SetChild(11, _tiniestLeaf);
 
-            Rlp rlp = trieNode.RlpEncode();
+            byte[] rlp = trieNode.RlpEncode();
 
             TrieNode decoded = new TrieNode(NodeType.Unknown, rlp);
             decoded.ResolveNode(null);
@@ -181,7 +181,7 @@ namespace Nethermind.Store.Test
             TrieNode trieNode = new TrieNode(NodeType.Branch);
             trieNode.SetChild(11, _heavyLeaf);
 
-            Rlp rlp = trieNode.RlpEncode();
+            byte[] rlp = trieNode.RlpEncode();
 
             TrieNode decoded = new TrieNode(NodeType.Unknown, rlp);
             decoded.ResolveNode(null);
@@ -197,7 +197,7 @@ namespace Nethermind.Store.Test
             trieNode.Key = new HexPrefix(false, 5);
             trieNode.SetChild(0, _tiniestLeaf);
 
-            Rlp rlp = trieNode.RlpEncode();
+            byte[] rlp = trieNode.RlpEncode();
 
             TrieNode decoded = new TrieNode(NodeType.Unknown, rlp);
             decoded.ResolveNode(null);
@@ -215,7 +215,7 @@ namespace Nethermind.Store.Test
             trieNode.Key = new HexPrefix(false, 5);
             trieNode.SetChild(0, _heavyLeaf);
 
-            Rlp rlp = trieNode.RlpEncode();
+            byte[] rlp = trieNode.RlpEncode();
 
             TrieNode decoded = new TrieNode(NodeType.Unknown, rlp);
             decoded.ResolveNode(null);
@@ -242,7 +242,7 @@ namespace Nethermind.Store.Test
         {
             TrieNode trieNode = new TrieNode(NodeType.Branch);
             trieNode[11] = _heavyLeaf;
-            Rlp rlp = trieNode.RlpEncode();
+            byte[] rlp = trieNode.RlpEncode();
             TrieNode decoded = new TrieNode(NodeType.Branch, rlp);
 
             Keccak getResult = decoded.GetChildHash(11);
@@ -254,7 +254,7 @@ namespace Nethermind.Store.Test
         {
             TrieNode trieNode = new TrieNode(NodeType.Branch);
             trieNode[11] = _tiniestLeaf;
-            Rlp rlp = trieNode.RlpEncode();
+            byte[] rlp = trieNode.RlpEncode();
             TrieNode decoded = new TrieNode(NodeType.Branch, rlp);
 
             Keccak getResult = decoded.GetChildHash(11);
@@ -267,7 +267,7 @@ namespace Nethermind.Store.Test
             TrieNode trieNode = new TrieNode(NodeType.Extension);
             trieNode[0] = _heavyLeaf;
             trieNode.Key = new HexPrefix(false, 5);
-            Rlp rlp = trieNode.RlpEncode();
+            byte[] rlp = trieNode.RlpEncode();
             TrieNode decoded = new TrieNode(NodeType.Extension, rlp);
 
             Keccak getResult = decoded.GetChildHash(0);
@@ -280,7 +280,7 @@ namespace Nethermind.Store.Test
             TrieNode trieNode = new TrieNode(NodeType.Extension);
             trieNode[0] = _tiniestLeaf;
             trieNode.Key = new HexPrefix(false, 5);
-            Rlp rlp = trieNode.RlpEncode();
+            byte[] rlp = trieNode.RlpEncode();
             TrieNode decoded = new TrieNode(NodeType.Extension, rlp);
 
             Keccak getResult = decoded.GetChildHash(0);
@@ -505,7 +505,7 @@ namespace Nethermind.Store.Test
                 node.SetChild(i, randomTrieNode);
             }
 
-            Rlp rlp = node.RlpEncode();
+            byte[] rlp = node.RlpEncode();
 
             TrieNode restoredNode = new TrieNode(NodeType.Branch, rlp);
 

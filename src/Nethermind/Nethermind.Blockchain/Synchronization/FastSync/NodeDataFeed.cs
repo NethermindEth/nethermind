@@ -595,7 +595,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
         private void HandleTrieNode(StateSyncItem currentStateSyncItem, byte[] currentResponseItem, ref int invalidNodes)
         {
             NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
-            TrieNode trieNode = new TrieNode(NodeType.Unknown, new Rlp(currentResponseItem));
+            TrieNode trieNode = new TrieNode(NodeType.Unknown, currentResponseItem);
             trieNode.ResolveNode(null);
             switch (trieNode.NodeType)
             {
