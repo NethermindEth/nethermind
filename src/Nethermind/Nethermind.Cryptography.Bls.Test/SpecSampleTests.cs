@@ -42,6 +42,7 @@ namespace Nethermind.Cryptography.Bls.Test
             // Act
             using var bls = new BLSHerumi(parameters);
             var result = new byte[96];
+            //var success = bls.TrySignData(privateKey, messageData, result.AsSpan(), out var bytesWritten);
             var success = bls.TrySignData(messageData, result.AsSpan(), out var bytesWritten);
 
             Console.WriteLine("Output:");
