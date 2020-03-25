@@ -339,6 +339,8 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                 {
                     if (_logger.IsError) _logger.Error($"POSSIBLE FAST SYNC CORRUPTION | Nodes left after the root node saved - count: {TotalNodesPending}");
                 }
+                
+                _alreadySaved.Clear();
             }
 
             _syncProgress.ReportSynced(syncItem.Level, syncItem.ParentBranchChildIndex, syncItem.BranchChildIndex, syncItem.NodeDataType, NodeProgressState.Saved);

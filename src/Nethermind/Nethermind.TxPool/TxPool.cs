@@ -43,7 +43,7 @@ namespace Nethermind.TxPool
 
         private readonly ConcurrentDictionary<Address, AddressNonces> _nonces = new ConcurrentDictionary<Address, AddressNonces>();
 
-        private LruCache<Keccak, object> _hashCache = new LruCache<Keccak, object>(2 << 18);
+        private LruCache<Keccak, object> _hashCache = new LruCache<Keccak, object>(MemoryAllowance.TxHashCacheSize);
 
         /// <summary>
         /// Number of blocks after which own transaction will not be resurrected any more
@@ -62,7 +62,7 @@ namespace Nethermind.TxPool
             new ThreadLocal<Random>(() => new Random(Interlocked.Increment(ref _seed)));
 
         private readonly SortedPool<Keccak, Transaction> _transactions =
-            new DistinctValueSortedPool<Keccak, Transaction>(1024, (t1, t2) => t1.GasPrice.CompareTo(t2.GasPrice), PendingTransactionComparer.Default);
+            new DistinctValueSortedPool<Keccak, Transaction>(MemoryAllowance.MemPoolSize, (t1, t2) => t1.GasPrice.CompareTo(t2.GasPrice), PendingTransactionComparer.Default);
 
         private readonly ISpecProvider _specProvider;
         private readonly IStateProvider _stateProvider;
