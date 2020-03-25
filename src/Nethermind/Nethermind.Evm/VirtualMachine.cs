@@ -71,7 +71,7 @@ namespace Nethermind.Evm
 
         private readonly IBlockhashProvider _blockhashProvider;
         private readonly ISpecProvider _specProvider;
-        private readonly LruCache<Keccak, CodeInfo> _codeCache = new LruCache<Keccak, CodeInfo>(4 * 1024);
+        private readonly LruCache<Keccak, CodeInfo> _codeCache = new LruCache<Keccak, CodeInfo>(MemoryAllowance.CodeCacheSize);
         private readonly ILogger _logger;
         private readonly IStateProvider _state;
         private readonly Stack<EvmState> _stateStack = new Stack<EvmState>();
@@ -734,7 +734,7 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            BigInteger res = a.Sign * BigInteger.Remainder(BigInteger.Abs(a),BigInteger.Abs(b));
+                            BigInteger res = a.Sign * BigInteger.Remainder(BigInteger.Abs(a), BigInteger.Abs(b));
                             stack.PushSignedInt(in res);
                         }
 
@@ -1417,7 +1417,7 @@ namespace Nethermind.Evm
                                 _txTracer.ReportBlockHash(blockHash);
                             }
                         }
-                        
+
                         break;
                     }
                     case Instruction.COINBASE:
@@ -1613,7 +1613,7 @@ namespace Nethermind.Evm
 
                         if (spec.IsEip2200Enabled)
                         {
-                            if(_txTracer.IsTracingRefunds) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - GasCostOf.SStoreNetMeteredEip2200 + 1);
+                            if (_txTracer.IsTracingRefunds) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - GasCostOf.SStoreNetMeteredEip2200 + 1);
                             if (gasAvailable <= GasCostOf.CallStipend)
                             {
                                 EndInstructionTraceError(OutOfGasErrorText);
@@ -1959,7 +1959,7 @@ namespace Nethermind.Evm
                             EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
-                        
+
                         stack.Dup(instruction - Instruction.DUP1 + 1);
                         break;
                     }
@@ -2096,7 +2096,7 @@ namespace Nethermind.Evm
                         Address contractAddress = instruction == Instruction.CREATE
                             ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
                             : ContractAddress.From(env.ExecutingAccount, salt, initCode);
-                        
+
                         _state.IncrementNonce(env.ExecutingAccount);
 
                         int stateSnapshot = _state.TakeSnapshot();
@@ -2257,7 +2257,7 @@ namespace Nethermind.Evm
 
                         if (!transferValue.IsZero)
                         {
-                            if(_txTracer.IsTracingRefunds) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
+                            if (_txTracer.IsTracingRefunds) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
                             gasLimitUl += GasCostOf.CallStipend;
                         }
 
