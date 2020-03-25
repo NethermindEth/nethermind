@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             NetBridge netBridge = new NetBridge(enode, Substitute.For<ISyncServer>(), Substitute.For<IPeerManager>());
             NetModule module = new NetModule(LimboLogs.Instance, netBridge);
             string response = RpcTest.TestSerializedRequest<INetModule>(module, "net_listening");
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\": \"true\",\"id\":67}", response);
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}", response);
         }
     }
 }
