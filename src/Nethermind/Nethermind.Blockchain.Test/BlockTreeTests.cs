@@ -790,6 +790,22 @@ namespace Nethermind.Blockchain.Test
         }
         
         [Test]
+        public void Pending_returns_head()
+        {
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+
+            BlockTree blockTree = BuildBlockTree();
+            blockTree.SuggestBlock(block0);
+            blockTree.SuggestBlock(block1);
+            blockTree.UpdateMainChain(block0);
+            blockTree.BestSuggestedHeader.Should().Be(block1.Header);
+            blockTree.PendingHash.Should().Be(block0.Hash);
+            ((IBlockFinder) blockTree).FindPendingHeader().Should().BeSameAs(block0.Header);
+            ((IBlockFinder) blockTree).FindPendingBlock().Should().BeSameAs(block0);
+        }
+        
+        [Test]
         public void Is_main_chain_returns_true_on_fast_sync_block()
         {
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
