@@ -170,7 +170,8 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
             CollectAndFinalize();
 
             _allCount.Should().Be(expectedAllCount);
-            _finalizedCount.Should().Be(expectedAllCount - Capacity - 1);
+            _finalizedCount.Should().BeLessOrEqualTo(expectedAllCount - Capacity);
+            pool.Count.Should().Be(Capacity);
         }
 
         [Test]
@@ -199,8 +200,9 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
 
             CollectAndFinalize();
 
-            _finalizedCount.Should().Be(Capacity * (capacityMultiplier - 1) - 1);
+            _finalizedCount.Should().BeLessOrEqualTo(Capacity * (capacityMultiplier - 1));
             _allCount.Should().Be(Capacity * capacityMultiplier);
+            pool.Count.Should().Be(Capacity);
         }
 
         [Test]
