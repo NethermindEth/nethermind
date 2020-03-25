@@ -84,7 +84,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private async Task<RocksDbProvider> GetRocksDbProvider(IDbConfig dbConfig, string basePath, bool useReceiptsDb)
         {
-            RocksDbProvider debugRecorder = new RocksDbProvider(_context.LogManager, _context.Config<NdmConfig>().Enabled);
+            RocksDbProvider debugRecorder = new RocksDbProvider(_context.LogManager, _context.Config<INdmConfig>().Enabled);
             ThisNodeInfo.AddInfo("DB location  :", $"{basePath}");
             await debugRecorder.Init(basePath, dbConfig, useReceiptsDb);
             return debugRecorder;

@@ -52,7 +52,6 @@ namespace Nethermind.Db.Rocks
             allInitializers.Add(Task.Run(() => BloomDb = new BloomRocksDb(basePath, dbConfig, _logManager)));
             allInitializers.Add(Task.Run(() => ConfigsDb = _addNdmDbs ? new ConfigsRocksDb(basePath, dbConfig, _logManager) : (IDb)new MemDb()));
             allInitializers.Add(Task.Run(() => EthRequestsDb = _addNdmDbs ? new EthRequestsRocksDb(basePath, dbConfig, _logManager) : (IDb)new MemDb()));
-            allInitializers.Add(Task.Run(() => BloomDb = new BloomRocksDb(basePath, dbConfig, _logManager)));
 
             allInitializers.Add(Task.Run(() =>
             {
