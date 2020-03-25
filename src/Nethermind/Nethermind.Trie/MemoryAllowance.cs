@@ -18,6 +18,6 @@ namespace Nethermind.Trie
 {
     public static class MemoryAllowance
     {
-        public static int TrieNodeCacheSize { get; set; } = 2 << 18;
+        public static int TrieNodeCacheSize { get; set; } = 2 << 12;
     }
 }

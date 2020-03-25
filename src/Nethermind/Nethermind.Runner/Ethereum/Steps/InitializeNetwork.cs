@@ -86,8 +86,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
 
             // Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", "8192");
-            ThisNodeInfo.AddInfo("Mem est netty:", $"{Environment.ProcessorCount * 2 * (2 << _networkConfig.NettyArenaOrder) / 1024 / 1024}MB");
-            ThisNodeInfo.AddInfo("Mem est peers:", $"{_networkConfig.ActivePeersMaxCount}MB");
+            ThisNodeInfo.AddInfo("Mem est netty:", $"{(2 << _networkConfig.NettyArenaOrder) * 8192 / 1024 / 1024}MB".PadLeft(8));
+            ThisNodeInfo.AddInfo("Mem est peers:", $"{_networkConfig.ActivePeersMaxCount}MB".PadLeft(8));
             Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", _networkConfig.NettyArenaOrder.ToString());
 
             int maxPeersCount = _networkConfig.ActivePeersMaxCount;
