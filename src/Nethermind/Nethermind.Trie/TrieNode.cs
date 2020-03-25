@@ -40,7 +40,7 @@ namespace Nethermind.Trie
             get
             {
                 int unaligned = (Keccak == null ? MemorySizes.RefSize : MemorySizes.RefSize + Keccak.MemorySize) +
-                                (MemorySizes.RefSize + FullRlp?.MemorySize ?? MemorySizes.RefSize) +
+                                (MemorySizes.RefSize + FullRlp?.Length ?? MemorySizes.ArrayOverhead) +
                                 (MemorySizes.RefSize + _rlpStream?.MemorySize ?? MemorySizes.RefSize) +
                                 MemorySizes.RefSize + (MemorySizes.ArrayOverhead + _data?.Length * MemorySizes.RefSize ?? MemorySizes.ArrayOverhead) /* _data */ +
                                 MemorySizes.SmallObjectOverhead
@@ -62,11 +62,11 @@ namespace Nethermind.Trie
             Keccak = keccak;
         }
 
-        public TrieNode(NodeType nodeType, Rlp rlp)
+        public TrieNode(NodeType nodeType, byte[] rlp)
         {
             NodeType = nodeType;
             FullRlp = rlp;
-            _rlpStream = rlp.Bytes.AsRlpStream();
+            _rlpStream = rlp.AsRlpStream();
         }
 
         public bool IsValidWithOneNodeLess
@@ -111,7 +111,7 @@ namespace Nethermind.Trie
         }
 
         public Keccak Keccak { get; set; }
-        public Rlp FullRlp { get; private set; }
+        public byte[] FullRlp { get; private set; }
         public NodeType NodeType { get; private set; }
 
         public bool IsLeaf => NodeType == NodeType.Leaf;
@@ -197,12 +197,12 @@ namespace Nethermind.Trie
                         }
 
                         FullRlp = tree.GetNode(Keccak, allowCaching);
-                        if (FullRlp?.Bytes == null)
+                        if (FullRlp == null)
                         {
                             throw new TrieException($"Trie returned a malformed RLP for node {Keccak}");
                         }
 
-                        _rlpStream = FullRlp.Bytes.AsRlpStream();
+                        _rlpStream = FullRlp.AsRlpStream();
                     }
                 }
                 else
@@ -262,7 +262,7 @@ namespace Nethermind.Trie
             if (FullRlp == null || IsDirty)
             {
                 FullRlp = RlpEncode();
-                _rlpStream = FullRlp.Bytes.AsRlpStream();
+                _rlpStream = FullRlp.AsRlpStream();
             }
 
             /* nodes that are descendants of other nodes are stored inline
@@ -274,12 +274,12 @@ namespace Nethermind.Trie
             }
 
             Metrics.TreeNodeHashCalculations++;
-            Keccak = Keccak.Compute(FullRlp.Bytes);
+            Keccak = Keccak.Compute(FullRlp);
         }
 
-        internal Rlp RlpEncode()
+        internal byte[] RlpEncode()
         {
-            Rlp rlp = _nodeDecoder.Encode(this);
+            byte[] rlp = _nodeDecoder.Encode(this);
             // just included here to improve the class reading
             // after some analysis I believe that any non-test Ethereum cases of a trie ever have nodes with RLP shorter than 32 bytes
             // if (rlp.Bytes.Length < 32)
@@ -355,7 +355,7 @@ namespace Nethermind.Trie
                     {
                         _rlpStream.Position--;
                         Span<byte> fullRlp = _rlpStream.PeekNextItem();
-                        TrieNode child = new TrieNode(NodeType.Unknown, new Rlp(fullRlp.ToArray()));
+                        TrieNode child = new TrieNode(NodeType.Unknown, fullRlp.ToArray());
                         _data[i] = child;
                         break;
                     }
@@ -512,7 +512,7 @@ namespace Nethermind.Trie
 
         private class TrieNodeDecoder
         {
-            private Rlp RlpEncodeBranch(TrieNode item)
+            private byte[] RlpEncodeBranch(TrieNode item)
             {
                 int valueRlpLength = AllowBranchValues ? Rlp.LengthOf(item.Value) : 1;
                 int contentLength = valueRlpLength + GetChildrenRlpLength(item);
@@ -531,10 +531,10 @@ namespace Nethermind.Trie
                     result[position] = 128;
                 }
 
-                return new Rlp(result);
+                return result;
             }
 
-            public Rlp Encode(TrieNode item)
+            public byte[] Encode(TrieNode item)
             {
                 Metrics.TreeNodeRlpEncodings++;
 
@@ -552,7 +552,7 @@ namespace Nethermind.Trie
                 };
             }
 
-            private static Rlp EncodeExtension(TrieNode item)
+            private static byte[] EncodeExtension(TrieNode item)
             {
                 byte[] keyBytes = item.Key.ToBytes();
                 TrieNode nodeRef = item.GetChild(0);
@@ -570,17 +570,17 @@ namespace Nethermind.Trie
                     // so E - - - - - - - - - - - - - - - 
                     // so |
                     // so |
-                    rlpStream.Encode(nodeRef.FullRlp);
+                    rlpStream.Write(nodeRef.FullRlp);
                 }
                 else
                 {
                     rlpStream.Encode(nodeRef.Keccak);
                 }
 
-                return new Rlp(rlpStream.Data);
+                return rlpStream.Data;
             }
 
-            private static Rlp EncodeLeaf(TrieNode node)
+            private static byte[] EncodeLeaf(TrieNode node)
             {
                 if (node.Key == null)
                 {
@@ -594,7 +594,7 @@ namespace Nethermind.Trie
                 rlpStream.StartSequence(contentLength);
                 rlpStream.Encode(keyBytes);
                 rlpStream.Encode(node.Value);
-                return new Rlp(rlpStream.Data);
+                return rlpStream.Data;
             }
 
             private int GetChildrenRlpLength(TrieNode item)
@@ -658,7 +658,7 @@ namespace Nethermind.Trie
                             childNode.ResolveKey(false);
                             if (childNode.Keccak == null)
                             {
-                                Span<byte> fullRlp = childNode.FullRlp.Bytes.AsSpan();
+                                Span<byte> fullRlp = childNode.FullRlp.AsSpan();
                                 fullRlp.CopyTo(destination.Slice(position, fullRlp.Length));
                                 position += fullRlp.Length;
                             }

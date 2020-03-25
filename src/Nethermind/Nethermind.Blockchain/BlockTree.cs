@@ -1250,7 +1250,7 @@ namespace Nethermind.Blockchain
 
         public Keccak HeadHash => Head?.Hash;
         public Keccak GenesisHash => Genesis?.Hash;
-        public Keccak PendingHash => BestSuggestedHeader?.Hash;
+        public Keccak PendingHash => Head?.Hash;
 
         public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options)
         {

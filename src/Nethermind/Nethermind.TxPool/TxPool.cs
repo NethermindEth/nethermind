@@ -43,7 +43,7 @@ namespace Nethermind.TxPool
 
         private readonly ConcurrentDictionary<Address, AddressNonces> _nonces = new ConcurrentDictionary<Address, AddressNonces>();
 
-        private LruCache<Keccak, object> _hashCache = new LruCache<Keccak, object>(2 << 18);
+        private LruCache<Keccak, object> _hashCache = new LruCache<Keccak, object>(MemoryAllowance.TxHashCacheSize);
 
         /// <summary>
         /// Number of blocks after which own transaction will not be resurrected any more
@@ -62,7 +62,7 @@ namespace Nethermind.TxPool
             new ThreadLocal<Random>(() => new Random(Interlocked.Increment(ref _seed)));
 
         private readonly SortedPool<Keccak, Transaction> _transactions =
-            new DistinctValueSortedPool<Keccak, Transaction>(1024, (t1, t2) => t1.GasPrice.CompareTo(t2.GasPrice), PendingTransactionComparer.Default);
+            new DistinctValueSortedPool<Keccak, Transaction>(MemoryAllowance.MemPoolSize, (t1, t2) => t1.GasPrice.CompareTo(t2.GasPrice), PendingTransactionComparer.Default);
 
         private readonly ISpecProvider _specProvider;
         private readonly IStateProvider _stateProvider;
@@ -236,6 +236,24 @@ namespace Nethermind.TxPool
 
             // !!! do not change it to |=
             bool isKnown = _hashCache.Get(tx.Hash) != null;
+            
+            /* We have encountered multiple transactions that do not resolve sender address properly.
+             * We need to investigate what these txs are and why the sender address is resolved to null.
+             * Then we need to decide whether we really want to broadcast them.
+             */
+            if (tx.SenderAddress == null)
+            {
+                tx.SenderAddress = _ecdsa.RecoverAddress(tx, blockNumber);
+                if (tx.SenderAddress == null)
+                {
+                    return AddTxResult.PotentiallyUseless;
+                }
+            }
+            
+            /*
+             * we need to make sure that the sender is resolved before adding to the distinct tx pool
+             * as the address is used in the distinct value calculation
+             */
             if (!isKnown) { isKnown |= !_transactions.TryInsert(tx.Hash, tx); }
             if (!isKnown) { isKnown |= _txStorage.Get(tx.Hash) != null; }
             
@@ -247,16 +265,6 @@ namespace Nethermind.TxPool
             }
 
             _hashCache.Set(tx.Hash, _hashCacheMarker);
-
-            /* We have encountered multiple transactions that do not resolve sender address properly.
-             * We need to investigate what these txs are and why the sender address is resolved to null.
-             * Then we need to decide whether we really want to broadcast them.
-             */
-            if (tx.SenderAddress == null)
-            {
-                tx.SenderAddress = _ecdsa.RecoverAddress(tx, blockNumber);
-            }
-
 
             HandleOwnTransaction(tx, isPersistentBroadcast);
 
