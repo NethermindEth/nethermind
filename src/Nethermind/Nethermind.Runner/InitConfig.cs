@@ -28,6 +28,7 @@ namespace Nethermind.Runner
         public bool PeerManagerEnabled { get; set; } = true;
         public bool IsMining { get; set; } = false;
         public string ChainSpecPath { get; set; } = "chainspec/foundation.json";
+        public string PluginsDirectory { get; set; } = "plugins";
         public string BaseDbPath { get; set; } = "db";
         public string LogFileName { get; set; } = "log.txt";
         public string? GenesisHash { get; set; }
