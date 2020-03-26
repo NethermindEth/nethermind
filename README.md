@@ -53,7 +53,8 @@ Instructions for other distributions such as CentOS, Fedora or Debian are availa
 
 *	Mac https://www.microsoft.com/net/download?initial-os=macos
 * `brew install gmp && brew install snappy && brew install lz4 && brew install zstd`
-(you may need to call brew install rocksdb if you have issues on launch)
+* if you have issues on launch you may need to call
+`brew install rocksdb`
 
 ### Build
 
