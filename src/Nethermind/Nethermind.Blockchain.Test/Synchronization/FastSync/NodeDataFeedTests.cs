@@ -66,7 +66,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             BuildRequestAndHandleResponse(branch, request, nodeDataFeed);
 
             byte[] value = tempDb.Get(branch.Keccak);
-            value.Should().BeEquivalentTo(branch.FullRlp.Bytes);
+            value.Should().BeEquivalentTo(branch.FullRlp);
             
             byte[] valueFromState = stateDB.Get(branch.Keccak);
             valueFromState.Should().BeNull();
@@ -79,12 +79,12 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             value.Should().BeNull();
             
             valueFromState = stateDB.Get(branch.Keccak);
-            valueFromState.Should().BeEquivalentTo(branch.FullRlp.Bytes);
+            valueFromState.Should().BeEquivalentTo(branch.FullRlp);
         }
 
         private static void BuildRequestAndHandleResponse(TrieNode node,  StateSyncBatch stateSyncBatch, NodeDataFeed nodeDataFeed)
         {
-            stateSyncBatch.Responses = new[] {node.FullRlp.Bytes};
+            stateSyncBatch.Responses = new[] {node.FullRlp};
             stateSyncBatch.AssignedPeer = new SyncPeerAllocation(new PeerInfo(Substitute.For<ISyncPeer>()));
             stateSyncBatch.AssignedPeer.AllocateBestPeer(Enumerable.Empty<PeerInfo>(), Substitute.For<INodeStatsManager>(), Substitute.For<IBlockTree>());
             
