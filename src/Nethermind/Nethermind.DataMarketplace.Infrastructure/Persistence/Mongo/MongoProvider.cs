@@ -34,6 +34,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo
         private static IMongoClient? _client;
         private readonly INdmMongoConfig _config;
 
+        static MongoProvider()
+        {
+            RegisterConventions();
+        }
+        
         public MongoProvider(INdmMongoConfig config, ILogManager logManager)
         {
             _config = config;
@@ -42,11 +47,10 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo
             {
                 return;
             }
-
-            RegisterConventions();
+            
             MongoUrl connectionUrl = new MongoUrl(config.ConnectionString);
             MongoClientSettings clientSettings = MongoClientSettings.FromUrl(connectionUrl);
-            if (_config.LogQueries ?? false)
+            if (_config.LogQueries)
             {
                 clientSettings.ClusterConfigurator = cb =>
                 {
