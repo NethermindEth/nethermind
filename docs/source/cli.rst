@@ -1,7 +1,8 @@
 CLI
 ***
 
-CLI access is not currently included in the Nethermind launcher but will be added very soon.
+After launching ./Nethermind.Launcher you have two options - Node and CLI.
+If you launch the Node (you have to ensure that the JsonRpc.Enabled is set to true either by enabling it when Launcher asks about it or by manually editing the relevant config file or by passing --JsonRpc.Enabled true parameter after the Launcher command) in one process and then launch the CLI in another process you will see available commands inside the CLI.
 
 admin
 ^^^^^
