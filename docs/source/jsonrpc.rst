@@ -58,7 +58,7 @@ clique
 debug
 ^^^^^
 
- debug_deleteChainSlice(startNumber, endNumber)
+ debug_deleteChainSlice(startNumber)
   Deletes a slice of a chain from the tree on all branches (Nethermind specific).
 
  debug_dumpBlock(blockParameter)

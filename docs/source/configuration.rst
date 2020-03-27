@@ -4,144 +4,6 @@ Configuration
 Use '/' as the path separator so the configs can be shared between all platforms supported (Linux, Windows, MacOS).
 '--config', '--baseDbPath', and '--log' options are available from the command line to select config file, base DB directory prefix and log level respectively. 
 
-BloomConfig
-^^^^^^^^^^^
-
- Index
-   Defines whether the Bloom index is used. Bloom index speeds up rpc log searches.
-   default value: true
-
- IndexLevelBucketSizes
-   Defines multipliers for index levels. Can be tweaked per chain to boost performance.
-   default value: [4, 8, 8]
-
- Migration
-   Defines if migration of previously downloaded blocks to Bloom index will be done.
-   default value: false
-
- MigrationStatistics
-   Defines if migration statistics are to be calculated and output.
-   default value: false
-
-DbConfig
-^^^^^^^^
-
- BlockCacheSize
-
- BlockInfosDbBlockCacheSize
-
- BlockInfosDbCacheIndexAndFilterBlocks
-
- BlockInfosDbWriteBufferNumber
-
- BlockInfosDbWriteBufferSize
-
- BlocksDbBlockCacheSize
-
- BlocksDbCacheIndexAndFilterBlocks
-
- BlocksDbWriteBufferNumber
-
- BlocksDbWriteBufferSize
-
- BloomDbBlockCacheSize
-
- BloomDbCacheIndexAndFilterBlocks
-
- BloomDbWriteBufferNumber
-
- BloomDbWriteBufferSize
-
- CacheIndexAndFilterBlocks
-
- CodeDbBlockCacheSize
-
- CodeDbCacheIndexAndFilterBlocks
-
- CodeDbWriteBufferNumber
-
- CodeDbWriteBufferSize
-
- ConfigsDbBlockCacheSize
-
- ConfigsDbCacheIndexAndFilterBlocks
-
- ConfigsDbWriteBufferNumber
-
- ConfigsDbWriteBufferSize
-
- ConsumerDepositApprovalsDbBlockCacheSize
-
- ConsumerDepositApprovalsDbCacheIndexAndFilterBlocks
-
- ConsumerDepositApprovalsDbWriteBufferNumber
-
- ConsumerDepositApprovalsDbWriteBufferSize
-
- ConsumerReceiptsDbBlockCacheSize
-
- ConsumerReceiptsDbCacheIndexAndFilterBlocks
-
- ConsumerReceiptsDbWriteBufferNumber
-
- ConsumerReceiptsDbWriteBufferSize
-
- ConsumerSessionsDbBlockCacheSize
-
- ConsumerSessionsDbCacheIndexAndFilterBlocks
-
- ConsumerSessionsDbWriteBufferNumber
-
- ConsumerSessionsDbWriteBufferSize
-
- DepositsDbBlockCacheSize
-
- DepositsDbCacheIndexAndFilterBlocks
-
- DepositsDbWriteBufferNumber
-
- DepositsDbWriteBufferSize
-
- EthRequestsDbBlockCacheSize
-
- EthRequestsDbCacheIndexAndFilterBlocks
-
- EthRequestsDbWriteBufferNumber
-
- EthRequestsDbWriteBufferSize
-
- HeadersDbBlockCacheSize
-
- HeadersDbCacheIndexAndFilterBlocks
-
- HeadersDbWriteBufferNumber
-
- HeadersDbWriteBufferSize
-
- PendingTxsDbBlockCacheSize
-
- PendingTxsDbCacheIndexAndFilterBlocks
-
- PendingTxsDbWriteBufferNumber
-
- PendingTxsDbWriteBufferSize
-
- ReceiptsDbBlockCacheSize
-
- ReceiptsDbCacheIndexAndFilterBlocks
-
- ReceiptsDbWriteBufferNumber
-
- ReceiptsDbWriteBufferSize
-
- RecycleLogFileNum
-
- WriteAheadLogSync
-
- WriteBufferNumber
-
- WriteBufferSize
-
 DiscoveryConfig
 ^^^^^^^^^^^^^^^
 
@@ -230,7 +92,11 @@ InitConfig
 
  ChainSpecPath
    Path to the chain definition file (Parity chainspec or Geth genesis file).
-   default value: null
+   default value: chainspec/foundation.json
+
+ DiagnosticMode
+   Diagnostics modes
+   default value: None
 
  DiscoveryEnabled
    If 'false' then the node does not try to find nodes beyond the bootnodes configured.
@@ -264,9 +130,21 @@ InitConfig
    If 'false' then the node does not connect to newly discovered peers..
    default value: true
 
+ PluginsDirectory
+   Directory for Nethermind plugins like NDM.
+   default value: plugins
+
  ProcessingEnabled
    If 'false' then the node does not download/process new blocks..
    default value: true
+
+ ReceiptsMigration
+   If set to 'true' then receipts db will be migrated to new schema.
+   default value: false
+
+ RpcDbUrl
+   Url for remote node that will be used as DB source when 'DiagnosticMode' is set to'RpcDb'
+   default value: 
 
  StaticNodesPath
    Path to the file with a list of static nodes.
@@ -275,10 +153,6 @@ InitConfig
  StoreReceipts
    If set to 'false' then transaction receipts will not be stored in the database after a new block is processed. This setting is independent from downloading receipts in fast sync mode.
    default value: true
-
- UseMemDb
-   Diagnostics mode which uses an in-memory DB
-   default value: false
 
  WebSocketsEnabled
    Defines whether the WebSockets service is enabled on node startup at the 'HttpPort' - e.g. ws://localhost:8545/ws/json-rpc
@@ -491,93 +365,12 @@ SyncConfig
    If set to 'true' then in the Fast Blocks mode Nethermind generates smaller requests to avoid Geth from disconnecting. On the Geth heavy networks (mainnet) it is desired while on Parity or Nethermind heavy networks (Goerli, AuRa) it slows down the sync by a factor of ~4
    default value: true
 
-TxPoolConfig
-^^^^^^^^^^^^
-
- ObsoletePendingTransactionInterval
-   
-   default value: 15
-
- PeerNotificationThreshold
-   
-   default value: 5
-
- RemovePendingTransactionInterval
-   
-   default value: 600
-
 Sample configuration (mainnet)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ::
 
     {
-        "Bloom": {
-              "Index" : true,
-              "IndexLevelBucketSizes" : [4, 8, 8],
-              "Migration" : false,
-              "MigrationStatistics" : false
-        },
-        "Db": {
-              "BlockCacheSize" : [MISSING_DOCS],
-              "BlockInfosDbBlockCacheSize" : [MISSING_DOCS],
-              "BlockInfosDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
-              "BlockInfosDbWriteBufferNumber" : [MISSING_DOCS],
-              "BlockInfosDbWriteBufferSize" : [MISSING_DOCS],
-              "BlocksDbBlockCacheSize" : [MISSING_DOCS],
-              "BlocksDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
-              "BlocksDbWriteBufferNumber" : [MISSING_DOCS],
-              "BlocksDbWriteBufferSize" : [MISSING_DOCS],
-              "BloomDbBlockCacheSize" : [MISSING_DOCS],
-              "BloomDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
-              "BloomDbWriteBufferNumber" : [MISSING_DOCS],
-              "BloomDbWriteBufferSize" : [MISSING_DOCS],
-              "CacheIndexAndFilterBlocks" : [MISSING_DOCS],
-              "CodeDbBlockCacheSize" : [MISSING_DOCS],
-              "CodeDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
-              "CodeDbWriteBufferNumber" : [MISSING_DOCS],
-              "CodeDbWriteBufferSize" : [MISSING_DOCS],
-              "ConfigsDbBlockCacheSize" : [MISSING_DOCS],
-              "ConfigsDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
-              "ConfigsDbWriteBufferNumber" : [MISSING_DOCS],
-              "ConfigsDbWriteBufferSize" : [MISSING_DOCS],
-              "ConsumerDepositApprovalsDbBlockCacheSize" : [MISSING_DOCS],
-              "ConsumerDepositApprovalsDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
-              "ConsumerDepositApprovalsDbWriteBufferNumber" : [MISSING_DOCS],
-              "ConsumerDepositApprovalsDbWriteBufferSize" : [MISSING_DOCS],
-              "ConsumerReceiptsDbBlockCacheSize" : [MISSING_DOCS],
-              "ConsumerReceiptsDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
-              "ConsumerReceiptsDbWriteBufferNumber" : [MISSING_DOCS],
-              "ConsumerReceiptsDbWriteBufferSize" : [MISSING_DOCS],
-              "ConsumerSessionsDbBlockCacheSize" : [MISSING_DOCS],
-              "ConsumerSessionsDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
-              "ConsumerSessionsDbWriteBufferNumber" : [MISSING_DOCS],
-              "ConsumerSessionsDbWriteBufferSize" : [MISSING_DOCS],
-              "DepositsDbBlockCacheSize" : [MISSING_DOCS],
-              "DepositsDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
-              "DepositsDbWriteBufferNumber" : [MISSING_DOCS],
-              "DepositsDbWriteBufferSize" : [MISSING_DOCS],
-              "EthRequestsDbBlockCacheSize" : [MISSING_DOCS],
-              "EthRequestsDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
-              "EthRequestsDbWriteBufferNumber" : [MISSING_DOCS],
-              "EthRequestsDbWriteBufferSize" : [MISSING_DOCS],
-              "HeadersDbBlockCacheSize" : [MISSING_DOCS],
-              "HeadersDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
-              "HeadersDbWriteBufferNumber" : [MISSING_DOCS],
-              "HeadersDbWriteBufferSize" : [MISSING_DOCS],
-              "PendingTxsDbBlockCacheSize" : [MISSING_DOCS],
-              "PendingTxsDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
-              "PendingTxsDbWriteBufferNumber" : [MISSING_DOCS],
-              "PendingTxsDbWriteBufferSize" : [MISSING_DOCS],
-              "ReceiptsDbBlockCacheSize" : [MISSING_DOCS],
-              "ReceiptsDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
-              "ReceiptsDbWriteBufferNumber" : [MISSING_DOCS],
-              "ReceiptsDbWriteBufferSize" : [MISSING_DOCS],
-              "RecycleLogFileNum" : [MISSING_DOCS],
-              "WriteAheadLogSync" : [MISSING_DOCS],
-              "WriteBufferNumber" : [MISSING_DOCS],
-              "WriteBufferSize" : [MISSING_DOCS]
-        },
         "Discovery": {
               "BitsPerHop" : [MISSING_DOCS],
               "BootnodePongTimeout" : [MISSING_DOCS],
@@ -612,7 +405,8 @@ Sample configuration (mainnet)
         },
         "Init": {
               "BaseDbPath" : "db",
-              "ChainSpecPath" : null,
+              "ChainSpecPath" : chainspec/foundation.json,
+              "DiagnosticMode" : None,
               "DiscoveryEnabled" : true,
               "EnableUnsecuredDevWallet" : false,
               "GenesisHash" : null,
@@ -621,10 +415,12 @@ Sample configuration (mainnet)
               "LogDirectory" : null,
               "LogFileName" : "log.txt",
               "PeerManagerEnabled" : true,
+              "PluginsDirectory" : plugins,
               "ProcessingEnabled" : true,
+              "ReceiptsMigration" : false,
+              "RpcDbUrl" : ,
               "StaticNodesPath" : "Data/static-nodes.json",
               "StoreReceipts" : true,
-              "UseMemDb" : false,
               "WebSocketsEnabled" : false
         },
         "JsonRpc": {
@@ -690,10 +486,5 @@ Sample configuration (mainnet)
               "PivotTotalDifficulty" : null,
               "SynchronizationEnabled" : true,
               "UseGethLimitsInFastBlocks" : true
-        },
-        "TxPool": {
-              "ObsoletePendingTransactionInterval" : 15,
-              "PeerNotificationThreshold" : 5,
-              "RemovePendingTransactionInterval" : 600
         },
     }
