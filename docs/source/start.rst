@@ -99,3 +99,8 @@ At some point the entire state is downloaded and the node enters the full sync m
 
 Now you can launch CLI in the separate process (launching Nethermind.Launcher again and selecting CLI instead of Node).
 You can read more about `CLI here <https://nethermind.readthedocs.io/en/latest/cli.html>`_.)
+
+
+You can also connect to the node from Metamask by selecting localhost:8545 from the Metamask network list.
+
+.. image:: metamask/localhost.png
