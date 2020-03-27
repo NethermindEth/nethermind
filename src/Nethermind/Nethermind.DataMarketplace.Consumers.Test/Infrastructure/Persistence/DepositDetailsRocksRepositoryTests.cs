@@ -50,8 +50,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
                 Deposit deposit = new Deposit(TestItem.KeccakA, 100, 100, 100);
                 DataAssetProvider provider = new DataAssetProvider(TestItem.AddressA, "provider");
                 DataAsset dataAsset = new DataAsset(TestItem.KeccakA, "data_asset", "desc", 1, DataAssetUnitType.Time, 1000, 10000, new DataAssetRules(new DataAssetRule(1), null), provider, null, QueryType.Stream, DataAssetState.Published, null, false, null);
-                _cases = new List<DepositDetails>();
-                _cases.Add(new DepositDetails(
+                DepositDetails details = new DepositDetails(
                     deposit,
                     dataAsset,
                     TestItem.AddressA,
@@ -67,7 +66,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
                     false,
                     null,
                     0,
-                    6));
+                    6);
+                _cases = new List<DepositDetails>();
+                _cases.Add(details);
 
                 _cases.Add(new DepositDetails(
                     deposit,
