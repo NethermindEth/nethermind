@@ -7,13 +7,14 @@ Setup a VM
 ^^^^^^^^^^
 
 If you are not launching on your laptop/desktop then you will probably want to setup a cloud VM.
-You cand more info about setting up everything with selected cloud providers `here <https://nethermind.readthedocs.io/en/latest/cloud.html>`_.
-You can check supported operating systems and architectures `here <https://nethermind.readthedocs.io/en/latest/platforms.html>`_ and hardware requirements `here <https://nethermind.readthedocs.io/en/latest/hardware_requirements.html>`_
+You cand more info about setting up everything with selected `cloud providers <https://nethermind.readthedocs.io/en/latest/cloud.html>`_.
+Mke sure that you configure `firewall <https://nethermind.readthedocs.io/en/latest/firewall_configuration.html>`_ properly.
+You can check `supported operating systems and architectures <https://nethermind.readthedocs.io/en/latest/platforms.html>`_ and `hardware requirements <https://nethermind.readthedocs.io/en/latest/hardware_requirements.html>`_
 
 Download 
 ^^^^^^^^
 
-You need to download the Nethermind package first (read instructions `here <https://nethermind.readthedocs.io/en/latest/download.html>`_.)
+You need to download the Nethermind package first (read `download instructions <https://nethermind.readthedocs.io/en/latest/download.html>`_.)
 
 Launch
 ^^^^^^
@@ -97,4 +98,4 @@ At some point the entire state is downloaded and the node enters the full sync m
 
 
 Now you can launch CLI in the separate process (launching Nethermind.Launcher again and selecting CLI instead of Node).
-You can read more about CLI `here <https://nethermind.readthedocs.io/en/latest/cli.html>`_.)
+You can read more about `CLI here <https://nethermind.readthedocs.io/en/latest/cli.html>`_.)
