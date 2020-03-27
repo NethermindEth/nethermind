@@ -74,7 +74,7 @@
     <Content Remove="out\**" />
     <Content Remove="keystore\**" />
     <None Remove="plugins\readme.txt" />
-    <Content Include="plugins\readme.txt">
+    <Content Include="plugins\**">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
