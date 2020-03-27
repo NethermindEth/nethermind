@@ -18,6 +18,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
+#pragma warning disable 618
 
 namespace Nethermind.Core.Test.Encoding
 {

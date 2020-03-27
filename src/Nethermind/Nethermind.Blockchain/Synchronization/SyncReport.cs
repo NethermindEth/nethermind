@@ -70,7 +70,6 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
         {
-            _syncModeChanged = true;
             _logger.Info($"Sync mode changed from {e.Previous} to {e.Current}");
         }
 
@@ -134,7 +133,6 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         private bool _reportedFastBlocksSummary;
-        private bool _syncModeChanged;
         private int _lastTimeComplainedAboutNoPeers;
 
         private void WriteSyncReport()
