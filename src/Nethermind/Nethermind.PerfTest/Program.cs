@@ -153,6 +153,11 @@ namespace Nethermind.PerfTest
                 return _blockTree.FindHeader(blockNumber, options);
             }
 
+            public Keccak FindBlockHash(long blockNumber)
+            {
+                return _blockTree.FindBlockHash(blockNumber);
+            }
+
             public bool IsMainChain(BlockHeader blockHeader)
             {
                 return _blockTree.IsMainChain(blockHeader);

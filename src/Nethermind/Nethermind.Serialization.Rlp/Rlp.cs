@@ -17,7 +17,6 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.IO;
 using System.Numerics;
 using System.Reflection;
 using Nethermind.Core;
@@ -102,7 +101,11 @@ namespace Nethermind.Serialization.Rlp
                             continue;
                         }
 
-                        Decoders[implementedInterface.GenericTypeArguments[0]] = (IRlpDecoder) Activator.CreateInstance(type);
+                        var key = implementedInterface.GenericTypeArguments[0];
+                        if (!Decoders.ContainsKey(key))
+                        {
+                            Decoders[key] = (IRlpDecoder) Activator.CreateInstance(type);
+                        }
                     }
                 }
             }

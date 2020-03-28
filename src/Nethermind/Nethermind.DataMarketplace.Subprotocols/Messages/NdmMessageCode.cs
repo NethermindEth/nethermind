@@ -14,6 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
+using System.Reflection;
+
 namespace Nethermind.DataMarketplace.Subprotocols.Messages
 {
     public class NdmMessageCode
@@ -49,5 +52,42 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
         public const int RequestEth = 0x1C;
         public const int EthRequested = 0x1D;
         public const int GraceUnitsExceeded = 0x1E;
+
+        public static bool IsProviderOnly(int messageCode)
+        {
+            return messageCode == ConsumerAddressChanged
+                   || messageCode == GetDataAssets
+                   || messageCode == GetDepositApprovals
+                   || messageCode == DataDeliveryReceipt
+                   || messageCode == DataRequest
+                   || messageCode == EnableDataStream
+                   || messageCode == DisableDataStream
+                   || messageCode == FinishSession
+                   || messageCode == RequestDepositApproval
+                   || messageCode == RequestEth;
+        }
+
+        public static bool IsRequestResponse(int messageCode)
+        {
+            return messageCode == DataRequestResult
+                   || messageCode == EthRequested;
+        }
+        
+        private static Dictionary<int, string>? _descriptions;
+        
+        public static string? GetDescription(int messageCode)
+        {
+            if (_descriptions == null)
+            {
+                _descriptions = new Dictionary<int, string>();
+                foreach (FieldInfo fieldInfo in typeof(NdmMessageCode).GetFields(BindingFlags.Static | BindingFlags.Public))
+                {
+                    _descriptions.Add((int)(fieldInfo.GetValue(null) ?? 0), fieldInfo.Name);
+                }
+            }
+
+            bool success = _descriptions.TryGetValue(messageCode, out string? description);
+            return success ? description : "unknown";
+        }
     }
 }

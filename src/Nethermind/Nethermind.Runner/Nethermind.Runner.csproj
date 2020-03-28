@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>netcoreapp3.0</TargetFramework>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
     <LangVersion>8.0</LangVersion>
     <ServerGarbageCollection>true</ServerGarbageCollection>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
@@ -14,9 +14,9 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.CommandLineUtils" Version="1.1.1" />
     <PackageReference Include="NLog.Targets.Seq" Version="1.1.0" />
-    <PackageReference Include="NLog" Version="4.6.8" />
-    <PackageReference Include="Seq.Api" Version="5.1.1" />
-    <PackageReference Include="YamlDotNet" Version="8.0.0" />
+    <PackageReference Include="NLog" Version="4.7.0" />
+    <PackageReference Include="Seq.Api" Version="5.1.2" />
+    <PackageReference Include="YamlDotNet" Version="8.1.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Cli\Nethermind.Cli.csproj" />
@@ -74,7 +74,7 @@
     <Content Remove="out\**" />
     <Content Remove="keystore\**" />
     <None Remove="plugins\readme.txt" />
-    <Content Include="plugins\readme.txt">
+    <Content Include="plugins\**">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

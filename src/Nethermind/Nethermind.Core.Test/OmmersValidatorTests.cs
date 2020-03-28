@@ -17,7 +17,6 @@
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Validators;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using NSubstitute;

@@ -47,10 +47,9 @@ namespace Nethermind.JsonRpc.Modules.Net
             return ResultWrapper<string>.Success(_netVersionString);
         }
 
-        [Todo(Improve.MissingFunctionality, "Implement net_listening")]
         public ResultWrapper<bool> net_listening()
         {
-            return ResultWrapper<bool>.Success(false);
+            return ResultWrapper<bool>.Success(true);
         }
 
         public ResultWrapper<long> net_peerCount()

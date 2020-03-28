@@ -16,6 +16,7 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Stats;
@@ -24,7 +25,7 @@ using Nethermind.Stats.Model;
 namespace Nethermind.Network.Benchmarks
 {
     [MemoryDiagnoser]
-    [CoreJob(baseline: true)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class NodeStatsCtorBenchmarks
     {
         private ILogManager _logManager;

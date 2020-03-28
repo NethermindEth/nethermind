@@ -38,7 +38,7 @@ namespace Nethermind.BeaconNode.Test.Genesis
             bool useBls = true;
 
             // Arrange
-            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider(useBls);
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider(useBls, useStore: true);
 
             ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
@@ -52,7 +52,7 @@ namespace Nethermind.BeaconNode.Test.Genesis
             Bytes32 eth1BlockHash = new Bytes32(Enumerable.Repeat((byte)0x12, 32).ToArray());
             ulong eth1Timestamp = miscellaneousParameters.MinimumGenesisTime;
 
-            BeaconNode.Genesis beaconChain = testServiceProvider.GetService<BeaconNode.Genesis>();
+            BeaconNode.GenesisChainStart beaconChain = testServiceProvider.GetService<BeaconNode.GenesisChainStart>();
 
             // Act
             //# initialize beacon_state

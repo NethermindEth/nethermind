@@ -53,10 +53,10 @@ namespace Nethermind.DataMarketplace.Consumers.Shared
         
         #region DataStreams
         
-        Task<Keccak?> EnableDataStreamAsync(Keccak depositId, string client, string[] args);
+        Task<Keccak?> EnableDataStreamAsync(Keccak depositId, string client, string?[] args);
         Task<Keccak?> DisableDataStreamAsync(Keccak depositId, string client);
         Task<Keccak?> DisableDataStreamsAsync(Keccak depositId);
-        Task SetEnabledDataStreamAsync(Keccak depositId, string client, string[] args);
+        Task SetEnabledDataStreamAsync(Keccak depositId, string client, string?[] args);
         Task SetDisabledDataStreamAsync(Keccak depositId, string client);
         
         Task SetUnitsAsync(Keccak depositId, uint consumedUnitsFromProvider);

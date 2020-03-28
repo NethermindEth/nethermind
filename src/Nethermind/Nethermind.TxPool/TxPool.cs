@@ -21,6 +21,7 @@ using System.Linq;
 using System.Threading;
 using System.Timers;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -42,6 +43,8 @@ namespace Nethermind.TxPool
 
         private readonly ConcurrentDictionary<Address, AddressNonces> _nonces = new ConcurrentDictionary<Address, AddressNonces>();
 
+        private LruCache<Keccak, object> _hashCache = new LruCache<Keccak, object>(MemoryAllowance.TxHashCacheSize);
+
         /// <summary>
         /// Number of blocks after which own transaction will not be resurrected any more
         /// </summary>
@@ -59,7 +62,7 @@ namespace Nethermind.TxPool
             new ThreadLocal<Random>(() => new Random(Interlocked.Increment(ref _seed)));
 
         private readonly SortedPool<Keccak, Transaction> _transactions =
-            new DistinctValueSortedPool<Keccak, Transaction>(1024, (t1, t2) => t1.GasPrice.CompareTo(t2.GasPrice), PendingTransactionComparer.Default);
+            new DistinctValueSortedPool<Keccak, Transaction>(MemoryAllowance.MemPoolSize, (t1, t2) => t1.GasPrice.CompareTo(t2.GasPrice), PendingTransactionComparer.Default);
 
         private readonly ISpecProvider _specProvider;
         private readonly IStateProvider _stateProvider;
@@ -190,6 +193,8 @@ namespace Nethermind.TxPool
             if (_logger.IsTrace) _logger.Trace($"Removed a peer from TX pool: {nodeId}");
         }
 
+        private object _hashCacheMarker = new object();
+
         public AddTxResult AddTransaction(Transaction tx, long blockNumber, TxHandlingOptions handlingOptions)
         {
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
@@ -219,16 +224,6 @@ namespace Nethermind.TxPool
                 return AddTxResult.InvalidChainId;
             }
 
-            /* We have encountered multiple transactions that do not resolve sender address properly.
-             * We need to investigate what these txs are and why the sender address is resolved to null.
-             * Then we need to decide whether we really want to broadcast them.
-             * */
-
-            if (tx.SenderAddress == null)
-            {
-                tx.SenderAddress = _ecdsa.RecoverAddress(tx, blockNumber);
-            }
-
             /* Note that here we should also test incoming transactions for old nonce.
              * This is not a critical check and it is expensive since it requires state read so it is better
              * if we leave it for block production only.
@@ -239,19 +234,37 @@ namespace Nethermind.TxPool
                 return AddTxResult.OwnNonceAlreadyUsed;
             }
 
-            if (!_transactions.TryInsert(tx.Hash, tx))
+            // !!! do not change it to |=
+            bool isKnown = _hashCache.Get(tx.Hash) != null;
+            
+            /* We have encountered multiple transactions that do not resolve sender address properly.
+             * We need to investigate what these txs are and why the sender address is resolved to null.
+             * Then we need to decide whether we really want to broadcast them.
+             */
+            if (tx.SenderAddress == null)
             {
-                // If transaction is fresh and already known then it may be stored in memory.
-                Metrics.PendingTransactionsKnown++;
-                return AddTxResult.AlreadyKnown;
+                tx.SenderAddress = _ecdsa.RecoverAddress(tx, blockNumber);
+                if (tx.SenderAddress == null)
+                {
+                    return AddTxResult.PotentiallyUseless;
+                }
             }
-
-            if (_txStorage.Get(tx.Hash) != null)
+            
+            /*
+             * we need to make sure that the sender is resolved before adding to the distinct tx pool
+             * as the address is used in the distinct value calculation
+             */
+            if (!isKnown) { isKnown |= !_transactions.TryInsert(tx.Hash, tx); }
+            if (!isKnown) { isKnown |= _txStorage.Get(tx.Hash) != null; }
+            
+            if (isKnown)
             {
                 // If transaction is a bit older and already known then it may be stored in the persistent storage.
                 Metrics.PendingTransactionsKnown++;
                 return AddTxResult.AlreadyKnown;
             }
+
+            _hashCache.Set(tx.Hash, _hashCacheMarker);
 
             HandleOwnTransaction(tx, isPersistentBroadcast);
 

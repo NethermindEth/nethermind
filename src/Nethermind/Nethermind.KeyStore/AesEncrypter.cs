@@ -18,8 +18,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
-using System.Text;
-using Nethermind.Core.Extensions;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 

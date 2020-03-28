@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
@@ -28,7 +29,8 @@ namespace Nethermind.DataMarketplace.Core.Services
 {
     public class EthPriceService : IEthPriceService
     {
-        private const string Url = "https://api.coinmarketcap.com/v1/ticker/ethereum/?convert=USD";
+        // private const string Url = "https://api.coinmarketcap.com/v1/ticker/ethereum/?convert=USD";
+        private const string Url = "https://poloniex.com/public?command=returnTicker";
         private readonly IHttpClient _client;
         private readonly ITimestamper _timestamper;
         private readonly ILogger _logger;
@@ -45,23 +47,42 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public async Task UpdateAsync()
         {
-            var results = await _client.GetAsync<Result[]>(Url);
-            var result = results?.FirstOrDefault();
-            if (result is null || result.PriceUsd <= 0)
+            var currentTime = _timestamper.EpochSeconds;
+            if (currentTime < UpdatedAt + 1)
+            {
+                return;
+            }
+
+            // var results = await _client.GetAsync<Result[]>(Url);
+            var results = await _client.GetAsync<Dictionary<string, Result>>(Url);
+            if (!results.ContainsKey("USDT_ETH"))
             {
                 if (_logger.IsWarn) _logger.Warn($"There was an error when updating ETH price. Latest know value is: {UsdPrice} USD");
                 return;
             }
 
-            UpdatedAt = _timestamper.EpochSeconds;
+            bool success = results.TryGetValue("USDT_ETH", out Result? result);
+            if (!success || result is null || result.PriceUsd <= 0)
+            {
+                if (_logger.IsWarn) _logger.Warn($"There was an error when updating ETH price. Latest know value is: {UsdPrice} USD");
+                return;
+            }
+
+            UpdatedAt = currentTime;
             UsdPrice = result.PriceUsd;
             
             if (_logger.IsInfo) _logger.Info($"Updated ETH price: {UsdPrice} USD, updated at: {UpdatedAt}");
         }
 
+        // internal class Result
+        // {
+        //     [JsonProperty("price_usd")]
+        //     public decimal PriceUsd { get; set; }
+        // }
+        
         internal class Result
         {
-            [JsonProperty("price_usd")]
+            [JsonProperty("last")]
             public decimal PriceUsd { get; set; }
         }
     }

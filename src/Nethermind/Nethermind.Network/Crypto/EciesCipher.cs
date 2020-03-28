@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
-using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Secp256k1;

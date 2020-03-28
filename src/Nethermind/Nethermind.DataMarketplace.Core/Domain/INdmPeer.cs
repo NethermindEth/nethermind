@@ -41,7 +41,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
             CancellationToken? token = null);
 
         void SendFinishSession(Keccak depositId);
-        void SendEnableDataStream(Keccak depositId, string client, string[] args);
+        void SendEnableDataStream(Keccak depositId, string client, string?[] args);
         void SendDisableDataStream(Keccak depositId, string client);
         void SendDataDeliveryReceipt(Keccak depositId, DataDeliveryReceipt receipt);
         Task<FaucetResponse> SendRequestEthAsync(Address address, UInt256 value, CancellationToken? token = null);

@@ -30,7 +30,7 @@ namespace Nethermind.Db.Rpc
             _recordDbProvider = recordDbProvider;
             StateDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.State, serializer, client, logManager, recordDbProvider?.StateDb), true));
             CodeDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.Code, serializer, client, logManager, recordDbProvider?.CodeDb), true));
-            ReceiptsDb = new ReadOnlyDb(new RpcDb(DbNames.Receipts, serializer, client, logManager, recordDbProvider?.ReceiptsDb), true);
+            ReceiptsDb = new ReadOnlyColumnsDb<ReceiptsColumns>(new RpcColumnsDb<ReceiptsColumns>(DbNames.Receipts, serializer, client, logManager, recordDbProvider?.ReceiptsDb), true);
             BlocksDb = new ReadOnlyDb(new RpcDb(DbNames.Blocks, serializer, client, logManager, recordDbProvider?.BlocksDb), true);
             HeadersDb = new ReadOnlyDb(new RpcDb(DbNames.Headers, serializer, client, logManager, recordDbProvider?.HeadersDb), true);
             BlockInfosDb = new ReadOnlyDb(new RpcDb(DbNames.BlockInfos, serializer, client, logManager, recordDbProvider?.BlockInfosDb), true);
@@ -42,7 +42,7 @@ namespace Nethermind.Db.Rpc
         
         public ISnapshotableDb StateDb { get; }
         public ISnapshotableDb CodeDb { get; }        
-        public IDb ReceiptsDb { get; }
+        public IColumnsDb<ReceiptsColumns> ReceiptsDb { get; }
         public IDb BlocksDb { get; }
         public IDb HeadersDb { get; }
         public IDb BlockInfosDb { get; }

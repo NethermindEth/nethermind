@@ -24,7 +24,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.DataMarketplace.Channels;
-using Nethermind.DataMarketplace.Consumers;
 using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
@@ -55,7 +54,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
 
         protected readonly BlockingCollection<Request<DataRequestMessage, DataRequestResult>>
             DataRequestResultRequests = new BlockingCollection<Request<DataRequestMessage, DataRequestResult>>();
-        
+
         protected readonly IEcdsa Ecdsa;
         protected readonly IWallet Wallet;
         protected readonly INdmFaucet Faucet;
@@ -74,11 +73,13 @@ namespace Nethermind.DataMarketplace.Subprotocols
 
         public override bool HasAvailableCapability(Capability capability) => false;
         public override bool HasAgreedCapability(Capability capability) => false;
+
         public override void AddSupportedCapability(Capability capability)
         {
         }
 
         public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
+
         public override event EventHandler<ProtocolEventArgs> SubprotocolRequested
         {
             add { }
@@ -192,7 +193,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
                 throw;
             }
         }
-        
+
         public override void HandleMessage(Packet message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} {nameof(NdmSubprotocol)} handling a message with code {message.PacketType}.");
@@ -207,11 +208,11 @@ namespace Nethermind.DataMarketplace.Subprotocols
                 throw new SubprotocolException($"{Session.RemoteNodeId}" +
                                                $"No {nameof(HiReceived)} received prior to communication.");
             }
-
-            Logger.Warn($"GETTING MESSAGE: ndm.{message.PacketType}");
+            
+            Logger.Warn($"GETTING MESSAGE: ndm.{NdmMessageCode.GetDescription(message.PacketType)}");
             MessageHandlers[message.PacketType](message);
         }
-        
+
         protected virtual void Handle(HiMessage message)
         {
             if (HiReceived)
@@ -231,10 +232,10 @@ namespace Nethermind.DataMarketplace.Subprotocols
                                 Environment.NewLine + $" node id\t{message.NodeId}");
                 }
             }
-            
+
             ProviderAddress = message.ProviderAddress;
             ConsumerAddress = message.ConsumerAddress;
-            
+
             if (!(IsConsumer || IsProvider))
             {
                 if (Logger.IsWarn) Logger.Warn("NDM peer is neither provider nor consumer (no addresses configured), skipping subprotocol connection.");
@@ -273,12 +274,12 @@ namespace Nethermind.DataMarketplace.Subprotocols
             };
 
             ProtocolInitialized?.Invoke(this, eventArgs);
-            
+
             if (!IsProvider)
             {
                 return;
             }
-            
+
             ConsumerService.AddProviderPeer(this);
             SendGetDataAssets();
             SendGetDepositApprovals().ContinueWith(async t =>
@@ -316,7 +317,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: getdataassets");
             Send(new GetDataAssetsMessage());
         }
-        
+
         private void Handle(DataAssetStateChangedMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: dataassetstatechanged");
@@ -386,7 +387,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: consumeraddresschanged");
             Send(new ConsumerAddressChangedMessage(consumer));
         }
-        
+
         private void Handle(ProviderAddressChangedMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: provideraddresschanged");
@@ -427,10 +428,15 @@ namespace Nethermind.DataMarketplace.Subprotocols
         private void Handle(DataRequestResultMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: datarequestresult");
-            var request = DataRequestResultRequests.Take();
-            request.CompletionSource.SetResult(message.Result);
+            bool success = DataRequestResultRequests.TryTake(out var request);
+            if (!success)
+            {
+                throw new SubprotocolException("Received a reponse for which no request has been made.");
+            }
+
+            request?.CompletionSource.SetResult(message.Result);
         }
-        
+
         private void Handle(EarlyRefundTicketMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: earlyrefundticket");
@@ -448,31 +454,31 @@ namespace Nethermind.DataMarketplace.Subprotocols
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: sessionstarted");
             ConsumerService.StartSessionAsync(message.Session, this);
         }
-        
+
         public void SendFinishSession(Keccak depositId)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: finishsession");
             Send(new FinishSessionMessage(depositId));
         }
 
-        public void SendEnableDataStream(Keccak depositId, string client, string[] args)
+        public void SendEnableDataStream(Keccak depositId, string client, string?[] args)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: enabledatastream");
             Send(new EnableDataStreamMessage(depositId, client, args));
         }
-        
+
         public void SendDisableDataStream(Keccak depositId, string client)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: disabledatastream");
             Send(new DisableDataStreamMessage(depositId, client));
         }
-        
+
         public void SendRequestDepositApproval(Keccak assetId, Address consumer, string kyc)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: requestdepositapproval");
             Send(new RequestDepositApprovalMessage(assetId, consumer, kyc));
         }
-        
+
         private void Handle(SessionFinishedMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: sessionfinished");
@@ -535,12 +541,17 @@ namespace Nethermind.DataMarketplace.Subprotocols
 
             return task.Result;
         }
-      
+
         private void Handle(DepositApprovalsMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: depositapprovals");
-            var request = DepositApprovalsRequests.Take();
-            request.CompletionSource.SetResult(message.DepositApprovals);
+            var success = DepositApprovalsRequests.TryTake(out var request);
+            if (!success)
+            {
+                throw new SubprotocolException("Received a reponse for which no request has been made.");
+            }
+
+            request?.CompletionSource.SetResult(message.DepositApprovals);
         }
 
         private void Handle(DataStreamEnabledMessage message)
@@ -572,8 +583,13 @@ namespace Nethermind.DataMarketplace.Subprotocols
         private void Handle(EthRequestedMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: ethrequested");
-            var request = RequestEthRequests.Take();
-            request.CompletionSource.SetResult(message.Response);
+            bool success = RequestEthRequests.TryTake(out var request);
+            if (!success)
+            {
+                throw new SubprotocolException("Received a reponse for which no request has been made.");
+            }
+
+            request?.CompletionSource.SetResult(message.Response);
         }
 
         private void Handle(GraceUnitsExceededMessage message)
@@ -620,7 +636,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
                     Logger.Error("There was an error within NDM subprotocol.", t.Exception);
                     return;
                 }
-                
+
                 if (Logger.IsTrace) Logger.Trace($"Received invalid data for deposit: '{message.DepositId}', reason: {message.Reason}");
             });
         }
@@ -699,7 +715,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
             catch (ObjectDisposedException)
             {
             }
-     
+
             ConsumerService.FinishSessionsAsync(this).ContinueWith(t =>
             {
                 if (t.IsFaulted && Logger.IsError)

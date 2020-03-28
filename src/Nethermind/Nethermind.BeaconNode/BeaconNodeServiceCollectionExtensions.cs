@@ -18,7 +18,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.BeaconNode.Services;
 using Nethermind.Core2;
-using Nethermind.Core2.Configuration;
 
 namespace Nethermind.BeaconNode
 {
@@ -28,7 +27,8 @@ namespace Nethermind.BeaconNode
         {
             services.AddSingleton<IClock, SystemClock>();
             services.AddSingleton<INodeStart, NodeStart>();
-            services.AddSingleton<Genesis>();
+            services.AddSingleton<GenesisChainStart>();
+            services.AddSingleton<IEth1Genesis>(provider => provider.GetRequiredService<GenesisChainStart>());
             services.AddSingleton<BeaconChainUtility>();
             services.AddSingleton<BeaconStateAccessor>();
             services.AddSingleton<BeaconStateTransition>();

@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Threading.Tasks;
 using Confluent.Kafka;
 using Nethermind.Blockchain;
@@ -94,24 +95,24 @@ namespace Nethermind.PubSub.Kafka
             switch (_kafkaConfig.SecurityProtocol?.ToLowerInvariant())
             {
                 case "plaintext":
-                    config.SecurityProtocol = SecurityProtocolType.Plaintext;
+                    config.SecurityProtocol = SecurityProtocol.Plaintext;
                     break;
                 case "sasl_plaintext":
-                    config.SecurityProtocol = SecurityProtocolType.Sasl_Plaintext;
+                    config.SecurityProtocol = SecurityProtocol.SaslPlaintext;
                     break;
                 case "sasl_ssl":
-                    config.SecurityProtocol = SecurityProtocolType.Sasl_Ssl;
+                    config.SecurityProtocol = SecurityProtocol.SaslSsl;
                     config.SslKeyLocation = _kafkaConfig.SslKeyLocation;
                     break;
                 case "ssl":
-                    config.SecurityProtocol = SecurityProtocolType.Ssl;
+                    config.SecurityProtocol = SecurityProtocol.Ssl;
                     config.SslKeyLocation = _kafkaConfig.SslKeyLocation;
                     break;
             }
 
             if (_kafkaConfig.SaslEnabled)
             {
-                config.SaslMechanism = SaslMechanismType.Plain;
+                config.SaslMechanism = SaslMechanism.Plain;
                 config.SaslUsername = _kafkaConfig.SaslUsername;
                 config.SaslPassword = _kafkaConfig.SaslPassword;
             }

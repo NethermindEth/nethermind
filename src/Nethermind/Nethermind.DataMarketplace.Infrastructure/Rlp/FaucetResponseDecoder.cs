@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.IO;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Serialization.Rlp;
 
@@ -26,11 +25,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
         {
             // here to register with RLP in static constructor
         }
-
-        public FaucetResponseDecoder()
-        {
-        }
-
+        
         static FaucetResponseDecoder()
         {
             Serialization.Rlp.Rlp.Decoders[typeof(FaucetResponse)] = new FaucetResponseDecoder();

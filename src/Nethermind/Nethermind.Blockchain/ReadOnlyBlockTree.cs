@@ -68,6 +68,7 @@ namespace Nethermind.Blockchain
         public BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options) => _wrapped.FindHeader(blockHash, options);
 
         public BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options) => _wrapped.FindHeader(blockNumber, options);
+        public Keccak FindBlockHash(long blockNumber) => _wrapped.FindBlockHash(blockNumber);
 
         public bool IsMainChain(BlockHeader blockHeader) => _wrapped.IsMainChain(blockHeader);
 

@@ -40,7 +40,7 @@ namespace Nethermind.TxPool.Storages
 
         public Transaction[] GetAll()
         {
-            var transactionsBytes = _database.GetAll().ToArray();
+            var transactionsBytes = _database.GetAllValues().ToArray();
             if (transactionsBytes.Length == 0)
             {
                 return Array.Empty<Transaction>();
@@ -58,7 +58,7 @@ namespace Nethermind.TxPool.Storages
         private static Transaction Decode(byte[] bytes)
             => bytes == null
                 ? null
-                : Rlp.Decode<Transaction>(new Rlp(bytes), RlpBehaviors.Storage);
+                : Rlp.Decode<Transaction>(new Rlp(bytes));
 
         public void Add(Transaction transaction, long blockNumber)
         {
@@ -70,8 +70,8 @@ namespace Nethermind.TxPool.Storages
             var spec = _specProvider.GetSpec(blockNumber);
             _database.Set(transaction.Hash,
                 Rlp.Encode(transaction, spec.IsEip658Enabled
-                    ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage
-                    : RlpBehaviors.Storage).Bytes);
+                    ? RlpBehaviors.Eip658Receipts
+                    : RlpBehaviors.None).Bytes);
         }
 
         public void Delete(Keccak hash)

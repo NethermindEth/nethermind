@@ -25,6 +25,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
     public class ReceiptsMessageSerializer : IMessageSerializer<ReceiptsMessage>
     {
         private readonly ISpecProvider _specProvider;
+        private readonly ReceiptMessageDecoder _decoder = new ReceiptMessageDecoder();
 
         public ReceiptsMessageSerializer(ISpecProvider specProvider)
         {
@@ -41,7 +42,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                         b.Select(
                             n => n == null
                                 ? Rlp.OfEmptySequence
-                                : Rlp.Encode(n, _specProvider.GetSpec(n.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)).ToArray())).ToArray()).Bytes;
+                                : _decoder.Encode(n, _specProvider.GetSpec(n.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)).ToArray())).ToArray()).Bytes;
         }
 
         public ReceiptsMessage Deserialize(byte[] bytes)
@@ -51,7 +52,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             RlpStream rlpStream = bytes.AsRlpStream();
 
             TxReceipt[][] data = rlpStream.DecodeArray(itemContext =>
-                itemContext.DecodeArray(nestedContext => Rlp.Decode<TxReceipt>(nestedContext)) ?? new TxReceipt[0], true);
+                itemContext.DecodeArray(nestedContext => _decoder.Decode(nestedContext)) ?? new TxReceipt[0], true);
             ReceiptsMessage message = new ReceiptsMessage(data);
             
             return message;

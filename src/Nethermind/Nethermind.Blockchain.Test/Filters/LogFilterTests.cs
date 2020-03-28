@@ -16,7 +16,6 @@
 
 using System;
 using FluentAssertions;
-using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;

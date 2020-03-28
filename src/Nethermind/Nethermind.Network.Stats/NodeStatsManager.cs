@@ -17,9 +17,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.Linq;
-using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
 

@@ -135,7 +135,7 @@ enable autorun **(optional)**
 
  sudo systemctl enable nethermind
 
-MacOS (10.12+)
+MacOS (10.14+)
 ^^^^^^^^^^^^^^
 
  * brew install gmp && brew install snappy && brew install lz4
@@ -143,3 +143,4 @@ MacOS (10.12+)
  * unzip
  * cd into the folder
  * ./Nethermind.Launcher
+ * you may need to call brew install rocksdb if you have prblems with launching

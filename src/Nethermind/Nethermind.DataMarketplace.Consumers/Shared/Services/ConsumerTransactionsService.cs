@@ -24,7 +24,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Deposits.Queries;
 using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
-using Nethermind.DataMarketplace.Consumers.Shared.Domain;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Core.Services.Models;
@@ -49,7 +48,18 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public async Task<IEnumerable<PendingTransaction>> GetPendingAsync()
+        public async Task<IEnumerable<ResourceTransaction>> GetAllTransactionsAsync()
+        {
+            var deposits = await _depositRepository.BrowseAsync(new GetDeposits
+            {
+                Page = 1,
+                Results = int.MaxValue
+            });
+
+            return deposits.Items.SelectMany(MapPendingTransactions);
+        }
+
+        public async Task<IEnumerable<ResourceTransaction>> GetPendingAsync()
         {
             var deposits = await _depositRepository.BrowseAsync(new GetDeposits
             {
@@ -61,13 +71,13 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             return deposits.Items.SelectMany(MapPendingTransactions);
         }
 
-        private static IEnumerable<PendingTransaction> MapPendingTransactions(DepositDetails deposit)
+        private static IEnumerable<ResourceTransaction> MapPendingTransactions(DepositDetails deposit)
         {
             string depositId = deposit.Id.ToString();
 
             return deposit.ClaimedRefundTransaction is null
-                ? deposit.Transactions.Select(t => new PendingTransaction(depositId, "deposit", t))
-                : deposit.ClaimedRefundTransactions.Select(t => new PendingTransaction(depositId, "refund", t));
+                ? deposit.Transactions.Select(t => new ResourceTransaction(depositId, "deposit", t))
+                : deposit.ClaimedRefundTransactions.Select(t => new ResourceTransaction(depositId, "refund", t));
         }
 
         public async Task<UpdatedTransactionInfo> UpdateDepositGasPriceAsync(Keccak depositId, UInt256 gasPrice)

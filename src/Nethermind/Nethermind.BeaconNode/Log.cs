@@ -152,11 +152,14 @@ namespace Nethermind.BeaconNode
             LoggerMessage.Define<BeaconBlock>(LogLevel.Warning,
                 new EventId(4406, nameof(BlockNotAcceptedLocally)),
                 "Block {BeaconBlock} not accepted by local chain (but will still try to publish to peers).");
-
-        public static readonly Action<ILogger, ulong, ulong, Exception?> MockedQuickStart =
-            LoggerMessage.Define<ulong, ulong>(LogLevel.Warning,
-                new EventId(4900, nameof(MockedQuickStart)),
-                "Mocked quick start with genesis time {GenesisTime:n0} and {ValidatorCount} validators.");
+        public static readonly Action<ILogger, Exception?> ApiErrorGetSyncing =
+            LoggerMessage.Define(LogLevel.Warning,
+                new EventId(4407, nameof(ApiErrorGetSyncing)),
+                "Exception result from API get syncing.");
+        public static readonly Action<ILogger, Exception?> ApiErrorPublishBlock =
+            LoggerMessage.Define(LogLevel.Warning,
+                new EventId(4408, nameof(ApiErrorPublishBlock)),
+                "Exception result from API publish Block (post).");
 
         public static readonly Action<ILogger, long, Exception?> QuickStartClockCreated =
             LoggerMessage.Define<long>(LogLevel.Warning,

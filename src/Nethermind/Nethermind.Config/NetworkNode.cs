@@ -22,6 +22,9 @@ using Nethermind.Logging;
 
 namespace Nethermind.Config
 {
+    /// <summary>
+    /// Node data for storage and configuration only.
+    /// </summary>
     public class NetworkNode
     {
         public NetworkNode(string enode)

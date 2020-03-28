@@ -86,6 +86,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
 
             // Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", "8192");
+            ThisNodeInfo.AddInfo("Mem est netty:", $"{2 * Environment.ProcessorCount * (1 << _networkConfig.NettyArenaOrder) * 8192 / 1000 / 1000}MB".PadLeft(8));
+            ThisNodeInfo.AddInfo("Mem est peers:", $"{_networkConfig.ActivePeersMaxCount}MB".PadLeft(8));
             Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", _networkConfig.NettyArenaOrder.ToString());
 
             int maxPeersCount = _networkConfig.ActivePeersMaxCount;
@@ -340,6 +342,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 if (_context.NdmDataPublisher == null) throw new StepDependencyException(nameof(_context.NdmDataPublisher));
                 if (_context.NdmConsumerChannelManager == null) throw new StepDependencyException(nameof(_context.NdmConsumerChannelManager));
                 if (_context.BloomStorage == null) throw new StepDependencyException(nameof(_context.BloomStorage));
+                if (_context.ReceiptFinder == null) throw new StepDependencyException(nameof(_context.ReceiptFinder));
 
                 if (_logger.IsInfo) _logger.Info($"Initializing NDM...");
                 _context.HttpClient = new DefaultHttpClient(new HttpClient(), _context.EthereumJsonSerializer, _context.LogManager);
@@ -360,7 +363,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.BlockTree,
                     _context.TxPool,
                     _context.SpecProvider,
-                    _context.ReceiptStorage,
+                    _context.ReceiptFinder,
                     _context.Wallet,
                     filterStore,
                     filterManager,

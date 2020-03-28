@@ -32,7 +32,6 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Stats.Model;
-using Nethermind.Store;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Consensus;
@@ -173,14 +172,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 foreach (Keccak keccak in blockHash)
                 {
                     Block block = BlockTree.FindBlock(keccak, BlockTreeLookupOptions.None);
-                    TxReceipt[] blockReceipts = new TxReceipt[block.Transactions.Length];
-
-                    int receiptIndex = 0;
-                    foreach (Transaction transaction in block.Transactions)
-                    {
-                        blockReceipts[receiptIndex++] = _receiptStorage.Find(transaction.Hash);
-                    }
-
+                    TxReceipt[] blockReceipts = _receiptStorage.Get(block);
                     receipts[i++] = blockReceipts;
                 }
 

@@ -51,11 +51,11 @@ namespace Nethermind.Db
 
         public IDb Innermost => this;
         public void Flush() { }
+        public void Clear() { }
 
-        public IEnumerable<byte[]> GetAll()
-        {
-            throw new System.NotImplementedException();
-        }
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => Enumerable.Empty<KeyValuePair<byte[], byte[]>>();
+
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => Enumerable.Empty<byte[]>();
 
         public void StartBatch()
         {

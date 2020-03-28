@@ -50,7 +50,8 @@ namespace Nethermind.EthStats.Senders
             var payload = JsonConvert.SerializeObject(emitMessage, SerializerSettings);
             if (_logger.IsTrace) _logger.Trace($"Sending ETH stats message '{messageType}': {payload}");
 
-            return client.Send(payload);
+            client.Send(payload);
+            return Task.CompletedTask;
         }
 
         private (EmitMessage message, string type) CreateMessage<T>(T message, string type = null) where T : IMessage

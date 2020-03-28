@@ -32,11 +32,11 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly ILogger _logger;
 
         private SyncPeersReport _syncPeersReport;
-        private int _reportId = 0;
-        private int _syncReportFrequency = 1;
-        private int _noProgressStateSyncReportFrequency = 120;
-        private int _syncShortPeersReportFrequency = 60;
-        private int _syncFullPeersReportFrequency = 120;
+        private int _reportId;
+        private const int SyncReportFrequency = 1;
+        private const int NoProgressStateSyncReportFrequency = 120;
+        private const int SyncShortPeersReportFrequency = 60;
+        private const int SyncFullPeersReportFrequency = 120;
 
         public double TickTime
         {
@@ -52,9 +52,8 @@ namespace Nethermind.Blockchain.Synchronization
             _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _syncPeersReport = new SyncPeersReport(syncPeerPool, nodeStatsManager, logManager);
-            
+
             StartTime = DateTime.UtcNow;
-            CurrentSyncMode = SyncMode.DbSync;
 
             TickTime = tickTime;
             _timer.Interval = TickTime;
@@ -66,7 +65,7 @@ namespace Nethermind.Blockchain.Synchronization
                 _timer.Start();
             }
 
-            _syncModeSelector.Changed +=SyncModeSelectorOnChanged;
+            _syncModeSelector.Changed += SyncModeSelectorOnChanged;
         }
 
         private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
@@ -78,16 +77,16 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void TimerOnElapsed(object sender, ElapsedEventArgs e)
         {
-            if (_reportId % _syncReportFrequency == 0)
+            if (_reportId % SyncReportFrequency == 0)
             {
                 WriteSyncReport();
             }
 
-            if (_reportId % _syncFullPeersReportFrequency == 0)
+            if (_reportId % SyncFullPeersReportFrequency == 0)
             {
                 _syncPeersReport.WriteFullReport();
             }
-            else if (_reportId % _syncShortPeersReportFrequency == 0)
+            else if (_reportId % SyncShortPeersReportFrequency == 0)
             {
                 _syncPeersReport.WriteShortReport();
             }
@@ -99,14 +98,12 @@ namespace Nethermind.Blockchain.Synchronization
 
         private Timer _timer = new Timer();
 
-        public SyncMode CurrentSyncMode { get; set; }
-
         public long FastBlocksPivotNumber { get; set; }
-        
+
         public MeasuredProgress HeadersInQueue { get; } = new MeasuredProgress();
-        
+
         public MeasuredProgress BodiesInQueue { get; } = new MeasuredProgress();
-        
+
         public MeasuredProgress ReceiptsInQueue { get; } = new MeasuredProgress();
 
         public MeasuredProgress FastBlocksHeaders { get; } = new MeasuredProgress();
@@ -120,7 +117,7 @@ namespace Nethermind.Blockchain.Synchronization
         public MeasuredProgress FullSyncBlocksDownloaded { get; } = new MeasuredProgress();
 
         public MeasuredProgress FullSyncBlocksProcessed { get; } = new MeasuredProgress();
-        
+
         public long FullSyncBlocksKnown { get; set; }
 
         private static string Pad(decimal value, int length)
@@ -128,14 +125,15 @@ namespace Nethermind.Blockchain.Synchronization
             string valueString = $"{value:F2}";
             return valueString.PadLeft(length + 3, ' ');
         }
-        
+
         private static string Pad(long value, int length)
         {
             string valueString = $"{value}";
             return valueString.PadLeft(length, ' ');
         }
 
-        private bool _reportedFastBlocksSummary = false;
+        private bool _reportedFastBlocksSummary;
+        private int _lastTimeComplainedAboutNoPeers;
 
         private void WriteSyncReport()
         {
@@ -144,21 +142,27 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
-            if(_logger.IsDebug) WriteSyncConfigReport();
-            
+            SyncMode currentSyncMode = _syncModeSelector.Current;
+            if (_logger.IsDebug) WriteSyncConfigReport();
+
             if (!_reportedFastBlocksSummary && FastBlocksHeaders.HasEnded && FastBlocksBodies.HasEnded && FastBlocksReceipts.HasEnded)
             {
                 _reportedFastBlocksSummary = true;
                 WriteFastBlocksReport();
             }
 
-            if (!_syncPeerPool.UsefulPeers.Any())
+            if (_syncPeerPool.UsefulPeerCount == 0)
             {
-                WriteFullSyncReport($"Waiting for useful peers in '{CurrentSyncMode}' sync mode");
+                if (_lastTimeComplainedAboutNoPeers == 0 || _reportId - _lastTimeComplainedAboutNoPeers > 60)
+                {
+                    _lastTimeComplainedAboutNoPeers = _reportId;
+                    WriteFullSyncReport($"Waiting for useful peers in '{currentSyncMode}' sync mode");
+                }
+
                 return;
             }
-            
-            switch (CurrentSyncMode)
+
+            switch (currentSyncMode)
             {
                 case SyncMode.NotStarted:
                     WriteNotStartedReport();
@@ -179,16 +183,17 @@ namespace Nethermind.Blockchain.Synchronization
                     WriteDbSyncReport();
                     break;
                 case SyncMode.StateNodes:
-                    if (_reportId % _noProgressStateSyncReportFrequency == 0)
+                    if (_reportId % NoProgressStateSyncReportFrequency == 0)
                     {
                         WriteStateNodesReport();
                     }
+
                     break;
                 case SyncMode.WaitForProcessor:
                     WriteWaitForProcessorReport();
                     break;
                 default:
-                    _logger.Info($"Sync mode: {CurrentSyncMode}");
+                    _logger.Info($"Sync mode: {currentSyncMode}");
                     break;
             }
         }
@@ -196,7 +201,7 @@ namespace Nethermind.Blockchain.Synchronization
         private void WriteSyncConfigReport()
         {
             if (!_logger.IsTrace) return;
-            
+
             bool isFastSync = _syncConfig.FastSync;
             bool isFastBlocks = _syncConfig.FastBlocks;
             bool bodiesInFastBlocks = _syncConfig.DownloadBodiesInFastSync;
@@ -224,8 +229,8 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 builder.Append($"Sync config - full archive sync");
             }
-            
-            if(_logger.IsTrace) _logger.Trace(builder.ToString());
+
+            if (_logger.IsTrace) _logger.Trace(builder.ToString());
         }
 
         private void WriteWaitForProcessorReport()
@@ -252,15 +257,14 @@ namespace Nethermind.Blockchain.Synchronization
         {
             if (FullSyncBlocksKnown == 0)
             {
-                _logger.Info($"{prefix} | Waiting for peers to learn about the head number.");
                 return;
             }
-            
+
             if (FullSyncBlocksKnown - FullSyncBlocksDownloaded.CurrentValue < 32)
             {
                 return;
             }
-            
+
             _logger.Info($"{prefix} | Downloaded {FullSyncBlocksDownloaded.CurrentValue,9} | current {FullSyncBlocksDownloaded.CurrentPerSecond:F2}bps | total {FullSyncBlocksDownloaded.TotalPerSecond:F2}bps");
             FullSyncBlocksDownloaded.SetMeasuringPoint();
         }
@@ -269,7 +273,7 @@ namespace Nethermind.Blockchain.Synchronization
         {
             int blockPaddingLength = FastBlocksPivotNumber.ToString().Length;
             int speedPaddingLength = 5;
-            
+
             _logger.Info($"Fast Blocks Sync | Peers {_syncPeerPool.UsefulPeerCount} / {_syncPeerPool.PeerCount}");
             _logger.Info($"Fast Blocks Sync | Headers  {Pad(FastBlocksHeaders.CurrentValue, blockPaddingLength)} / {Pad(FastBlocksPivotNumber, blockPaddingLength)} | queue {Pad(HeadersInQueue.CurrentValue, speedPaddingLength)} | current {Pad(FastBlocksHeaders.CurrentPerSecond, speedPaddingLength)}bps | total {Pad(FastBlocksHeaders.TotalPerSecond, speedPaddingLength)}bps");
 

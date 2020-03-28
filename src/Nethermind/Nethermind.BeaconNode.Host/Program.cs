@@ -23,6 +23,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.VisualBasic.FileIO;
+using Nethermind.BeaconNode.Eth1Bridge;
 using Nethermind.BeaconNode.MockedStart;
 using Nethermind.BeaconNode.Peering;
 using Nethermind.BeaconNode.Storage;
@@ -89,6 +90,7 @@ namespace Nethermind.BeaconNode.Host
                     services.AddBeaconNode(hostContext.Configuration);
                     services.AddBeaconNodeStorage(hostContext.Configuration);
                     services.AddBeaconNodePeering(hostContext.Configuration);
+                    services.AddBeaconNodeEth1Bridge(hostContext.Configuration);
                     services.AddCryptographyService(hostContext.Configuration);
 
                     if (hostContext.Configuration.GetValue<ulong>("QuickStart:GenesisTime") > 0)
@@ -96,6 +98,7 @@ namespace Nethermind.BeaconNode.Host
                         services.AddBeaconNodeQuickStart(hostContext.Configuration);
                     }
                     
+                    // TODO: Add non-quickstart validator check
                     if (hostContext.Configuration.GetSection("QuickStart:ValidatorStartIndex").Exists())
                     {
                         services.AddHonestValidator(hostContext.Configuration);

@@ -221,6 +221,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private async Task RunSyncLoop()
         {
+            SyncMode previousSyncMode = _syncMode.Current;
             while (true)
             {
                 if (_logger.IsTrace) _logger.Trace("Sync loop - WAIT.");
@@ -237,8 +238,8 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (!_blockTree.CanAcceptNewBlocks) continue;
 
+                previousSyncMode = _syncMode.Current;
                 _syncMode.Update();
-                _syncReport.CurrentSyncMode = _syncMode.Current;
 
                 if (RequiresBlocksSyncAllocation(_syncMode.Current))
                 {
@@ -310,11 +311,19 @@ namespace Nethermind.Blockchain.Synchronization
                     switch (_syncMode.Current)
                     {
                         case SyncMode.WaitForProcessor:
-                            if (_logger.IsInfo) _logger.Info("Waiting for the block processor to catch up before the next sync round...");
+                            if (previousSyncMode != _syncMode.Current)
+                            {
+                                if (_logger.IsInfo) _logger.Info("Waiting for the block processor to catch up before the next sync round...");
+                            }
+
                             await syncProgressTask;
                             break;
                         case SyncMode.NotStarted:
-                            if (_logger.IsInfo) _logger.Info("Waiting for peers to connect before selecting the sync mode...");
+                            if (previousSyncMode != _syncMode.Current)
+                            {
+                                if (_logger.IsInfo) _logger.Info("Waiting for peers to connect before selecting the sync mode...");
+                            }
+
                             await syncProgressTask;
                             break;
                         default:

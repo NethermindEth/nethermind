@@ -22,13 +22,11 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.Store;
 using NSubstitute;
 using NUnit.Framework;
 

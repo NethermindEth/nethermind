@@ -25,7 +25,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Stats.Model;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Network;
 
 namespace Nethermind.Blockchain.Test.Synchronization
 {

@@ -25,7 +25,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
-using Nethermind.Store;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.FastBlocks;
 using Nethermind.Blockchain.Synchronization.FastSync;
@@ -734,7 +733,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                             int txIndex = 0;
                             foreach (Transaction transaction in expectedBlock.Transactions)
                             {
-                                Assert.NotNull(_localReceiptStorage.Find(transaction.Hash), $"receipt {expectedBlock.Number}.{txIndex}");
+                                Assert.NotNull(_localReceiptStorage.FindBlockHash(transaction.Hash), $"receipt {expectedBlock.Number}.{txIndex}");
                                 txIndex++;
                             }
                         }
@@ -896,9 +895,10 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             {
                 Block block = tree.FindBlock(receiptSyncBatch.Request[i], BlockTreeLookupOptions.None);
                 receiptSyncBatch.Response[i] = new TxReceipt[block.Transactions.Length];
+                var receipts = _remoteReceiptStorage.Get(block);
                 for (int j = 0; j < block.Transactions.Length; j++)
                 {
-                    receiptSyncBatch.Response[i][j] = _remoteReceiptStorage.Find(block.Transactions[j].Hash);
+                    receiptSyncBatch.Response[i][j] = receipts[j];
 
                     if (i < 10 && j == 0 && _maliciousByInvalidReceipts.Contains(syncPeer))
                     {

@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Configuration;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,7 +27,6 @@ using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Network;
 using NSubstitute;
 using NUnit.Framework;
 

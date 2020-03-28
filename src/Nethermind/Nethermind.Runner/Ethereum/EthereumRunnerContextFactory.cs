@@ -38,7 +38,8 @@ namespace Nethermind.Runner.Ethereum
             
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             ILogger logger = _logManager.GetClassLogger();
-            if (logger.IsInfo) logger.Info($"Loading chain spec from {initConfig.ChainSpecPath}");
+            if (logger.IsDebug) logger.Debug($"Loading chain spec from {initConfig.ChainSpecPath}");
+            ThisNodeInfo.AddInfo("Chainspec    :", $"{initConfig.ChainSpecPath}");
             IChainSpecLoader loader = new ChainSpecLoader(ethereumJsonSerializer);
             ChainSpec chainSpec = loader.LoadFromFile(initConfig.ChainSpecPath);
             

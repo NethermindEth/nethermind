@@ -23,15 +23,6 @@ using Nethermind.Dirichlet.Numerics;
 [assembly:InternalsVisibleTo("Nethermind.Blockchain.Test")]
 namespace Nethermind.Blockchain.Synchronization
 {
-    public enum PeerClientType
-    {
-        BeSu,
-        Geth,
-        Nethermind,
-        Parity,
-        Unknown
-    }
-    
     public class PeerInfo
     {
         private int _weakness;
@@ -66,8 +57,6 @@ namespace Nethermind.Blockchain.Synchronization
                 PeerClientType = PeerClientType.Unknown;
             }
         }
-
-        public int Weakness => _weakness;
 
         public PeerClientType PeerClientType { get; private set; }
         public bool IsAllocated { get; set; }

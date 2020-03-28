@@ -25,11 +25,13 @@ namespace Nethermind.Core2.Configuration
         public static void ConfigureBeaconChain(this IServiceCollection services, IConfiguration configuration)
         {
             services.AddSingleton<IClientVersion, ClientVersion>();
-            
+
             services.AddSingleton<ChainConstants>();
 
             services.AddSingleton(new DataDirectory(configuration.GetValue<string>(DataDirectory.Key)));
-            
+
+            services.Configure<AnchorState>(x => configuration.Bind("AnchorState", x));
+
             services.Configure<MiscellaneousParameters>(x =>
             {
                 configuration.Bind("BeaconChain:MiscellaneousParameters", section =>
@@ -46,7 +48,8 @@ namespace Nethermind.Core2.Configuration
                         () => configuration.GetValue<ulong>("CHURN_LIMIT_QUOTIENT"));
                     x.ShuffleRoundCount = section.GetValue(nameof(x.ShuffleRoundCount),
                         () => configuration.GetValue<int>("SHUFFLE_ROUND_COUNT"));
-                    x.MinimumGenesisActiveValidatorCount = section.GetValue(nameof(x.MinimumGenesisActiveValidatorCount),
+                    x.MinimumGenesisActiveValidatorCount = section.GetValue(
+                        nameof(x.MinimumGenesisActiveValidatorCount),
                         () => configuration.GetValue<int>("MIN_GENESIS_ACTIVE_VALIDATOR_COUNT"));
                     x.MinimumGenesisTime = section.GetValue(nameof(x.MinimumGenesisTime),
                         () => configuration.GetValue<ulong>("MIN_GENESIS_TIME"));
@@ -113,7 +116,7 @@ namespace Nethermind.Core2.Configuration
                     x.MinimumAttestationInclusionDelay = new Slot(
                         section.GetValue("MinimumAttestationInclusionDelay",
                             () => configuration.GetValue<ulong>("MIN_ATTESTATION_INCLUSION_DELAY")));
-                    x.SlotsPerEpoch = 
+                    x.SlotsPerEpoch =
                         section.GetValue("SlotsPerEpoch",
                             () => configuration.GetValue<uint>("SLOTS_PER_EPOCH"));
                     x.MinimumSeedLookahead = new Epoch(
@@ -122,10 +125,10 @@ namespace Nethermind.Core2.Configuration
                     x.MaximumSeedLookahead = new Epoch(
                         section.GetValue("MaximumSeedLookahead",
                             () => configuration.GetValue<ulong>("MAX_SEED_LOOKAHEAD")));
-                    x.SlotsPerEth1VotingPeriod = 
+                    x.SlotsPerEth1VotingPeriod =
                         section.GetValue("SlotsPerEth1VotingPeriod",
                             () => configuration.GetValue<uint>("SLOTS_PER_ETH1_VOTING_PERIOD"));
-                    x.SlotsPerHistoricalRoot = 
+                    x.SlotsPerHistoricalRoot =
                         section.GetValue("SlotsPerHistoricalRoot",
                             () => configuration.GetValue<uint>("SLOTS_PER_HISTORICAL_ROOT"));
                     x.MinimumValidatorWithdrawabilityDelay = new Epoch(
@@ -143,10 +146,10 @@ namespace Nethermind.Core2.Configuration
             {
                 configuration.Bind("BeaconChain:StateListLengths", section =>
                 {
-                    x.EpochsPerHistoricalVector = 
+                    x.EpochsPerHistoricalVector =
                         section.GetValue("EpochsPerHistoricalVector",
                             () => configuration.GetValue<uint>("EPOCHS_PER_HISTORICAL_VECTOR"));
-                    x.EpochsPerSlashingsVector = 
+                    x.EpochsPerSlashingsVector =
                         section.GetValue("EpochsPerSlashingsVector",
                             () => configuration.GetValue<uint>("EPOCHS_PER_SLASHINGS_VECTOR"));
                     x.HistoricalRootsLimit = section.GetValue("HistoricalRootsLimit",
@@ -191,7 +194,7 @@ namespace Nethermind.Core2.Configuration
             {
                 configuration.Bind("BeaconChain:SignatureDomains", section =>
                 {
-                    x.BeaconProposer =  new DomainType(
+                    x.BeaconProposer = new DomainType(
                         section.GetBytesFromPrefixedHex("DomainBeaconProposer",
                             () => configuration.GetBytesFromPrefixedHex("DOMAIN_BEACON_PROPOSER",
                                 () => new byte[DomainType.Length])));

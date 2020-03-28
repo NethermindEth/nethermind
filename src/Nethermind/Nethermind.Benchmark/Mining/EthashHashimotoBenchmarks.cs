@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using Nethermind.Consensus.Mining;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -24,7 +25,7 @@ using Nethermind.Logging;
 namespace Nethermind.Benchmarks.Mining
 {
     [MemoryDiagnoser]
-    [CoreJob(baseline: true)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class EthashHashimotoBenchmarks
     {
         private Ethash _ethash = new Ethash(LimboLogs.Instance);

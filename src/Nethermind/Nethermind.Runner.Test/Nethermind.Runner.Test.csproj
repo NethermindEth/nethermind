@@ -1,34 +1,70 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>netcoreapp3.0</TargetFramework>
+        <TargetFramework>netcoreapp3.1</TargetFramework>
 
         <IsPackable>false</IsPackable>
     </PropertyGroup>
 
     <ItemGroup>
         <PackageReference Include="coverlet.msbuild" Version="2.8.0">
-          <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-          <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+            <PrivateAssets>all</PrivateAssets>
         </PackageReference>
-        <PackageReference Include="FluentAssertions" Version="5.10.0" />
-        <PackageReference Include="NSubstitute" Version="4.2.1" />
-        <PackageReference Include="nunit" Version="3.12.0" />
-        <PackageReference Include="NUnit3TestAdapter" Version="3.16.1" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.4.0" />
+        <PackageReference Include="FluentAssertions" Version="5.10.3"/>
+        <PackageReference Include="NSubstitute" Version="4.2.1"/>
+        <PackageReference Include="nunit" Version="3.12.0"/>
+        <PackageReference Include="NUnit3TestAdapter" Version="3.16.1"/>
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.5.0"/>
     </ItemGroup>
-
     <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Runner\Nethermind.Runner.csproj" />
+        <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj"/>
+        <ProjectReference Include="..\Nethermind.Runner\Nethermind.Runner.csproj"/>
+        <Content Include="..\Chains\AuRaTest.json" CopyToOutputDirectory="PreserveNewest">
+            <Link>Chains\AuRaTest.json</Link>
+        </Content>
+        <Content Include="..\Chains\foundation.json" CopyToOutputDirectory="PreserveNewest">
+            <Link>Chains\foundation.json</Link>
+        </Content>
+        <Content Include="..\Chains\genesis.json" CopyToOutputDirectory="PreserveNewest">
+            <Link>Chains\genesis.json</Link>
+        </Content>
+        <Content Include="..\Chains\goerli.json" CopyToOutputDirectory="PreserveNewest">
+            <Link>Chains\goerli.json</Link>
+        </Content>
+        <Content Include="..\Chains\hive.json" CopyToOutputDirectory="PreserveNewest">
+            <Link>Chains\hive.json</Link>
+        </Content>
+        <Content Include="..\Chains\ndmlocal.json" CopyToOutputDirectory="PreserveNewest">
+            <Link>Chains\ndmlocal.json</Link>
+        </Content>
+        <Content Include="..\Chains\poacore.json" CopyToOutputDirectory="PreserveNewest">
+            <Link>Chains\poacore.json</Link>
+        </Content>
+        <Content Include="..\Chains\rinkeby.json" CopyToOutputDirectory="PreserveNewest">
+            <Link>Chains\rinkeby.json</Link>
+        </Content>
+        <Content Include="..\Chains\ropsten.json" CopyToOutputDirectory="PreserveNewest">
+            <Link>Chains\ropsten.json</Link>
+        </Content>
+        <Content Include="..\Chains\sokol.json" CopyToOutputDirectory="PreserveNewest">
+            <Link>Chains\sokol.json</Link>
+        </Content>
+        <Content Include="..\Chains\spaceneth.json" CopyToOutputDirectory="PreserveNewest">
+            <Link>Chains\spaceneth.json</Link>
+        </Content>
+        <Content Include="..\Chains\volta.json" CopyToOutputDirectory="PreserveNewest">
+            <Link>Chains\volta.json</Link>
+        </Content>
+        <Content Include="..\Chains\xdai.json" CopyToOutputDirectory="PreserveNewest">
+            <Link>Chains\xdai.json</Link>
+        </Content>
 
         <Content Include="..\Nethermind.Runner\configs\*.cfg" Link="configs\%(RecursiveDir)%(Filename)%(Extension)">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
 
-        <None Remove="testspec.json" />
-
         <Content Include="testspec.json">
-          <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
     </ItemGroup>
 

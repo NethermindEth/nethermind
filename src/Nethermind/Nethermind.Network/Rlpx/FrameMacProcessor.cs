@@ -16,8 +16,6 @@
 
 using System;
 using System.IO;
-using DotNetty.Common.Utilities;
-using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Org.BouncyCastle.Crypto.Digests;

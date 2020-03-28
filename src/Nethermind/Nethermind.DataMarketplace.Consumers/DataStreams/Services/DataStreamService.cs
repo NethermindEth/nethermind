@@ -58,7 +58,7 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
             _logger = logManager.GetClassLogger();
         }
         
-        public Task<Keccak?> EnableDataStreamAsync(Keccak depositId, string client, string[] args)
+        public Task<Keccak?> EnableDataStreamAsync(Keccak depositId, string client, string?[] args)
             => ToggleDataStreamAsync(depositId, true, client, args);
 
         public Task<Keccak?> DisableDataStreamAsync(Keccak depositId, string client)
@@ -82,7 +82,7 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
             return depositId;
         }
         
-        private async Task<Keccak?> ToggleDataStreamAsync(Keccak depositId, bool enable, string client, string[]? args = null)
+        private async Task<Keccak?> ToggleDataStreamAsync(Keccak depositId, bool enable, string client, string?[]? args = null)
         {
             ConsumerSession? session = _sessionService.GetActive(depositId);
             if (session is null)
@@ -167,7 +167,7 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
             return depositId;
         }
 
-        public async Task SetEnabledDataStreamAsync(Keccak depositId, string client, string[] args)
+        public async Task SetEnabledDataStreamAsync(Keccak depositId, string client, string?[] args)
         {
             ConsumerSession? session = _sessionService.GetActive(depositId);
             if (session is null)

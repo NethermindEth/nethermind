@@ -16,7 +16,6 @@
 
 using System;
 using System.Globalization;
-using Microsoft.VisualBasic;
 using Nethermind.Core.Extensions;
 using Newtonsoft.Json;
 

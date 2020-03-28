@@ -104,7 +104,14 @@ namespace Nethermind.Db
         {
         }
 
-        public IEnumerable<byte[]> GetAll() => Values;
+        public void Clear()
+        {
+            _db.Clear();
+        }
+
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _db;
+
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => Values;
 
         public void StartBatch()
         {
@@ -116,11 +123,6 @@ namespace Nethermind.Db
 
         public ICollection<byte[]> Keys => _db.Keys;
         public ICollection<byte[]> Values => _db.Values;
-
-        public void Clear()
-        {
-            _db.Clear();
-        }
 
         public void Dispose()
         {
