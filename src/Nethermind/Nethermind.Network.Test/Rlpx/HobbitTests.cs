@@ -29,6 +29,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
 using NUnit.Framework;
@@ -134,7 +135,7 @@ namespace Nethermind.Network.Test.Rlpx
             Packet decoded = Run(packet, inbound, outbound, framingEnabled);
 
             GetReceiptsMessage decodedMessage = serializer.Deserialize(decoded.Data);
-            Assert.AreEqual(message.BlockHashes.Count, decodedMessage.BlockHashes.Count);
+            Assert.AreEqual(message.Hashes.Count, decodedMessage.Hashes.Count);
         }
         
         [TestCase(StackType.Zero, StackType.Zero, true)]

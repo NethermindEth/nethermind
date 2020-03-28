@@ -63,6 +63,11 @@ namespace Nethermind.TxPool
             return false;
         }
 
+        public bool HasBeenKnown(Keccak hash)
+        {
+            return false;
+        }
+
         public UInt256 ReserveOwnTransactionNonce(Address address) => UInt256.Zero;
 
         public event EventHandler<TxEventArgs> NewPending
