@@ -17,4 +17,4 @@
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Nethermind.Network.Test")]
-[assembly: InternalsVisibleTo("Nethermind.Network.Benchmarks")]
+[assembly: InternalsVisibleTo("Nethermind.Network.Benchmark")]

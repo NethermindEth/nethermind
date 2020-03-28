@@ -14,13 +14,25 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Specs;
-using Nethermind.Specs.Forks;
+using System.Threading.Tasks;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
+using Nethermind.Network.Rlpx;
+using Nethermind.Network.Rlpx.Handshake;
+using NSubstitute;
+using NUnit.Framework;
 
-namespace Nethermind.Specs
+namespace Nethermind.Network.Test.Rlpx
 {
-    public static class Latest
+    [TestFixture]
+    public class RlpxPeerTests
     {
-        public static IReleaseSpec Release => ConstantinopleFix.Instance;
+        [Test]
+        public async Task Start_stop()
+        {
+            RlpxPeer peer = new RlpxPeer(Substitute.For<IMessageSerializationService>(), TestItem.PublicKeyA, 30303, Substitute.For<IHandshakeService>(), LimboLogs.Instance, Substitute.For<ISessionMonitor>());
+            await peer.Init();
+            await peer.Shutdown();
+        }
     }
 }
