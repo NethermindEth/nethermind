@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Rewards;
@@ -37,7 +38,8 @@ namespace Nethermind.Runner.Ethereum.Steps
     public abstract class StartBlockProducer : IStep, ISubsystemStateAware
     {
         private readonly EthereumRunnerContext _context;
-        private ReadOnlyDbProvider _readOnlyDbProvider;
+        [NotNull]
+        private ReadOnlyDbProvider? _readOnlyDbProvider;
 
         public StartBlockProducer(EthereumRunnerContext context)
         {

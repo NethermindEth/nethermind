@@ -167,7 +167,7 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
             return depositId;
         }
 
-        public async Task SetEnabledDataStreamAsync(Keccak depositId, string client, string[] args)
+        public async Task SetEnabledDataStreamAsync(Keccak depositId, string client, string?[] args)
         {
             ConsumerSession? session = _sessionService.GetActive(depositId);
             if (session is null)

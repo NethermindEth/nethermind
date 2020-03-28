@@ -22,7 +22,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
     {
         public string Id { get;  }
         public bool StreamEnabled { get;  }
-        public string[] Args { get;  }
+        public string?[] Args { get;  }
         
         public SessionClientForRpc(SessionClient session)
         {

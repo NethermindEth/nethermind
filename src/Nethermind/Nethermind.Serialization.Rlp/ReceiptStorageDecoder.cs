@@ -17,6 +17,7 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+#pragma warning disable 618
 
 namespace Nethermind.Serialization.Rlp
 {

@@ -23,20 +23,20 @@ namespace Nethermind.DataMarketplace.Core.Domain
 {
     public class DepositApproval
     {
-        public Keccak Id { get; }
-        public Keccak AssetId { get; }
-        public string AssetName { get; }
-        public string Kyc { get; }
-        public Address Consumer { get; }
-        public Address Provider { get; }
-        public ulong Timestamp { get; }
+        public Keccak Id { get; private set; }
+        public Keccak AssetId { get; private set; }
+        public string AssetName { get; private set; }
+        public string Kyc { get; private set; }
+        public Address Consumer { get; private set; }
+        public Address Provider { get; private set; }
+        public ulong Timestamp { get; private set; }
         public DepositApprovalState State { get; private set; }
 
         public static Keccak CalculateId(Keccak assetId, Address consumer)
         {
             return Keccak.Compute(Rlp.Encode(Rlp.Encode(assetId), Rlp.Encode(consumer)).Bytes);
         }
-        
+
         public DepositApproval(
             Keccak assetId,
             string assetName,

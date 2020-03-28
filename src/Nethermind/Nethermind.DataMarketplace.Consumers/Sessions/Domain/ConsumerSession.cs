@@ -107,7 +107,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Domain
         public void SetDataAvailability(DataAvailability dataAvailability) =>
             Interlocked.Exchange(ref _dataAvailability, (int) dataAvailability);
 
-        public void EnableStream(string client, string[] args)
+        public void EnableStream(string client, string?[] args)
         {
             if (string.IsNullOrWhiteSpace(client))
             {

@@ -28,7 +28,7 @@ AuRa
 
 AuRa is another implementation of the Proof of Authority consensus algorithm. It is currently only supported by Nethermind and Parity Ethereum client. Aura is used to secure the Kovan testnet and the POA Network.
 
-NethDev
+NethDev (we also call it Spaceneth)
 ^^^^^^^
 
 NethDev is a very simple consensus algorithm (or to better describe it - lack of consensus algorithm). NethDev can be used for setting up nodes for development and testing purposes. On the NethDev network any node can create a block with transactions and as long as it is a valid Ethereum block all other nodes will accept it.
