@@ -296,7 +296,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant)
         {
-            return _blockTree.FindLowestCommonAncestor(firstDescendant, secondDescendant);
+            return _blockTree.FindLowestCommonAncestor(firstDescendant, secondDescendant, Sync.MaxReorgLength);
         }
 
         public Block Find(Keccak hash)

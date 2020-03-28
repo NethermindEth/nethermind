@@ -772,7 +772,7 @@ namespace Nethermind.Blockchain
             return result;
         }
 
-        public BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant)
+        public BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant, long maxSearchDepth)
         {
             if (firstDescendant.Number > secondDescendant.Number)
             {
@@ -783,8 +783,10 @@ namespace Nethermind.Blockchain
                 secondDescendant = GetAncestorAtNumber(secondDescendant, firstDescendant.Number);
             }
 
+            long currentSearchDepth = 0;
             while (firstDescendant.Hash != secondDescendant.Hash)
             {
+                if (currentSearchDepth >= maxSearchDepth) return null;
                 firstDescendant = this.FindParentHeader(firstDescendant, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 secondDescendant = this.FindParentHeader(secondDescendant, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             }
