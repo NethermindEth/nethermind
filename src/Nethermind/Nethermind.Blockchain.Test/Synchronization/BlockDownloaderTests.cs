@@ -37,6 +37,7 @@ using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Consensus;
 using Nethermind.Db;
 using Nethermind.Network;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using Nethermind.Store.Bloom;
