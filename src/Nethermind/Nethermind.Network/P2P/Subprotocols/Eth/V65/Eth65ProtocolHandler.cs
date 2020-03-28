@@ -21,7 +21,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V64;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
@@ -46,11 +45,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
-        
+
         public override string Name => "eth65";
-        
+
         public override byte ProtocolVersion { get; protected set; } = 65;
-        
+
         public override void HandleMessage(ZeroPacket message)
         {
             base.HandleMessage(message);
@@ -67,7 +66,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                     break;
             }
         }
-        
+
         private void Handle(GetPooledTransactionsMessage msg)
         {
             Metrics.Eth65GetPooledTransactionsReceived++;
@@ -82,10 +81,24 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                     txs.Add(tx);
                 }
             }
-            
+
             Send(new PooledTransactionsMessage(txs));
             stopwatch.Stop();
             if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} GetPooledTransactionsMessage to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+        }
+
+        public override void SendNewTransaction(Transaction transaction, bool isPriority)
+        {
+            if (isPriority)
+            {
+                base.SendNewTransaction(transaction, true);
+            }
+            else
+            {
+                Counter++;
+                NewPooledTransactionHashesMessage msg = new NewPooledTransactionHashesMessage(new[] {transaction.Hash});
+                Send(msg);
+            }
         }
     }
 }

@@ -30,6 +30,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -264,12 +265,12 @@ namespace Nethermind.Network.P2P
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");
         }
 
-        public void SendNewTransaction(Transaction transaction)
+        public virtual void SendNewTransaction(Transaction transaction, bool isPriority)
         {
             Interlocked.Increment(ref Counter);
             if (transaction.Hash == null)
             {
-                throw new InvalidOperationException($"Trying to send a transaction with null hash");
+                throw new InvalidOperationException("Trying to send a transaction with null hash");
             }
 
             TransactionsMessage msg = new TransactionsMessage(new[] {transaction});

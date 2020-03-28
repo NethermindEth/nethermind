@@ -24,7 +24,7 @@ namespace Nethermind.TxPool
     public interface ITxPoolPeer
     {
         public PublicKey Id { get; }
-        void SendNewTransaction(Transaction tx);
+        void SendNewTransaction(Transaction tx, bool isPriority);
     }
     
     public class NullTxPool : ITxPool

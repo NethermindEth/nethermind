@@ -151,7 +151,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
         public PublicKey Id => Node.Id;
 
-        public void SendNewTransaction(Transaction transaction)
+        public void SendNewTransaction(Transaction transaction, bool isPriority)
         {
         }
 
