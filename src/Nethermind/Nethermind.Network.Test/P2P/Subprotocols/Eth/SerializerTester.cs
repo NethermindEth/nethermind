@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using DotNetty.Buffers;
+using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P;
 using NUnit.Framework;
@@ -27,6 +28,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
         {
             byte[] serialized = serializer.Serialize(message);
             T deserialized = serializer.Deserialize(serialized);
+            deserialized.Should().BeEquivalentTo(message);
             byte[] serializedAgain = serializer.Serialize(deserialized);
             Assert.AreEqual(serialized.ToHexString(), serializedAgain.ToHexString(), "test old way");
 
