@@ -15,11 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Microsoft.VisualStudio.TestPlatform.ObjectModel;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using NUnit.Framework;
-using NUnit.Framework.Interfaces;
 
 namespace Nethermind.Core.Test
 {

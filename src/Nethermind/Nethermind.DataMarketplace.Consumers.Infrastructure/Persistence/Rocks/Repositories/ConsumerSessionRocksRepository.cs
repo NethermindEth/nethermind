@@ -20,7 +20,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Consumers.Sessions.Domain;
 using Nethermind.DataMarketplace.Consumers.Sessions.Queries;
 using Nethermind.DataMarketplace.Consumers.Sessions.Repositories;
@@ -28,7 +27,6 @@ using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.Repositories
 {
@@ -73,8 +71,15 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
 
 
         public Task<PagedResult<ConsumerSession>> BrowseAsync(GetConsumerSessions query)
-            => Task.FromResult(Filter(query.DepositId, query.DataAssetId, query.ConsumerNodeId, query.ConsumerAddress,
+        {
+            if (query is null)
+            {
+                throw new ArgumentNullException(nameof(query));
+            }
+            
+            return Task.FromResult(Filter(query.DepositId, query.DataAssetId, query.ConsumerNodeId, query.ConsumerAddress,
                 query.ProviderNodeId, query.ProviderAddress).Paginate(query));
+        }
 
         private ConsumerSession[] Filter(
             Keccak? depositId = null,
@@ -84,7 +89,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             PublicKey? providerNodeId = null,
             Address? providerAddress = null)
         {
-            byte[][] sessionsBytes = _database.GetAll().ToArray();
+            byte[][] sessionsBytes = _database.GetAllValues().ToArray();
             if (sessionsBytes.Length == 0)
             {
                 return Array.Empty<ConsumerSession>();

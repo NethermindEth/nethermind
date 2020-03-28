@@ -32,7 +32,6 @@ using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Store;
 using Nethermind.Store.Bloom;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
@@ -92,14 +91,15 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.StateProvider,
                 _context.LogManager);
 
-            _context.ReceiptStorage = new PersistentReceiptStorage(_context.DbProvider.ReceiptsDb, _context.SpecProvider, _context.LogManager);
+            _context.ReceiptStorage = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_context.DbProvider.ReceiptsDb, _context.SpecProvider) : NullReceiptStorage.Instance;
+            _context.ReceiptFinder = new FullInfoReceiptFinder(_context.ReceiptStorage, new ReceiptsRecovery());
 
             var bloomConfig = _context.Config<IBloomConfig>();
-            
-            var fileStoreFactory = initConfig.DiagnosticMode == DiagnosticMode.MemDb 
-                ? (IFileStoreFactory) new InMemoryDictionaryFileStoreFactory() 
-                : new FixedSizeFileStoreFactory(Path.Combine(initConfig.BaseDbPath, DbNames.Bloom), DbNames.Bloom, Bloom.ByteLength); 
-           
+
+            var fileStoreFactory = initConfig.DiagnosticMode == DiagnosticMode.MemDb
+                ? (IFileStoreFactory) new InMemoryDictionaryFileStoreFactory()
+                : new FixedSizeFileStoreFactory(Path.Combine(initConfig.BaseDbPath, DbNames.Bloom), DbNames.Bloom, Bloom.ByteLength);
+
             _context.BloomStorage = bloomConfig.Index
                 ? new BloomStorage(bloomConfig, _context.DbProvider.BloomDb, fileStoreFactory)
                 : (IBloomStorage) NullBloomStorage.Instance;
@@ -173,7 +173,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 ommersValidator,
                 _context.SpecProvider,
                 _context.LogManager);
-            
+
             ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(_context.DbProvider, false);
             StateReader stateReader = new StateReader(readOnly.StateDb, readOnly.CodeDb, _context.LogManager);
             _context.TxPoolInfoProvider = new TxPoolInfoProvider(stateReader, _context.TxPool);
@@ -203,6 +203,9 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.RewardCalculatorSource,
                     _context.BlockProcessingQueue);
             }
+
+            ThisNodeInfo.AddInfo("Mem est trie :", $"{Trie.MemoryAllowance.TrieNodeCacheSize * 400 / 1024 / 1024}MB".PadLeft(8));
+            ThisNodeInfo.AddInfo("Mem est tx   :", $"{(TxPool.MemoryAllowance.TxHashCacheSize * 64 + TxPool.MemoryAllowance.MemPoolSize * 4096) / 1024 / 1024}MB".PadLeft(8));
 
             return Task.CompletedTask;
         }

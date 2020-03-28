@@ -24,8 +24,6 @@ namespace Nethermind.Blockchain.Synchronization
         
         long FullSyncBlocksKnown { get; set; }
         
-        SyncMode CurrentSyncMode { get; set; }
-        
         long FastBlocksPivotNumber { get; set; }
         
         MeasuredProgress HeadersInQueue { get; }

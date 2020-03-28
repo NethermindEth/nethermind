@@ -23,38 +23,46 @@ namespace Nethermind.Blockchain.Receipts
 {
     public class InMemoryReceiptStorage : IReceiptStorage
     {
-        private readonly ConcurrentDictionary<Keccak, TxReceipt> _receipts =
-            new ConcurrentDictionary<Keccak, TxReceipt>();
-
-        public TxReceipt Find(Keccak hash)
-        {
-            _receipts.TryGetValue(hash, out var transaction);
-            return transaction;
-        }
-
-        public void Add(TxReceipt txReceipt, bool isProcessed)
-            => _receipts.TryAdd(txReceipt.TxHash, txReceipt);
-
-        public void Insert(long blockNumber, TxReceipt txReceipt)
-        {
-            if (txReceipt != null)
-            {
-                _receipts.TryAdd(txReceipt.TxHash, txReceipt);
-            }
-
-            LowestInsertedReceiptBlock = blockNumber;
-        }
-
-        public void Insert(List<(long blockNumber, TxReceipt txReceipt)> receipts)
-        {
-            foreach ((long blockNumber, TxReceipt txReceipt) in receipts)
-            {
-                Insert(blockNumber, txReceipt);
-            }
-        }
-
-        public long? LowestInsertedReceiptBlock { get; private set; }
+        private readonly ConcurrentDictionary<Keccak, TxReceipt[]> _receipts = new ConcurrentDictionary<Keccak, TxReceipt[]>();
         
-        public int Count => _receipts.Count;
+        private readonly ConcurrentDictionary<Keccak, TxReceipt> _transactions = new ConcurrentDictionary<Keccak, TxReceipt>();
+
+        public Keccak FindBlockHash(Keccak txHash)
+        {
+            _transactions.TryGetValue(txHash, out var receipt);
+            return receipt?.BlockHash;
+        }
+
+        public TxReceipt[] Get(Block block) => Get(block.Hash);
+
+        public TxReceipt[] Get(Keccak blockHash)
+        {
+            _receipts.TryGetValue(blockHash, out var receipts);
+            return receipts;
+        }
+
+        public bool CanGetReceiptsByHash(long blockNumber) => true;
+
+        public void Insert(Block block, params TxReceipt[] txReceipts)
+        {
+            _receipts[block.Hash] = txReceipts;
+            for (int i = 0; i < txReceipts.Length; i++)
+            {
+                var txReceipt = txReceipts[i];
+                txReceipt.BlockHash = block.Hash;
+                _transactions[txReceipt.TxHash] = txReceipt;
+            }
+
+            if (block.Number < (LowestInsertedReceiptBlock ?? long.MaxValue))
+            {
+                LowestInsertedReceiptBlock = block.Number;
+            }
+        }
+
+        public long? LowestInsertedReceiptBlock { get; set; }
+
+        public long MigratedBlockNumber { get; set; } = 0;
+
+        public int Count => _transactions.Count;
     }
 }

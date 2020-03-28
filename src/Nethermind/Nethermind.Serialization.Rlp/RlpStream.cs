@@ -28,7 +28,7 @@ namespace Nethermind.Serialization.Rlp
         private static HeaderDecoder _headerDecoder = new HeaderDecoder();
         private static BlockDecoder _blockDecoder = new BlockDecoder();
         private static TransactionDecoder _txDecoder = new TransactionDecoder();
-        private static ReceiptDecoder _receiptDecoder = new ReceiptDecoder();
+        private static ReceiptMessageDecoder _receiptDecoder = new ReceiptMessageDecoder();
         private static LogEntryDecoder _logEntryDecoder = new LogEntryDecoder();
 
         protected RlpStream()
@@ -117,12 +117,12 @@ namespace Nethermind.Serialization.Rlp
             WriteByte((byte) value);
         }
 
-        protected virtual void WriteByte(byte byteToWrite)
+        public virtual void WriteByte(byte byteToWrite)
         {
             Data[Position++] = byteToWrite;
         }
 
-        protected virtual void Write(Span<byte> bytesToWrite)
+        public virtual void Write(Span<byte> bytesToWrite)
         {
             bytesToWrite.CopyTo(Data.AsSpan(Position, bytesToWrite.Length));
             Position += bytesToWrite.Length;

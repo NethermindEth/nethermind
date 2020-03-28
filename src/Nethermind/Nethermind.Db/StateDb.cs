@@ -71,7 +71,9 @@ namespace Nethermind.Db
             }
         }
 
-        public IEnumerable<byte[]> GetAll() => _db.GetAll();
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _db.GetAll();
+
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _db.GetAllValues();
 
         public void StartBatch()
         {
@@ -96,6 +98,11 @@ namespace Nethermind.Db
         public void Flush()
         {
             _db.Flush();
+        }
+
+        public void Clear()
+        {
+            _db.Clear();
         }
 
         public void Restore(int snapshot)

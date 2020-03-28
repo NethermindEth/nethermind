@@ -41,8 +41,11 @@ namespace Nethermind.Runner
         [ConfigItem(Description = "If 'true' then the node will try to seal/mine new blocks", DefaultValue = "false")]
         bool IsMining { get; set; }
 
-        [ConfigItem(Description = "Path to the chain definition file (Parity chainspec or Geth genesis file).", DefaultValue = "foundation/chainspec.json")]
+        [ConfigItem(Description = "Path to the chain definition file (Parity chainspec or Geth genesis file).", DefaultValue = "chainspec/foundation.json")]
         string ChainSpecPath { get; set; }
+        
+        [ConfigItem(Description = "Directory for Nethermind plugins like NDM.", DefaultValue = "plugins")] 
+        string PluginsDirectory { get; set; }
         
         [ConfigItem(Description = "Base directoy path for all the nethermind databases.", DefaultValue = "\"db\"")]
         string BaseDbPath { get; set; }
@@ -61,6 +64,9 @@ namespace Nethermind.Runner
 
         [ConfigItem(Description = "If set to 'false' then transaction receipts will not be stored in the database after a new block is processed. This setting is independent from downloading receipts in fast sync mode.", DefaultValue = "true")]
         bool StoreReceipts { get; set; }
+        
+        [ConfigItem(Description = "If set to 'true' then receipts db will be migrated to new schema.", DefaultValue = "false")]
+        bool ReceiptsMigration { get; set; }
         
         [ConfigItem(Description = "Diagnostics modes", DefaultValue = "None")]
         DiagnosticMode DiagnosticMode { get; set; }

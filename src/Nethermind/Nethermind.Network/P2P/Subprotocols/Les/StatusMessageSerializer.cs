@@ -15,9 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using DotNetty.Buffers;
-using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
-using System.Text;
 
 namespace Nethermind.Network.P2P.Subprotocols.Les
 {

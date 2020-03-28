@@ -16,7 +16,6 @@
 
 using DotNetty.Buffers;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth

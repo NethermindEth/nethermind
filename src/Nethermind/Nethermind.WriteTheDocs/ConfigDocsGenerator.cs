@@ -92,32 +92,37 @@ Use '/' as the path separator so the configs can be shared between all platforms
                     PropertyInfo interfaceProperty = configInterface.GetProperty(propertyInfo.Name);
                     if (interfaceProperty == null)
                     {
-                        Console.WriteLine($"Property {propertyInfo.Name} is missing from interface {configInterface.Name}.");
-                    }
-                    
-                    ConfigItemAttribute attribute = interfaceProperty.GetCustomAttribute<ConfigItemAttribute>();
-                    string defaultValue = attribute == null ? "[MISSING_DOCS]" : attribute.DefaultValue;
-
-                    if (propertyIndex == properties.Length)
-                    {
-                        exampleBuilder.AppendLine($"              \"{propertyInfo.Name}\" : {defaultValue}");
+                        if (propertyInfo.GetCustomAttribute<ObsoleteAttribute>() == null)
+                        {
+                            Console.WriteLine($"Property {propertyInfo.Name} is missing from interface {configInterface.Name}.");
+                        }
                     }
                     else
                     {
-                        exampleBuilder.AppendLine($"              \"{propertyInfo.Name}\" : {defaultValue},");
-                    }
+                        ConfigItemAttribute attribute = interfaceProperty.GetCustomAttribute<ConfigItemAttribute>();
+                        string defaultValue = attribute == null ? "[MISSING_DOCS]" : attribute.DefaultValue;
 
-                    if (attribute == null)
-                    {
-                        descriptionsBuilder.AppendLine($" {propertyInfo.Name}").AppendLine();
-                        continue;
-                    }
+                        if (propertyIndex == properties.Length)
+                        {
+                            exampleBuilder.AppendLine($"              \"{propertyInfo.Name}\" : {defaultValue}");
+                        }
+                        else
+                        {
+                            exampleBuilder.AppendLine($"              \"{propertyInfo.Name}\" : {defaultValue},");
+                        }
 
-                    descriptionsBuilder
-                        .AppendLine($" {propertyInfo.Name}")
-                        .AppendLine($"   {attribute.Description}")
-                        .AppendLine($"   default value: {defaultValue}")
-                        .AppendLine();
+                        if (attribute == null)
+                        {
+                            descriptionsBuilder.AppendLine($" {propertyInfo.Name}").AppendLine();
+                            continue;
+                        }
+
+                        descriptionsBuilder
+                            .AppendLine($" {propertyInfo.Name}")
+                            .AppendLine($"   {attribute.Description}")
+                            .AppendLine($"   default value: {defaultValue}")
+                            .AppendLine();
+                    }
                 }
 
                 exampleBuilder.AppendLine("        },");

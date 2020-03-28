@@ -63,7 +63,7 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void Can_clear()
+        public void Can_delete()
         {
             MemDb memDb = new MemDb();
             memDb.Set(TestItem.KeccakA, _sampleValue);
@@ -118,7 +118,7 @@ namespace Nethermind.Db.Test
             MemDb memDb = new MemDb();
             memDb.Set(TestItem.KeccakA, _sampleValue);
             memDb.Set(TestItem.KeccakB, _sampleValue);
-            memDb.GetAll().Should().HaveCount(2);
+            memDb.GetAllValues().Should().HaveCount(2);
         }
 
         [Test]

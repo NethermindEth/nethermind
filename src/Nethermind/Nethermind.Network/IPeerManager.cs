@@ -17,7 +17,6 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Config;
-using Nethermind.Core;
 
 namespace Nethermind.Network
 {
@@ -27,7 +26,7 @@ namespace Nethermind.Network
         void Start();
         Task StopAsync();
         IReadOnlyCollection<Peer> ActivePeers { get; }
-        bool AddPeer(NetworkNode node);
+        void AddPeer(NetworkNode node);
         bool RemovePeer(NetworkNode node);
     }
 }

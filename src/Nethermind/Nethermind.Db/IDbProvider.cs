@@ -27,7 +27,7 @@ namespace Nethermind.Db
     {
         ISnapshotableDb StateDb { get; }
         ISnapshotableDb CodeDb { get; }
-        IDb ReceiptsDb { get; }
+        IColumnsDb<ReceiptsColumns> ReceiptsDb { get; }
         IDb BlocksDb { get; }
         IDb HeadersDb { get; }
         IDb BlockInfosDb { get; }

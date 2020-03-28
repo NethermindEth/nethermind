@@ -15,14 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Microsoft.VisualStudio.TestPlatform.ObjectModel;
-using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
-using NUnit.Framework.Internal;
 
 namespace Nethermind.Core.Test.Encoding
 {

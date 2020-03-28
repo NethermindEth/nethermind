@@ -17,14 +17,12 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Consumers.DataAssets.Domain;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Providers.Domain;
 using Nethermind.DataMarketplace.Consumers.Providers.Repositories;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.Repositories
 {
@@ -53,7 +51,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
 
         private IEnumerable<DepositDetails> GetAll()
         {
-            byte[][] depositsBytes = _database.GetAll().ToArray();
+            byte[][] depositsBytes = _database.GetAllValues().ToArray();
             if (depositsBytes.Length == 0)
             {
                 yield break;

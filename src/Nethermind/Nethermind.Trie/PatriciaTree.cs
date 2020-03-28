@@ -30,7 +30,7 @@ namespace Nethermind.Trie
     [DebuggerDisplay("{RootHash}")]
     public class PatriciaTree
     {
-        public static readonly LruCache<Keccak, Rlp> NodeCache = new LruCache<Keccak, Rlp>(256 * 1024);
+        public static readonly LruCache<Keccak, byte[]> NodeCache = new LruCache<Keccak, byte[]>(MemoryAllowance.TrieNodeCacheSize);
 
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
@@ -118,7 +118,7 @@ namespace Nethermind.Trie
                         throw new ArgumentNullException($"Threading issue at {nameof(_currentCommit)} - should not happen unless we use static objects somewhere here.");
                     }
 
-                    _keyValueStore[node.Keccak.Bytes] = node.FullRlp.Bytes;
+                    _keyValueStore[node.Keccak.Bytes] = node.FullRlp;
                 }
 
                 // reset objects
@@ -253,14 +253,14 @@ namespace Nethermind.Trie
             Set(rawKey, value == null ? new byte[0] : value.Bytes);
         }
 
-        internal Rlp GetNode(Keccak keccak, bool allowCaching)
+        internal byte[] GetNode(Keccak keccak, bool allowCaching)
         {
             if (!allowCaching)
             {
-                return new Rlp(_keyValueStore[keccak.Bytes]);
+                return _keyValueStore[keccak.Bytes];
             }
 
-            Rlp cachedRlp = NodeCache.Get(keccak);
+            byte[] cachedRlp = NodeCache.Get(keccak);
             if (cachedRlp == null)
             {
                 byte[] dbValue = _keyValueStore[keccak.Bytes];
@@ -269,7 +269,7 @@ namespace Nethermind.Trie
                     throw new TrieException($"Node {keccak} is missing from the DB");
                 }
                 
-                return new Rlp(dbValue);
+                return dbValue;
             }
 
             return cachedRlp;

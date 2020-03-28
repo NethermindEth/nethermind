@@ -84,11 +84,11 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 return null;
             }
 
-            var id = Keccak.Compute(Rlp.Encode(Rlp.Encode(assetId), Rlp.Encode(consumer)).Bytes);
-            var approval = await _depositApprovalRepository.GetAsync(id);
+            Keccak id = DepositApproval.CalculateId(assetId, consumer);
+            DepositApproval? approval = await _depositApprovalRepository.GetAsync(id);
             if (approval is null)
             {
-                approval = new DepositApproval(id, assetId, dataAsset.Name, kyc, consumer,
+                approval = new DepositApproval(assetId, dataAsset.Name, kyc, consumer,
                     dataAsset.Provider.Address, _timestamper.EpochSeconds, DepositApprovalState.Pending);
                 await _depositApprovalRepository.AddAsync(approval);
             }

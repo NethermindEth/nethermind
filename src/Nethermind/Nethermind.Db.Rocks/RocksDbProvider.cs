@@ -17,7 +17,6 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 
@@ -26,14 +25,16 @@ namespace Nethermind.Db.Rocks
     public class RocksDbProvider : IDbProvider
     {
         private readonly ILogManager _logManager;
+        private readonly bool _addNdmDbs;
         private IDb _configsDb;
         private IDb _ethRequestsDb;
         private string _basePath;
         private IDbConfig _dbConfig;
 
-        public RocksDbProvider(ILogManager logManager)
+        public RocksDbProvider(ILogManager logManager, bool addNdmDbs = true)
         {
             _logManager = logManager;
+            _addNdmDbs = addNdmDbs;
         }
 
         public async Task Init(string basePath, IDbConfig dbConfig, bool useReceiptsDb)
@@ -49,6 +50,8 @@ namespace Nethermind.Db.Rocks
             allInitializers.Add(Task.Run(() => CodeDb = new StateDb(new CodeRocksDb(basePath, dbConfig, _logManager))));
             allInitializers.Add(Task.Run(() => PendingTxsDb = new PendingTxsRocksDb(basePath, dbConfig, _logManager)));
             allInitializers.Add(Task.Run(() => BloomDb = new BloomRocksDb(basePath, dbConfig, _logManager)));
+            allInitializers.Add(Task.Run(() => ConfigsDb = _addNdmDbs ? new ConfigsRocksDb(basePath, dbConfig, _logManager) : (IDb)new MemDb()));
+            allInitializers.Add(Task.Run(() => EthRequestsDb = _addNdmDbs ? new EthRequestsRocksDb(basePath, dbConfig, _logManager) : (IDb)new MemDb()));
 
             allInitializers.Add(Task.Run(() =>
             {
@@ -58,7 +61,7 @@ namespace Nethermind.Db.Rocks
                 }
                 else
                 {
-                    ReceiptsDb = new ReadOnlyDb(new MemDb(), false);
+                    ReceiptsDb = new ReadOnlyColumnsDb<ReceiptsColumns>(new MemColumnsDb<ReceiptsColumns>(), false);
                 }
             }));
 
@@ -67,38 +70,13 @@ namespace Nethermind.Db.Rocks
 
         public ISnapshotableDb StateDb { get; private set; }
         public ISnapshotableDb CodeDb { get; private set; }
-        public IDb ReceiptsDb { get; private set; }
+        public IColumnsDb<ReceiptsColumns> ReceiptsDb { get; private set; }
         public IDb BlocksDb { get; private set; }
         public IDb HeadersDb { get; private set; }
         public IDb BlockInfosDb { get; private set; }
         public IDb PendingTxsDb { get; private set; }
-
-        public IDb ConfigsDb
-        {
-            get
-            {
-                if (_configsDb == null)
-                {
-                    LazyInitializer.EnsureInitialized(ref _configsDb, () => new ConfigsRocksDb(_basePath, _dbConfig, _logManager));
-                }
-
-                return _configsDb;
-            }
-        }
-
-        public IDb EthRequestsDb
-        {
-            get
-            {
-                if (_ethRequestsDb == null)
-                {
-                    LazyInitializer.EnsureInitialized(ref _ethRequestsDb, () => new EthRequestsRocksDb(_basePath, _dbConfig, _logManager));
-                }
-
-                return _ethRequestsDb;
-            }
-        }
-
+        public IDb ConfigsDb { get; private set; }
+        public IDb EthRequestsDb { get; private set; }
         public IDb BloomDb { get; private set; }
 
         public void Dispose()

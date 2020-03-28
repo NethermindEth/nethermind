@@ -17,10 +17,6 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
-using System.Runtime.InteropServices;
-using System.Security.Cryptography;
-using System.Threading;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Extensions
 {

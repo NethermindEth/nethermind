@@ -33,7 +33,6 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Nethermind.Store;
 using Nethermind.Trie;
 using NUnit.Framework;
 

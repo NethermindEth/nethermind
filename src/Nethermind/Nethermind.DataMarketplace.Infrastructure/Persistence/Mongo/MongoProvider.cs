@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
 using System.Numerics;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
@@ -35,6 +34,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo
         private static IMongoClient? _client;
         private readonly INdmMongoConfig _config;
 
+        static MongoProvider()
+        {
+            RegisterConventions();
+        }
+        
         public MongoProvider(INdmMongoConfig config, ILogManager logManager)
         {
             _config = config;
@@ -43,33 +47,32 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo
             {
                 return;
             }
-
-            RegisterConventions();
+            
             MongoUrl connectionUrl = new MongoUrl(config.ConnectionString);
             MongoClientSettings clientSettings = MongoClientSettings.FromUrl(connectionUrl);
-            if (_config.LogQueries ?? false)
+            if (_config.LogQueries)
             {
                 clientSettings.ClusterConfigurator = cb =>
                 {
                     cb.Subscribe<CommandStartedEvent>(e =>
                     {
                         if (logger.IsInfo) logger.Info($"MongoDB command started '{e.CommandName}': {e.Command.ToJson()}");
-                    });   
+                    });
                     cb.Subscribe<CommandSucceededEvent>(e =>
                     {
                         if (logger.IsInfo) logger.Info($"MongoDB command succeeded '{e.CommandName}': {e.Reply.ToJson()}");
-                    }); 
+                    });
                     cb.Subscribe<CommandFailedEvent>(e =>
                     {
                         if (logger.IsError) logger.Error($"MongoDB command failed '{e.CommandName}': {e.Failure}");
-                    }); 
+                    });
                 };
             }
 
             _client = new MongoClient(clientSettings);
             _initialized = true;
         }
-        
+
         public IMongoDatabase? GetDatabase() => _client?.GetDatabase(_config.Database);
 
         private static void RegisterConventions()
@@ -82,85 +85,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo
             BsonSerializer.RegisterSerializer(typeof(Signature), new SignatureSerializer());
             BsonSerializer.RegisterSerializer(typeof(UInt256), new UInt256Serializer());
             ConventionRegistry.Register("Conventions", new MongoDbConventions(), _ => true);
-        }
-
-        private class MongoDbConventions : IConventionPack
-        {
-            public IEnumerable<IConvention> Conventions => new List<IConvention>
-            {
-                new IgnoreExtraElementsConvention(true),
-                new EnumRepresentationConvention(BsonType.String),
-                new CamelCaseElementNameConvention()
-            };
-        }
-
-        private class AddressSerializer : SerializerBase<Address?>
-        {
-            public override Address? Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
-            {
-                string value = context.Reader.ReadString();
-
-                return string.IsNullOrWhiteSpace(value) ? null : new Address(value);
-            }
-
-            public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, Address? value)
-                => context.Writer.WriteString(value?.ToString());
-        }
-
-        private class BigIntegerSerializer : SerializerBase<BigInteger>
-        {
-            public override BigInteger Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
-                => BigInteger.Parse(context.Reader.ReadString());
-
-            public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args,
-                BigInteger value) => context.Writer.WriteString(value.ToString());
-        }
-
-        private class KeccakSerializer : SerializerBase<Keccak?>
-        {
-            public override Keccak? Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
-            {
-                string value = context.Reader.ReadString();
-
-                return string.IsNullOrWhiteSpace(value) ? null : new Keccak(value);
-            }
-
-            public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, Keccak? value)
-                => context.Writer.WriteString(value?.ToString() ?? string.Empty);
-        }
-        
-        private class PublicKeySerializer : SerializerBase<PublicKey?>
-        {
-            public override PublicKey? Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
-            {
-                string value = context.Reader.ReadString();
-                return string.IsNullOrWhiteSpace(value) ? null : new PublicKey(value);
-            }
-
-            public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args,
-                PublicKey? value) => context.Writer.WriteString(value?.ToString() ?? string.Empty);
-        }
-
-        private class SignatureSerializer : SerializerBase<Signature?>
-        {
-            public override Signature? Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
-            {
-                string value = context.Reader.ReadString();
-
-                return string.IsNullOrWhiteSpace(value) ? null : new Signature(value);
-            }
-
-            public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, Signature? value)
-                => context.Writer.WriteString(value?.ToString() ?? string.Empty);
-        }
-
-        private class UInt256Serializer : SerializerBase<UInt256>
-        {
-            public override UInt256 Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
-                => UInt256.Parse(context.Reader.ReadString());
-
-            public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, UInt256 value)
-                => context.Writer.WriteString(value.ToString());
         }
     }
 }

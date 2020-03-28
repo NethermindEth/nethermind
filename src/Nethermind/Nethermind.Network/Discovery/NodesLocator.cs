@@ -20,7 +20,6 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -84,7 +83,7 @@ namespace Nethermind.Network.Discovery
                     }
                     candTryIndex = candTryIndex + 1;
 
-                    _logger.Trace($"Waiting {_discoveryConfig.DiscoveryNewCycleWaitTime} for new nodes");
+                    if(_logger.IsTrace) _logger.Trace($"Waiting {_discoveryConfig.DiscoveryNewCycleWaitTime} for new nodes");
                     //we need to wait some time for pong messages received from new nodes we reached out to
                     try
                     {
@@ -98,7 +97,7 @@ namespace Nethermind.Network.Discovery
 
                 if (!tryCandidates.Any())
                 {
-                    _logger.Trace("No more closer candidates");
+                    if(_logger.IsTrace) _logger.Trace("No more closer candidates");
                     break;
                 }
 
@@ -111,7 +110,7 @@ namespace Nethermind.Network.Discovery
                     Node[] nodesToSend = tryCandidates.Skip(nodesTriedCount).Take(count).ToArray();
                     if (!nodesToSend.Any())
                     {
-                        _logger.Trace($"No more nodes to send, sent {successRequestsCount} successfull requests, failedRequestCounter: {failRequestCount}, nodesTriedCounter: {nodesTriedCount}");
+                        if(_logger.IsTrace) _logger.Trace($"No more nodes to send, sent {successRequestsCount} successfull requests, failedRequestCounter: {failRequestCount}, nodesTriedCounter: {nodesTriedCount}");
                         break;
                     }
 

@@ -19,7 +19,6 @@ using System.Threading;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
-using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;

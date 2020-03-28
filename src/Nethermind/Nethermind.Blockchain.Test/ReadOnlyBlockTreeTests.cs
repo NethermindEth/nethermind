@@ -18,7 +18,6 @@ using System;
 using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using NSubstitute;
-using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test

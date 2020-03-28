@@ -26,7 +26,7 @@ namespace Nethermind.State.Proofs
     public class ReceiptTrie : PatriciaTree
     {
         private readonly bool _allowProofs;
-        private static ReceiptDecoder _receiptDecoder = new ReceiptDecoder();
+        private static readonly ReceiptMessageDecoder Decoder = new ReceiptMessageDecoder();
         
         public ReceiptTrie(long blockNumber, ISpecProvider specProvider, TxReceipt[] txReceipts, bool allowProofs = false)
             : base(allowProofs ? (IDb) new MemDb() : NullDb.Instance, EmptyTreeHash, false, false)
@@ -39,7 +39,7 @@ namespace Nethermind.State.Proofs
             
             for (int i = 0; i < txReceipts.Length; i++)
             {
-                byte[] receiptRlp = _receiptDecoder.EncodeNew(txReceipts[i], specProvider.GetSpec(blockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
+                byte[] receiptRlp = Decoder.EncodeNew(txReceipts[i], specProvider.GetSpec(blockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
                 Set(Rlp.Encode(i).Bytes, receiptRlp);
             }
 

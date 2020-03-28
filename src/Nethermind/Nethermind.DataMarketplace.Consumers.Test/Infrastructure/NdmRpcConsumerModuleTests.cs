@@ -387,7 +387,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         public async Task get_deposit_approvals_should_return_approvals()
         {
             var query = new GetConsumerDepositApprovals();
-            var approval = new DepositApproval(Keccak.Zero, TestItem.KeccakA, "test", "kyc",
+            var approval = new DepositApproval(TestItem.KeccakA, "test", "kyc",
                 TestItem.AddressA, TestItem.AddressB, 1, DepositApprovalState.Pending);
             _consumerService.GetDepositApprovalsAsync(query)
                 .Returns(PagedResult<DepositApproval>.Create(new[] {approval}, 1, 1, 1, 1));
@@ -577,11 +577,12 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         [Test]
         public async Task get_consumer_pending_transactions_should_return_data()
         {
-            var pendingTransactions = new List<PendingTransaction>
+            var pendingTransactions = new List<ResourceTransaction>
             {
-                new PendingTransaction(TestItem.KeccakA.ToString(), "test", TransactionInfo.Default(TestItem.KeccakB,
+                new ResourceTransaction(TestItem.KeccakA.ToString(), "test", TransactionInfo.Default(TestItem.KeccakB,
                     1.Ether(), 20.GWei(), 10, _timestamper.EpochSeconds))
             };
+            
             var transaction = pendingTransactions[0];
             _consumerTransactionsService.GetPendingAsync().Returns(pendingTransactions);
             var result = await _rpc.ndm_getConsumerPendingTransactions();

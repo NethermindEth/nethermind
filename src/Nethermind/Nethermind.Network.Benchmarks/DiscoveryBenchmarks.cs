@@ -16,6 +16,7 @@
 
 using System.Net;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -25,7 +26,7 @@ using Nethermind.Network.Discovery.Serializers;
 namespace Nethermind.Network.Benchmarks
 {
     [MemoryDiagnoser]
-    [CoreJob(true)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class DiscoveryBenchmarks
     {
         [GlobalSetup]

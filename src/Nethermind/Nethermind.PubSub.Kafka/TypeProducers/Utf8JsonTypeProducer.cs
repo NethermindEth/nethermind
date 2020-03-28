@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq.Expressions;
 using System.Threading.Tasks;
 using Confluent.Kafka;
 using Nethermind.Core;
@@ -31,7 +32,7 @@ namespace Nethermind.PubSub.Kafka.TypeProducers
         private bool _initialized;
         private readonly IPubSubModelMapper _mapper;
         private readonly ILogger _logger;
-        private Producer<Null, byte[]> _producer;
+        private IProducer<Null, byte[]> _producer;
 
         public Utf8JsonTypeProducer(ProducerConfig config, IPubSubModelMapper mapper, ILogger logger)
         {
@@ -48,8 +49,9 @@ namespace Nethermind.PubSub.Kafka.TypeProducers
             }
             try
             {
-                _producer = new Producer<Null, byte[]>(config);
-                _producer.OnError += (s, e) => _logger.Error(e.ToString());
+                var producerBuilder = new ProducerBuilder<Null, byte[]>(config);
+                producerBuilder.SetErrorHandler((s, e) => _logger.Error(e.ToString()));
+                _producer = producerBuilder.Build();
                 _initialized = true;
                 if (_logger.IsDebug)
                 {

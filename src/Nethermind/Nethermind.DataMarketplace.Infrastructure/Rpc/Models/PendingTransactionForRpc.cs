@@ -18,17 +18,17 @@ using Nethermind.DataMarketplace.Core.Domain;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
 {
-    public class PendingTransactionForRpc
+    public class ResourceTransactionForRpc
     {
         public string? ResourceId { get; }
         public string? Type { get; }
         public TransactionInfoForRpc? Transaction { get; }
 
-        public PendingTransactionForRpc()
+        public ResourceTransactionForRpc()
         {
         }
 
-        public PendingTransactionForRpc(PendingTransaction transaction)
+        public ResourceTransactionForRpc(ResourceTransaction transaction)
         {
             ResourceId = transaction.ResourceId;
             Type = transaction.Type;

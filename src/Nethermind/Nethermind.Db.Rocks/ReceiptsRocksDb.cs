@@ -19,12 +19,13 @@ using Nethermind.Logging;
 
 namespace Nethermind.Db.Rocks
 {
-    public class ReceiptsRocksDb : DbOnTheRocks
+    public class ReceiptsRocksDb : ColumnsDb<ReceiptsColumns>
     {
-        public override string Name { get; } = "Receipts";
+        private const string ReceiptsName = "Receipts";
+        public override string Name { get; } = ReceiptsName;
 
         public ReceiptsRocksDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
-            : base(basePath, "receipts", dbConfig, logManager)
+            : base(basePath, ReceiptsName.ToLower(), dbConfig, logManager, ReceiptsName)
         {
         }
 

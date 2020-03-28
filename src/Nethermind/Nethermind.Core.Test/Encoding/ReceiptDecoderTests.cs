@@ -14,11 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.IO;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -43,7 +40,7 @@ namespace Nethermind.Core.Test.Encoding
             txReceipt.Index = 2;
             txReceipt.PostTransactionState = TestItem.KeccakH;
 
-            ReceiptDecoder decoder = new ReceiptDecoder();
+            ReceiptStorageDecoder decoder = new ReceiptStorageDecoder();
             Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage);
             TxReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpStream(), RlpBehaviors.Storage);
 
@@ -77,7 +74,7 @@ namespace Nethermind.Core.Test.Encoding
             txReceipt.PostTransactionState = TestItem.KeccakH;
             txReceipt.StatusCode = 1;
 
-            ReceiptDecoder decoder = new ReceiptDecoder();
+            ReceiptStorageDecoder decoder = new ReceiptStorageDecoder();
             Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
             TxReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpStream(), RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
@@ -109,7 +106,7 @@ namespace Nethermind.Core.Test.Encoding
             txReceipt.Index = 2;
             txReceipt.PostTransactionState = TestItem.KeccakH;
 
-            ReceiptDecoder decoder = new ReceiptDecoder();
+            ReceiptStorageDecoder decoder = new ReceiptStorageDecoder();
             Rlp rlp = decoder.Encode(txReceipt);
             TxReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpStream());
 
@@ -142,10 +139,10 @@ namespace Nethermind.Core.Test.Encoding
             txReceipt.Index = 2;
             txReceipt.PostTransactionState = TestItem.KeccakH;
 
-            ReceiptDecoder decoder = new ReceiptDecoder();
+            ReceiptStorageDecoder decoder = new ReceiptStorageDecoder();
 
-            byte[] rlpStreamResult = decoder.EncodeNew(txReceipt, RlpBehaviors.Storage);
-            TxReceipt deserialized = Rlp.Decode<TxReceipt>(rlpStreamResult, RlpBehaviors.Storage);
+            byte[] rlpStreamResult = decoder.Encode(txReceipt, RlpBehaviors.Storage).Bytes;
+            TxReceipt deserialized = decoder.Decode(new RlpStream(rlpStreamResult), RlpBehaviors.Storage);
 
             Assert.AreEqual(txReceipt.BlockHash, deserialized.BlockHash, "block hash");
             Assert.AreEqual(txReceipt.BlockNumber, deserialized.BlockNumber, "block number");
@@ -169,7 +166,7 @@ namespace Nethermind.Core.Test.Encoding
             txReceipt.GasUsedTotal = 1000;
             txReceipt.PostTransactionState = TestItem.KeccakH;
 
-            ReceiptDecoder decoder = new ReceiptDecoder();
+            ReceiptMessageDecoder decoder = new ReceiptMessageDecoder();
 
             byte[] rlpStreamResult = decoder.EncodeNew(txReceipt, RlpBehaviors.None);
             TxReceipt deserialized = Rlp.Decode<TxReceipt>(rlpStreamResult, RlpBehaviors.None);

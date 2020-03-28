@@ -26,7 +26,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 using Nethermind.Trie;
 
 namespace Nethermind.Blockchain.Synchronization.FastSync
@@ -340,6 +339,8 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                 {
                     if (_logger.IsError) _logger.Error($"POSSIBLE FAST SYNC CORRUPTION | Nodes left after the root node saved - count: {TotalNodesPending}");
                 }
+                
+                _alreadySaved.Clear();
             }
 
             _syncProgress.ReportSynced(syncItem.Level, syncItem.ParentBranchChildIndex, syncItem.BranchChildIndex, syncItem.NodeDataType, NodeProgressState.Saved);
@@ -596,7 +597,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
         private void HandleTrieNode(StateSyncItem currentStateSyncItem, byte[] currentResponseItem, ref int invalidNodes)
         {
             NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
-            TrieNode trieNode = new TrieNode(NodeType.Unknown, new Rlp(currentResponseItem));
+            TrieNode trieNode = new TrieNode(NodeType.Unknown, currentResponseItem);
             trieNode.ResolveNode(null);
             switch (trieNode.NodeType)
             {

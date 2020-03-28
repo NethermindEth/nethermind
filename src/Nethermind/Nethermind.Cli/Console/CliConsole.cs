@@ -20,6 +20,7 @@ using System.Drawing;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using Nethermind.Core;
 
 namespace Nethermind.Cli.Console
 {
@@ -53,7 +54,7 @@ namespace Nethermind.Cli.Console
 
             Assembly assembly = typeof(CliConsole).Assembly;
             AssemblyInformationalVersionAttribute versionAttribute = assembly.GetCustomAttributes(false).OfType<AssemblyInformationalVersionAttribute>().FirstOrDefault();
-            string version = versionAttribute?.InformationalVersion;
+            string version = ClientVersion.Version;
 
             Colorful.Console.WriteLine("**********************************************", _colorScheme.Comment);
             Colorful.Console.WriteLine();

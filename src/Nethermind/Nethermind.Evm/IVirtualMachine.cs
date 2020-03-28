@@ -16,7 +16,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
-using Nethermind.Specs;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm

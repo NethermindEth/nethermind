@@ -20,6 +20,7 @@ using System.Linq;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Store.Bloom;
 
@@ -27,19 +28,19 @@ namespace Nethermind.Blockchain.Find
 {
     public class LogFinder : ILogFinder
     {
-        private readonly IReceiptStorage _receiptStorage;
+        private readonly IReceiptFinder _receiptFinder;
         private readonly IBloomStorage _bloomStorage;
         private readonly IReceiptsRecovery _receiptsRecovery;
         private readonly int _maxBlockDepth;
         private readonly IBlockFinder _blockFinder;
         private readonly ILogger _logger;
 
-        public LogFinder(IBlockFinder blockFinder, IReceiptStorage receiptStorage, IBloomStorage bloomStorage, IReceiptsRecovery receiptsRecovery, ILogManager logManager, int maxBlockDepth = 1000)
+        public LogFinder(IBlockFinder blockFinder, IReceiptFinder receiptFinder, IBloomStorage bloomStorage, ILogManager logManager, IReceiptsRecovery receiptsRecovery, int maxBlockDepth = 1000)
         {
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
-            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
-            _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
+            _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));;
             _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
             _maxBlockDepth = maxBlockDepth;
         }
@@ -69,27 +70,32 @@ namespace Nethermind.Blockchain.Find
 
         private IEnumerable<FilterLog> FilterLogsWithBloomsIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
         {
-            Block FindBlock(long blockNumber)
+            Keccak FindBlockHash(long blockNumber)
             {
-                var block = _blockFinder.FindBlock(blockNumber);
-                if (block == null)
+                var blockHash = _blockFinder.FindBlockHash(blockNumber);
+                if (blockHash == null)
                 {
                     if (_logger.IsError) _logger.Error($"Could not find block {blockNumber} in database. eth_getLogs will return incomplete results.");
                 }
-                return block;
+                return blockHash;
             }
-
-            var enumeration = _bloomStorage.GetBlooms(fromBlock.Number, toBlock.Number);
-            foreach (var bloom in enumeration)
+            
+            IEnumerable<long> FilterBlocks(LogFilter f, long from, long to)
             {
-                if (filter.Matches(bloom) && enumeration.TryGetBlockNumber(out var blockNumber))
+                var enumeration = _bloomStorage.GetBlooms(from, to);
+                foreach (var bloom in enumeration)
                 {
-                    foreach (var filterLog in FindLogsInBlock(filter, FindBlock(blockNumber)))
+                    if (f.Matches(bloom) && enumeration.TryGetBlockNumber(out var blockNumber))
                     {
-                        yield return filterLog;
+                        yield return blockNumber;
                     }
                 }
             }
+            
+            return FilterBlocks(filter, fromBlock.Number, toBlock.Number)
+                .AsParallel() // can yield big performance improvements 
+                .AsOrdered() // we want to keep block order
+                .SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHash(blockNumber), blockNumber));
         }
 
         private bool CanUseBloomDatabase(BlockHeader toBlock, BlockHeader fromBlock) => _bloomStorage.ContainsRange(fromBlock.Number, toBlock.Number) && _blockFinder.IsMainChain(toBlock) && _blockFinder.IsMainChain(fromBlock);
@@ -116,38 +122,67 @@ namespace Nethermind.Blockchain.Find
 
         private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, BlockHeader block) =>
             filter.Matches(block.Bloom)
-                ? FindLogsInBlock(filter, _blockFinder.FindBlock(block.Hash))
+                ? FindLogsInBlock(filter, block.Hash, block.Number)
                 : Enumerable.Empty<FilterLog>();
 
-        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Block block)
+        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Keccak blockHash, long blockNumber)
         {
-            if (block != null)
+            TxReceipt[] GetReceipts(Keccak hash, long number, out bool needRecover)
             {
-                var receipts = _receiptStorage.FindForBlock(block, _receiptsRecovery);
-                long logIndexInBlock = 0;
-                foreach (var receipt in receipts)
+                needRecover = _receiptFinder.CanGetReceiptsByHash(number);
+                if (needRecover)
                 {
-                    if (receipt == null)
-                    {
-                        continue;
-                    }
+                    return _receiptFinder.Get(hash);
+                }
+                else
+                {
+                    var block = _blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.None);
+                    return block == null ? null : _receiptFinder.Get(block);
+                }
+            }
+            
+            void RecoverReceiptsData(Keccak hash, TxReceipt[] receipts)
+            {
+                var block = _blockFinder.FindBlock(hash, BlockTreeLookupOptions.None);
+                if (block != null)
+                {
+                    _receiptsRecovery.TryRecover(block, receipts);
+                }
+            }
 
-                    if (filter.Matches(receipt.Bloom))
+            if (blockHash != null)
+            {
+                var receipts = GetReceipts(blockHash, blockNumber, out var needRecover);
+                long logIndexInBlock = 0;
+                if (receipts != null)
+                {
+                    for (var i = 0; i < receipts.Length; i++)
                     {
-                        for (var index = 0; index < receipt.Logs.Length; index++)
+                        var receipt = receipts[i];
+                        
+                        if (filter.Matches(receipt.Bloom))
                         {
-                            var log = receipt.Logs[index];
-                            if (filter.Accepts(log))
+                            for (var j = 0; j < receipt.Logs.Length; j++)
                             {
-                                yield return new FilterLog(logIndexInBlock, index, receipt, log);
-                            }
+                                var log = receipt.Logs[j];
+                                if (filter.Accepts(log))
+                                {
+                                    if (needRecover)
+                                    {
+                                        RecoverReceiptsData(blockHash, receipts);
+                                        needRecover = false;
+                                    }
+                                    
+                                    yield return new FilterLog(logIndexInBlock, j, receipt, log);
+                                }
 
-                            logIndexInBlock++;
+                                logIndexInBlock++;
+                            }
                         }
-                    }
-                    else
-                    {
-                        logIndexInBlock += receipt.Logs.Length;
+                        else
+                        {
+                            logIndexInBlock += receipt.Logs.Length;
+                        }
                     }
                 }
             }
