@@ -225,8 +225,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.Test.MockedStart
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
             // Act
-            QuickStartMockEth1GenesisProvider quickStartMockEth1GenesisProvider =
-                testServiceProvider.GetService<IEth1GenesisProvider>() as QuickStartMockEth1GenesisProvider;
+            QuickStartMockEth1GenesisProvider quickStartMockEth1GenesisProvider = (QuickStartMockEth1GenesisProvider) testServiceProvider.GetService<IEth1GenesisProvider>();
             byte[] privateKey = quickStartMockEth1GenesisProvider.GeneratePrivateKey(63);
 
             // Assert

@@ -434,7 +434,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
                 throw new SubprotocolException("Received a reponse for which no request has been made.");
             }
 
-            request.CompletionSource.SetResult(message.Result);
+            request?.CompletionSource.SetResult(message.Result);
         }
 
         private void Handle(EarlyRefundTicketMessage message)
@@ -461,7 +461,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
             Send(new FinishSessionMessage(depositId));
         }
 
-        public void SendEnableDataStream(Keccak depositId, string client, string[] args)
+        public void SendEnableDataStream(Keccak depositId, string client, string?[] args)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: enabledatastream");
             Send(new EnableDataStreamMessage(depositId, client, args));
@@ -551,7 +551,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
                 throw new SubprotocolException("Received a reponse for which no request has been made.");
             }
 
-            request.CompletionSource.SetResult(message.DepositApprovals);
+            request?.CompletionSource.SetResult(message.DepositApprovals);
         }
 
         private void Handle(DataStreamEnabledMessage message)
@@ -589,7 +589,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
                 throw new SubprotocolException("Received a reponse for which no request has been made.");
             }
 
-            request.CompletionSource.SetResult(message.Response);
+            request?.CompletionSource.SetResult(message.Response);
         }
 
         private void Handle(GraceUnitsExceededMessage message)
