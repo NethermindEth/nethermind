@@ -58,7 +58,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
                 
                 if (expectedData != null)
                 {
-                    Assert.AreEqual(expectedData, allHex);
+                    allHex.Should().BeEquivalentTo(expectedData);
                 }
             }
             finally
