@@ -46,6 +46,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             {
                 serializer.Serialize(buffer, message);
                 T deserialized = serializer.Deserialize(buffer);
+                deserialized.Should().BeEquivalentTo(message);
                 
                 Assert.AreEqual(0, buffer.ReadableBytes, "readable bytes");
                 
