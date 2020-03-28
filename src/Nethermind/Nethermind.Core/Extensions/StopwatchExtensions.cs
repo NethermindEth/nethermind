@@ -14,17 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
+using System.Diagnostics;
 
-namespace Nethermind.Core
+namespace Nethermind.Core.Extensions
 {
-    public interface ITimestamper
+    public static class StopwatchExtensions
     {
-        ulong EpochSeconds { get; }
-        ulong EpochMilliseconds { get; }
-        long EpochSecondsLong => (long) EpochSeconds;
-        long EpochMillisecondsLong => (long) EpochMilliseconds;
-        
-        DateTime UtcNow { get; }
+        public static long ElapsedMicroseconds(this Stopwatch stopwatch)
+        {
+            return stopwatch.ElapsedTicks * 1000000 / Stopwatch.Frequency;
+        }
     }
 }

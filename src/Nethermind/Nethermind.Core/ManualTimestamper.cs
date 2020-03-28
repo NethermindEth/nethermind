@@ -18,13 +18,19 @@ using System;
 
 namespace Nethermind.Core
 {
-    public interface ITimestamper
+    public class ManualTimestamper : ITimestamper
     {
-        ulong EpochSeconds { get; }
-        ulong EpochMilliseconds { get; }
-        long EpochSecondsLong => (long) EpochSeconds;
-        long EpochMillisecondsLong => (long) EpochMilliseconds;
-        
-        DateTime UtcNow { get; }
+        public ManualTimestamper() : this(DateTime.Now)
+        {
+        }
+
+        public ManualTimestamper(DateTime initialValue)
+        {
+        }
+
+        public ulong EpochSeconds => (ulong)new DateTimeOffset(UtcNow).ToUnixTimeSeconds();
+        public ulong EpochMilliseconds => (ulong)new DateTimeOffset(UtcNow).ToUnixTimeMilliseconds();
+
+        public DateTime UtcNow { get; set; }
     }
 }
