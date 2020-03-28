@@ -246,6 +246,7 @@ namespace Nethermind.Network
 
         private void InitEthProtocol(ISession session, Eth62ProtocolHandler handler)
         {
+            session.Node.EthDetails = handler.Name;
             handler.ProtocolInitialized += (sender, args) =>
             {
                 if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
@@ -262,8 +263,6 @@ namespace Nethermind.Network
                 bool isValid = _protocolValidator.DisconnectOnInvalid(Protocol.Eth, session, args);
                 if (isValid)
                 {
-                    handler.ClientId = session.Node.ClientId;
-
                     if (_syncPeers.TryAdd(session.SessionId, handler))
                     {
                         _syncPool.AddPeer(handler);

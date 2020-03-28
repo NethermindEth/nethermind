@@ -93,6 +93,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             public Node Node { get; }
             public string ClientId { get; }
+            public string EthDetails { get; }
             public UInt256 TotalDifficultyOnSessionStart { get; }
 
             public void Disconnect(DisconnectReason reason, string details)
@@ -775,6 +776,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             public Node Node { get; }
             public string ClientId => "EX peer";
+            public string EthDetails => "eth.64";
             public UInt256 TotalDifficultyOnSessionStart => UInt256.MaxValue;
 
             public void Disconnect(DisconnectReason reason, string details)
