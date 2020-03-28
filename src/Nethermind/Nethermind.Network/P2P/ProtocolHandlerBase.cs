@@ -32,6 +32,8 @@ namespace Nethermind.Network.P2P
         protected INodeStatsManager StatsManager { get; }
         private readonly IMessageSerializationService _serializer;
         protected ISession Session { get; }
+        protected long Counter;
+
         private readonly TaskCompletionSource<MessageBase> _initCompletionSource;
 
         protected ProtocolHandlerBase(ISession session, INodeStatsManager nodeStats, IMessageSerializationService serializer, ILogManager logManager)
@@ -60,7 +62,8 @@ namespace Nethermind.Network.P2P
         
         protected void Send<T>(T message) where T : P2PMessage
         {
-            if (Logger.IsTrace) Logger.Trace($"Sending {typeof(T).Name}");
+            Interlocked.Increment(ref Counter);
+            if (Logger.IsTrace) Logger.Trace($"{Counter} Sending {typeof(T).Name}");
             if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(Session.Node.Host, Name, typeof(T).Name);
             Session.DeliverMessage(message);
         }

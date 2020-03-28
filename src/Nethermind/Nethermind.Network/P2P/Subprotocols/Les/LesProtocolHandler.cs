@@ -28,7 +28,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Les
 {
-    public class LesProtocolHandler : SyncPeerProtocolHandlerBase, IZeroProtocolHandler, ISyncPeer
+    public class LesProtocolHandler : SyncPeerProtocolHandlerBase, IZeroProtocolHandler
     {
         public override string Name => "les3";
 
@@ -38,7 +38,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             INodeStatsManager statsManager,
             ISyncServer syncServer,
             ILogManager logManager,
-            ITxPool txPool): base(session, serializer, statsManager, syncServer, logManager, txPool)
+            ITxPool txPool): base(session, serializer, statsManager, syncServer, txPool, logManager)
         {
 
         }

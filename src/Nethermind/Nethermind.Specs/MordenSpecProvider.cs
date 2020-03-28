@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 
@@ -37,9 +38,10 @@ namespace Nethermind.Specs
 
             return SpuriousDragon.Instance;
         }
-        
+
         public long? DaoBlockNumber { get; } = null;
 
         public int ChainId => 2;
+        public long[] TransitionBlocks { get; } = {0};
     }
 }

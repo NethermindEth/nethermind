@@ -4,6 +4,7 @@
         <TargetFramework>netcoreapp3.1</TargetFramework>
         <OutputType>Exe</OutputType>
         <LangVersion>8.0</LangVersion>
+        <RootNamespace>Nethermind.Network.Benchmarks</RootNamespace>
     </PropertyGroup>
 
     <ItemGroup>
