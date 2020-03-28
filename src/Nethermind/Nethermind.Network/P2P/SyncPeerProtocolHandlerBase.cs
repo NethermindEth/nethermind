@@ -25,6 +25,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth;
@@ -42,7 +43,6 @@ namespace Nethermind.Network.P2P
         public UInt256 TotalDifficultyOnSessionStart { get; protected set; }
         public PublicKey Id => Node.Id;
         protected ISyncServer SyncServer { get; }
-        protected long Counter = 0;
 
         public override string ToString() => $"[Peer|{Node:s}|{ClientId}]";
 
@@ -56,13 +56,12 @@ namespace Nethermind.Network.P2P
         protected readonly BlockingCollection<Request<GetBlockBodiesMessage, BlockBody[]>> _bodiesRequests
             = new BlockingCollection<Request<GetBlockBodiesMessage, BlockBody[]>>();
 
-        protected SyncPeerProtocolHandlerBase(
-            ISession session,
+        protected SyncPeerProtocolHandlerBase(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
             ISyncServer syncServer,
-            ILogManager logManager,
-            ITxPool txPool) : base(session, statsManager, serializer, logManager)
+            ITxPool txPool,
+            ILogManager logManager) : base(session, statsManager, serializer, logManager)
         {
             SyncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
@@ -259,6 +258,7 @@ namespace Nethermind.Network.P2P
 
         protected void Handle(GetBlockHeadersMessage getBlockHeadersMessage)
         {
+            Metrics.Eth62GetBlockHeadersReceived++;
             Stopwatch stopwatch = Stopwatch.StartNew();
             if (Logger.IsTrace)
             {
@@ -316,6 +316,7 @@ namespace Nethermind.Network.P2P
 
         protected void Handle(BlockHeadersMessage message, long size)
         {
+            Metrics.Eth62BlockHeadersReceived++;
             Request<GetBlockHeadersMessage, BlockHeader[]> request = _headersRequests.Take();
             if (message.PacketType == Eth62MessageCode.BlockHeaders)
             {
@@ -326,6 +327,7 @@ namespace Nethermind.Network.P2P
 
         protected void Handle(GetBlockBodiesMessage request)
         {
+            Metrics.Eth62GetBlockBodiesReceived++;
             if (request.BlockHashes.Count > 512)
             {
                 throw new EthSynchronizationException("Incoming bodies request for more than 512 bodies");
@@ -353,6 +355,7 @@ namespace Nethermind.Network.P2P
 
         protected void Handle(BlockBodiesMessage message, long size)
         {
+            Metrics.Eth62BlockBodiesReceived++;
             Request<GetBlockBodiesMessage, BlockBody[]> request = _bodiesRequests.Take();
             if (message.PacketType == Eth62MessageCode.BlockBodies)
             {
@@ -460,7 +463,6 @@ namespace Nethermind.Network.P2P
             }
 
             private Stopwatch Stopwatch { get; set; }
-
             public long ResponseSize { get; set; }
             public TMsg Message { get; }
             public TaskCompletionSource<TResult> CompletionSource { get; }

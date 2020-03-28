@@ -14,20 +14,23 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using NBomber.CSharp;
+using System;
 
-namespace Nethermind.LoadTest
+namespace Nethermind.Core
 {
-    internal static class Program
+    public class ManualTimestamper : ITimestamper
     {
-        static void Main(string[] args)
+        public ManualTimestamper() : this(DateTime.Now)
         {
-            var scenarios = new JsonRpcScenarios();
-            NBomberRunner.RegisterScenarios(
-                    scenarios.eth_blockNumber,
-                    scenarios.eth_getBalance,
-                    scenarios.eth_getBlockByNumber)
-                .RunInConsole();
         }
+
+        public ManualTimestamper(DateTime initialValue)
+        {
+        }
+
+        public ulong EpochSeconds => (ulong)new DateTimeOffset(UtcNow).ToUnixTimeSeconds();
+        public ulong EpochMilliseconds => (ulong)new DateTimeOffset(UtcNow).ToUnixTimeMilliseconds();
+
+        public DateTime UtcNow { get; set; }
     }
 }

@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using NUnit.Framework;
@@ -54,7 +55,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Roundtrip_with_nulls()
         {
-            byte[][] data = {TestItem.KeccakA.Bytes, null, TestItem.KeccakC.Bytes};
+            byte[][] data = {TestItem.KeccakA.Bytes, Bytes.Empty, TestItem.KeccakC.Bytes};
             Test(data);
         }
     }

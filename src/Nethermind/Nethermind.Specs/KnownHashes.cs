@@ -16,7 +16,7 @@
 
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Specs
 {
     public static class KnownHashes
     {

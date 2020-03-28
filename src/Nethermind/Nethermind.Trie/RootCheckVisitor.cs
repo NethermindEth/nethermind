@@ -15,29 +15,41 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 
-namespace Nethermind.Specs
+namespace Nethermind.Trie
 {
-    public class TestSpecProvider : ISpecProvider
+    public class RootCheckVisitor : ITreeVisitor
     {
-        public TestSpecProvider(IReleaseSpec initialSpecToReturn)
+        public bool HasRoot { get; set; } = true;
+        
+        public bool ShouldVisit(Keccak nextNode)
         {
-            SpecToReturn = initialSpecToReturn;
-            GenesisSpec = initialSpecToReturn;
+            return false;
         }
 
-        public IReleaseSpec GenesisSpec { get; set; }
-
-        public IReleaseSpec GetSpec(long blockNumber)
+        public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext)
         {
-            return SpecToReturn;
         }
 
-        public IReleaseSpec SpecToReturn { get; set; }
+        public void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext)
+        {
+            HasRoot = false;
+        }
 
-        public long? DaoBlockNumber { get; set; }
-        public int ChainId { get; set; }
-        public long[] TransitionBlocks { get; set; } = new long[] {0};
+        public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
+        {
+        }
+
+        public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
+        {
+        }
+
+        public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null)
+        {
+        }
+
+        public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext)
+        {
+        }
     }
 }

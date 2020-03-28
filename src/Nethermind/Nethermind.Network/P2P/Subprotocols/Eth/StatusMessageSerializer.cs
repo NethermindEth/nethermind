@@ -23,13 +23,24 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
     {
         public void Serialize(IByteBuffer byteBuffer, StatusMessage message)
         {
+            int forkIdContentLength = 0;
+            int forkIdSequenceLength = 0;
+
+            if (message.ForkId.HasValue)
+            {
+                ForkId forkId = message.ForkId.Value;
+                forkIdContentLength = Rlp.LengthOf(forkId.ForkHash) + Rlp.LengthOf(forkId.Next);
+                forkIdSequenceLength = Rlp.LengthOfSequence(forkIdContentLength);
+            }
+
             NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
             int contentLength =
                 Rlp.LengthOf(message.ProtocolVersion) +
                 Rlp.LengthOf(message.ChainId) +
                 Rlp.LengthOf(message.TotalDifficulty) +
                 Rlp.LengthOf(message.BestHash) +
-                Rlp.LengthOf(message.GenesisHash);
+                Rlp.LengthOf(message.GenesisHash) +
+                forkIdSequenceLength;
 
             int totalLength = Rlp.LengthOfSequence(contentLength);
             byteBuffer.EnsureWritable(totalLength);
@@ -39,6 +50,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             rlpStream.Encode(message.TotalDifficulty);
             rlpStream.Encode(message.BestHash);
             rlpStream.Encode(message.GenesisHash);
+            if (message.ForkId != null)
+            {
+                ForkId forkId = message.ForkId.Value;
+                rlpStream.StartSequence(forkIdContentLength);
+                rlpStream.Encode(forkId.ForkHash);
+                rlpStream.Encode(forkId.Next);
+            }
         }
 
         public StatusMessage Deserialize(IByteBuffer byteBuffer)
@@ -56,6 +74,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             statusMessage.TotalDifficulty = rlpStream.DecodeUInt256();
             statusMessage.BestHash = rlpStream.DecodeKeccak();
             statusMessage.GenesisHash = rlpStream.DecodeKeccak();
+            if (rlpStream.Position < rlpStream.Length)
+            {
+                rlpStream.ReadSequenceLength();
+                byte[] forkHash = rlpStream.DecodeByteArray();
+                long next = (long)rlpStream.DecodeUlong();
+                ForkId forkId = new ForkId(forkHash, next);
+                statusMessage.ForkId = forkId;
+            }
+            
             return statusMessage;
         }
     }

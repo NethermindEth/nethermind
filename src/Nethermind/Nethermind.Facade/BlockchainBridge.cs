@@ -83,7 +83,7 @@ namespace Nethermind.Facade
             _wallet = wallet ?? throw new ArgumentException(nameof(wallet));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentException(nameof(transactionProcessor));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-            
+
             _logFinder = new LogFinder(_blockTree, _receiptFinder, bloomStorage, logManager, new ReceiptsRecovery(), findLogBlockDepthLimit);
         }
 
@@ -117,14 +117,13 @@ namespace Nethermind.Facade
                 TxReceipt txReceipt = _receiptFinder.Get(block, transactionHash);
                 return (txReceipt, block?.Transactions[txReceipt.Index]);
             }
-            else if (_txPool.TryGetPendingTransaction(transactionHash, out var transaction))
+
+            if (_txPool.TryGetPendingTransaction(transactionHash, out var transaction))
             {
                 return (null, transaction);
             }
-            else
-            {
-                return (null, null);
-            }
+
+            return (null, null);
         }
 
         public Transaction[] GetPendingTransactions() => _txPool.GetPendingTransactions();
@@ -145,12 +144,12 @@ namespace Nethermind.Facade
                         throw new SecurityException("Your account is locked. Unlock the account via CLI, personal_unlockAccount or use Trusted Signer.");
                     }
                 }
-                
+
                 tx.Hash = tx.CalculateHash();
                 tx.Timestamp = _timestamper.EpochSeconds;
 
                 AddTxResult result = _txPool.AddTransaction(tx, _blockTree.Head.Number, txHandlingOptions);
-                
+
                 if (result == AddTxResult.OwnNonceAlreadyUsed && (txHandlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce)
                 {
                     // below the temporary NDM support - needs some review
@@ -346,7 +345,7 @@ namespace Nethermind.Facade
 
         public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot)
         {
-            _stateReader.RunTreeVisitor(stateRoot, treeVisitor);
+            _stateReader.RunTreeVisitor(treeVisitor, stateRoot);
         }
 
         public Keccak HeadHash => _blockTree.HeadHash;

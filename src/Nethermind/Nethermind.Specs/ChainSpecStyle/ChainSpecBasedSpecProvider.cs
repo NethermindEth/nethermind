@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 
@@ -84,6 +85,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 transitionBlocks.Add(bombDelay.Key);
             }
 
+            TransitionBlocks = transitionBlocks.Skip(1).ToArray();
             _transitions = new (long BlockNumber, IReleaseSpec Release)[transitionBlocks.Count];
 
             int index = 0;
@@ -177,5 +179,6 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
 
         public int ChainId => _chainSpec.ChainId;
+        public long[] TransitionBlocks { get; private set; }
     };
 }

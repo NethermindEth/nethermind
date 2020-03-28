@@ -14,13 +14,17 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Specs;
-using Nethermind.Specs.Forks;
-
-namespace Nethermind.Specs
+namespace Nethermind.Network
 {
-    public static class Latest
+    public struct ForkId
     {
-        public static IReleaseSpec Release => ConstantinopleFix.Instance;
+        public ForkId(byte[] forkHash, long next)
+        {
+            ForkHash = forkHash;
+            Next = next;
+        }
+
+        public byte[] ForkHash { get; }
+        public long Next { get; }
     }
 }

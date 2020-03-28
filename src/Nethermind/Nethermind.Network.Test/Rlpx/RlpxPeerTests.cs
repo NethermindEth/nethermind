@@ -14,21 +14,25 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.LoadTest
-{
-    public class JsonRpcRequest
-    {
-        public string JsonRpc { get; set; }
-        public string Method { get; set; }
-        public object[] Params { get; set; }
-        public int Id { get; set; }
+using System.Threading.Tasks;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
+using Nethermind.Network.Rlpx;
+using Nethermind.Network.Rlpx.Handshake;
+using NSubstitute;
+using NUnit.Framework;
 
-        public JsonRpcRequest(string method, object[] @params, string jsonRpc = "2.0", int id = 1)
+namespace Nethermind.Network.Test.Rlpx
+{
+    [TestFixture]
+    public class RlpxPeerTests
+    {
+        [Test]
+        public async Task Start_stop()
         {
-            Method = method;
-            Params = @params;
-            JsonRpc = jsonRpc;
-            Id = id;
+            RlpxPeer peer = new RlpxPeer(Substitute.For<IMessageSerializationService>(), TestItem.PublicKeyA, 30303, Substitute.For<IHandshakeService>(), LimboLogs.Instance, Substitute.For<ISessionMonitor>());
+            await peer.Init();
+            await peer.Shutdown();
         }
     }
 }

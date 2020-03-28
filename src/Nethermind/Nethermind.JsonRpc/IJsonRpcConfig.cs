@@ -46,5 +46,8 @@ namespace Nethermind.JsonRpc
         
         [ConfigItem(Description = "Gas limit for eth_call and eth_estimateGas", DefaultValue = null)]
         long? GasCap { get; set; }
+        
+        [ConfigItem(Description = "Interval between the JSON RPC stats report log", DefaultValue = "300")]
+        public int ReportIntervalSeconds { get; set; }
     }
 }

@@ -28,6 +28,7 @@ using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
+using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.TxPool;
@@ -104,6 +105,7 @@ namespace Nethermind.Network.Test
                     _nodeStatsManager,
                     _protocolValidator,
                     _peerStorage,
+                    MainNetSpecProvider.Instance, 
                     LimboLogs.Instance);
 
                 _serializer.Register(new HelloMessageSerializer());

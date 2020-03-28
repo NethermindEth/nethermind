@@ -33,6 +33,7 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 
 namespace Nethermind.JsonRpc.Modules.Eth
@@ -46,6 +47,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private readonly ILogger _logger;
 
+        private bool HasStateForBlock(BlockHeader header)
+        {
+            RootCheckVisitor rootCheckVisitor = new RootCheckVisitor();
+            _blockchainBridge.RunTreeVisitor(rootCheckVisitor, header.StateRoot);
+            return rootCheckVisitor.HasRoot;
+        }
+        
         public EthModule(IJsonRpcConfig rpcConfig, ILogManager logManager, IBlockchainBridge blockchainBridge)
         {
             _logger = logManager.GetClassLogger();
@@ -134,6 +142,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             BlockHeader header = searchResult.Object;
+            if (!HasStateForBlock(header))
+            {
+                return Task.FromResult(ResultWrapper<UInt256?>.Fail($"No state available for block {header.Hash}", ErrorCodes.ResourceUnavailable));
+            }
+            
             Account account = _blockchainBridge.GetAccount(address, header.StateRoot);
             return Task.FromResult(ResultWrapper<UInt256?>.Success(account?.Balance ?? UInt256.Zero));
         }
@@ -165,6 +178,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             BlockHeader header = searchResult.Object;
+            if (!HasStateForBlock(header))
+            {
+                return Task.FromResult(ResultWrapper<UInt256?>.Fail($"No state available for block {header.Hash}", ErrorCodes.ResourceUnavailable));
+            }
+            
             Account account = _blockchainBridge.GetAccount(address, header.StateRoot);
             return Task.FromResult(ResultWrapper<UInt256?>.Success(account?.Nonce ?? 0));
         }
@@ -222,6 +240,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             BlockHeader header = searchResult.Object;
+            if (!HasStateForBlock(header))
+            {
+                return ResultWrapper<byte[]>.Fail($"No state available for block {header.Hash}", ErrorCodes.ResourceUnavailable);
+            }
+            
             Account account = _blockchainBridge.GetAccount(address, header.StateRoot);
             if (account == null)
             {
@@ -302,6 +325,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             BlockHeader header = searchResult.Object;
+            if (!HasStateForBlock(header))
+            {
+                return ResultWrapper<string>.Fail($"No state available for block {header.Hash}", ErrorCodes.ResourceUnavailable);
+            }
+            
             FixCallTx(transactionCall, header);
 
             Transaction tx = transactionCall.ToTransaction();
@@ -327,6 +355,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall)
         {
             BlockHeader head = _blockchainBridge.FindLatestHeader();
+            if (!HasStateForBlock(head))
+            {
+                return ResultWrapper<UInt256?>.Fail($"No state available for block {head.Hash}", ErrorCodes.ResourceUnavailable);
+            }
+            
             FixCallTx(transactionCall, head);
 
             BlockchainBridge.CallOutput result = _blockchainBridge.EstimateGas(head, transactionCall.ToTransaction());
@@ -595,6 +628,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 if (header == null)
                 {
                     return ResultWrapper<AccountProof>.Fail($"{blockParameter} block not found", ErrorCodes.ResourceNotFound, null);
+                }
+                
+                if (!HasStateForBlock(header))
+                {
+                    return ResultWrapper<AccountProof>.Fail($"No state available for block {header.Hash}", ErrorCodes.ResourceUnavailable);
                 }
             }
             catch (Exception ex)

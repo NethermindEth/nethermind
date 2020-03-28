@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 
@@ -24,18 +25,20 @@ namespace Nethermind.Specs
         public IReleaseSpec GenesisSpec => Frontier.Instance;
 
         public IReleaseSpec GetSpec(long blockNumber)
-        {            
+        {
             return Olympic.Instance;
         }
-        
+
         public long? DaoBlockNumber { get; } = null;
 
         public int ChainId => Core.ChainId.MainNet;
+        public Keccak GenesisHash => KnownHashes.MainnetGenesis;
+        public long[] TransitionBlocks { get; } = {0};
 
         private FrontierSpecProvider()
         {
         }
-        
+
         public static FrontierSpecProvider Instance = new FrontierSpecProvider();
     }
 }

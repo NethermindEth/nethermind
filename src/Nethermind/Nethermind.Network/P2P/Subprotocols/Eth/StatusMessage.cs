@@ -28,6 +28,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public UInt256 TotalDifficulty { get; set; }
         public Keccak BestHash { get; set; }
         public Keccak GenesisHash { get; set; }
+        public ForkId? ForkId { get; set; }
 
         public override string ToString()
         {

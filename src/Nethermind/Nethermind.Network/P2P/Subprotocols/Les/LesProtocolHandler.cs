@@ -40,7 +40,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             INodeStatsManager statsManager,
             ISyncServer syncServer,
             ILogManager logManager,
-            ITxPool txPool): base(session, serializer, statsManager, syncServer, logManager, txPool)
+            ITxPool txPool): base(session, serializer, statsManager, syncServer, txPool, logManager)
         {
             _lastSentBlock = SyncServer.Head;
         }
