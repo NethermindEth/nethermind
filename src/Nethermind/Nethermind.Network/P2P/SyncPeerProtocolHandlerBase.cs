@@ -38,13 +38,14 @@ namespace Nethermind.Network.P2P
 {
     public abstract class SyncPeerProtocolHandlerBase : ProtocolHandlerBase, ISyncPeer
     {
-        public Node Node => Session.Node;
-        public string ClientId { get; set; }
+        public Node Node => Session?.Node;
+        public string ClientId => Session?.Node?.ClientId;
+        public string EthDetails => Session?.Node?.EthDetails;
         public UInt256 TotalDifficultyOnSessionStart { get; protected set; }
         public PublicKey Id => Node.Id;
         protected ISyncServer SyncServer { get; }
 
-        public override string ToString() => $"[Peer|{Node:s}|{ClientId}]";
+        public override string ToString() => $"[Peer|{Node:s}|{ClientId}|{EthDetails}]";
 
         protected Keccak _remoteHeadBlockHash;
         protected ITxPool _txPool;
