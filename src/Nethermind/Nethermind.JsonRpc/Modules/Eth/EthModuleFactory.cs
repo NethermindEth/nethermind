@@ -98,8 +98,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             
             return new EthModule(_rpcConfig, _logManager, blockchainBridge);
         }
-        
-        
+
         public static List<JsonConverter> Converters = new List<JsonConverter>
         {
             new SyncingResultConverter(),

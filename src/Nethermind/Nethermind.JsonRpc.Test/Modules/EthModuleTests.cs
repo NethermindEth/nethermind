@@ -67,10 +67,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             ISpecProvider specProvider = MainNetSpecProvider.Instance;
             IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider, LimboLogs.Instance);
             ITxStorage txStorage = new InMemoryTxStorage();
-            ISnapshotableDb stateDb = new StateDb();
+            _stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
-            IStateReader stateReader = new StateReader(stateDb, codeDb, LimboLogs.Instance);
-            _stateProvider = new StateProvider(stateDb, codeDb, LimboLogs.Instance);
+            IStateReader stateReader = new StateReader(_stateDb, codeDb, LimboLogs.Instance);
+            _stateProvider = new StateProvider(_stateDb, codeDb, LimboLogs.Instance);
             _stateProvider.CreateAccount(TestItem.AddressA, 1000.Ether());
             _stateProvider.CreateAccount(TestItem.AddressB, 1000.Ether());
             _stateProvider.CreateAccount(TestItem.AddressC, 1000.Ether());
@@ -79,7 +79,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _stateProvider.UpdateCode(code);
             _stateProvider.UpdateCodeHash(TestItem.AddressA, codeHash, specProvider.GenesisSpec);
 
-            IStorageProvider storageProvider = new StorageProvider(stateDb, _stateProvider, LimboLogs.Instance);
+            IStorageProvider storageProvider = new StorageProvider(_stateDb, _stateProvider, LimboLogs.Instance);
             storageProvider.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
             storageProvider.Commit();
 
@@ -96,7 +96,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
             VirtualMachine virtualMachine = new VirtualMachine(_stateProvider, storageProvider, new BlockhashProvider(blockTree, LimboLogs.Instance), specProvider, LimboLogs.Instance);
             TransactionProcessor txProcessor = new TransactionProcessor(specProvider, _stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
-            IBlockProcessor blockProcessor = new BlockProcessor(specProvider, AlwaysValidBlockValidator.Instance, new RewardCalculator(specProvider), txProcessor, stateDb, codeDb, _stateProvider, storageProvider, txPool, receiptStorage, LimboLogs.Instance);
+            IBlockProcessor blockProcessor = new BlockProcessor(specProvider, AlwaysValidBlockValidator.Instance, new RewardCalculator(specProvider), txProcessor, _stateDb, codeDb, _stateProvider, storageProvider, txPool, receiptStorage, LimboLogs.Instance);
 
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, blockProcessor, txPool, LimboLogs.Instance);
@@ -147,6 +147,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         private IBlockTree _blockTree;
         private IJsonSerializer _ethSerializer;
         private IStateProvider _stateProvider;
+        private ISnapshotableDb _stateDb;
 
         [TestCase("earliest", "0x3635c9adc5dea00000")]
         [TestCase("latest", "0x3635c9adc5dea00000")]
@@ -494,6 +495,19 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_call", _ethSerializer.Serialize(transaction), "latest");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
+        }
+        
+        [Test]
+        public void Eth_call_missing_state_after_fast_sync()
+        {
+            var transaction = new TransactionForRpc(Keccak.Zero, 1L, 1, new Transaction());
+            transaction.From = TestItem.AddressA;
+            transaction.To = TestItem.AddressB;
+
+            _stateDb.Clear();
+            
+            string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_call", _ethSerializer.Serialize(transaction), "latest");
+            serialized.Should().StartWith("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32002,");
         }
 
         [Test]
