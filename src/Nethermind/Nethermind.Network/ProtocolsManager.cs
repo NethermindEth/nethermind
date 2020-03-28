@@ -20,6 +20,8 @@ using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
@@ -37,6 +39,7 @@ namespace Nethermind.Network
     {
         private readonly ConcurrentDictionary<Guid, Eth62ProtocolHandler> _syncPeers =
             new ConcurrentDictionary<Guid, Eth62ProtocolHandler>();
+
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new ConcurrentDictionary<Guid, ISession>();
         private readonly IEthSyncPeerPool _syncPool;
         private readonly ISyncServer _syncServer;
@@ -47,6 +50,7 @@ namespace Nethermind.Network
         private readonly INodeStatsManager _stats;
         private readonly IProtocolValidator _protocolValidator;
         private readonly INetworkStorage _peerStorage;
+        private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
         private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
@@ -63,6 +67,7 @@ namespace Nethermind.Network
             INodeStatsManager nodeStatsManager,
             IProtocolValidator protocolValidator,
             INetworkStorage peerStorage,
+            ISpecProvider specProvider,
             ILogManager logManager)
         {
             _syncPool = ethSyncPeerPool ?? throw new ArgumentNullException(nameof(ethSyncPeerPool));
@@ -74,6 +79,7 @@ namespace Nethermind.Network
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _protocolValidator = protocolValidator ?? throw new ArgumentNullException(nameof(protocolValidator));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -93,7 +99,7 @@ namespace Nethermind.Network
             ISession session = (ISession) sender;
             session.Initialized -= SessionInitialized;
             session.Disconnected -= SessionDisconnected;
-            
+
             if (_syncPeers.ContainsKey(session.SessionId))
             {
                 ISyncPeer syncPeer = _syncPeers[session.SessionId];
@@ -106,7 +112,7 @@ namespace Nethermind.Network
 
                 _syncPeers.TryRemove(session.SessionId, out _);
             }
-            
+
             _sessions.TryRemove(session.SessionId, out session);
         }
 
@@ -171,19 +177,16 @@ namespace Nethermind.Network
                 },
                 [Protocol.Eth] = (session, version) =>
                 {
-                    if (version < 62 || version > 63)
+                    var ethHandler = version switch
                     {
-                        throw new NotSupportedException($"Eth protocol version {version} is not supported.");
-                    }
-
-                    Eth62ProtocolHandler handler = version == 62
-                        ? new Eth62ProtocolHandler(session, _serializer, _stats, _syncServer, _logManager,
-                            _txPool)
-                        : new Eth63ProtocolHandler(session, _serializer, _stats, _syncServer, _logManager,
-                            _txPool);
-                    InitEthProtocol(session, handler);
-
-                    return handler;
+                        62 => new Eth62ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _logManager),
+                        63 => new Eth63ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _logManager),
+                        64 => new Eth64ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _specProvider, _logManager),
+                        _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
+                    };
+                    
+                    InitEthProtocol(session, ethHandler);
+                    return ethHandler;
                 },
                 [Protocol.Les] = (session, version) =>
                 {
@@ -193,7 +196,7 @@ namespace Nethermind.Network
                     return handler;
                 }
             };
-        
+
         private void InitP2PProtocol(ISession session, P2PProtocolHandler handler)
         {
             handler.ProtocolInitialized += (sender, args) =>
@@ -231,12 +234,12 @@ namespace Nethermind.Network
         private void InitLesProtocol(ISession session, LesProtocolHandler handler)
         {
             handler.ProtocolInitialized += (sender, args) =>
-            {   //todo - add basic checks
+            {
+                //todo - add basic checks
                 if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
-                LesProtocolInitializedEventArgs typedArgs = (LesProtocolInitializedEventArgs)args;
+                LesProtocolInitializedEventArgs typedArgs = (LesProtocolInitializedEventArgs) args;
                 _stats.ReportLesInitializeEvent(session.Node, new LesNodeDetails
                 {
-
                 });
             };
         }
@@ -246,7 +249,7 @@ namespace Nethermind.Network
             handler.ProtocolInitialized += (sender, args) =>
             {
                 if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
-                EthProtocolInitializedEventArgs typedArgs = (EthProtocolInitializedEventArgs)args;
+                EthProtocolInitializedEventArgs typedArgs = (EthProtocolInitializedEventArgs) args;
                 _stats.ReportEthInitializeEvent(session.Node, new EthNodeDetails
                 {
                     ChainId = typedArgs.ChainId,
@@ -349,6 +352,7 @@ namespace Nethermind.Network
                 {
                     continue;
                 }
+
                 if (!session.HasAvailableCapability(capability))
                 {
                     continue;

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,23 +14,17 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using BenchmarkDotNet.Running;
-
-namespace Nethermind.Network.Benchmarks
+namespace Nethermind.Network
 {
-    public class Program
+    public struct ForkId
     {
-        public static void Main(string[] args)
+        public ForkId(byte[] forkHash, long next)
         {
-            // BenchmarkRunner.Run<HandshakeBenchmarks>();
-//            BenchmarkRunner.Run<KdfDerivation>();
-//            BenchmarkRunner.Run<EcdhAgreement>();
-//            BenchmarkRunner.Run<OutFlowBenchmark>();
-//            BenchmarkRunner.Run<InFlowBenchmark>();
-//            BenchmarkRunner.Run<NettyFrameEncoder>();
-//            BenchmarkRunner.Run<NettyFrameMerger>();
-//            BenchmarkRunner.Run<NettyPacketSplitter>();
-            BenchmarkRunner.Run<DiscoveryBenchmarks>();
+            ForkHash = forkHash;
+            Next = next;
         }
+
+        public byte[] ForkHash { get; }
+        public long Next { get; }
     }
 }

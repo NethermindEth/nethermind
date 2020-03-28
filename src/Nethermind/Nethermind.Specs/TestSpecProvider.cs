@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Specs
@@ -25,8 +26,9 @@ namespace Nethermind.Specs
             SpecToReturn = initialSpecToReturn;
             GenesisSpec = initialSpecToReturn;
         }
-        
+
         public IReleaseSpec GenesisSpec { get; set; }
+
         public IReleaseSpec GetSpec(long blockNumber)
         {
             return SpecToReturn;
@@ -36,5 +38,6 @@ namespace Nethermind.Specs
 
         public long? DaoBlockNumber { get; set; }
         public int ChainId { get; set; }
+        public long[] TransitionBlocks { get; set; } = new long[] {0};
     }
 }
