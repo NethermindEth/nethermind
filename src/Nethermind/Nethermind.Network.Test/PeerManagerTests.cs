@@ -294,7 +294,7 @@ namespace Nethermind.Network.Test
             _peerManager.ActivePeers.Count.Should().Be(1);
         }
 
-        private void HandshakeOnCreate(object? sender, SessionEventArgs e)
+        private void HandshakeOnCreate(object sender, SessionEventArgs e)
         {
             e.Session.Handshake(e.Session.RemoteNodeId);
         }

@@ -61,7 +61,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 return;
             }
 
-            bool success = results.TryGetValue("USDT_ETH", out Result result);
+            bool success = results.TryGetValue("USDT_ETH", out Result? result);
             if (!success || result is null || result.PriceUsd <= 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"There was an error when updating ETH price. Latest know value is: {UsdPrice} USD");

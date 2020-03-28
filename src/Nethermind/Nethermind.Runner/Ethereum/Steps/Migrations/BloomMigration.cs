@@ -30,6 +30,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
+using Nethermind.State.Repositories;
 using Nethermind.Store.Bloom;
 using Timer = System.Timers.Timer;
 
@@ -155,6 +156,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
 
             if (_context.BloomStorage == null) throw new StepDependencyException(nameof(_context.BloomStorage));
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
+            if (_context.ChainLevelInfoRepository == null) throw new StepDependencyException(nameof(_context.ChainLevelInfoRepository));
             
             IBlockTree blockTree = _context.BlockTree;
             IBloomStorage storage = _context.BloomStorage;

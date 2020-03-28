@@ -342,6 +342,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 if (_context.NdmDataPublisher == null) throw new StepDependencyException(nameof(_context.NdmDataPublisher));
                 if (_context.NdmConsumerChannelManager == null) throw new StepDependencyException(nameof(_context.NdmConsumerChannelManager));
                 if (_context.BloomStorage == null) throw new StepDependencyException(nameof(_context.BloomStorage));
+                if (_context.ReceiptFinder == null) throw new StepDependencyException(nameof(_context.ReceiptFinder));
 
                 if (_logger.IsInfo) _logger.Info($"Initializing NDM...");
                 _context.HttpClient = new DefaultHttpClient(new HttpClient(), _context.EthereumJsonSerializer, _context.LogManager);

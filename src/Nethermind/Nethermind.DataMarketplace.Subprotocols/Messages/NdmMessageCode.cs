@@ -73,20 +73,20 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
                    || messageCode == EthRequested;
         }
         
-        private static Dictionary<int, string> _descriptions;
+        private static Dictionary<int, string>? _descriptions;
         
-        public static string GetDescription(int messageCode)
+        public static string? GetDescription(int messageCode)
         {
             if (_descriptions == null)
             {
                 _descriptions = new Dictionary<int, string>();
                 foreach (FieldInfo fieldInfo in typeof(NdmMessageCode).GetFields(BindingFlags.Static | BindingFlags.Public))
                 {
-                    _descriptions.Add((int)fieldInfo.GetValue(null),fieldInfo.Name);
+                    _descriptions.Add((int)(fieldInfo.GetValue(null) ?? 0), fieldInfo.Name);
                 }
             }
 
-            bool success = _descriptions.TryGetValue(messageCode, out string description);
+            bool success = _descriptions.TryGetValue(messageCode, out string? description);
             return success ? description : "unknown";
         }
     }

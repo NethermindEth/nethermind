@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Db.Rocks.Config;
@@ -26,10 +27,6 @@ namespace Nethermind.Db.Rocks
     {
         private readonly ILogManager _logManager;
         private readonly bool _addNdmDbs;
-        private IDb _configsDb;
-        private IDb _ethRequestsDb;
-        private string _basePath;
-        private IDbConfig _dbConfig;
 
         public RocksDbProvider(ILogManager logManager, bool addNdmDbs = true)
         {
@@ -39,9 +36,6 @@ namespace Nethermind.Db.Rocks
 
         public async Task Init(string basePath, IDbConfig dbConfig, bool useReceiptsDb)
         {
-            _dbConfig = dbConfig;
-            _basePath = basePath;
-            
             HashSet<Task> allInitializers = new HashSet<Task>();
             allInitializers.Add(Task.Run(() => BlocksDb = new BlocksRocksDb(basePath, dbConfig, _logManager)));
             allInitializers.Add(Task.Run(() => HeadersDb = new HeadersRocksDb(basePath, dbConfig, _logManager)));
@@ -88,8 +82,8 @@ namespace Nethermind.Db.Rocks
             HeadersDb?.Dispose();
             BlockInfosDb?.Dispose();
             PendingTxsDb?.Dispose();
-            _configsDb?.Dispose();
-            _ethRequestsDb?.Dispose();
+            ConfigsDb?.Dispose();
+            EthRequestsDb?.Dispose();
             BloomDb?.Dispose();
         }
     }
