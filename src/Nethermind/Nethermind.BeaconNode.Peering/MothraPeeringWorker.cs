@@ -259,25 +259,21 @@ namespace Nethermind.BeaconNode.Peering
         {
             try
             {
-                bool statusUpdated = _peerManager.UpdatePeerStatus(statusRpcMessage.PeerId, statusRpcMessage.Content);
+                PeerDetails peerDetails = _peerManager.UpdatePeerStatus(statusRpcMessage.PeerId, statusRpcMessage.Content);
                 // Mothra seems to be raising all incoming RPC (sent as request and as response)
                 // with requestResponseFlag 0, so check here if already have the status so we don't go into infinite loop
-                if (statusUpdated)
+                // So user peerdetails instead of the status message
+                //if (statusRpcMessage.Direction == RpcDirection.Request)
+                if (peerDetails.DialDirection == DialDirection.DialOut)
                 {
-                    if (statusRpcMessage.Direction == RpcDirection.Request)
-                    {
-                        await _synchronizationManager.OnStatusRequestReceived(statusRpcMessage.PeerId,
-                            statusRpcMessage.Content);
-                    }
-                    else
-                    {
-                        await _synchronizationManager.OnStatusResponseReceived(statusRpcMessage.PeerId,
-                            statusRpcMessage.Content);
-                    }
+                    // If it is a dial out, we must have already sent the status request and this is the response
+                    await _synchronizationManager.OnStatusResponseReceived(statusRpcMessage.PeerId,
+                        statusRpcMessage.Content);
                 }
                 else
                 {
-                    if (_logger.IsWarn()) Log.ReceivedMultipleStatusRpc(_logger, statusRpcMessage.PeerId, null);
+                    await _synchronizationManager.OnStatusRequestReceived(statusRpcMessage.PeerId,
+                        statusRpcMessage.Content);
                 }
             }
             catch (Exception ex)
