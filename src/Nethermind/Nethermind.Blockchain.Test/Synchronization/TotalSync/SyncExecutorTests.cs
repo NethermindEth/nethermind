@@ -17,7 +17,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -39,7 +38,6 @@ namespace Nethermind.Blockchain.Test.Synchronization.TotalSync
         {
             public void Dispose()
             {
-                throw new NotImplementedException();
             }
 
             public bool TryFind(PublicKey nodeId, out PeerInfo peerInfo)
@@ -63,17 +61,18 @@ namespace Nethermind.Blockchain.Test.Synchronization.TotalSync
 
             public void ReportNoSyncProgress(PeerInfo peerInfo, bool isSevere = true)
             {
-                throw new NotImplementedException();
             }
 
             public void ReportInvalid(PeerInfo peerInfo, string details)
             {
-                throw new NotImplementedException();
+            }
+
+            public void ReportWeakPeer(PeerInfo peerInfo)
+            {
             }
 
             public void ReportWeakPeer(SyncPeerAllocation allocation)
             {
-                throw new NotImplementedException();
             }
 
             public void WakeUpAll()
@@ -89,30 +88,30 @@ namespace Nethermind.Blockchain.Test.Synchronization.TotalSync
 
             public void AddPeer(ISyncPeer syncPeer)
             {
-                throw new NotImplementedException();
             }
 
             public void RemovePeer(ISyncPeer syncPeer)
             {
-                throw new NotImplementedException();
             }
 
             public void RefreshTotalDifficulty(PeerInfo peerInfo, Keccak hash)
             {
-                throw new NotImplementedException();
             }
 
             public void Start()
             {
-                throw new NotImplementedException();
             }
 
             public Task StopAsync()
             {
-                throw new NotImplementedException();
+                return Task.CompletedTask;
             }
 
-            public event EventHandler PeerAdded;
+            public event EventHandler PeerAdded
+            {
+                add { }
+                remove { }
+            }
         }
 
         private class TestBatch
@@ -137,13 +136,13 @@ namespace Nethermind.Blockchain.Test.Synchronization.TotalSync
 
             private int _failureSwitch;
 
-            protected override async Task Execute(SyncPeerAllocation allocation, TestBatch request)
+            protected override async Task Execute(PeerInfo allocation, TestBatch request, CancellationToken cancellationToken)
             {
                 if (++_failureSwitch % 2 == 0)
                 {
                     throw new Exception();
                 }
-                
+
                 await Task.CompletedTask;
                 Console.WriteLine("Setting result");
                 int[] result = new int[request.Length];
@@ -160,13 +159,13 @@ namespace Nethermind.Blockchain.Test.Synchronization.TotalSync
         private class TestSyncFeed : SyncFeed<TestBatch>
         {
             public const int Max = 64;
-            
+
             private int _highestRequested;
 
             public HashSet<int> _results = new HashSet<int>();
 
             private ConcurrentQueue<TestBatch> _returned = new ConcurrentQueue<TestBatch>();
-            
+
             public override SyncBatchResponseHandlingResult HandleResponse(TestBatch response)
             {
                 if (response.Result == null)
@@ -185,14 +184,14 @@ namespace Nethermind.Blockchain.Test.Synchronization.TotalSync
                         }
                     }
                 }
-                
+
                 Console.WriteLine("Decrementing");
                 Interlocked.Decrement(ref _pendingRequests);
                 return SyncBatchResponseHandlingResult.OK;
             }
 
             private int _pendingRequests;
-            
+
             public override async Task<TestBatch> PrepareRequest()
             {
                 TestBatch testBatch;
@@ -218,16 +217,16 @@ namespace Nethermind.Blockchain.Test.Synchronization.TotalSync
 
                         return null;
                     }
-                    
+
                     lock (_results)
                     {
                         start = _highestRequested;
                         _highestRequested += 8;
                     }
-                    
+
                     testBatch = new TestBatch(start, 8);
                 }
-                
+
                 Console.WriteLine("Incrementing");
                 Interlocked.Increment(ref _pendingRequests);
                 return testBatch;
@@ -244,7 +243,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.TotalSync
         {
             TestSyncFeed syncFeed = new TestSyncFeed();
             TestExecutor executor = new TestExecutor(syncFeed, new TestSyncPeerPool(), new StaticPeerSelectionStrategyFactory<TestBatch>(new FirstFree()));
-            Task executorTask = executor.Start();
+            Task executorTask = executor.Start(CancellationToken.None);
             syncFeed.Activate();
             await executorTask;
             for (int i = 0; i < TestSyncFeed.Max; i++)

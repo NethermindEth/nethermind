@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 
@@ -23,18 +24,18 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
     public abstract class SyncExecutor<T> : ISyncExecutor<T>
     {
         private object _feedStateManipulation = new object();
-
-        private readonly ILogger _logger;
+        
         private readonly ISyncFeed<T> _syncFeed;
         private readonly IPeerSelectionStrategyFactory<T> _peerSelectionStrategy;
 
         private SyncFeedState _currentFeedState = SyncFeedState.Dormant;
         
+        protected ILogger Logger { get; }
         protected IEthSyncPeerPool SyncPeerPool { get; }
 
         protected SyncExecutor(ISyncFeed<T> syncFeed, IEthSyncPeerPool syncPeerPool, IPeerSelectionStrategyFactory<T> peerSelectionStrategy, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger<SyncExecutor<T>>() ?? throw new ArgumentNullException(nameof(logManager));
+            Logger = logManager?.GetClassLogger<SyncExecutor<T>>() ?? throw new ArgumentNullException(nameof(logManager));
             _syncFeed = syncFeed ?? throw new ArgumentNullException(nameof(syncFeed));
             SyncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _peerSelectionStrategy = peerSelectionStrategy ?? throw new ArgumentNullException(nameof(peerSelectionStrategy));
@@ -44,10 +45,12 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
         private TaskCompletionSource<object> _dormantStateTask;
 
-        protected abstract Task Execute(SyncPeerAllocation allocation, T request);
+        protected abstract Task Execute(PeerInfo peerInfo, T request, CancellationToken cancellationToken);
 
-        public async Task Start()
+        public async Task Start(CancellationToken cancellationToken)
         {
+            cancellationToken.Register(() => _dormantStateTask?.SetCanceled());
+
             UpdateState(_syncFeed.CurrentState);
             while (true)
             {
@@ -65,23 +68,28 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                     }
                     
                     SyncPeerAllocation allocation = await SyncPeerPool.Borrow(_peerSelectionStrategy.Create(request), string.Empty, 1000);
-                    if (allocation.HasPeer)
+                    PeerInfo allocatedPeer = allocation.Current; // TryGetCurrent?
+                    if (allocatedPeer != null)
                     {
-                        Task task = Execute(allocation, request);
+                        Task task = Execute(allocatedPeer, request, cancellationToken);
 #pragma warning disable 4014
                         task.ContinueWith(t =>
 #pragma warning restore 4014
                         {
                             if (t.IsFaulted)
                             {
-                                if (_logger.IsWarn) _logger.Warn($"Failure when executing request {t.Exception}");
+                                if (Logger.IsWarn) Logger.Warn($"Failure when executing request {t.Exception}");
                             }
-
-                            PeerInfo allocatedPeer = allocation.Current;
+                            
                             SyncPeerPool.Free(allocation);
                             SyncBatchResponseHandlingResult result = _syncFeed.HandleResponse(request);
                             ReactToHandlingResult(result, allocatedPeer);
                         });
+                    }
+                    else
+                    {
+                        SyncBatchResponseHandlingResult result = _syncFeed.HandleResponse(request);
+                        ReactToHandlingResult(result, null);
                     }
                 }
                 else if (_currentFeedState == SyncFeedState.Finished)
@@ -93,6 +101,12 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
         protected virtual void ReactToHandlingResult(SyncBatchResponseHandlingResult result, PeerInfo peer)
         {
+            if (peer == null)
+            {
+                // unassigned
+                return;
+            }
+            
             switch (result)
             {
                 case SyncBatchResponseHandlingResult.Emptish:
