@@ -22,11 +22,11 @@ using Nethermind.Stats;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public class TotalDiffFilter : IPeerSelectionFilter
+    public class TotalDiffStrategy : IFilteringPeerSelectionStrategy
     {
         private readonly IPeerSelectionStrategy _strategy;
         private readonly UInt256 _requiredDifficulty;
-        public TotalDiffFilter(IPeerSelectionStrategy strategy, UInt256 requiredDifficulty)
+        public TotalDiffStrategy(IPeerSelectionStrategy strategy, UInt256 requiredDifficulty)
         {
             _strategy = strategy ?? throw new ArgumentNullException(nameof(strategy));
             _requiredDifficulty = requiredDifficulty;

@@ -16,6 +16,7 @@
 
 using System.Collections.Generic;
 using System.ComponentModel;
+using Nethermind.Blockchain.Synchronization.TotalSync;
 using Nethermind.Stats;
 
 namespace Nethermind.Blockchain.Synchronization

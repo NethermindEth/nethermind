@@ -135,7 +135,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             if (request.RequestedNodes.Length != 0)
             {
                 // should be random selection? (we do not know if they support what we need)
-                request.AssignedPeer = await _syncPeerPool.BorrowAsync(new TotalDiffFilter(BySpeedSelectionStrategy.Fastest, request.RequiredPeerDifficulty), "node sync", 1000);
+                request.AssignedPeer = await _syncPeerPool.Borrow(new TotalDiffStrategy(BySpeedSelectionStrategy.Fastest, request.RequiredPeerDifficulty), "node sync", 1000);
 
                 Interlocked.Increment(ref _pendingRequests);
                 // if (_logger.IsWarn) _logger.Warn($"Creating new request with {request.RequestedNodes.Length} nodes");

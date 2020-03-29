@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.Mocks
 
         public IBlockTree SyncPeerTree { get; set; } = Build.A.BlockTree().OfChainLength(1).TestObject;
 
-        public Task<SyncPeerAllocation> BorrowAsync(IPeerSelectionStrategy peerSelectionStrategy, string description = "", int timeoutMilliseconds = 0)
+        public Task<SyncPeerAllocation> Borrow(IPeerSelectionStrategy peerSelectionStrategy, string description = "", int timeoutMilliseconds = 0)
         {
             SyncPeerAllocation allocation = new SyncPeerAllocation(peerSelectionStrategy);
             allocation.AllocateBestPeer(UsefulPeers.Where(p => !p.IsAllocated), new NodeStatsManager(new StatsConfig(), LimboLogs.Instance), SyncPeerTree);

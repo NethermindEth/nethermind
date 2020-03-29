@@ -404,7 +404,7 @@ namespace Nethermind.Blockchain.Synchronization
             if (_blocksSyncAllocation == null)
             {
                 if (_logger.IsDebug) _logger.Debug("Allocating block sync.");
-                _blocksSyncAllocation = await _syncPeerPool.BorrowAsync(new BlocksSyncPeerSelectionStrategy(minBlocksAhead, _logger));
+                _blocksSyncAllocation = await _syncPeerPool.Borrow(new BlocksSyncPeerSelectionStrategy(minBlocksAhead, _logger));
                 _blocksSyncAllocation.Replaced += AllocationOnReplaced;
                 _blocksSyncAllocation.Cancelled += AllocationOnCancelled;
                 _blocksSyncAllocation.Refreshed += AllocationOnRefreshed;

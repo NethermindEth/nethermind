@@ -302,7 +302,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.Start();
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA, "A"));
             await WaitForPeersInitialization();
-            var allocation = await _pool.BorrowAsync(new BlocksSyncPeerSelectionStrategy(null, LimboNoErrorLogger.Instance));
+            var allocation = await _pool.Borrow(new BlocksSyncPeerSelectionStrategy(null, LimboNoErrorLogger.Instance));
             bool replaced = false;
             allocation.Replaced += (sender, args) => replaced = true;
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyB, "B"));
@@ -320,7 +320,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.Start();
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA));
             await WaitForPeersInitialization();
-            SyncPeerAllocation allocation = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
+            SyncPeerAllocation allocation = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
             bool replaced = false;
             allocation.Replaced += (sender, args) => replaced = true;
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyB));
@@ -338,7 +338,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.Start();
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA));
             await WaitForPeersInitialization();
-            SyncPeerAllocation allocation = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
+            SyncPeerAllocation allocation = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
             bool replaced = false;
             allocation.Replaced += (sender, args) => replaced = true;
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyB));
@@ -356,7 +356,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.Start();
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA));
             await WaitForPeersInitialization();
-            SyncPeerAllocation allocation = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
+            SyncPeerAllocation allocation = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
             bool replaced = false;
             allocation.Replaced += (sender, args) => replaced = true;
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyB));
@@ -374,7 +374,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.Start();
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA));
             await WaitForPeersInitialization();
-            SyncPeerAllocation allocation = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
+            SyncPeerAllocation allocation = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
             bool replaced = false;
             allocation.Replaced += (sender, args) => replaced = true;
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyB));
@@ -395,7 +395,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             var peers = await SetupPeers(1);
 
-            var allocation = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
+            var allocation = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
 
             Assert.AreSame(peers[0], allocation.Current?.SyncPeer);
         }
@@ -405,11 +405,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             var peers = await SetupPeers(1);
 
-            var allocation = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
+            var allocation = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
             _pool.Free(allocation);
-            allocation = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
+            allocation = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
             _pool.Free(allocation);
-            allocation = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
+            allocation = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
 
             Assert.AreSame(peers[0], allocation.Current?.SyncPeer);
         }
@@ -419,8 +419,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             await SetupPeers(2);
 
-            SyncPeerAllocation allocation1 = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
-            SyncPeerAllocation allocation2 = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
+            SyncPeerAllocation allocation1 = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
+            SyncPeerAllocation allocation2 = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
             Assert.AreNotSame(allocation1.Current, allocation2.Current, "first");
             Assert.NotNull(allocation1.Current, "first A");
             Assert.NotNull(allocation2.Current, "first B");
@@ -430,8 +430,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
             Assert.Null(allocation1.Current, "null A");
             Assert.Null(allocation2.Current, "null B");
 
-            allocation1 = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
-            allocation2 = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
+            allocation1 = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
+            allocation2 = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
             Assert.AreNotSame(allocation1.Current, allocation2.Current);
             Assert.NotNull(allocation1.Current, "second A");
             Assert.NotNull(allocation2.Current, "second B");
@@ -443,9 +443,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var peers = await SetupPeers(3);
             _pool.ReportNoSyncProgress(_pool.AllPeers.First());
 
-            SyncPeerAllocation allocation1 = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
-            SyncPeerAllocation allocation2 = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
-            SyncPeerAllocation allocation3 = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
+            SyncPeerAllocation allocation1 = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
+            SyncPeerAllocation allocation2 = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
+            SyncPeerAllocation allocation3 = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
 
             Assert.True(allocation1.HasPeer);
             Assert.True(allocation2.HasPeer);
@@ -461,9 +461,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             _pool.WakeUpAll();
 
-            SyncPeerAllocation allocation1 = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
-            SyncPeerAllocation allocation2 = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
-            SyncPeerAllocation allocation3 = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
+            SyncPeerAllocation allocation1 = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
+            SyncPeerAllocation allocation2 = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
+            SyncPeerAllocation allocation3 = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
 
             Assert.True(allocation1.HasPeer);
             Assert.True(allocation2.HasPeer);
@@ -493,7 +493,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public async Task Report_invalid_via_allocation_invokes_disconnection()
         {
             SimpleSyncPeerMock[] peers = await SetupPeers(3);
-            SyncPeerAllocation allocation = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
+            SyncPeerAllocation allocation = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
             _pool.ReportInvalid(allocation, "issue details");
 
             Assert.True(peers.Count(p => p.DisconnectRequested) == 1);
@@ -503,7 +503,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public async Task Report_bad_peer_only_disconnects_after_11_times()
         {
             SimpleSyncPeerMock[] peers = await SetupPeers(1);
-            SyncPeerAllocation allocation = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
+            SyncPeerAllocation allocation = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
 
             for (int i = 0; i < 10; i++)
             {
@@ -520,8 +520,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             var peers = await SetupPeers(1);
 
-            var allocation1 = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
-            var allocation2 = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
+            var allocation1 = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
+            var allocation2 = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
 
             Assert.AreSame(peers[0], allocation1.Current?.SyncPeer);
             Assert.Null(allocation2.Current);
@@ -532,7 +532,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             var peers = await SetupPeers(1);
 
-            var allocation = await _pool.BorrowAsync(new BlocksSyncPeerSelectionStrategy(null, LimboNoErrorLogger.Instance));
+            var allocation = await _pool.Borrow(new BlocksSyncPeerSelectionStrategy(null, LimboNoErrorLogger.Instance));
             _pool.RemovePeer(peers[0]);
 
             Assert.Null(allocation.Current);
@@ -558,7 +558,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.Start();
             _pool.AddPeer(peer);
 
-            var allocation = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
+            var allocation = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
             _pool.RemovePeer(peer);
 
             Assert.AreEqual(null, allocation.Current);
@@ -574,7 +574,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.AddPeer(peer);
             await WaitForPeersInitialization();
 
-            var allocation = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
+            var allocation = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
             _pool.RemovePeer(peer);
 
             Assert.AreEqual(null, allocation.Current);
@@ -586,7 +586,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             await SetupPeers(1);
 
-            var allocation = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
+            var allocation = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
             _pool.Free(allocation);
         }
 
@@ -604,7 +604,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             await SetupPeers(1);
 
-            var allocation = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest);
+            var allocation = await _pool.Borrow(BySpeedSelectionStrategy.Fastest);
             allocation.Cancel();
 
             _blockTree.NewHeadBlock += Raise.EventWith(new object(), new BlockEventArgs(Build.A.Block.WithTotalDifficulty(1L).TestObject));
@@ -618,7 +618,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var allocationTasks = new Task<SyncPeerAllocation>[3];
             for (int i = 0; i < allocationTasks.Length; i++)
             {
-                allocationTasks[i] = _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest, null, 50);
+                allocationTasks[i] = _pool.Borrow(BySpeedSelectionStrategy.Fastest, null, 50);
             }
 
             await Task.WhenAll(allocationTasks);
@@ -671,7 +671,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             {
                 if (iterations > 0)
                 {
-                    SyncPeerAllocation allocation = await _pool.BorrowAsync(BySpeedSelectionStrategy.Fastest, null, 10);
+                    SyncPeerAllocation allocation = await _pool.Borrow(BySpeedSelectionStrategy.Fastest, null, 10);
                     if (!allocation.HasPeer)
                     {
                         failures++;

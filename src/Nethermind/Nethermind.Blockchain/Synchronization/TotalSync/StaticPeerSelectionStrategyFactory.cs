@@ -14,10 +14,20 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Blockchain.Synchronization
+namespace Nethermind.Blockchain.Synchronization.TotalSync
 {
-    public interface IPeerSelectionFilter : IPeerSelectionStrategy
+    public class StaticPeerSelectionStrategyFactory<T> : IPeerSelectionStrategyFactory<T>
     {
-        bool Filter(PeerInfo peerInfo);
+        private readonly IPeerSelectionStrategy _selectionStrategy;
+
+        public StaticPeerSelectionStrategyFactory(IPeerSelectionStrategy selectionStrategy)
+        {
+            _selectionStrategy = selectionStrategy;
+        }
+
+        public IPeerSelectionStrategy Create(T request)
+        {
+            return _selectionStrategy;
+        }
     }
 }
