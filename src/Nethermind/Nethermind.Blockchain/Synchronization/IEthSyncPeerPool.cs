@@ -33,6 +33,8 @@ namespace Nethermind.Blockchain.Synchronization
 
         void ReportInvalid(PeerInfo peerInfo, string details);
         
+        void ReportWeakPeer(PeerInfo peerInfo);
+        
         void ReportWeakPeer(SyncPeerAllocation allocation);
         
         /// <summary>

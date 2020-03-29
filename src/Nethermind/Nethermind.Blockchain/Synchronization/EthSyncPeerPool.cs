@@ -109,9 +109,8 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        public void ReportWeakPeer(SyncPeerAllocation allocation)
+        public void ReportWeakPeer(PeerInfo weakPeer)
         {
-            PeerInfo weakPeer = allocation.Current;
             if (weakPeer == null)
             {
                 /* it may have just got disconnected and in such case the allocation would be nullified
@@ -125,8 +124,13 @@ namespace Nethermind.Blockchain.Synchronization
                 /* fast Geth nodes send invalid nodes quite often :/
                  * so we let them deliver fast and only disconnect them when they really misbehave
                  */
-                allocation.Current.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "peer is too weak");
+                weakPeer.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "peer is too weak");
             }
+        }
+        
+        public void ReportWeakPeer(SyncPeerAllocation allocation)
+        {
+            ReportWeakPeer(allocation.Current);
         }
 
         public void Start()

@@ -98,10 +98,13 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 case SyncBatchResponseHandlingResult.Emptish:
                     break;
                 case SyncBatchResponseHandlingResult.BadQuality:
+                    SyncPeerPool.ReportWeakPeer(peer);
                     break;
                 case SyncBatchResponseHandlingResult.InvalidFormat:
+                    SyncPeerPool.ReportWeakPeer(peer);
                     break;
                 case SyncBatchResponseHandlingResult.NoData:
+                    SyncPeerPool.ReportNoSyncProgress(peer);
                     break;
                 case SyncBatchResponseHandlingResult.NotAssigned:
                     break;
