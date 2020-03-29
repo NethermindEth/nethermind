@@ -75,7 +75,8 @@ namespace Nethermind.Network.P2P
         {
             SendHello();
 
-            //We are expecting to receive Hello message anytime from the handshake completion, irrespective of sending Hello from our side
+            // We are expecting to receive Hello message anytime from the handshake completion,
+            // irrespective of sending Hello from our side
             CheckProtocolInitTimeout().ContinueWith(x =>
             {
                 if (x.IsFaulted && Logger.IsError)
@@ -182,9 +183,8 @@ namespace Nethermind.Network.P2P
             }
 
             _isInitialized = true;
-
-            if (!capabilities.Any(x => (x.ProtocolCode == Protocol.Eth && (x.Version == 62 || x.Version == 63))
-                                       || x.ProtocolCode == Protocol.Ndm))
+            
+            if (!capabilities.Any(c => SupportedCapabilities.Contains(c)))
             {
                 InitiateDisconnect(DisconnectReason.UselessPeer, $"capabilities: {string.Join(", ", capabilities.Select(c => string.Concat(c.ProtocolCode, c.Version)))}");
             }
@@ -198,6 +198,7 @@ namespace Nethermind.Network.P2P
                 Capabilities = capabilities,
                 ListenPort = hello.ListenPort
             };
+            
             ProtocolInitialized?.Invoke(this, eventArgs);
         }
 
@@ -254,7 +255,12 @@ namespace Nethermind.Network.P2P
         {
             new Capability(Protocol.Eth, 62),
             new Capability(Protocol.Eth, 63),
-            new Capability(Protocol.Ndm, 1)
+            new Capability(Protocol.Eth, 64),
+            new Capability(Protocol.Eth, 65),
+            new Capability(Protocol.Ndm, 1),
+            // new Capability(Protocol.Les, 1),
+            // new Capability(Protocol.Les, 2),
+            // new Capability(Protocol.Les, 3)
         };
 
         private void SendHello()
@@ -266,7 +272,7 @@ namespace Nethermind.Network.P2P
 
             HelloMessage helloMessage = new HelloMessage
             {
-                Capabilities = SupportedCapabilities.ToList(),
+                Capabilities = SupportedCapabilities,
                 ClientId = ClientVersion.Description,
                 NodeId = LocalNodeId,
                 ListenPort = ListenPort,
@@ -302,7 +308,7 @@ namespace Nethermind.Network.P2P
             Session.MarkDisconnected(disconnectReason, DisconnectType.Remote, "message");
         }
 
-        public override string Name => "p2p";
+        public override string Name => Protocol.P2P;
         
         private void HandlePong(Packet msg)
         {

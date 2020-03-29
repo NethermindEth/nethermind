@@ -11,15 +11,15 @@
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
-        <PackageReference Include="FluentAssertions" Version="5.10.3"/>
-        <PackageReference Include="NSubstitute" Version="4.2.1"/>
-        <PackageReference Include="nunit" Version="3.12.0"/>
-        <PackageReference Include="NUnit3TestAdapter" Version="3.16.1"/>
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.5.0"/>
+        <PackageReference Include="FluentAssertions" Version="5.10.3" />
+        <PackageReference Include="NSubstitute" Version="4.2.1" />
+        <PackageReference Include="nunit" Version="3.12.0" />
+        <PackageReference Include="NUnit3TestAdapter" Version="3.16.1" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.5.0" />
     </ItemGroup>
     <ItemGroup>
-        <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj"/>
-        <ProjectReference Include="..\Nethermind.Runner\Nethermind.Runner.csproj"/>
+        <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
+        <ProjectReference Include="..\Nethermind.Runner\Nethermind.Runner.csproj" />
         <Content Include="..\Chains\AuRaTest.json" CopyToOutputDirectory="PreserveNewest">
             <Link>Chains\AuRaTest.json</Link>
         </Content>
@@ -65,6 +65,7 @@
         </Content>
 
         <Content Include="testspec.json">
+          <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
     </ItemGroup>
 

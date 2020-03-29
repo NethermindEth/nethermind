@@ -23,11 +23,6 @@ namespace Nethermind.Core.Test
     public class TestLogger : ILogger
     {
         public List<string> LogList { get; set; } = new List<string>();
-        
-        public void Log(string text)
-        {
-            LogList.Add(text);
-        }
 
         public void Info(string text)
         {
@@ -54,16 +49,10 @@ namespace Nethermind.Core.Test
             LogList.Add(text);
         }
 
-        public void Note(string text)
-        {
-            LogList.Add(text);
-        }
-
-        public bool IsInfo => true;
-        public bool IsWarn => true;
-        public bool IsDebug => true;
-        public bool IsTrace => true;
-        public bool IsError => true;
-        public bool IsNoteEnabled => true;
+        public bool IsInfo { get; set; } = true;
+        public bool IsWarn { get; set; } = true;
+        public bool IsDebug { get; set; } = true;
+        public bool IsTrace { get; set; } = true;
+        public bool IsError { get; set; } = true;
     }
 }

@@ -71,6 +71,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         
         public Node LocalNode { get; }
         public string ClientId => Node.ClientId;
+        public string EthDetails => Node.EthDetails;
         public UInt256 TotalDifficultyOnSessionStart => _remoteTree.Head.TotalDifficulty ?? 0;
 
         public void Disconnect(DisconnectReason reason, string details)
@@ -150,7 +151,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
         public PublicKey Id => Node.Id;
 
-        public void SendNewTransaction(Transaction transaction)
+        public void SendNewTransaction(Transaction transaction, bool isPriority)
         {
         }
 

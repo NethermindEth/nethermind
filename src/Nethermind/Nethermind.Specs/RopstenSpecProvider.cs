@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 
@@ -24,32 +25,32 @@ namespace Nethermind.Specs
         public IReleaseSpec GenesisSpec => TangerineWhistle.Instance;
 
         public IReleaseSpec GetSpec(long blockNumber)
-        {            
+        {
             if (blockNumber < SpuriousDragonBlockNumber)
             {
                 return TangerineWhistle.Instance;
             }
-            
+
             if (blockNumber < ByzantiumBlockNumber)
             {
                 return SpuriousDragon.Instance;
             }
-            
+
             if (blockNumber < ConstantinopleBlockNumber)
             {
                 return Byzantium.Instance;
             }
-            
+
             if (blockNumber < ConstantinopleFixBlockNumber)
             {
                 return Constantinople.Instance;
             }
-            
+
             if (blockNumber < IstanbulBlockNumber)
             {
                 return ConstantinopleFix.Instance;
             }
-            
+
             if (blockNumber < MuirGlacierBlockNumber)
             {
                 return Istanbul.Instance;
@@ -57,7 +58,7 @@ namespace Nethermind.Specs
 
             return MuirGlacier.Instance;
         }
-        
+
         public long? DaoBlockNumber { get; } = null;
         public static long SpuriousDragonBlockNumber { get; } = 10;
         public static long ByzantiumBlockNumber { get; } = 1700000;
@@ -65,13 +66,22 @@ namespace Nethermind.Specs
         public static long ConstantinopleFixBlockNumber { get; } = 4939394;
         public static long IstanbulBlockNumber { get; } = 6485846;
         public static long MuirGlacierBlockNumber { get; } = 7117117;
-        
+
         public int ChainId => 3;
-        
+        public long[] TransitionBlocks => new[]
+        {
+            SpuriousDragonBlockNumber,
+            ByzantiumBlockNumber,
+            ConstantinopleBlockNumber,
+            ConstantinopleFixBlockNumber,
+            IstanbulBlockNumber,
+            MuirGlacierBlockNumber
+        };
+
         private RopstenSpecProvider()
         {
         }
-        
+
         public static readonly RopstenSpecProvider Instance = new RopstenSpecProvider();
     }
 }

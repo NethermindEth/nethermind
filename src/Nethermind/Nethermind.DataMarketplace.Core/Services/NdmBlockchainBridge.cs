@@ -82,7 +82,6 @@ namespace Nethermind.DataMarketplace.Core.Services
         public Task<byte[]> CallAsync(Transaction transaction)
         {
             var callOutput = _blockchainBridge.Call(_blockchainBridge.Head, transaction);
-
             return Task.FromResult(callOutput.OutputData ?? new byte[] {0});
         }
 

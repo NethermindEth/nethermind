@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 
@@ -25,48 +26,71 @@ namespace Nethermind.Specs
 
         public IReleaseSpec GetSpec(long blockNumber)
         {
+            if (blockNumber < HomesteadBlockNumber)
+            {
+                return Frontier.Instance;
+            }
+
+            if (blockNumber < TangerineWhistleBlockNumber)
+            {
+                return Homestead.Instance;
+            }
+
             if (blockNumber < SpuriousDragonBlockNumber)
             {
                 return TangerineWhistle.Instance;
             }
-            
+
             if (blockNumber < ByzantiumBlockNumber)
             {
                 return SpuriousDragon.Instance;
             }
-            
+
             if (blockNumber < ConstantinopleBlockNumber)
             {
                 return Byzantium.Instance;
             }
-            
+
             if (blockNumber < ConstantinopleFixBlockNumber)
             {
                 return Constantinople.Instance;
             }
-            
+
             if (blockNumber < IstanbulBlockNumber)
             {
                 return ConstantinopleFix.Instance;
             }
-            
+
             return Istanbul.Instance;
         }
 
         public long? DaoBlockNumber { get; } = null;
 
+        public static long HomesteadBlockNumber { get; } = 1;
+        public static long TangerineWhistleBlockNumber { get; } = 2;
         public static long SpuriousDragonBlockNumber { get; } = 3;
         public static long ByzantiumBlockNumber { get; } = 1035301;
         public static long ConstantinopleBlockNumber { get; } = 3660663;
         public static long ConstantinopleFixBlockNumber { get; } = 4321234;
         public static long IstanbulBlockNumber { get; } = 5435345;
-        
+
         public int ChainId => 4;
-        
+
+        public long[] TransitionBlocks { get; } =
+        {
+            HomesteadBlockNumber,
+            TangerineWhistleBlockNumber,
+            SpuriousDragonBlockNumber,
+            ByzantiumBlockNumber,
+            ConstantinopleBlockNumber,
+            ConstantinopleFixBlockNumber,
+            IstanbulBlockNumber
+        };
+
         private RinkebySpecProvider()
         {
         }
-        
+
         public static readonly RinkebySpecProvider Instance = new RinkebySpecProvider();
     }
 }

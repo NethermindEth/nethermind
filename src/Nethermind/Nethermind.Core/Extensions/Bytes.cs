@@ -19,6 +19,7 @@ using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -741,6 +742,19 @@ namespace Nethermind.Core.Extensions
             }
 
             return bytes;
+        }
+        
+        [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
+        public static int GetSimplifiedHashCode(this byte[] bytes)
+        {
+            const int fnvPrime = 0x01000193;
+
+            if (bytes.Length == 0)
+            {
+                return 0;
+            }
+
+            return (fnvPrime * bytes.Length * (((fnvPrime * (bytes[0] + 7)) ^ (bytes[^1] + 23)) + 11)) ^ (bytes[(bytes.Length - 1) / 2] + 53);
         }
     }
 }

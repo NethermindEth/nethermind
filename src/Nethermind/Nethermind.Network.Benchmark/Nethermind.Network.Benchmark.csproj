@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>netcoreapp3.1</TargetFramework>
+        <OutputType>Exe</OutputType>
+        <LangVersion>8.0</LangVersion>
+        <RootNamespace>Nethermind.Network.Benchmarks</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="BenchmarkDotNet" Version="0.12.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
+      <ProjectReference Include="..\Nethermind.Network.Test\Nethermind.Network.Test.csproj" />
+      <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
+      <ProjectReference Include="..\Nethermind.Secp256k1\Nethermind.Secp256k1.csproj" />
+    </ItemGroup>
+
+</Project>

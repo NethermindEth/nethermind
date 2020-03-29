@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -45,9 +46,21 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
         private readonly ILogger _logger;
         private CancellationTokenSource? _cancellationTokenSource;
         private Task? _migrationTask;
-        private Stopwatch _stopwatch;
+        private Stopwatch? _stopwatch;
         private long _toBlock;
         private readonly MeasuredProgress _progress = new MeasuredProgress();
+        [NotNull]
+        private IReceiptStorage? _receiptStorage;
+        [NotNull]
+        private IDbProvider? _dbProvider;
+        [NotNull]
+        private DisposableStack? _disposeStack;
+        [NotNull]
+        private IBlockTree? _blockTree;
+        [NotNull]
+        private ISynchronizer? _synchronizer;
+        [NotNull]
+        private IChainLevelInfoRepository? _chainLevelInfoRepository;
 
         public ReceiptMigration(EthereumRunnerContext context)
         {
@@ -63,12 +76,12 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
 
         public void Run()
         {
-            if (_context.ReceiptStorage == null) throw new StepDependencyException(nameof(_context.ReceiptStorage));
-            if (_context.DbProvider == null) throw new StepDependencyException(nameof( _context.DbProvider));
-            if (_context.DisposeStack == null) throw new StepDependencyException(nameof(_context.DisposeStack));
-            if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
-            if (_context.Synchronizer == null) throw new StepDependencyException(nameof(_context.Synchronizer));
-            if (_context.ChainLevelInfoRepository == null) throw new StepDependencyException(nameof(_context.ChainLevelInfoRepository));
+            _receiptStorage = _context.ReceiptStorage ?? throw new StepDependencyException(nameof(_context.ReceiptStorage));
+            _dbProvider = _context.DbProvider ?? throw new StepDependencyException(nameof( _context.DbProvider));
+            _disposeStack = _context.DisposeStack ?? throw new StepDependencyException(nameof(_context.DisposeStack));
+            _blockTree = _context.BlockTree ?? throw new StepDependencyException(nameof(_context.BlockTree));
+            _synchronizer = _context.Synchronizer ?? throw new StepDependencyException(nameof(_context.Synchronizer));
+            _chainLevelInfoRepository = _context.ChainLevelInfoRepository ?? throw new StepDependencyException(nameof(_context.ChainLevelInfoRepository));
             
             var initConfig = _context.Config<IInitConfig>();
 
@@ -76,13 +89,13 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
             {
                 if (initConfig.ReceiptsMigration)
                 {
-                    if (CanMigrate(_context.Synchronizer.SyncMode))
+                    if (CanMigrate(_synchronizer.SyncMode))
                     {
                         RunMigration();
                     }
                     else
                     {
-                        _context.Synchronizer.SyncModeChanged += SynchronizerOnSyncModeChanged;
+                        _synchronizer.SyncModeChanged += SynchronizerOnSyncModeChanged;
                     }
                 }
                 else
@@ -110,7 +123,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
             if (CanMigrate(e.Current))
             {
                 RunMigration();
-                _context.Synchronizer.SyncModeChanged -= SynchronizerOnSyncModeChanged;
+                _synchronizer.SyncModeChanged -= SynchronizerOnSyncModeChanged;
             }
         }
 
@@ -121,7 +134,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
             if (_toBlock > 0)
             {
                 _cancellationTokenSource = new CancellationTokenSource();
-                _context.DisposeStack.Push(this);
+                _disposeStack.Push(this);
                 _stopwatch = Stopwatch.StartNew();
                 _migrationTask = Task.Run(() => RunMigration(_cancellationTokenSource.Token))
                     .ContinueWith(x =>
@@ -149,11 +162,8 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                 return EmptyBlock;
             }
 
-            IBlockTree blockTree = _context.BlockTree;
-            IReceiptStorage? storage =_context.ReceiptStorage;
             long synced = 0;
-            IChainLevelInfoRepository? chainLevelInfoRepository = _context.ChainLevelInfoRepository;
-            IDb receiptsDb = _context.DbProvider.ReceiptsDb;
+            IDb receiptsDb = _dbProvider.ReceiptsDb;
 
             _progress.Update(synced);
 
@@ -170,13 +180,13 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                 {
                     foreach (var block in GetBlockBodiesForMigration())
                     {
-                        var receipts = storage.Get(block);
+                        var receipts = _receiptStorage.Get(block);
                         var notNullReceipts = receipts.Length == 0 ? receipts : receipts.Where(r => r != null).ToArray();
 
                         if (receipts.Length == 0 || notNullReceipts.Length != 0) // if notNullReceipts.Length is 0 and receipts are not 0 - we are missing all receipts, they are not processed yet.
                         {
-                            storage.Insert(block, notNullReceipts);
-                            storage.MigratedBlockNumber = block.Number;
+                            _receiptStorage.Insert(block, notNullReceipts);
+                            _receiptStorage.MigratedBlockNumber = block.Number;
                             
                             for (int i = 0; i < notNullReceipts.Length; i++)
                             {
@@ -200,8 +210,8 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                 {
                     bool TryGetMainChainBlockHashFromLevel(long number, out Keccak? blockHash)
                     {
-                        using var batch = chainLevelInfoRepository.StartBatch();
-                        var level = chainLevelInfoRepository.LoadLevel(number);
+                        using var batch = _chainLevelInfoRepository.StartBatch();
+                        var level = _chainLevelInfoRepository.LoadLevel(number);
                         if (level != null)
                         {
                             if (!level.HasBlockOnMainChain)
@@ -209,7 +219,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                                 if (level.BlockInfos.Length > 0)
                                 {
                                     level.HasBlockOnMainChain = true;
-                                    chainLevelInfoRepository.PersistLevel(number, level, batch);
+                                    _chainLevelInfoRepository.PersistLevel(number, level, batch);
                                 }
                             }
                                 
@@ -234,7 +244,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                         
                         if (TryGetMainChainBlockHashFromLevel(i, out var blockHash))
                         {
-                            var header = blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
+                            var header = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
                             yield return header ?? GetMissingBlock(i, blockHash);
                         }
 
@@ -257,10 +267,10 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
         }
 
         private long MigrateToBlockNumber =>
-            _context.ReceiptStorage.MigratedBlockNumber == long.MaxValue
-                ? _context.Synchronizer.SyncMode == SyncMode.Full 
-                    ? _context.BlockTree.Head?.Number ?? 0
-                    : _context.BlockTree.BestKnownNumber
-                : _context.ReceiptStorage.MigratedBlockNumber - 1;
+            _receiptStorage.MigratedBlockNumber == long.MaxValue
+                ? _synchronizer.SyncMode == SyncMode.Full 
+                    ? _blockTree.Head?.Number ?? 0
+                    : _blockTree.BestKnownNumber
+                : _receiptStorage.MigratedBlockNumber - 1;
     }
 }

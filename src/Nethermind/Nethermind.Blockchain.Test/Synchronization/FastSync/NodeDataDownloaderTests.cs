@@ -183,6 +183,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
 
             public Node Node { get; }
             public string ClientId => "executorMock";
+            public string EthDetails => "eth.64";
             public UInt256 TotalDifficultyOnSessionStart => UInt256.Zero;
 
             public void Disconnect(DisconnectReason reason, string details)
@@ -222,7 +223,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
 
             public PublicKey Id => Node.Id;
 
-            public void SendNewTransaction(Transaction transaction)
+            public void SendNewTransaction(Transaction transaction, bool isPriority)
             {
                 throw new NotImplementedException();
             }

@@ -83,7 +83,7 @@ namespace Nethermind.DataMarketplace.Test
             public bool IsTrace { get; } = true;
             public bool IsError { get; } = true;
         }
-        
+
         protected IReleaseSpec _releaseSpec = Constantinople.Instance;
         protected Address _feeAccount;
         protected Address _consumerAccount;
@@ -120,13 +120,13 @@ namespace Nethermind.DataMarketplace.Test
                 specProvider, _logManager);
             TransactionProcessor processor = new TransactionProcessor(specProvider, _state, storageProvider, machine, _logManager);
             _bridge = new BlockchainBridge(processor, _releaseSpec);
-            
+
             TxReceipt receipt = DeployContract(Bytes.FromHexString(ContractData.GetInitCode(_feeAccount)));
             ((NdmConfig) _ndmConfig).ContractAddress = receipt.ContractAddress.ToString();
             _contractAddress = receipt.ContractAddress;
             _txPool = new TxPool.TxPool(new InMemoryTxStorage(), new Timestamper(),
                 new EthereumEcdsa(specProvider, _logManager), specProvider, new TxPoolConfig(), _state, _logManager);
-            
+
             _ndmBridge = new NdmBlockchainBridge(_bridge, _txPool);
         }
 
@@ -188,15 +188,20 @@ namespace Nethermind.DataMarketplace.Test
                 _spec = spec;
                 _receiptsTracer = new BlockReceiptsTracer();
                 _processor = processor;
+                _tx = Build.A.Transaction.SignedAndResolved(new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance), TestItem.PrivateKeyA, 2).TestObject;
+                _headBlock = Build.A.Block.WithNumber(1).WithTransactions(Enumerable.Repeat(_tx, 100).ToArray()).TestObject;
+
                 _receiptsTracer.SetOtherTracer(GethTracer);
                 _receiptsTracer.StartNewBlockTrace(_headBlock);
             }
 
-            private Block _headBlock = Build.A.Block.WithNumber(1).WithTransactions(new Transaction[100]).TestObject;
+            private Transaction _tx;
+            private Block _headBlock;
 
             public BlockHeader Head => _headBlock.Header;
             public long BestKnown { get; }
             public bool IsSyncing { get; }
+
             public void RecoverTxSenders(Block block)
             {
                 throw new NotImplementedException();
@@ -292,7 +297,7 @@ namespace Nethermind.DataMarketplace.Test
 
                 return _nonces[address];
             }
-            
+
             public void IncrementNonce(Address address)
             {
                 var nonce = GetNonce(address);

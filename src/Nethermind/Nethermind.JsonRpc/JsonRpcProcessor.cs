@@ -20,6 +20,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
@@ -35,6 +37,8 @@ namespace Nethermind.JsonRpc
         private JsonSerializer _traceSerializer;
         private IJsonRpcConfig _jsonRpcConfig;
         private ILogger _logger;
+
+        private JsonRpcLocalStats _localStats;
 
         private Recorder _recorder;
 
@@ -53,6 +57,8 @@ namespace Nethermind.JsonRpc
             }
 
             BuildTraceJsonSerializer();
+
+            _localStats = new JsonRpcLocalStats(Timestamper.Default, jsonRpcConfig, logManager);
         }
 
         /// <summary>
@@ -149,7 +155,8 @@ namespace Nethermind.JsonRpc
                 Metrics.JsonRpcRequests++;
                 JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(rpcRequest.Model);
                 JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
-                if (localErrorResponse != null)
+                bool isSuccess = localErrorResponse is null;
+                if (!isSuccess)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Error when handling {rpcRequest.Model} | {_jsonSerializer.Serialize(localErrorResponse)}");
                     Metrics.JsonRpcErrors++;
@@ -162,6 +169,7 @@ namespace Nethermind.JsonRpc
 
                 TraceResult(response);
                 stopwatch.Stop();
+                _localStats.ReportCall(rpcRequest.Model.Method, stopwatch.ElapsedMicroseconds(), isSuccess);
                 if (_logger.IsDebug) _logger.Debug($"  {rpcRequest.Model} handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
                 return JsonRpcResult.Single(response);
             }
@@ -180,7 +188,8 @@ namespace Nethermind.JsonRpc
                     Metrics.JsonRpcRequests++;
                     JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(jsonRpcRequest);
                     JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
-                    if (localErrorResponse != null)
+                    bool isSuccess = localErrorResponse == null; 
+                    if (!isSuccess)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Error when handling {jsonRpcRequest} | {_jsonSerializer.Serialize(localErrorResponse)}");
                         Metrics.JsonRpcErrors++;
@@ -192,6 +201,7 @@ namespace Nethermind.JsonRpc
                     }
 
                     singleRequestWatch.Stop();
+                    _localStats.ReportCall(jsonRpcRequest.Method, stopwatch.ElapsedMicroseconds(), isSuccess);
                     if (_logger.IsDebug) _logger.Debug($"  {requestIndex++}/{rpcRequest.Collection.Count} JSON RPC request - {jsonRpcRequest} handled after {singleRequestWatch.Elapsed.TotalMilliseconds}");
                     responses.Add(response);
                 }
@@ -206,6 +216,7 @@ namespace Nethermind.JsonRpc
             JsonRpcErrorResponse errorResponse = _jsonRpcService.GetErrorResponse(ErrorCodes.InvalidRequest, "Invalid request");
             TraceResult(errorResponse);
             stopwatch.Stop();
+            _localStats.ReportCall("# parsing error #", stopwatch.ElapsedMicroseconds(), false);
             if (_logger.IsDebug) _logger.Debug($"  Failed request handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
             return JsonRpcResult.Single(errorResponse);
         }
@@ -257,7 +268,7 @@ namespace Nethermind.JsonRpc
             {
                 if (!_recorderBaseFilePath.Contains("{counter}"))
                 {
-                    if(_logger.IsError) _logger.Error("Disabling recorder because of an invalid recorder file path - it should contain '{counter}'");
+                    if (_logger.IsError) _logger.Error("Disabling recorder because of an invalid recorder file path - it should contain '{counter}'");
                     _isEnabled = false;
                     return;
                 }
