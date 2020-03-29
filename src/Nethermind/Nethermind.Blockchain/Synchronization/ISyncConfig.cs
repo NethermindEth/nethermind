@@ -17,6 +17,7 @@
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Synchronization
@@ -57,7 +58,9 @@ namespace Nethermind.Blockchain.Synchronization
         string PivotHash { get; }
 
         long PivotNumberParsed => LongConverter.FromString(PivotNumber ?? "0");
-        
-        Keccak PivotHashParsed => new Keccak(Bytes.FromHexString(PivotHash));
+
+        UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0x0");
+
+        Keccak PivotHashParsed => PivotHash == null ? null : new Keccak(Bytes.FromHexString(PivotHash));
     }
 }

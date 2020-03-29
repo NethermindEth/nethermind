@@ -1013,7 +1013,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 FastBlocksBatch batch = _headerDependencies[parentNumber];
                 {
                     batch.Allocation = null;
-                    _headerDependencies.Remove(parentNumber, out _);
+                    _headerDependencies.TryRemove(parentNumber, out _);
                     InsertHeaders(batch);
                 }
             }

@@ -232,7 +232,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.TotalSync
                 return testBatch;
             }
 
-            public void Activate()
+            public override void Activate()
             {
                 ChangeState(SyncFeedState.Active);
             }

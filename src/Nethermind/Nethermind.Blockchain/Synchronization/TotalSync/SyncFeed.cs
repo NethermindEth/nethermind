@@ -31,5 +31,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             CurrentState = newState;
             StateChanged?.Invoke(this, new SyncFeedStateEventArgs(newState));
         }
+
+        public abstract void Activate();
     }
 }
