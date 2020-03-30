@@ -24,21 +24,20 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
     public abstract class SyncExecutor<T> : ISyncExecutor<T>
     {
         private object _feedStateManipulation = new object();
-
-        private readonly ISyncFeed<T> _syncFeed;
-        private readonly IPeerSelectionStrategyFactory<T> _peerSelectionStrategy;
-
+        
         private SyncFeedState _currentFeedState = SyncFeedState.Dormant;
 
         protected ILogger Logger { get; }
+        protected ISyncFeed<T> Feed { get; }
         protected IEthSyncPeerPool SyncPeerPool { get; }
+        protected IPeerSelectionStrategyFactory<T> PeerSelectionStrategy { get; }
 
         protected SyncExecutor(ISyncFeed<T> syncFeed, IEthSyncPeerPool syncPeerPool, IPeerSelectionStrategyFactory<T> peerSelectionStrategy, ILogManager logManager)
         {
             Logger = logManager?.GetClassLogger<SyncExecutor<T>>() ?? throw new ArgumentNullException(nameof(logManager));
-            _syncFeed = syncFeed ?? throw new ArgumentNullException(nameof(syncFeed));
+            Feed = syncFeed ?? throw new ArgumentNullException(nameof(syncFeed));
             SyncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
-            _peerSelectionStrategy = peerSelectionStrategy ?? throw new ArgumentNullException(nameof(peerSelectionStrategy));
+            PeerSelectionStrategy = peerSelectionStrategy ?? throw new ArgumentNullException(nameof(peerSelectionStrategy));
 
             syncFeed.StateChanged += SyncFeedOnStateChanged;
         }
@@ -51,7 +50,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
         {
             cancellationToken.Register(() => _dormantStateTask?.SetCanceled());
 
-            UpdateState(_syncFeed.CurrentState);
+            UpdateState(Feed.CurrentState);
             while (true)
             {
                 if (cancellationToken.IsCancellationRequested)
@@ -65,22 +64,18 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 }
                 else if (_currentFeedState == SyncFeedState.Active)
                 {
-                    T request = await _syncFeed.PrepareRequest();
+                    T request = await Feed.PrepareRequest();
                     if (request == null)
                     {
                         await Task.Delay(50);
                         continue;
                     }
 
-                    SyncPeerAllocation allocation = await SyncPeerPool.Borrow(_peerSelectionStrategy.Create(request), string.Empty, 1000);
+                    SyncPeerAllocation allocation = await Allocate(request);
                     PeerInfo allocatedPeer = allocation.Current; // TryGetCurrent?
                     if (allocatedPeer != null)
                     {
-                        CancellationTokenSource allocationCancellation = new CancellationTokenSource();
-                        CancellationTokenSource linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, allocationCancellation.Token);
-                        allocation.Cancelled += (sender, args) => allocationCancellation.Cancel(); // TODO: remove this after
-                        
-                        Task task = Execute(allocatedPeer, request, linkedCancellation.Token);
+                        Task task = Execute(allocatedPeer, request, cancellationToken);
 #pragma warning disable 4014
                         task.ContinueWith(t =>
 #pragma warning restore 4014
@@ -90,10 +85,10 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                                 if (Logger.IsWarn) Logger.Warn($"Failure when executing request {t.Exception}");
                             }
 
-                            SyncPeerPool.Free(allocation);
+                            Free(allocation);
                             try
                             {
-                                SyncBatchResponseHandlingResult result = _syncFeed.HandleResponse(request);
+                                SyncBatchResponseHandlingResult result = Feed.HandleResponse(request);
                                 ReactToHandlingResult(result, allocatedPeer);
                             }
                             catch (Exception e)
@@ -106,7 +101,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                     }
                     else
                     {
-                        SyncBatchResponseHandlingResult result = _syncFeed.HandleResponse(request);
+                        SyncBatchResponseHandlingResult result = Feed.HandleResponse(request);
                         ReactToHandlingResult(result, null);
                     }
                 }
@@ -117,6 +112,17 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             }
 
             return 1000;
+        }
+
+        protected virtual void Free(SyncPeerAllocation allocation)
+        {
+            SyncPeerPool.Free(allocation);
+        }
+
+        protected virtual async Task<SyncPeerAllocation> Allocate(T request)
+        {
+            SyncPeerAllocation allocation = await SyncPeerPool.Borrow(PeerSelectionStrategy.Create(request), string.Empty, 1000);
+            return allocation;
         }
 
         protected virtual void ReactToHandlingResult(SyncBatchResponseHandlingResult result, PeerInfo peer)

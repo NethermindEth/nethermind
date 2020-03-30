@@ -537,6 +537,8 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
             return addBlockResult;
         }
+        
+        public override bool IsMultiFeed => true;
 
         public override void Activate()
         {

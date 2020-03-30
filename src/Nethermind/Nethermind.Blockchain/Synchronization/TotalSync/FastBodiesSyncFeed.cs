@@ -325,6 +325,8 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             }
         }
 
+        public override bool IsMultiFeed => true;
+
         private int InsertBodies(FastBlocksBatch batch)
         {
             var bodiesSyncBatch = batch.Bodies;

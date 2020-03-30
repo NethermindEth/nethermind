@@ -268,6 +268,8 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             }
         }
 
+        public override bool IsMultiFeed => true;
+        
         public override void Activate()
         {
             if (!_syncConfig.FastBlocks)

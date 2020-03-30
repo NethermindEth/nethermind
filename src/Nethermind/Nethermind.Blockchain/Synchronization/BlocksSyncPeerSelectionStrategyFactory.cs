@@ -14,12 +14,25 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using Nethermind.Blockchain.Synchronization.TotalSync;
+
 namespace Nethermind.Blockchain.Synchronization
 {
-    public class BlockDownloadRequest
+    internal class BlocksSyncPeerSelectionStrategyFactory : IPeerSelectionStrategyFactory<BlockDownloadRequest>
     {
-        public int NumberOfLatestBlocksToBeIgnored { get; set; }
-        public BlockDownloaderOptions Options { get; set; }
-        public BlockDownloadStyle Style { get; set; }
+        private readonly IBlockTree _blockTree;
+
+        public BlocksSyncPeerSelectionStrategyFactory(IBlockTree blockTree)
+        {
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+        }
+        
+        public IPeerSelectionStrategy Create(BlockDownloadRequest request)
+        {
+            IPeerSelectionStrategy baseStrategy = new BlocksSyncPeerSelectionStrategy(request.NumberOfLatestBlocksToBeIgnored);
+            TotalDiffStrategy totalDiffStrategy = new TotalDiffStrategy(baseStrategy, (_blockTree.BestSuggestedHeader?.TotalDifficulty + 1) ?? 0);
+            return totalDiffStrategy;
+        }
     }
 }

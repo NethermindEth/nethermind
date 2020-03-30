@@ -24,6 +24,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
         public abstract Task<T> PrepareRequest();
         public abstract SyncBatchResponseHandlingResult HandleResponse(T response);
 
+        public abstract bool IsMultiFeed { get; }
         public SyncFeedState CurrentState { get; private set; }
         public event EventHandler<SyncFeedStateEventArgs> StateChanged;
         protected void ChangeState(SyncFeedState newState)

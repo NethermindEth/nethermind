@@ -40,6 +40,8 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             return SyncBatchResponseHandlingResult.OK;
         }
 
+        public override bool IsMultiFeed => false;
+
         public override void Activate()
         {
             ChangeState(SyncFeedState.Active);
