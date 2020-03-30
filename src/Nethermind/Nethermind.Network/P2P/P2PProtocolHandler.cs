@@ -256,10 +256,9 @@ namespace Nethermind.Network.P2P
             new Capability(Protocol.Eth, 62),
             new Capability(Protocol.Eth, 63),
             new Capability(Protocol.Eth, 64),
+            new Capability(Protocol.Eth, 65),
             new Capability(Protocol.Ndm, 1),
-            // new Capability(Protocol.Les, 1),
-            // new Capability(Protocol.Les, 2),
-            // new Capability(Protocol.Les, 3)
+            new Capability(Protocol.Les, 3)
         };
 
         private void SendHello()

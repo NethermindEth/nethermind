@@ -76,7 +76,7 @@ namespace Nethermind.Blockchain.Synchronization
             HasBeenDisconnected = true;
         }
 
-        public override string ToString() => $"[Peer|{SyncPeer?.Node:s}|{HeadNumber}|{SyncPeer?.ClientId}]";
+        public override string ToString() => $"[Peer|{SyncPeer?.Node:s}|{HeadNumber}|{SyncPeer?.ClientId}|{SyncPeer?.EthDetails}]";
         
         public int IncreaseWeakness()
         {

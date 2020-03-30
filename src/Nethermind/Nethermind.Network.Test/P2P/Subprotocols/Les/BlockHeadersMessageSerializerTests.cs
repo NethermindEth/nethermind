@@ -29,7 +29,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
         [Test]
         public void RoundTrip()
         {
-            var ethMessage = new Network.P2P.Subprotocols.Eth.BlockHeadersMessage();
+            var ethMessage = new Network.P2P.Subprotocols.Eth.V62.BlockHeadersMessage();
             ethMessage.BlockHeaders = new[] { Build.A.BlockHeader.TestObject };
             BlockHeadersMessage message = new BlockHeadersMessage(ethMessage, 2, 3000);
 

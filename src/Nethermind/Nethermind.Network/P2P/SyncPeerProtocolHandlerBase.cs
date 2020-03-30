@@ -29,6 +29,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -38,13 +40,14 @@ namespace Nethermind.Network.P2P
 {
     public abstract class SyncPeerProtocolHandlerBase : ProtocolHandlerBase, ISyncPeer
     {
-        public Node Node => Session.Node;
-        public string ClientId { get; set; }
+        public Node Node => Session?.Node;
+        public string ClientId => Session?.Node?.ClientId;
+        public string EthDetails => Session?.Node?.EthDetails;
         public UInt256 TotalDifficultyOnSessionStart { get; protected set; }
         public PublicKey Id => Node.Id;
         protected ISyncServer SyncServer { get; }
 
-        public override string ToString() => $"[Peer|{Node:s}|{ClientId}]";
+        public override string ToString() => $"[Peer|{Node:s}|{ClientId}|{EthDetails}]";
 
         protected Keccak _remoteHeadBlockHash;
         protected ITxPool _txPool;
@@ -87,6 +90,7 @@ namespace Nethermind.Network.P2P
 
             return blocks;
         }
+
         [Todo(Improve.Refactor, "Generic approach to requests")]
         private async Task<BlockBody[]> SendRequest(GetBlockBodiesMessage message, CancellationToken token)
         {
@@ -120,7 +124,7 @@ namespace Nethermind.Network.P2P
             {
                 delayCancellation.Cancel();
                 long elapsed = request.FinishMeasuringTime();
-                long bytesPerMillisecond = (long)((decimal)request.ResponseSize / Math.Max(1, elapsed));
+                long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / Math.Max(1, elapsed));
                 if (Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
                 StatsManager.ReportTransferSpeedEvent(Session.Node, bytesPerMillisecond);
 
@@ -148,6 +152,7 @@ namespace Nethermind.Network.P2P
             BlockHeader[] headers = await SendRequest(msg, token);
             return headers;
         }
+
         async Task<BlockHeader[]> ISyncPeer.GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
         {
             if (maxBlocks == 0)
@@ -164,6 +169,7 @@ namespace Nethermind.Network.P2P
             BlockHeader[] headers = await SendRequest(msg, token);
             return headers;
         }
+
         [Todo(Improve.Refactor, "Generic approach to requests")]
         private async Task<BlockHeader[]> SendRequest(GetBlockHeadersMessage message, CancellationToken token)
         {
@@ -200,7 +206,7 @@ namespace Nethermind.Network.P2P
             {
                 delayCancellation.Cancel();
                 long elapsed = request.FinishMeasuringTime();
-                long bytesPerMillisecond = (long)((decimal)request.ResponseSize / Math.Max(1, elapsed));
+                long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / Math.Max(1, elapsed));
                 if (Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
 
                 StatsManager.ReportTransferSpeedEvent(Session.Node, bytesPerMillisecond);
@@ -229,21 +235,22 @@ namespace Nethermind.Network.P2P
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");
         }
         public abstract void NotifyOfNewBlock(Block block, SendBlockPriority priority);
+
         public virtual async Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)
         {
             await Task.CompletedTask;
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");
         }
 
-        public void SendNewTransaction(Transaction transaction)
+        public virtual void SendNewTransaction(Transaction transaction, bool isPriority)
         {
             Interlocked.Increment(ref Counter);
             if (transaction.Hash == null)
             {
-                throw new InvalidOperationException($"Trying to send a transaction with null hash");
+                throw new InvalidOperationException("Trying to send a transaction with null hash");
             }
 
-            TransactionsMessage msg = new TransactionsMessage(transaction);
+            TransactionsMessage msg = new TransactionsMessage(new[] {transaction});
             Send(msg);
         }
 
@@ -307,7 +314,7 @@ namespace Nethermind.Network.P2P
             BlockHeader[] headers =
                 startingHash == null
                     ? Array.Empty<BlockHeader>()
-                    : SyncServer.FindHeaders(startingHash, (int)getBlockHeadersMessage.MaxHeaders, (int)getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
+                    : SyncServer.FindHeaders(startingHash, (int) getBlockHeadersMessage.MaxHeaders, (int) getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
 
             headers = FixHeadersForGeth(headers);
 
@@ -389,6 +396,7 @@ namespace Nethermind.Network.P2P
         }
 
         #region Cleanup
+
         private bool _isDisposed;
         protected abstract void OnDisposed();
 
@@ -442,7 +450,9 @@ namespace Nethermind.Network.P2P
             {
             }
         }
+
         #endregion
+
         protected class Request<TMsg, TResult>
         {
             public Request(TMsg message)

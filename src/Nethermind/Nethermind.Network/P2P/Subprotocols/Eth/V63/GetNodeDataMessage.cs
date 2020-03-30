@@ -14,22 +14,19 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
-    public class GetNodeDataMessage : P2PMessage
+    public class GetNodeDataMessage : HashesMessage
     {
-        public override int PacketType { get; } = 0x0d;
+        public override int PacketType { get; } = Eth63MessageCode.GetNodeData;
         public override string Protocol { get; } = "eth";
 
-        public IList<Keccak> Keys { get; }
-
         public GetNodeDataMessage(IList<Keccak> keys)
-        {            
-            Keys = keys ?? throw new ArgumentNullException(nameof(keys));
+            : base(keys)
+        {
         }
     }
 }

@@ -189,7 +189,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
 
         public void Handle(GetBlockHeadersMessage getBlockHeaders)
         {
-            Eth.BlockHeadersMessage ethBlockHeadersMessage = FulfillBlockHeadersRequest(getBlockHeaders.EthMessage);
+            Eth.V62.BlockHeadersMessage ethBlockHeadersMessage = FulfillBlockHeadersRequest(getBlockHeaders.EthMessage);
                 // todo - implement cost tracking
             Send(new BlockHeadersMessage(ethBlockHeadersMessage, getBlockHeaders.RequestId, int.MaxValue));
         }

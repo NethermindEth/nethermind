@@ -9,13 +9,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
         public override int PacketType { get; } = LesMessageCode.GetBlockHeaders;
         public override string Protocol { get; } = P2P.Protocol.Les;
         public long RequestId;
-        public Eth.GetBlockHeadersMessage EthMessage;
+        public Eth.V62.GetBlockHeadersMessage EthMessage;
 
         public GetBlockHeadersMessage()
         { 
         }
         
-        public GetBlockHeadersMessage(Eth.GetBlockHeadersMessage ethMessage, long requestId)
+        public GetBlockHeadersMessage(Eth.V62.GetBlockHeadersMessage ethMessage, long requestId)
         {
             EthMessage = ethMessage;
             RequestId = requestId;

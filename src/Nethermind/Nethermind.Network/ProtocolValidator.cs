@@ -23,6 +23,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
@@ -53,7 +54,7 @@ namespace Nethermind.Network
                         if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, incorrect P2PVersion: {args.P2PVersion}");
                         _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.P2PVersion);
                         Disconnect(session, DisconnectReason.IncompatibleP2PVersion, $"p2p.{args.P2PVersion}");
-                        if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.IncompatibleP2PVersion}"); 
+                        if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.IncompatibleP2PVersion}");
                         return false;
                     }
 
@@ -62,7 +63,7 @@ namespace Nethermind.Network
                         if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, no Eth62 capability, supported capabilities: [{string.Join(",", args.Capabilities.Select(x => $"{x.ProtocolCode}v{x.Version}"))}]");
                         _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.Capabilities);
                         Disconnect(session, DisconnectReason.UselessPeer, "capabilities");
-                        if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.UselessPeer} (capabilities)"); 
+                        if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.UselessPeer} (capabilities)");
                         return false;
                     }
 
@@ -84,7 +85,7 @@ namespace Nethermind.Network
                         if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different genesis hash: {syncPeerArgs.GenesisHash}, our: {_blockTree.Genesis.Hash}");
                         _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.DifferentGenesis);
                         Disconnect(session, DisconnectReason.BreachOfProtocol, "invalid genesis");
-                        if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.BreachOfProtocol} (invalid genesis)"); 
+                        if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.BreachOfProtocol} (invalid genesis)");
                         return false;
                     }
 
@@ -107,7 +108,7 @@ namespace Nethermind.Network
         private bool ValidateCapabilities(IEnumerable<Capability> capabilities)
         {
             // todo - this is duplicated from P2PProtocolHandler.HandleHello. One should probably be removed
-            return capabilities.Any(x => x.ProtocolCode == Protocol.Eth && (x.Version == 62 || x.Version == 63 || x.Version == 64));
+            return capabilities.Any(x => x.ProtocolCode == Protocol.Les || x.ProtocolCode == Protocol.Eth && (x.Version == 62 || x.Version == 63 || x.Version == 64 || x.Version == 65));
         }
 
         private bool ValidateChainId(long chainId)

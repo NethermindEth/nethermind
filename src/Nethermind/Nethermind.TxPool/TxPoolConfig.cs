@@ -21,5 +21,6 @@ namespace Nethermind.TxPool
         public int ObsoletePendingTransactionInterval { get; set; } = 5;
         public int RemovePendingTransactionInterval { get; set; } = 15;
         public int PeerNotificationThreshold { get; set; } = 5;
+        public int Size { get; set; } = 2048;
     }
 }

@@ -205,7 +205,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
 
             ThisNodeInfo.AddInfo("Mem est trie :", $"{Trie.MemoryAllowance.TrieNodeCacheSize * 400 / 1024 / 1024}MB".PadLeft(8));
-            ThisNodeInfo.AddInfo("Mem est tx   :", $"{(TxPool.MemoryAllowance.TxHashCacheSize * 64 + TxPool.MemoryAllowance.MemPoolSize * 4096) / 1024 / 1024}MB".PadLeft(8));
 
             return Task.CompletedTask;
         }

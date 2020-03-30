@@ -25,6 +25,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.TxPool;
@@ -83,13 +84,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         private void Handle(GetReceiptsMessage msg)
         {
             Metrics.Eth63GetReceiptsReceived++;
-            if (msg.BlockHashes.Count > 512)
+            if (msg.Hashes.Count > 512)
             {
                 throw new EthSynchronizationException("Incoming receipts request for more than 512 blocks");
             }
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            TxReceipt[][] txReceipts = SyncServer.GetReceipts(msg.BlockHashes);
+            TxReceipt[][] txReceipts = SyncServer.GetReceipts(msg.Hashes);
             Send(new ReceiptsMessage(txReceipts));
             stopwatch.Stop();
             if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} Receipts to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
@@ -106,13 +107,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         private void Handle(GetNodeDataMessage msg)
         {
             Metrics.Eth63GetNodeDataReceived++;
-            if (msg.Keys.Count > 4096)
+            if (msg.Hashes.Count > 4096)
             {
                 throw new EthSynchronizationException("Incoming node data request for more than 4096 nodes");
             }
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            byte[][] nodeData = SyncServer.GetNodeData(msg.Keys);
+            byte[][] nodeData = SyncServer.GetNodeData(msg.Hashes);
             Send(new NodeDataMessage(nodeData));
             stopwatch.Stop();
             if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NodeData to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
@@ -156,7 +157,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             if (Logger.IsTrace)
             {
                 Logger.Trace("Sending node fata request:");
-                Logger.Trace($"Keys count: {message.Keys.Count}");
+                Logger.Trace($"Keys count: {message.Hashes.Count}");
             }
 
             Request<GetNodeDataMessage, byte[][]> request = new Request<GetNodeDataMessage, byte[][]>(message);
@@ -195,7 +196,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             if (Logger.IsTrace)
             {
                 Logger.Trace("Sending node fata request:");
-                Logger.Trace($"Hashes count: {message.BlockHashes.Count}");
+                Logger.Trace($"Hashes count: {message.Hashes.Count}");
             }
 
             Request<GetReceiptsMessage, TxReceipt[][]> request = new Request<GetReceiptsMessage, TxReceipt[][]>(message);

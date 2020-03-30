@@ -52,4 +52,7 @@
     </ProjectReference>
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Folder Include="P2P\Subprotocols\Eth\V64" />
+  </ItemGroup>
 </Project>

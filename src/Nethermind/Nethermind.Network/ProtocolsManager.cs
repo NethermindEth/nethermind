@@ -26,7 +26,10 @@ using Nethermind.Logging;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Network.P2P.Subprotocols.Eth.V64;
+using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Les;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
@@ -181,6 +184,7 @@ namespace Nethermind.Network
                         62 => new Eth62ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _logManager),
                         63 => new Eth63ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _logManager),
                         64 => new Eth64ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _specProvider, _logManager),
+                        65 => new Eth65ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _specProvider, _logManager),
                         _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
                     };
 
@@ -232,6 +236,7 @@ namespace Nethermind.Network
 
         private void InitSyncPeerProtocol(ISession session, SyncPeerProtocolHandlerBase handler)
         {
+            session.Node.EthDetails = handler.Name;
             handler.ProtocolInitialized += (sender, args) =>
             {
                 if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
@@ -247,8 +252,6 @@ namespace Nethermind.Network
                 bool isValid = _protocolValidator.DisconnectOnInvalid(handler.ProtocolCode, session, args);
                 if (isValid)
                 {
-                    handler.ClientId = session.Node.ClientId;
-
                     if (_syncPeers.TryAdd(session.SessionId, handler))
                     {
                         _syncPool.AddPeer(handler);

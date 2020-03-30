@@ -14,9 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using Nethermind.Core.Extensions;
+
 namespace Nethermind.Network
 {
-    public struct ForkId
+    public struct ForkId : IEquatable<ForkId>
     {
         public ForkId(byte[] forkHash, long next)
         {
@@ -26,5 +29,20 @@ namespace Nethermind.Network
 
         public byte[] ForkHash { get; }
         public long Next { get; }
+
+        public bool Equals(ForkId other)
+        {
+            return Bytes.AreEqual(ForkHash, other.ForkHash) && Next == other.Next;
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is ForkId other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(ForkHash.GetSimplifiedHashCode(), Next);
+        }
     }
 }

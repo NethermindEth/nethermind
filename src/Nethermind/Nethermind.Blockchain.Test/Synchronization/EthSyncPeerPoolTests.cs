@@ -63,6 +63,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             public Node Node { get; }
             public string ClientId { get; }
+            public string EthDetails { get; }
 
             public UInt256 TotalDifficultyOnSessionStart => 1;
 
@@ -114,7 +115,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             public PublicKey Id => Node.Id;
 
-            public void SendNewTransaction(Transaction transaction)
+            public void SendNewTransaction(Transaction transaction, bool isPriority)
             {
             }
 

@@ -37,6 +37,7 @@ using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Consensus;
 using Nethermind.Db;
 using Nethermind.Network;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using Nethermind.Store.Bloom;
@@ -93,6 +94,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             public Node Node { get; }
             public string ClientId { get; }
+            public string EthDetails { get; }
             public UInt256 TotalDifficultyOnSessionStart { get; }
 
             public void Disconnect(DisconnectReason reason, string details)
@@ -160,7 +162,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             public PublicKey Id => Node.Id;
 
-            public void SendNewTransaction(Transaction transaction)
+            public void SendNewTransaction(Transaction transaction, bool isPriority)
             {
                 throw new NotImplementedException();
             }
@@ -770,6 +772,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             public Node Node { get; }
             public string ClientId => "EX peer";
+            public string EthDetails => "eth.64";
             public UInt256 TotalDifficultyOnSessionStart => UInt256.MaxValue;
 
             public void Disconnect(DisconnectReason reason, string details)
@@ -804,7 +807,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             public PublicKey Id => Node.Id;
 
-            public void SendNewTransaction(Transaction transaction)
+            public void SendNewTransaction(Transaction transaction, bool isPriority)
             {
                 throw new NotImplementedException();
             }
