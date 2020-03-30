@@ -14,11 +14,18 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+
 namespace Nethermind.Blockchain.Synchronization
 {
-    public enum BlockDownloadStyle
+    [Flags]
+    public enum DownloaderOptions
     {
-        HeadersOnly,
-        HeadersAndBodies
+        None = 0,
+        Process = 1,
+        WithReceipts = 2,
+        MoveToMain = 4,
+        WithBodies = 8,
+        All = 15
     }
 }

@@ -32,7 +32,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    internal class BlockDownloader : SyncExecutor<BlockDownloadRequest>
+    internal class BlockDownloader : SyncExecutor<BlocksRequest>
     {
         public const int MaxReorganizationLength = SyncBatchSize.Max * 2;
 
@@ -52,7 +52,7 @@ namespace Nethermind.Blockchain.Synchronization
         private int[] _ancestorJumps = {1, 2, 3, 8, 16, 32, 64, 128, 256, 384, 512, 640, 768, 896, 1024};
 
         public BlockDownloader(
-            ISyncFeed<BlockDownloadRequest> feed,
+            ISyncFeed<BlocksRequest> feed,
             IEthSyncPeerPool syncPeerPool,
             IBlockTree blockTree,
             IBlockValidator blockValidator,
@@ -81,27 +81,25 @@ namespace Nethermind.Blockchain.Synchronization
             _syncReport.FullSyncBlocksKnown = Math.Max(_syncReport.FullSyncBlocksKnown, e.Block.Number);
         }
 
-        protected override async Task Execute(PeerInfo bestPeer, BlockDownloadRequest blockDownloadRequest, CancellationToken cancellation)
+        protected override async Task Execute(PeerInfo bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
         {
             if (!_blockTree.CanAcceptNewBlocks) return;
             
             _allocationCancellation = new CancellationTokenSource();
             CancellationTokenSource linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _allocationCancellation.Token);
 
-            switch (blockDownloadRequest.Style)
+            SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, Synchronization.SyncEvent.Started));
+            if ((blocksRequest.Options & DownloaderOptions.WithBodies) == DownloaderOptions.WithBodies)
             {
-                case BlockDownloadStyle.HeadersOnly:
-                    await DownloadHeaders(bestPeer, blockDownloadRequest, linkedCancellation.Token).ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
-                    break;
-                case BlockDownloadStyle.HeadersAndBodies:
-                    await DownloadBlocks(bestPeer, blockDownloadRequest, linkedCancellation.Token).ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
+                await DownloadBlocks(bestPeer, blocksRequest, linkedCancellation.Token).ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
+            }
+            else
+            {
+                await DownloadHeaders(bestPeer, blocksRequest, linkedCancellation.Token).ContinueWith(t => HandleSyncRequestResult(t, bestPeer));    
             }
         }
 
-        public async Task<long> DownloadHeaders(PeerInfo bestPeer, BlockDownloadRequest blockDownloadRequest, CancellationToken cancellation)
+        public async Task<long> DownloadHeaders(PeerInfo bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
         {
             if (bestPeer == null)
             {
@@ -118,7 +116,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 if (_logger.IsTrace) _logger.Trace($"Continue headers sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
 
-                long blocksLeft = bestPeer.HeadNumber - currentNumber - blockDownloadRequest.NumberOfLatestBlocksToBeIgnored;
+                long blocksLeft = bestPeer.HeadNumber - currentNumber - blocksRequest.NumberOfLatestBlocksToBeIgnored;
                 int headersToRequest = (int) Math.Min(blocksLeft + 1, _syncBatchSize.Current);
                 if (headersToRequest <= 1)
                 {
@@ -199,7 +197,7 @@ namespace Nethermind.Blockchain.Synchronization
             return headersSynced;
         }
 
-        public async Task<long> DownloadBlocks(PeerInfo bestPeer, BlockDownloadRequest blockDownloadRequest, CancellationToken cancellation)
+        public async Task<long> DownloadBlocks(PeerInfo bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
         {
             IReceiptsRecovery receiptsRecovery = new ReceiptsRecovery();
 
@@ -210,10 +208,10 @@ namespace Nethermind.Blockchain.Synchronization
                 throw new ArgumentNullException(message);
             }
 
-            BlockDownloaderOptions options = blockDownloadRequest.Options;
-            bool downloadReceipts = (options & BlockDownloaderOptions.DownloadReceipts) == BlockDownloaderOptions.DownloadReceipts;
-            bool shouldProcess = (options & BlockDownloaderOptions.Process) == BlockDownloaderOptions.Process;
-            bool shouldMoveToMain = (options & BlockDownloaderOptions.MoveToMain) == BlockDownloaderOptions.MoveToMain;
+            DownloaderOptions options = blocksRequest.Options;
+            bool downloadReceipts = (options & DownloaderOptions.WithReceipts) == DownloaderOptions.WithReceipts;
+            bool shouldProcess = (options & DownloaderOptions.Process) == DownloaderOptions.Process;
+            bool shouldMoveToMain = (options & DownloaderOptions.MoveToMain) == DownloaderOptions.MoveToMain;
 
             int blocksSynced = 0;
             int ancestorLookupLevel = 0;
@@ -226,7 +224,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 if (_logger.IsDebug) _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
 
-                long blocksLeft = bestPeer.HeadNumber - currentNumber - blockDownloadRequest.NumberOfLatestBlocksToBeIgnored;
+                long blocksLeft = bestPeer.HeadNumber - currentNumber - blocksRequest.NumberOfLatestBlocksToBeIgnored;
                 int headersToRequest = (int) Math.Min(blocksLeft + 1, _syncBatchSize.Current);
                 if (headersToRequest <= 1)
                 {
@@ -575,7 +573,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        protected override async Task<SyncPeerAllocation> Allocate(BlockDownloadRequest request)
+        protected override async Task<SyncPeerAllocation> Allocate(BlocksRequest request)
         {
             SyncPeerAllocation allocation = await base.Allocate(request);
             allocation.Cancelled += AllocationOnCancelled;

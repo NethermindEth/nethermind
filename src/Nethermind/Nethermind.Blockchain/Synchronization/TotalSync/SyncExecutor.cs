@@ -24,7 +24,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
     public abstract class SyncExecutor<T> : ISyncExecutor<T>
     {
         private object _feedStateManipulation = new object();
-        
+
         private SyncFeedState _currentFeedState = SyncFeedState.Dormant;
 
         protected ILogger Logger { get; }
@@ -76,6 +76,11 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                     if (allocatedPeer != null)
                     {
                         Task task = Execute(allocatedPeer, request, cancellationToken);
+                        if (!Feed.IsMultiFeed)
+                        {
+                            await task;
+                        }
+
 #pragma warning disable 4014
                         task.ContinueWith(t =>
 #pragma warning restore 4014

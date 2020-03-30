@@ -19,7 +19,7 @@ using Nethermind.Blockchain.Synchronization.TotalSync;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    internal class BlocksSyncPeerSelectionStrategyFactory : IPeerSelectionStrategyFactory<BlockDownloadRequest>
+    internal class BlocksSyncPeerSelectionStrategyFactory : IPeerSelectionStrategyFactory<BlocksRequest>
     {
         private readonly IBlockTree _blockTree;
 
@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain.Synchronization
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         }
         
-        public IPeerSelectionStrategy Create(BlockDownloadRequest request)
+        public IPeerSelectionStrategy Create(BlocksRequest request)
         {
             IPeerSelectionStrategy baseStrategy = new BlocksSyncPeerSelectionStrategy(request.NumberOfLatestBlocksToBeIgnored);
             TotalDiffStrategy totalDiffStrategy = new TotalDiffStrategy(baseStrategy, (_blockTree.BestSuggestedHeader?.TotalDifficulty + 1) ?? 0);

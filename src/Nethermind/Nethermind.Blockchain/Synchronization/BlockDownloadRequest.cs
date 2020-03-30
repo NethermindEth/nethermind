@@ -16,10 +16,24 @@
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public class BlockDownloadRequest
+    public class BlocksRequest
     {
+        public BlocksRequest(DownloaderOptions options, int numberOfLatestBlocksToBeIgnored)
+        {
+            Options = options;
+            NumberOfLatestBlocksToBeIgnored = numberOfLatestBlocksToBeIgnored;
+        }
+        
+        public BlocksRequest(DownloaderOptions options)
+        {
+            Options = options;
+        }
+        
+        public BlocksRequest()
+        {
+        }
+        
         public int NumberOfLatestBlocksToBeIgnored { get; set; }
-        public BlockDownloaderOptions Options { get; set; }
-        public BlockDownloadStyle Style { get; set; }
+        public DownloaderOptions Options { get; set; }
     }
 }

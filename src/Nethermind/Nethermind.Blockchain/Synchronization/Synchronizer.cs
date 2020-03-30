@@ -97,7 +97,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void StartFullSyncComponents()
         {
-            _fullSyncBlockDownloaderFeed = new BlockDownloaderFeed(BlockDownloaderOptions.None, true, 0);
+            _fullSyncBlockDownloaderFeed = new BlockDownloaderFeed(DownloaderOptions.WithBodies, 0);
             _fullSyncBlockDownloader = new BlockDownloader(_fullSyncBlockDownloaderFeed, _syncPeerPool, _blockTree, _blockValidator, _sealValidator, _syncReport, _receiptStorage, _specProvider, _logManager);
             _fullSyncBlockDownloader.Start(_syncLoopCancellation.Token).ContinueWith(t =>
             {
@@ -194,14 +194,9 @@ namespace Nethermind.Blockchain.Synchronization
             
             receiptsSyncFeed.Activate();
 
-            BlockDownloaderOptions options = BlockDownloaderOptions.MoveToMain;
-            if (_syncConfig.DownloadReceiptsInFastSync)
-            {
-                options |= BlockDownloaderOptions.DownloadReceipts;
-            }
-
-            _fastSyncBlockDownloaderFeed = new BlockDownloaderFeed(options, _syncConfig.DownloadBodiesInFastSync, _syncConfig.BeamSync ? 0 : SyncModeSelector.FullSyncThreshold);
-            _fastSyncBlockDownloader = new BlockDownloader(_fastSyncBlockDownloaderFeed, _syncPeerPool, _blockTree, _blockValidator, _sealValidator, _syncReport, receiptStorage, specProvider, logManager);
+            DownloaderOptions options = BuildFastSyncOptions();
+            _fastSyncBlockDownloaderFeed = new BlockDownloaderFeed(options, _syncConfig.BeamSync ? 0 : SyncModeSelector.FullSyncThreshold);
+            _fastSyncBlockDownloader = new BlockDownloader(_fastSyncBlockDownloaderFeed, _syncPeerPool, _blockTree, _blockValidator, _sealValidator, _syncReport, _receiptStorage, _specProvider, _logManager);
             _fastSyncBlockDownloader.Start(_syncLoopCancellation.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -209,6 +204,22 @@ namespace Nethermind.Blockchain.Synchronization
                     _logger.Error("Fast sync block downloader failed", t.Exception);
                 }
             });
+        }
+
+        private DownloaderOptions BuildFastSyncOptions()
+        {
+            DownloaderOptions options = DownloaderOptions.MoveToMain;
+            if (_syncConfig.DownloadReceiptsInFastSync)
+            {
+                options |= DownloaderOptions.WithReceipts;
+            }
+
+            if (_syncConfig.DownloadBodiesInFastSync)
+            {
+                options |= DownloaderOptions.WithBodies;
+            }
+
+            return options;
         }
 
         public async Task StopAsync()
@@ -315,30 +326,6 @@ namespace Nethermind.Blockchain.Synchronization
                 if (!_blockTree.CanAcceptNewBlocks) continue;
 
                 _syncMode.Update();
-
-                if (RequiresBlocksSyncAllocation(_syncMode.Current))
-                {
-                    if (_blocksSyncAllocation == null)
-                    {
-                        long? minBlocksAhead = _syncMode.Current == SyncMode.FastSync ? SyncModeSelector.FullSyncThreshold : (long?) null;
-                        await AllocateBlocksSync(minBlocksAhead);
-                    }
-                }
-
-                PeerInfo bestPeer = null;
-                if (_blocksSyncAllocation != null)
-                {
-                    UInt256 ourTotalDifficulty = _blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0;
-                    bestPeer = _blocksSyncAllocation?.Current;
-                    if (bestPeer == null || bestPeer.TotalDifficulty <= ourTotalDifficulty)
-                    {
-                        if (_logger.IsTrace) _logger.Trace("Skipping sync - no peer with better chain.");
-                        continue;
-                    }
-
-                    SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, Synchronization.SyncEvent.Started));
-                    if (_logger.IsDebug) _logger.Debug($"Starting {_syncMode.Current} sync with {bestPeer} - theirs {bestPeer?.HeadNumber} {bestPeer?.TotalDifficulty} | ours {_blockTree.BestSuggestedHeader?.Number ?? 0} {_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0}");
-                }
 
                 Task<long> syncProgressTask;
                 switch (_syncMode.Current)

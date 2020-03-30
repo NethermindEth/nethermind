@@ -18,23 +18,22 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Blockchain.Synchronization.TotalSync
 {
-    public class BlockDownloaderFeed : SyncFeed<BlockDownloadRequest>
+    public class BlockDownloaderFeed : SyncFeed<BlocksRequest>
     {
-        private BlockDownloadRequest _request = new BlockDownloadRequest();
+        private BlocksRequest _request = new BlocksRequest();
         
-        public BlockDownloaderFeed(BlockDownloaderOptions options, bool downloadBodies, int numberOfLatestBlocksToIgnore)
+        public BlockDownloaderFeed(DownloaderOptions options, int numberOfLatestBlocksToIgnore)
         {
             _request.Options = options;
-            _request.Style = downloadBodies ? BlockDownloadStyle.HeadersAndBodies : BlockDownloadStyle.HeadersOnly;
             _request.NumberOfLatestBlocksToBeIgnored = numberOfLatestBlocksToIgnore;
         }
         
-        public override Task<BlockDownloadRequest> PrepareRequest()
+        public override Task<BlocksRequest> PrepareRequest()
         {
             return Task.FromResult(_request);
         }
 
-        public override SyncBatchResponseHandlingResult HandleResponse(BlockDownloadRequest response)
+        public override SyncBatchResponseHandlingResult HandleResponse(BlocksRequest response)
         {
             ChangeState(SyncFeedState.Dormant);
             return SyncBatchResponseHandlingResult.OK;

@@ -171,7 +171,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.TotalSync
             LatencySyncPeerMock syncPeer = new LatencySyncPeerMock(_validTree2048);
             SetupFeed(true);
             SetupSyncPeers(syncPeer);
-            RunFeed(5000, 9);
+            await RunFeed(5000, 9);
             Assert.AreEqual(42, _time);
 
             AssertTreeSynced(_validTree2048, true);
@@ -556,7 +556,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.TotalSync
             SetupSyncPeers(syncPeer1, syncPeer2);
             _scheduledActions[906] = ResetAndStartNewRound;
 
-            RunFeed(5000);
+            await RunFeed(5000);
 //            Assert.AreEqual(2116, _time);
 
             AssertTreeSynced(_validTree2048, true, true);

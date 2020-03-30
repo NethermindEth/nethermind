@@ -158,6 +158,11 @@ namespace Nethermind.Blockchain.Test.Synchronization.TotalSync
 
         private class TestSyncFeed : SyncFeed<TestBatch>
         {
+            public TestSyncFeed(bool isMultiFeed = true)
+            {
+                IsMultiFeed = isMultiFeed;
+            }
+            
             public const int Max = 64;
 
             private int _highestRequested;
@@ -189,6 +194,8 @@ namespace Nethermind.Blockchain.Test.Synchronization.TotalSync
                 Interlocked.Decrement(ref _pendingRequests);
                 return SyncBatchResponseHandlingResult.OK;
             }
+
+            public override bool IsMultiFeed { get; }
 
             private int _pendingRequests;
 
