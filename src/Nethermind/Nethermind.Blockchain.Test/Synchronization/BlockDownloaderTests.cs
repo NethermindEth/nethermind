@@ -953,7 +953,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             peerInfo.HeadNumber *= 2;
 
-            Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(DownloaderOptions.WithReceipts), CancellationToken.None);
+            Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies | DownloaderOptions.WithReceipts), CancellationToken.None);
             action.Should().Throw<EthSyncException>();
         }
 

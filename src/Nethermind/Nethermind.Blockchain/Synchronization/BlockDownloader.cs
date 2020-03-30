@@ -406,7 +406,7 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     context.SetReceipts(i + offset, result[i]);
                 }
-
+                
                 offset += result.Length;
             }
         }
