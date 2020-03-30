@@ -114,6 +114,7 @@ namespace Nethermind.Blockchain.Synchronization
             long currentNumber = Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
             while (bestPeer.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) && currentNumber <= bestPeer.HeadNumber)
             {
+                int headersSyncedInPreviousRequests = headersSynced;
                 if (_logger.IsTrace) _logger.Trace($"Continue headers sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
 
                 long blocksLeft = bestPeer.HeadNumber - currentNumber - blocksRequest.NumberOfLatestBlocksToBeIgnored;
@@ -159,7 +160,7 @@ namespace Nethermind.Blockchain.Synchronization
                     BlockHeader currentHeader = headers[i];
                     if (currentHeader == null)
                     {
-                        if (headersSynced > 0)
+                        if (headersSynced - headersSyncedInPreviousRequests > 0)
                         {
                             break;
                         }
