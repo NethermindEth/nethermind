@@ -39,6 +39,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         private NetworkConfig _networkConfig;
         private IBlockTree _blockTree;
         private const string _enodeString = "enode://44826a5d6a55f88a18298bca4773fca5749cdc3a5c9f308aa7d810e9b31123f3e7c5fba0b1d70aac5308426f47df2a128a6747040a3815cc7dd7167d03be320d@127.0.0.1:30303";
+        private const string _exampleDataDir = "/example/dbdir";
         
         [SetUp]
         public void Setup()
@@ -50,7 +51,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
             Enode enode = new Enode(_enodeString);
-            _adminModule = new AdminModule(_blockTree, _networkConfig, peerManager, staticNodesManager, enode, "C:\\dataDir");
+            _adminModule = new AdminModule(_blockTree, _networkConfig, peerManager, staticNodesManager, enode, _exampleDataDir);
             _serializer = new EthereumJsonSerializer();
         }
         
@@ -83,7 +84,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = RpcTest.TestSerializedRequest(_adminModule, "admin_dataDir");
             JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
-            response.Result.Should().Be("C:\\dataDir");
+            response.Result.Should().Be(_exampleDataDir);
         }
         
         [Test]
