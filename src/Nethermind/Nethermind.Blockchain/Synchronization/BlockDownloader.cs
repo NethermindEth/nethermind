@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private bool _cancelDueToBetterPeer;
         private CancellationTokenSource _allocationCancellation;
-        
+
         private SyncBatchSize _syncBatchSize;
         private int _sinceLastTimeout;
         private int[] _ancestorJumps = {1, 2, 3, 8, 16, 32, 64, 128, 256, 384, 512, 640, 768, 896, 1024};
@@ -84,7 +84,7 @@ namespace Nethermind.Blockchain.Synchronization
         protected override async Task Execute(PeerInfo bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
         {
             if (!_blockTree.CanAcceptNewBlocks) return;
-            
+
             _allocationCancellation = new CancellationTokenSource();
             CancellationTokenSource linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _allocationCancellation.Token);
 
@@ -95,7 +95,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
             else
             {
-                await DownloadHeaders(bestPeer, blocksRequest, linkedCancellation.Token).ContinueWith(t => HandleSyncRequestResult(t, bestPeer));    
+                await DownloadHeaders(bestPeer, blocksRequest, linkedCancellation.Token).ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
             }
         }
 
@@ -406,7 +406,12 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     context.SetReceipts(i + offset, result[i]);
                 }
-                
+
+                if (result.Length == 0)
+                {
+                    throw new EthSyncException("Empty receipts response received");
+                }
+
                 offset += result.Length;
             }
         }
@@ -427,7 +432,7 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     break;
                 }
-                
+
                 if (i != 1) // because we will never set TotalDifficulty on the first block?
                 {
                     headers[i].MaybeParent = new WeakReference<BlockHeader>(headers[i - 1]);
@@ -527,7 +532,7 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         public event EventHandler<SyncEventArgs> SyncEvent;
-        
+
         private void HandleSyncRequestResult(Task<long> task, PeerInfo peerInfo)
         {
             switch (task)
@@ -595,7 +600,7 @@ namespace Nethermind.Blockchain.Synchronization
             allocation.Refreshed -= AllocationOnRefreshed;
             base.Free(allocation);
         }
-        
+
         private void AllocationOnCancelled(object sender, AllocationChangeEventArgs e)
         {
             _allocationCancellation.Cancel();

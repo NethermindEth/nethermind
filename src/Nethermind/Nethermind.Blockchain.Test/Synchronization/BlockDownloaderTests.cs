@@ -930,8 +930,10 @@ namespace Nethermind.Blockchain.Test.Synchronization
             }
         }
 
-        [Test]
-        public async Task Throws_on_block_bodies_count_higher_than_receipts_list_count()
+        [TestCase(32)]
+        [TestCase(1)]
+        [TestCase(0)]
+        public async Task Throws_on_block_bodies_count_higher_than_receipts_list_count(int threshold)
         {
             InMemoryReceiptStorage inMemoryReceiptStorage = new InMemoryReceiptStorage();
             BlockDownloader downloader = new BlockDownloader(new BlockDownloaderFeed(DownloaderOptions.WithBodies, 0), _peerPool, _blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
@@ -949,7 +951,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .Returns(ci => _responseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions).Result.Skip(1).ToArray());
 
             PeerInfo peerInfo = new PeerInfo(syncPeer) {TotalDifficulty = UInt256.MaxValue, HeadNumber = 1};
-            await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), CancellationToken.None);
+            await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, threshold), CancellationToken.None);
 
             peerInfo.HeadNumber *= 2;
 
@@ -957,8 +959,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
             action.Should().Throw<EthSyncException>();
         }
 
-        [Test]
-        public async Task Throws_on_transaction_count_different_than_receipts_count_in_block()
+        [TestCase(32)]
+        [TestCase(1)]
+        public async Task Throws_on_transaction_count_different_than_receipts_count_in_block(int threshold)
         {
             InMemoryReceiptStorage inMemoryReceiptStorage = new InMemoryReceiptStorage();
             BlockDownloader downloader = new BlockDownloader(new BlockDownloaderFeed(DownloaderOptions.WithBodies, 0), _peerPool, _blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
@@ -977,7 +980,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                     .Result.Select(r => r == null || r.Length == 0 ? r : r.Skip(1).ToArray()).ToArray());
 
             PeerInfo peerInfo = new PeerInfo(syncPeer) {TotalDifficulty = UInt256.MaxValue, HeadNumber = 1};
-            await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.None, 0), CancellationToken.None);
+            await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.None, threshold), CancellationToken.None);
 
             peerInfo.HeadNumber *= 2;
 
@@ -985,8 +988,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
             action.Should().Throw<EthSyncException>();
         }
 
-        [Test]
-        public async Task Throws_on_incorrect_receipts_root()
+        [TestCase(32)]
+        [TestCase(1)]
+        public async Task Throws_on_incorrect_receipts_root(int threshold)
         {
             InMemoryReceiptStorage inMemoryReceiptStorage = new InMemoryReceiptStorage();
             BlockDownloader downloader = new BlockDownloader(new BlockDownloaderFeed(DownloaderOptions.WithBodies, 0), _peerPool, _blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
@@ -1004,7 +1008,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .Returns(ci => _responseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions).Result);
 
             PeerInfo peerInfo = new PeerInfo(syncPeer) {TotalDifficulty = UInt256.MaxValue, HeadNumber = 1};
-            await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), CancellationToken.None);
+            await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, threshold), CancellationToken.None);
 
             peerInfo.HeadNumber *= 2;
 
