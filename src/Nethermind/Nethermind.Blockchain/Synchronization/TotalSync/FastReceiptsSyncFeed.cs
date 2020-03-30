@@ -206,7 +206,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                             batch.Receipts.IsFinal = true;
                         }
 
-                        if (collectedRequests == 0 && (block?.IsGenesis ?? true))
+                        if (collectedRequests == 0 && _blockTree.LowestInsertedBody.Number == 1 && (block?.IsGenesis ?? true))
                         {
                             // special finishing call
                             // leaving this the bad way as it may be tricky to confirm that it is not called somewhere else

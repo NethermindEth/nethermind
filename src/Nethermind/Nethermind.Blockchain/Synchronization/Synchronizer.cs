@@ -16,6 +16,7 @@
 
 using System;
 using System.Linq;
+using System.Reflection.Metadata.Ecma335;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
@@ -49,7 +50,6 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly ISyncReport _syncReport;
 
         private readonly BlockDownloader _blockDownloader;
-        private readonly SyncExecutor<FastBlocksBatch> _fastBlockDownloader;
 
         private ManualResetEventSlim _syncRequested = new ManualResetEventSlim(false);
         private CancellationTokenSource _syncLoopCancellation = new CancellationTokenSource();
@@ -63,6 +63,9 @@ namespace Nethermind.Blockchain.Synchronization
         /* sync events are used mainly for managing sync peers reputation */
         public event EventHandler<SyncEventArgs> SyncEvent;
 
+        private Task<long> _fastBlocksTask;
+        private CancellationTokenSource _fastBlocksCancellation;
+        
         public Synchronizer(
             ISpecProvider specProvider,
             IBlockTree blockTree,
@@ -93,23 +96,26 @@ namespace Nethermind.Blockchain.Synchronization
             
             if (syncConfig.FastBlocks)
             {
+                _fastBlocksCancellation = new CancellationTokenSource();
                 var fastFactory = new FastBlockPeerSelectionStrategyFactory();
                 
                 FastHeadersSyncFeed feed = new FastHeadersSyncFeed(_blockTree, _syncPeerPool, syncConfig, _syncReport, logManager);
-                _fastBlockDownloader = new HeadersSyncExecutor(feed, _syncPeerPool, fastFactory, logManager);
-                _fastBlockDownloader.Start(CancellationToken.None);
+                var fastBlockDownloader = new HeadersSyncExecutor(feed, _syncPeerPool, fastFactory, logManager);
+                Task headersTask = fastBlockDownloader.Start(_fastBlocksCancellation.Token);
                 
                 FastBodiesSyncFeed bodiesFeed = new FastBodiesSyncFeed(_blockTree, _syncPeerPool, syncConfig, _syncReport, logManager);
                 var bodiesDownloader = new BodiesSyncExecutor(bodiesFeed, _syncPeerPool, fastFactory, logManager);
-                bodiesDownloader.Start(CancellationToken.None);
+                Task bodiesTask =bodiesDownloader.Start(_fastBlocksCancellation.Token);
                 
                 FastReceiptsSyncFeed receiptsFeed = new FastReceiptsSyncFeed(_specProvider, _blockTree, _receiptStorage, _syncPeerPool, syncConfig, _syncReport, logManager);
                 var receiptsDownloader = new ReceiptsSyncExecutor(receiptsFeed, _syncPeerPool, fastFactory, logManager);
-                receiptsDownloader.Start(CancellationToken.None);
+                Task receiptsTask = receiptsDownloader.Start(_fastBlocksCancellation.Token);
                 
                 feed.Activate();
                 bodiesFeed.Activate();
                 receiptsFeed.Activate();
+
+                _fastBlocksTask = Task.WhenAll(headersTask, bodiesTask, receiptsTask).ContinueWith<long>(t => 1);
             }
         }
 
@@ -295,7 +301,7 @@ namespace Nethermind.Blockchain.Synchronization
                     switch (_syncMode.Current)
                     {
                         case SyncMode.FastBlocks:
-                            syncProgressTask = _fastBlockDownloader.Start(linkedCancellation.Token);
+                            syncProgressTask = _fastBlocksTask;
                             break;
                         case SyncMode.FastSync:
                             options |= BlockDownloaderOptions.MoveToMain;
@@ -478,8 +484,9 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void Dispose()
         {
+            _fastBlocksCancellation.Cancel();
             FreeBlocksSyncAllocation();
-
+            
             _syncTimer?.Dispose();
             _syncLoopTask?.Dispose();
             _syncLoopCancellation?.Dispose();

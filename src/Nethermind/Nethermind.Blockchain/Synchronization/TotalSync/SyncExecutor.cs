@@ -54,6 +54,11 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             UpdateState(_syncFeed.CurrentState);
             while (true)
             {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                
                 if (_currentFeedState == SyncFeedState.Dormant)
                 {
                     await _dormantStateTask.Task;
