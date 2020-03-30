@@ -63,7 +63,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             + _sentBatches.Count
             + _headerDependencies.Count == 0;
 
-        public FastHeadersSyncFeed(IEthSyncPeerPool syncPeerPool, ISyncReport syncReport, IBlockTree blockTree, ISyncConfig syncConfig, ILogManager logManager)
+        public FastHeadersSyncFeed(IBlockTree blockTree, IEthSyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
         {
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
@@ -155,7 +155,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                     {
                         /* finish this sync round
                            possibly continue in the next sync round */
-                        return null;
+                        return Task.FromResult((FastBlocksBatch)null);
                     }
 
                     case FastBlocksBatchType.Headers:
@@ -228,10 +228,49 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 }
             }
         }
-
-        public override SyncBatchResponseHandlingResult HandleResponse(FastBlocksBatch response)
+        
+        public override SyncBatchResponseHandlingResult HandleResponse(FastBlocksBatch batch)
         {
-            throw new System.NotImplementedException();
+            if (batch.IsResponseEmpty)
+            {
+                batch.MarkHandlingStart();
+                if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
+                batch.Allocation = null;
+                _pendingBatches.Push(batch);
+                batch.MarkHandlingEnd();
+                return SyncBatchResponseHandlingResult.NoData;
+            }
+
+            try
+            {
+                switch (batch.BatchType)
+                {
+                    case FastBlocksBatchType.Headers:
+                    {
+                        if (batch.Headers?.RequestSize == 0)
+                        {
+                            return SyncBatchResponseHandlingResult.OK; // 1
+                        }
+
+                        lock (_handlerLock)
+                        {
+                            batch.MarkHandlingStart();
+                            int added = InsertHeaders(batch);
+                            return SyncBatchResponseHandlingResult.OK;
+                        }
+                    }
+
+                    default:
+                    {
+                        return SyncBatchResponseHandlingResult.InvalidFormat;
+                    }
+                }
+            }
+            finally
+            {
+                batch.MarkHandlingEnd();
+                _sentBatches.TryRemove(batch, out _);
+            }
         }
 
         private static FastBlocksBatch BuildRightFiller(FastBlocksBatch batch, int rightFillerSize)
@@ -522,6 +561,8 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             _sentBatches.Clear();
             _pendingBatches.Clear();
             _headerDependencies.Clear();
+            
+            ChangeState(SyncFeedState.Active);
         }
     }
 }
