@@ -169,7 +169,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 string message = $"Peer {peerInfo.SyncPeer?.Node:c} sent a block with an invalid seal";
                 if (_logger.IsDebug) _logger.Debug($"Peer {peerInfo.SyncPeer?.Node:c} sent a block with an invalid seal");
-                throw new EthSynchronizationException(message);
+                throw new EthSyncException(message);
             }
         }
 
@@ -205,7 +205,7 @@ namespace Nethermind.Blockchain.Synchronization
                         _recentlySuggested.Delete(block.Hash);
                     }
 
-                    throw new EthSynchronizationException(message);
+                    throw new EthSyncException(message);
                 }
 
                 result = _blockTree.SuggestBlock(block, true);

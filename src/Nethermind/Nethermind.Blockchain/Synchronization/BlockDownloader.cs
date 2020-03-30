@@ -133,7 +133,7 @@ namespace Nethermind.Blockchain.Synchronization
                     if (ancestorLookupLevel >= _ancestorJumps.Length)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Could not find common ancestor with {bestPeer}");
-                        throw new EthSynchronizationException("Peer with inconsistent chain in sync");
+                        throw new EthSyncException("Peer with inconsistent chain in sync");
                     }
 
                     int ancestorJump = _ancestorJumps[ancestorLookupLevel] - _ancestorJumps[ancestorLookupLevel - 1];
@@ -172,7 +172,7 @@ namespace Nethermind.Blockchain.Synchronization
                     bool isValid = i > 1 ? _blockValidator.ValidateHeader(currentHeader, headers[i - 1], false) : _blockValidator.ValidateHeader(currentHeader, false);
                     if (!isValid)
                     {
-                        throw new EthSynchronizationException($"{bestPeer} sent a block {currentHeader.ToString(BlockHeader.Format.Short)} with an invalid header");
+                        throw new EthSyncException($"{bestPeer} sent a block {currentHeader.ToString(BlockHeader.Format.Short)} with an invalid header");
                     }
 
                     if (HandleAddResult(bestPeer, currentHeader, i == 0, _blockTree.Insert(currentHeader)))
@@ -264,7 +264,7 @@ namespace Nethermind.Blockchain.Synchronization
                         if (ancestorLookupLevel >= _ancestorJumps.Length)
                         {
                             if (_logger.IsWarn) _logger.Warn($"Could not find common ancestor with {bestPeer}");
-                            throw new EthSynchronizationException("Peer with inconsistent chain in sync");
+                            throw new EthSyncException("Peer with inconsistent chain in sync");
                         }
 
                         int ancestorJump = _ancestorJumps[ancestorLookupLevel] - _ancestorJumps[ancestorLookupLevel - 1];
@@ -288,7 +288,7 @@ namespace Nethermind.Blockchain.Synchronization
                     // can move this to block tree now?
                     if (!_blockValidator.ValidateSuggestedBlock(currentBlock))
                     {
-                        throw new EthSynchronizationException($"{bestPeer} sent an invalid block {currentBlock.ToString(Block.Format.Short)}.");
+                        throw new EthSyncException($"{bestPeer} sent an invalid block {currentBlock.ToString(Block.Format.Short)}.");
                     }
 
                     if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, _blockTree.SuggestBlock(currentBlock, shouldProcess)))
@@ -351,7 +351,7 @@ namespace Nethermind.Blockchain.Synchronization
                     if (_logger.IsInfo) _logger.Error($"Failed to retrieve {entities} when synchronizing.", exception);
                 }
 
-                throw new EthSynchronizationException($"{entities} task faulted", downloadTask.Exception);
+                throw new EthSyncException($"{entities} task faulted", downloadTask.Exception);
             }
 
             return default;
@@ -419,9 +419,14 @@ namespace Nethermind.Blockchain.Synchronization
                 if (headers[i] != null && headers[i]?.ParentHash != headers[i - 1]?.Hash)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Inconsistent block list from peer {bestPeer}");
-                    throw new EthSynchronizationException("Peer sent an inconsistent block list");
+                    throw new EthSyncException("Peer sent an inconsistent block list");
                 }
 
+                if (headers[i] == null)
+                {
+                    break;
+                }
+                
                 if (i != 1) // because we will never set TotalDifficulty on the first block?
                 {
                     headers[i].MaybeParent = new WeakReference<BlockHeader>(headers[i - 1]);
@@ -453,7 +458,7 @@ namespace Nethermind.Blockchain.Synchronization
                     if (!_sealValidator.ValidateSeal(headers[i], false))
                     {
                         if (_logger.IsTrace) _logger.Trace("One of the seals is invalid");
-                        throw new EthSynchronizationException("Peer sent a block with an invalid seal");
+                        throw new EthSyncException("Peer sent a block with an invalid seal");
                     }
                 }
                 catch (Exception e)
@@ -494,19 +499,19 @@ namespace Nethermind.Blockchain.Synchronization
                     {
                         const string message = "Peer sent orphaned blocks/headers inside the batch";
                         _logger.Error(message);
-                        throw new EthSynchronizationException(message);
+                        throw new EthSyncException(message);
                     }
                     else
                     {
                         const string message = "Peer sent an inconsistent batch of blocks/headers";
                         _logger.Error(message);
-                        throw new EthSynchronizationException(message);
+                        throw new EthSyncException(message);
                     }
                 }
                 case AddBlockResult.CannotAccept:
-                    throw new EthSynchronizationException("Block tree rejected block/header");
+                    throw new EthSyncException("Block tree rejected block/header");
                 case AddBlockResult.InvalidBlock:
-                    throw new EthSynchronizationException("Peer sent an invalid block/header");
+                    throw new EthSyncException("Peer sent an invalid block/header");
                 case AddBlockResult.Added:
                     UpdatePeerInfo(peerInfo, block);
                     if (_logger.IsTrace) _logger.Trace($"Block/header {block.Number} suggested for processing");

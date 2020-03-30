@@ -79,7 +79,7 @@ namespace Nethermind.JsonRpc.Benchmark
             TransactionProcessor transactionProcessor
                  = new TransactionProcessor(MainNetSpecProvider.Instance, stateProvider, storageProvider, _virtualMachine, LimboLogs.Instance);
             
-            BlockProcessor blockProcessor = new BlockProcessor(specProvider, AlwaysValidBlockValidator.Instance, new RewardCalculator(specProvider), transactionProcessor,
+            BlockProcessor blockProcessor = new BlockProcessor(specProvider, Always.Valid, new RewardCalculator(specProvider), transactionProcessor,
                 stateDb, codeDb, stateProvider, storageProvider, NullTxPool.Instance, NullReceiptStorage.Instance, LimboLogs.Instance);
 
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(

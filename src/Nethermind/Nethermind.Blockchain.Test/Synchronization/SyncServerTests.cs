@@ -110,7 +110,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             
             if (!accepted)
             {
-                Assert.Throws<EthSynchronizationException>(() => _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock));
+                Assert.Throws<EthSyncException>(() => _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock));
             }
             else
             {
@@ -149,7 +149,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
 
-            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, new BlockValidator(TestTxValidator.AlwaysValid, new HeaderValidator(localBlockTree, TestSealValidator.AlwaysValid, MainNetSpecProvider.Instance, LimboLogs.Instance), AlwaysValidOmmersValidator.Instance, MainNetSpecProvider.Instance, LimboLogs.Instance), TestSealValidator.AlwaysValid, _peerPool, _synchronizer, new SyncConfig(), LimboLogs.Instance);
+            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, new BlockValidator(TestTxValidator.AlwaysValid, new HeaderValidator(localBlockTree, TestSealValidator.AlwaysValid, MainNetSpecProvider.Instance, LimboLogs.Instance), Always.Valid, MainNetSpecProvider.Instance, LimboLogs.Instance), TestSealValidator.AlwaysValid, _peerPool, _synchronizer, new SyncConfig(), LimboLogs.Instance);
 
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
             block.Header.TotalDifficulty *= 2;

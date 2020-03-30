@@ -21,11 +21,13 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public class SyncModeSelector : ISyncModeSelector
     {
+        /// <summary>
+        /// Number of blocks before the best peer's head when we switch from fast sync to full sync
+        /// </summary>
         public const int FullSyncThreshold = 32;
         public const string FullSyncThresholdString = "32";
 
         private readonly SyncProgressSnapshot _syncProgressSnapshot = new SyncProgressSnapshot(SyncProgressSnapshot.SyncProgressType.AllValuesChanged);
-
         private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly IEthSyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;

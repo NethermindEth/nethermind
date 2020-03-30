@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Synchronization
             Block block = Blocks[_indexMapping[index]];
             if (body == null)
             {
-                throw new EthSynchronizationException($"{_syncPeer} sent an empty body for {block.ToString(Block.Format.Short)}.");
+                throw new EthSyncException($"{_syncPeer} sent an empty body for {block.ToString(Block.Format.Short)}.");
             }
 
             block.Body = body;
@@ -126,7 +126,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
             else
             {
-                throw new EthSynchronizationException($"Missing receipts for block {block.ToString(Block.Format.Short)}.");
+                throw new EthSyncException($"Missing receipts for block {block.ToString(Block.Format.Short)}.");
             }
         }
 
@@ -135,7 +135,7 @@ namespace Nethermind.Blockchain.Synchronization
             Keccak receiptsRoot = new ReceiptTrie(block.Number, _specProvider, blockReceipts).RootHash;
             if (receiptsRoot != block.ReceiptsRoot)
             {
-                throw new EthSynchronizationException($"Wrong receipts root for downloaded block {block.ToString(Block.Format.Short)}.");
+                throw new EthSyncException($"Wrong receipts root for downloaded block {block.ToString(Block.Format.Short)}.");
             }
         }
     }

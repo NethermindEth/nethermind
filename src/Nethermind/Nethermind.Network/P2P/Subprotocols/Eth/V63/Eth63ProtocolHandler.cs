@@ -86,7 +86,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             Metrics.Eth63GetReceiptsReceived++;
             if (msg.Hashes.Count > 512)
             {
-                throw new EthSynchronizationException("Incoming receipts request for more than 512 blocks");
+                throw new EthSyncException("Incoming receipts request for more than 512 blocks");
             }
 
             Stopwatch stopwatch = Stopwatch.StartNew();
@@ -109,7 +109,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             Metrics.Eth63GetNodeDataReceived++;
             if (msg.Hashes.Count > 4096)
             {
-                throw new EthSynchronizationException("Incoming node data request for more than 4096 nodes");
+                throw new EthSyncException("Incoming node data request for more than 4096 nodes");
             }
 
             Stopwatch stopwatch = Stopwatch.StartNew();

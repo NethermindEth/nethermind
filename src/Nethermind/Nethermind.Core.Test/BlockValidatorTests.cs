@@ -34,7 +34,7 @@ namespace Nethermind.Core.Test
             releaseSpec.MaximumUncleCount = 0;
             ISpecProvider specProvider = new CustomSpecProvider((0, releaseSpec));
 
-            BlockValidator blockValidator = new BlockValidator(txValidator, AlwaysValidHeaderValidator.Instance, AlwaysValidOmmersValidator.Instance, specProvider, LimboLogs.Instance);
+            BlockValidator blockValidator = new BlockValidator(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
             bool noiseRemoved = blockValidator.ValidateSuggestedBlock(Build.A.Block.TestObject);
             Assert.True(noiseRemoved);
             

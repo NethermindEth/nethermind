@@ -18,13 +18,13 @@ using System;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public class EthSynchronizationException : Exception
+    public class EthSyncException : Exception
     {
-        public EthSynchronizationException(string message) : base(message)
+        public EthSyncException(string message) : base(message)
         {
         }
         
-        public EthSynchronizationException(string message, Exception innerException) : base(message, innerException)
+        public EthSyncException(string message, Exception innerException) : base(message, innerException)
         {
         }
     }
