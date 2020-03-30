@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,13 +14,16 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.TxPool
+using Newtonsoft.Json;
+
+namespace Nethermind.JsonRpc.Modules.Admin
 {
-    public class TxPoolConfig : ITxPoolConfig
+    [JsonObject]
+    public class PortsInfo
     {
-        public int ObsoletePendingTransactionInterval { get; set; } = 5;
-        public int RemovePendingTransactionInterval { get; set; } = 15;
-        public int PeerNotificationThreshold { get; set; } = 5;
-        public int Size { get; set; } = 2048;
+        [JsonProperty("discovery", Order = 0)]
+        public int Discovery { get; set; }
+        [JsonProperty("listener", Order = 1)]
+        public int Listener { get; set; }
     }
 }

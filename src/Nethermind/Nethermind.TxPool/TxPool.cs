@@ -61,8 +61,7 @@ namespace Nethermind.TxPool
         private static readonly ThreadLocal<Random> Random =
             new ThreadLocal<Random>(() => new Random(Interlocked.Increment(ref _seed)));
 
-        private readonly SortedPool<Keccak, Transaction> _transactions =
-            new DistinctValueSortedPool<Keccak, Transaction>(MemoryAllowance.MemPoolSize, (t1, t2) => t1.GasPrice.CompareTo(t2.GasPrice), PendingTransactionComparer.Default);
+        private readonly SortedPool<Keccak, Transaction> _transactions;
 
         private readonly ISpecProvider _specProvider;
         private readonly IStateProvider _stateProvider;
@@ -146,6 +145,9 @@ namespace Nethermind.TxPool
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
 
+            MemoryAllowance.MemPoolSize = txPoolConfig.Size;
+            ThisNodeInfo.AddInfo("Mem est tx   :", $"{(MemoryAllowance.TxHashCacheSize * 64 + MemoryAllowance.MemPoolSize * 4096) / 1024 / 1024}MB".PadLeft(8));
+            _transactions = new DistinctValueSortedPool<Keccak, Transaction>(MemoryAllowance.MemPoolSize, (t1, t2) => t1.GasPrice.CompareTo(t2.GasPrice), PendingTransactionComparer.Default);
             _peerNotificationThreshold = txPoolConfig.PeerNotificationThreshold;
 
             _ownTimer = new Timer(500);
