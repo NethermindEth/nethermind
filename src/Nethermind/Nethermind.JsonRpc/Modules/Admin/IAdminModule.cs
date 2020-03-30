@@ -30,13 +30,13 @@ namespace Nethermind.JsonRpc.Modules.Admin
         [JsonRpcMethod(Description = "", IsImplemented = true)]
         ResultWrapper<PeerInfo[]> admin_peers();
         
-        [JsonRpcMethod(Description = "", IsImplemented = false)]
-        ResultWrapper<PeerInfo[]> admin_nodeInfo();
+        [JsonRpcMethod(Description = "Relevant information about this node", IsImplemented = true)]
+        ResultWrapper<NodeInfo> admin_nodeInfo();
         
-        [JsonRpcMethod(Description = "", IsImplemented = false)]
-        ResultWrapper<PeerInfo[]> admin_dataDir();
+        [JsonRpcMethod(Description = "Base data directory path", IsImplemented = false)]
+        ResultWrapper<string> admin_dataDir();
         
-        [JsonRpcMethod(Description = "", IsImplemented = false)]
-        ResultWrapper<PeerInfo[]> admin_setSolc();
+        [JsonRpcMethod(Description = "[DEPRECATED]", IsImplemented = false)]
+        ResultWrapper<bool> admin_setSolc();
     }
 }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,13 +14,21 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.TxPool
+using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
+using Newtonsoft.Json;
+
+namespace Nethermind.JsonRpc.Modules.Admin
 {
-    public class TxPoolConfig : ITxPoolConfig
+    public class EthProtocolInfo
     {
-        public int ObsoletePendingTransactionInterval { get; set; } = 5;
-        public int RemovePendingTransactionInterval { get; set; } = 15;
-        public int PeerNotificationThreshold { get; set; } = 5;
-        public int Size { get; set; } = 2048;
+        [JsonProperty("difficulty", Order = 0)]
+        public UInt256 Difficulty { get; set; }
+        [JsonProperty("genesis", Order = 1)]
+        public Keccak GenesisHash { get; set; }
+        [JsonProperty("head", Order = 2)]
+        public Keccak HeadHash { get; set; }
+        [JsonProperty("network", Order = 3)]
+        public int ChainId { get; set; }
     }
 }

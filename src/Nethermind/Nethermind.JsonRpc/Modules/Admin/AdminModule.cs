@@ -17,22 +17,57 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Network;
+using Nethermind.Network.Config;
 
 namespace Nethermind.JsonRpc.Modules.Admin
 {
     public class AdminModule : IAdminModule
     {
+        private readonly IBlockTree _blockTree;
+        private readonly INetworkConfig _networkConfig;
         private readonly IPeerManager _peerManager;
         private readonly IStaticNodesManager _staticNodesManager;
+        private readonly IEnode _enode;
+        private readonly string _dataDir;
+        private NodeInfo _nodeInfo;
 
-        public AdminModule(IPeerManager peerManager, IStaticNodesManager staticNodesManager)
+        public AdminModule(IBlockTree blockTree, INetworkConfig networkConfig, IPeerManager peerManager, IStaticNodesManager staticNodesManager, IEnode enode, string dataDir)
         {
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
             _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
             _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
+            _enode = enode ?? throw new ArgumentNullException(nameof(enode));
+            _dataDir = dataDir ?? throw new ArgumentNullException(nameof(dataDir));
+
+            BuildNodeInfo();
         }
-        
+
+        private void BuildNodeInfo()
+        {
+            _nodeInfo = new NodeInfo();
+            _nodeInfo.Name = ClientVersion.Description;
+            _nodeInfo.Enode = _enode.Info;
+            _nodeInfo.Id = _enode.PublicKey.ToString(false);
+            _nodeInfo.Ip = _enode.HostIp.ToString();
+            _nodeInfo.ListenAddress = $"{_enode.HostIp}:{_enode.Port}";
+            _nodeInfo.Ports.Discovery = _networkConfig.DiscoveryPort;
+            _nodeInfo.Ports.Listener = _networkConfig.P2PPort;
+            UpdateEthProtocolInfo();
+        }
+
+        private void UpdateEthProtocolInfo()
+        {
+            _nodeInfo.Protocols["eth"].Difficulty = _blockTree.Head.TotalDifficulty ?? 0;
+            _nodeInfo.Protocols["eth"].ChainId = _blockTree.ChainId;
+            _nodeInfo.Protocols["eth"].HeadHash = _blockTree.HeadHash;
+            _nodeInfo.Protocols["eth"].GenesisHash = _blockTree.GenesisHash;
+        }
+
         public async Task<ResultWrapper<string>> admin_addPeer(string enode, bool addToStaticNodes = false)
         {
             bool added;
@@ -71,19 +106,20 @@ namespace Nethermind.JsonRpc.Modules.Admin
         public ResultWrapper<PeerInfo[]> admin_peers()
             => ResultWrapper<PeerInfo[]>.Success(_peerManager.ActivePeers.Select(p => new PeerInfo(p)).ToArray());
 
-        public ResultWrapper<PeerInfo[]> admin_nodeInfo()
+        public ResultWrapper<NodeInfo> admin_nodeInfo()
         {
-            throw new System.NotImplementedException();
+            UpdateEthProtocolInfo();
+            return ResultWrapper<NodeInfo>.Success(_nodeInfo);
         }
 
-        public ResultWrapper<PeerInfo[]> admin_dataDir()
+        public ResultWrapper<string> admin_dataDir()
         {
-            throw new System.NotImplementedException();
+            return ResultWrapper<string>.Success(_dataDir);
         }
 
-        public ResultWrapper<PeerInfo[]> admin_setSolc()
+        public ResultWrapper<bool> admin_setSolc()
         {
-            throw new System.NotImplementedException();
+            return ResultWrapper<bool>.Success(true);
         }
     }
 }
