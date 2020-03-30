@@ -155,7 +155,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                     {
                         /* finish this sync round
                            possibly continue in the next sync round */
-                        return gTask.FromResult((FastBlocksBatch)null);
+                        return Task.FromResult((FastBlocksBatch)null);
                     }
 
                     case FastBlocksBatchType.Headers:

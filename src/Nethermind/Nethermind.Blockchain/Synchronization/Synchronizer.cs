@@ -103,8 +103,13 @@ namespace Nethermind.Blockchain.Synchronization
                 var bodiesDownloader = new BodiesSyncExecutor(bodiesFeed, _syncPeerPool, fastFactory, logManager);
                 bodiesDownloader.Start(CancellationToken.None);
                 
+                FastReceiptsSyncFeed receiptsFeed = new FastReceiptsSyncFeed(_specProvider, _blockTree, _receiptStorage, _syncPeerPool, syncConfig, _syncReport, logManager);
+                var receiptsDownloader = new ReceiptsSyncExecutor(receiptsFeed, _syncPeerPool, fastFactory, logManager);
+                receiptsDownloader.Start(CancellationToken.None);
+                
                 feed.Activate();
                 bodiesFeed.Activate();
+                receiptsFeed.Activate();
             }
         }
 
