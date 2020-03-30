@@ -81,6 +81,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
         {
             if (_syncConfig.BeamSync && _blockTree.LowestInsertedHeader != null)
             {
+                ChangeState(SyncFeedState.Finished);
                 return FastBlocksBatchType.None;
             }
 
@@ -96,6 +97,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
             _syncReport.FastBlocksReceipts.Update(_pivotNumber);
             _syncReport.FastBlocksReceipts.MarkEnd();
+            ChangeState(SyncFeedState.Finished);
 
             return FastBlocksBatchType.None;
         }

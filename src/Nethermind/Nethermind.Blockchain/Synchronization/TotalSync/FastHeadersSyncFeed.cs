@@ -105,6 +105,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
             _syncReport.FastBlocksHeaders.Update(_pivotNumber);
             _syncReport.FastBlocksHeaders.MarkEnd();
+            ChangeState(SyncFeedState.Finished);
 
             return FastBlocksBatchType.None;
         }
