@@ -41,7 +41,6 @@ namespace Nethermind.JsonRpc.Modules.Admin
     ///     }
     /// }
     /// </summary>
-    [JsonObject]
     public class NodeInfo
     {
         public NodeInfo()
@@ -51,25 +50,25 @@ namespace Nethermind.JsonRpc.Modules.Admin
             Ports = new PortsInfo();
         }
 
-        [JsonProperty("enode")]
+        [JsonProperty("enode", Order = 0)]
         public string Enode { get; set; }
 
-        [JsonProperty("id")]
+        [JsonProperty("id", Order = 1)]
         public string Id { get; set; }
 
-        [JsonProperty("ip")]
+        [JsonProperty("ip", Order = 2)]
         public string Ip { get; set; }
 
-        [JsonProperty("listenAddr")]
+        [JsonProperty("listenAddr", Order = 3)]
         public string ListenAddress { get; set; }
 
-        [JsonProperty("name")]
+        [JsonProperty("name", Order = 4)]
         public string Name { get; set; }
 
-        [JsonProperty("ports")]
+        [JsonProperty("ports", Order = 5)]
         public PortsInfo Ports { get; set; }
 
-        [JsonProperty("protocols")]
+        [JsonProperty("protocols", Order = 6)]
         public Dictionary<string, EthProtocolInfo> Protocols { get; set; }
     }
 }

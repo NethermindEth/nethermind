@@ -18,7 +18,6 @@ using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Admin
 {
-    [JsonObject]
     public class PortsInfo
     {
         [JsonProperty("discovery", Order = 0)]

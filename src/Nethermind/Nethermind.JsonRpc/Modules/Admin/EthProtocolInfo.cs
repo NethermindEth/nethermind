@@ -20,7 +20,6 @@ using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Admin
 {
-    [JsonObject]
     public class EthProtocolInfo
     {
         [JsonProperty("difficulty", Order = 0)]
