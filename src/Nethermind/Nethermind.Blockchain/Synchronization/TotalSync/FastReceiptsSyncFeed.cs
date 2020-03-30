@@ -203,7 +203,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                             batch.Receipts.Request = new Keccak[collectedRequests];
                             Array.Copy(currentBlocks, 0, batch.Receipts.Blocks, 0, collectedRequests);
                             Array.Copy(currentRequests, 0, batch.Receipts.Request, 0, collectedRequests);
-                            batch.Receipts.IsFinal = true;
+                            batch.Receipts.IsFinal = _blockTree.LowestInsertedBody.Number == 1;
                         }
 
                         if (collectedRequests == 0 && _blockTree.LowestInsertedBody.Number == 1 && (block?.IsGenesis ?? true))
