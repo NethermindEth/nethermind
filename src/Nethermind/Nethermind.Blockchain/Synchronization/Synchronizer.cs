@@ -62,6 +62,7 @@ namespace Nethermind.Blockchain.Synchronization
         public event EventHandler<SyncEventArgs> SyncEvent;
 
         private CancellationTokenSource _fastBlocksCancellation;
+        private SyncProgressResolver _syncProgressResolver;
 
         public Synchronizer(
             ISpecProvider specProvider,
@@ -87,9 +88,9 @@ namespace Nethermind.Blockchain.Synchronization
             _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _logManager = logManager;
 
-            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_blockTree, receiptStorage, _nodeDataDownloader, syncConfig, logManager);
-            _syncMode = new SyncModeSelector(syncProgressResolver, _syncPeerPool, _syncConfig, logManager);
-            _syncReport = new SyncReport(_syncPeerPool, _nodeStatsManager, syncConfig, syncProgressResolver, _syncMode, logManager);
+            _syncProgressResolver = new SyncProgressResolver(_blockTree, receiptStorage, _nodeDataDownloader, syncConfig, logManager);
+            _syncMode = new SyncModeSelector(_syncProgressResolver, _syncPeerPool, _syncConfig, logManager);
+            _syncReport = new SyncReport(_syncPeerPool, _nodeStatsManager, syncConfig, _syncProgressResolver, _syncMode, logManager);
             _syncPeerPool.PeerAdded += (sender, args) => RequestSynchronization(SyncTriggerType.PeerAdded);
         }
 
@@ -231,8 +232,11 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             // do this depending on the SyncMode!
-            _fastSyncBlockDownloaderFeed?.Activate();
-            _fullSyncBlockDownloaderFeed?.Activate();
+            if (_syncProgressResolver.FindBestHeader() != 0)
+            {
+                _fastSyncBlockDownloaderFeed?.Activate();
+                _fullSyncBlockDownloaderFeed?.Activate();
+            }
         }
 
         private void StartSyncTimer()
@@ -262,6 +266,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             try
             {
+                _syncMode.Update();
                 RequestSynchronization(SyncTriggerType.SyncTimer);
             }
             catch (Exception ex)
