@@ -86,8 +86,8 @@ namespace Nethermind.Stats.Model
         /// We try to maintain connection with static nodes at all time.
         /// </summary>
         public bool IsStatic { get; set; }
-
         public string ClientId { get; set; }
+        public string EthDetails { get; set; }
 
         public Node(PublicKey id, IPEndPoint address)
         {
@@ -162,7 +162,7 @@ namespace Nethermind.Stats.Model
             return format switch
             {
                 "s" => $"{formattedHost}:{Port}",
-                "c" => $"[Node|{formattedHost}:{Port}|{ClientId}]",
+                "c" => $"[Node|{formattedHost}:{Port}|{ClientId}|{EthDetails}]",
                 "f" => $"enode://{Id.ToString(false)}@{formattedHost}:{Port}|{ClientId}",
                 _ => $"enode://{Id.ToString(false)}@{formattedHost}:{Port}"
             };

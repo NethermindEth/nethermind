@@ -27,6 +27,7 @@ using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
 using Nethermind.State;
@@ -58,7 +59,7 @@ namespace Nethermind.Network.Benchmarks
             _ser.Register(new TransactionsMessageSerializer());
             _ser.Register(new StatusMessageSerializer());
             NodeStatsManager stats = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
-            
+
             var ecdsa = new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance);
             TxPool.TxPool txPool = new TxPool.TxPool(NullTxStorage.Instance, Timestamper.Default, ecdsa, MainNetSpecProvider.Instance, new TxPoolConfig(), Substitute.For<IStateProvider>(), LimboLogs.Instance);
             ISyncServer syncSrv = Substitute.For<ISyncServer>();
@@ -66,7 +67,7 @@ namespace Nethermind.Network.Benchmarks
             syncSrv.Head.Returns(head);
             _handler = new Eth62ProtocolHandler(session, _ser, stats, syncSrv, txPool, LimboLogs.Instance);
             _handler.DisableTxFiltering();
-            
+
             StatusMessage statusMessage = new StatusMessage();
             statusMessage.ProtocolVersion = 63;
             statusMessage.BestHash = Keccak.Compute("1");
@@ -78,9 +79,9 @@ namespace Nethermind.Network.Benchmarks
             _zeroPacket.PacketType = bufStatus.ReadByte();
 
             _handler.HandleMessage(_zeroPacket);
-            
+
             Transaction tx = Build.A.Transaction.SignedAndResolved(ecdsa, TestItem.PrivateKeyA, 1).TestObject;
-            _txMsg = new TransactionsMessage(tx);
+            _txMsg = new TransactionsMessage(new[] {tx});
         }
 
         [GlobalCleanup]
@@ -97,13 +98,13 @@ namespace Nethermind.Network.Benchmarks
             _zeroPacket.PacketType = Eth62MessageCode.Transactions;
             _handler.HandleMessage(_zeroPacket);
         }
-            
+
         [Benchmark]
         public void JustSerialize()
         {
             _ser.ZeroSerialize(_txMsg);
         }
-        
+
         [Benchmark]
         public void SerializeAndCreatePacket()
         {

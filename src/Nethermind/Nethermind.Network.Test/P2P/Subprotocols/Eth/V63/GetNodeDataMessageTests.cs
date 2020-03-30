@@ -30,7 +30,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         {
             Keccak[] keys = {TestItem.KeccakA, TestItem.KeccakB};
             GetNodeDataMessage message = new GetNodeDataMessage(keys);
-            Assert.AreSame(keys, message.Keys);
+            Assert.AreSame(keys, message.Hashes);
         }
 
         [Test]

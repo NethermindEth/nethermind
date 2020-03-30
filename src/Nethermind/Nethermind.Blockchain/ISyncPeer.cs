@@ -29,6 +29,7 @@ namespace Nethermind.Blockchain
     {
         Node Node { get; }
         string ClientId { get; }
+        string EthDetails { get; }
         UInt256 TotalDifficultyOnSessionStart { get; }
         void Disconnect(DisconnectReason reason, string details);
         Task<BlockBody[]> GetBlockBodies(IList<Keccak> blockHashes, CancellationToken token);

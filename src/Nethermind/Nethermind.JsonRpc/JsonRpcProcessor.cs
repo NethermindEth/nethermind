@@ -201,7 +201,7 @@ namespace Nethermind.JsonRpc
                     }
 
                     singleRequestWatch.Stop();
-                    _localStats.ReportCall(jsonRpcRequest.Method, stopwatch.ElapsedMicroseconds(), isSuccess);
+                    _localStats.ReportCall(jsonRpcRequest.Method, singleRequestWatch.ElapsedMicroseconds(), isSuccess);
                     if (_logger.IsDebug) _logger.Debug($"  {requestIndex++}/{rpcRequest.Collection.Count} JSON RPC request - {jsonRpcRequest} handled after {singleRequestWatch.Elapsed.TotalMilliseconds}");
                     responses.Add(response);
                 }
