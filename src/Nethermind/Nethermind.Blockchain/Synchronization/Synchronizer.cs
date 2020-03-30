@@ -93,10 +93,18 @@ namespace Nethermind.Blockchain.Synchronization
             
             if (syncConfig.FastBlocks)
             {
+                var fastFactory = new FastBlockPeerSelectionStrategyFactory();
+                
                 FastHeadersSyncFeed feed = new FastHeadersSyncFeed(_blockTree, _syncPeerPool, syncConfig, _syncReport, logManager);
-                _fastBlockDownloader = new HeadersSyncExecutor(feed, _syncPeerPool, new FastBlockPeerSelectionStrategyFactory(), logManager);
+                _fastBlockDownloader = new HeadersSyncExecutor(feed, _syncPeerPool, fastFactory, logManager);
                 _fastBlockDownloader.Start(CancellationToken.None);
+                
+                FastBodiesSyncFeed bodiesFeed = new FastBodiesSyncFeed(_blockTree, _syncPeerPool, syncConfig, _syncReport, logManager);
+                var bodiesDownloader = new BodiesSyncExecutor(bodiesFeed, _syncPeerPool, fastFactory, logManager);
+                bodiesDownloader.Start(CancellationToken.None);
+                
                 feed.Activate();
+                bodiesFeed.Activate();
             }
         }
 
