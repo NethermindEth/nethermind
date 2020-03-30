@@ -97,7 +97,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void StartFullSyncComponents()
         {
-            _fullSyncBlockDownloaderFeed = new BlockDownloaderFeed(DownloaderOptions.WithBodies, 0);
+            _fullSyncBlockDownloaderFeed = new BlockDownloaderFeed(DownloaderOptions.WithBodies);
             _fullSyncBlockDownloader = new BlockDownloader(_fullSyncBlockDownloaderFeed, _syncPeerPool, _blockTree, _blockValidator, _sealValidator, _syncReport, _receiptStorage, _specProvider, _logManager);
             _fullSyncBlockDownloader.Start(_syncLoopCancellation.Token).ContinueWith(t =>
             {

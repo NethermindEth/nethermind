@@ -56,12 +56,15 @@ namespace Nethermind.Blockchain.Synchronization
                 (this as IPeerSelectionStrategy).CheckAsyncState(info);
                 peersCount++;
 
-                if (info.HeadNumber < (blockTree.BestSuggestedHeader?.Number ?? 0) + _minBlocksAhead)
+                if (_minBlocksAhead != null)
                 {
-                    // we need to be able to download some blocks ahead
-                    continue;
+                    if (info.HeadNumber < (blockTree.BestSuggestedHeader?.Number ?? 0) + _minBlocksAhead)
+                    {
+                        // we need to be able to download some blocks ahead
+                        continue;
+                    }
                 }
-                
+
                 if (info.TotalDifficulty <= localTotalDiff)
                 {
                     // if we require higher difficulty then we need to discard peers with same diff as ours

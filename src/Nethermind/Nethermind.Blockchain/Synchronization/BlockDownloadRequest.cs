@@ -18,7 +18,7 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public class BlocksRequest
     {
-        public BlocksRequest(DownloaderOptions options, int numberOfLatestBlocksToBeIgnored)
+        public BlocksRequest(DownloaderOptions options, int? numberOfLatestBlocksToBeIgnored)
         {
             Options = options;
             NumberOfLatestBlocksToBeIgnored = numberOfLatestBlocksToBeIgnored;
@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain.Synchronization
         {
         }
         
-        public int NumberOfLatestBlocksToBeIgnored { get; set; }
+        public int? NumberOfLatestBlocksToBeIgnored { get; set; }
         public DownloaderOptions Options { get; set; }
     }
 }

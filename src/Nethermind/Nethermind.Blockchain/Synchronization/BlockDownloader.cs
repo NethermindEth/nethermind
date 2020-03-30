@@ -117,7 +117,7 @@ namespace Nethermind.Blockchain.Synchronization
                 int headersSyncedInPreviousRequests = headersSynced;
                 if (_logger.IsTrace) _logger.Trace($"Continue headers sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
 
-                long blocksLeft = bestPeer.HeadNumber - currentNumber - blocksRequest.NumberOfLatestBlocksToBeIgnored;
+                long blocksLeft = bestPeer.HeadNumber - currentNumber - (blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0);
                 int headersToRequest = (int) Math.Min(blocksLeft + 1, _syncBatchSize.Current);
                 if (headersToRequest <= 1)
                 {
@@ -225,7 +225,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 if (_logger.IsDebug) _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
 
-                long blocksLeft = bestPeer.HeadNumber - currentNumber - blocksRequest.NumberOfLatestBlocksToBeIgnored;
+                long blocksLeft = bestPeer.HeadNumber - currentNumber - (blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0);
                 int headersToRequest = (int) Math.Min(blocksLeft + 1, _syncBatchSize.Current);
                 if (headersToRequest <= 1)
                 {

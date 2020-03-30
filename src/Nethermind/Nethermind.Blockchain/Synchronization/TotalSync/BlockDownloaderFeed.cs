@@ -28,6 +28,11 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             _request.NumberOfLatestBlocksToBeIgnored = numberOfLatestBlocksToIgnore;
         }
         
+        public BlockDownloaderFeed(DownloaderOptions options)
+        {
+            _request.Options = options;
+        }
+        
         public override Task<BlocksRequest> PrepareRequest()
         {
             return Task.FromResult(_request);
