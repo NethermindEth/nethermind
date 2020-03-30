@@ -52,8 +52,8 @@ namespace Nethermind.JsonRpc.Modules.Admin
             _nodeInfo = new NodeInfo();
             _nodeInfo.Name = ClientVersion.Description;
             _nodeInfo.Enode = _enode.Info;
-            _nodeInfo.Id = _enode.PublicKey.ToString(false);
-            _nodeInfo.Ip = _enode.HostIp.ToString();
+            _nodeInfo.Id = _enode?.PublicKey?.ToString(false);
+            _nodeInfo.Ip = _enode?.HostIp?.ToString();
             _nodeInfo.ListenAddress = $"{_enode.HostIp}:{_enode.Port}";
             _nodeInfo.Ports.Discovery = _networkConfig.DiscoveryPort;
             _nodeInfo.Ports.Listener = _networkConfig.P2PPort;
@@ -62,7 +62,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
 
         private void UpdateEthProtocolInfo()
         {
-            _nodeInfo.Protocols["eth"].Difficulty = _blockTree.Head.TotalDifficulty ?? 0;
+            _nodeInfo.Protocols["eth"].Difficulty = _blockTree.Head?.TotalDifficulty ?? 0;
             _nodeInfo.Protocols["eth"].ChainId = _blockTree.ChainId;
             _nodeInfo.Protocols["eth"].HeadHash = _blockTree.HeadHash;
             _nodeInfo.Protocols["eth"].GenesisHash = _blockTree.GenesisHash;
