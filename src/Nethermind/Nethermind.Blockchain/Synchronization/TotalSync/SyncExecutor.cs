@@ -24,12 +24,12 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
     public abstract class SyncExecutor<T> : ISyncExecutor<T>
     {
         private object _feedStateManipulation = new object();
-        
+
         private readonly ISyncFeed<T> _syncFeed;
         private readonly IPeerSelectionStrategyFactory<T> _peerSelectionStrategy;
 
         private SyncFeedState _currentFeedState = SyncFeedState.Dormant;
-        
+
         protected ILogger Logger { get; }
         protected IEthSyncPeerPool SyncPeerPool { get; }
 
@@ -58,7 +58,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 {
                     break;
                 }
-                
+
                 if (_currentFeedState == SyncFeedState.Dormant)
                 {
                     await _dormantStateTask.Task;
@@ -71,12 +71,16 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                         await Task.Delay(50);
                         continue;
                     }
-                    
+
                     SyncPeerAllocation allocation = await SyncPeerPool.Borrow(_peerSelectionStrategy.Create(request), string.Empty, 1000);
                     PeerInfo allocatedPeer = allocation.Current; // TryGetCurrent?
                     if (allocatedPeer != null)
                     {
-                        Task task = Execute(allocatedPeer, request, cancellationToken);
+                        CancellationTokenSource allocationCancellation = new CancellationTokenSource();
+                        CancellationTokenSource linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, allocationCancellation.Token);
+                        allocation.Cancelled += (sender, args) => allocationCancellation.Cancel(); // TODO: remove this after
+                        
+                        Task task = Execute(allocatedPeer, request, linkedCancellation.Token);
 #pragma warning disable 4014
                         task.ContinueWith(t =>
 #pragma warning restore 4014
@@ -85,10 +89,19 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                             {
                                 if (Logger.IsWarn) Logger.Warn($"Failure when executing request {t.Exception}");
                             }
-                            
+
                             SyncPeerPool.Free(allocation);
-                            SyncBatchResponseHandlingResult result = _syncFeed.HandleResponse(request);
-                            ReactToHandlingResult(result, allocatedPeer);
+                            try
+                            {
+                                SyncBatchResponseHandlingResult result = _syncFeed.HandleResponse(request);
+                                ReactToHandlingResult(result, allocatedPeer);
+                            }
+                            catch (Exception e)
+                            {
+                                // possibly clear the response and handle empty response batch here (to avoid missing parts)
+                                // this practically corrupts sync
+                                if (Logger.IsError) Logger.Error($"Error when handling response", e);
+                            }
                         });
                     }
                     else
@@ -113,7 +126,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 // unassigned
                 return;
             }
-            
+
             switch (result)
             {
                 case SyncBatchResponseHandlingResult.Emptish:

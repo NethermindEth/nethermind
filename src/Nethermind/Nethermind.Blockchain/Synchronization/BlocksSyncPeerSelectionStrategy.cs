@@ -25,15 +25,13 @@ namespace Nethermind.Blockchain.Synchronization
     public class BlocksSyncPeerSelectionStrategy : IPeerSelectionStrategy
     {
         private readonly long? _minBlocksAhead;
-        private readonly ILogger _logger;
 
         private const decimal MinDiffPercentageForSpeedSwitch = 0.10m;
         private const int MinDiffForSpeedSwitch = 10;
 
-        public BlocksSyncPeerSelectionStrategy(long? minBlocksAhead, ILogger logger)
+        public BlocksSyncPeerSelectionStrategy(long? minBlocksAhead)
         {
             _minBlocksAhead = minBlocksAhead;
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
         public string Name => "blocks";
