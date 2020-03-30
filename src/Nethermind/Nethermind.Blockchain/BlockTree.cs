@@ -495,7 +495,7 @@ namespace Nethermind.Blockchain
             {
                 try
                 {
-                    _blockDb.StartBatch();
+                    // _blockDb.StartBatch();
                     foreach (Block block in blocks)
                     {
                         Insert(block);
@@ -503,7 +503,7 @@ namespace Nethermind.Blockchain
                 }
                 finally
                 {
-                    _blockDb.CommitBatch();
+                    // _blockDb.CommitBatch();
                 }
             }
         }
