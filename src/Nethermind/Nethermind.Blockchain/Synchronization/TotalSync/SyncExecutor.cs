@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
         protected abstract Task Execute(PeerInfo peerInfo, T request, CancellationToken cancellationToken);
 
-        public async Task Start(CancellationToken cancellationToken)
+        public async Task<long> Start(CancellationToken cancellationToken)
         {
             cancellationToken.Register(() => _dormantStateTask?.SetCanceled());
 
@@ -97,6 +97,8 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                     break;
                 }
             }
+
+            return 1000;
         }
 
         protected virtual void ReactToHandlingResult(SyncBatchResponseHandlingResult result, PeerInfo peer)

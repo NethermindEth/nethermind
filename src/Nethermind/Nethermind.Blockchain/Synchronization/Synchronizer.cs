@@ -22,6 +22,7 @@ using System.Timers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization.FastBlocks;
 using Nethermind.Blockchain.Synchronization.FastSync;
+using Nethermind.Blockchain.Synchronization.TotalSync;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -48,7 +49,7 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly ISyncReport _syncReport;
 
         private readonly BlockDownloader _blockDownloader;
-        private readonly FastBlocksDownloader _fastBlockDownloader;
+        private readonly SyncExecutor<FastBlocksBatch> _fastBlockDownloader;
 
         private ManualResetEventSlim _syncRequested = new ManualResetEventSlim(false);
         private CancellationTokenSource _syncLoopCancellation = new CancellationTokenSource();
@@ -87,13 +88,16 @@ namespace Nethermind.Blockchain.Synchronization
             _syncMode = new SyncModeSelector(syncProgressResolver, _syncPeerPool, _syncConfig, logManager);
             _syncReport = new SyncReport(_syncPeerPool, _nodeStatsManager, syncConfig, syncProgressResolver, _syncMode, logManager);
             _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, _syncReport, receiptStorage, specProvider, logManager);
-            if (syncConfig.FastBlocks)
-            {
-                FastBlocksFeed feed = new FastBlocksFeed(_specProvider, _blockTree, _receiptStorage, _syncPeerPool, syncConfig, _syncReport, logManager);
-                _fastBlockDownloader = new FastBlocksDownloader(_syncPeerPool, feed, blockValidator, sealValidator, logManager);
-            }
 
             _syncPeerPool.PeerAdded += (sender, args) => RequestSynchronization(SyncTriggerType.PeerAdded);
+            
+            if (syncConfig.FastBlocks)
+            {
+                FastHeadersSyncFeed feed = new FastHeadersSyncFeed(_blockTree, _syncPeerPool, syncConfig, _syncReport, logManager);
+                _fastBlockDownloader = new HeadersSyncExecutor(feed, _syncPeerPool, new FastBlockPeerSelectionStrategyFactory(), logManager);
+                _fastBlockDownloader.Start(CancellationToken.None);
+                feed.Activate();
+            }
         }
 
         public SyncMode SyncMode => _syncMode.Current;
@@ -278,7 +282,7 @@ namespace Nethermind.Blockchain.Synchronization
                     switch (_syncMode.Current)
                     {
                         case SyncMode.FastBlocks:
-                            syncProgressTask = _fastBlockDownloader.Sync(linkedCancellation.Token);
+                            syncProgressTask = _fastBlockDownloader.Start(linkedCancellation.Token);
                             break;
                         case SyncMode.FastSync:
                             options |= BlockDownloaderOptions.MoveToMain;

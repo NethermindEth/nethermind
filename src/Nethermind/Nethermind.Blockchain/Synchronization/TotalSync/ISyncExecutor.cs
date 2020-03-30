@@ -21,6 +21,6 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 {
     public interface ISyncExecutor<T>
     {
-        Task Start(CancellationToken cancellationToken);
+        Task<long> Start(CancellationToken cancellationToken);
     }
 }
