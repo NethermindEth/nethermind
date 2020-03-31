@@ -152,9 +152,15 @@ namespace Nethermind.BeaconNode.Peering
             // If the store is not initialized (no anchor block), then can not participate peer-to-peer
             // e.g. can't send status message if we don't have a status.
             // If this is pre-genesis, then the peering will wait until genesis has created the anchor block.
+            ulong counter = 0;
             while (!_store.IsInitialized)
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(1000), stoppingToken).ConfigureAwait(false);
+                counter++;
+                if (counter % 10 == 0)
+                {
+                    if (_logger.IsDebug()) LogDebug.PeeringWaitingForAnchorState(_logger, counter, null);
+                }
             }
 
             // Secondary instances wait an additional time, to allow the primary node to initialize
@@ -242,9 +248,6 @@ namespace Nethermind.BeaconNode.Peering
             {
                 if (_peerManager.AddPeer(peerId))
                 {
-                    // Delay to ensure connection is established
-                    await Task.Delay(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
-
                     await _synchronizationManager.OnPeerDialOutConnected(peerId).ConfigureAwait(false);
                 }
             }

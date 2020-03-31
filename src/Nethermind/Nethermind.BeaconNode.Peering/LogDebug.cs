@@ -87,5 +87,10 @@ namespace Nethermind.BeaconNode.Peering
             LoggerMessage.Define(LogLevel.Debug,
                 new EventId(6061, nameof(StoreInitializedStartingPeering)),
                 "Store initialized, peering worker starting peer-to-peer.");
+        
+        public static readonly Action<ILogger, ulong, Exception?> PeeringWaitingForAnchorState =
+            LoggerMessage.Define<ulong>(LogLevel.Debug,
+                new EventId(6062, nameof(PeeringWaitingForAnchorState)),
+                "Store not initialized, waiting for anchor state (waiting {WaitSeconds} seconds).");
     }
 }
