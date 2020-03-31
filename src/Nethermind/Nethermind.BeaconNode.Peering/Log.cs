@@ -55,6 +55,11 @@ namespace Nethermind.BeaconNode.Peering
                 new EventId(1050, nameof(PeeringWorkerStarting)),
                 "Peering {ProductTokenVersion} worker starting; {Environment} environment [{ThreadId}]");
 
+        public static readonly Action<ILogger, Exception?> ProcessGossipSignedBeaconBlockStarting =
+            LoggerMessage.Define(LogLevel.Information,
+                new EventId(1051, nameof(ProcessGossipSignedBeaconBlockStarting)),
+                "Starting beacon block gossip processing thread");
+
         // 2bxx 
         
         public static readonly Action<ILogger, string, Exception?> PeerDiscovered =
@@ -91,9 +96,9 @@ namespace Nethermind.BeaconNode.Peering
                 new EventId(5052, nameof(RpcReceivedError)),
                 "Peer error processing RPC method, '{Method}': {ErrorMessage}");
 
-        public static readonly Action<ILogger, BeaconBlock, string, Exception?> HandleSignedBeaconBlockError =
+        public static readonly Action<ILogger, BeaconBlock, string, Exception?> ProcessGossipSignedBeaconBlockError =
             LoggerMessage.Define<BeaconBlock, string>(LogLevel.Error,
-                new EventId(5053, nameof(HandleSignedBeaconBlockError)),
+                new EventId(5053, nameof(ProcessGossipSignedBeaconBlockError)),
                 "Error handling signed beacon block, {BeaconBlock}: {ErrorMessage}");
         
         public static readonly Action<ILogger, string, string, Exception?> HandleRpcStatusError =

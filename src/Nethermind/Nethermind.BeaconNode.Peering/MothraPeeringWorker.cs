@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
@@ -53,6 +54,33 @@ namespace Nethermind.BeaconNode.Peering
         private readonly SynchronizationManager _synchronizationManager;
         private const string MothraDirectory = "mothra";
 
+        // TODO: These can probably be separate processor objects
+        
+        private const int MaximumQueueSignedBeaconBlocks = 1024;
+        private readonly BlockingCollection<SignedBeaconBlock> _queueSignedBeaconBlocks =
+            new BlockingCollection<SignedBeaconBlock>(MaximumQueueSignedBeaconBlocks);
+
+        private Thread _processSignedBeaconBlockThread;
+
+        // private const int MaximumQueuePeerConnected = 1024;
+        // private readonly BlockingCollection<string> _queuePeerDiscovered =
+        //     new BlockingCollection<string>(MaximumQueuePeerConnected);
+        //
+        // private const int MaximumQueueRpcMessagePeeringStatus = 1024;
+        // private readonly BlockingCollection<RpcMessage<PeeringStatus>> _queueRpcMessagePeeringStatus =
+        //     new BlockingCollection<RpcMessage<PeeringStatus>>(MaximumQueueRpcMessagePeeringStatus);
+
+        public override void Dispose()
+        {
+            _queueSignedBeaconBlocks?.CompleteAdding();
+            try
+            {
+                _processSignedBeaconBlockThread.Join(TimeSpan.FromMilliseconds(1500)); // with timeout in case writer is locked
+            }
+            catch (ThreadStateException) { }
+            _queueSignedBeaconBlocks?.Dispose();
+        }
+
         public MothraPeeringWorker(ILogger<MothraPeeringWorker> logger,
             IHostEnvironment environment,
             IClientVersion clientVersion,
@@ -76,6 +104,12 @@ namespace Nethermind.BeaconNode.Peering
             _forkChoice = forkChoice;
             _synchronizationManager = synchronizationManager;
             _store = store;
+
+            _processSignedBeaconBlockThread = new Thread(ProcessGossipSignedBeaconBlockAsync)
+            {
+                IsBackground = true, Name = "ProcessSignedBeaconBlock"
+            };
+
             _jsonSerializerOptions = new JsonSerializerOptions {WriteIndented = true};
             _jsonSerializerOptions.ConfigureNethermindCore2();
             if (_mothraConfigurationOptions.CurrentValue.LogSignedBeaconBlockJson)
@@ -138,6 +172,9 @@ namespace Nethermind.BeaconNode.Peering
             if (_logger.IsInfo())
                 Log.PeeringWorkerStarting(_logger, _clientVersion.Description,
                     _environment.EnvironmentName, Thread.CurrentThread.ManagedThreadId, null);
+            
+            _processSignedBeaconBlockThread.Start();
+            
             await base.StartAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -212,33 +249,43 @@ namespace Nethermind.BeaconNode.Peering
             return _logDirectoryPath;
         }
 
-        private async void HandleBeaconBlockAsync(SignedBeaconBlock signedBeaconBlock)
+        private async void ProcessGossipSignedBeaconBlockAsync()
         {
-            try
+            if (_logger.IsInfo())
+                Log.ProcessGossipSignedBeaconBlockStarting(_logger, null);
+            
+            foreach (SignedBeaconBlock signedBeaconBlock in _queueSignedBeaconBlocks.GetConsumingEnumerable())
             {
-                if (_mothraConfigurationOptions.CurrentValue.LogSignedBeaconBlockJson)
+                try
                 {
-                    string logDirectoryPath = GetLogDirectory();
-                    string fileName = string.Format("signedblock{0:0000}_{1}.json",
-                        (int) signedBeaconBlock.Message.Slot, signedBeaconBlock.Signature.ToString().Substring(0, 10));
-                    string path = _fileSystem.Path.Combine(logDirectoryPath, fileName);
-                    using (Stream fileStream = _fileSystem.File.OpenWrite(path))
+                    if (_logger.IsDebug())
+                        LogDebug.ProcessGossipSignedBeaconBlock(_logger, signedBeaconBlock.Message, null);
+
+                    if (_mothraConfigurationOptions.CurrentValue.LogSignedBeaconBlockJson)
                     {
-                        await JsonSerializer.SerializeAsync(fileStream, signedBeaconBlock, _jsonSerializerOptions)
-                            .ConfigureAwait(false);
+                        string logDirectoryPath = GetLogDirectory();
+                        string fileName = string.Format("signedblock{0:0000}_{1}.json",
+                            (int) signedBeaconBlock.Message.Slot,
+                            signedBeaconBlock.Signature.ToString().Substring(0, 10));
+                        string path = _fileSystem.Path.Combine(logDirectoryPath, fileName);
+                        using (Stream fileStream = _fileSystem.File.OpenWrite(path))
+                        {
+                            await JsonSerializer.SerializeAsync(fileStream, signedBeaconBlock, _jsonSerializerOptions)
+                                .ConfigureAwait(false);
+                        }
                     }
+
+                    // Update the most recent slot seen (even if we can't add it to the chain yet, e.g. if we are missing prior blocks)
+                    // Note: a peer could lie and send a signed block that isn't part of the chain (but it could lie on status as well)
+                    _peerManager.UpdateMostRecentSlot(signedBeaconBlock.Message.Slot);
+
+                    await _forkChoice.OnBlockAsync(_store, signedBeaconBlock).ConfigureAwait(false);
                 }
-
-                // Update the most recent slot seen (even if we can't add it to the chain yet, e.g. if we are missing prior blocks)
-                // Note: a peer could lie and send a signed block that isn't part of the chain (but it could like on status as well)
-                _peerManager.UpdateMostRecentSlot(signedBeaconBlock.Message.Slot);
-
-                await _forkChoice.OnBlockAsync(_store, signedBeaconBlock).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsError())
-                    Log.HandleSignedBeaconBlockError(_logger, signedBeaconBlock.Message, ex.Message, ex);
+                catch (Exception ex)
+                {
+                    if (_logger.IsError())
+                        Log.ProcessGossipSignedBeaconBlockError(_logger, signedBeaconBlock.Message, ex.Message, ex);
+                }
             }
         }
 
@@ -301,11 +348,7 @@ namespace Nethermind.BeaconNode.Peering
                         LogDebug.GossipReceived(_logger, nameof(TopicUtf8.BeaconBlock), data.Length, null);
                     // Need to deserialize in synchronous context (can't pass Span async)
                     SignedBeaconBlock signedBeaconBlock = Ssz.Ssz.DecodeSignedBeaconBlock(data);
-                    // TODO: maybe use a blocking queue that the receiver converts and writes to, then the async worker (ExcecuteAsync) can process.
-                    if (!ThreadPool.QueueUserWorkItem(HandleBeaconBlockAsync, signedBeaconBlock, true))
-                    {
-                        throw new Exception($"Could not queue handling of block {signedBeaconBlock.Message}.");
-                    }
+                    _queueSignedBeaconBlocks.Add(signedBeaconBlock);
                 }
                 else
                 {
@@ -326,6 +369,7 @@ namespace Nethermind.BeaconNode.Peering
             try
             {
                 if (_logger.IsInfo()) Log.PeerDiscovered(_logger, peerId, null);
+                //_queuePeerDiscovered.Add(peerId);
                 if (!ThreadPool.QueueUserWorkItem(HandlePeerDiscoveredAsync, peerId, true))
                 {
                     throw new Exception($"Could not queue handling of peer discovered for {peerId}.");
@@ -356,6 +400,7 @@ namespace Nethermind.BeaconNode.Peering
                     PeeringStatus peeringStatus = Ssz.Ssz.DecodePeeringStatus(data);
                     RpcMessage<PeeringStatus> statusRpcMessage =
                         new RpcMessage<PeeringStatus>(peerId, rpcDirection, peeringStatus);
+                    //_queueRpcMessagePeeringStatus.Add(statusRpcMessage);
                     if (!ThreadPool.QueueUserWorkItem(HandleRpcStatusAsync, statusRpcMessage, true))
                     {
                         throw new Exception($"Could not queue handling of Status from peer {peerId}.");

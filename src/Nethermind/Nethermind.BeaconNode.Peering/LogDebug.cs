@@ -102,5 +102,10 @@ namespace Nethermind.BeaconNode.Peering
             LoggerMessage.Define<string, Guid, ConnectionDirection>(LogLevel.Debug,
                 new EventId(6064, nameof(CreatedPeerSession)),
                 "Disconnecting peer {Peer} session {Session} with direction {ConnectionDirection}.");
+        
+        public static readonly Action<ILogger, BeaconBlock, Exception?> ProcessGossipSignedBeaconBlock =
+            LoggerMessage.Define<BeaconBlock>(LogLevel.Debug,
+                new EventId(6065, nameof(ProcessGossipSignedBeaconBlock)),
+                "Processing gossip signed beacon block, {BeaconBlock}");
     }
 }
