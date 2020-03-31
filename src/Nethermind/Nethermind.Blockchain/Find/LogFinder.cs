@@ -132,7 +132,9 @@ namespace Nethermind.Blockchain.Find
                 needRecover = _receiptFinder.CanGetReceiptsByHash(number);
                 if (needRecover)
                 {
-                    return _receiptFinder.Get(hash);
+                    var receipts = _receiptFinder.Get(hash);
+                    needRecover = _receiptsRecovery.NeedRecover(receipts);
+                    return receipts;
                 }
                 else
                 {

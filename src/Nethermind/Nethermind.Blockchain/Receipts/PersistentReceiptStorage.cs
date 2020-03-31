@@ -25,6 +25,7 @@ using Nethermind.Db;
 using Nethermind.Specs;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+#pragma warning disable 618
 
 namespace Nethermind.Blockchain.Receipts
 {
@@ -32,6 +33,7 @@ namespace Nethermind.Blockchain.Receipts
     {
         private readonly IColumnsDb<ReceiptsColumns> _database;
         private readonly ISpecProvider _specProvider;
+        private readonly IReceiptsRecovery _receiptsRecovery;
         private long? _lowestInsertedReceiptBlock;
         private readonly IDb _blocksDb;
         private readonly IDb _transactionDb;
@@ -39,12 +41,13 @@ namespace Nethermind.Blockchain.Receipts
         private long _migratedBlockNumber;
         private static readonly ReceiptStorageDecoder StorageDecoder = new ReceiptStorageDecoder();
 
-        public PersistentReceiptStorage(IColumnsDb<ReceiptsColumns> receiptsDb, ISpecProvider specProvider)
+        public PersistentReceiptStorage(IColumnsDb<ReceiptsColumns> receiptsDb, ISpecProvider specProvider, IReceiptsRecovery receiptsRecovery)
         {
             long Get(Keccak key, long defaultValue) => _database.Get(key)?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
             
             _database = receiptsDb ?? throw new ArgumentNullException(nameof(receiptsDb));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
             _blocksDb = _database.GetColumnDb(ReceiptsColumns.Blocks);
             _transactionDb = _database.GetColumnDb(ReceiptsColumns.Transactions);
 
@@ -72,9 +75,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 try
                 {
-#pragma warning disable 618
                     var receipt = StorageDecoder.Decode(new RlpStream(receiptData), RlpBehaviors.Storage);
-#pragma warning restore 618
                     receipt.TxHash = hash;
                     return receipt;
                 }
@@ -99,7 +100,7 @@ namespace Nethermind.Blockchain.Receipts
             var receiptsData = _blocksDb.Get(block.Hash);
             if (receiptsData != null)
             {
-                return StorageDecoder.DecodeArray(new RlpStream(receiptsData));
+                return DecodeArray(receiptsData);
             }
             else
             {
@@ -117,10 +118,24 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
+        private static TxReceipt[] DecodeArray(byte[] receiptsData)
+        {
+            var rlpStream = new RlpStream(receiptsData);
+            try
+            {
+                return StorageDecoder.DecodeArray(rlpStream, RlpBehaviors.Storage);
+            }
+            catch (RlpException)
+            {
+                rlpStream.Position = 0;
+                return StorageDecoder.DecodeArray(rlpStream);
+            }
+        }
+
         public TxReceipt[] Get(Keccak blockHash)
         {
             var receiptsData = _blocksDb.Get(blockHash);
-            return receiptsData != null ? StorageDecoder.DecodeArray(new RlpStream(receiptsData)) : Array.Empty<TxReceipt>();
+            return receiptsData != null ? DecodeArray(receiptsData) : Array.Empty<TxReceipt>();
         }
 
         public bool CanGetReceiptsByHash(long blockNumber) => blockNumber >= MigratedBlockNumber;
@@ -133,10 +148,12 @@ namespace Nethermind.Blockchain.Receipts
             {
                 throw new ArgumentException($"Block {block.ToString(Block.Format.FullHashAndNumber)} has different number of transactions than receipts.");
             }
+
+            _receiptsRecovery.TryRecover(block, txReceipts);
             
             var blockNumber = block.Number;
             var spec = _specProvider.GetSpec(blockNumber);
-            RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
+            RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
             _blocksDb.Set(block.Hash, StorageDecoder.Encode(txReceipts, behaviors).Bytes);
             
             for (int i = 0; i < txReceipts.Length; i++)

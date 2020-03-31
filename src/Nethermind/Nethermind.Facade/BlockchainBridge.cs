@@ -108,17 +108,17 @@ namespace Nethermind.Facade
 
         public bool IsSyncing => _blockTree.BestSuggestedHeader.Hash != _blockTree.Head.Hash;
 
-        public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
+        public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak txHash)
         {
-            Keccak blockHash = _receiptFinder.FindBlockHash(transactionHash);
+            Keccak blockHash = _receiptFinder.FindBlockHash(txHash);
             if (blockHash != null)
             {
                 Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                TxReceipt txReceipt = _receiptFinder.Get(block, transactionHash);
+                TxReceipt txReceipt = _receiptFinder.Get(block).ForTransaction(txHash);
                 return (txReceipt, block?.Transactions[txReceipt.Index]);
             }
 
-            if (_txPool.TryGetPendingTransaction(transactionHash, out var transaction))
+            if (_txPool.TryGetPendingTransaction(txHash, out var transaction))
             {
                 return (null, transaction);
             }
@@ -170,13 +170,7 @@ namespace Nethermind.Facade
         public TxReceipt GetReceipt(Keccak txHash)
         {
             var blockHash = _receiptFinder.FindBlockHash(txHash);
-            if (blockHash != null)
-            {
-                var block = _blockTree.FindBlock(blockHash);
-                return _receiptFinder.Get(block, txHash);
-            }
-
-            return null;
+            return blockHash != null ? _receiptFinder.Get(blockHash).ForTransaction(txHash) : null;
         }
 
         public class CallOutput
