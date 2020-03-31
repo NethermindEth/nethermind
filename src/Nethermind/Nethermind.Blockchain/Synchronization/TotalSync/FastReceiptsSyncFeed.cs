@@ -37,32 +37,34 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
     {
         private int ReceiptsRequestSize = GethSyncLimits.MaxReceiptFetch;
 
-        private ILogger _logger;
-        private readonly ISpecProvider _specProvider;
-        private IBlockTree _blockTree;
-        private readonly IReceiptStorage _receiptStorage;
-        private ISyncConfig _syncConfig;
+        private readonly ILogger _logger;
+        private readonly IBlockTree _blockTree;
+        private readonly ISyncConfig _syncConfig;
         private readonly ISyncReport _syncReport;
+        private readonly ISpecProvider _specProvider;
+        private readonly IReceiptStorage _receiptStorage;
         private readonly IEthSyncPeerPool _syncPeerPool;
         private readonly object _handlerLock = new object();
 
-        private ConcurrentDictionary<long, List<(Block, TxReceipt[])>> _receiptDependencies = new ConcurrentDictionary<long, List<(Block, TxReceipt[])>>();
-        private ConcurrentDictionary<FastBlocksBatch, object> _sentBatches = new ConcurrentDictionary<FastBlocksBatch, object>();
-        private ConcurrentStack<FastBlocksBatch> _pendingBatches = new ConcurrentStack<FastBlocksBatch>();
+        private ConcurrentDictionary<long, List<(Block, TxReceipt[])>> _receiptDependencies =
+            new ConcurrentDictionary<long, List<(Block, TxReceipt[])>>();
+        private ConcurrentDictionary<FastBlocksBatch, object> _sentBatches =
+            new ConcurrentDictionary<FastBlocksBatch, object>();
+        private ConcurrentStack<FastBlocksBatch> _pendingBatches =
+            new ConcurrentStack<FastBlocksBatch>();
 
-        private object _empty = new object();
+        private object _dummyObject = new object();
 
         private Keccak _startReceiptsHash;
-
         private Keccak _lowestRequestedReceiptsHash;
+        private bool _isMoreLikelyToBeHandlingDependenciesNow;
 
         private long _pivotNumber;
         private Keccak _pivotHash;
 
-        public bool IsFinished =>
-            _pendingBatches.Count
-            + _sentBatches.Count
-            + _receiptDependencies.Count == 0;
+        public bool IsFinished => _pendingBatches.Count
+                                  + _sentBatches.Count
+                                  + _receiptDependencies.Count == 0;
 
         public FastReceiptsSyncFeed(ISpecProvider specProvider, IBlockTree blockTree, IReceiptStorage receiptStorage, IEthSyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
         {
@@ -75,8 +77,6 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        private bool _isMoreLikelyToBeHandlingDependenciesNow;
-
         private FastBlocksBatchType ResolveBatchType()
         {
             if (_syncConfig.BeamSync && _blockTree.LowestInsertedHeader != null)
@@ -86,9 +86,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             }
 
             bool receiptsDownloaded = _receiptStorage.LowestInsertedReceiptBlock == 1;
-
-            if (!receiptsDownloaded
-                && _syncConfig.DownloadReceiptsInFastSync)
+            if (!receiptsDownloaded && _syncConfig.DownloadReceiptsInFastSync)
             {
                 return _lowestRequestedReceiptsHash == _blockTree.Genesis.Hash
                     ? FastBlocksBatchType.None
@@ -223,7 +221,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 }
             }
 
-            _sentBatches.TryAdd(batch, _empty);
+            _sentBatches.TryAdd(batch, _dummyObject);
             if (batch.Headers != null && batch.Headers.StartNumber >= ((_blockTree.LowestInsertedHeader?.Number ?? 0) - 2048))
             {
                 batch.Prioritized = true;
@@ -302,7 +300,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             }
         }
 
-         private int InsertReceipts(FastBlocksBatch batch)
+        private int InsertReceipts(FastBlocksBatch batch)
         {
             ReceiptsSyncBatch receiptSyncBatch = batch.Receipts;
             int added = 0;
