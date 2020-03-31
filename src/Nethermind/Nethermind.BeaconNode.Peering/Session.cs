@@ -14,12 +14,36 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+
 namespace Nethermind.BeaconNode.Peering
 {
-    public enum DialDirection
+    public class Session
     {
-        Unknown = 0,
-        DialOut,
-        DialIn
+        public ConnectionDirection Direction { get; }
+        
+        public PeerInfo Peer { get; }
+
+        public SessionState State { get; private set; }
+
+        public Guid Id { get; }
+
+        public Session(ConnectionDirection direction, PeerInfo peer)
+        {
+            Direction = direction;
+            Peer = peer;
+            State = SessionState.New;
+            Id = Guid.NewGuid();
+        }
+
+        public void Open()
+        {
+            State = SessionState.Open;
+        }
+
+        public void Disconnect()
+        {
+            State = SessionState.Disconnecting;
+        }
     }
 }

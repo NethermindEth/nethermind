@@ -19,27 +19,20 @@ using Nethermind.Core2.P2p;
 
 namespace Nethermind.BeaconNode.Peering
 {
-    public class PeerDetails
+    public class PeerInfo
     {
-        public PeerDetails(string id)
+        public PeerInfo(string id)
         {
             Id = id;
         }
         
         public string Id { get; }
         
-        public DialDirection DialDirection { get; private set; }
-        
         public PeeringStatus? Status { get; private set; }
 
         public void SetStatus(PeeringStatus peeringStatus)
         {
             Status = peeringStatus;
-        }
-
-        public void SetDialDirection(DialDirection dialDirection)
-        {
-            DialDirection = dialDirection;
         }
     }
 }

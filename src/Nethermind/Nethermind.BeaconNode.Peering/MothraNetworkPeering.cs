@@ -32,6 +32,7 @@ namespace Nethermind.BeaconNode.Peering
         public Task DisconnectPeerAsync(string peerId)
         {
             // NOTE: Mothra does not support peer disconnect, so nothing to do.
+            _peerManager.DisconnectSession(peerId);
             return Task.CompletedTask;
         }
 

@@ -78,10 +78,10 @@ namespace Nethermind.BeaconNode.Peering
                 new EventId(6059, nameof(AddingExpectedPeer)),
                 "Adding expected peer with ENR {PeerEnr}.");
         
-        public static readonly Action<ILogger, string, DialDirection, Exception?> SettingPeerDialDirection =
-            LoggerMessage.Define<string, DialDirection>(LogLevel.Debug,
-                new EventId(6060, nameof(SettingPeerDialDirection)),
-                "Setting peer {Peer} dial direction {DialDirection}.");
+        public static readonly Action<ILogger, string, Guid, ConnectionDirection, Exception?> CreatedPeerSession =
+            LoggerMessage.Define<string, Guid, ConnectionDirection>(LogLevel.Debug,
+                new EventId(6060, nameof(CreatedPeerSession)),
+                "Created peer {Peer} session {Session} with direction {ConnectionDirection}.");
         
         public static readonly Action<ILogger, Exception?> StoreInitializedStartingPeering =
             LoggerMessage.Define(LogLevel.Debug,
@@ -92,5 +92,15 @@ namespace Nethermind.BeaconNode.Peering
             LoggerMessage.Define<ulong>(LogLevel.Debug,
                 new EventId(6062, nameof(PeeringWaitingForAnchorState)),
                 "Store not initialized, waiting for anchor state (waiting {WaitSeconds} seconds).");
+        
+        public static readonly Action<ILogger, string, Guid, ConnectionDirection, Exception?> OpenedPeerSession =
+            LoggerMessage.Define<string, Guid, ConnectionDirection>(LogLevel.Debug,
+                new EventId(6063, nameof(CreatedPeerSession)),
+                "Opened peer {Peer} session {Session} with direction {ConnectionDirection}.");
+        
+        public static readonly Action<ILogger, string, Guid, ConnectionDirection, Exception?> DisconnectingPeerSession =
+            LoggerMessage.Define<string, Guid, ConnectionDirection>(LogLevel.Debug,
+                new EventId(6064, nameof(CreatedPeerSession)),
+                "Disconnecting peer {Peer} session {Session} with direction {ConnectionDirection}.");
     }
 }
