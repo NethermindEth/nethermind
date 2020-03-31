@@ -289,7 +289,7 @@ namespace Nethermind.TxPool
             {
                 _ownTransactions.TryAdd(transaction.Hash, transaction);
                 _ownTimer.Enabled = true;
-                if (_logger.IsInfo) _logger.Info($"Broadcasting own transaction {transaction.Hash} to {_peers.Count} peers");
+                if (_logger.IsDebug) _logger.Debug($"Broadcasting own transaction {transaction.Hash} to {_peers.Count} peers");
             }
         }
 
