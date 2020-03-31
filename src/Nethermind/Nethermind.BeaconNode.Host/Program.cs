@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Essential.LoggerProvider;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -55,6 +56,10 @@ namespace Nethermind.BeaconNode.Host
                     if (hostContext.Configuration.GetSection("Logging:Console").Exists())
                     {
                         configureLogging.AddConsole();
+                    }
+                    if (hostContext.Configuration.GetSection("Logging:Elasticsearch").Exists())
+                    {
+                        configureLogging.AddElasticsearch();
                     }
                 })
                 .ConfigureAppConfiguration((hostContext, config) =>
