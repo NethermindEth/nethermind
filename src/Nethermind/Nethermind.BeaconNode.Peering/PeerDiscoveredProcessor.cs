@@ -84,34 +84,61 @@ namespace Nethermind.BeaconNode.Peering
 
         private async void ProcessPeerDiscoveredAsync()
         {
-            if (_logger.IsInfo())
-                Log.ProcessPeerDiscoveredStarting(_logger, null);
+            try
+            {
+                if (_logger.IsInfo())
+                    Log.ProcessPeerDiscoveredStarting(_logger, null);
 
-            foreach (string peerId in _queuePeerDiscovered.GetConsumingEnumerable())
+                foreach (string peerId in _queuePeerDiscovered.GetConsumingEnumerable())
+                {
+                    await ProcessItem(peerId);
+                }
+            }
+            catch
             {
                 try
                 {
-                    if (_logger.IsDebug())
-                        LogDebug.ProcessPeerDiscovered(_logger, peerId, null);
-
-                    Session session = _peerManager.AddPeerSession(peerId);
-
-                    if (session.Direction == ConnectionDirection.Out)
-                    {
-                        await _synchronizationManager.OnPeerDialOutConnected(peerId).ConfigureAwait(false);
-                    }
+                    _queuePeerDiscovered.CompleteAdding();
                 }
-                catch (Exception ex)
+                catch { }
+            }
+        }
+
+        private async Task ProcessItem(string peerId)
+        {
+            try
+            {
+                if (_logger.IsDebug())
+                    LogDebug.ProcessPeerDiscovered(_logger, peerId, null);
+
+                Session session = _peerManager.AddPeerSession(peerId);
+
+                if (session.Direction == ConnectionDirection.Out)
                 {
-                    if (_logger.IsError())
-                        Log.HandlePeerDiscoveredError(_logger, peerId, ex.Message, ex);
+                    await _synchronizationManager.OnPeerDialOutConnected(peerId).ConfigureAwait(false);
                 }
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError())
+                    Log.HandlePeerDiscoveredError(_logger, peerId, ex.Message, ex);
             }
         }
 
         public void Enqueue(string peerId)
         {
-            _queuePeerDiscovered.Add(peerId);
+            if (!_queuePeerDiscovered.IsAddingCompleted)
+            {
+                try
+                {
+                    _queuePeerDiscovered.Add(peerId);
+                    return;
+                }
+                catch (InvalidOperationException) { }
+            }
+
+            // Adding is complete, so just process the message
+            ProcessItem(peerId);
         }
     }
 }
