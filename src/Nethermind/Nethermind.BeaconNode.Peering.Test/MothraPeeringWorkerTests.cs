@@ -71,6 +71,8 @@ namespace Nethermind.BeaconNode.Peering.Test
             INetworkPeering mockNetworkPeering = Substitute.For<INetworkPeering>();
             
             PeerManager peerManager = new PeerManager(loggerFactory.CreateLogger<PeerManager>());
+            PeerDiscoveredProcessor peerDiscoveredProcessor = new PeerDiscoveredProcessor(
+                loggerFactory.CreateLogger<PeerDiscoveredProcessor>(), mockSynchronizationManager, peerManager);
             
             MothraPeeringWorker peeringWorker = new MothraPeeringWorker(
                 loggerFactory.CreateLogger<MothraPeeringWorker>(),
@@ -83,7 +85,8 @@ namespace Nethermind.BeaconNode.Peering.Test
                 mockStore,
                 mockMothra,
                 new DataDirectory("data"),
-                peerManager
+                peerManager,
+                peerDiscoveredProcessor
             );
         
             // act
@@ -123,6 +126,8 @@ namespace Nethermind.BeaconNode.Peering.Test
             INetworkPeering mockNetworkPeering = Substitute.For<INetworkPeering>();
             
             PeerManager peerManager = new PeerManager(loggerFactory.CreateLogger<PeerManager>());
+            PeerDiscoveredProcessor peerDiscoveredProcessor = new PeerDiscoveredProcessor(
+                loggerFactory.CreateLogger<PeerDiscoveredProcessor>(), mockSynchronizationManager, peerManager);
             
             MothraPeeringWorker peeringWorker = new MothraPeeringWorker(
                 loggerFactory.CreateLogger<MothraPeeringWorker>(),
@@ -135,7 +140,8 @@ namespace Nethermind.BeaconNode.Peering.Test
                 mockStore,
                 mockMothra,
                 new DataDirectory("data"),
-                peerManager
+                peerManager,
+                peerDiscoveredProcessor
             );
         
             // act - start worker
@@ -185,6 +191,8 @@ namespace Nethermind.BeaconNode.Peering.Test
             
             PeerManager peerManager = new PeerManager(loggerFactory.CreateLogger<PeerManager>());
             peerManager.AddExpectedPeer("enr:123");
+            PeerDiscoveredProcessor peerDiscoveredProcessor = new PeerDiscoveredProcessor(
+                loggerFactory.CreateLogger<PeerDiscoveredProcessor>(), mockSynchronizationManager, peerManager);
             
             MothraPeeringWorker peeringWorker = new MothraPeeringWorker(
                 loggerFactory.CreateLogger<MothraPeeringWorker>(),
@@ -197,7 +205,8 @@ namespace Nethermind.BeaconNode.Peering.Test
                 mockStore,
                 mockMothra,
                 new DataDirectory("data"),
-                peerManager
+                peerManager,
+                peerDiscoveredProcessor
             );
         
             // act - start worker

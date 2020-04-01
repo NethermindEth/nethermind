@@ -19,7 +19,6 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -51,6 +50,7 @@ namespace Nethermind.BeaconNode.Peering
         private readonly IOptionsMonitor<MothraConfiguration> _mothraConfigurationOptions;
         private readonly IMothraLibp2p _mothraLibp2p;
         private readonly PeerManager _peerManager;
+        private readonly PeerDiscoveredProcessor _peerDiscoveredProcessor;
         private readonly IStore _store;
         private readonly ISynchronizationManager _synchronizationManager;
         private const string MothraDirectory = "mothra";
@@ -62,11 +62,6 @@ namespace Nethermind.BeaconNode.Peering
             new BlockingCollection<SignedBeaconBlock>(MaximumQueueSignedBeaconBlocks);
         private Thread _processSignedBeaconBlockThread;
 
-        private const int MaximumQueuePeerDiscovered = 1024;
-        private readonly BlockingCollection<string> _queuePeerDiscovered =
-            new BlockingCollection<string>(MaximumQueuePeerDiscovered);
-        private Thread _processPeerDiscoveredThread;
-        
         // private const int MaximumQueueRpcMessagePeeringStatus = 1024;
         // private readonly BlockingCollection<RpcMessage<PeeringStatus>> _queueRpcMessagePeeringStatus =
         //     new BlockingCollection<RpcMessage<PeeringStatus>>(MaximumQueueRpcMessagePeeringStatus);
@@ -80,15 +75,8 @@ namespace Nethermind.BeaconNode.Peering
             }
             catch (ThreadStateException) { }
             _queueSignedBeaconBlocks?.Dispose();
-            
-            _queuePeerDiscovered?.CompleteAdding();
-            try
-            {
-                _processPeerDiscoveredThread.Join(TimeSpan.FromMilliseconds(1500)); // with timeout in case writer is locked
-            }
-            catch (ThreadStateException) { }
-            _queuePeerDiscovered?.Dispose();
 
+            _peerDiscoveredProcessor.Dispose();
         }
 
         public MothraPeeringWorker(ILogger<MothraPeeringWorker> logger,
@@ -101,7 +89,8 @@ namespace Nethermind.BeaconNode.Peering
             IStore store,
             IMothraLibp2p mothraLibp2p,
             DataDirectory dataDirectory,
-            PeerManager peerManager)
+            PeerManager peerManager,
+            PeerDiscoveredProcessor peerDiscoveredProcessor)
         {
             _logger = logger;
             _environment = environment;
@@ -111,6 +100,7 @@ namespace Nethermind.BeaconNode.Peering
             _mothraConfigurationOptions = mothraConfigurationOptions;
             _mothraLibp2p = mothraLibp2p;
             _peerManager = peerManager;
+            _peerDiscoveredProcessor = peerDiscoveredProcessor;
             _forkChoice = forkChoice;
             _synchronizationManager = synchronizationManager;
             _store = store;
@@ -118,10 +108,6 @@ namespace Nethermind.BeaconNode.Peering
             _processSignedBeaconBlockThread = new Thread(ProcessGossipSignedBeaconBlockAsync)
             {
                 IsBackground = true, Name = "ProcessSignedBeaconBlock"
-            };
-            _processPeerDiscoveredThread = new Thread(ProcessPeerDiscoveredAsync)
-            {
-                IsBackground = true, Name = "ProcessPeerDiscovered"
             };
 
             _jsonSerializerOptions = new JsonSerializerOptions {WriteIndented = true};
@@ -188,8 +174,7 @@ namespace Nethermind.BeaconNode.Peering
                     _environment.EnvironmentName, Thread.CurrentThread.ManagedThreadId, null);
             
             _processSignedBeaconBlockThread.Start();
-            _processPeerDiscoveredThread.Start();
-            
+            await _peerDiscoveredProcessor.StartAsync().ConfigureAwait(false);            
             await base.StartAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -304,33 +289,6 @@ namespace Nethermind.BeaconNode.Peering
             }
         }
 
-        private async void ProcessPeerDiscoveredAsync()
-        {
-            if (_logger.IsInfo())
-                Log.ProcessPeerDiscoveredStarting(_logger, null);
-
-            foreach (string peerId in _queuePeerDiscovered.GetConsumingEnumerable())
-            {
-                try
-                {
-                    if (_logger.IsDebug())
-                        LogDebug.ProcessPeerDiscovered(_logger, peerId, null);
-                    
-                    Session session = _peerManager.AddPeerSession(peerId);
-
-                    if (session.Direction == ConnectionDirection.Out)
-                    {
-                        await _synchronizationManager.OnPeerDialOutConnected(peerId).ConfigureAwait(false);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    if (_logger.IsError())
-                        Log.HandlePeerDiscoveredError(_logger, peerId, ex.Message, ex);
-                }
-            }
-        }
-
         private async void HandleRpcStatusAsync(RpcMessage<PeeringStatus> statusRpcMessage)
         {
             try
@@ -393,7 +351,7 @@ namespace Nethermind.BeaconNode.Peering
             try
             {
                 if (_logger.IsInfo()) Log.PeerDiscovered(_logger, peerId, null);
-                _queuePeerDiscovered.Add(peerId);
+                _peerDiscoveredProcessor.Enqueue(peerId);
             }
             catch (Exception ex)
             {
