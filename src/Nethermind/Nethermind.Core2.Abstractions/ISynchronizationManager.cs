@@ -14,18 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
+using System.Threading.Tasks;
+using Nethermind.Core2.P2p;
 
-namespace Nethermind.Peering.Mothra
+namespace Nethermind.Core2
 {
-    public interface IMothraLibp2p
+    public interface ISynchronizationManager
     {
-        event GossipReceivedEventHandler? GossipReceived;
-        event PeerDiscoveredEventHandler? PeerDiscovered;
-        event RpcReceivedEventHandler? RpcReceived;
-        void SendGossip(ReadOnlySpan<byte> topicUtf8, ReadOnlySpan<byte> data);
-        void SendRpcRequest(ReadOnlySpan<byte> methodUtf8, ReadOnlySpan<byte> peerUtf8, ReadOnlySpan<byte> data);
-        void SendRpcResponse(ReadOnlySpan<byte> methodUtf8, ReadOnlySpan<byte> peerUtf8, ReadOnlySpan<byte> data);
-        void Start(MothraSettings settings);
+        Task OnPeerDialOutConnected(string peerId);
+        Task OnStatusRequestReceived(string peerId, PeeringStatus peerPeeringStatus);
+        Task OnStatusResponseReceived(string peerId, PeeringStatus peerPeeringStatus);
     }
 }

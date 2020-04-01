@@ -46,7 +46,7 @@ namespace Nethermind.BeaconNode.Test
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
             
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
-            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
+            IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
             IStore store = testServiceProvider.GetService<IStore>();
             await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
@@ -77,7 +77,7 @@ namespace Nethermind.BeaconNode.Test
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
             
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
-            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
+            IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
             IStore store = testServiceProvider.GetService<IStore>();
             await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
@@ -123,7 +123,7 @@ namespace Nethermind.BeaconNode.Test
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
             
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
-            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
+            IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
             IStore store = testServiceProvider.GetService<IStore>();
             await forkChoice.InitializeForkChoiceStoreAsync(store, state);            

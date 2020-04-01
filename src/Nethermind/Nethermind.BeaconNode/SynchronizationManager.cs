@@ -27,11 +27,11 @@ using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode
 {
-    public class SynchronizationManager
+    public class SynchronizationManager : ISynchronizationManager
     {
         private readonly BeaconChainUtility _beaconChainUtility;
         private readonly BeaconStateAccessor _beaconStateAccessor;
-        private readonly ForkChoice _forkChoice;
+        private readonly IForkChoice _forkChoice;
         private readonly ILogger _logger;
         private readonly INetworkPeering _networkPeering;
         private readonly IStore _store;
@@ -40,7 +40,7 @@ namespace Nethermind.BeaconNode
             ILogger<SynchronizationManager> logger,
             BeaconChainUtility beaconChainUtility,
             BeaconStateAccessor beaconStateAccessor,
-            ForkChoice forkChoice,
+            IForkChoice forkChoice,
             IStore store,
             INetworkPeering networkPeering)
         {

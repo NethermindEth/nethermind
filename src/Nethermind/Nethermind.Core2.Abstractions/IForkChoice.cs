@@ -14,18 +14,21 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
+using System.Threading.Tasks;
+using Nethermind.Core2;
+using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 
-namespace Nethermind.Peering.Mothra
+namespace Nethermind.Core2
 {
-    public interface IMothraLibp2p
+    public interface IForkChoice
     {
-        event GossipReceivedEventHandler? GossipReceived;
-        event PeerDiscoveredEventHandler? PeerDiscovered;
-        event RpcReceivedEventHandler? RpcReceived;
-        void SendGossip(ReadOnlySpan<byte> topicUtf8, ReadOnlySpan<byte> data);
-        void SendRpcRequest(ReadOnlySpan<byte> methodUtf8, ReadOnlySpan<byte> peerUtf8, ReadOnlySpan<byte> data);
-        void SendRpcResponse(ReadOnlySpan<byte> methodUtf8, ReadOnlySpan<byte> peerUtf8, ReadOnlySpan<byte> data);
-        void Start(MothraSettings settings);
+        Task<Root> GetAncestorAsync(IStore store, Root root, Slot slot);
+        Task<Root> GetHeadAsync(IStore store);
+        Task InitializeForkChoiceStoreAsync(IStore store, BeaconState anchorState);
+        Task OnAttestationAsync(IStore store, Attestation attestation);
+        Task OnBlockAsync(IStore store, SignedBeaconBlock signedBlock);
+        Task OnTickAsync(IStore store, ulong time);
     }
 }

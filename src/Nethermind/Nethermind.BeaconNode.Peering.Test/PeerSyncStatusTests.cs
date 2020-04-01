@@ -12,6 +12,7 @@ using Shouldly;
 
 namespace Nethermind.BeaconNode.Peering.Test
 {
+    [TestFixture]
     public class PeerSyncStatusTests
     {
         [SetUp]
@@ -90,5 +91,43 @@ namespace Nethermind.BeaconNode.Peering.Test
             slotContainer.InclusionDelay.ShouldBe(new Slot(10));
             original.ShouldBe(new Slot(10));
         }
+
+        // [Test]
+        // public async Task StatusHandshakeOutgoing()
+        // {
+        //     // arrange
+        //     IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection();
+        //     testServiceCollection.AddSingleton(Substitute.For<IHostEnvironment>());
+        //     
+        //     IMothraLibp2p mockMothra = Substitute.For<IMothraLibp2p>();
+        //     mockMothra.When(x => x.Start(Arg.Any<MothraSettings>()))
+        //         .Do(callInfo =>
+        //         {
+        //             ThreadPool.QueueUserWorkItem(x =>
+        //             {
+        //                 Thread.Sleep(TimeSpan.FromMilliseconds(100));
+        //                 byte[] peerUtf8 = Encoding.UTF8.GetBytes("peer1");
+        //                 mockMothra.PeerDiscovered += Raise.Event<PeerDiscoveredEventHandler>(peerUtf8);
+        //             });
+        //         });
+        //     testServiceCollection.AddSingleton<IMothraLibp2p>(mockMothra);
+        //     ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
+        //
+        //     BeaconState state = TestState.PrepareTestState(testServiceProvider);
+        //
+        //     MothraPeeringWorker peeringWorker =
+        //         testServiceProvider.GetServices<IHostedService>().OfType<MothraPeeringWorker>().First();
+        //
+        //     // act
+        //     await peeringWorker.StartAsync(CancellationToken.None);
+        //     await Task.Delay(TimeSpan.FromMilliseconds(1000));
+        //     await peeringWorker.StopAsync(CancellationToken.None);
+        //     
+        //     // assert
+        //     var receivedCalls = mockMothra.ReceivedCalls().ToList();
+        //     receivedCalls.Count.ShouldBe(1);
+        //     receivedCalls[0].GetMethodInfo().Name.ShouldBe(nameof(mockMothra.SendRpcRequest));
+        //     
+        // }
     }
 }

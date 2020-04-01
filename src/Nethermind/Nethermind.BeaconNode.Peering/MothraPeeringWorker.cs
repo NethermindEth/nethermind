@@ -42,7 +42,7 @@ namespace Nethermind.BeaconNode.Peering
         private readonly DataDirectory _dataDirectory;
         private readonly IHostEnvironment _environment;
         private readonly IFileSystem _fileSystem;
-        private readonly ForkChoice _forkChoice;
+        private readonly IForkChoice _forkChoice;
         private readonly JsonSerializerOptions _jsonSerializerOptions;
         private string? _logDirectoryPath;
         private readonly object _logDirectoryPathLock = new object();
@@ -51,7 +51,7 @@ namespace Nethermind.BeaconNode.Peering
         private readonly IMothraLibp2p _mothraLibp2p;
         private readonly PeerManager _peerManager;
         private readonly IStore _store;
-        private readonly SynchronizationManager _synchronizationManager;
+        private readonly ISynchronizationManager _synchronizationManager;
         private const string MothraDirectory = "mothra";
 
         // TODO: These can probably be separate processor objects
@@ -82,16 +82,16 @@ namespace Nethermind.BeaconNode.Peering
         }
 
         public MothraPeeringWorker(ILogger<MothraPeeringWorker> logger,
+            IOptionsMonitor<MothraConfiguration> mothraConfigurationOptions,
+            IFileSystem fileSystem,
             IHostEnvironment environment,
             IClientVersion clientVersion,
-            DataDirectory dataDirectory,
-            IFileSystem fileSystem,
-            IOptionsMonitor<MothraConfiguration> mothraConfigurationOptions,
+            IForkChoice forkChoice,
+            ISynchronizationManager synchronizationManager,
+            IStore store,
             IMothraLibp2p mothraLibp2p,
-            PeerManager peerManager,
-            ForkChoice forkChoice,
-            SynchronizationManager synchronizationManager,
-            IStore store)
+            DataDirectory dataDirectory,
+            PeerManager peerManager)
         {
             _logger = logger;
             _environment = environment;
