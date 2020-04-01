@@ -57,6 +57,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             announceMessage.HeadBlockNo = rlpStream.DecodeLong();
             announceMessage.TotalDifficulty = rlpStream.DecodeUInt256();
             announceMessage.ReorgDepth = rlpStream.DecodeLong();
+            rlpStream.ReadSequenceLength();
             return announceMessage;
         }
     }

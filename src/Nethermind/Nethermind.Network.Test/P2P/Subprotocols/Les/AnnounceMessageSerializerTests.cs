@@ -17,6 +17,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Les;
+using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Les
@@ -34,17 +35,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
             announceMessage.ReorgDepth = 0;
 
             AnnounceMessageSerializer serializer = new AnnounceMessageSerializer();
-            byte[] bytes = serializer.Serialize(announceMessage);
-            byte[] expectedBytes = Bytes.FromHexString("e8a0c89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc6048302008080c0");
 
-            Assert.True(Bytes.AreEqual(bytes, expectedBytes), "bytes");
-
-            AnnounceMessage deserialized = serializer.Deserialize(bytes);
-
-            Assert.AreEqual(announceMessage.HeadHash, deserialized.HeadHash);
-            Assert.AreEqual(announceMessage.HeadBlockNo, deserialized.HeadBlockNo);
-            Assert.AreEqual(announceMessage.TotalDifficulty, deserialized.TotalDifficulty);
-            Assert.AreEqual(announceMessage.ReorgDepth, deserialized.ReorgDepth);
+            SerializerTester.TestZero(serializer, announceMessage, "e8a0c89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc6048302008080c0");
         }
     }
 }

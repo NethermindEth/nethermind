@@ -22,7 +22,7 @@ using System;
 
 namespace Nethermind.Network.P2P.Subprotocols.Les
 {
-    public class GetBlockBodiesSerializer: IZeroMessageSerializer<GetBlockBodiesMessage>
+    public class GetBlockBodiesMessageSerializer: IZeroMessageSerializer<GetBlockBodiesMessage>
     {
         public void Serialize(IByteBuffer byteBuffer, GetBlockBodiesMessage message)
         {
