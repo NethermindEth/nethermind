@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.Producers
         private Task _producerTask;
         private readonly CancellationTokenSource _loopCancellationTokenSource = new CancellationTokenSource();
         private readonly CancellationTokenSource _stepCancellationTokenSource = new CancellationTokenSource();
-        private bool _canProduce;
+        private bool _canProduce = true;
 
         protected BaseLoopBlockProducer(
             IPendingTxSelector pendingTxSelector,

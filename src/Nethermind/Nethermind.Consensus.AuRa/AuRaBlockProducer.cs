@@ -24,7 +24,6 @@ using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Store;
 
 namespace Nethermind.Consensus.AuRa
 {

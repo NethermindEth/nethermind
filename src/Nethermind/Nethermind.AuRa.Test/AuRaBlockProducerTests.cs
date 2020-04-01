@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -98,9 +99,15 @@ namespace Nethermind.AuRa.Test
         }
         
         [Test]
+        public async Task Can_produce_first_block()
+        {
+            (await StartStop(false)).ShouldProduceBlocks(Quantity.AtLeastOne());
+        }
+        
+        [Test]
         public async Task Does_not_produce_block_when_ProcessingQueueEmpty_not_raised()
         {
-            (await StartStop(false)).ShouldProduceBlocks(Quantity.None());
+            (await StartStop(false, true)).ShouldProduceBlocks(Quantity.None());
         }
 
         [Test]
@@ -165,17 +172,21 @@ namespace Nethermind.AuRa.Test
         {
             (await StartStop(true, true)).ShouldProduceBlocks(Quantity.None());
         }
-
-
+        
         private async Task<TestResult> StartStop(bool processingQueueEmpty = true, bool newBestSuggestedBlock = false, int stepDelayMultiplier = 100)
         {
-            ManualResetEvent processedEvent = new ManualResetEvent(false);
+            AutoResetEvent processedEvent = new AutoResetEvent(false);
             _blockTree.SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>())
                 .Returns(AddBlockResult.Added)
-                .AndDoes(c => processedEvent.Set());
+                .AndDoes(c =>
+                {
+                    processedEvent.Set();
+                });
 
             _auRaBlockProducer.Start();
-
+            await processedEvent.WaitOneAsync(_stepDelay * stepDelayMultiplier, CancellationToken.None);
+            _blockTree.ClearReceivedCalls();
+            
             try
             {
                 await Task.Delay(_stepDelay);
@@ -188,7 +199,9 @@ namespace Nethermind.AuRa.Test
                 {
                     _blockTree.NewBestSuggestedBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.TestObject));
                 }
-
+                
+                _blockTree.ClearReceivedCalls();
+                
                 await processedEvent.WaitOneAsync(_stepDelay * stepDelayMultiplier, CancellationToken.None);
 
             }
@@ -196,7 +209,7 @@ namespace Nethermind.AuRa.Test
             {
                 await _auRaBlockProducer.StopAsync();
             }
-            
+
             return new TestResult(q => _blockTree.Received(q).SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>()));
         }
         
