@@ -346,7 +346,16 @@ namespace Nethermind.Network.P2P
             }
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            IList<Keccak> hashes = request.BlockHashes;
+
+            Interlocked.Increment(ref Counter);
+            Send(FulfillBlockBodiesRequest(request));
+            stopwatch.Stop();
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockBodies to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+        }
+
+        protected BlockBodiesMessage FulfillBlockBodiesRequest(GetBlockBodiesMessage getBlockBodiesMessage)
+        {
+            IList<Keccak> hashes = getBlockBodiesMessage.BlockHashes;
             Block[] blocks = new Block[hashes.Count];
 
             for (int i = 0; i < hashes.Count; i++)
@@ -354,10 +363,7 @@ namespace Nethermind.Network.P2P
                 blocks[i] = SyncServer.Find(hashes[i]);
             }
 
-            Interlocked.Increment(ref Counter);
-            Send(new BlockBodiesMessage(blocks));
-            stopwatch.Stop();
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockBodies to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            return new BlockBodiesMessage(blocks);
         }
 
         protected void Handle(BlockBodiesMessage message, long size)

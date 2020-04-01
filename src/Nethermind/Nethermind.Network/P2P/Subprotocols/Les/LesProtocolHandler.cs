@@ -132,6 +132,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
                     if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, getBlockHeadersMessage.ToString());
                     Handle(getBlockHeadersMessage);
                     break;
+                case LesMessageCode.GetBlockBodies:
+                    GetBlockBodiesMessage getBlockBodiesMessage = Deserialize<GetBlockBodiesMessage>(message.Content);
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, getBlockBodiesMessage.ToString());
+                    Handle(getBlockBodiesMessage);
+                    break;
             }
         }
 
@@ -190,8 +195,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
         public void Handle(GetBlockHeadersMessage getBlockHeaders)
         {
             Eth.V62.BlockHeadersMessage ethBlockHeadersMessage = FulfillBlockHeadersRequest(getBlockHeaders.EthMessage);
-                // todo - implement cost tracking
+            // todo - implement cost tracking
             Send(new BlockHeadersMessage(ethBlockHeadersMessage, getBlockHeaders.RequestId, int.MaxValue));
+        }
+
+        public void Handle(GetBlockBodiesMessage getBlockBodies)
+        {
+            Eth.V62.BlockBodiesMessage ethBlockBodiesMessage = FulfillBlockBodiesRequest(getBlockBodies.EthMessage);
+            // todo - implement cost tracking
+            Send(new BlockBodiesMessage(ethBlockBodiesMessage, getBlockBodies.RequestId, int.MaxValue));
         }
 
         public override bool HasAgreedCapability(Capability capability) => false;
