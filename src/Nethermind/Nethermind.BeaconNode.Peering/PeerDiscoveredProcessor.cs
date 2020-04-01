@@ -24,87 +24,23 @@ using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode.Peering
 {
-    public class PeerDiscoveredProcessor : IDisposable
+    public class PeerDiscoveredProcessor : QueueProcessorBase<string>
     {
-        private readonly ILogger<PeerDiscoveredProcessor> _logger;
         private readonly PeerManager _peerManager;
-        private readonly Thread _processPeerDiscoveredThread;
-
-        private readonly BlockingCollection<string> _queuePeerDiscovered =
-            new BlockingCollection<string>(MaximumQueuePeerDiscovered);
 
         private readonly ISynchronizationManager _synchronizationManager;
-        private const int MaximumQueuePeerDiscovered = 1024;
 
         public PeerDiscoveredProcessor(ILogger<PeerDiscoveredProcessor> logger,
             ISynchronizationManager synchronizationManager,
             PeerManager peerManager)
+            : base(logger)
         {
             _logger = logger;
             _synchronizationManager = synchronizationManager;
             _peerManager = peerManager;
-
-            _processPeerDiscoveredThread = new Thread(ProcessPeerDiscoveredAsync)
-            {
-                IsBackground = true, Name = "ProcessPeerDiscovered"
-            };
         }
 
-        protected virtual void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                _queuePeerDiscovered?.Dispose();
-            }
-
-            _queuePeerDiscovered?.CompleteAdding();
-            try
-            {
-                _processPeerDiscoveredThread.Join(
-                    TimeSpan.FromMilliseconds(1500)); // with timeout in case writer is locked
-            }
-            catch (ThreadStateException)
-            {
-            }
-
-            _queuePeerDiscovered?.Dispose();
-        }
-
-        public void Dispose()
-        {
-            Dispose(true);
-            GC.SuppressFinalize(this);
-        }
-
-        public Task StartAsync()
-        {
-            _processPeerDiscoveredThread.Start();
-            return Task.CompletedTask;
-        }
-
-        private async void ProcessPeerDiscoveredAsync()
-        {
-            try
-            {
-                if (_logger.IsInfo())
-                    Log.ProcessPeerDiscoveredStarting(_logger, null);
-
-                foreach (string peerId in _queuePeerDiscovered.GetConsumingEnumerable())
-                {
-                    await ProcessItem(peerId);
-                }
-            }
-            catch
-            {
-                try
-                {
-                    _queuePeerDiscovered.CompleteAdding();
-                }
-                catch { }
-            }
-        }
-
-        private async Task ProcessItem(string peerId)
+        protected override async Task ProcessItemAsync(string peerId)
         {
             try
             {
@@ -127,18 +63,18 @@ namespace Nethermind.BeaconNode.Peering
 
         public void Enqueue(string peerId)
         {
-            if (!_queuePeerDiscovered.IsAddingCompleted)
+            if (!Queue.IsAddingCompleted)
             {
                 try
                 {
-                    _queuePeerDiscovered.Add(peerId);
+                    Queue.Add(peerId);
                     return;
                 }
                 catch (InvalidOperationException) { }
             }
 
             // Adding is complete, so just process the message
-            ProcessItem(peerId);
+            ProcessItemAsync(peerId).Wait();
         }
     }
 }

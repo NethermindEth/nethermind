@@ -174,12 +174,13 @@ namespace Nethermind.BeaconNode.Peering
                     _environment.EnvironmentName, Thread.CurrentThread.ManagedThreadId, null);
             
             _processSignedBeaconBlockThread.Start();
-            await _peerDiscoveredProcessor.StartAsync().ConfigureAwait(false);            
+            await _peerDiscoveredProcessor.StartAsync(cancellationToken).ConfigureAwait(false);            
             await base.StartAsync(cancellationToken).ConfigureAwait(false);
         }
 
         public override async Task StopAsync(CancellationToken cancellationToken)
         {
+            await _peerDiscoveredProcessor.StopAsync(cancellationToken);
             if (_logger.IsDebug()) LogDebug.PeeringWorkerStopping(_logger, null);
             await base.StopAsync(cancellationToken).ConfigureAwait(false);
         }

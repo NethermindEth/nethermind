@@ -34,6 +34,7 @@ namespace Nethermind.BeaconNode.Peering
                 services.AddSingleton<PeerManager>();
                 services.AddSingleton<INetworkPeering, MothraNetworkPeering>();
                 services.AddHostedService<MothraPeeringWorker>();
+                services.AddSingleton<PeerDiscoveredProcessor>();
                 services.AddSingleton<IMothraLibp2p, MothraLibp2p>();
                 services.TryAddTransient<IFileSystem, FileSystem>();
             }
