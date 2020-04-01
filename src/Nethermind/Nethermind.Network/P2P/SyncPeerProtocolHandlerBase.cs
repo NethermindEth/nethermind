@@ -45,6 +45,8 @@ namespace Nethermind.Network.P2P
         public string EthDetails => Session?.Node?.EthDetails;
         public UInt256 TotalDifficultyOnSessionStart { get; protected set; }
         public PublicKey Id => Node.Id;
+
+        public virtual bool IncludeInTxPool => true;
         protected ISyncServer SyncServer { get; }
 
         public override string ToString() => $"[Peer|{Node:s}|{ClientId}|{EthDetails}]";
