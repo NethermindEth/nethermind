@@ -60,6 +60,11 @@ namespace Nethermind.BeaconNode.Peering
                 new EventId(1051, nameof(ProcessGossipSignedBeaconBlockStarting)),
                 "Starting beacon block gossip processing thread");
 
+        public static readonly Action<ILogger, Exception?> ProcessPeerDiscoveredStarting =
+            LoggerMessage.Define(LogLevel.Information,
+                new EventId(1052, nameof(ProcessPeerDiscoveredStarting)),
+                "Starting peer discovered processing thread");
+
         // 2bxx 
         
         public static readonly Action<ILogger, string, Exception?> PeerDiscovered =

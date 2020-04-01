@@ -107,5 +107,10 @@ namespace Nethermind.BeaconNode.Peering
             LoggerMessage.Define<BeaconBlock>(LogLevel.Debug,
                 new EventId(6065, nameof(ProcessGossipSignedBeaconBlock)),
                 "Processing gossip signed beacon block, {BeaconBlock}");
+        
+        public static readonly Action<ILogger, string, Exception?> ProcessPeerDiscovered =
+            LoggerMessage.Define<string>(LogLevel.Debug,
+                new EventId(6066, nameof(ProcessPeerDiscovered)),
+                "Processing peer discovered, {PeerId}");
     }
 }
