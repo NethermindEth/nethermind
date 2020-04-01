@@ -16,6 +16,8 @@
 
 using System;
 using System.IO.Abstractions;
+using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
@@ -95,6 +97,128 @@ namespace Nethermind.BeaconNode.Peering.Test
             // Encoding.UTF8.GetString(mockMothra.SendRpcResponseCalls[0].peerUtf8).ShouldBe("peer1");
             // Encoding.UTF8.GetString(mockMothra.SendRpcResponseCalls[0].methodUtf8).ShouldBe("/eth2/beacon_chain/req/status/1/");
         }
+        
+        [Test]
+        public async Task PeerDiscoveredShouldCreatePeerAndInSession()
+        {
+            // arrange
+            IOptionsMonitor<ConsoleLoggerOptions> mockLoggerOptionsMonitor = Substitute.For<IOptionsMonitor<ConsoleLoggerOptions>>();
+            mockLoggerOptionsMonitor.CurrentValue.Returns(new ConsoleLoggerOptions()
+            {
+                Format = ConsoleLoggerFormat.Systemd,
+                DisableColors = true,
+                IncludeScopes = true,
+                TimestampFormat = " HH':'mm':'sszz "
+            });
+            LoggerFactory loggerFactory = new LoggerFactory(new [] { new ConsoleLoggerProvider(mockLoggerOptionsMonitor) });
+            
+            MockMothra mockMothra = new MockMothra();
+            
+            IForkChoice mockForkChoice = Substitute.For<IForkChoice>();
+            ISynchronizationManager mockSynchronizationManager = Substitute.For<ISynchronizationManager>();
+            IStore mockStore = Substitute.For<IStore>();
+            mockStore.IsInitialized.Returns(true);
+            IOptionsMonitor<MothraConfiguration> mockMothraConfigurationMonitor = Substitute.For<IOptionsMonitor<MothraConfiguration>>();
+            mockMothraConfigurationMonitor.CurrentValue.Returns(new MothraConfiguration());
+            INetworkPeering mockNetworkPeering = Substitute.For<INetworkPeering>();
+            
+            PeerManager peerManager = new PeerManager(loggerFactory.CreateLogger<PeerManager>());
+            
+            MothraPeeringWorker peeringWorker = new MothraPeeringWorker(
+                loggerFactory.CreateLogger<MothraPeeringWorker>(),
+                mockMothraConfigurationMonitor,
+                Substitute.For<IFileSystem>(),
+                Substitute.For<IHostEnvironment>(),
+                Substitute.For<IClientVersion>(),
+                mockForkChoice,
+                mockSynchronizationManager,
+                mockStore,
+                mockMothra,
+                new DataDirectory("data"),
+                peerManager
+            );
+        
+            // act - start worker
+            await peeringWorker.StartAsync(CancellationToken.None);
+            // - wait for startup
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
+            // - raise event
+            mockMothra.RaisePeerDiscovered(Encoding.UTF8.GetBytes("peer1"));
+            // - wait for event to be handled
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
+            // - finish
+            await peeringWorker.StopAsync(CancellationToken.None);
 
+            // assert
+            peerManager.Peers.Count.ShouldBe(1);
+            
+            Session session = peerManager.Sessions["peer1"].First();
+            session.Direction.ShouldBe(ConnectionDirection.In);
+            session.State.ShouldBe(SessionState.New);
+            session.Peer.Id.ShouldBe("peer1");
+            session.Peer.Status.ShouldBeNull();
+        }
+
+        [Test]
+        public async Task PeerDiscoveredWhenExpectedShouldCreatePeerAndOutSession()
+        {
+            // arrange
+            IOptionsMonitor<ConsoleLoggerOptions> mockLoggerOptionsMonitor = Substitute.For<IOptionsMonitor<ConsoleLoggerOptions>>();
+            mockLoggerOptionsMonitor.CurrentValue.Returns(new ConsoleLoggerOptions()
+            {
+                Format = ConsoleLoggerFormat.Systemd,
+                DisableColors = true,
+                IncludeScopes = true,
+                TimestampFormat = " HH':'mm':'sszz "
+            });
+            LoggerFactory loggerFactory = new LoggerFactory(new [] { new ConsoleLoggerProvider(mockLoggerOptionsMonitor) });
+            
+            MockMothra mockMothra = new MockMothra();
+            
+            IForkChoice mockForkChoice = Substitute.For<IForkChoice>();
+            ISynchronizationManager mockSynchronizationManager = Substitute.For<ISynchronizationManager>();
+            IStore mockStore = Substitute.For<IStore>();
+            mockStore.IsInitialized.Returns(true);
+            IOptionsMonitor<MothraConfiguration> mockMothraConfigurationMonitor = Substitute.For<IOptionsMonitor<MothraConfiguration>>();
+            mockMothraConfigurationMonitor.CurrentValue.Returns(new MothraConfiguration());
+            INetworkPeering mockNetworkPeering = Substitute.For<INetworkPeering>();
+            
+            PeerManager peerManager = new PeerManager(loggerFactory.CreateLogger<PeerManager>());
+            peerManager.AddExpectedPeer("enr:123");
+            
+            MothraPeeringWorker peeringWorker = new MothraPeeringWorker(
+                loggerFactory.CreateLogger<MothraPeeringWorker>(),
+                mockMothraConfigurationMonitor,
+                Substitute.For<IFileSystem>(),
+                Substitute.For<IHostEnvironment>(),
+                Substitute.For<IClientVersion>(),
+                mockForkChoice,
+                mockSynchronizationManager,
+                mockStore,
+                mockMothra,
+                new DataDirectory("data"),
+                peerManager
+            );
+        
+            // act - start worker
+            await peeringWorker.StartAsync(CancellationToken.None);
+            // - wait for startup
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
+            // - raise event
+            mockMothra.RaisePeerDiscovered(Encoding.UTF8.GetBytes("peer1"));
+            // - wait for event to be handled
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
+            // - finish
+            await peeringWorker.StopAsync(CancellationToken.None);
+
+            // assert
+            peerManager.Peers.Count.ShouldBe(1);
+            
+            Session session = peerManager.Sessions["peer1"].First();
+            session.Direction.ShouldBe(ConnectionDirection.Out);
+            session.State.ShouldBe(SessionState.New);
+            session.Peer.Id.ShouldBe("peer1");
+            session.Peer.Status.ShouldBeNull();
+        }
     }
 }

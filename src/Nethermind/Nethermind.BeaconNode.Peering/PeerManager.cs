@@ -14,8 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core2.P2p;
@@ -32,6 +32,7 @@ namespace Nethermind.BeaconNode.Peering
 
         private readonly ConcurrentDictionary<string, PeerInfo> _peers =
             new ConcurrentDictionary<string, PeerInfo>();
+
         private readonly ConcurrentDictionary<string, ConcurrentBag<Session>> _sessions =
             new ConcurrentDictionary<string, ConcurrentBag<Session>>();
 
@@ -44,6 +45,10 @@ namespace Nethermind.BeaconNode.Peering
         {
             get => _highestPeerSlot;
         }
+
+        public IReadOnlyDictionary<string, PeerInfo> Peers => _peers;
+
+        public IReadOnlyDictionary<string, ConcurrentBag<Session>> Sessions => _sessions;
 
         public Slot SyncStartingSlot { get; private set; }
 
@@ -71,12 +76,46 @@ namespace Nethermind.BeaconNode.Peering
                 // They connected to us; wait for them to send Status
                 session = new Session(ConnectionDirection.In, peerInfo);
             }
-            ConcurrentBag<Session> peerSessionCollection = _sessions.GetOrAdd(peerId, key => new ConcurrentBag<Session>());
+
+            ConcurrentBag<Session> peerSessionCollection =
+                _sessions.GetOrAdd(peerId, key => new ConcurrentBag<Session>());
             peerSessionCollection.Add(session);
 
             if (_logger.IsDebug())
                 LogDebug.CreatedPeerSession(_logger, peerId, session.Id, session.Direction, null);
-            
+
+            return session;
+        }
+
+        public void DisconnectSession(string peerId)
+        {
+            if (_sessions.TryGetValue(peerId, out ConcurrentBag<Session>? peerSessionCollection))
+            {
+                Session? session = peerSessionCollection!.FirstOrDefault();
+                if (session != null)
+                {
+                    if (_logger.IsDebug())
+                        LogDebug.DisconnectingPeerSession(_logger, peerId, session.Id, session.Direction, null);
+
+                    session.Disconnect();
+                }
+            }
+        }
+
+        public Session OpenSession(PeerInfo peerInfo)
+        {
+            // Peer should have been created, with an incoming session, when connected.
+            // If not, i.e. first knowledge is the status message, then create an incoming session
+            ConcurrentBag<Session> peerSessionCollection = _sessions.GetOrAdd(peerInfo.Id,
+                key => new ConcurrentBag<Session>(new[] {new Session(ConnectionDirection.In, peerInfo)}));
+
+            // Not sure if Bag is correct here (insert/take); maybe some kind of queue or stack?
+            Session session = peerSessionCollection.First();
+            session.Open();
+
+            if (_logger.IsDebug())
+                LogDebug.OpenedPeerSession(_logger, peerInfo.Id, session.Id, session.Direction, null);
+
             return session;
         }
 
@@ -104,39 +143,6 @@ namespace Nethermind.BeaconNode.Peering
             peerDetails.SetStatus(status);
             UpdateMostRecentSlot(status.HeadSlot);
             return peerDetails;
-        }
-
-        public Session OpenSession(PeerInfo peerInfo)
-        {
-            // Peer should have been created, with an incoming session, when connected.
-            // If not, i.e. first knowledge is the status message, then create an incoming session
-            ConcurrentBag<Session> peerSessionCollection = _sessions.GetOrAdd(peerInfo.Id,
-                key => new ConcurrentBag<Session>(new[] {new Session(ConnectionDirection.In, peerInfo)}));
-
-            // Not sure if Bag is correct here (insert/take); maybe some kind of queue or stack?
-            Session session = peerSessionCollection.First();
-            session.Open();
-            
-            if (_logger.IsDebug())
-                LogDebug.OpenedPeerSession(_logger, peerInfo.Id, session.Id, session.Direction, null);
-            
-            return session;
-        }
-
-        public void DisconnectSession(string peerId)
-        {
-            if (_sessions.TryGetValue(peerId, out ConcurrentBag<Session>? peerSessionCollection))
-            {
-                Session? session = peerSessionCollection!.FirstOrDefault();
-                if (session != null)
-                {
-                                
-                    if (_logger.IsDebug())
-                        LogDebug.DisconnectingPeerSession(_logger, peerId, session.Id, session.Direction, null);
-
-                    session.Disconnect();
-                }
-            }
         }
     }
 }
