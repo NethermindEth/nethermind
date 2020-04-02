@@ -58,7 +58,7 @@ namespace Nethermind.BeaconNode.Test
                 Epoch.One,
                 new Root(Enumerable.Repeat((byte) 0x56, 32).ToArray()),
                 new Slot(2));
-            SynchronizationManager synchronizationManager = testServiceProvider.GetService<SynchronizationManager>();
+            ISynchronizationManager synchronizationManager = testServiceProvider.GetService<ISynchronizationManager>();
             await synchronizationManager.OnStatusResponseReceived("peer", peeringStatus);
             
             // Assert
@@ -104,7 +104,7 @@ namespace Nethermind.BeaconNode.Test
                 Epoch.Zero,
                 new Root(Enumerable.Repeat((byte) 0x56, 32).ToArray()),
                 new Slot(1));
-            SynchronizationManager synchronizationManager = testServiceProvider.GetService<SynchronizationManager>();
+            ISynchronizationManager synchronizationManager = testServiceProvider.GetService<ISynchronizationManager>();
             await synchronizationManager.OnStatusResponseReceived("peer", peeringStatus);
             
             // Assert
@@ -135,7 +135,7 @@ namespace Nethermind.BeaconNode.Test
                 Epoch.Zero,
                 new Root(Enumerable.Repeat((byte) 0x56, 32).ToArray()),
                 Slot.Zero);
-            SynchronizationManager synchronizationManager = testServiceProvider.GetService<SynchronizationManager>();
+            ISynchronizationManager synchronizationManager = testServiceProvider.GetService<ISynchronizationManager>();
             await synchronizationManager.OnStatusResponseReceived("peer", peeringStatus);
             
             // Assert
