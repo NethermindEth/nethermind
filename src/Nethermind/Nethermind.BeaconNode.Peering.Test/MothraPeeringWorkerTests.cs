@@ -73,6 +73,8 @@ namespace Nethermind.BeaconNode.Peering.Test
             PeerManager peerManager = new PeerManager(loggerFactory.CreateLogger<PeerManager>());
             PeerDiscoveredProcessor peerDiscoveredProcessor = new PeerDiscoveredProcessor(
                 loggerFactory.CreateLogger<PeerDiscoveredProcessor>(), mockSynchronizationManager, peerManager);
+            RpcPeeringStatusProcessor rpcPeeringStatusProcessor = new RpcPeeringStatusProcessor(
+                loggerFactory.CreateLogger<RpcPeeringStatusProcessor>(), mockSynchronizationManager, peerManager);
             GossipSignedBeaconBlockProcessor gossipSignedBeaconBlockProcessor = new GossipSignedBeaconBlockProcessor(
                 loggerFactory.CreateLogger<GossipSignedBeaconBlockProcessor>(), mockMothraConfigurationMonitor,
                 Substitute.For<IFileSystem>(), mockForkChoice, mockStore, new DataDirectory("data"), peerManager);
@@ -82,12 +84,12 @@ namespace Nethermind.BeaconNode.Peering.Test
                 mockMothraConfigurationMonitor,
                 Substitute.For<IHostEnvironment>(),
                 Substitute.For<IClientVersion>(),
-                mockSynchronizationManager,
                 mockStore,
                 mockMothra,
                 new DataDirectory("data"),
                 peerManager,
                 peerDiscoveredProcessor,
+                rpcPeeringStatusProcessor,
                 gossipSignedBeaconBlockProcessor
             );
         
@@ -130,6 +132,8 @@ namespace Nethermind.BeaconNode.Peering.Test
             PeerManager peerManager = new PeerManager(loggerFactory.CreateLogger<PeerManager>());
             PeerDiscoveredProcessor peerDiscoveredProcessor = new PeerDiscoveredProcessor(
                 loggerFactory.CreateLogger<PeerDiscoveredProcessor>(), mockSynchronizationManager, peerManager);
+            RpcPeeringStatusProcessor rpcPeeringStatusProcessor = new RpcPeeringStatusProcessor(
+                loggerFactory.CreateLogger<RpcPeeringStatusProcessor>(), mockSynchronizationManager, peerManager);
             GossipSignedBeaconBlockProcessor gossipSignedBeaconBlockProcessor = new GossipSignedBeaconBlockProcessor(
                 loggerFactory.CreateLogger<GossipSignedBeaconBlockProcessor>(), mockMothraConfigurationMonitor,
                 Substitute.For<IFileSystem>(), mockForkChoice, mockStore, new DataDirectory("data"), peerManager);
@@ -139,12 +143,12 @@ namespace Nethermind.BeaconNode.Peering.Test
                 mockMothraConfigurationMonitor,
                 Substitute.For<IHostEnvironment>(),
                 Substitute.For<IClientVersion>(),
-                mockSynchronizationManager,
                 mockStore,
                 mockMothra,
                 new DataDirectory("data"),
                 peerManager,
                 peerDiscoveredProcessor,
+                rpcPeeringStatusProcessor,
                 gossipSignedBeaconBlockProcessor
             );
         
@@ -197,6 +201,8 @@ namespace Nethermind.BeaconNode.Peering.Test
             peerManager.AddExpectedPeer("enr:123");
             PeerDiscoveredProcessor peerDiscoveredProcessor = new PeerDiscoveredProcessor(
                 loggerFactory.CreateLogger<PeerDiscoveredProcessor>(), mockSynchronizationManager, peerManager);
+            RpcPeeringStatusProcessor rpcPeeringStatusProcessor = new RpcPeeringStatusProcessor(
+                loggerFactory.CreateLogger<RpcPeeringStatusProcessor>(), mockSynchronizationManager, peerManager);
             GossipSignedBeaconBlockProcessor gossipSignedBeaconBlockProcessor = new GossipSignedBeaconBlockProcessor(
                 loggerFactory.CreateLogger<GossipSignedBeaconBlockProcessor>(), mockMothraConfigurationMonitor,
                 Substitute.For<IFileSystem>(), mockForkChoice, mockStore, new DataDirectory("data"), peerManager);
@@ -206,12 +212,12 @@ namespace Nethermind.BeaconNode.Peering.Test
                 mockMothraConfigurationMonitor,
                 Substitute.For<IHostEnvironment>(),
                 Substitute.For<IClientVersion>(),
-                mockSynchronizationManager,
                 mockStore,
                 mockMothra,
                 new DataDirectory("data"),
                 peerManager,
                 peerDiscoveredProcessor,
+                rpcPeeringStatusProcessor,
                 gossipSignedBeaconBlockProcessor
             );
         

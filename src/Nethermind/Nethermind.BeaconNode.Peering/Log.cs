@@ -55,11 +55,6 @@ namespace Nethermind.BeaconNode.Peering
                 new EventId(1050, nameof(PeeringWorkerStarting)),
                 "Peering {ProductTokenVersion} worker starting; {Environment} environment [{ThreadId}]");
 
-        public static readonly Action<ILogger, Exception?> ProcessGossipSignedBeaconBlockStarting =
-            LoggerMessage.Define(LogLevel.Information,
-                new EventId(1052, nameof(ProcessGossipSignedBeaconBlockStarting)),
-                "Starting beacon block gossip processing thread");
-
         public static readonly Action<ILogger, string, Exception?> QueueProcessorExecuteStarting =
             LoggerMessage.Define<string>(LogLevel.Information,
                 new EventId(1051, nameof(QueueProcessorExecuteStarting)),

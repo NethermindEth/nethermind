@@ -41,21 +41,21 @@ namespace Nethermind.BeaconNode.Peering
         private readonly IOptionsMonitor<MothraConfiguration> _mothraConfigurationOptions;
         private readonly IMothraLibp2p _mothraLibp2P;
         private readonly PeerDiscoveredProcessor _peerDiscoveredProcessor;
+        private readonly RpcPeeringStatusProcessor _rpcPeeringStatusProcessor;
         private readonly PeerManager _peerManager;
         private readonly IStore _store;
-        private readonly ISynchronizationManager _synchronizationManager;
         internal const string MothraDirectory = "mothra";
 
         public MothraPeeringWorker(ILogger<MothraPeeringWorker> logger,
             IOptionsMonitor<MothraConfiguration> mothraConfigurationOptions,
             IHostEnvironment environment,
             IClientVersion clientVersion,
-            ISynchronizationManager synchronizationManager,
             IStore store,
             IMothraLibp2p mothraLibp2P,
             DataDirectory dataDirectory,
             PeerManager peerManager,
             PeerDiscoveredProcessor peerDiscoveredProcessor,
+            RpcPeeringStatusProcessor rpcPeeringStatusProcessor,
             GossipSignedBeaconBlockProcessor gossipSignedBeaconBlockProcessor)
         {
             _logger = logger;
@@ -66,8 +66,8 @@ namespace Nethermind.BeaconNode.Peering
             _mothraLibp2P = mothraLibp2P;
             _peerManager = peerManager;
             _peerDiscoveredProcessor = peerDiscoveredProcessor;
+            _rpcPeeringStatusProcessor = rpcPeeringStatusProcessor;
             _gossipSignedBeaconBlockProcessor = gossipSignedBeaconBlockProcessor;
-            _synchronizationManager = synchronizationManager;
             _store = store;
         }
 
@@ -80,6 +80,10 @@ namespace Nethermind.BeaconNode.Peering
                 await EnsureInitializedWithAnchorState(stoppingToken).ConfigureAwait(false);
 
                 if (_logger.IsDebug()) LogDebug.StoreInitializedStartingPeering(_logger, null);
+                
+                await _peerDiscoveredProcessor.StartAsync(stoppingToken).ConfigureAwait(false);
+                await _rpcPeeringStatusProcessor.StartAsync(stoppingToken).ConfigureAwait(false);
+                await _gossipSignedBeaconBlockProcessor.StartAsync(stoppingToken).ConfigureAwait(false);
 
                 _mothraLibp2P.PeerDiscovered += OnPeerDiscovered;
                 _mothraLibp2P.GossipReceived += OnGossipReceived;
@@ -126,15 +130,15 @@ namespace Nethermind.BeaconNode.Peering
                 Log.PeeringWorkerStarting(_logger, _clientVersion.Description,
                     _environment.EnvironmentName, Thread.CurrentThread.ManagedThreadId, null);
 
-            await _peerDiscoveredProcessor.StartAsync(cancellationToken).ConfigureAwait(false);
-            await _gossipSignedBeaconBlockProcessor.StartAsync(cancellationToken).ConfigureAwait(false);
-
             await base.StartAsync(cancellationToken).ConfigureAwait(false);
         }
 
         public override async Task StopAsync(CancellationToken cancellationToken)
         {
             await _peerDiscoveredProcessor.StopAsync(cancellationToken);
+            await _rpcPeeringStatusProcessor.StopAsync(cancellationToken);
+            await _gossipSignedBeaconBlockProcessor.StopAsync(cancellationToken);
+            
             if (_logger.IsDebug()) LogDebug.PeeringWorkerStopping(_logger, null);
             await base.StopAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -161,37 +165,7 @@ namespace Nethermind.BeaconNode.Peering
                 await Task.Delay(TimeSpan.FromMilliseconds(500), stoppingToken).ConfigureAwait(false);
             }
         }
-
-        private async void HandleRpcStatusAsync(RpcMessage<PeeringStatus> statusRpcMessage)
-        {
-            try
-            {
-                PeerInfo peerInfo = _peerManager.UpdatePeerStatus(statusRpcMessage.PeerId, statusRpcMessage.Content);
-                Session session = _peerManager.OpenSession(peerInfo);
-
-                // Mothra seems to be raising all incoming RPC (sent as request and as response)
-                // with requestResponseFlag 0, so check here if already have the status so we don't go into infinite loop
-                // => So use session details instead of the status message
-                //if (statusRpcMessage.Direction == RpcDirection.Request)
-                if (session.Direction == ConnectionDirection.Out)
-                {
-                    // If it is a dial out, we must have already sent the status request and this is the response
-                    await _synchronizationManager.OnStatusResponseReceived(statusRpcMessage.PeerId,
-                        statusRpcMessage.Content);
-                }
-                else
-                {
-                    await _synchronizationManager.OnStatusRequestReceived(statusRpcMessage.PeerId,
-                        statusRpcMessage.Content);
-                }
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsError())
-                    Log.HandleRpcStatusError(_logger, statusRpcMessage.PeerId, ex.Message, ex);
-            }
-        }
-
+        
         private void OnGossipReceived(ReadOnlySpan<byte> topicUtf8, ReadOnlySpan<byte> data)
         {
             try
@@ -252,11 +226,7 @@ namespace Nethermind.BeaconNode.Peering
                     PeeringStatus peeringStatus = Ssz.Ssz.DecodePeeringStatus(data);
                     RpcMessage<PeeringStatus> statusRpcMessage =
                         new RpcMessage<PeeringStatus>(peerId, rpcDirection, peeringStatus);
-                    //_queueRpcMessagePeeringStatus.Add(statusRpcMessage);
-                    if (!ThreadPool.QueueUserWorkItem(HandleRpcStatusAsync, statusRpcMessage, true))
-                    {
-                        throw new Exception($"Could not queue handling of Status from peer {peerId}.");
-                    }
+                    _rpcPeeringStatusProcessor.Enqueue(statusRpcMessage);
                 }
                 else
                 {
