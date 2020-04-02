@@ -49,6 +49,10 @@ namespace Nethermind.BeaconNode.Peering
                     await ProcessItemAsync(item).ConfigureAwait(false);
                 }
             }
+            catch (OperationCanceledException)
+            {
+                // Stopping token; ignore
+            }
             catch (Exception ex)
             {
                 Log.QueueProcessorCriticalError(_logger, GetType().Name, ex);
