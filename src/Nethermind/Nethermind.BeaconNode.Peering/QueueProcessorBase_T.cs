@@ -15,8 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Concurrent;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -27,61 +27,32 @@ namespace Nethermind.BeaconNode.Peering
     public abstract class QueueProcessorBase<T> : BackgroundService
     {
         protected ILogger _logger;
+        private readonly Channel<T> _channel;
 
-        public QueueProcessorBase(ILogger logger)
+        protected QueueProcessorBase(ILogger logger, int maximumQueue = 1024)
         {
             _logger = logger;
-            Queue = new BlockingCollection<T>(MaximumQueue);
+            _channel = Channel.CreateBounded<T>(new BoundedChannelOptions(maximumQueue));
         }
 
-        protected virtual int MaximumQueue { get; } = 1024;
-
-        protected BlockingCollection<T> Queue { get; }
-
-        protected virtual void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                Queue?.CompleteAdding();
-                Queue?.Dispose();
-            }
-        }
-
-        public override void Dispose()
-        {
-            Dispose(true);
-            GC.SuppressFinalize(this);
-        }
+        protected ChannelWriter<T> ChannelWriter => _channel.Writer;
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             try
             {
-                // Don't want BackgroundService.StartAsync to get stuck waiting for queue, so force continuation
-                await Task.Delay(TimeSpan.FromMilliseconds(1)).ConfigureAwait(false);
-                
                 if (_logger.IsInfo())
                     Log.QueueProcessorExecuteStarting(_logger, GetType().Name, null);
 
-                foreach (T item in Queue.GetConsumingEnumerable())
+                await foreach (T item in _channel.Reader.ReadAllAsync(stoppingToken).ConfigureAwait(true))
                 {
                     await ProcessItemAsync(item).ConfigureAwait(false);
-                    if (stoppingToken.IsCancellationRequested)
-                    {
-                        Queue.CompleteAdding();
-                        break;
-                    }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                try
-                {
-                    Queue.CompleteAdding();
-                }
-                catch
-                {
-                }
+                Log.QueueProcessorCriticalError(_logger, GetType().Name, ex);
+                _channel.Writer.Complete(ex);
             }
         }
 
@@ -89,7 +60,7 @@ namespace Nethermind.BeaconNode.Peering
 
         public override Task StopAsync(CancellationToken cancellationToken)
         {
-            Queue?.CompleteAdding();
+            _channel.Writer.Complete();
             return base.StopAsync(cancellationToken);
         }
     }

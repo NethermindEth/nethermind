@@ -63,18 +63,7 @@ namespace Nethermind.BeaconNode.Peering
 
         public void Enqueue(string peerId)
         {
-            if (!Queue.IsAddingCompleted)
-            {
-                try
-                {
-                    Queue.Add(peerId);
-                    return;
-                }
-                catch (InvalidOperationException) { }
-            }
-
-            // Adding is complete, so just process the message
-            ProcessItemAsync(peerId).Wait();
+            ChannelWriter.TryWrite(peerId);
         }
     }
 }

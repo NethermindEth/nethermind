@@ -124,5 +124,10 @@ namespace Nethermind.BeaconNode.Peering
             LoggerMessage.Define(LogLevel.Critical,
                 new EventId(9050, nameof(PeeringWorkerCriticalError)),
                 "Critical unhandled error starting peering worker. Worker cannot continue.");
+        
+        public static readonly Action<ILogger, string, Exception?> QueueProcessorCriticalError =
+            LoggerMessage.Define<string>(LogLevel.Critical,
+                new EventId(9051, nameof(QueueProcessorCriticalError)),
+                "Critical unhandled error in queue processor thread for {QueueProcessorName}. Processor cannot continue.");        
     }
 }
