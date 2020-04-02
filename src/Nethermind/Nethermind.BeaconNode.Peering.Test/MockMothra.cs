@@ -40,11 +40,11 @@ namespace Nethermind.BeaconNode.Peering.Test
             remove => _rpcReceived -= value;
         }
 
-        public event Action<byte[], byte[], byte[]> SendRpcRequestCalled;
+        public event Action<byte[], byte[], byte[]>? SendRpcRequestCalled;
 
-        public event Action<byte[], byte[], byte[]> SendRpcResponseCalled;
+        public event Action<byte[], byte[], byte[]>? SendRpcResponseCalled;
 
-        public event Action<MothraSettings> StartCalled;
+        public event Action<MothraSettings>? StartCalled;
         
         public IList<(byte[] methodUtf8, byte[] peerUtf8, byte[] data)> SendRpcRequestCalls = new List<(byte[] methodUtf8, byte[] peerUtf8, byte[] data)>();
 

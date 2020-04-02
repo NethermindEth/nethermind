@@ -26,10 +26,10 @@ namespace Nethermind.BeaconNode.Peering
 {
     public abstract class QueueProcessorBase<T> : BackgroundService
     {
-        protected ILogger _logger;
         private readonly Channel<T> _channel;
+        private readonly ILogger _logger;
 
-        protected QueueProcessorBase(ILogger logger, int maximumQueue = 1024)
+        protected QueueProcessorBase(ILogger logger, int maximumQueue)
         {
             _logger = logger;
             _channel = Channel.CreateBounded<T>(new BoundedChannelOptions(maximumQueue));
@@ -44,7 +44,7 @@ namespace Nethermind.BeaconNode.Peering
                 if (_logger.IsInfo())
                     Log.QueueProcessorExecuteStarting(_logger, GetType().Name, null);
 
-                await foreach (T item in _channel.Reader.ReadAllAsync(stoppingToken).ConfigureAwait(true))
+                await foreach (T item in _channel.Reader.ReadAllAsync(stoppingToken).ConfigureAwait(false))
                 {
                     await ProcessItemAsync(item).ConfigureAwait(false);
                 }

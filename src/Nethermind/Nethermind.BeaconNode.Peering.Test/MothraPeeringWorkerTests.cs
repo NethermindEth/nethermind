@@ -73,20 +73,22 @@ namespace Nethermind.BeaconNode.Peering.Test
             PeerManager peerManager = new PeerManager(loggerFactory.CreateLogger<PeerManager>());
             PeerDiscoveredProcessor peerDiscoveredProcessor = new PeerDiscoveredProcessor(
                 loggerFactory.CreateLogger<PeerDiscoveredProcessor>(), mockSynchronizationManager, peerManager);
+            GossipSignedBeaconBlockProcessor gossipSignedBeaconBlockProcessor = new GossipSignedBeaconBlockProcessor(
+                loggerFactory.CreateLogger<GossipSignedBeaconBlockProcessor>(), mockMothraConfigurationMonitor,
+                Substitute.For<IFileSystem>(), mockForkChoice, mockStore, new DataDirectory("data"), peerManager);
             
             MothraPeeringWorker peeringWorker = new MothraPeeringWorker(
                 loggerFactory.CreateLogger<MothraPeeringWorker>(),
                 mockMothraConfigurationMonitor,
-                Substitute.For<IFileSystem>(),
                 Substitute.For<IHostEnvironment>(),
                 Substitute.For<IClientVersion>(),
-                mockForkChoice,
                 mockSynchronizationManager,
                 mockStore,
                 mockMothra,
                 new DataDirectory("data"),
                 peerManager,
-                peerDiscoveredProcessor
+                peerDiscoveredProcessor,
+                gossipSignedBeaconBlockProcessor
             );
         
             // act
@@ -128,20 +130,22 @@ namespace Nethermind.BeaconNode.Peering.Test
             PeerManager peerManager = new PeerManager(loggerFactory.CreateLogger<PeerManager>());
             PeerDiscoveredProcessor peerDiscoveredProcessor = new PeerDiscoveredProcessor(
                 loggerFactory.CreateLogger<PeerDiscoveredProcessor>(), mockSynchronizationManager, peerManager);
+            GossipSignedBeaconBlockProcessor gossipSignedBeaconBlockProcessor = new GossipSignedBeaconBlockProcessor(
+                loggerFactory.CreateLogger<GossipSignedBeaconBlockProcessor>(), mockMothraConfigurationMonitor,
+                Substitute.For<IFileSystem>(), mockForkChoice, mockStore, new DataDirectory("data"), peerManager);
             
             MothraPeeringWorker peeringWorker = new MothraPeeringWorker(
                 loggerFactory.CreateLogger<MothraPeeringWorker>(),
                 mockMothraConfigurationMonitor,
-                Substitute.For<IFileSystem>(),
                 Substitute.For<IHostEnvironment>(),
                 Substitute.For<IClientVersion>(),
-                mockForkChoice,
                 mockSynchronizationManager,
                 mockStore,
                 mockMothra,
                 new DataDirectory("data"),
                 peerManager,
-                peerDiscoveredProcessor
+                peerDiscoveredProcessor,
+                gossipSignedBeaconBlockProcessor
             );
         
             // act - start worker
@@ -193,20 +197,22 @@ namespace Nethermind.BeaconNode.Peering.Test
             peerManager.AddExpectedPeer("enr:123");
             PeerDiscoveredProcessor peerDiscoveredProcessor = new PeerDiscoveredProcessor(
                 loggerFactory.CreateLogger<PeerDiscoveredProcessor>(), mockSynchronizationManager, peerManager);
+            GossipSignedBeaconBlockProcessor gossipSignedBeaconBlockProcessor = new GossipSignedBeaconBlockProcessor(
+                loggerFactory.CreateLogger<GossipSignedBeaconBlockProcessor>(), mockMothraConfigurationMonitor,
+                Substitute.For<IFileSystem>(), mockForkChoice, mockStore, new DataDirectory("data"), peerManager);
             
             MothraPeeringWorker peeringWorker = new MothraPeeringWorker(
                 loggerFactory.CreateLogger<MothraPeeringWorker>(),
                 mockMothraConfigurationMonitor,
-                Substitute.For<IFileSystem>(),
                 Substitute.For<IHostEnvironment>(),
                 Substitute.For<IClientVersion>(),
-                mockForkChoice,
                 mockSynchronizationManager,
                 mockStore,
                 mockMothra,
                 new DataDirectory("data"),
                 peerManager,
-                peerDiscoveredProcessor
+                peerDiscoveredProcessor,
+                gossipSignedBeaconBlockProcessor
             );
         
             // act - start worker

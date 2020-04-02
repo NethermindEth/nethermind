@@ -15,12 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Concurrent;
 using System.IO;
-using System.IO.Abstractions;
-using System.Linq;
 using System.Text;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
@@ -29,7 +25,6 @@ using Microsoft.Extensions.Options;
 using Nethermind.Core2;
 using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Json;
 using Nethermind.Core2.P2p;
 using Nethermind.Logging.Microsoft;
 using Nethermind.Peering.Mothra;
@@ -41,81 +36,39 @@ namespace Nethermind.BeaconNode.Peering
         private readonly IClientVersion _clientVersion;
         private readonly DataDirectory _dataDirectory;
         private readonly IHostEnvironment _environment;
-        private readonly IFileSystem _fileSystem;
-        private readonly IForkChoice _forkChoice;
-        private readonly JsonSerializerOptions _jsonSerializerOptions;
-        private string? _logDirectoryPath;
-        private readonly object _logDirectoryPathLock = new object();
+        private readonly GossipSignedBeaconBlockProcessor _gossipSignedBeaconBlockProcessor;
         private readonly ILogger _logger;
         private readonly IOptionsMonitor<MothraConfiguration> _mothraConfigurationOptions;
-        private readonly IMothraLibp2p _mothraLibp2p;
-        private readonly PeerManager _peerManager;
+        private readonly IMothraLibp2p _mothraLibp2P;
         private readonly PeerDiscoveredProcessor _peerDiscoveredProcessor;
+        private readonly PeerManager _peerManager;
         private readonly IStore _store;
         private readonly ISynchronizationManager _synchronizationManager;
-        private const string MothraDirectory = "mothra";
-
-        // TODO: These can probably be separate processor objects
-        
-        private const int MaximumQueueSignedBeaconBlocks = 1024;
-        private readonly BlockingCollection<SignedBeaconBlock> _queueSignedBeaconBlocks =
-            new BlockingCollection<SignedBeaconBlock>(MaximumQueueSignedBeaconBlocks);
-        private Thread _processSignedBeaconBlockThread;
-
-        // private const int MaximumQueueRpcMessagePeeringStatus = 1024;
-        // private readonly BlockingCollection<RpcMessage<PeeringStatus>> _queueRpcMessagePeeringStatus =
-        //     new BlockingCollection<RpcMessage<PeeringStatus>>(MaximumQueueRpcMessagePeeringStatus);
-
-        public override void Dispose()
-        {
-            _queueSignedBeaconBlocks?.CompleteAdding();
-            try
-            {
-                _processSignedBeaconBlockThread.Join(TimeSpan.FromMilliseconds(1500)); // with timeout in case writer is locked
-            }
-            catch (ThreadStateException) { }
-            _queueSignedBeaconBlocks?.Dispose();
-
-            _peerDiscoveredProcessor.Dispose();
-        }
+        internal const string MothraDirectory = "mothra";
 
         public MothraPeeringWorker(ILogger<MothraPeeringWorker> logger,
             IOptionsMonitor<MothraConfiguration> mothraConfigurationOptions,
-            IFileSystem fileSystem,
             IHostEnvironment environment,
             IClientVersion clientVersion,
-            IForkChoice forkChoice,
             ISynchronizationManager synchronizationManager,
             IStore store,
-            IMothraLibp2p mothraLibp2p,
+            IMothraLibp2p mothraLibp2P,
             DataDirectory dataDirectory,
             PeerManager peerManager,
-            PeerDiscoveredProcessor peerDiscoveredProcessor)
+            PeerDiscoveredProcessor peerDiscoveredProcessor,
+            GossipSignedBeaconBlockProcessor gossipSignedBeaconBlockProcessor)
         {
             _logger = logger;
             _environment = environment;
             _clientVersion = clientVersion;
             _dataDirectory = dataDirectory;
-            _fileSystem = fileSystem;
             _mothraConfigurationOptions = mothraConfigurationOptions;
-            _mothraLibp2p = mothraLibp2p;
+            _mothraLibp2P = mothraLibp2P;
             _peerManager = peerManager;
             _peerDiscoveredProcessor = peerDiscoveredProcessor;
-            _forkChoice = forkChoice;
+            _gossipSignedBeaconBlockProcessor = gossipSignedBeaconBlockProcessor;
             _synchronizationManager = synchronizationManager;
             _store = store;
-
-            _processSignedBeaconBlockThread = new Thread(ProcessGossipSignedBeaconBlockAsync)
-            {
-                IsBackground = true, Name = "ProcessSignedBeaconBlock"
-            };
-
-            _jsonSerializerOptions = new JsonSerializerOptions {WriteIndented = true};
-            _jsonSerializerOptions.ConfigureNethermindCore2();
-            if (_mothraConfigurationOptions.CurrentValue.LogSignedBeaconBlockJson)
-            {
-                _ = GetLogDirectory();
-            }
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -123,14 +76,14 @@ namespace Nethermind.BeaconNode.Peering
             try
             {
                 if (_logger.IsDebug()) LogDebug.PeeringWorkerExecute(_logger, null);
-                
+
                 await EnsureInitializedWithAnchorState(stoppingToken).ConfigureAwait(false);
 
                 if (_logger.IsDebug()) LogDebug.StoreInitializedStartingPeering(_logger, null);
 
-                _mothraLibp2p.PeerDiscovered += OnPeerDiscovered;
-                _mothraLibp2p.GossipReceived += OnGossipReceived;
-                _mothraLibp2p.RpcReceived += OnRpcReceived;
+                _mothraLibp2P.PeerDiscovered += OnPeerDiscovered;
+                _mothraLibp2P.GossipReceived += OnGossipReceived;
+                _mothraLibp2P.RpcReceived += OnRpcReceived;
 
                 string mothraDataDirectory = Path.Combine(_dataDirectory.ResolvedPath, MothraDirectory);
                 MothraSettings mothraSettings = new MothraSettings()
@@ -157,7 +110,7 @@ namespace Nethermind.BeaconNode.Peering
                     LogDebug.MothraStarting(_logger, mothraSettings.ListenAddress, mothraSettings.Port,
                         mothraSettings.BootNodes.Count, null);
 
-                _mothraLibp2p.Start(mothraSettings);
+                _mothraLibp2P.Start(mothraSettings);
 
                 if (_logger.IsDebug()) LogDebug.PeeringWorkerExecuteCompleted(_logger, null);
             }
@@ -172,9 +125,10 @@ namespace Nethermind.BeaconNode.Peering
             if (_logger.IsInfo())
                 Log.PeeringWorkerStarting(_logger, _clientVersion.Description,
                     _environment.EnvironmentName, Thread.CurrentThread.ManagedThreadId, null);
-            
-            _processSignedBeaconBlockThread.Start();
-            await _peerDiscoveredProcessor.StartAsync(cancellationToken).ConfigureAwait(false);            
+
+            await _peerDiscoveredProcessor.StartAsync(cancellationToken).ConfigureAwait(false);
+            await _gossipSignedBeaconBlockProcessor.StartAsync(cancellationToken).ConfigureAwait(false);
+
             await base.StartAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -208,98 +162,16 @@ namespace Nethermind.BeaconNode.Peering
             }
         }
 
-        private string GetLogDirectory()
-        {
-            if (_logDirectoryPath == null)
-            {
-                lock (_logDirectoryPathLock)
-                {
-                    if (_logDirectoryPath == null)
-                    {
-                        string basePath = _fileSystem.Path.Combine(_dataDirectory.ResolvedPath, MothraDirectory);
-                        IDirectoryInfo baseDirectoryInfo = _fileSystem.DirectoryInfo.FromDirectoryName(basePath);
-                        if (!baseDirectoryInfo.Exists)
-                        {
-                            baseDirectoryInfo.Create();
-                        }
-
-                        IDirectoryInfo[] existingLogDirectories = baseDirectoryInfo.GetDirectories("log*");
-                        int existingSuffix = existingLogDirectories.Select(x =>
-                            {
-                                if (int.TryParse(x.Name.Substring(3), out int suffix))
-                                {
-                                    return suffix;
-                                }
-
-                                return 0;
-                            })
-                            .DefaultIfEmpty()
-                            .Max();
-                        int newSuffix = existingSuffix + 1;
-                        string logDirectoryName = $"log{newSuffix:0000}";
-
-                        if (_logger.IsDebug())
-                            LogDebug.CreatingMothraLogDirectory(_logger, logDirectoryName, baseDirectoryInfo.FullName,
-                                null);
-                        IDirectoryInfo logDirectory = baseDirectoryInfo.CreateSubdirectory(logDirectoryName);
-                        _logDirectoryPath = logDirectory.FullName;
-                    }
-                }
-            }
-
-            return _logDirectoryPath;
-        }
-
-        private async void ProcessGossipSignedBeaconBlockAsync()
-        {
-            if (_logger.IsInfo())
-                Log.ProcessGossipSignedBeaconBlockStarting(_logger, null);
-            
-            foreach (SignedBeaconBlock signedBeaconBlock in _queueSignedBeaconBlocks.GetConsumingEnumerable())
-            {
-                try
-                {
-                    if (_logger.IsDebug())
-                        LogDebug.ProcessGossipSignedBeaconBlock(_logger, signedBeaconBlock.Message, null);
-
-                    if (_mothraConfigurationOptions.CurrentValue.LogSignedBeaconBlockJson)
-                    {
-                        string logDirectoryPath = GetLogDirectory();
-                        string fileName = string.Format("signedblock{0:0000}_{1}.json",
-                            (int) signedBeaconBlock.Message.Slot,
-                            signedBeaconBlock.Signature.ToString().Substring(0, 10));
-                        string path = _fileSystem.Path.Combine(logDirectoryPath, fileName);
-                        using (Stream fileStream = _fileSystem.File.OpenWrite(path))
-                        {
-                            await JsonSerializer.SerializeAsync(fileStream, signedBeaconBlock, _jsonSerializerOptions)
-                                .ConfigureAwait(false);
-                        }
-                    }
-
-                    // Update the most recent slot seen (even if we can't add it to the chain yet, e.g. if we are missing prior blocks)
-                    // Note: a peer could lie and send a signed block that isn't part of the chain (but it could lie on status as well)
-                    _peerManager.UpdateMostRecentSlot(signedBeaconBlock.Message.Slot);
-
-                    await _forkChoice.OnBlockAsync(_store, signedBeaconBlock).ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    if (_logger.IsError())
-                        Log.ProcessGossipSignedBeaconBlockError(_logger, signedBeaconBlock.Message, ex.Message, ex);
-                }
-            }
-        }
-
         private async void HandleRpcStatusAsync(RpcMessage<PeeringStatus> statusRpcMessage)
         {
             try
             {
                 PeerInfo peerInfo = _peerManager.UpdatePeerStatus(statusRpcMessage.PeerId, statusRpcMessage.Content);
                 Session session = _peerManager.OpenSession(peerInfo);
-                
+
                 // Mothra seems to be raising all incoming RPC (sent as request and as response)
                 // with requestResponseFlag 0, so check here if already have the status so we don't go into infinite loop
-                // So user peerdetails instead of the status message
+                // => So use session details instead of the status message
                 //if (statusRpcMessage.Direction == RpcDirection.Request)
                 if (session.Direction == ConnectionDirection.Out)
                 {
@@ -331,7 +203,7 @@ namespace Nethermind.BeaconNode.Peering
                         LogDebug.GossipReceived(_logger, nameof(TopicUtf8.BeaconBlock), data.Length, null);
                     // Need to deserialize in synchronous context (can't pass Span async)
                     SignedBeaconBlock signedBeaconBlock = Ssz.Ssz.DecodeSignedBeaconBlock(data);
-                    _queueSignedBeaconBlocks.Add(signedBeaconBlock);
+                    _gossipSignedBeaconBlockProcessor.Enqueue(signedBeaconBlock);
                 }
                 else
                 {
@@ -374,7 +246,8 @@ namespace Nethermind.BeaconNode.Peering
                     || methodUtf8.SequenceEqual(MethodUtf8.StatusMothraAlternative))
                 {
                     if (_logger.IsDebug())
-                        LogDebug.RpcReceived(_logger, rpcDirection, requestResponseFlag, nameof(MethodUtf8.Status), peerId, data.Length, null);
+                        LogDebug.RpcReceived(_logger, rpcDirection, requestResponseFlag, nameof(MethodUtf8.Status),
+                            peerId, data.Length, null);
 
                     PeeringStatus peeringStatus = Ssz.Ssz.DecodePeeringStatus(data);
                     RpcMessage<PeeringStatus> statusRpcMessage =
@@ -389,7 +262,8 @@ namespace Nethermind.BeaconNode.Peering
                 {
                     // TODO: handle other RPC
                     if (_logger.IsWarn())
-                        Log.UnknownRpcReceived(_logger, rpcDirection, requestResponseFlag, Encoding.UTF8.GetString(methodUtf8), peerId,
+                        Log.UnknownRpcReceived(_logger, rpcDirection, requestResponseFlag,
+                            Encoding.UTF8.GetString(methodUtf8), peerId,
                             data.Length, null);
                 }
             }

@@ -15,8 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Concurrent;
-using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core2;
@@ -26,18 +24,24 @@ namespace Nethermind.BeaconNode.Peering
 {
     public class PeerDiscoveredProcessor : QueueProcessorBase<string>
     {
+        private const int MaximumQueue = 1024;
+        private readonly ILogger _logger;
         private readonly PeerManager _peerManager;
-
         private readonly ISynchronizationManager _synchronizationManager;
 
         public PeerDiscoveredProcessor(ILogger<PeerDiscoveredProcessor> logger,
             ISynchronizationManager synchronizationManager,
             PeerManager peerManager)
-            : base(logger)
+            : base(logger, MaximumQueue)
         {
             _logger = logger;
             _synchronizationManager = synchronizationManager;
             _peerManager = peerManager;
+        }
+
+        public void Enqueue(string peerId)
+        {
+            ChannelWriter.TryWrite(peerId);
         }
 
         protected override async Task ProcessItemAsync(string peerId)
@@ -59,11 +63,6 @@ namespace Nethermind.BeaconNode.Peering
                 if (_logger.IsError())
                     Log.HandlePeerDiscoveredError(_logger, peerId, ex.Message, ex);
             }
-        }
-
-        public void Enqueue(string peerId)
-        {
-            ChannelWriter.TryWrite(peerId);
         }
     }
 }
