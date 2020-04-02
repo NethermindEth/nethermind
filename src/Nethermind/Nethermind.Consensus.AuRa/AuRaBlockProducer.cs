@@ -48,6 +48,7 @@ namespace Nethermind.Consensus.AuRa
         {
             _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
             _config = config ?? throw new ArgumentNullException(nameof(config));
+            CanProduce = _config.AllowAuRaPrivateChains;
             _nodeAddress = nodeAddress ?? throw new ArgumentNullException(nameof(nodeAddress));
         }
 
