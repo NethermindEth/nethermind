@@ -11,10 +11,10 @@ admin
   
 
  admin_dataDir()
-  [NOT IMPLEMENTED] 
+  [NOT IMPLEMENTED] Base data directory path
 
  admin_nodeInfo()
-  [NOT IMPLEMENTED] 
+  Relevant information about this node
 
  admin_peers()
   
@@ -23,7 +23,7 @@ admin
   
 
  admin_setSolc()
-  [NOT IMPLEMENTED] 
+  [NOT IMPLEMENTED] [DEPRECATED]
 
 clique
 ^^^^^^
@@ -58,7 +58,7 @@ clique
 debug
 ^^^^^
 
- debug_deleteChainSlice(startNumber, endNumber)
+ debug_deleteChainSlice(startNumber)
   Deletes a slice of a chain from the tree on all branches (Nethermind specific).
 
  debug_dumpBlock(blockParameter)
