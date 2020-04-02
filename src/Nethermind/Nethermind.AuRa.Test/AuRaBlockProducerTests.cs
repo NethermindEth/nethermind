@@ -198,9 +198,8 @@ namespace Nethermind.AuRa.Test
                 if (newBestSuggestedBlock)
                 {
                     _blockTree.NewBestSuggestedBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.TestObject));
+                    _blockTree.ClearReceivedCalls();
                 }
-                
-                _blockTree.ClearReceivedCalls();
                 
                 await processedEvent.WaitOneAsync(_stepDelay * stepDelayMultiplier, CancellationToken.None);
 
