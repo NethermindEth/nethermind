@@ -15,8 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Castle.DynamicProxy.Generators.Emitters.SimpleAST;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
@@ -65,22 +67,8 @@ namespace Nethermind.AuRa.Test
             _stateProvider = Substitute.For<IStateProvider>();
             _timestamper = Substitute.For<ITimestamper>();
             _auRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
-            _auraConfig = Substitute.For<IAuraConfig>();
             _nodeAddress = TestItem.AddressA;
-            _auRaBlockProducer = new AuRaBlockProducer(
-                _pendingTxSelector,
-                _blockchainProcessor,
-                _stateProvider,
-                _sealer,
-                _blockTree,
-                _blockProcessingQueue,
-                _timestamper,
-                LimboLogs.Instance, 
-                _auRaStepCalculator,
-                _auraConfig, 
-                _nodeAddress);
-
-            _auraConfig.ForceSealing.Returns(true);
+            InitProducer();
             _pendingTxSelector.SelectTransactions(Arg.Any<Keccak>(), Arg.Any<long>()).Returns(Array.Empty<Transaction>());
             _sealer.CanSeal(Arg.Any<long>(), Arg.Any<Keccak>()).Returns(true);
             _sealer.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(c => Task.FromResult(c.Arg<Block>()));
@@ -91,6 +79,30 @@ namespace Nethermind.AuRa.Test
             _blockchainProcessor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>()).Returns(c => c.Arg<Block>());
         }
 
+        private void InitProducer()
+        {
+            AuRaConfig auRaConfig = new AuRaConfig();
+            auRaConfig.ForceSealing = true;
+            InitProducer(auRaConfig);
+        }
+        
+        private void InitProducer(IAuraConfig auraConfig)
+        {
+            _auraConfig = auraConfig;
+            _auRaBlockProducer = new AuRaBlockProducer(
+                _pendingTxSelector,
+                _blockchainProcessor,
+                _stateProvider,
+                _sealer,
+                _blockTree,
+                _blockProcessingQueue,
+                _timestamper,
+                LimboLogs.Instance,
+                _auRaStepCalculator,
+                auraConfig,
+                _nodeAddress);
+        }
+
         [Test, Retry(3)]
         public async Task Produces_block()
         {
@@ -98,9 +110,22 @@ namespace Nethermind.AuRa.Test
         }
         
         [Test]
-        public async Task Does_not_produce_block_when_ProcessingQueueEmpty_not_raised()
+        public async Task Can_produce_first_block_when_private_chains_allowed()
+        {
+            InitProducer(new AuRaConfig{AllowAuRaPrivateChains = true, ForceSealing = true});
+            (await StartStop(false)).ShouldProduceBlocks(Quantity.AtLeastOne());
+        }
+        
+        [Test]
+        public async Task Cannot_produce_first_block_when_private_chains_not_allowed()
         {
             (await StartStop(false)).ShouldProduceBlocks(Quantity.None());
+        }
+        
+        [Test]
+        public async Task Does_not_produce_block_when_ProcessingQueueEmpty_not_raised()
+        {
+            (await StartStop(false, true)).ShouldProduceBlocks(Quantity.None());
         }
 
         [Test]
@@ -120,14 +145,18 @@ namespace Nethermind.AuRa.Test
         [Test]
         public async Task Does_not_produce_block_when_ForceSealing_is_false_and_no_transactions()
         {
-            _auraConfig.ForceSealing.Returns(false);
+            AuRaConfig auRaConfig = new AuRaConfig();
+            auRaConfig.ForceSealing = false;
+            InitProducer(auRaConfig);
             (await StartStop()).ShouldProduceBlocks(Quantity.None());
         }
         
         [Test]
         public async Task Produces_block_when_ForceSealing_is_false_and_there_are_transactions()
         {
-            _auraConfig.ForceSealing.Returns(false);
+            AuRaConfig auRaConfig = new AuRaConfig();
+            auRaConfig.ForceSealing = false;
+            InitProducer(auRaConfig);
             _pendingTxSelector.SelectTransactions(Arg.Any<Keccak>(), Arg.Any<long>()).Returns(new[] {Build.A.Transaction.TestObject});
             (await StartStop()).ShouldProduceBlocks(Quantity.AtLeastOne());
         }
@@ -165,17 +194,21 @@ namespace Nethermind.AuRa.Test
         {
             (await StartStop(true, true)).ShouldProduceBlocks(Quantity.None());
         }
-
-
+        
         private async Task<TestResult> StartStop(bool processingQueueEmpty = true, bool newBestSuggestedBlock = false, int stepDelayMultiplier = 100)
         {
-            ManualResetEvent processedEvent = new ManualResetEvent(false);
+            AutoResetEvent processedEvent = new AutoResetEvent(false);
             _blockTree.SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>())
                 .Returns(AddBlockResult.Added)
-                .AndDoes(c => processedEvent.Set());
+                .AndDoes(c =>
+                {
+                    processedEvent.Set();
+                });
 
             _auRaBlockProducer.Start();
-
+            await processedEvent.WaitOneAsync(_stepDelay * stepDelayMultiplier, CancellationToken.None);
+            _blockTree.ClearReceivedCalls();
+            
             try
             {
                 await Task.Delay(_stepDelay);
@@ -187,8 +220,9 @@ namespace Nethermind.AuRa.Test
                 if (newBestSuggestedBlock)
                 {
                     _blockTree.NewBestSuggestedBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.TestObject));
+                    _blockTree.ClearReceivedCalls();
                 }
-
+                
                 await processedEvent.WaitOneAsync(_stepDelay * stepDelayMultiplier, CancellationToken.None);
 
             }
@@ -196,7 +230,7 @@ namespace Nethermind.AuRa.Test
             {
                 await _auRaBlockProducer.StopAsync();
             }
-            
+
             return new TestResult(q => _blockTree.Received(q).SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>()));
         }
         

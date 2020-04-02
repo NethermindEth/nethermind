@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.Producers
         private Task _producerTask;
         private readonly CancellationTokenSource _loopCancellationTokenSource = new CancellationTokenSource();
         private readonly CancellationTokenSource _stepCancellationTokenSource = new CancellationTokenSource();
-        private bool _canProduce;
+        protected bool CanProduce { get; set; }
 
         protected BaseLoopBlockProducer(
             IPendingTxSelector pendingTxSelector,
@@ -84,7 +84,7 @@ namespace Nethermind.Blockchain.Producers
         {
             while (!_loopCancellationTokenSource.IsCancellationRequested)
             {
-                if (_canProduce && BlockProcessingQueue.IsEmpty)
+                if (CanProduce && BlockProcessingQueue.IsEmpty)
                 {
                     await ProducerLoopStep(_stepCancellationTokenSource.Token);
                 }
@@ -103,12 +103,12 @@ namespace Nethermind.Blockchain.Producers
         
         private void BlockTreeOnNewBestSuggestedBlock(object sender, BlockEventArgs e)
         {
-            _canProduce = false;
+            CanProduce = false;
         }
 
         private void OnBlockProcessorQueueEmpty(object sender, EventArgs e)
         {
-            _canProduce = true;
+            CanProduce = true;
         }
     }
 }
