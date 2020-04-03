@@ -748,14 +748,14 @@ You can use ``Nethermind.Cli`` to fetch these values from nodes by executing the
 
 .. image:: private-networking/staticNodes-aura.png
 
-12. open ``genesis/AuraTest.json`` file and add previously saved ``Node addresses`` to validators list
+12. open ``genesis/AuraTest.json`` file and add previously saved ``Node addresses`` to validators list, leave stage 0 only
 
 ::
 
     "validators": {
     "multi": {
         "0" : {
-        "list": ["0x37db60ec32c212b0fe03904d3d1d70fb8dae8f1e", "0x81c8c234d29b84bb4690d677ccb28299c13f3acf", "0xbedf7c017705c04a2c798a1f9c5059e10906c110"]
+            "list": ["0x37db60ec32c212b0fe03904d3d1d70fb8dae8f1e", "0x81c8c234d29b84bb4690d677ccb28299c13f3acf", "0xbedf7c017705c04a2c798a1f9c5059e10906c110"]
         },
     }
 
