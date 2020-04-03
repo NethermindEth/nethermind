@@ -757,6 +757,7 @@ You can use ``Nethermind.Cli`` to fetch these values from nodes by executing the
         "0" : {
         "list": ["0x37db60ec32c212b0fe03904d3d1d70fb8dae8f1e", "0x81c8c234d29b84bb4690d677ccb28299c13f3acf", "0xbedf7c017705c04a2c798a1f9c5059e10906c110"]
         },
+    }
 
 The file should then look like this:
 
