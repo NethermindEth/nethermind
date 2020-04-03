@@ -268,7 +268,7 @@ namespace Nethermind.Ssz
         }
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong DecodeULong(Span<byte> span, ref int offset)
+        private static ulong DecodeULong(ReadOnlySpan<byte> span, ref int offset)
         {
             ulong result = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(offset, sizeof(ulong)));
             offset += sizeof(ulong);

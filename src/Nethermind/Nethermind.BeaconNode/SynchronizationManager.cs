@@ -127,6 +127,9 @@ namespace Nethermind.BeaconNode
                     Log.RequestingBlocksFromAheadPeer(_logger, peerId, finalizedSlot, peerPeeringStatus.HeadRoot,
                         peerPeeringStatus.HeadSlot, null);
 
+                // TODO: Need more sophistication, like Eth1; as peers are discovered, just put into a pool,
+                // then, when need for sync determined, select the best peer(s) to use.
+                
                 await _networkPeering.RequestBlocksAsync(peerId, peerPeeringStatus.HeadRoot, finalizedSlot,
                     peerPeeringStatus.HeadSlot);
             }

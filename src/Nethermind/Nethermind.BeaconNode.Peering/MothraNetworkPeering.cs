@@ -51,10 +51,19 @@ namespace Nethermind.BeaconNode.Peering
 
         public Task RequestBlocksAsync(string peerId, Root peerHeadRoot, Slot finalizedSlot, Slot peerHeadSlot)
         {
-            // TODO: BeaconBlocksByRange is separate work item... just log that we got here.
+            ulong count = peerHeadSlot - finalizedSlot;
+            ulong step = 1;
+            BeaconBlocksByRange beaconBlocksByRange = new BeaconBlocksByRange(peerHeadRoot, finalizedSlot, count, step);
 
-            LogDebug.RpcSend(_logger, RpcDirection.Request, nameof(MethodUtf8.BeaconBlocksByRange), peerId, 0, null);
-            //throw new NotImplementedException();
+            byte[] peerUtf8 = Encoding.UTF8.GetBytes(peerId);
+            Span<byte> encoded = new byte[Ssz.Ssz.BeaconBlocksByRangeLength];
+            Ssz.Ssz.Encode(encoded, beaconBlocksByRange);
+
+            if (_logger.IsDebug())
+                LogDebug.RpcSend(_logger, RpcDirection.Request, nameof(MethodUtf8.BeaconBlocksByRange), peerId, 0,
+                    null);
+            
+            _mothraLibp2p.SendRpcRequest(MethodUtf8.BeaconBlocksByRange, peerUtf8, encoded);
 
             return Task.CompletedTask;
         }

@@ -15,12 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2.P2p
 {
     public class BeaconBlocksByRange
     {
-        public BeaconBlocksByRange(Root headBlockRoot, ulong startSlot, ulong count, ulong step)
+        public BeaconBlocksByRange(Root headBlockRoot, Slot startSlot, ulong count, ulong step)
         {
             HeadBlockRoot = headBlockRoot;
             StartSlot = startSlot;
@@ -30,7 +31,7 @@ namespace Nethermind.Core2.P2p
 
         public ulong Count { get; }
         public Root HeadBlockRoot { get; }
-        public ulong StartSlot { get; }
+        public Slot StartSlot { get; }
         public ulong Step { get; }
 
         public override string ToString()
