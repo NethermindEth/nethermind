@@ -175,7 +175,7 @@ namespace Nethermind.Blockchain.Find
                                 }
 
                                 logIndexInBlock++;
-                            }e
+                            }
                         }
                         else
                         {
