@@ -27,12 +27,25 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
         public abstract bool IsMultiFeed { get; }
         public SyncFeedState CurrentState { get; private set; }
         public event EventHandler<SyncFeedStateEventArgs> StateChanged;
-        protected void ChangeState(SyncFeedState newState)
+        private void ChangeState(SyncFeedState newState)
         {
             CurrentState = newState;
             StateChanged?.Invoke(this, new SyncFeedStateEventArgs(newState));
         }
 
-        public abstract void Activate();
+        public void Activate()
+        {
+            ChangeState(SyncFeedState.Active);
+        }
+        
+        protected void Finish()
+        {
+            ChangeState(SyncFeedState.Finished);
+        }
+        
+        protected void FallAsleep()
+        {
+            ChangeState(SyncFeedState.Dormant);
+        }
     }
 }

@@ -21,6 +21,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization.FastBlocks;
@@ -48,11 +49,10 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
         private ConcurrentDictionary<FastBlocksBatch, object> _sentBatches = new ConcurrentDictionary<FastBlocksBatch, object>();
         private ConcurrentStack<FastBlocksBatch> _pendingBatches = new ConcurrentStack<FastBlocksBatch>();
 
-        private object _empty = new object();
+        private object _dummyObject = new object();
         private object _handlerLock = new object();
 
         private Keccak _startBodyHash;
-
         private Keccak _lowestRequestedBodyHash;
 
         private long _pivotNumber;
@@ -75,45 +75,56 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             {
                 BodiesRequestSize = NethermindSyncLimits.MaxBodyFetch;
             }
+
+            if (!_syncConfig.FastBlocks)
+            {
+                throw new InvalidOperationException("Entered fast blocks mode without fast blocks enabled in configuration.");
+            }
+
+            _pivotNumber = _syncConfig.PivotNumberParsed;
+            _pivotHash = _syncConfig.PivotHashParsed;
+
+            Block lowestInsertedBody = _blockTree.LowestInsertedBody;
+            _startBodyHash = lowestInsertedBody?.Hash ?? _pivotHash;
+
+            _lowestRequestedBodyHash = _startBodyHash;
         }
 
-        private bool _isMoreLikelyToBeHandlingDependenciesNow;
+        private int _isMoreLikelyToBeHandlingDependenciesNow;
 
         private FastBlocksBatchType ResolveBatchType()
         {
-            if (_syncConfig.BeamSync && _blockTree.LowestInsertedHeader != null)
+            bool shouldDownloadBodies = _syncConfig.DownloadBodiesInFastSync;
+            bool isBeamSync = _syncConfig.BeamSync;
+            bool anyHeaderSynced = _blockTree.LowestInsertedHeader != null;
+            bool allBodiesDownloaded = (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
+
+            bool isFinished = !shouldDownloadBodies
+                              || allBodiesDownloaded
+                              || isBeamSync && anyHeaderSynced;
+
+            if (isFinished)
+            {
+                _syncReport.FastBlocksBodies.Update(_pivotNumber);
+                _syncReport.FastBlocksBodies.MarkEnd();
+                Finish();
+                return FastBlocksBatchType.None;
+            }
+
+            bool requestedGenesis = _lowestRequestedBodyHash == _blockTree.Genesis.Hash;
+            if (requestedGenesis)
             {
                 return FastBlocksBatchType.None;
             }
 
-            bool bodiesDownloaded = (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
-            if (!bodiesDownloaded && _syncConfig.DownloadBodiesInFastSync)
-            {
-                return _lowestRequestedBodyHash == _blockTree.Genesis.Hash
-                    ? FastBlocksBatchType.None
-                    : FastBlocksBatchType.Bodies;
-            }
-
-            _syncReport.FastBlocksBodies.Update(_pivotNumber);
-            _syncReport.FastBlocksBodies.MarkEnd();
-            ChangeState(SyncFeedState.Finished);
-
-            return FastBlocksBatchType.None;
+            return FastBlocksBatchType.Bodies;
         }
 
         public override Task<FastBlocksBatch> PrepareRequest()
         {
-            if (!_isMoreLikelyToBeHandlingDependenciesNow)
+            if(Interlocked.CompareExchange(ref _isMoreLikelyToBeHandlingDependenciesNow, 1, 0) == 0)
             {
-                _isMoreLikelyToBeHandlingDependenciesNow = true;
-                try
-                {
-                    HandleDependentBatches();
-                }
-                finally
-                {
-                    _isMoreLikelyToBeHandlingDependenciesNow = false;
-                }
+                HandleDependentBatches();
             }
 
             FastBlocksBatch batch;
@@ -213,49 +224,13 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 }
             }
 
-            _sentBatches.TryAdd(batch, _empty);
+            _sentBatches.TryAdd(batch, _dummyObject);
             if (batch.Headers != null && batch.Headers.StartNumber >= ((_blockTree.LowestInsertedHeader?.Number ?? 0) - 2048))
             {
                 batch.Prioritized = true;
             }
-
-            LogStateOnPrepare();
+            
             return Task.FromResult(batch);
-        }
-
-        private void LogStateOnPrepare()
-        {
-            if (_logger.IsTrace)
-            {
-                lock (_handlerLock)
-                {
-                    Dictionary<long, string> all = new Dictionary<long, string>();
-                    StringBuilder builder = new StringBuilder();
-                    foreach (var pendingBatch in _pendingBatches
-                        .Where(b => b.BatchType == FastBlocksBatchType.Headers)
-                        .OrderByDescending(d => d.Headers.EndNumber)
-                        .ThenByDescending(d => d.Headers.StartNumber))
-                    {
-                        all.Add(pendingBatch.Headers.EndNumber, $"  PENDING    {pendingBatch}");
-                    }
-
-                    foreach (var sentBatch in _sentBatches
-                        .Where(sb => sb.Key.BatchType == FastBlocksBatchType.Headers)
-                        .OrderByDescending(d => d.Key.Headers.EndNumber)
-                        .ThenByDescending(d => d.Key.Headers.StartNumber))
-                    {
-                        all.Add(sentBatch.Key.Headers.EndNumber, $"  SENT       {sentBatch.Key}");
-                    }
-
-                    foreach (KeyValuePair<long, string> keyValuePair in all
-                        .OrderByDescending(kvp => kvp.Key))
-                    {
-                        builder.AppendLine(keyValuePair.Value);
-                    }
-
-                    _logger.Trace($"{builder}");
-                }
-            }
         }
 
         private void HandleDependentBatches()
@@ -286,7 +261,6 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             {
                 batch.MarkHandlingStart();
                 if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
-                batch.Allocation = null;
                 _pendingBatches.Push(batch);
                 batch.MarkHandlingEnd();
                 return SyncBatchResponseHandlingResult.NoData; //(BlocksDataHandlerResult.OK, 0);
@@ -344,7 +318,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                     OmmersHash.Calculate(block) != block.OmmersHash)
                 {
                     if (_logger.IsWarn) _logger.Warn($"{batch} - reporting INVALID - tx or ommers");
-                    _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.OriginalDataSource, $"invalid tx or ommers root");
+                    _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, $"invalid tx or ommers root");
                     break;
                 }
 
@@ -396,28 +370,6 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
             _syncReport.BodiesInQueue.Update(_bodiesDependencies.Sum(d => d.Value.Count));
             return validResponsesCount;
-        }
-
-        public override void Activate()
-        {
-            if (!_syncConfig.FastBlocks)
-            {
-                throw new InvalidOperationException("Entered fast blocks mode without fast blocks enabled in configuration.");
-            }
-
-            _pivotNumber = LongConverter.FromString(_syncConfig.PivotNumber ?? "0x0");
-            _pivotHash = _syncConfig.PivotHash == null ? null : new Keccak(_syncConfig.PivotHash);
-
-            Block lowestInsertedBody = _blockTree.LowestInsertedBody;
-            _startBodyHash = lowestInsertedBody?.Hash ?? _pivotHash;
-
-            _lowestRequestedBodyHash = _startBodyHash;
-
-            _sentBatches.Clear();
-            _pendingBatches.Clear();
-            _bodiesDependencies.Clear();
-            
-            ChangeState(SyncFeedState.Active);
         }
     }
 }

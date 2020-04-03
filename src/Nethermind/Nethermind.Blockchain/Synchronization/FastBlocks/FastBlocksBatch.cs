@@ -41,8 +41,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         public ReceiptsSyncBatch Receipts { get; set; }
         public HeadersSyncBatch Headers { get; set; }
         public BodiesSyncBatch Bodies { get; set; }
-        public SyncPeerAllocation Allocation { get; set; }
-        public PeerInfo OriginalDataSource { get; set; }
+        public PeerInfo ResponseSourcePeer { get; set; }
 
         public FastBlocksBatch()
         {
@@ -124,7 +123,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             }
             
             string priority = Prioritized ? "HIGH" : "LOW";
-            return $"{BatchType} {details} [{priority}] [times: S:{SchedulingTime:F0}ms|R:{RequestTime:F0}ms|V:{ValidationTime:F0}ms|W:{WaitingTime:F0}ms|H:{HandlingTime:F0}ms|A:{AgeInMs:F0}ms, retries {Retries}] min#: {MinNumber} {Allocation?.Current ?? OriginalDataSource}";
+            return $"{BatchType} {details} [{priority}] [times: S:{SchedulingTime:F0}ms|R:{RequestTime:F0}ms|V:{ValidationTime:F0}ms|W:{WaitingTime:F0}ms|H:{HandlingTime:F0}ms|A:{AgeInMs:F0}ms, retries {Retries}] min#: {MinNumber} {ResponseSourcePeer}";
         }
     }
 }

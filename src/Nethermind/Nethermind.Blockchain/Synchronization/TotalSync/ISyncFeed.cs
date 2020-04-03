@@ -25,6 +25,10 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
         event EventHandler<SyncFeedStateEventArgs> StateChanged;
         Task<T> PrepareRequest();
         SyncBatchResponseHandlingResult HandleResponse(T response);
+        
+        /// <summary>
+        /// Multifeeds can prepare and handle multiple requests concurrently.
+        /// </summary>
         bool IsMultiFeed { get; }
         void Activate();
     }

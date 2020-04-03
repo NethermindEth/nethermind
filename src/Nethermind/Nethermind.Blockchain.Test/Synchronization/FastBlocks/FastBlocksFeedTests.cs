@@ -565,13 +565,13 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         {
             _syncConfig.FastBlocks = false;
             SetupFeed();
-            
+
             LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
             SetupSyncPeers(syncPeer1);
-            
+
             Assert.Throws<InvalidOperationException>(() => RunFeed(1000));
         }
-        
+
         [Test]
         public void Receipts_finish_properly_when_the_last_batch_has_no_receipts()
         {
@@ -583,9 +583,9 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             _syncConfig.DownloadBodiesInFastSync = true;
             _syncConfig.DownloadReceiptsInFastSync = true;
             _syncConfig.FastBlocks = true;
-            
+
             _feed = new FastBlocksFeed(_specProvider, _localBlockTree, _localReceiptStorage, _syncPeerPool, _syncConfig, NullSyncReport.Instance, LimboLogs.Instance);
-            
+
             LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048NoTransactions);
 
             SetupSyncPeers(syncPeer1);
@@ -594,13 +594,13 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SyncProgressResolver resolver = new SyncProgressResolver(
                 _localBlockTree,
-                _localReceiptStorage, 
+                _localReceiptStorage,
                 Substitute.For<INodeDataDownloader>(),
                 _syncConfig,
                 LimboLogs.Instance);
-            
+
             Assert.True(resolver.IsFastBlocksFinished(), "is fast blocks finished");
-            
+
             AssertTreeSynced(_validTree2048NoTransactions, true, true);
         }
 
@@ -790,8 +790,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                                     syncPeer.BusyUntil = _time + _timeoutTime;
                                 }
 
-                                batch.Allocation = new SyncPeerAllocation(new StaticSelectionStrategy(new PeerInfo(syncPeer)));
-                                batch.Allocation.AllocateBestPeer(null, null, null);
+                                batch.ResponseSourcePeer = new PeerInfo(syncPeer);
                                 _pendingResponses.Add(syncPeer, batch);
                                 TestContext.WriteLine($"{_time,6} |SENDING {batch} REQUEST TO {syncPeer.Node:s}");
                                 wasAssigned = true;

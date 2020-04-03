@@ -219,7 +219,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.TotalSync
                         if (_pendingRequests == 0)
                         {
                             Console.WriteLine("Changing to finished");
-                            ChangeState(SyncFeedState.Finished);
+                            Finish();
                         }
 
                         return null;
@@ -237,11 +237,6 @@ namespace Nethermind.Blockchain.Test.Synchronization.TotalSync
                 Console.WriteLine("Incrementing");
                 Interlocked.Increment(ref _pendingRequests);
                 return testBatch;
-            }
-
-            public override void Activate()
-            {
-                ChangeState(SyncFeedState.Active);
             }
         }
 

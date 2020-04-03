@@ -40,15 +40,10 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
         public override SyncBatchResponseHandlingResult HandleResponse(BlocksRequest response)
         {
-            ChangeState(SyncFeedState.Dormant);
+            FallAsleep();
             return SyncBatchResponseHandlingResult.OK;
         }
 
         public override bool IsMultiFeed => false;
-
-        public override void Activate()
-        {
-            ChangeState(SyncFeedState.Active);
-        }
     }
 }

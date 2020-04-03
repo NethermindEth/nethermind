@@ -18,6 +18,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -26,9 +27,7 @@ using Nethermind.Blockchain.Synchronization.SyncLimits;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using Nethermind.State.Proofs;
 
 namespace Nethermind.Blockchain.Synchronization.TotalSync
@@ -48,23 +47,26 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
         private ConcurrentDictionary<long, List<(Block, TxReceipt[])>> _receiptDependencies =
             new ConcurrentDictionary<long, List<(Block, TxReceipt[])>>();
+
         private ConcurrentDictionary<FastBlocksBatch, object> _sentBatches =
             new ConcurrentDictionary<FastBlocksBatch, object>();
+
         private ConcurrentStack<FastBlocksBatch> _pendingBatches =
             new ConcurrentStack<FastBlocksBatch>();
 
         private object _dummyObject = new object();
 
+        private bool _hasRequestedFinal;
         private Keccak _startReceiptsHash;
         private Keccak _lowestRequestedReceiptsHash;
-        private bool _isMoreLikelyToBeHandlingDependenciesNow;
+        private int _isMoreLikelyToBeHandlingDependenciesNow;
 
         private long _pivotNumber;
         private Keccak _pivotHash;
 
         public bool IsFinished => _pendingBatches.Count
-                                  + _sentBatches.Count
-                                  + _receiptDependencies.Count == 0;
+            + _sentBatches.Count
+            + _receiptDependencies.Count == 0;
 
         public FastReceiptsSyncFeed(ISpecProvider specProvider, IBlockTree blockTree, IReceiptStorage receiptStorage, IEthSyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
         {
@@ -75,44 +77,50 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+
+            if (!_syncConfig.FastBlocks)
+            {
+                throw new InvalidOperationException("Entered fast blocks mode without fast blocks enabled in configuration.");
+            }
+
+            _pivotNumber = _syncConfig.PivotNumberParsed;
+            _pivotHash = _syncConfig.PivotHashParsed;
+
+            _startReceiptsHash = _blockTree.FindHash(_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) ?? _pivotHash;
+            _lowestRequestedReceiptsHash = _startReceiptsHash;
         }
+        
+        public override bool IsMultiFeed => true;
 
         private FastBlocksBatchType ResolveBatchType()
         {
-            if (_syncConfig.BeamSync && _blockTree.LowestInsertedHeader != null)
+            bool shouldDownloadReceipts = _syncConfig.DownloadReceiptsInFastSync;
+            bool allReceiptsDownloaded = _receiptStorage.LowestInsertedReceiptBlock == 1;
+            bool isBeamSync = _syncConfig.BeamSync;
+            bool anyHeaderDownloaded = _blockTree.LowestInsertedHeader != null;
+
+            bool isFinished = !shouldDownloadReceipts
+                              || allReceiptsDownloaded
+                              || isBeamSync && anyHeaderDownloaded;
+
+            if (isFinished)
             {
-                ChangeState(SyncFeedState.Finished);
+                _syncReport.FastBlocksReceipts.Update(_pivotNumber);
+                _syncReport.FastBlocksReceipts.MarkEnd();
+                Finish();
                 return FastBlocksBatchType.None;
             }
 
-            bool receiptsDownloaded = _receiptStorage.LowestInsertedReceiptBlock == 1;
-            if (!receiptsDownloaded && _syncConfig.DownloadReceiptsInFastSync)
-            {
-                return _lowestRequestedReceiptsHash == _blockTree.Genesis.Hash
-                    ? FastBlocksBatchType.None
-                    : FastBlocksBatchType.Receipts;
-            }
-
-            _syncReport.FastBlocksReceipts.Update(_pivotNumber);
-            _syncReport.FastBlocksReceipts.MarkEnd();
-            ChangeState(SyncFeedState.Finished);
-
-            return FastBlocksBatchType.None;
+            return _hasRequestedFinal
+                ? FastBlocksBatchType.None
+                : FastBlocksBatchType.Receipts;
         }
 
         public override Task<FastBlocksBatch> PrepareRequest()
         {
-            if (!_isMoreLikelyToBeHandlingDependenciesNow)
+            if(Interlocked.CompareExchange(ref _isMoreLikelyToBeHandlingDependenciesNow, 1, 0) == 0)
             {
-                _isMoreLikelyToBeHandlingDependenciesNow = true;
-                try
-                {
-                    HandleDependentBatches();
-                }
-                finally
-                {
-                    _isMoreLikelyToBeHandlingDependenciesNow = false;
-                }
+                HandleDependentBatches();
             }
 
             FastBlocksBatch batch;
@@ -130,7 +138,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                     {
                         /* finish this sync round
                            possibly continue in the next sync round */
-                        return Task.FromResult((FastBlocksBatch)null);
+                        return Task.FromResult((FastBlocksBatch) null);
                     }
 
                     case FastBlocksBatchType.Receipts:
@@ -140,20 +148,20 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                         Block block = predecessorBlock;
                         if (block == null)
                         {
-                            return Task.FromResult((FastBlocksBatch)null);
+                            return Task.FromResult((FastBlocksBatch) null);
                         }
 
                         if (_lowestRequestedReceiptsHash != _pivotHash)
                         {
                             if (block.ParentHash == _blockTree.Genesis.Hash)
                             {
-                                return Task.FromResult((FastBlocksBatch)null);
+                                return Task.FromResult((FastBlocksBatch) null);
                             }
 
                             block = _blockTree.FindParent(predecessorBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                             if (block == null)
                             {
-                                return Task.FromResult((FastBlocksBatch)null);
+                                return Task.FromResult((FastBlocksBatch) null);
                             }
                         }
                         else
@@ -210,7 +218,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                             // leaving this the bad way as it may be tricky to confirm that it is not called somewhere else
                             // at least I will add a test for it now...
                             _receiptStorage.LowestInsertedReceiptBlock = 1;
-                            return Task.FromResult((FastBlocksBatch)null);
+                            return Task.FromResult((FastBlocksBatch) null);
                         }
 
                         break;
@@ -227,6 +235,11 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 batch.Prioritized = true;
             }
 
+            if (batch.Receipts.IsFinal)
+            {
+                _hasRequestedFinal = true;
+            }
+            
             return Task.FromResult(batch);
         }
 
@@ -236,7 +249,6 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             {
                 batch.MarkHandlingStart();
                 if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
-                batch.Allocation = null;
                 _pendingBatches.Push(batch);
                 batch.MarkHandlingEnd();
                 return SyncBatchResponseHandlingResult.NoData; //(BlocksDataHandlerResult.OK, 0);
@@ -264,29 +276,6 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 batch.MarkHandlingEnd();
                 _sentBatches.TryRemove(batch, out _);
             }
-        }
-
-        public override bool IsMultiFeed => true;
-        
-        public override void Activate()
-        {
-            if (!_syncConfig.FastBlocks)
-            {
-                throw new InvalidOperationException("Entered fast blocks mode without fast blocks enabled in configuration.");
-            }
-
-            _pivotNumber = LongConverter.FromString(_syncConfig.PivotNumber ?? "0x0");
-            _pivotHash = _syncConfig.PivotHash == null ? null : new Keccak(_syncConfig.PivotHash);
-
-            _startReceiptsHash = _blockTree.FindHash(_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) ?? _pivotHash;
-
-            _lowestRequestedReceiptsHash = _startReceiptsHash;
-
-            _sentBatches.Clear();
-            _pendingBatches.Clear();
-            _receiptDependencies.Clear();
-            
-            ChangeState(SyncFeedState.Active);
         }
 
         private void HandleDependentBatches()
@@ -343,7 +332,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                     if (receiptsRoot != block.ReceiptsRoot)
                     {
                         if (_logger.IsWarn) _logger.Warn($"{batch} - invalid receipt root");
-                        _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.OriginalDataSource, "invalid receipts root");
+                        _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, "invalid receipts root");
                         wasInvalid = true;
                     }
                 }
@@ -376,7 +365,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                             validReceipts.Add((_blockTree.FindBlock(1), Array.Empty<TxReceipt>()));
                         }
                     }
-                    
+
                     if (lastPredecessor.HasValue && lastPredecessor.Value != _receiptStorage.LowestInsertedReceiptBlock)
                     {
                         _receiptDependencies.TryAdd(lastPredecessor.Value, validReceipts);
@@ -399,7 +388,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 return added;
             }
         }
-        
+
         private void InsertReceipts(List<(Block, TxReceipt[])> receipts)
         {
             for (int i = 0; i < receipts.Count; i++)
