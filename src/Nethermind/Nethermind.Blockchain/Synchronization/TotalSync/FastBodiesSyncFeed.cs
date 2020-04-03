@@ -37,7 +37,8 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 {
     public class FastBodiesSyncFeed : SyncFeed<FastBlocksBatch>
     {
-        private int BodiesRequestSize = GethSyncLimits.MaxBodyFetch;
+        private int _bodiesRequestSize = GethSyncLimits.MaxBodyFetch;
+        private object _dummyObject = new object();
 
         private ILogger _logger;
         private IBlockTree _blockTree;
@@ -49,11 +50,9 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
         private ConcurrentDictionary<FastBlocksBatch, object> _sentBatches = new ConcurrentDictionary<FastBlocksBatch, object>();
         private ConcurrentStack<FastBlocksBatch> _pendingBatches = new ConcurrentStack<FastBlocksBatch>();
 
-        private object _dummyObject = new object();
-        private object _handlerLock = new object();
-
         private Keccak _startBodyHash;
         private Keccak _lowestRequestedBodyHash;
+        private int _isMoreLikelyToBeHandlingDependenciesNow;
 
         private long _pivotNumber;
         private Keccak _pivotHash;
@@ -73,7 +72,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
             if (!_syncConfig.UseGethLimitsInFastBlocks)
             {
-                BodiesRequestSize = NethermindSyncLimits.MaxBodyFetch;
+                _bodiesRequestSize = NethermindSyncLimits.MaxBodyFetch;
             }
 
             if (!_syncConfig.FastBlocks)
@@ -90,9 +89,9 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             _lowestRequestedBodyHash = _startBodyHash;
         }
 
-        private int _isMoreLikelyToBeHandlingDependenciesNow;
+        public override bool IsMultiFeed => true;
 
-        private FastBlocksBatchType ResolveBatchType()
+        private bool AnyBatchesLeftToPrepare()
         {
             bool shouldDownloadBodies = _syncConfig.DownloadBodiesInFastSync;
             bool isBeamSync = _syncConfig.BeamSync;
@@ -108,26 +107,21 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 _syncReport.FastBlocksBodies.Update(_pivotNumber);
                 _syncReport.FastBlocksBodies.MarkEnd();
                 Finish();
-                return FastBlocksBatchType.None;
+                return false;
             }
 
             bool requestedGenesis = _lowestRequestedBodyHash == _blockTree.Genesis.Hash;
-            if (requestedGenesis)
-            {
-                return FastBlocksBatchType.None;
-            }
-
-            return FastBlocksBatchType.Bodies;
+            return !requestedGenesis;
         }
 
         public override Task<FastBlocksBatch> PrepareRequest()
         {
-            if(Interlocked.CompareExchange(ref _isMoreLikelyToBeHandlingDependenciesNow, 1, 0) == 0)
+            if (Interlocked.CompareExchange(ref _isMoreLikelyToBeHandlingDependenciesNow, 1, 0) == 0)
             {
                 HandleDependentBatches();
             }
 
-            FastBlocksBatch batch;
+            FastBlocksBatch batch = null;
             if (_pendingBatches.Any())
             {
                 _pendingBatches.TryPop(out batch);
@@ -135,101 +129,85 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             }
             else
             {
-                FastBlocksBatchType fastBlocksBatchType = ResolveBatchType();
-                switch (fastBlocksBatchType)
+                bool anyBatchesLeftToPrepare = AnyBatchesLeftToPrepare();
+                if (anyBatchesLeftToPrepare)
                 {
-                    case FastBlocksBatchType.None:
+                    Keccak hash = _lowestRequestedBodyHash;
+                    BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                    if (header == null)
                     {
-                        /* finish this sync round
-                           possibly continue in the next sync round */
                         return Task.FromResult((FastBlocksBatch) null);
                     }
 
-                    case FastBlocksBatchType.Bodies:
+                    if (_lowestRequestedBodyHash != _pivotHash)
                     {
-                        Keccak hash = _lowestRequestedBodyHash;
-                        BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                        if (header == null)
+                        if (header.ParentHash == _blockTree.Genesis.Hash)
                         {
                             return Task.FromResult((FastBlocksBatch) null);
                         }
 
-                        if (_lowestRequestedBodyHash != _pivotHash)
+                        header = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                        if (header == null)
                         {
-                            if (header.ParentHash == _blockTree.Genesis.Hash)
-                            {
-                                return Task.FromResult((FastBlocksBatch) null);
-                            }
-
-                            header = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                            if (header == null)
-                            {
-                                return Task.FromResult((FastBlocksBatch) null);
-                            }
+                            return Task.FromResult((FastBlocksBatch) null);
                         }
+                    }
 
-                        int requestSize = (int) Math.Min(header.Number, BodiesRequestSize);
-                        batch = new FastBlocksBatch();
-                        batch.Bodies = new BodiesSyncBatch();
-                        batch.Bodies.Request = new Keccak[requestSize];
-                        batch.Bodies.Headers = new BlockHeader[requestSize];
-                        batch.MinNumber = header.Number;
-                        if ((_blockTree.LowestInsertedBody?.Number ?? 0) - header.Number < 1024)
-                        {
-                            batch.Prioritized = true;
-                        }
+                    int requestSize = (int) Math.Min(header.Number, _bodiesRequestSize);
+                    batch = new FastBlocksBatch();
+                    batch.Bodies = new BodiesSyncBatch();
+                    batch.Bodies.Request = new Keccak[requestSize];
+                    batch.Bodies.Headers = new BlockHeader[requestSize];
+                    batch.MinNumber = header.Number;
 
-                        int collectedRequests = 0;
-                        while (collectedRequests < requestSize)
-                        {
-                            int i = requestSize - collectedRequests - 1;
+                    int collectedRequests = 0;
+                    while (collectedRequests < requestSize)
+                    {
+                        int i = requestSize - collectedRequests - 1;
 //                            while (header != null && !header.HasBody)
 //                            {
 //                                header = _blockTree.FindHeader(header.ParentHash);
 //                            }
 
-                            if (header == null)
-                            {
-                                break;
-                            }
-
-                            batch.Bodies.Headers[i] = header;
-                            collectedRequests++;
-                            _lowestRequestedBodyHash = batch.Bodies.Request[i] = header.Hash;
-
-                            header = _blockTree.FindHeader(header.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                        }
-
-                        if (collectedRequests == 0)
+                        if (header == null)
                         {
-                            return Task.FromResult((FastBlocksBatch) null);
+                            break;
                         }
 
-                        //only for the final one
-                        if (collectedRequests < requestSize)
-                        {
-                            BlockHeader[] currentHeaders = batch.Bodies.Headers;
-                            Keccak[] currentRequests = batch.Bodies.Request;
-                            batch.Bodies.Request = new Keccak[collectedRequests];
-                            batch.Bodies.Headers = new BlockHeader[collectedRequests];
-                            Array.Copy(currentHeaders, requestSize - collectedRequests, batch.Bodies.Headers, 0, collectedRequests);
-                            Array.Copy(currentRequests, requestSize - collectedRequests, batch.Bodies.Request, 0, collectedRequests);
-                        }
+                        batch.Bodies.Headers[i] = header;
+                        collectedRequests++;
+                        _lowestRequestedBodyHash = batch.Bodies.Request[i] = header.Hash;
 
-                        break;
+                        header = _blockTree.FindHeader(header.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                     }
 
-                    default:
-                        throw new NotSupportedException($"{nameof(FastBlocksBatchType)}.{nameof(fastBlocksBatchType)} not supported");
+                    if (collectedRequests == 0)
+                    {
+                        return Task.FromResult((FastBlocksBatch) null);
+                    }
+
+                    //only for the final one
+                    if (collectedRequests < requestSize)
+                    {
+                        BlockHeader[] currentHeaders = batch.Bodies.Headers;
+                        Keccak[] currentRequests = batch.Bodies.Request;
+                        batch.Bodies.Request = new Keccak[collectedRequests];
+                        batch.Bodies.Headers = new BlockHeader[collectedRequests];
+                        Array.Copy(currentHeaders, requestSize - collectedRequests, batch.Bodies.Headers, 0, collectedRequests);
+                        Array.Copy(currentRequests, requestSize - collectedRequests, batch.Bodies.Request, 0, collectedRequests);
+                    }
                 }
             }
 
-            _sentBatches.TryAdd(batch, _dummyObject);
-            if (batch.Headers != null && batch.Headers.StartNumber >= ((_blockTree.LowestInsertedHeader?.Number ?? 0) - 2048))
+            if (batch != null)
             {
-                batch.Prioritized = true;
+                _sentBatches.TryAdd(batch, _dummyObject);
+                if ((_blockTree.LowestInsertedBody?.Number ?? 0) - batch.Bodies.Headers[0].Number < 1024)
+                {
+                    batch.Prioritized = true;
+                }
             }
-            
+
             return Task.FromResult(batch);
         }
 
@@ -298,8 +276,6 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 _sentBatches.TryRemove(batch, out _);
             }
         }
-
-        public override bool IsMultiFeed => true;
 
         private int InsertBodies(FastBlocksBatch batch)
         {

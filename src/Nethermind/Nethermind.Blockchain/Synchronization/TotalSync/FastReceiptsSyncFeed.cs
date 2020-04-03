@@ -89,10 +89,10 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             _startReceiptsHash = _blockTree.FindHash(_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) ?? _pivotHash;
             _lowestRequestedReceiptsHash = _startReceiptsHash;
         }
-        
+
         public override bool IsMultiFeed => true;
 
-        private FastBlocksBatchType ResolveBatchType()
+        private bool AnyBatchesLeftToPrepare()
         {
             bool shouldDownloadReceipts = _syncConfig.DownloadReceiptsInFastSync;
             bool allReceiptsDownloaded = _receiptStorage.LowestInsertedReceiptBlock == 1;
@@ -108,22 +108,20 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 _syncReport.FastBlocksReceipts.Update(_pivotNumber);
                 _syncReport.FastBlocksReceipts.MarkEnd();
                 Finish();
-                return FastBlocksBatchType.None;
+                return false;
             }
 
-            return _hasRequestedFinal
-                ? FastBlocksBatchType.None
-                : FastBlocksBatchType.Receipts;
+            return !_hasRequestedFinal;
         }
 
         public override Task<FastBlocksBatch> PrepareRequest()
         {
-            if(Interlocked.CompareExchange(ref _isMoreLikelyToBeHandlingDependenciesNow, 1, 0) == 0)
+            if (Interlocked.CompareExchange(ref _isMoreLikelyToBeHandlingDependenciesNow, 1, 0) == 0)
             {
                 HandleDependentBatches();
             }
 
-            FastBlocksBatch batch;
+            FastBlocksBatch batch = null;
             if (_pendingBatches.Any())
             {
                 _pendingBatches.TryPop(out batch);
@@ -131,101 +129,82 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             }
             else
             {
-                FastBlocksBatchType fastBlocksBatchType = ResolveBatchType();
-                switch (fastBlocksBatchType)
+                Keccak hash = _lowestRequestedReceiptsHash;
+                Block predecessorBlock = _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                Block block = predecessorBlock;
+                if (block == null)
                 {
-                    case FastBlocksBatchType.None:
+                    return Task.FromResult((FastBlocksBatch) null);
+                }
+
+                if (_lowestRequestedReceiptsHash != _pivotHash)
+                {
+                    if (block.ParentHash == _blockTree.Genesis.Hash)
                     {
-                        /* finish this sync round
-                           possibly continue in the next sync round */
                         return Task.FromResult((FastBlocksBatch) null);
                     }
 
-                    case FastBlocksBatchType.Receipts:
+                    block = _blockTree.FindParent(predecessorBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                    if (block == null)
                     {
-                        Keccak hash = _lowestRequestedReceiptsHash;
-                        Block predecessorBlock = _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                        Block block = predecessorBlock;
-                        if (block == null)
-                        {
-                            return Task.FromResult((FastBlocksBatch) null);
-                        }
+                        return Task.FromResult((FastBlocksBatch) null);
+                    }
+                }
+                else
+                {
+                    predecessorBlock = null;
+                }
 
-                        if (_lowestRequestedReceiptsHash != _pivotHash)
-                        {
-                            if (block.ParentHash == _blockTree.Genesis.Hash)
-                            {
-                                return Task.FromResult((FastBlocksBatch) null);
-                            }
+                int requestSize = (int) Math.Min(block.Number, ReceiptsRequestSize);
+                batch = new FastBlocksBatch();
+                batch.Receipts = new ReceiptsSyncBatch();
+                batch.Receipts.Predecessors = new long?[requestSize];
+                batch.Receipts.Blocks = new Block[requestSize];
+                batch.Receipts.Request = new Keccak[requestSize];
+                batch.MinNumber = block.Number;
+                if (_receiptStorage.LowestInsertedReceiptBlock - block.Number < 1024)
+                {
+                    batch.Prioritized = true;
+                }
 
-                            block = _blockTree.FindParent(predecessorBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                            if (block == null)
-                            {
-                                return Task.FromResult((FastBlocksBatch) null);
-                            }
-                        }
-                        else
-                        {
-                            predecessorBlock = null;
-                        }
-
-                        int requestSize = (int) Math.Min(block.Number, ReceiptsRequestSize);
-                        batch = new FastBlocksBatch();
-                        batch.Receipts = new ReceiptsSyncBatch();
-                        batch.Receipts.Predecessors = new long?[requestSize];
-                        batch.Receipts.Blocks = new Block[requestSize];
-                        batch.Receipts.Request = new Keccak[requestSize];
-                        batch.MinNumber = block.Number;
-                        if (_receiptStorage.LowestInsertedReceiptBlock - block.Number < 1024)
-                        {
-                            batch.Prioritized = true;
-                        }
-
-                        int collectedRequests = 0;
-                        while (collectedRequests < requestSize)
-                        {
-                            _lowestRequestedReceiptsHash = block.Hash;
-                            if (block.Transactions.Length > 0)
-                            {
-                                batch.Receipts.Predecessors[collectedRequests] = predecessorBlock?.Number;
-                                batch.Receipts.Blocks[collectedRequests] = block;
-                                batch.Receipts.Request[collectedRequests] = block.Hash;
-                                predecessorBlock = block;
-                                collectedRequests++;
-                            }
-
-                            block = _blockTree.FindBlock(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                            if (block == null || block.IsGenesis)
-                            {
-                                break;
-                            }
-                        }
-
-                        if (collectedRequests < requestSize)
-                        {
-                            Block[] currentBlocks = batch.Receipts.Blocks;
-                            Keccak[] currentRequests = batch.Receipts.Request;
-                            batch.Receipts.Blocks = new Block[collectedRequests];
-                            batch.Receipts.Request = new Keccak[collectedRequests];
-                            Array.Copy(currentBlocks, 0, batch.Receipts.Blocks, 0, collectedRequests);
-                            Array.Copy(currentRequests, 0, batch.Receipts.Request, 0, collectedRequests);
-                            batch.Receipts.IsFinal = _blockTree.LowestInsertedBody.Number == 1;
-                        }
-
-                        if (collectedRequests == 0 && _blockTree.LowestInsertedBody.Number == 1 && (block?.IsGenesis ?? true))
-                        {
-                            // special finishing call
-                            // leaving this the bad way as it may be tricky to confirm that it is not called somewhere else
-                            // at least I will add a test for it now...
-                            _receiptStorage.LowestInsertedReceiptBlock = 1;
-                            return Task.FromResult((FastBlocksBatch) null);
-                        }
-
-                        break;
+                int collectedRequests = 0;
+                while (collectedRequests < requestSize)
+                {
+                    _lowestRequestedReceiptsHash = block.Hash;
+                    if (block.Transactions.Length > 0)
+                    {
+                        batch.Receipts.Predecessors[collectedRequests] = predecessorBlock?.Number;
+                        batch.Receipts.Blocks[collectedRequests] = block;
+                        batch.Receipts.Request[collectedRequests] = block.Hash;
+                        predecessorBlock = block;
+                        collectedRequests++;
                     }
 
-                    default:
-                        throw new NotSupportedException($"{nameof(FastBlocksBatchType)}.{nameof(fastBlocksBatchType)} not supported");
+                    block = _blockTree.FindBlock(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                    if (block == null || block.IsGenesis)
+                    {
+                        break;
+                    }
+                }
+
+                if (collectedRequests < requestSize)
+                {
+                    Block[] currentBlocks = batch.Receipts.Blocks;
+                    Keccak[] currentRequests = batch.Receipts.Request;
+                    batch.Receipts.Blocks = new Block[collectedRequests];
+                    batch.Receipts.Request = new Keccak[collectedRequests];
+                    Array.Copy(currentBlocks, 0, batch.Receipts.Blocks, 0, collectedRequests);
+                    Array.Copy(currentRequests, 0, batch.Receipts.Request, 0, collectedRequests);
+                    batch.Receipts.IsFinal = _blockTree.LowestInsertedBody.Number == 1;
+                }
+
+                if (collectedRequests == 0 && _blockTree.LowestInsertedBody.Number == 1 && (block?.IsGenesis ?? true))
+                {
+                    // special finishing call
+                    // leaving this the bad way as it may be tricky to confirm that it is not called somewhere else
+                    // at least I will add a test for it now...
+                    _receiptStorage.LowestInsertedReceiptBlock = 1;
+                    return Task.FromResult((FastBlocksBatch) null);
                 }
             }
 
@@ -239,7 +218,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             {
                 _hasRequestedFinal = true;
             }
-            
+
             return Task.FromResult(batch);
         }
 
@@ -294,14 +273,16 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             ReceiptsSyncBatch receiptSyncBatch = batch.Receipts;
             int added = 0;
             long? lastPredecessor = null;
-            List<(Block, TxReceipt[])> validReceipts = new List<(Block, TxReceipt[])>();
 
+            List<(Block, TxReceipt[])> validReceipts = new List<(Block, TxReceipt[])>();
             if (receiptSyncBatch.Response.Any() && receiptSyncBatch.Response[0] != null)
             {
                 lastPredecessor = receiptSyncBatch.Predecessors[0];
             }
 
-            for (int blockIndex = 0; blockIndex < receiptSyncBatch.Response.Length; blockIndex++)
+            for (int blockIndex = 0;
+                blockIndex < receiptSyncBatch.Response.Length;
+                blockIndex++)
             {
                 TxReceipt[] blockReceipts = receiptSyncBatch.Response[blockIndex];
                 if (blockReceipts == null)
@@ -391,7 +372,9 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
         private void InsertReceipts(List<(Block, TxReceipt[])> receipts)
         {
-            for (int i = 0; i < receipts.Count; i++)
+            for (int i = 0;
+                i < receipts.Count;
+                i++)
             {
                 (Block block, var txReceipts) = receipts[i];
                 _receiptStorage.Insert(block, txReceipts);
@@ -406,8 +389,11 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             filler.Receipts.Predecessors = new long?[requestSize - added];
             filler.Receipts.Blocks = new Block[requestSize - added];
             filler.Receipts.Request = new Keccak[requestSize - added];
+
             int fillerIndex = 0;
-            for (int missingIndex = added; missingIndex < requestSize; missingIndex++)
+            for (int missingIndex = added;
+                missingIndex < requestSize;
+                missingIndex++)
             {
                 filler.Receipts.Predecessors[fillerIndex] = receiptsSyncBatch.Predecessors[missingIndex];
                 filler.Receipts.Blocks[fillerIndex] = receiptsSyncBatch.Blocks[missingIndex];
