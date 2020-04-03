@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,23 +14,36 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading.Tasks;
-using Nethermind.Core2.Crypto;
-using Nethermind.Core2.P2p;
-using Nethermind.Core2.Types;
+using System;
 
-namespace Nethermind.Core2
+namespace Nethermind.BeaconNode.Peering
 {
-    public interface INetworkPeering
+    public class Session
     {
-        Slot HighestPeerSlot { get; }
-        Slot SyncStartingSlot { get; }
+        public ConnectionDirection Direction { get; }
+        
+        public PeerInfo Peer { get; }
 
-        Task DisconnectPeerAsync(string peerId);
+        public SessionState State { get; private set; }
 
-        // TODO: Should have CancellationToken, but Mothra won't support it, so add if/when we do a managed implementation
-        Task PublishBeaconBlockAsync(SignedBeaconBlock signedBlock);
-        Task RequestBlocksAsync(string peerId, Root peerHeadRoot, Slot finalizedSlot, Slot peerHeadSlot);
-        Task SendStatusAsync(string peerId, RpcDirection rpcDirection, PeeringStatus peeringStatus);
+        public Guid Id { get; }
+
+        public Session(ConnectionDirection direction, PeerInfo peer)
+        {
+            Direction = direction;
+            Peer = peer;
+            State = SessionState.New;
+            Id = Guid.NewGuid();
+        }
+
+        public void Open()
+        {
+            State = SessionState.Open;
+        }
+
+        public void Disconnect()
+        {
+            State = SessionState.Disconnecting;
+        }
     }
 }

@@ -14,37 +14,21 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core2.Types;
+using Nethermind.Core2.P2p;
 
 namespace Nethermind.BeaconNode.Peering
 {
-    public class PeerSyncStatus
+    public class RpcMessage<T>
     {
-        private Slot _highestPeerSlot;
-
-        public Slot HighestPeerSlot
+        public RpcMessage(string peerId, RpcDirection direction, T content)
         {
-            get => _highestPeerSlot;
+            PeerId = peerId;
+            Direction = direction;
+            Content = content;
         }
 
-        public Slot SyncStartingSlot { get; private set; }
-
-        public void StartSync(Slot slot)
-        {
-            SyncStartingSlot = slot;
-        }
-
-        public void UpdateMostRecentSlot(Slot slot)
-        {
-            Slot initialValue;
-            do
-            {
-                initialValue = _highestPeerSlot;
-                if (slot <= initialValue)
-                {
-                    break;
-                }
-            } while (initialValue != Slot.InterlockedCompareExchange(ref _highestPeerSlot, slot, initialValue));
-        }
+        public T Content { get; }
+        public RpcDirection Direction { get; }
+        public string PeerId { get; }
     }
 }

@@ -19,6 +19,7 @@ using Microsoft.Extensions.Logging;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.P2p;
 
 namespace Nethermind.BeaconNode
 {
@@ -67,6 +68,10 @@ namespace Nethermind.BeaconNode
             LoggerMessage.Define<int>(LogLevel.Debug,
                 new EventId(6003, nameof(BeaconNodeWorkerExecuteExiting)),
                 "Beacon node worker execute thread exiting [{ThreadId}].");
+        public static readonly Action<ILogger, RpcDirection, PeeringStatus, string, Exception?> SendingStatusToPeer =
+            LoggerMessage.Define<RpcDirection, PeeringStatus, string>(LogLevel.Debug,
+                new EventId(6004, nameof(SendingStatusToPeer)),
+                "Sending status {RpcDirection} {Status} to peer {PeerId}.");
         
         // 61xx debug - state transition
         public static readonly Action<ILogger, Deposit, BeaconState, Exception?> ProcessDeposit =
@@ -217,6 +222,11 @@ namespace Nethermind.BeaconNode
             = LoggerMessage.Define<ulong, string, BeaconBlock, string>(LogLevel.Debug,
                 new EventId(6401, nameof(NewBlockProduced)),
                 "New block produced for slot {Slot} with RANDAO reveal {RandaoReveal}, block {BeaconBlock}, and graffiti {Graffiti}");
+
+        public static readonly Action<ILogger, BeaconBlock, Exception?> PublishingBlockToNetwork
+            = LoggerMessage.Define<BeaconBlock>(LogLevel.Debug,
+                new EventId(6402, nameof(PublishingBlockToNetwork)),
+                "Publishing block {BeaconBlock} to network");
         
     }
 }

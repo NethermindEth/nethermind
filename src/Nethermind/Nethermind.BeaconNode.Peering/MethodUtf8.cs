@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,23 +14,17 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading.Tasks;
-using Nethermind.Core2.Crypto;
-using Nethermind.Core2.P2p;
-using Nethermind.Core2.Types;
+using System.Text;
 
-namespace Nethermind.Core2
+namespace Nethermind.BeaconNode.Peering
 {
-    public interface INetworkPeering
+    public static class MethodUtf8
     {
-        Slot HighestPeerSlot { get; }
-        Slot SyncStartingSlot { get; }
+        public static readonly byte[] BeaconBlocksByRange =
+            Encoding.UTF8.GetBytes("/eth2/beacon_chain/req/beacon_blocks_by_range/1/");
 
-        Task DisconnectPeerAsync(string peerId);
+        public static readonly byte[] Status = Encoding.UTF8.GetBytes("/eth2/beacon_chain/req/status/1/");
 
-        // TODO: Should have CancellationToken, but Mothra won't support it, so add if/when we do a managed implementation
-        Task PublishBeaconBlockAsync(SignedBeaconBlock signedBlock);
-        Task RequestBlocksAsync(string peerId, Root peerHeadRoot, Slot finalizedSlot, Slot peerHeadSlot);
-        Task SendStatusAsync(string peerId, RpcDirection rpcDirection, PeeringStatus peeringStatus);
+        public static readonly byte[] StatusMothraAlternative = Encoding.UTF8.GetBytes("HELLO");
     }
 }
