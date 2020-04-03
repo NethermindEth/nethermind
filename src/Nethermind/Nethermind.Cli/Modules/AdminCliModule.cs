@@ -26,6 +26,9 @@ namespace Nethermind.Cli.Modules
         [CliProperty("admin", "peers")]
         public object[] Peers() => NodeManager.Post<object[]>("admin_peers").Result;
         
+        [CliProperty("admin", "nodeInfo")]
+        public object NodeInfo() => NodeManager.Post<object>("admin_nodeInfo").Result;
+        
         [CliFunction("admin", "addPeer")]
         public string AddPeer(string enode, bool addToStaticNodes = false) => NodeManager.Post<string>("admin_addPeer", enode, addToStaticNodes).Result;
         

@@ -22,9 +22,8 @@ namespace Nethermind.Core
     {
         ulong EpochSeconds { get; }
         ulong EpochMilliseconds { get; }
-        long EpochSecondsLong { get; }
-        long EpochMillisecondsLong { get; }
-
+        long EpochSecondsLong => (long) EpochSeconds;
+        long EpochMillisecondsLong => (long) EpochMilliseconds;
         
         DateTime UtcNow { get; }
     }

@@ -22,7 +22,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Domain
     public class SessionClient : IEquatable<SessionClient>
     {
         private int _streamEnabled;
-        private string[] _args;
+        private string?[] _args;
         public string Id { get; }
 
         public bool StreamEnabled
@@ -31,13 +31,13 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Domain
             private set => _streamEnabled = value ? 1 : 0;
         }
 
-        public string[] Args
+        public string?[] Args
         {
             get => _args;
             private set => _args = value;
         }
 
-        public SessionClient(string id, bool streamEnabled = false, string[]? args = null)
+        public SessionClient(string id, bool streamEnabled = false, string?[]? args = null)
         {
             Id = string.IsNullOrWhiteSpace(id) ? throw new ArgumentException("Invalid session client id.") : id;
             _args = args ?? Array.Empty<string>();
@@ -47,7 +47,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Domain
             }
         }
 
-        public void EnableStream(string[] args)
+        public void EnableStream(string?[] args)
         {
             Interlocked.Exchange(ref _streamEnabled, 1);
             Interlocked.Exchange(ref _args, args);

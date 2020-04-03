@@ -86,8 +86,8 @@ namespace Nethermind.Stats.Model
         /// We try to maintain connection with static nodes at all time.
         /// </summary>
         public bool IsStatic { get; set; }
-
         public string ClientId { get; set; }
+        public string EthDetails { get; set; }
 
         public Node(PublicKey id, IPEndPoint address)
         {
@@ -159,18 +159,13 @@ namespace Nethermind.Stats.Model
         public string ToString(string format, IFormatProvider formatProvider)
         {
             string formattedHost = Host?.Replace("::ffff:", string.Empty);
-            switch (format)
+            return format switch
             {
-                default:
-                case "e":
-                    return $"enode://{Id.ToString(false)}@{formattedHost}:{Port}";
-                case "s":
-                    return $"{formattedHost}:{Port}";
-                case "c":
-                    return $"[Node|{formattedHost}:{Port}|{ClientId}]";
-                case "f":
-                    return $"enode://{Id.ToString(false)}@{formattedHost}:{Port}|{ClientId}";    
-            }
+                "s" => $"{formattedHost}:{Port}",
+                "c" => $"[Node|{formattedHost}:{Port}|{ClientId}|{EthDetails}]",
+                "f" => $"enode://{Id.ToString(false)}@{formattedHost}:{Port}|{ClientId}",
+                _ => $"enode://{Id.ToString(false)}@{formattedHost}:{Port}"
+            };
         }
         
         public static bool operator ==(Node a, Node b)

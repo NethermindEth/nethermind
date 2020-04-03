@@ -20,7 +20,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
-    public class GetReceiptsMessageSerializer : IZeroMessageSerializer<GetReceiptsMessage>
+    public class GetReceiptsMessageSerializer : HashesMessageSerializer<GetReceiptsMessage>
     {
         public GetReceiptsMessage Deserialize(byte[] bytes)
         {
@@ -28,30 +28,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             Keccak[] hashes = rlpStream.DecodeArray(itemContext => itemContext.DecodeKeccak());
             return new GetReceiptsMessage(hashes);
         }
-
-        public void Serialize(IByteBuffer byteBuffer, GetReceiptsMessage message)
+        
+        public override GetReceiptsMessage Deserialize(IByteBuffer byteBuffer)
         {
-            int contentLength = 0;
-            for (int i = 0; i < message.BlockHashes.Count; i++)
-            {
-                contentLength += Rlp.LengthOf(message.BlockHashes[i]);
-            }
-            
-            int totalLength = Rlp.LengthOfSequence(contentLength);
-            
-            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            byteBuffer.EnsureWritable(totalLength, true);
-            rlpStream.StartSequence(contentLength);
-            for (int i = 0; i < message.BlockHashes.Count; i++)
-            {
-                rlpStream.Encode(message.BlockHashes[i]);
-            }
-        }
-
-        public GetReceiptsMessage Deserialize(IByteBuffer byteBuffer)
-        {
-            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            Keccak[] hashes = rlpStream.DecodeArray(itemContext => itemContext.DecodeKeccak());
+            Keccak[] hashes = DeserializeHashes(byteBuffer);
             return new GetReceiptsMessage(hashes);
         }
     }

@@ -629,19 +629,12 @@ namespace Nethermind.Cryptography
             }
 
             var blsSignature = default(Bls384Interop.BlsSignature);
-            int result;
-
             unsafe
             {
                 fixed (byte* dataPtr = data)
                 {
-                    result = Bls384Interop.Sign(ref blsSignature, ref blsSecretKey, dataPtr, data.Length);
+                    Bls384Interop.Sign(ref blsSignature, ref blsSecretKey, dataPtr, data.Length);
                 }
-            }
-
-            if (result != 0)
-            {
-                throw new Exception($"Error generating BLS signature for hash. Error: {result}");
             }
 
             unsafe

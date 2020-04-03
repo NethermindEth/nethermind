@@ -27,6 +27,8 @@ namespace Nethermind.Cryptography
         //#define BLS_ETH_MODE_LATEST 1
         
         public const int BLS_ETH_MODE_OLD = 0;
+        public const int BLS_ETH_MODE_DRAFT_05 = 1; // 2020/Jan/30
+        public const int BLS_ETH_MODE_DRAFT_06 = 2; // 2020/Mar/15
         public const int BLS_ETH_MODE_LATEST = 1;
         
         // 	MCL_BLS12_381 = 5,
@@ -150,7 +152,7 @@ namespace Nethermind.Cryptography
         // calculate the has of m and sign the hash
         // BLS_DLL_API void blsSign(blsSignature* sig, const blsSecretKey* sec, const void* m, mclSize size);
         [DllImport(DllName, EntryPoint = "blsSign")]
-        public static extern unsafe int Sign([In, Out] ref BlsSignature sig, ref BlsSecretKey sec, byte* m, int size);
+        public static extern unsafe void Sign([In, Out] ref BlsSignature sig, ref BlsSecretKey sec, byte* m, int size);
 
         //BLS_DLL_API void blsSignatureAdd(blsSignature* sig, const blsSignature* rhs);
         [DllImport(DllName, EntryPoint = "blsSignatureAdd")]

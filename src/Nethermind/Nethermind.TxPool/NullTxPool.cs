@@ -24,7 +24,7 @@ namespace Nethermind.TxPool
     public interface ITxPoolPeer
     {
         public PublicKey Id { get; }
-        void SendNewTransaction(Transaction tx);
+        void SendNewTransaction(Transaction tx, bool isPriority);
     }
     
     public class NullTxPool : ITxPool
@@ -60,6 +60,11 @@ namespace Nethermind.TxPool
         public bool TryGetPendingTransaction(Keccak hash, out Transaction transaction)
         {
             transaction = null;
+            return false;
+        }
+
+        public bool HasBeenKnown(Keccak hash)
+        {
             return false;
         }
 

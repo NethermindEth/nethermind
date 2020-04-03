@@ -28,5 +28,8 @@ namespace Nethermind.TxPool
         
         [ConfigItem(DefaultValue = "5")]
         int PeerNotificationThreshold { get; set; }
+        
+        [ConfigItem(DefaultValue = "2048", Description = "Max number of transactions held in mempool (more transactions in mempool mean more memory used")]
+        int Size { get; set; }
     }
 }

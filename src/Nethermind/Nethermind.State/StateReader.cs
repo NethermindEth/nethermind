@@ -91,7 +91,7 @@ namespace Nethermind.State
             return _codeDb[codeHash.Bytes];
         }
 
-        public void RunTreeVisitor(Keccak rootHash, ITreeVisitor treeVisitor)	
+        public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak rootHash)	
         {
             _state.Accept(treeVisitor, rootHash, true);	
         }

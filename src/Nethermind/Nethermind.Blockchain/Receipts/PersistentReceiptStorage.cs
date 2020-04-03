@@ -72,7 +72,9 @@ namespace Nethermind.Blockchain.Receipts
             {
                 try
                 {
+#pragma warning disable 618
                     var receipt = StorageDecoder.Decode(new RlpStream(receiptData), RlpBehaviors.Storage);
+#pragma warning restore 618
                     receipt.TxHash = hash;
                     return receipt;
                 }

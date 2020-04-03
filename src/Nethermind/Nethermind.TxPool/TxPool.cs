@@ -61,8 +61,7 @@ namespace Nethermind.TxPool
         private static readonly ThreadLocal<Random> Random =
             new ThreadLocal<Random>(() => new Random(Interlocked.Increment(ref _seed)));
 
-        private readonly SortedPool<Keccak, Transaction> _transactions =
-            new DistinctValueSortedPool<Keccak, Transaction>(MemoryAllowance.MemPoolSize, (t1, t2) => t1.GasPrice.CompareTo(t2.GasPrice), PendingTransactionComparer.Default);
+        private readonly SortedPool<Keccak, Transaction> _transactions;
 
         private readonly ISpecProvider _specProvider;
         private readonly IStateProvider _stateProvider;
@@ -146,6 +145,9 @@ namespace Nethermind.TxPool
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
 
+            MemoryAllowance.MemPoolSize = txPoolConfig.Size;
+            ThisNodeInfo.AddInfo("Mem est tx   :", $"{(MemoryAllowance.TxHashCacheSize * 64 + MemoryAllowance.MemPoolSize * 4096) / 1024 / 1024}MB".PadLeft(8));
+            _transactions = new DistinctValueSortedPool<Keccak, Transaction>(MemoryAllowance.MemPoolSize, (t1, t2) => t1.GasPrice.CompareTo(t2.GasPrice), PendingTransactionComparer.Default);
             _peerNotificationThreshold = txPoolConfig.PeerNotificationThreshold;
 
             _ownTimer = new Timer(500);
@@ -236,7 +238,7 @@ namespace Nethermind.TxPool
 
             // !!! do not change it to |=
             bool isKnown = _hashCache.Get(tx.Hash) != null;
-            
+
             /* We have encountered multiple transactions that do not resolve sender address properly.
              * We need to investigate what these txs are and why the sender address is resolved to null.
              * Then we need to decide whether we really want to broadcast them.
@@ -249,14 +251,21 @@ namespace Nethermind.TxPool
                     return AddTxResult.PotentiallyUseless;
                 }
             }
-            
+
             /*
              * we need to make sure that the sender is resolved before adding to the distinct tx pool
              * as the address is used in the distinct value calculation
              */
-            if (!isKnown) { isKnown |= !_transactions.TryInsert(tx.Hash, tx); }
-            if (!isKnown) { isKnown |= _txStorage.Get(tx.Hash) != null; }
-            
+            if (!isKnown)
+            {
+                isKnown |= !_transactions.TryInsert(tx.Hash, tx);
+            }
+
+            if (!isKnown)
+            {
+                isKnown |= _txStorage.Get(tx.Hash) != null;
+            }
+
             if (isKnown)
             {
                 // If transaction is a bit older and already known then it may be stored in the persistent storage.
@@ -280,7 +289,7 @@ namespace Nethermind.TxPool
             {
                 _ownTransactions.TryAdd(transaction.Hash, transaction);
                 _ownTimer.Enabled = true;
-                if (_logger.IsInfo) _logger.Info($"Broadcasting own transaction {transaction.Hash} to {_peers.Count} peers");
+                if (_logger.IsDebug) _logger.Debug($"Broadcasting own transaction {transaction.Hash} to {_peers.Count} peers");
             }
         }
 
@@ -381,6 +390,11 @@ namespace Nethermind.TxPool
             return transaction != null;
         }
 
+        public bool HasBeenKnown(Keccak hash)
+        {
+            return _hashCache.Get(hash) != null;
+        }
+
         // TODO: Ensure that nonce is always valid in case of sending own transactions from different nodes.
         public UInt256 ReserveOwnTransactionNonce(Address address)
         {
@@ -410,7 +424,7 @@ namespace Nethermind.TxPool
         public event EventHandler<TxEventArgs> NewPending;
         public event EventHandler<TxEventArgs> RemovedPending;
 
-        private void Notify(ITxPoolPeer peer, Transaction tx)
+        private void Notify(ITxPoolPeer peer, Transaction tx, bool isPriority)
         {
             UInt256 timestamp = new UInt256(_timestamper.EpochSeconds);
             if (_pendingTxThresholdValidator.IsObsolete(timestamp, tx.Timestamp))
@@ -419,7 +433,7 @@ namespace Nethermind.TxPool
             }
 
             Metrics.PendingTransactionsSent++;
-            peer.SendNewTransaction(tx);
+            peer.SendNewTransaction(tx, isPriority);
 
             if (_logger.IsTrace) _logger.Trace($"Notified {peer.Id} about a transaction: {tx.Hash}");
         }
@@ -428,7 +442,7 @@ namespace Nethermind.TxPool
         {
             foreach ((_, ITxPoolPeer peer) in _peers)
             {
-                Notify(peer, tx);
+                Notify(peer, tx, true);
             }
         }
 
@@ -438,7 +452,7 @@ namespace Nethermind.TxPool
             {
                 if (tx.DeliveredBy == null)
                 {
-                    Notify(peer, tx);
+                    Notify(peer, tx, true);
                     continue;
                 }
 
@@ -452,7 +466,7 @@ namespace Nethermind.TxPool
                     continue;
                 }
 
-                Notify(peer, tx);
+                Notify(peer, tx, 3 < Random.Value.Next(1, 10));
             }
         }
 

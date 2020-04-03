@@ -17,6 +17,7 @@
 using MongoDB.Bson.Serialization;
 using MongoDB.Bson.Serialization.Serializers;
 using Nethermind.Core.Crypto;
+#pragma warning disable 8609
 
 namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo
 {

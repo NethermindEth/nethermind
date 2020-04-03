@@ -16,6 +16,7 @@
 
 using System;
 using System.Linq;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 
@@ -26,6 +27,7 @@ namespace Nethermind.Specs
         private readonly (long BlockNumber, IReleaseSpec Release)[] _transitions;
 
         public int ChainId { get; }
+        public long[] TransitionBlocks { get; }
 
         public CustomSpecProvider(params (long BlockNumber, IReleaseSpec Release)[] transitions) : this(0, transitions)
         {
@@ -41,6 +43,7 @@ namespace Nethermind.Specs
             }
 
             _transitions = transitions.OrderBy(r => r.BlockNumber).ToArray();
+            TransitionBlocks = _transitions.Select(t => t.BlockNumber).ToArray();
 
             if (transitions[0].BlockNumber != 0L)
             {
