@@ -127,34 +127,35 @@ namespace Nethermind.Blockchain.Find
 
         private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Keccak blockHash, long blockNumber)
         {
-            TxReceipt[] GetReceipts(Keccak hash, long number, out bool needRecover)
+            TxReceipt[] GetReceipts(Keccak hash, long number)
             {
-                needRecover = _receiptFinder.CanGetReceiptsByHash(number);
-                if (needRecover)
+                var canUseHash = _receiptFinder.CanGetReceiptsByHash(number);
+                if (canUseHash)
                 {
-                    var receipts = _receiptFinder.Get(hash);
-                    needRecover = _receiptsRecovery.NeedRecover(receipts);
-                    return receipts;
+                    return _receiptFinder.Get(hash);
                 }
                 else
                 {
-                    var block = _blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.None);
+                    var block = _blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                     return block == null ? null : _receiptFinder.Get(block);
                 }
             }
             
             void RecoverReceiptsData(Keccak hash, TxReceipt[] receipts)
             {
-                var block = _blockFinder.FindBlock(hash, BlockTreeLookupOptions.None);
-                if (block != null)
+                if (_receiptsRecovery.NeedRecover(receipts))
                 {
-                    _receiptsRecovery.TryRecover(block, receipts);
+                    var block = _blockFinder.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                    if (block != null)
+                    {
+                        _receiptsRecovery.TryRecover(block, receipts);
+                    }
                 }
             }
 
             if (blockHash != null)
             {
-                var receipts = GetReceipts(blockHash, blockNumber, out var needRecover);
+                var receipts = GetReceipts(blockHash, blockNumber);
                 long logIndexInBlock = 0;
                 if (receipts != null)
                 {
@@ -169,17 +170,12 @@ namespace Nethermind.Blockchain.Find
                                 var log = receipt.Logs[j];
                                 if (filter.Accepts(log))
                                 {
-                                    if (needRecover)
-                                    {
-                                        RecoverReceiptsData(blockHash, receipts);
-                                        needRecover = false;
-                                    }
-                                    
+                                    RecoverReceiptsData(blockHash, receipts);
                                     yield return new FilterLog(logIndexInBlock, j, receipt, log);
                                 }
 
                                 logIndexInBlock++;
-                            }
+                            }e
                         }
                         else
                         {
