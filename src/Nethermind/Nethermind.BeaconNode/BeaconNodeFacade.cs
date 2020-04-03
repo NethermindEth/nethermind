@@ -158,7 +158,7 @@ namespace Nethermind.BeaconNode
                 {
                     return new ApiResponse(StatusCode.CurrentlySyncing);
                 }
-                
+
                 bool acceptedLocally = false;
                 try
                 {

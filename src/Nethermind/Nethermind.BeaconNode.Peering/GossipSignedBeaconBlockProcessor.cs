@@ -15,12 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Concurrent;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -34,18 +32,18 @@ namespace Nethermind.BeaconNode.Peering
 {
     public class GossipSignedBeaconBlockProcessor : QueueProcessorBase<SignedBeaconBlock>
     {
-        private const int MaximumQueue = 1024;
-        private readonly ILogger _logger;
-        private readonly IOptionsMonitor<MothraConfiguration> _mothraConfigurationOptions;
+        private readonly DataDirectory _dataDirectory;
         private readonly IFileSystem _fileSystem;
         private readonly IForkChoice _forkChoice;
-        private readonly IStore _store;
-        private readonly DataDirectory _dataDirectory;
-        private readonly PeerManager _peerManager;
-        private string? _logDirectoryPath;
-        private readonly object _logDirectoryPathLock = new object();
 
         private readonly JsonSerializerOptions _jsonSerializerOptions;
+        private string? _logDirectoryPath;
+        private readonly object _logDirectoryPathLock = new object();
+        private readonly ILogger _logger;
+        private readonly IOptionsMonitor<MothraConfiguration> _mothraConfigurationOptions;
+        private readonly PeerManager _peerManager;
+        private readonly IStore _store;
+        private const int MaximumQueue = 1024;
 
         public GossipSignedBeaconBlockProcessor(ILogger<GossipSignedBeaconBlockProcessor> logger,
             IOptionsMonitor<MothraConfiguration> mothraConfigurationOptions,
@@ -70,6 +68,11 @@ namespace Nethermind.BeaconNode.Peering
             {
                 _ = GetLogDirectory();
             }
+        }
+
+        public void Enqueue(SignedBeaconBlock signedBeaconBlock)
+        {
+            ChannelWriter.TryWrite(signedBeaconBlock);
         }
 
         protected override async Task ProcessItemAsync(SignedBeaconBlock signedBeaconBlock)
@@ -106,11 +109,6 @@ namespace Nethermind.BeaconNode.Peering
             }
         }
 
-        public void Enqueue(SignedBeaconBlock signedBeaconBlock)
-        {
-            ChannelWriter.TryWrite(signedBeaconBlock);
-        }
-        
         private string GetLogDirectory()
         {
             if (_logDirectoryPath == null)
@@ -119,7 +117,8 @@ namespace Nethermind.BeaconNode.Peering
                 {
                     if (_logDirectoryPath == null)
                     {
-                        string basePath = _fileSystem.Path.Combine(_dataDirectory.ResolvedPath, MothraPeeringWorker.MothraDirectory);
+                        string basePath = _fileSystem.Path.Combine(_dataDirectory.ResolvedPath,
+                            MothraPeeringWorker.MothraDirectory);
                         IDirectoryInfo baseDirectoryInfo = _fileSystem.DirectoryInfo.FromDirectoryName(basePath);
                         if (!baseDirectoryInfo.Exists)
                         {
@@ -152,7 +151,5 @@ namespace Nethermind.BeaconNode.Peering
 
             return _logDirectoryPath;
         }
-
-
     }
 }

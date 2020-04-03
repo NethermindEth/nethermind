@@ -25,10 +25,10 @@ namespace Nethermind.BeaconNode.Peering
 {
     public class RpcPeeringStatusProcessor : QueueProcessorBase<RpcMessage<PeeringStatus>>
     {
-        private const int MaximumQueue = 1024;
         private readonly ILogger _logger;
         private readonly PeerManager _peerManager;
         private readonly ISynchronizationManager _synchronizationManager;
+        private const int MaximumQueue = 1024;
 
         public RpcPeeringStatusProcessor(ILogger<RpcPeeringStatusProcessor> logger,
             ISynchronizationManager synchronizationManager,

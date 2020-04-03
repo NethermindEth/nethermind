@@ -32,15 +32,15 @@ namespace Nethermind.BeaconNode
     {
         private readonly BeaconStateAccessor _beaconStateAccessor;
         private readonly BeaconStateTransition _beaconStateTransition;
-        private readonly IForkChoice _forkChoice;
         private readonly ChainConstants _chainConstants;
+        private readonly ICryptographyService _cryptographyService;
+        private readonly IForkChoice _forkChoice;
         private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly ILogger _logger;
-        private readonly ICryptographyService _cryptographyService;
-        private readonly IStore _store;
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
+        private readonly IStore _store;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
         public GenesisChainStart(ILogger<GenesisChainStart> logger,
@@ -70,27 +70,11 @@ namespace Nethermind.BeaconNode
             _store = store;
         }
 
-        /// <param name="eth1BlockHash"></param>
-        /// <param name="eth1Timestamp"></param>
-        /// <param name="deposits"></param>
-        /// <returns></returns>
-        public async Task<bool> TryGenesisAsync(Bytes32 eth1BlockHash, ulong eth1Timestamp, IList<Deposit> deposits)
+        public BeaconState InitializeBeaconStateFromEth1(Bytes32 eth1BlockHash, ulong eth1Timestamp,
+            IList<Deposit> deposits)
         {
-            if (_logger.IsDebug()) LogDebug.TryGenesis(_logger, eth1BlockHash, eth1Timestamp, deposits.Count, null);
-
-            BeaconState candidateState = InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp, deposits);
-            if (IsValidGenesisState(candidateState))
-            {
-                BeaconState genesisState = candidateState;
-                await _forkChoice.InitializeForkChoiceStoreAsync(_store, genesisState);
-                return true;
-            }
-            return false;
-        }
-
-        public BeaconState InitializeBeaconStateFromEth1(Bytes32 eth1BlockHash, ulong eth1Timestamp, IList<Deposit> deposits)
-        {
-            if (_logger.IsInfo()) Log.InitializeBeaconState(_logger, eth1BlockHash, eth1Timestamp, deposits.Count, null);
+            if (_logger.IsInfo())
+                Log.InitializeBeaconState(_logger, eth1BlockHash, eth1Timestamp, deposits.Count, null);
 
             InitialValues initialValues = _initialValueOptions.CurrentValue;
             GweiValues gweiValues = _gweiValueOptions.CurrentValue;
@@ -101,13 +85,14 @@ namespace Nethermind.BeaconNode
                 _chainConstants.GenesisEpoch);
 
             ulong genesisTime = eth1Timestamp - (eth1Timestamp % timeParameters.MinimumGenesisDelay)
-                + (2 * timeParameters.MinimumGenesisDelay);
-            Eth1Data eth1Data = new Eth1Data(Root.Zero, (ulong)deposits.Count, eth1BlockHash);
-            
+                                + (2 * timeParameters.MinimumGenesisDelay);
+            Eth1Data eth1Data = new Eth1Data(Root.Zero, (ulong) deposits.Count, eth1BlockHash);
+
             Root emptyBlockBodyRoot = _cryptographyService.HashTreeRoot(BeaconBlockBody.Zero);
             BeaconBlockHeader latestBlockHeader = new BeaconBlockHeader(emptyBlockBodyRoot);
-            
-            Bytes32[] randaoMixes = Enumerable.Repeat(eth1BlockHash, (int)stateListLengths.EpochsPerHistoricalVector).ToArray();
+
+            Bytes32[] randaoMixes = Enumerable.Repeat(eth1BlockHash, (int) stateListLengths.EpochsPerHistoricalVector)
+                .ToArray();
 
             BeaconState state = new BeaconState(genesisTime, fork, eth1Data, latestBlockHeader, randaoMixes,
                 timeParameters.SlotsPerHistoricalRoot, stateListLengths.EpochsPerHistoricalVector,
@@ -128,7 +113,8 @@ namespace Nethermind.BeaconNode
             {
                 Validator validator = state.Validators[validatorIndex];
                 Gwei balance = state.Balances[validatorIndex];
-                Gwei effectiveBalance = Gwei.Min(balance - (balance % gweiValues.EffectiveBalanceIncrement), gweiValues.MaximumEffectiveBalance);
+                Gwei effectiveBalance = Gwei.Min(balance - (balance % gweiValues.EffectiveBalanceIncrement),
+                    gweiValues.MaximumEffectiveBalance);
                 validator.SetEffectiveBalance(effectiveBalance);
                 if (validator.EffectiveBalance == gweiValues.MaximumEffectiveBalance)
                 {
@@ -148,12 +134,34 @@ namespace Nethermind.BeaconNode
             {
                 return false;
             }
-            IList<ValidatorIndex> activeValidatorIndices = _beaconStateAccessor.GetActiveValidatorIndices(state, _chainConstants.GenesisEpoch);
+
+            IList<ValidatorIndex> activeValidatorIndices =
+                _beaconStateAccessor.GetActiveValidatorIndices(state, _chainConstants.GenesisEpoch);
             if (activeValidatorIndices.Count < miscellaneousParameters.MinimumGenesisActiveValidatorCount)
             {
                 return false;
             }
+
             return true;
+        }
+
+        /// <param name="eth1BlockHash"></param>
+        /// <param name="eth1Timestamp"></param>
+        /// <param name="deposits"></param>
+        /// <returns></returns>
+        public async Task<bool> TryGenesisAsync(Bytes32 eth1BlockHash, ulong eth1Timestamp, IList<Deposit> deposits)
+        {
+            if (_logger.IsDebug()) LogDebug.TryGenesis(_logger, eth1BlockHash, eth1Timestamp, deposits.Count, null);
+
+            BeaconState candidateState = InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp, deposits);
+            if (IsValidGenesisState(candidateState))
+            {
+                BeaconState genesisState = candidateState;
+                await _forkChoice.InitializeForkChoiceStoreAsync(_store, genesisState);
+                return true;
+            }
+
+            return false;
         }
     }
 }
