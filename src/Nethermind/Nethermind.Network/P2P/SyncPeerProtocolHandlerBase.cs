@@ -30,6 +30,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
@@ -377,6 +378,26 @@ namespace Nethermind.Network.P2P
                 request.ResponseSize = size;
                 request.CompletionSource.SetResult(message.Bodies);
             }
+        }
+
+        protected void Handle(GetReceiptsMessage msg)
+        {
+            Metrics.Eth63GetReceiptsReceived++;
+            if (msg.Hashes.Count > 512)
+            {
+                throw new EthSynchronizationException("Incoming receipts request for more than 512 blocks");
+            }
+
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            Send(FulfillReceiptsRequest(msg));
+            stopwatch.Stop();
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} Receipts to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+        }
+
+        protected ReceiptsMessage FulfillReceiptsRequest(GetReceiptsMessage getReceiptsMessage)
+        {
+            TxReceipt[][] txReceipts = SyncServer.GetReceipts(getReceiptsMessage.Hashes);
+            return new ReceiptsMessage(txReceipts);
         }
 
         private static BlockHeader[] FixHeadersForGeth(BlockHeader[] headers)
