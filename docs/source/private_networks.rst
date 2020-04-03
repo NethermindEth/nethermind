@@ -234,7 +234,7 @@ You can use ``Nethermind.Cli`` to fetch these values from nodes by executing the
 
 ``Nethermind.Cli`` can be found in packages on `Github Releases <https://github.com/NethermindEth/nethermind/releases>`_ or `Download Page <http://downloads.nethermind.io/>`_.
 
-8. the file should look similar to this:
+9. the file should look similar to this:
 
 ::
 
@@ -245,7 +245,7 @@ You can use ``Nethermind.Cli`` to fetch these values from nodes by executing the
     SIGNER_3="0076873eb11c627057834fdbdc7b391a33eb9f81"
     STATIC_NODE_3="enode://6067f06d84c207e6233dacf1f3ef961bd7231f71d5425cbaf843cf19cfd5f7e13b024d234e4e5f6175bdb37c0bbccd14488b481b2280efb66d0631a20ae13ea3@10.5.0.4:30300"
 
-9. copy & paste above variables into your terminal and create ``EXTRA_VANITY`` and ``EXTRA_SEAL`` variables
+10. copy & paste above variables into your terminal and create ``EXTRA_VANITY`` and ``EXTRA_SEAL`` variables
 
 ::
 
@@ -253,7 +253,7 @@ You can use ``Nethermind.Cli`` to fetch these values from nodes by executing the
     EXTRA_SEAL="0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
 
 
-10. create ``EXTRA_DATA`` variable accordingly to https://eips.ethereum.org/EIPS/eip-225
+11. create ``EXTRA_DATA`` variable accordingly to https://eips.ethereum.org/EIPS/eip-225
 
 ::
 
@@ -261,7 +261,7 @@ You can use ``Nethermind.Cli`` to fetch these values from nodes by executing the
 
 .. image:: private-networking/extraData.png
 
-11. in ``goerli.json`` chainspec file, modify ``extraData`` property in ``genesis`` field 
+12. in ``goerli.json`` chainspec file, modify ``extraData`` property in ``genesis`` field 
 
 You can do this either manually or using below command
 
@@ -270,7 +270,7 @@ You can do this either manually or using below command
     cat goerli.json | jq '.genesis.extraData = '\"$EXTRA_DATA\"'' > genesis/goerli.json
 
 
-12. for each node modify previously created empty ``static-nodes.json`` files by appending ``Enodes`` to them
+13. for each node modify previously created empty ``static-nodes.json`` files by appending ``Enodes`` to them
 
 ::
 
@@ -284,13 +284,13 @@ You can do this either manually or using below command
 
 .. image:: private-networking/staticNodes.png
 
-13. remove databases for each node
+14. remove databases for each node
 
 ::
 
     sudo rm -rf node_1/db/clique node_2/db/clique node_3/db/clique
 
-14. finally run ``docker-compose`` file
+15. finally run ``docker-compose`` file
 
 ::
 
@@ -477,7 +477,7 @@ You can use ``Nethermind.Cli`` to fetch these values from nodes by executing the
     node.switch("http://localhost:8547")
     node.enode
 
-8. the file should look similar to this:
+9. the file should look similar to this:
 
 ::
 
@@ -485,9 +485,9 @@ You can use ``Nethermind.Cli`` to fetch these values from nodes by executing the
     STATIC_NODE_2="enode://37878ec16a5ed87c9c80b4648e5428f5c768eddd79483be118319c49d11c4e535dac328b5216696cefe0792b7b64adc4de3aeb377550651e982590e62e5a500e@10.5.0.3:30300"
     STATIC_NODE_3="enode://6067f06d84c207e6233dacf1f3ef961bd7231f71d5425cbaf843cf19cfd5f7e13b024d234e4e5f6175bdb37c0bbccd14488b481b2280efb66d0631a20ae13ea3@10.5.0.4:30300"
 
-9. copy & paste above variables into your terminal
+10. copy & paste above variables into your terminal
 
-10. for each node modify previously created empty ``static-nodes.json`` files by appending ``Enodes`` to them
+11. for each node modify previously created empty ``static-nodes.json`` files by appending ``Enodes`` to them
 
 ::
 
@@ -501,13 +501,13 @@ You can use ``Nethermind.Cli`` to fetch these values from nodes by executing the
 
 .. image:: private-networking/staticNodes-spaceneth.png
 
-11. remove databases for each node
+12. remove databases for each node
 
 ::
 
     sudo rm -rf node_1/db/spaceneth node_2/db/spaceneth node_3/db/spaceneth
 
-12. run ``docker-compose`` file
+13. run ``docker-compose`` file
 
 ::
 
@@ -515,19 +515,19 @@ You can use ``Nethermind.Cli`` to fetch these values from nodes by executing the
 
 You should see the private network working. We now need to send transactions in order to start producing blocks.
 
-13. run ``Nethermind.Cli``
+14. run ``Nethermind.Cli``
 
-14. run ``node.switch("http://localhost:8547")``
+15. run ``node.switch("http://localhost:8547")``
 
-15. run ``personal.listAccounts``
+16. run ``personal.listAccounts``
 
-16. create new account ``personal.newAccount("test")``
+17. create new account ``personal.newAccount("test")``
 
 .. image:: private-networking/cli-spaceneth.png
 
-17. re-run ``personal.listAccounts`` and copy your account address
+18. re-run ``personal.listAccounts`` and copy your account address
 
-18. trigger blocks producing by sending transaction using ``eth_sendTransaction`` JSON RPC method. For example using ``curl``.
+19. trigger blocks producing by sending transaction using ``eth_sendTransaction`` JSON RPC method. For example using ``curl``.
 Change ``from`` property to your account address
 
 ::
@@ -721,7 +721,7 @@ You can use ``Nethermind.Cli`` to fetch these values from nodes by executing the
     node.enode
     node.address
 
-8. the file should look similar to this:
+9. the file should look similar to this:
 
 ::
 
@@ -732,9 +732,9 @@ You can use ``Nethermind.Cli`` to fetch these values from nodes by executing the
     NODE_ADDRESS_3="0xbedf7c017705c04a2c798a1f9c5059e10906c110"
     STATIC_NODE_3="enode://6067f06d84c207e6233dacf1f3ef961bd7231f71d5425cbaf843cf19cfd5f7e13b024d234e4e5f6175bdb37c0bbccd14488b481b2280efb66d0631a20ae13ea3@10.5.0.4:30300"
 
-9. copy & paste above variables into your terminal
+10. copy & paste above variables into your terminal
 
-10. for each node modify previously created empty ``static-nodes.json`` files by appending ``Enodes`` to them
+11. for each node modify previously created empty ``static-nodes.json`` files by appending ``Enodes`` to them
 
 ::
 
@@ -748,7 +748,7 @@ You can use ``Nethermind.Cli`` to fetch these values from nodes by executing the
 
 .. image:: private-networking/staticNodes-aura.png
 
-11. open ``genesis/AuraTest.json`` file and add previously saved ``Node addresses`` to validators list
+12. open ``genesis/AuraTest.json`` file and add previously saved ``Node addresses`` to validators list
 
 ::
 
@@ -762,13 +762,13 @@ The file should then look like this:
 
 .. image:: private-networking/validators-aura.png
 
-12. remove databases for each node
+13. remove databases for each node
 
 ::
 
     sudo rm -rf node_1/db/aura node_2/db/aura node_3/db/aura
 
-13. run ``docker-compose`` file
+14. run ``docker-compose`` file
 
 ::
 
