@@ -554,7 +554,7 @@ Prerequisites
 
 ::
 
-    sudo apt-get install -y docker-compose docker.io jq
+    sudo apt-get install -y docker-compose docker.io
 
 Setup
 ^^^^^
