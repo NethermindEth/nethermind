@@ -50,7 +50,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _tx = tx;
             _trace = new ParityLikeTxTrace();
             _trace.TransactionHash = tx?.Hash;
-            _trace.TransactionPosition = tx == null ? (int?)null : block.Transactions.Select((t, ix) => (t, ix)).Where(p => p.t.Hash == tx.Hash).Select((t, ix) => ix).SingleOrDefault();
+            _trace.TransactionPosition = tx == null ? (int?)null : Array.IndexOf(block.Transactions, tx);
             _trace.BlockNumber = block.Number;
             _trace.BlockHash = block.Hash;
 
