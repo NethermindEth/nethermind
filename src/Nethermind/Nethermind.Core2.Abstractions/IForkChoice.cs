@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,22 +15,20 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
+using Nethermind.Core2;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
-using Nethermind.Core2.P2p;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2
 {
-    public interface INetworkPeering
+    public interface IForkChoice
     {
-        Slot HighestPeerSlot { get; }
-        Slot SyncStartingSlot { get; }
-
-        Task DisconnectPeerAsync(string peerId);
-
-        // TODO: Should have CancellationToken, but Mothra won't support it, so add if/when we do a managed implementation
-        Task PublishBeaconBlockAsync(SignedBeaconBlock signedBlock);
-        Task RequestBlocksAsync(string peerId, Root peerHeadRoot, Slot finalizedSlot, Slot peerHeadSlot);
-        Task SendStatusAsync(string peerId, RpcDirection rpcDirection, PeeringStatus peeringStatus);
+        Task<Root> GetAncestorAsync(IStore store, Root root, Slot slot);
+        Task<Root> GetHeadAsync(IStore store);
+        Task InitializeForkChoiceStoreAsync(IStore store, BeaconState anchorState);
+        Task OnAttestationAsync(IStore store, Attestation attestation);
+        Task OnBlockAsync(IStore store, SignedBeaconBlock signedBlock);
+        Task OnTickAsync(IStore store, ulong time);
     }
 }

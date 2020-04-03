@@ -32,7 +32,7 @@ namespace Nethermind.BeaconNode
     {
         private readonly BeaconStateAccessor _beaconStateAccessor;
         private readonly BeaconStateTransition _beaconStateTransition;
-        private readonly ForkChoice _forkChoice;
+        private readonly IForkChoice _forkChoice;
         private readonly ChainConstants _chainConstants;
         private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
@@ -54,7 +54,7 @@ namespace Nethermind.BeaconNode
             IStore store,
             BeaconStateAccessor beaconStateAccessor,
             BeaconStateTransition beaconStateTransition,
-            ForkChoice forkChoice)
+            IForkChoice forkChoice)
         {
             _logger = logger;
             _beaconStateAccessor = beaconStateAccessor;

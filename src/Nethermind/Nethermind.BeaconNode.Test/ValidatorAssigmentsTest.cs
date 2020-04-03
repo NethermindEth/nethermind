@@ -36,7 +36,7 @@ using Shouldly;
 namespace Nethermind.BeaconNode.Test
 {
     [TestClass]
-    public class ValidatorAssignmentsTest
+    public class ValidatorAssignmentsTests
     {
         [DataTestMethod]
         [DataRow(0uL, true)]
@@ -51,7 +51,7 @@ namespace Nethermind.BeaconNode.Test
             testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
-            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
+            IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
             IStore store = testServiceProvider.GetService<IStore>();
             await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
@@ -115,7 +115,7 @@ namespace Nethermind.BeaconNode.Test
             testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
-            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
+            IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
             IStore store = testServiceProvider.GetService<IStore>();
             await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
@@ -177,7 +177,7 @@ namespace Nethermind.BeaconNode.Test
             testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
-            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
+            IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
             IStore store = testServiceProvider.GetService<IStore>();
             await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
@@ -229,7 +229,7 @@ namespace Nethermind.BeaconNode.Test
             testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
-            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
+            IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
             IStore store = testServiceProvider.GetService<IStore>();
             await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
