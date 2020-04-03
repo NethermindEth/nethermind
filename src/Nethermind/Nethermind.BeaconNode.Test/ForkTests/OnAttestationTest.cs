@@ -45,7 +45,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
             ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
             InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
+            IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
 
             // Initialization
             IStore store = testServiceProvider.GetService<IStore>();
@@ -64,7 +64,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
             attestation.Data.Target.Epoch.ShouldBe(chainConstants.GenesisEpoch);
 
             BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
-            Slot currentSlot = forkChoice.GetCurrentSlot(store);
+            Slot currentSlot = ((ForkChoice)forkChoice).GetCurrentSlot(store);
             Epoch currentEpoch = beaconChainUtility.ComputeEpochAtSlot(currentSlot);
             currentEpoch.ShouldBe(chainConstants.GenesisEpoch);
 
@@ -81,7 +81,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
             ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
             InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
+            IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
 
             // Initialization
             IStore store = testServiceProvider.GetService<IStore>();
@@ -100,7 +100,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
             attestation.Data.Target.Epoch.ShouldBe(chainConstants.GenesisEpoch);
 
             BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
-            Slot currentSlot = forkChoice.GetCurrentSlot(store);
+            Slot currentSlot = ((ForkChoice)forkChoice).GetCurrentSlot(store);
             Epoch currentEpoch = beaconChainUtility.ComputeEpochAtSlot(currentSlot);
             currentEpoch.ShouldBe(chainConstants.GenesisEpoch + Epoch.One);
 
@@ -117,7 +117,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
             ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
             InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
+            IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
 
             // Initialization
             IStore store = testServiceProvider.GetService<IStore>();
@@ -138,7 +138,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
             attestation.Data.Target.Epoch.ShouldBe(chainConstants.GenesisEpoch);
 
             BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
-            Slot currentSlot = forkChoice.GetCurrentSlot(store);
+            Slot currentSlot = ((ForkChoice)forkChoice).GetCurrentSlot(store);
             Epoch currentEpoch = beaconChainUtility.ComputeEpochAtSlot(currentSlot);
             currentEpoch.ShouldBe((Epoch)(chainConstants.GenesisEpoch + 2UL));
 
@@ -150,7 +150,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
             MiscellaneousParameters miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
             MaxOperationsPerBlock maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
 
-            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
+            IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
 
             if (!expectValid)
             {

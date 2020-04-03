@@ -34,7 +34,7 @@ namespace Nethermind.BeaconNode
         private readonly IClock _clock;
         private readonly DataDirectory _dataDirectory;
         private readonly IHostEnvironment _environment;
-        private readonly ForkChoice _forkChoice;
+        private readonly IForkChoice _forkChoice;
         private readonly ILogger _logger;
         private readonly INodeStart _nodeStart;
         private bool _stopped;
@@ -48,7 +48,7 @@ namespace Nethermind.BeaconNode
             IClientVersion clientVersion,
             IStore store,
             DataDirectory dataDirectory,
-            ForkChoice forkChoice,
+            IForkChoice forkChoice,
             INodeStart nodeStart)
         {
             _logger = logger;

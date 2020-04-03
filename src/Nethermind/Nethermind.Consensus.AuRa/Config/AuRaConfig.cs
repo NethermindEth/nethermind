@@ -14,10 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Config;
+
 namespace Nethermind.Consensus.AuRa.Config
 {
     public class AuRaConfig : IAuraConfig
     {
         public bool ForceSealing { get; set; }
+        
+        [ConfigItem(Description = "If 'true' then you can run Nethermind only private chains. Do not use with existing Parity AuRa chains.", DefaultValue = "false")]
+        public bool AllowAuRaPrivateChains { get; set; }
     }
 }

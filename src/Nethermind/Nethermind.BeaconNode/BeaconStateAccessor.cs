@@ -158,7 +158,7 @@ namespace Nethermind.BeaconNode
             // NOTE: Need to use '+' to avoid underflow issues
             if (slot + timeParameters.SlotsPerHistoricalRoot < state.Slot)
             {
-                throw new ArgumentOutOfRangeException(nameof(slot), slot, $"Slot can not be more than one root ({timeParameters.SlotsPerHistoricalRoot} slots) behind the state slot {state.Slot}");
+                throw new ArgumentOutOfRangeException(nameof(slot), slot, $"Slot can not be more than historical root ({timeParameters.SlotsPerHistoricalRoot} slots) behind the state slot {state.Slot}");
             }
             if (slot >= state.Slot)
             {

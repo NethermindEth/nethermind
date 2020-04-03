@@ -34,7 +34,7 @@ namespace Nethermind.BeaconNode
         private readonly BeaconChainUtility _beaconChainUtility;
         private readonly BeaconStateAccessor _beaconStateAccessor;
         private readonly BeaconStateTransition _beaconStateTransition;
-        private readonly ForkChoice _forkChoice;
+        private readonly IForkChoice _forkChoice;
         private readonly ILogger<ValidatorAssignments> _logger;
         private readonly IStore _store;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
@@ -44,7 +44,7 @@ namespace Nethermind.BeaconNode
             BeaconChainUtility beaconChainUtility,
             BeaconStateAccessor beaconStateAccessor,
             BeaconStateTransition beaconStateTransition,
-            ForkChoice forkChoice,
+            IForkChoice forkChoice,
             IStore store)
         {
             _logger = logger;

@@ -32,14 +32,14 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
     {
         private readonly BeaconStateAccessor _beaconStateAccessor;
         private readonly ICryptographyService _cryptographyService;
-        private readonly ForkChoice _forkChoice;
+        private readonly IForkChoice _forkChoice;
         private readonly IStore _store;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
         public QuickStartMockEth1DataProvider(IOptionsMonitor<TimeParameters> timeParameterOptions,
             ICryptographyService cryptographyService,
             BeaconStateAccessor beaconStateAccessor,
-            ForkChoice forkChoice,
+            IForkChoice forkChoice,
             IStore store)
         {
             _timeParameterOptions = timeParameterOptions;
