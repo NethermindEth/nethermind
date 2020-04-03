@@ -50,7 +50,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
             // Initialization
             BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
-            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
+            IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
            
             IStore store = testServiceProvider.GetService<IStore>();
             await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
@@ -76,7 +76,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
 
             // Initialization
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
-            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
+            IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             IStore store = testServiceProvider.GetService<IStore>();
             await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
 
@@ -107,7 +107,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
 
             // Initialization
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
-            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
+            IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             IStore store = testServiceProvider.GetService<IStore>();
             await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
             BeaconState genesisState = BeaconState.Clone(state);
@@ -148,7 +148,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
 
             // Initialization
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
-            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
+            IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             IStore store = testServiceProvider.GetService<IStore>();
             await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
             BeaconState genesisState = BeaconState.Clone(state);
@@ -192,7 +192,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
 
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
-            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
+            IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
 
             BeaconBlock parentBlock = await store.GetBlockAsync(attestation.Data.BeaconBlockRoot);
 
@@ -213,7 +213,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
         private async Task AddBlockToStore(IServiceProvider testServiceProvider, IStore store, SignedBeaconBlock signedBlock)
         {
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
+            IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
 
             BeaconState preState = await store.GetBlockStateAsync(signedBlock.Message.ParentRoot);
             

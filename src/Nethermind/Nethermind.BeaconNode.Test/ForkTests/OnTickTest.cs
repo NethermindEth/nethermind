@@ -38,10 +38,10 @@ namespace Nethermind.BeaconNode.Test.ForkTests
         public async Task BasicOnTick()
         {
             // Arrange
-            var testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
-            var state = TestState.PrepareTestState(testServiceProvider);
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
+            BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            var forkChoice = testServiceProvider.GetService<ForkChoice>();
+            IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             IStore store = testServiceProvider.GetService<IStore>();
             await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
 
@@ -55,17 +55,17 @@ namespace Nethermind.BeaconNode.Test.ForkTests
         public async Task UpdateJustifiedSingle()
         {
             // Arrange
-            var testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
-            var state = TestState.PrepareTestState(testServiceProvider);
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
+            BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            var forkChoice = testServiceProvider.GetService<ForkChoice>();
+            IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             IStore store = testServiceProvider.GetService<IStore>();
             await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
 
-            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
 
-            var secondsPerEpoch = timeParameters.SecondsPerSlot * (ulong)timeParameters.SlotsPerEpoch;
-            var checkpoint = new Checkpoint(
+            ulong secondsPerEpoch = timeParameters.SecondsPerSlot * (ulong)timeParameters.SlotsPerEpoch;
+            Checkpoint checkpoint = new Checkpoint(
                 store.JustifiedCheckpoint.Epoch + Epoch.One,
                 new Root(Enumerable.Repeat((byte)0x55, 32).ToArray()));
             await store.SetBestJustifiedCheckpointAsync(checkpoint);
@@ -78,9 +78,9 @@ namespace Nethermind.BeaconNode.Test.ForkTests
 
         private async Task RunOnTick(IServiceProvider testServiceProvider, IStore store, ulong time, bool expectNewJustifiedCheckpoint)
         {
-            var forkChoice = testServiceProvider.GetService<ForkChoice>();
+            IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
 
-            var previousJustifiedCheckpoint = store.JustifiedCheckpoint;
+            Checkpoint previousJustifiedCheckpoint = store.JustifiedCheckpoint;
 
             await forkChoice.OnTickAsync(store, time);
 

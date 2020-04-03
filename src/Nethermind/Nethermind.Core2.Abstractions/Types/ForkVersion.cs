@@ -26,7 +26,7 @@ namespace Nethermind.Core2.Types
 
         private readonly uint _number;
 
-        public ForkVersion(Span<byte> span)
+        public ForkVersion(ReadOnlySpan<byte> span)
         {
             if (span.Length != sizeof(uint))
             {

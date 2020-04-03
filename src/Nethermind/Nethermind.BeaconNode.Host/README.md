@@ -67,7 +67,7 @@ dotnet build src/Nethermind/Nethermind.BeaconNode.Host
 In the second terminal, get the ENR record details:
 
 ```
-$enr = Get-Content 'src/Nethermind/Nethermind.BeaconNode.Host/bin/Debug/netcoreapp3.0/Development/mothra/network/enr.dat'
+$enr = Get-Content 'src/Nethermind/Nethermind.BeaconNode.Host/bin/Debug/netcoreapp3.1/Development/mothra/network/enr.dat'
 ```
 
 Then, at the same time start the first node in one terminal (see below for clock synchronisation details):
@@ -81,6 +81,21 @@ And the second node in a second PowerShell terminal:
 ```
 $offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())/60) * 60; $offset; dotnet run --no-build --project src/Nethermind/Nethermind.BeaconNode.Host -- --DataDirectory Development9001 --Peering:Mothra:BootNodes:0 $enr --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ClockOffset $offset --QuickStart:ValidatorStartIndex 32 --QuickStart:NumberOfValidators 4
 ```
+
+#### Test synchronisation (second node starting after the first)
+
+The clocks still need to be synchronised, so start the first node as above, and capture the correspond offset in the second terminal:
+
+```
+$offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())/60) * 60; $offset;
+```
+
+The node can then be started later, but still with the same clock offset:
+
+```
+dotnet run --no-build --project src/Nethermind/Nethermind.BeaconNode.Host -- --DataDirectory Development9001 --Peering:Mothra:BootNodes:0 $enr --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ClockOffset $offset --QuickStart:ValidatorStartIndex 32 --QuickStart:NumberOfValidators 4
+```
+
 
 ### Test with separate processes for node and validator
 

@@ -36,6 +36,7 @@ jobs:
     - name: Building rocksDB for Linux
       if: matrix.os == 'ubuntu-latest'
       run: |
+        sudo apt-get update
         sudo apt install libsnappy-dev libzstd-dev liblz4-dev zlib1g-dev
         git clone https://github.com/facebook/rocksdb.git
         cd rocksdb/

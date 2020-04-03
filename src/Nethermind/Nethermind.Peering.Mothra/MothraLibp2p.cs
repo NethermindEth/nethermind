@@ -207,7 +207,7 @@ namespace Nethermind.Peering.Mothra
             ReadOnlySpan<byte> methodUtf8 = new ReadOnlySpan<byte>(methodUtf8Ptr, methodLength);
             ReadOnlySpan<byte> peerUtf8 = new ReadOnlySpan<byte>(peerUtf8Ptr, peerLength);
             ReadOnlySpan<byte> data = new ReadOnlySpan<byte>(dataPtr, dataLength);
-            RpcReceived?.Invoke(methodUtf8, requestResponseFlag == 0, peerUtf8, data);
+            RpcReceived?.Invoke(methodUtf8, requestResponseFlag, peerUtf8, data);
         }
     }
 }

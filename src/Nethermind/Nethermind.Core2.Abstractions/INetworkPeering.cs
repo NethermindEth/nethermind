@@ -15,16 +15,22 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
-using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.P2p;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2
 {
     public interface INetworkPeering
     {
-        Task PublishBeaconBlockAsync(SignedBeaconBlock signedBlock);
         Slot HighestPeerSlot { get; }
         Slot SyncStartingSlot { get; }
+
+        Task DisconnectPeerAsync(string peerId);
+
+        // TODO: Should have CancellationToken, but Mothra won't support it, so add if/when we do a managed implementation
+        Task PublishBeaconBlockAsync(SignedBeaconBlock signedBlock);
+        Task RequestBlocksAsync(string peerId, Root peerHeadRoot, Slot finalizedSlot, Slot peerHeadSlot);
+        Task SendStatusAsync(string peerId, RpcDirection rpcDirection, PeeringStatus peeringStatus);
     }
 }
