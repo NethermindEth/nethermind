@@ -25,10 +25,8 @@ namespace Nethermind.Evm.Tracing.ParityStyle
     {
         public int[] TraceAddress { get; set; }
         public string CallType { get; set; }
-
-        [JsonIgnore]
+        
         public bool IncludeInTrace { get; set; } = true;
-        [JsonIgnore]
         public bool IsPrecompiled { get; set; }
         public string Type { get; set; }
         public string CreationMethod { get; set; }
