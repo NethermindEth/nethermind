@@ -39,7 +39,7 @@ namespace Nethermind.Evm.Test
         protected const string SampleHexData1 = "a01234";
         protected const string SampleHexData2 = "b15678";
         protected const string HexZero = "00";
-        
+
         private IEthereumEcdsa _ethereumEcdsa;
         protected ITransactionProcessor _processor;
         private ISnapshotableDb _stateDb;
@@ -66,7 +66,7 @@ namespace Nethermind.Evm.Test
         public virtual void Setup()
         {
             ILogManager logger = LimboLogs.Instance;
-            
+
             ISnapshotableDb beamSyncDb = new StateDb(new BeamSyncDb(new MemDb(), LimboLogs.Instance));
             IDb beamSyncCodeDb = new BeamSyncDb(new MemDb(), LimboLogs.Instance);
             IDb codeDb = UseBeamSync ? beamSyncCodeDb : new StateDb();
@@ -129,7 +129,7 @@ namespace Nethermind.Evm.Test
                 .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey, blockNumber)
                 .TestObject;
 
-            Block block = BuildBlock(blockNumber, senderRecipientAndMiner);
+            Block block = BuildBlock(blockNumber, senderRecipientAndMiner, transaction);
             return (block, transaction);
         }
 
@@ -175,10 +175,15 @@ namespace Nethermind.Evm.Test
             return (block, transaction);
         }
 
-        protected virtual Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner)
+        protected Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner)
+        {
+            return BuildBlock(blockNumber, senderRecipientAndMiner, null);
+        }
+
+        protected virtual Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner, Transaction tx)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
-            return Build.A.Block.WithNumber(blockNumber).WithGasLimit(8000000).WithBeneficiary(senderRecipientAndMiner.Miner).TestObject;
+            return Build.A.Block.WithNumber(blockNumber).WithTransactions(tx == null ? new Transaction[0] : new[] {tx}).WithGasLimit(8000000).WithBeneficiary(senderRecipientAndMiner.Miner).TestObject;
         }
 
         protected void AssertGas(CallOutputTracer receipt, long gas)
@@ -206,7 +211,7 @@ namespace Nethermind.Evm.Test
             byte[] actualValue = Storage.Get(new StorageCell(Recipient, address));
             Assert.AreEqual(expectedValue.ToBigEndianByteArray(), actualValue, "storage");
         }
-        
+
         protected void AssertStorage(StorageCell storageCell, BigInteger expectedValue)
         {
             byte[] actualValue = Storage.Get(storageCell);

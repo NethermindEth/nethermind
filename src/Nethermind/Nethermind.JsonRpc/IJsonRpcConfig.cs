@@ -44,7 +44,7 @@ namespace Nethermind.JsonRpc
         [ConfigItem(Description = "Defines block depth when finding logs.", DefaultValue = "1000")]
         int FindLogBlockDepthLimit { get; set; }
         
-        [ConfigItem(Description = "Gas limit for eth_call and eth_estimateGas", DefaultValue = null)]
+        [ConfigItem(Description = "Gas limit for eth_call and eth_estimateGas", DefaultValue = "100000000")]
         long? GasCap { get; set; }
         
         [ConfigItem(Description = "Interval between the JSON RPC stats report log", DefaultValue = "300")]
