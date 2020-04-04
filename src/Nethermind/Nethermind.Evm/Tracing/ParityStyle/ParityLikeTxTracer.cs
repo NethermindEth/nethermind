@@ -404,7 +404,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
         {
             ParityTraceAction action = new ParityTraceAction();
-            action.IsPrecompiled = isPrecompileCall;
+            action.IncludeInTrace = !isPrecompileCall || callType == ExecutionType.Transaction;
             action.From = @from;
             action.To = to;
             action.Value = value;

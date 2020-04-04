@@ -25,8 +25,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public int[] TraceAddress { get; set; }
         public string CallType { get; set; }
 
-        public bool IncludeInTrace => !IsPrecompiled;// || Error != null;
-        public bool IsPrecompiled { get; set; }
+        public bool IncludeInTrace { get; set; }
         public string Type { get; set; }
         public string CreationMethod { get; set; }
         public Address From { get; set; }
