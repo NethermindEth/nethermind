@@ -17,6 +17,7 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
+using Newtonsoft.Json;
 
 namespace Nethermind.Evm.Tracing.ParityStyle
 {
@@ -25,7 +26,9 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public int[] TraceAddress { get; set; }
         public string CallType { get; set; }
 
-        public bool IncludeInTrace { get; set; }
+        [JsonIgnore]
+        public bool IncludeInTrace { get; set; } = true;
+        public bool IsPrecompiled { get; set; }
         public string Type { get; set; }
         public string CreationMethod { get; set; }
         public Address From { get; set; }
