@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
@@ -42,10 +43,10 @@ namespace Nethermind.JsonRpc.Test.Modules
         private TestRpcBlockchain _auraTest;
 
         [SetUp]
-        public void SetUp()
+        public async Task SetUp()
         {
-            _test = TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
-            _auraTest = TestRpcBlockchain.ForTest(SealEngineType.AuRa).Build();
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+            _auraTest = await TestRpcBlockchain.ForTest(SealEngineType.AuRa).Build();
         }
 
         [TestCase("earliest", "0x3635c9adc5dea00000")]
@@ -107,12 +108,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void Eth_get_balance_internal_error()
+        public async Task Eth_get_balance_internal_error()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.Head.Returns((BlockHeader) null);
 
-            _test = TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
             string serialized = _test.TestEthRpc("eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true), "0x01");
 
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Incorrect head block\"},\"id\":67}", serialized);
@@ -126,7 +127,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void Eth_syncing_true()
+        public async Task Eth_syncing_true()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.IsSyncing.Returns(false);
@@ -134,34 +135,34 @@ namespace Nethermind.JsonRpc.Test.Modules
             bridge.BestKnown.Returns(1000L);
             bridge.IsSyncing.Returns(true);
 
-            _test = TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
 
             string serialized = _test.TestEthRpc("eth_syncing");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x384\",\"highestBlock\":\"0x3e8\"},\"id\":67}", serialized);
         }
 
         [Test]
-        public void Eth_syncing_false()
+        public async Task Eth_syncing_false()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.IsSyncing.Returns(false);
             bridge.Head.Returns(Build.A.BlockHeader.WithNumber(900).TestObject);
             bridge.BestKnown.Returns(1000L);
 
-            _test = TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
             string serialized = _test.TestEthRpc("eth_syncing");
 
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":false,\"id\":67}", serialized);
         }
 
         [Test]
-        public void Eth_get_filter_logs()
+        public async Task Eth_get_filter_logs()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.GetFilterLogs(Arg.Any<int>()).Returns(new[] {new FilterLog(1, 0, 1, TestItem.KeccakA, 1, TestItem.KeccakB, TestItem.AddressA, new byte[] {1, 2, 3}, new[] {TestItem.KeccakC, TestItem.KeccakD})});
             bridge.FilterExists(1).Returns(true);
 
-            _test = TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
             string serialized = _test.TestEthRpc("eth_getFilterLogs", "0x01");
 
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockNumber\":\"0x1\",\"data\":\"0x010203\",\"logIndex\":\"0x1\",\"removed\":false,\"topics\":[\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2\"],\"transactionHash\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"transactionIndex\":\"0x1\",\"transactionLogIndex\":\"0x0\"}],\"id\":67}", serialized);
@@ -171,13 +172,13 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TestCase("{\"fromBlock\":\"0x100\",\"toBlock\":\"latest\",\"address\":\"0x00000000000000000001\",\"topics\":[\"0x00000000000000000000000000000001\"]}")]
         [TestCase("{\"fromBlock\":\"earliest\",\"toBlock\":\"pending\",\"address\":[\"0x00000000000000000001\", \"0x00000000000000000001\"],\"topics\":[\"0x00000000000000000000000000000001\", \"0x00000000000000000000000000000002\"]}")]
         [TestCase("{\"topics\":[null, [\"0x00000000000000000000000000000001\", \"0x00000000000000000000000000000002\"]]}")]
-        public void Eth_get_logs(string parameter)
+        public async Task Eth_get_logs(string parameter)
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.GetLogs(Arg.Any<BlockParameter>(), Arg.Any<BlockParameter>(), Arg.Any<object>(), Arg.Any<IEnumerable<object>>()).Returns(new[] {new FilterLog(1, 0, 1, TestItem.KeccakA, 1, TestItem.KeccakB, TestItem.AddressA, new byte[] {1, 2, 3}, new[] {TestItem.KeccakC, TestItem.KeccakD})});
             bridge.FilterExists(1).Returns(true);
 
-            _test = TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
             string serialized = _test.TestEthRpc("eth_getLogs", parameter);
 
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockNumber\":\"0x1\",\"data\":\"0x010203\",\"logIndex\":\"0x1\",\"removed\":false,\"topics\":[\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2\"],\"transactionHash\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"transactionIndex\":\"0x1\",\"transactionLogIndex\":\"0x0\"}],\"id\":67}", serialized);
@@ -302,54 +303,54 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Eth_call_web3_sample_not_enough_gas_system_account()
         {
-            _test.StateProvider.AccountExists(Address.SystemUser).Should().BeFalse();
+            _test.State.AccountExists(Address.SystemUser).Should().BeFalse();
             var transaction = _test.JsonSerializer.Deserialize<TransactionForRpc>("{\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized = _test.TestEthRpc("eth_call", _test.JsonSerializer.Serialize(transaction), "0x0");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
-            _test.StateProvider.AccountExists(Address.SystemUser).Should().BeFalse();
+            _test.State.AccountExists(Address.SystemUser).Should().BeFalse();
         }
 
         [Test]
         public void Eth_call_web3_sample_not_enough_gas_other_account()
         {
             Address someAccount = new Address("0x0001020304050607080910111213141516171819");
-            _test.StateProvider.AccountExists(someAccount).Should().BeFalse();
+            _test.State.AccountExists(someAccount).Should().BeFalse();
             var transaction = _test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized = _test.TestEthRpc("eth_call", _test.JsonSerializer.Serialize(transaction), "0x0");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
-            _test.StateProvider.AccountExists(someAccount).Should().BeFalse();
+            _test.State.AccountExists(someAccount).Should().BeFalse();
         }
 
         [Test]
         public void Eth_estimateGas_web3_sample_not_enough_gas_system_account()
         {
-            _test.StateProvider.AccountExists(Address.SystemUser).Should().BeFalse();
+            _test.State.AccountExists(Address.SystemUser).Should().BeFalse();
             var transaction = _test.JsonSerializer.Deserialize<TransactionForRpc>("{\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized = _test.TestEthRpc("eth_estimateGas", _test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x5898\",\"id\":67}", serialized);
-            _test.StateProvider.AccountExists(Address.SystemUser).Should().BeFalse();
+            _test.State.AccountExists(Address.SystemUser).Should().BeFalse();
         }
 
         [Test]
         public void Eth_estimateGas_web3_sample_not_enough_gas_other_account()
         {
             Address someAccount = new Address("0x0001020304050607080910111213141516171819");
-            _test.StateProvider.AccountExists(someAccount).Should().BeFalse();
+            _test.State.AccountExists(someAccount).Should().BeFalse();
             var transaction = _test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized = _test.TestEthRpc("eth_estimateGas", _test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x5898\",\"id\":67}", serialized);
-            _test.StateProvider.AccountExists(someAccount).Should().BeFalse();
+            _test.State.AccountExists(someAccount).Should().BeFalse();
         }
 
         [Test]
         public void Eth_estimateGas_web3_above_block_gas_limit()
         {
             Address someAccount = new Address("0x0001020304050607080910111213141516171819");
-            _test.StateProvider.AccountExists(someAccount).Should().BeFalse();
+            _test.State.AccountExists(someAccount).Should().BeFalse();
             var transaction = _test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\":\"0x0001020304050607080910111213141516171819\",\"gas\":\"0x100000000\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized = _test.TestEthRpc("eth_estimateGas", _test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x5898\",\"id\":67}", serialized);
-            _test.StateProvider.AccountExists(someAccount).Should().BeFalse();
+            _test.State.AccountExists(someAccount).Should().BeFalse();
         }
 
         [Test]
@@ -419,7 +420,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void Eth_get_transaction_receipt()
+        public async Task Eth_get_transaction_receipt()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             var entries = new[]
@@ -429,7 +430,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             };
             bridge.GetReceipt(Arg.Any<Keccak>()).Returns(Build.A.Receipt.WithBloom(new Bloom(entries, new Bloom())).WithAllFieldsFilled.WithLogs(entries).TestObject);
 
-            _test = TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
             string serialized = _test.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakA.ToString());
 
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"cumulativeGasUsed\":\"0x3e8\",\"gasUsed\":\"0x64\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"status\":\"0x1\",\"error\":\"error\"},\"id\":67}", serialized);
@@ -451,14 +452,14 @@ namespace Nethermind.JsonRpc.Test.Modules
 
 
         [Test]
-        public void Eth_syncing()
+        public async Task Eth_syncing()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.IsSyncing.Returns(true);
             bridge.BestKnown.Returns(6178000L);
             bridge.Head.Returns(Build.A.BlockHeader.WithNumber(6170000L).TestObject);
 
-            _test = TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
             string serialized = _test.TestEthRpc("eth_syncing");
 
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x5e2590\",\"highestBlock\":\"0x5e44d0\"},\"id\":67}", serialized);
@@ -478,12 +479,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void Send_transaction_with_signature_will_not_try_to_sign()
+        public async Task Send_transaction_with_signature_will_not_try_to_sign()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.SendTransaction(null, TxHandlingOptions.PersistentBroadcast).ReturnsForAnyArgs(TestItem.KeccakA);
 
-            _test = TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
             Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance), TestItem.PrivateKeyA, 10000000).TestObject;
             string serialized = _test.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(tx, RlpBehaviors.None).Bytes.ToHexString());
 

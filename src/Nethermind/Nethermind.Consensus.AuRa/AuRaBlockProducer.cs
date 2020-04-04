@@ -58,7 +58,6 @@ namespace Nethermind.Consensus.AuRa
             var timeToNextStep = _auRaStepCalculator.TimeToNextStep;
             if (Logger.IsDebug) Logger.Debug($"Waiting {timeToNextStep} for next AuRa step.");
             await TaskExt.DelayAtLeast(timeToNextStep, cancellationToken);
-
         }
         
         protected override Block PrepareBlock(BlockHeader parent)

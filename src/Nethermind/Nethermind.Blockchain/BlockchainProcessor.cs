@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml.Schema;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -182,7 +183,7 @@ namespace Nethermind.Blockchain
             if (_logger.IsDebug) _logger.Debug($"Starting recovery loop - {_blockQueue.Count} blocks waiting in the queue.");
             foreach (BlockRef blockRef in _recoveryQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
             {
-                if (!ResolveBlockRef(blockRef))
+                if (!blockRef.Resolve(_blockTree))
                 {
                     if (_logger.IsTrace) _logger.Trace("Block was removed from the DB and cannot be recovered (it belonged to an invalid branch). Skipping.");
                     continue;
@@ -202,24 +203,6 @@ namespace Nethermind.Blockchain
                     return;
                 }
             }
-        }
-
-        private bool ResolveBlockRef(BlockRef blockRef)
-        {
-            if (blockRef.IsInDb)
-            {
-                Block block = _blockTree.FindBlock(blockRef.BlockHash, BlockTreeLookupOptions.None);
-                if (block == null)
-                {
-                    return false;
-                }
-
-                blockRef.Block = block;
-                blockRef.BlockHash = null;
-                blockRef.IsInDb = false;
-            }
-
-            return true;
         }
 
         private void RunProcessingLoop()
@@ -281,7 +264,7 @@ namespace Nethermind.Blockchain
             UInt256 totalDifficulty = suggestedBlock.TotalDifficulty ?? 0;
             if (_logger.IsTrace) _logger.Trace($"Total difficulty of block {suggestedBlock.ToString(Block.Format.Short)} is {totalDifficulty}");
 
-            BlockHeader branchingPoint = null;
+            
             Block[] processedBlocks = null;
             
             bool shouldProcess = suggestedBlock.IsGenesis
@@ -293,100 +276,12 @@ namespace Nethermind.Blockchain
                                  || (options & ProcessingOptions.ForceProcessing) == ProcessingOptions.ForceProcessing;
             if (shouldProcess)
             {
-                List<Block> blocksToBeAddedToMain = new List<Block>();
-                Block toBeProcessed = suggestedBlock;
-                do
-                {
-                    blocksToBeAddedToMain.Add(toBeProcessed);
-                    if (_logger.IsTrace) _logger.Trace($"To be processed (of {suggestedBlock.ToString(Block.Format.Short)}) is {toBeProcessed?.ToString(Block.Format.Short)}");
-                    if (toBeProcessed.IsGenesis)
-                    {
-                        break;
-                    }
-
-                    branchingPoint = _blockTree.FindParentHeader(toBeProcessed.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                    if (branchingPoint == null)
-                    {
-                        break; //failure here
-                    }
-                    
-                    // for beam sync we do not expect previous blocks to necessarily be there and we
-                    // do not need them since we can requests state from outside
-                    if((options & ProcessingOptions.IgnoreParentNotOnMainChain) != 0)
-                    {
-                        break;
-                    }
-                    
-                    bool isFastSyncTransition = _blockTree.Head == _blockTree.Genesis && toBeProcessed.Number > 1; 
-                    if (!isFastSyncTransition)
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)}");
-                        toBeProcessed = _blockTree.FindParent(toBeProcessed.Header, BlockTreeLookupOptions.None);
-                        if (_logger.IsTrace) _logger.Trace($"Found parent {toBeProcessed?.ToString(Block.Format.Short)}");
-
-                        if (toBeProcessed == null)
-                        {
-                            if (_logger.IsTrace) _logger.Trace($"Treating this as fast sync transition for {suggestedBlock.ToString(Block.Format.Short)}");
-                            break;
-                        }
-                    }
-                    else
-                    {
-                        break;
-                    }
-                } while (!_blockTree.IsMainChain(branchingPoint.Hash));
-
-                if (branchingPoint != null && branchingPoint.Hash != _blockTree.Head?.Hash)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Head block was: {_blockTree.Head?.ToString(BlockHeader.Format.Short)}");
-                    if (_logger.IsTrace) _logger.Trace($"Branching from: {branchingPoint.ToString(BlockHeader.Format.Short)}");
-                }
-                else
-                {
-                    if (_logger.IsTrace) _logger.Trace(branchingPoint == null ? "Setting as genesis block" : $"Adding on top of {branchingPoint.ToString(BlockHeader.Format.Short)}");
-                }
-
-                Keccak stateRoot = branchingPoint?.StateRoot;
-                if (_logger.IsTrace) _logger.Trace($"State root lookup: {stateRoot}");
-
-                List<Block> blocksToProcess = new List<Block>();
-                Block[] blocks;
-                if ((options & ProcessingOptions.ForceProcessing) != 0)
-                {
-                    blocksToBeAddedToMain.Clear();
-                    blocks = new Block[1];
-                    blocks[0] = suggestedBlock;
-                }
-                else
-                {
-                    foreach (Block block in blocksToBeAddedToMain)
-                    {
-                        if (block.Hash != null && _blockTree.WasProcessed(block.Number, block.Hash))
-                        {
-                            if (_logger.IsInfo) _logger.Info($"Rerunning block after reorg: {block.ToString(Block.Format.FullHashAndNumber)}");
-                        }
-                        
-                        blocksToProcess.Add(block);
-                    }
-
-                    blocks = new Block[blocksToProcess.Count];
-                    for (int i = 0; i < blocksToProcess.Count; i++)
-                    {
-                        blocks[blocks.Length - i - 1] = blocksToProcess[i];
-                    }
-                }
-
-                if (_logger.IsTrace) _logger.Trace($"Processing {blocks.Length} blocks from state root {stateRoot}");
-
-                for (int i = 0; i < blocks.Length; i++)
-                {
-                    /* this can happen if the block was loaded as an ancestor and did not go through the recovery queue */
-                    _recoveryStep.RecoverData(blocks[i]);
-                }
+                ProcessingBranch processingBranch = FindBranchToProcess(suggestedBlock, options);
+                Block[] blocks = PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
 
                 try
                 {
-                    processedBlocks = _blockProcessor.Process(stateRoot, blocks, options, tracer);
+                    processedBlocks = _blockProcessor.Process(processingBranch.Root, blocks, options, tracer);
                 }
                 catch (InvalidBlockException ex)
                 {
@@ -403,7 +298,7 @@ namespace Nethermind.Blockchain
 
                 if ((options & ProcessingOptions.ReadOnlyChain) == 0)
                 {
-                    _blockTree.UpdateMainChain(blocksToBeAddedToMain.ToArray(), true);
+                    _blockTree.UpdateMainChain(processingBranch.Blocks.ToArray(), true);
                 }
             }
             else
@@ -424,6 +319,123 @@ namespace Nethermind.Blockchain
             }
 
             return lastProcessed;
+        }
+
+        private Block[] PrepareBlocksToProcess(Block suggestedBlock, ProcessingOptions options, ProcessingBranch processingBranch)
+        {
+            List<Block> blocksToProcess = new List<Block>();
+            Block[] blocks;
+            if ((options & ProcessingOptions.ForceProcessing) != 0)
+            {
+                processingBranch.Blocks.Clear();
+                blocks = new Block[1];
+                blocks[0] = suggestedBlock;
+            }
+            else
+            {
+                foreach (Block block in processingBranch.Blocks)
+                {
+                    if (block.Hash != null && _blockTree.WasProcessed(block.Number, block.Hash))
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Rerunning block after reorg: {block.ToString(Block.Format.FullHashAndNumber)}");
+                    }
+
+                    blocksToProcess.Add(block);
+                }
+
+                blocks = new Block[blocksToProcess.Count];
+                for (int i = 0; i < blocksToProcess.Count; i++)
+                {
+                    blocks[blocks.Length - i - 1] = blocksToProcess[i];
+                }
+            }
+
+            if (_logger.IsTrace) _logger.Trace($"Processing {blocks.Length} blocks from state root {processingBranch.Root}");
+
+            for (int i = 0; i < blocks.Length; i++)
+            {
+                /* this can happen if the block was loaded as an ancestor and did not go through the recovery queue */
+                _recoveryStep.RecoverData(blocks[i]);
+            }
+
+            return blocks;
+        }
+
+        private struct ProcessingBranch
+        {
+            public ProcessingBranch(Keccak root, List<Block> blocks)
+            {
+                Root = root;
+                Blocks = blocks;
+                BlocksToProcess = new List<Block>();
+                ProcessedBlocks = new List<Block>();
+            }
+            
+            public Keccak Root { get; }
+            public List<Block> Blocks { get; }
+            public List<Block> BlocksToProcess { get; }
+            public List<Block> ProcessedBlocks { get; }
+        }
+        
+        private ProcessingBranch FindBranchToProcess(Block suggestedBlock, ProcessingOptions options)
+        {
+            BlockHeader branchingPoint = null;
+            List<Block> blocksToBeAddedToMain = new List<Block>();
+            Block toBeProcessed = suggestedBlock;
+            do
+            {
+                blocksToBeAddedToMain.Add(toBeProcessed);
+                if (_logger.IsTrace) _logger.Trace($"To be processed (of {suggestedBlock.ToString(Block.Format.Short)}) is {toBeProcessed?.ToString(Block.Format.Short)}");
+                if (toBeProcessed.IsGenesis)
+                {
+                    break;
+                }
+
+                branchingPoint = _blockTree.FindParentHeader(toBeProcessed.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                if (branchingPoint == null)
+                {
+                    break; //failure here
+                }
+
+                // for beam sync we do not expect previous blocks to necessarily be there and we
+                // do not need them since we can requests state from outside
+                if ((options & ProcessingOptions.IgnoreParentNotOnMainChain) != 0)
+                {
+                    break;
+                }
+
+                bool isFastSyncTransition = _blockTree.Head == _blockTree.Genesis && toBeProcessed.Number > 1;
+                if (!isFastSyncTransition)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)}");
+                    toBeProcessed = _blockTree.FindParent(toBeProcessed.Header, BlockTreeLookupOptions.None);
+                    if (_logger.IsTrace) _logger.Trace($"Found parent {toBeProcessed?.ToString(Block.Format.Short)}");
+
+                    if (toBeProcessed == null)
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Treating this as fast sync transition for {suggestedBlock.ToString(Block.Format.Short)}");
+                        break;
+                    }
+                }
+                else
+                {
+                    break;
+                }
+            } while (!_blockTree.IsMainChain(branchingPoint.Hash));
+
+            if (branchingPoint != null && branchingPoint.Hash != _blockTree.Head?.Hash)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Head block was: {_blockTree.Head?.ToString(BlockHeader.Format.Short)}");
+                if (_logger.IsTrace) _logger.Trace($"Branching from: {branchingPoint.ToString(BlockHeader.Format.Short)}");
+            }
+            else
+            {
+                if (_logger.IsTrace) _logger.Trace(branchingPoint == null ? "Setting as genesis block" : $"Adding on top of {branchingPoint.ToString(BlockHeader.Format.Short)}");
+            }
+
+            Keccak stateRoot = branchingPoint?.StateRoot;
+            if (_logger.IsTrace) _logger.Trace($"State root lookup: {stateRoot}");
+            return new ProcessingBranch(stateRoot, blocksToBeAddedToMain);
         }
 
         [Todo(Improve.Refactor, "This probably can be made conditional (in DEBUG only)")]
@@ -458,30 +470,6 @@ namespace Nethermind.Blockchain
             }
 
             return true;
-        }
-
-        private class BlockRef
-        {
-            public BlockRef(Block block, ProcessingOptions processingOptions = ProcessingOptions.None)
-            {
-                Block = block;
-                ProcessingOptions = processingOptions;
-                IsInDb = false;
-                BlockHash = null;
-            }
-
-            public BlockRef(Keccak blockHash, ProcessingOptions processingOptions = ProcessingOptions.None)
-            {
-                Block = null;
-                IsInDb = true;
-                BlockHash = blockHash;
-                ProcessingOptions = processingOptions;
-            }
-
-            public bool IsInDb { get; set; }
-            public Keccak BlockHash { get; set; }
-            public Block Block { get; set; }
-            public ProcessingOptions ProcessingOptions { get; }
         }
 
         public void Dispose()
