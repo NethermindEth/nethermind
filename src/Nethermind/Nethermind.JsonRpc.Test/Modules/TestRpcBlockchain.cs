@@ -14,17 +14,16 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.Store.Bloom;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
-using NSubstitute;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -58,19 +57,18 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
             
-            public TestRpcBlockchain Build()
+            public async Task<TestRpcBlockchain> Build()
             {
-                return (TestRpcBlockchain)_blockchain.Build();
+                return (TestRpcBlockchain)(await _blockchain.Build());
             }
         }
 
-        protected override TestBlockchain Build()
+        protected override async Task<TestBlockchain> Build()
         {
-            base.Build();
-            IStateReader stateReader = new StateReader(StateDb, CodeDb, LimboLogs.Instance);
+            await base.Build();
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
-            Bridge ??= new BlockchainBridge(stateReader, StateProvider, StorageProvider, BlockTree, TxPool, ReceiptStorage, filterStore, filterManager, NullWallet.Instance, TxProcessor, EthereumEcdsa, NullBloomStorage.Instance, LimboLogs.Instance);
+            Bridge ??= new BlockchainBridge(StateReader, State, Storage, BlockTree, TxPool, ReceiptStorage, filterStore, filterManager, NullWallet.Instance, TxProcessor, EthereumEcdsa, NullBloomStorage.Instance, LimboLogs.Instance);
             EthModule = new EthModule(new JsonRpcConfig(), LimboLogs.Instance, Bridge);
             return this;
         }

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -33,9 +34,9 @@ namespace Nethermind.Blockchain
         
         public static NullBlockProcessor Instance => _instance ?? LazyInitializer.EnsureInitialized(ref _instance, () => new NullBlockProcessor());
 
-        public Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
+        public Block[] Process(Keccak branchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
         {
-            return suggestedBlocks;
+            return suggestedBlocks.ToArray();
         }
 
         public event EventHandler<BlockProcessedEventArgs> BlockProcessed

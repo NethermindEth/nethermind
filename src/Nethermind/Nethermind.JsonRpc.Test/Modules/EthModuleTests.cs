@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
@@ -42,15 +43,15 @@ namespace Nethermind.JsonRpc.Test.Modules
         private TestRpcBlockchain _auraTest;
 
         [SetUp]
-        public void SetUp()
+        public async Task SetUp()
         {
-            _test = TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
-            _auraTest = TestRpcBlockchain.ForTest(SealEngineType.AuRa).Build();
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+            _auraTest = await TestRpcBlockchain.ForTest(SealEngineType.AuRa).Build();
         }
 
         [TestCase("earliest", "0x3635c9adc5dea00000")]
-        [TestCase("latest", "0x3635c9adc5dea00000")]
-        [TestCase("pending", "0x3635c9adc5dea00000")]
+        [TestCase("latest", "0x3635c9adc5de9f09e5")]
+        [TestCase("pending", "0x3635c9adc5de9f09e5")]
         [TestCase("0x0", "0x3635c9adc5dea00000")]
         public void Eth_get_balance(string blockParameter, string expectedResult)
         {
@@ -62,12 +63,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_get_balance_default_block()
         {
             string serialized = _test.TestEthRpc("eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true));
-            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x3635c9adc5dea00000\",\"id\":67}}", serialized);
+            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x3635c9adc5de9f09e5\",\"id\":67}}", serialized);
         }
 
         [TestCase("earliest", "0x0")]
-        [TestCase("latest", "0x0")]
-        [TestCase("pending", "0x0")]
+        [TestCase("latest", "0x3")]
+        [TestCase("pending", "0x3")]
         [TestCase("0x0", "0x0")]
         public void Eth_get_tx_count(string blockParameter, string expectedResult)
         {
@@ -79,7 +80,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_get_tx_count_default_block()
         {
             string serialized = _test.TestEthRpc("eth_getTransactionCount", TestItem.AddressA.Bytes.ToHexString(true));
-            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x0\",\"id\":67}}", serialized);
+            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x3\",\"id\":67}}", serialized);
         }
 
         [TestCase("earliest", "0xabcdef")]
@@ -103,16 +104,16 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_get_block_number()
         {
             string serialized = _test.TestEthRpc("eth_blockNumber");
-            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x9\",\"id\":67}}", serialized);
+            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x3\",\"id\":67}}", serialized);
         }
 
         [Test]
-        public void Eth_get_balance_internal_error()
+        public async Task Eth_get_balance_internal_error()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.Head.Returns((BlockHeader) null);
 
-            _test = TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
             string serialized = _test.TestEthRpc("eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true), "0x01");
 
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Incorrect head block\"},\"id\":67}", serialized);
@@ -126,7 +127,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void Eth_syncing_true()
+        public async Task Eth_syncing_true()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.IsSyncing.Returns(false);
@@ -134,34 +135,34 @@ namespace Nethermind.JsonRpc.Test.Modules
             bridge.BestKnown.Returns(1000L);
             bridge.IsSyncing.Returns(true);
 
-            _test = TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
 
             string serialized = _test.TestEthRpc("eth_syncing");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x384\",\"highestBlock\":\"0x3e8\"},\"id\":67}", serialized);
         }
 
         [Test]
-        public void Eth_syncing_false()
+        public async Task Eth_syncing_false()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.IsSyncing.Returns(false);
             bridge.Head.Returns(Build.A.BlockHeader.WithNumber(900).TestObject);
             bridge.BestKnown.Returns(1000L);
 
-            _test = TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
             string serialized = _test.TestEthRpc("eth_syncing");
 
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":false,\"id\":67}", serialized);
         }
 
         [Test]
-        public void Eth_get_filter_logs()
+        public async Task Eth_get_filter_logs()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.GetFilterLogs(Arg.Any<int>()).Returns(new[] {new FilterLog(1, 0, 1, TestItem.KeccakA, 1, TestItem.KeccakB, TestItem.AddressA, new byte[] {1, 2, 3}, new[] {TestItem.KeccakC, TestItem.KeccakD})});
             bridge.FilterExists(1).Returns(true);
 
-            _test = TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
             string serialized = _test.TestEthRpc("eth_getFilterLogs", "0x01");
 
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockNumber\":\"0x1\",\"data\":\"0x010203\",\"logIndex\":\"0x1\",\"removed\":false,\"topics\":[\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2\"],\"transactionHash\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"transactionIndex\":\"0x1\",\"transactionLogIndex\":\"0x0\"}],\"id\":67}", serialized);
@@ -171,13 +172,13 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TestCase("{\"fromBlock\":\"0x100\",\"toBlock\":\"latest\",\"address\":\"0x00000000000000000001\",\"topics\":[\"0x00000000000000000000000000000001\"]}")]
         [TestCase("{\"fromBlock\":\"earliest\",\"toBlock\":\"pending\",\"address\":[\"0x00000000000000000001\", \"0x00000000000000000001\"],\"topics\":[\"0x00000000000000000000000000000001\", \"0x00000000000000000000000000000002\"]}")]
         [TestCase("{\"topics\":[null, [\"0x00000000000000000000000000000001\", \"0x00000000000000000000000000000002\"]]}")]
-        public void Eth_get_logs(string parameter)
+        public async Task Eth_get_logs(string parameter)
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.GetLogs(Arg.Any<BlockParameter>(), Arg.Any<BlockParameter>(), Arg.Any<object>(), Arg.Any<IEnumerable<object>>()).Returns(new[] {new FilterLog(1, 0, 1, TestItem.KeccakA, 1, TestItem.KeccakB, TestItem.AddressA, new byte[] {1, 2, 3}, new[] {TestItem.KeccakC, TestItem.KeccakD})});
             bridge.FilterExists(1).Returns(true);
 
-            _test = TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
             string serialized = _test.TestEthRpc("eth_getLogs", parameter);
 
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockNumber\":\"0x1\",\"data\":\"0x010203\",\"logIndex\":\"0x1\",\"removed\":false,\"topics\":[\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2\"],\"transactionHash\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"transactionIndex\":\"0x1\",\"transactionLogIndex\":\"0x0\"}],\"id\":67}", serialized);
@@ -208,8 +209,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [TestCase("earliest", "\"0x0\"")]
-        [TestCase("latest", "\"0x0\"")]
-        [TestCase("pending", "\"0x0\"")]
+        [TestCase("latest", "\"0x2\"")]
+        [TestCase("pending", "\"0x2\"")]
         [TestCase("0x0", "\"0x0\"")]
         public void Eth_tx_count_by_number(string blockParameter, string expectedResult)
         {
@@ -233,41 +234,37 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}", serialized);
         }
 
-        [TestCase("0x0d96929f1193bfc2811d6fb31c4021f7970a5c1d41987f06e1201a2bb65e492f", false, "{\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x0d96929f1193bfc2811d6fb31c4021f7970a5c1d41987f06e1201a2bb65e492f\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x2\",\"parentHash\":\"0xcbb80b69d74f3ea38aa1407ac2f7bab7df6010041a2c8f7e404a2e6696494b29\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x263\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"totalDifficulty\":\"0x2dc6c0\",\"timestamp\":\"0xf4242\",\"transactions\":[\"0x1fb701b713c746b25ac9b0b82345aef86c7541b001ee4c7be4922c71e66e073a\"],\"transactionsRoot\":\"0x2c77d8ab923916632235cd516679013abf16760da5539504bf9405bf1b6e8000\",\"uncles\":[]}")]
-        [TestCase("0x0d96929f1193bfc2811d6fb31c4021f7970a5c1d41987f06e1201a2bb65e492f", true, "{\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x0d96929f1193bfc2811d6fb31c4021f7970a5c1d41987f06e1201a2bb65e492f\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x2\",\"parentHash\":\"0xcbb80b69d74f3ea38aa1407ac2f7bab7df6010041a2c8f7e404a2e6696494b29\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x263\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"totalDifficulty\":\"0x2dc6c0\",\"timestamp\":\"0xf4242\",\"transactions\":[{\"hash\":\"0x1fb701b713c746b25ac9b0b82345aef86c7541b001ee4c7be4922c71e66e073a\",\"nonce\":\"0x0\",\"blockHash\":\"0x0d96929f1193bfc2811d6fb31c4021f7970a5c1d41987f06e1201a2bb65e492f\",\"blockNumber\":\"0x2\",\"transactionIndex\":\"0x0\",\"from\":\"0x963e1762be217455aed852e2cbb46053ce0bca98\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"data\":\"0x\",\"input\":\"0x\",\"v\":\"0x25\",\"s\":\"0x379b8a0437094d9e1d0ae5c2511d1a4b2cb65be7974d6cbccd5370e14f2df3a5\",\"r\":\"0xac46223b1f2bb2c1a0397d2e44e0cf82b78a766b3035f6c34be06395db18a8e4\"}],\"transactionsRoot\":\"0x2c77d8ab923916632235cd516679013abf16760da5539504bf9405bf1b6e8000\",\"uncles\":[]}")]
+        [TestCase("0x71eac5e72c3b64431c246173352a8c625c8434d944eb5f3f58204fec3ec36b54", false, "{\"jsonrpc\":\"2.0\",\"result\":{\"difficulty\":\"0x1\",\"extraData\":\"0x4e65746865726d696e64\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0xa410\",\"hash\":\"0x71eac5e72c3b64431c246173352a8c625c8434d944eb5f3f58204fec3ec36b54\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x0000000000000000\",\"number\":\"0x3\",\"parentHash\":\"0x4d01cd0aaa5f0ed6a00886ff668fe511febd4af8b1c02cfc119434696bd0116b\",\"receiptsRoot\":\"0x8512a59e92c89d12cf92d7e3a9e7abe96c52ba6ec2d7a0bd045dc4317c9b18fc\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x2cf\",\"stateRoot\":\"0x5dba6f8f6b72622a998cbf941635f19181686714c2467a3d77bd880ec339864c\",\"totalDifficulty\":\"0xf4243\",\"timestamp\":\"0xfffffff1886e0903\",\"transactions\":[\"0x681c2b6f99e37fd6fe6046db8b51ec3460d699cacd6a376143fd5842ac50621f\",\"0x7126cf20a0ad8bd51634837d9049615c34c1bff5e1a54e5663f7e23109bff48b\"],\"transactionsRoot\":\"0x2e6e6deb19d24bd48eda6071ab38b1bae64c15ef1998c96f0d153711d3a3efc7\",\"uncles\":[]},\"id\":67}")]
+        [TestCase("0x71eac5e72c3b64431c246173352a8c625c8434d944eb5f3f58204fec3ec36b54", true, "{\"jsonrpc\":\"2.0\",\"result\":{\"difficulty\":\"0x1\",\"extraData\":\"0x4e65746865726d696e64\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0xa410\",\"hash\":\"0x71eac5e72c3b64431c246173352a8c625c8434d944eb5f3f58204fec3ec36b54\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x0000000000000000\",\"number\":\"0x3\",\"parentHash\":\"0x4d01cd0aaa5f0ed6a00886ff668fe511febd4af8b1c02cfc119434696bd0116b\",\"receiptsRoot\":\"0x8512a59e92c89d12cf92d7e3a9e7abe96c52ba6ec2d7a0bd045dc4317c9b18fc\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x2cf\",\"stateRoot\":\"0x5dba6f8f6b72622a998cbf941635f19181686714c2467a3d77bd880ec339864c\",\"totalDifficulty\":\"0xf4243\",\"timestamp\":\"0xfffffff1886e0903\",\"transactions\":[{\"hash\":\"0x681c2b6f99e37fd6fe6046db8b51ec3460d699cacd6a376143fd5842ac50621f\",\"nonce\":\"0x1\",\"blockHash\":\"0x71eac5e72c3b64431c246173352a8c625c8434d944eb5f3f58204fec3ec36b54\",\"blockNumber\":\"0x3\",\"transactionIndex\":\"0x0\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"data\":\"0x\",\"input\":\"0x\",\"v\":\"0x25\",\"s\":\"0x575361bb330bf38b9a89dd8279d42a20d34edeaeede9739a7c2bdcbe3242d7bb\",\"r\":\"0xe7c5ff3cba254c4fe8f9f12c3f202150bb9a0aebeee349ff2f4acb23585f56bd\"},{\"hash\":\"0x7126cf20a0ad8bd51634837d9049615c34c1bff5e1a54e5663f7e23109bff48b\",\"nonce\":\"0x2\",\"blockHash\":\"0x71eac5e72c3b64431c246173352a8c625c8434d944eb5f3f58204fec3ec36b54\",\"blockNumber\":\"0x3\",\"transactionIndex\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"data\":\"0x\",\"input\":\"0x\",\"v\":\"0x25\",\"s\":\"0x575361bb330bf38b9a89dd8279d42a20d34edeaeede9739a7c2bdcbe3242d7bb\",\"r\":\"0xe7c5ff3cba254c4fe8f9f12c3f202150bb9a0aebeee349ff2f4acb23585f56bd\"}],\"transactionsRoot\":\"0x2e6e6deb19d24bd48eda6071ab38b1bae64c15ef1998c96f0d153711d3a3efc7\",\"uncles\":[]},\"id\":67}")]
         public void Eth_get_block_by_hash_with_tx(string blockParameter, bool withTxData, string expectedResult)
         {
-            string serialized = _test.TestEthRpc("eth_getBlockByHash", blockParameter, withTxData.ToString());
-            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":{expectedResult},\"id\":67}}", serialized, serialized);
+            string serialized = _test.TestEthRpc("eth_getBlockByHash", _test.BlockTree.Head.Hash.ToString(), withTxData.ToString());
+            Assert.AreEqual(expectedResult, serialized, serialized.Replace("\"", "\\\""));
         }
 
-        [TestCase("earliest", "{\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x2167088a0f0de66028d2b728235af6d467108c1750c3e11a8f6e6cd60fddb0e4\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x201\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"totalDifficulty\":\"0xf4240\",\"timestamp\":\"0xf4240\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}")]
-        [TestCase("latest", "{\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x227ad6224f52f2c4a53c79b2b995980c18951c54c792586619447a313636657b\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x9\",\"parentHash\":\"0x8ffe489d2702ea5383e076335f15886ef8313668a142d9eeced777e89e106467\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x201\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"totalDifficulty\":\"0x989680\",\"timestamp\":\"0xf4249\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}")]
-        [TestCase("pending", "{\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x227ad6224f52f2c4a53c79b2b995980c18951c54c792586619447a313636657b\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x9\",\"parentHash\":\"0x8ffe489d2702ea5383e076335f15886ef8313668a142d9eeced777e89e106467\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x201\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"totalDifficulty\":\"0x989680\",\"timestamp\":\"0xf4249\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}")]
-        [TestCase("0x0", "{\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x2167088a0f0de66028d2b728235af6d467108c1750c3e11a8f6e6cd60fddb0e4\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x201\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"totalDifficulty\":\"0xf4240\",\"timestamp\":\"0xf4240\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}")]
-        [TestCase("0x20", "null")]
-        [TestCase(blockWithTransactions, "{\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x0d96929f1193bfc2811d6fb31c4021f7970a5c1d41987f06e1201a2bb65e492f\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x2\",\"parentHash\":\"0xcbb80b69d74f3ea38aa1407ac2f7bab7df6010041a2c8f7e404a2e6696494b29\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x263\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"totalDifficulty\":\"0x2dc6c0\",\"timestamp\":\"0xf4242\",\"transactions\":[{\"hash\":\"0x1fb701b713c746b25ac9b0b82345aef86c7541b001ee4c7be4922c71e66e073a\",\"nonce\":\"0x0\",\"blockHash\":\"0x0d96929f1193bfc2811d6fb31c4021f7970a5c1d41987f06e1201a2bb65e492f\",\"blockNumber\":\"0x2\",\"transactionIndex\":\"0x0\",\"from\":\"0x963e1762be217455aed852e2cbb46053ce0bca98\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"data\":\"0x\",\"input\":\"0x\",\"v\":\"0x25\",\"s\":\"0x379b8a0437094d9e1d0ae5c2511d1a4b2cb65be7974d6cbccd5370e14f2df3a5\",\"r\":\"0xac46223b1f2bb2c1a0397d2e44e0cf82b78a766b3035f6c34be06395db18a8e4\"}],\"transactionsRoot\":\"0x2c77d8ab923916632235cd516679013abf16760da5539504bf9405bf1b6e8000\",\"uncles\":[]}")]
+        [TestCase("earliest", "{\"jsonrpc\":\"2.0\",\"result\":{\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x2167088a0f0de66028d2b728235af6d467108c1750c3e11a8f6e6cd60fddb0e4\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x201\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"totalDifficulty\":\"0xf4240\",\"timestamp\":\"0xf4240\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]},\"id\":67}")]
+        [TestCase("latest", "{\"jsonrpc\":\"2.0\",\"result\":{\"difficulty\":\"0x1\",\"extraData\":\"0x4e65746865726d696e64\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0xa410\",\"hash\":\"0x71eac5e72c3b64431c246173352a8c625c8434d944eb5f3f58204fec3ec36b54\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x0000000000000000\",\"number\":\"0x3\",\"parentHash\":\"0x4d01cd0aaa5f0ed6a00886ff668fe511febd4af8b1c02cfc119434696bd0116b\",\"receiptsRoot\":\"0x8512a59e92c89d12cf92d7e3a9e7abe96c52ba6ec2d7a0bd045dc4317c9b18fc\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x2cf\",\"stateRoot\":\"0x5dba6f8f6b72622a998cbf941635f19181686714c2467a3d77bd880ec339864c\",\"totalDifficulty\":\"0xf4243\",\"timestamp\":\"0xfffffff1886e0903\",\"transactions\":[{\"hash\":\"0x681c2b6f99e37fd6fe6046db8b51ec3460d699cacd6a376143fd5842ac50621f\",\"nonce\":\"0x1\",\"blockHash\":\"0x71eac5e72c3b64431c246173352a8c625c8434d944eb5f3f58204fec3ec36b54\",\"blockNumber\":\"0x3\",\"transactionIndex\":\"0x0\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"data\":\"0x\",\"input\":\"0x\",\"v\":\"0x25\",\"s\":\"0x575361bb330bf38b9a89dd8279d42a20d34edeaeede9739a7c2bdcbe3242d7bb\",\"r\":\"0xe7c5ff3cba254c4fe8f9f12c3f202150bb9a0aebeee349ff2f4acb23585f56bd\"},{\"hash\":\"0x7126cf20a0ad8bd51634837d9049615c34c1bff5e1a54e5663f7e23109bff48b\",\"nonce\":\"0x2\",\"blockHash\":\"0x71eac5e72c3b64431c246173352a8c625c8434d944eb5f3f58204fec3ec36b54\",\"blockNumber\":\"0x3\",\"transactionIndex\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"data\":\"0x\",\"input\":\"0x\",\"v\":\"0x25\",\"s\":\"0x575361bb330bf38b9a89dd8279d42a20d34edeaeede9739a7c2bdcbe3242d7bb\",\"r\":\"0xe7c5ff3cba254c4fe8f9f12c3f202150bb9a0aebeee349ff2f4acb23585f56bd\"}],\"transactionsRoot\":\"0x2e6e6deb19d24bd48eda6071ab38b1bae64c15ef1998c96f0d153711d3a3efc7\",\"uncles\":[]},\"id\":67}")]
+        [TestCase("pending", "{\"jsonrpc\":\"2.0\",\"result\":{\"difficulty\":\"0x1\",\"extraData\":\"0x4e65746865726d696e64\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0xa410\",\"hash\":\"0x71eac5e72c3b64431c246173352a8c625c8434d944eb5f3f58204fec3ec36b54\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x0000000000000000\",\"number\":\"0x3\",\"parentHash\":\"0x4d01cd0aaa5f0ed6a00886ff668fe511febd4af8b1c02cfc119434696bd0116b\",\"receiptsRoot\":\"0x8512a59e92c89d12cf92d7e3a9e7abe96c52ba6ec2d7a0bd045dc4317c9b18fc\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x2cf\",\"stateRoot\":\"0x5dba6f8f6b72622a998cbf941635f19181686714c2467a3d77bd880ec339864c\",\"totalDifficulty\":\"0xf4243\",\"timestamp\":\"0xfffffff1886e0903\",\"transactions\":[{\"hash\":\"0x681c2b6f99e37fd6fe6046db8b51ec3460d699cacd6a376143fd5842ac50621f\",\"nonce\":\"0x1\",\"blockHash\":\"0x71eac5e72c3b64431c246173352a8c625c8434d944eb5f3f58204fec3ec36b54\",\"blockNumber\":\"0x3\",\"transactionIndex\":\"0x0\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"data\":\"0x\",\"input\":\"0x\",\"v\":\"0x25\",\"s\":\"0x575361bb330bf38b9a89dd8279d42a20d34edeaeede9739a7c2bdcbe3242d7bb\",\"r\":\"0xe7c5ff3cba254c4fe8f9f12c3f202150bb9a0aebeee349ff2f4acb23585f56bd\"},{\"hash\":\"0x7126cf20a0ad8bd51634837d9049615c34c1bff5e1a54e5663f7e23109bff48b\",\"nonce\":\"0x2\",\"blockHash\":\"0x71eac5e72c3b64431c246173352a8c625c8434d944eb5f3f58204fec3ec36b54\",\"blockNumber\":\"0x3\",\"transactionIndex\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"data\":\"0x\",\"input\":\"0x\",\"v\":\"0x25\",\"s\":\"0x575361bb330bf38b9a89dd8279d42a20d34edeaeede9739a7c2bdcbe3242d7bb\",\"r\":\"0xe7c5ff3cba254c4fe8f9f12c3f202150bb9a0aebeee349ff2f4acb23585f56bd\"}],\"transactionsRoot\":\"0x2e6e6deb19d24bd48eda6071ab38b1bae64c15ef1998c96f0d153711d3a3efc7\",\"uncles\":[]},\"id\":67}")]
+        [TestCase("0x0", "{\"jsonrpc\":\"2.0\",\"result\":{\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x2167088a0f0de66028d2b728235af6d467108c1750c3e11a8f6e6cd60fddb0e4\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x201\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"totalDifficulty\":\"0xf4240\",\"timestamp\":\"0xf4240\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]},\"id\":67}")]
+        [TestCase("0x20", "{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}")]
         public void Eth_get_block_by_number(string blockParameter, string expectedResult)
         {
             string serialized = _test.TestEthRpc("eth_getBlockByNumber", blockParameter, "true");
-            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":{expectedResult},\"id\":67}}", serialized, serialized);
+            Assert.AreEqual(expectedResult, serialized, serialized.Replace("\"", "\\\""));
         }
 
-        private const string blockWithTransactions = "0x02";
-
-        [TestCase("earliest", "{\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x2167088a0f0de66028d2b728235af6d467108c1750c3e11a8f6e6cd60fddb0e4\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x201\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"totalDifficulty\":\"0xf4240\",\"timestamp\":\"0xf4240\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}")]
-        [TestCase("latest", "{\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x227ad6224f52f2c4a53c79b2b995980c18951c54c792586619447a313636657b\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x9\",\"parentHash\":\"0x8ffe489d2702ea5383e076335f15886ef8313668a142d9eeced777e89e106467\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x201\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"totalDifficulty\":\"0x989680\",\"timestamp\":\"0xf4249\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}")]
-        [TestCase("pending", "{\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x227ad6224f52f2c4a53c79b2b995980c18951c54c792586619447a313636657b\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x9\",\"parentHash\":\"0x8ffe489d2702ea5383e076335f15886ef8313668a142d9eeced777e89e106467\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x201\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"totalDifficulty\":\"0x989680\",\"timestamp\":\"0xf4249\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}")]
-        [TestCase("0x0", "{\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x2167088a0f0de66028d2b728235af6d467108c1750c3e11a8f6e6cd60fddb0e4\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x201\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"totalDifficulty\":\"0xf4240\",\"timestamp\":\"0xf4240\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}")]
-        [TestCase("0x20", "null")]
-        [TestCase(blockWithTransactions, "{\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x0d96929f1193bfc2811d6fb31c4021f7970a5c1d41987f06e1201a2bb65e492f\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x2\",\"parentHash\":\"0xcbb80b69d74f3ea38aa1407ac2f7bab7df6010041a2c8f7e404a2e6696494b29\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x263\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"totalDifficulty\":\"0x2dc6c0\",\"timestamp\":\"0xf4242\",\"transactions\":[\"0x1fb701b713c746b25ac9b0b82345aef86c7541b001ee4c7be4922c71e66e073a\"],\"transactionsRoot\":\"0x2c77d8ab923916632235cd516679013abf16760da5539504bf9405bf1b6e8000\",\"uncles\":[]}")]
+        [TestCase("earliest", "{\"jsonrpc\":\"2.0\",\"result\":{\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x2167088a0f0de66028d2b728235af6d467108c1750c3e11a8f6e6cd60fddb0e4\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x201\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"totalDifficulty\":\"0xf4240\",\"timestamp\":\"0xf4240\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]},\"id\":67}")]
+        [TestCase("latest", "{\"jsonrpc\":\"2.0\",\"result\":{\"difficulty\":\"0x1\",\"extraData\":\"0x4e65746865726d696e64\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0xa410\",\"hash\":\"0x71eac5e72c3b64431c246173352a8c625c8434d944eb5f3f58204fec3ec36b54\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x0000000000000000\",\"number\":\"0x3\",\"parentHash\":\"0x4d01cd0aaa5f0ed6a00886ff668fe511febd4af8b1c02cfc119434696bd0116b\",\"receiptsRoot\":\"0x8512a59e92c89d12cf92d7e3a9e7abe96c52ba6ec2d7a0bd045dc4317c9b18fc\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x2cf\",\"stateRoot\":\"0x5dba6f8f6b72622a998cbf941635f19181686714c2467a3d77bd880ec339864c\",\"totalDifficulty\":\"0xf4243\",\"timestamp\":\"0xfffffff1886e0903\",\"transactions\":[\"0x681c2b6f99e37fd6fe6046db8b51ec3460d699cacd6a376143fd5842ac50621f\",\"0x7126cf20a0ad8bd51634837d9049615c34c1bff5e1a54e5663f7e23109bff48b\"],\"transactionsRoot\":\"0x2e6e6deb19d24bd48eda6071ab38b1bae64c15ef1998c96f0d153711d3a3efc7\",\"uncles\":[]},\"id\":67}")]
+        [TestCase("pending", "{\"jsonrpc\":\"2.0\",\"result\":{\"difficulty\":\"0x1\",\"extraData\":\"0x4e65746865726d696e64\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0xa410\",\"hash\":\"0x71eac5e72c3b64431c246173352a8c625c8434d944eb5f3f58204fec3ec36b54\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x0000000000000000\",\"number\":\"0x3\",\"parentHash\":\"0x4d01cd0aaa5f0ed6a00886ff668fe511febd4af8b1c02cfc119434696bd0116b\",\"receiptsRoot\":\"0x8512a59e92c89d12cf92d7e3a9e7abe96c52ba6ec2d7a0bd045dc4317c9b18fc\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x2cf\",\"stateRoot\":\"0x5dba6f8f6b72622a998cbf941635f19181686714c2467a3d77bd880ec339864c\",\"totalDifficulty\":\"0xf4243\",\"timestamp\":\"0xfffffff1886e0903\",\"transactions\":[\"0x681c2b6f99e37fd6fe6046db8b51ec3460d699cacd6a376143fd5842ac50621f\",\"0x7126cf20a0ad8bd51634837d9049615c34c1bff5e1a54e5663f7e23109bff48b\"],\"transactionsRoot\":\"0x2e6e6deb19d24bd48eda6071ab38b1bae64c15ef1998c96f0d153711d3a3efc7\",\"uncles\":[]},\"id\":67}")]
+        [TestCase("0x0", "{\"jsonrpc\":\"2.0\",\"result\":{\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x2167088a0f0de66028d2b728235af6d467108c1750c3e11a8f6e6cd60fddb0e4\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x201\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"totalDifficulty\":\"0xf4240\",\"timestamp\":\"0xf4240\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]},\"id\":67}")]
+        [TestCase("0x20", "{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}")]
         public void Eth_get_block_by_number_no_details(string blockParameter, string expectedResult)
         {
             string serialized = _test.TestEthRpc("eth_getBlockByNumber", blockParameter, "false");
-            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":{expectedResult},\"id\":67}}", serialized);
+            Assert.AreEqual(expectedResult, serialized, serialized.Replace("\"", "\\\""));
 
             string serialized2 = _test.TestEthRpc("eth_getBlockByNumber", blockParameter);
-            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":{expectedResult},\"id\":67}}", serialized2, serialized2);
+            Assert.AreEqual(expectedResult, serialized2, serialized2);
         }
 
         [Test]
@@ -302,54 +299,54 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Eth_call_web3_sample_not_enough_gas_system_account()
         {
-            _test.StateProvider.AccountExists(Address.SystemUser).Should().BeFalse();
+            _test.State.AccountExists(Address.SystemUser).Should().BeFalse();
             var transaction = _test.JsonSerializer.Deserialize<TransactionForRpc>("{\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized = _test.TestEthRpc("eth_call", _test.JsonSerializer.Serialize(transaction), "0x0");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
-            _test.StateProvider.AccountExists(Address.SystemUser).Should().BeFalse();
+            _test.State.AccountExists(Address.SystemUser).Should().BeFalse();
         }
 
         [Test]
         public void Eth_call_web3_sample_not_enough_gas_other_account()
         {
             Address someAccount = new Address("0x0001020304050607080910111213141516171819");
-            _test.StateProvider.AccountExists(someAccount).Should().BeFalse();
+            _test.State.AccountExists(someAccount).Should().BeFalse();
             var transaction = _test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized = _test.TestEthRpc("eth_call", _test.JsonSerializer.Serialize(transaction), "0x0");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
-            _test.StateProvider.AccountExists(someAccount).Should().BeFalse();
+            _test.State.AccountExists(someAccount).Should().BeFalse();
         }
 
         [Test]
         public void Eth_estimateGas_web3_sample_not_enough_gas_system_account()
         {
-            _test.StateProvider.AccountExists(Address.SystemUser).Should().BeFalse();
+            _test.State.AccountExists(Address.SystemUser).Should().BeFalse();
             var transaction = _test.JsonSerializer.Deserialize<TransactionForRpc>("{\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized = _test.TestEthRpc("eth_estimateGas", _test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x5898\",\"id\":67}", serialized);
-            _test.StateProvider.AccountExists(Address.SystemUser).Should().BeFalse();
+            _test.State.AccountExists(Address.SystemUser).Should().BeFalse();
         }
 
         [Test]
         public void Eth_estimateGas_web3_sample_not_enough_gas_other_account()
         {
             Address someAccount = new Address("0x0001020304050607080910111213141516171819");
-            _test.StateProvider.AccountExists(someAccount).Should().BeFalse();
+            _test.State.AccountExists(someAccount).Should().BeFalse();
             var transaction = _test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized = _test.TestEthRpc("eth_estimateGas", _test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x5898\",\"id\":67}", serialized);
-            _test.StateProvider.AccountExists(someAccount).Should().BeFalse();
+            _test.State.AccountExists(someAccount).Should().BeFalse();
         }
 
         [Test]
         public void Eth_estimateGas_web3_above_block_gas_limit()
         {
             Address someAccount = new Address("0x0001020304050607080910111213141516171819");
-            _test.StateProvider.AccountExists(someAccount).Should().BeFalse();
+            _test.State.AccountExists(someAccount).Should().BeFalse();
             var transaction = _test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\":\"0x0001020304050607080910111213141516171819\",\"gas\":\"0x100000000\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized = _test.TestEthRpc("eth_estimateGas", _test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x5898\",\"id\":67}", serialized);
-            _test.StateProvider.AccountExists(someAccount).Should().BeFalse();
+            _test.State.AccountExists(someAccount).Should().BeFalse();
         }
 
         [Test]
@@ -419,7 +416,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void Eth_get_transaction_receipt()
+        public async Task Eth_get_transaction_receipt()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             var entries = new[]
@@ -429,7 +426,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             };
             bridge.GetReceipt(Arg.Any<Keccak>()).Returns(Build.A.Receipt.WithBloom(new Bloom(entries, new Bloom())).WithAllFieldsFilled.WithLogs(entries).TestObject);
 
-            _test = TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
             string serialized = _test.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakA.ToString());
 
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"cumulativeGasUsed\":\"0x3e8\",\"gasUsed\":\"0x64\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"status\":\"0x1\",\"error\":\"error\"},\"id\":67}", serialized);
@@ -451,14 +448,14 @@ namespace Nethermind.JsonRpc.Test.Modules
 
 
         [Test]
-        public void Eth_syncing()
+        public async Task Eth_syncing()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.IsSyncing.Returns(true);
             bridge.BestKnown.Returns(6178000L);
             bridge.Head.Returns(Build.A.BlockHeader.WithNumber(6170000L).TestObject);
 
-            _test = TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
             string serialized = _test.TestEthRpc("eth_syncing");
 
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x5e2590\",\"highestBlock\":\"0x5e44d0\"},\"id\":67}", serialized);
@@ -478,12 +475,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void Send_transaction_with_signature_will_not_try_to_sign()
+        public async Task Send_transaction_with_signature_will_not_try_to_sign()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.SendTransaction(null, TxHandlingOptions.PersistentBroadcast).ReturnsForAnyArgs(TestItem.KeccakA);
 
-            _test = TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
             Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance), TestItem.PrivateKeyA, 10000000).TestObject;
             string serialized = _test.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(tx, RlpBehaviors.None).Bytes.ToHexString());
 
