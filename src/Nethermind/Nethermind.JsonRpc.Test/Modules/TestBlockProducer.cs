@@ -43,8 +43,13 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         protected override async ValueTask ProducerLoop()
         {
-            await _newBlockArrived.WaitOneAsync(CancellationToken.None);
-            await TryProduceNewBlock(CancellationToken.None);
+            while (true)
+            {
+                await _newBlockArrived.WaitOneAsync(LoopCancellationTokenSource.Token);
+                await TryProduceNewBlock(LoopCancellationTokenSource.Token);
+            }
+            
+            // ReSharper disable once FunctionNeverReturns
         }
 
         protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp)

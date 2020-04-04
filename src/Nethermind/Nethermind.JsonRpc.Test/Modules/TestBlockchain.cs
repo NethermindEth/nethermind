@@ -42,11 +42,10 @@ using Nethermind.TxPool.Storages;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
-    public class TestBlockchain
+    public class TestBlockchain : IDisposable
     {
         private readonly SealEngineType _sealEngineType;
         public IStateReader StateReader { get; private set; }
-        public IBlockProducer BlockProducer { get; private set; }
         public IEthereumEcdsa EthereumEcdsa { get; private set; }
         public TransactionProcessor TxProcessor { get; set; }
         public IStorageProvider Storage { get; set; }
@@ -58,6 +57,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IJsonSerializer JsonSerializer { get; set; }
         public IStateProvider State { get; set; }
         public ISnapshotableDb StateDb { get; set; }
+        public TestBlockProducer BlockProducer { get; private set; }
 
         protected TestBlockchain(SealEngineType sealEngineType)
         {
@@ -67,11 +67,14 @@ namespace Nethermind.JsonRpc.Test.Modules
         public static Address AccountA = TestItem.AddressA;
         public static Address AccountB = TestItem.AddressB;
         public static Address AccountC = TestItem.AddressC;
-
-        public static TransactionBuilder BuildSimpleTransaction = Core.Test.Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
         
+        public ManualTimestamper Timestamper { get; private set; }
+
+        public static TransactionBuilder BuildSimpleTransaction => Core.Test.Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
+
         protected virtual async Task<TestBlockchain> Build()
         {
+            Timestamper = new ManualTimestamper(DateTime.MinValue);
             JsonSerializer = new EthereumJsonSerializer();
             ISpecProvider specProvider = MainNetSpecProvider.Instance;
             EthereumEcdsa = new EthereumEcdsa(specProvider, LimboLogs.Instance);
@@ -94,7 +97,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             State.Commit(specProvider.GenesisSpec);
             State.CommitTree();
 
-            TxPool = new TxPool.TxPool(txStorage, Timestamper.Default, EthereumEcdsa, specProvider, new TxPoolConfig(), State, LimboLogs.Instance);
+            TxPool = new TxPool.TxPool(txStorage, Timestamper, EthereumEcdsa, specProvider, new TxPoolConfig(), State, LimboLogs.Instance);
 
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
@@ -112,8 +115,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             StateReader = new StateReader(StateDb, CodeDb, LimboLogs.Instance);
             PendingTxSelector txSelector = new PendingTxSelector(TxPool, StateReader, LimboLogs.Instance);
             ISealer sealer = new FakeSealer(TimeSpan.Zero);
-            TestBlockProducer producer = new TestBlockProducer(txSelector, chainProcessor, State, sealer, BlockTree, chainProcessor, Timestamper.Default, LimboLogs.Instance);
-            producer.Start();
+            BlockProducer = new TestBlockProducer(txSelector, chainProcessor, State, sealer, BlockTree, chainProcessor, Timestamper, LimboLogs.Instance);
+            BlockProducer.Start();
 
             AutoResetEvent resetEvent = new AutoResetEvent(false);
             BlockTree.NewHeadBlock += (s, e) =>
@@ -131,34 +134,27 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block genesis = genesisBlockBuilder.TestObject;
             BlockTree.SuggestBlock(genesis);
 
-            Block previousBlock = genesis;
-
-            // BlockBuilder[] blockBuilders = new BlockBuilder[]
-            // {
-            //     BuildBlockWithoutTransactions,
-            //     BuildBlockWithOneSimpleTransaction,
-            //     BuildBlockWithTwoSimpleTransaction,
-            // };
-
-            // if (_sealEngineType == SealEngineType.AuRa)
-            // {
-            //     for (int i = 0; i < blockBuilders.Length; i++)
-            //     {
-            //         blockBuilders[i].WithAura(i + 1, i.ToByteArray());
-            //     }
-            // }
-
             await resetEvent.WaitOneAsync(CancellationToken.None);
-            producer.BuildNewBlock();
+            Timestamper.AddOneSecond();
+            BlockProducer.BuildNewBlock();
             await resetEvent.WaitOneAsync(CancellationToken.None);
-            TxPool.AddTransaction(BuildSimpleTransaction.TestObject, 1, TxHandlingOptions.ManagedNonce);
-            producer.BuildNewBlock();
+            TxPool.AddTransaction(BuildSimpleTransaction.WithNonce(0).TestObject, 1, TxHandlingOptions.None);
+            Timestamper.AddOneSecond();
+            BlockProducer.BuildNewBlock();
             await resetEvent.WaitOneAsync(CancellationToken.None);
-            TxPool.AddTransaction(BuildSimpleTransaction.TestObject, 2, TxHandlingOptions.ManagedNonce);
-            TxPool.AddTransaction(BuildSimpleTransaction.TestObject, 2, TxHandlingOptions.ManagedNonce);
-            producer.BuildNewBlock();
+            TxPool.AddTransaction(BuildSimpleTransaction.WithNonce(1).TestObject, 2, TxHandlingOptions.None);
+            TxPool.AddTransaction(BuildSimpleTransaction.WithNonce(2).TestObject, 2, TxHandlingOptions.None);
+            Timestamper.AddOneSecond();
+            BlockProducer.BuildNewBlock();
             await resetEvent.WaitOneAsync(CancellationToken.None);
             return this;
+        }
+
+        public void Dispose()
+        {
+            BlockProducer?.StopAsync();
+            CodeDb?.Dispose();
+            StateDb?.Dispose();
         }
     }
 }

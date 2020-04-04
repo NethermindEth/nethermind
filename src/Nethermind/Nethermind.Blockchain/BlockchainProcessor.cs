@@ -264,9 +264,8 @@ namespace Nethermind.Blockchain
             UInt256 totalDifficulty = suggestedBlock.TotalDifficulty ?? 0;
             if (_logger.IsTrace) _logger.Trace($"Total difficulty of block {suggestedBlock.ToString(Block.Format.Short)} is {totalDifficulty}");
 
-            
+
             Block[] processedBlocks = null;
-            
             bool shouldProcess = suggestedBlock.IsGenesis
                                  || totalDifficulty > (_blockTree.Head?.TotalDifficulty ?? 0)
                                  // so above is better and more correct but creates an impression of the node staying behind on stats page
@@ -274,36 +273,36 @@ namespace Nethermind.Blockchain
                                  // and below is less correct but potentially reporting well
                                  // || totalDifficulty >= (_blockTree.Head?.TotalDifficulty ?? 0)
                                  || (options & ProcessingOptions.ForceProcessing) == ProcessingOptions.ForceProcessing;
-            if (shouldProcess)
-            {
-                ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
-                PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
-
-                try
-                {
-                    processedBlocks = _blockProcessor.Process(processingBranch.Root, processingBranch.BlocksToProcess, options, tracer);
-                }
-                catch (InvalidBlockException ex)
-                {
-                    for (int i = 0; i < processingBranch.BlocksToProcess.Count; i++)
-                    {
-                        if (processingBranch.BlocksToProcess[i].Hash == ex.InvalidBlockHash)
-                        {
-                            _blockTree.DeleteInvalidBlock(processingBranch.BlocksToProcess[i]);
-                            if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} because of {processingBranch.BlocksToProcess[i].ToString(Block.Format.FullHashAndNumber)} is invalid");
-                            return null;
-                        }
-                    }
-                }
-
-                if ((options & ProcessingOptions.ReadOnlyChain) == 0)
-                {
-                    _blockTree.UpdateMainChain(processingBranch.Blocks.ToArray(), true);
-                }
-            }
-            else
+            
+            if (!shouldProcess)
             {
                 if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
+                return null;
+            }
+
+            ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
+            PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
+
+            try
+            {
+                processedBlocks = _blockProcessor.Process(processingBranch.Root, processingBranch.BlocksToProcess, options, tracer);
+            }
+            catch (InvalidBlockException ex)
+            {
+                for (int i = 0; i < processingBranch.BlocksToProcess.Count; i++)
+                {
+                    if (processingBranch.BlocksToProcess[i].Hash == ex.InvalidBlockHash)
+                    {
+                        _blockTree.DeleteInvalidBlock(processingBranch.BlocksToProcess[i]);
+                        if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} because of {processingBranch.BlocksToProcess[i].ToString(Block.Format.FullHashAndNumber)} is invalid");
+                        return null;
+                    }
+                }
+            }
+
+            if ((options & ProcessingOptions.ReadOnlyChain) == 0)
+            {
+                _blockTree.UpdateMainChain(processingBranch.Blocks.ToArray(), true);
             }
 
             Block lastProcessed = null;
@@ -345,8 +344,9 @@ namespace Nethermind.Blockchain
             }
 
             if (_logger.IsTrace) _logger.Trace($"Processing {blocksToProcess.Count} blocks from state root {processingBranch.Root}");
-
-            for (int i = 0; i < blocksToProcess.Count; i++)
+            for (int i = 0;
+                i < blocksToProcess.Count;
+                i++)
             {
                 /* this can happen if the block was loaded as an ancestor and did not go through the recovery queue */
                 _recoveryStep.RecoverData(blocksToProcess[i]);
@@ -357,8 +357,10 @@ namespace Nethermind.Blockchain
         {
             BlockHeader branchingPoint = null;
             List<Block> blocksToBeAddedToMain = new List<Block>();
+
             Block toBeProcessed = suggestedBlock;
             do
+
             {
                 blocksToBeAddedToMain.Add(toBeProcessed);
                 if (_logger.IsTrace) _logger.Trace($"To be processed (of {suggestedBlock.ToString(Block.Format.Short)}) is {toBeProcessed?.ToString(Block.Format.Short)}");
@@ -436,7 +438,9 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("Block hash should be known at this stage if the block is not read only");
             }
 
-            for (int i = 0; i < suggestedBlock.Ommers.Length; i++)
+            for (int i = 0;
+                i < suggestedBlock.Ommers.Length;
+                i++)
             {
                 if (suggestedBlock.Ommers[i].Hash == null)
                 {
@@ -457,7 +461,7 @@ namespace Nethermind.Blockchain
             _processorTask?.Dispose();
             _blockTree.NewBestSuggestedBlock -= OnNewBestBlock;
         }
-        
+
         private struct ProcessingBranch
         {
             public ProcessingBranch(Keccak root, List<Block> blocks)
@@ -467,7 +471,7 @@ namespace Nethermind.Blockchain
                 BlocksToProcess = new List<Block>();
                 ProcessedBlocks = new List<Block>();
             }
-            
+
             public Keccak Root { get; }
             public List<Block> Blocks { get; }
             public List<Block> BlocksToProcess { get; }
