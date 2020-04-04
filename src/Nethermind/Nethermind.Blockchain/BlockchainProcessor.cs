@@ -276,21 +276,21 @@ namespace Nethermind.Blockchain
                                  || (options & ProcessingOptions.ForceProcessing) == ProcessingOptions.ForceProcessing;
             if (shouldProcess)
             {
-                ProcessingBranch processingBranch = FindBranchToProcess(suggestedBlock, options);
-                Block[] blocks = PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
+                ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
+                PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
 
                 try
                 {
-                    processedBlocks = _blockProcessor.Process(processingBranch.Root, blocks, options, tracer);
+                    processedBlocks = _blockProcessor.Process(processingBranch.Root, processingBranch.BlocksToProcess, options, tracer);
                 }
                 catch (InvalidBlockException ex)
                 {
-                    for (int i = 0; i < blocks.Length; i++)
+                    for (int i = 0; i < processingBranch.BlocksToProcess.Count; i++)
                     {
-                        if (blocks[i].Hash == ex.InvalidBlockHash)
+                        if (processingBranch.BlocksToProcess[i].Hash == ex.InvalidBlockHash)
                         {
-                            _blockTree.DeleteInvalidBlock(blocks[i]);
-                            if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} because of {blocks[i].ToString(Block.Format.FullHashAndNumber)} is invalid");
+                            _blockTree.DeleteInvalidBlock(processingBranch.BlocksToProcess[i]);
+                            if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} because of {processingBranch.BlocksToProcess[i].ToString(Block.Format.FullHashAndNumber)} is invalid");
                             return null;
                         }
                     }
@@ -321,15 +321,13 @@ namespace Nethermind.Blockchain
             return lastProcessed;
         }
 
-        private Block[] PrepareBlocksToProcess(Block suggestedBlock, ProcessingOptions options, ProcessingBranch processingBranch)
+        private void PrepareBlocksToProcess(Block suggestedBlock, ProcessingOptions options, ProcessingBranch processingBranch)
         {
-            List<Block> blocksToProcess = new List<Block>();
-            Block[] blocks;
+            List<Block> blocksToProcess = processingBranch.BlocksToProcess;
             if ((options & ProcessingOptions.ForceProcessing) != 0)
             {
                 processingBranch.Blocks.Clear();
-                blocks = new Block[1];
-                blocks[0] = suggestedBlock;
+                blocksToProcess.Add(suggestedBlock);
             }
             else
             {
@@ -343,41 +341,19 @@ namespace Nethermind.Blockchain
                     blocksToProcess.Add(block);
                 }
 
-                blocks = new Block[blocksToProcess.Count];
-                for (int i = 0; i < blocksToProcess.Count; i++)
-                {
-                    blocks[blocks.Length - i - 1] = blocksToProcess[i];
-                }
+                blocksToProcess.Reverse();
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Processing {blocks.Length} blocks from state root {processingBranch.Root}");
+            if (_logger.IsTrace) _logger.Trace($"Processing {blocksToProcess.Count} blocks from state root {processingBranch.Root}");
 
-            for (int i = 0; i < blocks.Length; i++)
+            for (int i = 0; i < blocksToProcess.Count; i++)
             {
                 /* this can happen if the block was loaded as an ancestor and did not go through the recovery queue */
-                _recoveryStep.RecoverData(blocks[i]);
+                _recoveryStep.RecoverData(blocksToProcess[i]);
             }
-
-            return blocks;
         }
 
-        private struct ProcessingBranch
-        {
-            public ProcessingBranch(Keccak root, List<Block> blocks)
-            {
-                Root = root;
-                Blocks = blocks;
-                BlocksToProcess = new List<Block>();
-                ProcessedBlocks = new List<Block>();
-            }
-            
-            public Keccak Root { get; }
-            public List<Block> Blocks { get; }
-            public List<Block> BlocksToProcess { get; }
-            public List<Block> ProcessedBlocks { get; }
-        }
-        
-        private ProcessingBranch FindBranchToProcess(Block suggestedBlock, ProcessingOptions options)
+        private ProcessingBranch PrepareProcessingBranch(Block suggestedBlock, ProcessingOptions options)
         {
             BlockHeader branchingPoint = null;
             List<Block> blocksToBeAddedToMain = new List<Block>();
@@ -480,6 +456,22 @@ namespace Nethermind.Blockchain
             _recoveryTask?.Dispose();
             _processorTask?.Dispose();
             _blockTree.NewBestSuggestedBlock -= OnNewBestBlock;
+        }
+        
+        private struct ProcessingBranch
+        {
+            public ProcessingBranch(Keccak root, List<Block> blocks)
+            {
+                Root = root;
+                Blocks = blocks;
+                BlocksToProcess = new List<Block>();
+                ProcessedBlocks = new List<Block>();
+            }
+            
+            public Keccak Root { get; }
+            public List<Block> Blocks { get; }
+            public List<Block> BlocksToProcess { get; }
+            public List<Block> ProcessedBlocks { get; }
         }
     }
 }
