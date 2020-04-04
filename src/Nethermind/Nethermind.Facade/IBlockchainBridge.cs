@@ -37,7 +37,7 @@ namespace Nethermind.Facade
         bool IsSyncing { get; }
         void RecoverTxSenders(Block block);
         void RecoverTxSender(Transaction tx, long? blockNumber);
-        (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash);
+        (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak txHash);
         Transaction[] GetPendingTransactions();
         Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions);
         TxReceipt GetReceipt(Keccak txHash);

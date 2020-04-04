@@ -14,30 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading.Tasks;
-using Nethermind.Runner.Ethereum.Context;
+using System.Linq;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Runner.Ethereum.Steps
+namespace Nethermind.Blockchain.Receipts
 {
-    [RunnerStepDependencies(typeof(InitializeBlockchain), typeof(ResetDatabaseMigrations))]
-    public class StartBlockProcessor : IStep
+    public static class ReceiptsExtensions
     {
-        private readonly EthereumRunnerContext _context;
-
-        public StartBlockProcessor(EthereumRunnerContext context)
-        {
-            _context = context;
-        }
-        
-        public Task Execute()
-        {
-            if (_context.BlockchainProcessor == null)
-            {
-                throw new StepDependencyException(nameof(_context.BlockchainProcessor));
-            }
-            
-            _context.BlockchainProcessor.Start();
-            return Task.CompletedTask;
-        }
+        public static TxReceipt ForTransaction(this TxReceipt[] receipts, Keccak txHash) => receipts.FirstOrDefault(r => r.TxHash == txHash);
     }
 }

@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Rlp;
@@ -24,26 +25,19 @@ namespace Nethermind.Core.Test.Encoding
     [TestFixture]
     public class BlockInfoDecoderTests
     {
-        [Test]
-        public void Can_do_roundtrip()
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Can_do_roundtrip(bool valueDecode)
         {
-            BlockInfo blockInfo = new BlockInfo();
-            blockInfo.BlockHash = TestItem.KeccakA;
-            blockInfo.TotalDifficulty = 1;
-            blockInfo.WasProcessed = true;
-
-            Rlp rlp = Rlp.Encode(blockInfo);
-            BlockInfo decoded = Rlp.Decode<BlockInfo>(rlp);
-            Assert.True(decoded.WasProcessed, "0 processed");
-            Assert.AreEqual(TestItem.KeccakA, decoded.BlockHash, "block hash");
-            Assert.AreEqual(UInt256.One, decoded.TotalDifficulty, "difficulty");
+            Roundtrip(valueDecode);
         }
         
-        [Test]
-        public void Can_do_roundtrip_with_finalization()
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Can_do_roundtrip_with_finalization(bool valueDecode)
         {
             Rlp.Decoders[typeof(BlockInfo)] = new BlockInfoDecoder(true);
-            Can_do_roundtrip();
+            Roundtrip(valueDecode);
         }
         
         [Test]
@@ -52,6 +46,21 @@ namespace Nethermind.Core.Test.Encoding
             Rlp rlp = Rlp.Encode((BlockInfo)null);
             BlockInfo decoded = Rlp.Decode<BlockInfo>(rlp);
             Assert.Null(decoded);
+        }
+        
+        private static void Roundtrip(bool valueDecode)
+        {
+            BlockInfo blockInfo = new BlockInfo();
+            blockInfo.BlockHash = TestItem.KeccakA;
+            blockInfo.TotalDifficulty = 1;
+            blockInfo.WasProcessed = true;
+
+            Rlp rlp = Rlp.Encode(blockInfo);
+            BlockInfo decoded = valueDecode ?  Rlp.Decode<BlockInfo>(rlp.Bytes.AsSpan()) : Rlp.Decode<BlockInfo>(rlp);
+            
+            Assert.True(decoded.WasProcessed, "0 processed");
+            Assert.AreEqual(TestItem.KeccakA, decoded.BlockHash, "block hash");
+            Assert.AreEqual(UInt256.One, decoded.TotalDifficulty, "difficulty");
         }
     }
 }

@@ -590,7 +590,7 @@ namespace Nethermind.Serialization.Rlp
             return Data[Position++];
         }
         
-        protected virtual byte PeekByte()
+        public virtual byte PeekByte()
         {
             return Data[Position];
         }

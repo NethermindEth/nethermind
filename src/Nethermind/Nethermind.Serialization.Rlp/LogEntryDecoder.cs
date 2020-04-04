@@ -19,7 +19,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class LogEntryDecoder : IRlpDecoder<LogEntry>
+    public class LogEntryDecoder : IRlpDecoder<LogEntry>, IRlpValueDecoder<LogEntry>
     {
         public LogEntry Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -39,6 +39,28 @@ namespace Nethermind.Serialization.Rlp
             }
 
             byte[] data = rlpStream.DecodeByteArray();
+
+            return new LogEntry(address, data, topics);
+        }
+
+        public LogEntry Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (decoderContext.IsNextItemNull())
+            {
+                decoderContext.ReadByte();
+                return null;
+            }
+            
+            decoderContext.ReadSequenceLength();
+            Address address = decoderContext.DecodeAddress();
+            long sequenceLength = decoderContext.ReadSequenceLength();
+            Keccak[] topics = new Keccak[sequenceLength / 33];
+            for (int i = 0; i < topics.Length; i++)
+            {
+                topics[i] = decoderContext.DecodeKeccak();
+            }
+
+            byte[] data = decoderContext.DecodeByteArray();
 
             return new LogEntry(address, data, topics);
         }

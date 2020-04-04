@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 
 namespace Nethermind.Db
@@ -30,7 +31,7 @@ namespace Nethermind.Db
             _createInMemWriteStore = createInMemWriteStore;
         }
 
-        public IDb GetColumnDb(T key) => _columnDbs.TryGetValue(key, out var db) ? db : _columnDbs[key] = new ReadOnlyDb(_wrappedDb.GetColumnDb(key), _createInMemWriteStore);
+        public IDbWithSpan GetColumnDb(T key) => _columnDbs.TryGetValue(key, out var db) ? db : _columnDbs[key] = new ReadOnlyDb(_wrappedDb.GetColumnDb(key), _createInMemWriteStore);
         
         public IEnumerable<T> ColumnKeys => _wrappedDb.ColumnKeys;
 
@@ -41,6 +42,13 @@ namespace Nethermind.Db
             {
                 columnDbsValue.ClearTempChanges();
             }
+        }
+
+        public Span<byte> GetSpan(byte[] key) => _wrappedDb.GetSpan(key);
+
+        public void DangerousReleaseMemory(in Span<byte> span)
+        {
+            _wrappedDb.DangerousReleaseMemory(span);
         }
     }
 }
