@@ -129,7 +129,7 @@ namespace Nethermind.Evm.Test
                 .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey, blockNumber)
                 .TestObject;
 
-            Block block = BuildBlock(blockNumber, senderRecipientAndMiner);
+            Block block = BuildBlock(blockNumber, senderRecipientAndMiner, transaction);
             return (block, transaction);
         }
 
@@ -179,6 +179,12 @@ namespace Nethermind.Evm.Test
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
             return Build.A.Block.WithNumber(blockNumber).WithGasLimit(8000000).WithBeneficiary(senderRecipientAndMiner.Miner).TestObject;
+        }
+        
+        protected virtual Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner, Transaction tx)
+        {
+            senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
+            return Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).WithGasLimit(8000000).WithBeneficiary(senderRecipientAndMiner.Miner).TestObject;
         }
 
         protected void AssertGas(CallOutputTracer receipt, long gas)
