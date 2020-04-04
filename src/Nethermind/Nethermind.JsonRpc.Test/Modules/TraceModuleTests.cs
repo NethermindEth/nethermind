@@ -155,7 +155,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
 
             IReceiptsRecovery receiptsRecovery = new ReceiptsRecovery();
-            IReceiptFinder receiptFinder = new FullInfoReceiptFinder(receiptStorage, receiptsRecovery);
+            IReceiptFinder receiptFinder = new FullInfoReceiptFinder(receiptStorage, receiptsRecovery, blockTree);
 
             resetEvent.Wait(2000);
             _traceModule = new TraceModule(receiptFinder, new Tracer(_stateProvider, blockchainProcessor), _blockchainBridge);
