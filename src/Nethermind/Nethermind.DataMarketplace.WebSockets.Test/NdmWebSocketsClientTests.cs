@@ -123,7 +123,7 @@ namespace Nethermind.DataMarketplace.WebSockets.Test
             INdmDataPublisher dataPublisher = Substitute.For<INdmDataPublisher>();
             NdmWebSocketsClient client = new NdmWebSocketsClient(webSocketsClient, dataPublisher);
             client.ReceiveAsync(Encoding.ASCII.GetBytes("|b|c"));
-            dataPublisher.Received().Publish(Arg.Is<DataAssetData>(dad => dad.Data == "c" && dad.AssetId == Keccak.Zero));
+            dataPublisher.DidNotReceiveWithAnyArgs().Publish(null);
         }
 
         [Test]
