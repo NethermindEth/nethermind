@@ -26,15 +26,8 @@ namespace Nethermind.Core.Test.Encoding
     [TestFixture]
     public class ReceiptDecoderTests
     {
-        [TestCase(true, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts, true)]
-        [TestCase(true, RlpBehaviors.Storage, true)]
-        [TestCase(false, RlpBehaviors.Storage, true)]
-        [TestCase(false, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts, true)]
-        [TestCase(true, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts, false)]
-        [TestCase(true, RlpBehaviors.Storage, false)]
-        [TestCase(false, RlpBehaviors.Storage, false)]
-        [TestCase(false, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts, false)]
-        public void Can_do_roundtrip_storage(bool encodeWithTxHash, RlpBehaviors encodeBehaviors, bool withError)
+        [Test]
+        public void Can_do_roundtrip_storage([Values(true, false)] bool encodeWithTxHash, [Values(RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts, RlpBehaviors.Storage)] RlpBehaviors encodeBehaviors, [Values(true, false)] bool withError, [Values(true, false)] bool valueDecoder)
         {
             TxReceipt GetExpected()
             {
@@ -79,7 +72,16 @@ namespace Nethermind.Core.Test.Encoding
             Rlp rlp = encoder.Encode(txReceipt, encodeBehaviors);
             
             ReceiptStorageDecoder decoder = new ReceiptStorageDecoder();
-            TxReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpStream(), RlpBehaviors.Storage);
+            TxReceipt deserialized;
+            if (valueDecoder)
+            {
+                var valueContext = rlp.Bytes.AsRlpValueContext();
+                deserialized = decoder.Decode(ref valueContext, RlpBehaviors.Storage);
+            }
+            else
+            {
+                deserialized = decoder.Decode(rlp.Bytes.AsRlpStream(), RlpBehaviors.Storage);
+            }
 
             deserialized.Should().BeEquivalentTo(GetExpected());
         }

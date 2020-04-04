@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
@@ -24,17 +25,17 @@ namespace Nethermind.Core.Test.Encoding
     [TestFixture]
     public class LogEntryDecoderTests
     {
-        [Test]
-        public void Can_do_roundtrip()
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Can_do_roundtrip(bool valueDecode)
         {
             LogEntry logEntry = new LogEntry(TestItem.AddressA, new byte[] {1, 2, 3}, new[] {TestItem.KeccakA, TestItem.KeccakB});
-            LogEntryDecoder decoder = new LogEntryDecoder();
-            Rlp rlp = decoder.Encode(logEntry);
-            LogEntry deserialized = decoder.Decode(rlp.Bytes.AsRlpStream());
+            Rlp rlp = Rlp.Encode(logEntry);
+            LogEntry decoded = valueDecode ? Rlp.Decode<LogEntry>(rlp.Bytes.AsSpan()) : Rlp.Decode<LogEntry>(rlp);
 
-            Assert.AreEqual(logEntry.Data, deserialized.Data, "data");
-            Assert.AreEqual(logEntry.LoggersAddress, deserialized.LoggersAddress, "address");
-            Assert.AreEqual(logEntry.Topics, deserialized.Topics, "topics");
+            Assert.AreEqual(logEntry.Data, decoded.Data, "data");
+            Assert.AreEqual(logEntry.LoggersAddress, decoded.LoggersAddress, "address");
+            Assert.AreEqual(logEntry.Topics, decoded.Topics, "topics");
         }
 
         [Test]

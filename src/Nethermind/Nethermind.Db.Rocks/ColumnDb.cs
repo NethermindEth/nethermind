@@ -21,7 +21,7 @@ using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks
 {
-    public class ColumnDb : IDb
+    public class ColumnDb : IDbWithSpan
     {
         private readonly RocksDb _rocksDb;
         private readonly DbOnTheRocks _mainDb;
@@ -120,5 +120,12 @@ namespace Nethermind.Db.Rocks
         private void UpdateWriteMetrics() => _mainDb.UpdateWriteMetrics();
 
         private void UpdateReadMetrics() => _mainDb.UpdateReadMetrics();
+        
+        public Span<byte> GetSpan(byte[] key) => _rocksDb.GetSpan(key, _columnFamily);
+
+        public void DangerousReleaseMemory(in Span<byte> span)
+        {
+            _rocksDb.DangerousReleaseMemory(span);
+        }
     }
 }

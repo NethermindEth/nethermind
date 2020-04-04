@@ -19,7 +19,7 @@ using System.Collections.Generic;
 
 namespace Nethermind.Db
 {
-    public class ReadOnlyDb : ISnapshotableDb
+    public class ReadOnlyDb : ISnapshotableDb, IDbWithSpan
     {
         private readonly MemDb _memDb = new MemDb();
 
@@ -126,6 +126,12 @@ namespace Nethermind.Db
         public int TakeSnapshot()
         {
             return -1;
+        }
+
+        public Span<byte> GetSpan(byte[] key) => this[key].AsSpan();
+
+        public void DangerousReleaseMemory(in Span<byte> span)
+        {
         }
     }
 }
