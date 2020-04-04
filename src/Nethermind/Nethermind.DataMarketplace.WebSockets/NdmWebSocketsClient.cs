@@ -46,7 +46,7 @@ namespace Nethermind.DataMarketplace.WebSockets
                 return Task.CompletedTask;
             }
 
-            var (dataAssetId, headerData) = GetDataInfo(data.ToArray());
+            (Keccak? dataAssetId, string? headerData) = GetDataInfo(data.ToArray());
             if (dataAssetId is null || string.IsNullOrWhiteSpace(headerData))
             {
                 return Task.CompletedTask;
@@ -71,12 +71,7 @@ namespace Nethermind.DataMarketplace.WebSockets
             var extension = parts[1];
             var data = parts[2];
 
-            if (dataAssetId.Length != 64)
-            {
-                return (null, null);
-            }
-
-            return string.IsNullOrWhiteSpace(dataAssetId) ? (null, null) : (new Keccak(dataAssetId), data);
+            return dataAssetId.Length != 64 ? (null, null) : (new Keccak(dataAssetId), data);
         }
 
         public Task SendRawAsync(string data) => _client.SendRawAsync(data);

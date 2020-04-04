@@ -88,7 +88,7 @@ namespace Nethermind.DataMarketplace.WebSockets.Test
             NdmWebSocketsClient client = new NdmWebSocketsClient(webSocketsClient, dataPublisher);
             client.ReceiveAsync(Encoding.ASCII.GetBytes("a|b|c"));
         }
-        
+
         [Test]
         public void Can_receive_invalid_data_parts()
         {
@@ -101,7 +101,7 @@ namespace Nethermind.DataMarketplace.WebSockets.Test
             client.ReceiveAsync(Encoding.ASCII.GetBytes("a|b|c|d"));
             dataPublisher.DidNotReceiveWithAnyArgs().Publish(null);
         }
-        
+
         [Test]
         public void Can_receive_data()
         {
@@ -113,7 +113,19 @@ namespace Nethermind.DataMarketplace.WebSockets.Test
             client.ReceiveAsync(Encoding.ASCII.GetBytes($"{Keccak.Zero.Bytes.ToHexString(false)}|b|c"));
             dataPublisher.Received().Publish(Arg.Is<DataAssetData>(dad => dad.Data == "c" && dad.AssetId == Keccak.Zero));
         }
-        
+
+        [Test]
+        public void Can_receive_data_without_asset_id()
+        {
+            IWebSocketsClient webSocketsClient = Substitute.For<IWebSocketsClient>();
+            webSocketsClient.Id.Returns(nameof(NdmWebSocketsClientTests) + "_id");
+
+            INdmDataPublisher dataPublisher = Substitute.For<INdmDataPublisher>();
+            NdmWebSocketsClient client = new NdmWebSocketsClient(webSocketsClient, dataPublisher);
+            client.ReceiveAsync(Encoding.ASCII.GetBytes("|b|c"));
+            dataPublisher.Received().Publish(Arg.Is<DataAssetData>(dad => dad.Data == "c" && dad.AssetId == Keccak.Zero));
+        }
+
         [Test]
         public void Can_receive_null_or_empty_data()
         {
