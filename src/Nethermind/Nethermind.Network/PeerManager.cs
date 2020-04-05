@@ -254,7 +254,7 @@ namespace Nethermind.Network
                     Interlocked.Exchange(ref _connectionRounds, 0);
 
                     SelectAndRankCandidates();
-                    IReadOnlyCollection<Peer> remainingCandidates = _currentSelection.Candidates;
+                    List<Peer> remainingCandidates = _currentSelection.Candidates;
                     if (!remainingCandidates.Any())
                     {
                         continue;
@@ -265,6 +265,7 @@ namespace Nethermind.Network
                         break;
                     }
 
+                    int currentPosition = 0;                    
                     while (true)
                     {
                         if (_cancellationTokenSource.IsCancellationRequested)
@@ -272,16 +273,12 @@ namespace Nethermind.Network
                             break;
                         }
 
-                        int nodesToTry = Math.Min(remainingCandidates.Count, AvailableActivePeersCount);
-                        if (nodesToTry == 0)
+                        int nodesToTry = Math.Min(remainingCandidates.Count - currentPosition, AvailableActivePeersCount);
+                        if (nodesToTry <= 0)
                         {
                             break;
                         }
-
-                        IEnumerable<Peer> candidatesToTry = remainingCandidates.Take(nodesToTry)
-                            .Distinct(_peerEqualityComparer);
-                        remainingCandidates = remainingCandidates.Skip(nodesToTry).ToList();
-
+                        
                         ActionBlock<Peer> workerBlock = new ActionBlock<Peer>(
                             SetupPeerConnection,
                             new ExecutionDataflowBlockOptions
@@ -290,10 +287,12 @@ namespace Nethermind.Network
                                 CancellationToken = _cancellationTokenSource.Token
                             });
 
-                        foreach (Peer candidateToTry in candidatesToTry)
+                        for (int i = 0; i < nodesToTry; i++)
                         {
-                            await workerBlock.SendAsync(candidateToTry);
+                            await workerBlock.SendAsync(remainingCandidates[currentPosition + i]);
                         }
+
+                        currentPosition += nodesToTry;
 
                         workerBlock.Complete();
 
@@ -440,7 +439,7 @@ namespace Nethermind.Network
                 return;
             }
 
-            foreach (Peer peer in _peerPool.CandidatePeers)
+            foreach ((_, Peer peer) in _peerPool.AllPeers)
             {
                 // node can be connected but a candidate (for some short times)
                 // [describe when]
