@@ -70,6 +70,7 @@ namespace Nethermind.Facade
             IEthereumEcdsa ecdsa,
             IBloomStorage bloomStorage,
             ILogManager logManager,
+            bool isMining,
             int findLogBlockDepthLimit = 1000)
         {
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
@@ -83,6 +84,7 @@ namespace Nethermind.Facade
             _wallet = wallet ?? throw new ArgumentException(nameof(wallet));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentException(nameof(transactionProcessor));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
+            IsMining = isMining;
 
             _logFinder = new LogFinder(_blockTree, _receiptFinder, bloomStorage, logManager, new ReceiptsRecovery(), findLogBlockDepthLimit);
         }
@@ -107,6 +109,7 @@ namespace Nethermind.Facade
         public long BestKnown => _blockTree.BestKnownNumber;
 
         public bool IsSyncing => _blockTree.BestSuggestedHeader.Hash != _blockTree.Head.Hash;
+        public bool IsMining { get; }
 
         public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak txHash)
         {

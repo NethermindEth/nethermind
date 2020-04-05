@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -66,6 +67,71 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x3635c9adc5de9f09e5\",\"id\":67}}", serialized);
         }
 
+        [Test]
+        public void Eth_get_transaction_by_block_hash_and_index()
+        {
+            string serialized = _test.TestEthRpc("eth_getTransactionByBlockHashAndIndex", _test.BlockTree.FindHeadBlock().Hash.ToString(), "1");
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"hash\":\"0x7126cf20a0ad8bd51634837d9049615c34c1bff5e1a54e5663f7e23109bff48b\",\"nonce\":\"0x2\",\"blockHash\":\"0x71eac5e72c3b64431c246173352a8c625c8434d944eb5f3f58204fec3ec36b54\",\"blockNumber\":\"0x3\",\"transactionIndex\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"data\":\"0x\",\"input\":\"0x\",\"v\":\"0x25\",\"s\":\"0x575361bb330bf38b9a89dd8279d42a20d34edeaeede9739a7c2bdcbe3242d7bb\",\"r\":\"0xe7c5ff3cba254c4fe8f9f12c3f202150bb9a0aebeee349ff2f4acb23585f56bd\"},\"id\":67}", serialized, serialized.Replace("\"", "\\\""));
+        }
+
+        [Test]
+        public void Eth_get_transaction_by_hash()
+        {
+            string serialized = _test.TestEthRpc("eth_getTransactionByHash", _test.BlockTree.FindHeadBlock().Transactions.Last().Hash.ToString());
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"hash\":\"0x7126cf20a0ad8bd51634837d9049615c34c1bff5e1a54e5663f7e23109bff48b\",\"nonce\":\"0x2\",\"blockHash\":\"0x71eac5e72c3b64431c246173352a8c625c8434d944eb5f3f58204fec3ec36b54\",\"blockNumber\":\"0x3\",\"transactionIndex\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"data\":\"0x\",\"input\":\"0x\",\"v\":\"0x25\",\"s\":\"0x575361bb330bf38b9a89dd8279d42a20d34edeaeede9739a7c2bdcbe3242d7bb\",\"r\":\"0xe7c5ff3cba254c4fe8f9f12c3f202150bb9a0aebeee349ff2f4acb23585f56bd\"},\"id\":67}", serialized, serialized.Replace("\"", "\\\""));
+        }
+
+        [Test]
+        public void Eth_pending_transactions()
+        {
+            _test.AddTransaction(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject);
+            string serialized = _test.TestEthRpc("eth_pendingTransactions");
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[{\"hash\":\"0x190d9a78dbc61b1856162ab909976a1b28ba4a41ee041341576ea69686cd3b29\",\"nonce\":\"0x0\",\"blockHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"blockNumber\":null,\"transactionIndex\":null,\"from\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"data\":\"0x\",\"input\":\"0x\",\"v\":\"0x26\",\"s\":\"0x2d04e55699fa32e6b65a22189f7571f5030d636d7d44a8b53fe016a2c3ecde24\",\"r\":\"0xda3978c3a1430bd902cf5bbca73c5a1eca019b3f003c95ee16657fd0bb89534c\"}],\"id\":67}", serialized, serialized.Replace("\"", "\\\""));
+        }
+
+        [Test]
+        public void Eth_get_transaction_by_block_number_and_index()
+        {
+            string serialized = _test.TestEthRpc("eth_getTransactionByBlockNumberAndIndex", _test.BlockTree.FindHeadBlock().Number.ToString(), "1");
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"hash\":\"0x7126cf20a0ad8bd51634837d9049615c34c1bff5e1a54e5663f7e23109bff48b\",\"nonce\":\"0x2\",\"blockHash\":\"0x71eac5e72c3b64431c246173352a8c625c8434d944eb5f3f58204fec3ec36b54\",\"blockNumber\":\"0x3\",\"transactionIndex\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"data\":\"0x\",\"input\":\"0x\",\"v\":\"0x25\",\"s\":\"0x575361bb330bf38b9a89dd8279d42a20d34edeaeede9739a7c2bdcbe3242d7bb\",\"r\":\"0xe7c5ff3cba254c4fe8f9f12c3f202150bb9a0aebeee349ff2f4acb23585f56bd\"},\"id\":67}", serialized, serialized.Replace("\"", "\\\""));
+        }
+
+        [Test]
+        public async Task Eth_get_uncle_by_block_number_and_index()
+        {
+            Block block = Build.A.Block.WithOmmers(Build.A.BlockHeader.TestObject, Build.A.BlockHeader.TestObject).TestObject;
+            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+            bridge.FindBlock((BlockParameter) null).ReturnsForAnyArgs(block);
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+            string serialized = _test.TestEthRpc("eth_getUncleByBlockNumberAndIndex", _test.BlockTree.FindHeadBlock().Number.ToString(), "1");
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0xa2a9f03b9493046696099d27b2612b99497aa1f392ec966716ab393c715a5bb6\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x201\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"totalDifficulty\":\"0x0\",\"timestamp\":\"0xf4240\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]},\"id\":67}", serialized, serialized.Replace("\"", "\\\""));
+        }
+
+        [Test]
+        public async Task Eth_get_uncle_by_block_hash_and_index()
+        {
+            Block block = Build.A.Block.WithOmmers(Build.A.BlockHeader.TestObject, Build.A.BlockHeader.TestObject).TestObject;
+            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+            bridge.FindBlock((BlockParameter) null).ReturnsForAnyArgs(block);
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+            string serialized = _test.TestEthRpc("eth_getUncleByBlockHashAndIndex", _test.BlockTree.FindHeadBlock().Hash.ToString(), "1");
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0xa2a9f03b9493046696099d27b2612b99497aa1f392ec966716ab393c715a5bb6\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x201\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"totalDifficulty\":\"0x0\",\"timestamp\":\"0xf4240\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]},\"id\":67}", serialized, serialized.Replace("\"", "\\\""));
+        }
+
+        [Test]
+        public void Eth_get_uncle_count_by_block_hash()
+        {
+            string serialized = _test.TestEthRpc("eth_getUncleCountByBlockHash", _test.BlockTree.FindHeadBlock().Hash.ToString());
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x0\",\"id\":67}", serialized, serialized.Replace("\"", "\\\""));
+        }
+        
+        [Test]
+        public void Eth_get_uncle_count_by_block_number()
+        {
+            string serialized = _test.TestEthRpc("eth_getUncleCountByBlockNumber", _test.BlockTree.FindHeadBlock().Number.ToString());
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x0\",\"id\":67}", serialized, serialized.Replace("\"", "\\\""));
+        }
+
         [TestCase("earliest", "0x0")]
         [TestCase("latest", "0x3")]
         [TestCase("pending", "0x3")]
@@ -81,6 +147,40 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = _test.TestEthRpc("eth_getTransactionCount", TestItem.AddressA.Bytes.ToHexString(true));
             Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x3\",\"id\":67}}", serialized);
+        }
+        
+        [Test]
+        public void Eth_get_filter_changes_empty()
+        {
+            string serialized1 = _test.TestEthRpc("eth_newBlockFilter");
+            string serialized2 = _test.TestEthRpc("eth_getFilterChanges", "0");
+            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}}", serialized2);
+        }
+        
+        [Test]
+        public void Eth_uninstall_filter()
+        {
+            string serialized1 = _test.TestEthRpc("eth_newBlockFilter");
+            string serialized2 = _test.TestEthRpc("eth_uninstallFilter", "0");
+            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}}", serialized2);
+        }
+        
+        [Test]
+        public async Task Eth_get_filter_changes_with_block()
+        {
+            string serialized1 = _test.TestEthRpc("eth_newBlockFilter");
+            await _test.AddBlock();
+            string serialized2 = _test.TestEthRpc("eth_getFilterChanges", "0");
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[\"0x13f3dc6e295e0185dfa6f3bdb2982cb6063b72ce7f0476cc0e8ff01eb597a843\"],\"id\":67}", serialized2, serialized2.Replace("\"", "\\\""));
+        }
+        
+        [Test]
+        public async Task Eth_get_filter_changes_with_tx()
+        {
+            string serialized1 = _test.TestEthRpc("eth_newPendingTransactionFilter");
+            _test.AddTransaction(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject);
+            string serialized2 = _test.TestEthRpc("eth_getFilterChanges", "0");
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[\"0x190d9a78dbc61b1856162ab909976a1b28ba4a41ee041341576ea69686cd3b29\"],\"id\":67}", serialized2, serialized2.Replace("\"", "\\\""));
         }
 
         [TestCase("earliest", "0xabcdef")]
@@ -275,6 +375,13 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public void Eth_protocol_version()
+        {
+            string serialized = _test.TestEthRpc("eth_protocolVersion");
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x41\",\"id\":67}", serialized);
+        }
+
+        [Test]
         public void Eth_get_code()
         {
             string serialized = _test.TestEthRpc("eth_getCode", TestItem.AddressA.ToString(), "latest");
@@ -294,6 +401,35 @@ namespace Nethermind.JsonRpc.Test.Modules
             var transaction = _test.JsonSerializer.Deserialize<TransactionForRpc>("{\"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized = _test.TestEthRpc("eth_call", _test.JsonSerializer.Serialize(transaction), "0x0");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
+        }
+
+        [Test]
+        public async Task Eth_mining_true()
+        {
+            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+            bridge.IsMining.Returns(true);
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+
+            string serialized = _test.TestEthRpc("eth_mining");
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}", serialized);
+        }
+
+        [Test]
+        public async Task Eth_mining_false()
+        {
+            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+            bridge.IsMining.Returns(false);
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+
+            string serialized = _test.TestEthRpc("eth_mining");
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":false,\"id\":67}", serialized);
+        }
+
+        [Test]
+        public void Eth_accounts()
+        {
+            string serialized = _test.TestEthRpc("eth_accounts");
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}", serialized);
         }
 
         [Test]
@@ -409,6 +545,13 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public void Eth_get_proof()
+        {
+            string serialized = _test.TestEthRpc("eth_getProof", TestBlockchain.AccountA.ToString(), "[]", "0x2");
+            Assert.AreEqual(serialized, "{\"jsonrpc\":\"2.0\",\"result\":{\"accountProof\":[\"0xf8518080808080a0670d0cd172a8244835ccc1499687a1fadc0603097339c9055dd664ab916774c48080808080a053692ab7cdc9bb02a28b1f45afe7be86cb27041ea98586e6ff05d98c9b0667138080808080\",\"0xf871808080a007d973b7753725c09ed04da1e01a73dfa6ae1922d8027d42ab55977cc4bdea3580a00dd1727b2abb59c0a6ac75c01176a9d1a276b0049d5fe32da3e1551096549e258080808080808080a038ca33d3070331da1ccf804819da57fcfc83358cadbef1d8bde89e1a346de5098080\",\"0xf872a020227dead52ea912e013e7641ccd6b3b174498e55066b0c174a09c8c3cc4bf5eb84ff84d01893635c9adc5de9fadf7a0475ae75f323761db271e75cbdae41aede237e48bc04127fb6611f0f33298f72ba0dbe576b4818846aa77e82f4ed5fa78f92766b141f282d36703886d196df39322\"],\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"balance\":\"0x3635c9adc5de9fadf7\",\"codeHash\":\"0xdbe576b4818846aa77e82f4ed5fa78f92766b141f282d36703886d196df39322\",\"nonce\":\"0x1\",\"storageHash\":\"0x475ae75f323761db271e75cbdae41aede237e48bc04127fb6611f0f33298f72b\",\"storageProof\":[]},\"id\":67}", serialized.Replace("\"", "\\\""));
+        }
+
+        [Test]
         public void Eth_get_block_by_number_empty_param()
         {
             string serialized = _test.TestEthRpc("eth_getBlockByNumber", "", "true");
@@ -439,7 +582,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             bridge.GetReceipt(Arg.Any<Keccak>()).Returns((TxReceipt) null);
 
-            IEthModule module = new EthModule(new JsonRpcConfig(), LimboLogs.Instance, bridge);
+            IEthModule module = new EthModule(new JsonRpcConfig(), bridge, LimboLogs.Instance);
 
             string serialized = _test.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakA.ToString());
 
@@ -467,7 +610,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.GetChainId().Returns(1);
 
-            IEthModule module = new EthModule(new JsonRpcConfig(), LimboLogs.Instance, bridge);
+            IEthModule module = new EthModule(new JsonRpcConfig(), bridge, LimboLogs.Instance);
 
             string serialized = _test.TestEthRpc("eth_chainid");
 

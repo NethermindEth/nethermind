@@ -82,7 +82,8 @@ namespace Nethermind.Facade.Test
                 _transactionProcessor,
                 _ethereumEcdsa,
                 _bloomStorage,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                false);
         }
 
         [Test]
