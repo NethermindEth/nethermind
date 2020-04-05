@@ -268,9 +268,8 @@ namespace Nethermind.Blockchain.Synchronization
             var receipts = new TxReceipt[blockHashes.Count][];
             for (int blockIndex = 0; blockIndex < blockHashes.Count; blockIndex++)
             {
-                Block block = Find(blockHashes[blockIndex]);
-                var txReceipts = block != null ? _receiptFinder.Get(block) : Array.Empty<TxReceipt>();
-                receipts[blockIndex] = txReceipts;
+                Keccak blockHash = blockHashes[blockIndex];
+                receipts[blockIndex] = blockHash != null ? _receiptFinder.Get(blockHash) : Array.Empty<TxReceipt>();
             }
 
             return receipts;
@@ -294,10 +293,7 @@ namespace Nethermind.Blockchain.Synchronization
             return values;
         }
 
-        public Block Find(Keccak hash)
-        {
-            return _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-        }
+        public Block Find(Keccak hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
 
         public Keccak FindHash(long number)
         {

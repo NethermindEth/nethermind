@@ -21,7 +21,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class TransactionDecoder : IRlpDecoder<Transaction>
+    public class TransactionDecoder : IRlpDecoder<Transaction>, IRlpValueDecoder<Transaction>
     {
         public Transaction Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -104,6 +104,92 @@ namespace Nethermind.Serialization.Rlp
             if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
             {
                 rlpStream.Check(lastCheck);
+            }
+
+            return transaction;
+        }
+
+        public Transaction Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (decoderContext.IsNextItemNull())
+            {
+                decoderContext.ReadByte();
+                return null;
+            }
+
+            var transactionSequence = decoderContext.PeekNextItem();
+
+            int transactionLength = decoderContext.ReadSequenceLength();
+            int lastCheck = decoderContext.Position + transactionLength;
+            Transaction transaction = new Transaction();
+            transaction.Nonce = decoderContext.DecodeUInt256();
+            transaction.GasPrice = decoderContext.DecodeUInt256();
+            transaction.GasLimit = decoderContext.DecodeLong();
+            transaction.To = decoderContext.DecodeAddress();
+            transaction.Value = decoderContext.DecodeUInt256();
+            if (transaction.To == null)
+            {
+                transaction.Init = decoderContext.DecodeByteArray();
+            }
+            else
+            {
+                transaction.Data = decoderContext.DecodeByteArray();
+            }
+
+            if (decoderContext.Position < lastCheck)
+            {
+                Span<byte> vBytes = decoderContext.DecodeByteArraySpan();
+                Span<byte> rBytes = decoderContext.DecodeByteArraySpan();
+                Span<byte> sBytes = decoderContext.DecodeByteArraySpan();
+
+                bool allowUnsigned = (rlpBehaviors & RlpBehaviors.AllowUnsigned) == RlpBehaviors.AllowUnsigned;
+                bool isSignatureOk = true;
+                string signatureError = null;
+                if (vBytes == null || rBytes == null || sBytes == null)
+                {
+                    isSignatureOk = false;
+                    signatureError = "VRS null when decoding Transaction";
+                }
+                else if (vBytes.Length == 0 || rBytes.Length == 0 || sBytes.Length == 0)
+                {
+                    isSignatureOk = false;
+                    signatureError = "VRS is 0 length when decoding Transaction";
+                }
+                else if (vBytes[0] == 0 || rBytes[0] == 0 || sBytes[0] == 0)
+                {
+                    isSignatureOk = false;
+                    signatureError = "VRS starting with 0";
+                }
+                else if (rBytes.Length > 32 || sBytes.Length > 32)
+                {
+                    isSignatureOk = false;
+                    signatureError = "R and S lengths expected to be less or equal 32";
+                }
+                else if (rBytes.SequenceEqual(Bytes.Zero32) && sBytes.SequenceEqual(Bytes.Zero32))
+                {
+                    isSignatureOk = false;
+                    signatureError = "Both 'r' and 's' are zero when decoding a transaction.";
+                }
+                
+                if (isSignatureOk)
+                {
+                    int v = vBytes.ReadEthInt32();
+                    Signature signature = new Signature(rBytes, sBytes, v);
+                    transaction.Signature = signature;
+                    transaction.Hash = Keccak.Compute(transactionSequence);
+                }
+                else
+                {
+                    if (!allowUnsigned)
+                    {
+                        throw new RlpException(signatureError);
+                    }
+                }
+            }
+
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
+            {
+                decoderContext.Check(lastCheck);
             }
 
             return transaction;

@@ -36,7 +36,7 @@ namespace Nethermind.BeaconNode
         private readonly BeaconStateTransition _beaconStateTransition;
         private readonly ICryptographyService _cryptographyService;
         private readonly IEth1DataProvider _eth1DataProvider;
-        private readonly ForkChoice _forkChoice;
+        private readonly IForkChoice _forkChoice;
         private readonly IOptionsMonitor<HonestValidatorConstants> _honestValidatorConstantOptions;
         private readonly ILogger _logger;
         private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
@@ -50,7 +50,7 @@ namespace Nethermind.BeaconNode
             IOptionsMonitor<HonestValidatorConstants> honestValidatorConstantOptions,
             ICryptographyService cryptographyService,
             BeaconStateTransition beaconStateTransition,
-            ForkChoice forkChoice,
+            IForkChoice forkChoice,
             IStore store,
             IEth1DataProvider eth1DataProvider,
             IOperationPool operationPool)

@@ -57,6 +57,11 @@ namespace Nethermind.JsonRpc
 
         public void ReportCall(string method, long handlingTimeMicroseconds, bool success)
         {
+            if(string.IsNullOrWhiteSpace(method))
+            {
+                return;
+            }
+            
             DateTime thisTime = _timestamper.UtcNow;
             if (thisTime - _lastReport > _reportingInterval)
             {

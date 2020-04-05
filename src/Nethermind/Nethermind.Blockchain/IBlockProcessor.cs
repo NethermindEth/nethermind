@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
@@ -23,7 +24,7 @@ namespace Nethermind.Blockchain
 {
     public interface IBlockProcessor
     {
-        Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer);
+        Block[] Process(Keccak branchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer);
         event EventHandler<BlockProcessedEventArgs> BlockProcessed;
         event EventHandler<TxProcessedEventArgs> TransactionProcessed;
     }

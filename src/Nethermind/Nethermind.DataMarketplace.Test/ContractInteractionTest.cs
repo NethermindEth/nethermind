@@ -201,6 +201,7 @@ namespace Nethermind.DataMarketplace.Test
             public BlockHeader Head => _headBlock.Header;
             public long BestKnown { get; }
             public bool IsSyncing { get; }
+            public bool IsMining { get; }
 
             public void RecoverTxSenders(Block block)
             {
@@ -228,11 +229,11 @@ namespace Nethermind.DataMarketplace.Test
 
             public bool IsMainChain(Keccak blockHash) => _headBlock.Hash == blockHash;
 
-            public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
+            public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak txHash)
             {
                 return (new TxReceipt(), new Transaction
                 {
-                    Hash = transactionHash
+                    Hash = txHash
                 });
             }
 

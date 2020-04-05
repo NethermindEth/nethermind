@@ -18,6 +18,7 @@ using System;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.P2p;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.BeaconNode.Peering
@@ -54,6 +55,11 @@ namespace Nethermind.BeaconNode.Peering
                 new EventId(1050, nameof(PeeringWorkerStarting)),
                 "Peering {ProductTokenVersion} worker starting; {Environment} environment [{ThreadId}]");
 
+        public static readonly Action<ILogger, string, Exception?> QueueProcessorExecuteStarting =
+            LoggerMessage.Define<string>(LogLevel.Information,
+                new EventId(1051, nameof(QueueProcessorExecuteStarting)),
+                "Starting queue processor thread for {QueueProcessorName}");
+
         // 2bxx 
         
         public static readonly Action<ILogger, string, Exception?> PeerDiscovered =
@@ -63,6 +69,16 @@ namespace Nethermind.BeaconNode.Peering
 
         // 4bxx warning
         
+        public static readonly Action<ILogger, string, int, Exception?> UnknownGossipReceived =
+            LoggerMessage.Define<string, int>(LogLevel.Warning,
+                new EventId(4050, nameof(UnknownGossipReceived)),
+                "Unknown gossip received, unknown topic '{Topic}', {ByteCount} bytes.");
+        
+        public static readonly Action<ILogger, RpcDirection, int, string, string, int, Exception?> UnknownRpcReceived =
+            LoggerMessage.Define<RpcDirection, int, string, string, int>(LogLevel.Warning,
+                new EventId(4051, nameof(UnknownRpcReceived)),
+                "Unknown RPC {RpcDirection} ({RequestResponseFlag}) received, unknown method '{Method}', peer {Peer}, {ByteCount} bytes.");
+
         // 5bxx error
 
         public static readonly Action<ILogger, string, string, Exception?> PeerDiscoveredError =
@@ -80,10 +96,20 @@ namespace Nethermind.BeaconNode.Peering
                 new EventId(5052, nameof(RpcReceivedError)),
                 "Peer error processing RPC method, '{Method}': {ErrorMessage}");
 
-        public static readonly Action<ILogger, BeaconBlock, string, Exception?> HandleSignedBeaconBlockError =
+        public static readonly Action<ILogger, BeaconBlock, string, Exception?> ProcessGossipSignedBeaconBlockError =
             LoggerMessage.Define<BeaconBlock, string>(LogLevel.Error,
-                new EventId(5053, nameof(HandleSignedBeaconBlockError)),
+                new EventId(5053, nameof(ProcessGossipSignedBeaconBlockError)),
                 "Error handling signed beacon block, {BeaconBlock}: {ErrorMessage}");
+        
+        public static readonly Action<ILogger, string, string, Exception?> HandleRpcStatusError =
+            LoggerMessage.Define<string, string>(LogLevel.Error,
+                new EventId(5054, nameof(HandleRpcStatusError)),
+                "Error handling status from peer {PeerId}: {ErrorMessage}");
+        
+        public static readonly Action<ILogger, string, string, Exception?> HandlePeerDiscoveredError =
+            LoggerMessage.Define<string, string>(LogLevel.Error,
+                new EventId(5055, nameof(HandlePeerDiscoveredError)),
+                "Error handling peer discovered for {PeerId}: {ErrorMessage}");
 
         // 8bxx finalization
 
@@ -93,5 +119,10 @@ namespace Nethermind.BeaconNode.Peering
             LoggerMessage.Define(LogLevel.Critical,
                 new EventId(9050, nameof(PeeringWorkerCriticalError)),
                 "Critical unhandled error starting peering worker. Worker cannot continue.");
+        
+        public static readonly Action<ILogger, string, Exception?> QueueProcessorCriticalError =
+            LoggerMessage.Define<string>(LogLevel.Critical,
+                new EventId(9051, nameof(QueueProcessorCriticalError)),
+                "Critical unhandled error in queue processor thread for {QueueProcessorName}. Processor cannot continue.");        
     }
 }

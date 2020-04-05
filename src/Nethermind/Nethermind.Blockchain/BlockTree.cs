@@ -622,31 +622,10 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            BlockHeader header = _headerCache.Get(blockHash);
+            BlockHeader header = _headerDb.Get(blockHash, _headerDecoder, _headerCache, false);
             if (header == null)
             {
-                IDbWithSpan spanHeaderDb = _headerDb as IDbWithSpan;
-                if (spanHeaderDb != null)
-                {
-                    Span<byte> data = spanHeaderDb.GetSpan(blockHash);
-                    if (data == null)
-                    {
-                        return null;
-                    }
-
-                    header = _headerDecoder.Decode(data.AsRlpValueContext(), RlpBehaviors.AllowExtraData);
-                    spanHeaderDb.DangerousReleaseMemory(data);
-                }
-                else
-                {
-                    byte[] data = _headerDb.Get(blockHash);
-                    if (data == null)
-                    {
-                        return null;
-                    }
-
-                    header = _headerDecoder.Decode(data.AsRlpStream(), RlpBehaviors.AllowExtraData);
-                }
+                return null;
             }
 
             bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) == BlockTreeLookupOptions.None;
@@ -1259,18 +1238,12 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            Block block = _blockCache.Get(blockHash);
+            Block block = _blockDb.Get(blockHash, _blockDecoder, _blockCache, false);
             if (block == null)
             {
-                byte[] data = _blockDb.Get(blockHash);
-                if (data == null)
-                {
-                    return null;
-                }
-
-                block = _blockDecoder.Decode(data.AsRlpStream(), RlpBehaviors.AllowExtraData);
+                return null;
             }
-
+            
             bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) == BlockTreeLookupOptions.None;
             bool requiresCanonical = (options & BlockTreeLookupOptions.RequireCanonical) == BlockTreeLookupOptions.RequireCanonical;
 

@@ -36,7 +36,8 @@ namespace Nethermind.Core.Test.Encoding
             
             HeaderDecoder decoder = new HeaderDecoder();
             Rlp rlp = decoder.Encode(header);
-            BlockHeader decoded = decoder.Decode(new Rlp.ValueDecoderContext(rlp.Bytes));
+            var decoderContext = new Rlp.ValueDecoderContext(rlp.Bytes);
+            BlockHeader decoded = decoder.Decode(ref decoderContext);
             decoded.Hash = decoded.CalculateHash();
             
             Assert.AreEqual(header.Hash, decoded.Hash, "hash");
@@ -53,7 +54,8 @@ namespace Nethermind.Core.Test.Encoding
             
             HeaderDecoder decoder = new HeaderDecoder();
             Rlp rlp = decoder.Encode(header);
-            BlockHeader decoded = decoder.Decode(new Rlp.ValueDecoderContext(rlp.Bytes));
+            var decoderContext = new Rlp.ValueDecoderContext(rlp.Bytes);
+            BlockHeader decoded = decoder.Decode(ref decoderContext);
             decoded.Hash = decoded.CalculateHash();
             
             Assert.AreEqual(header.Hash, decoded.Hash, "hash");

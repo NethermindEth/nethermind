@@ -19,5 +19,5 @@ using System.Text;
 
 namespace Nethermind.Peering.Mothra
 {
-    public delegate void RpcReceivedEventHandler(ReadOnlySpan<byte> methodUtf8, bool isResponse, ReadOnlySpan<byte> peerUtf8, ReadOnlySpan<byte> data);
+    public delegate void RpcReceivedEventHandler(ReadOnlySpan<byte> methodUtf8, int requestResponseFlag, ReadOnlySpan<byte> peerUtf8, ReadOnlySpan<byte> data);
 }

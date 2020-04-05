@@ -54,7 +54,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return rootCheckVisitor.HasRoot;
         }
         
-        public EthModule(IJsonRpcConfig rpcConfig, ILogManager logManager, IBlockchainBridge blockchainBridge)
+        public EthModule(IJsonRpcConfig rpcConfig, IBlockchainBridge blockchainBridge, ILogManager logManager)
         {
             _logger = logManager.GetClassLogger();
             _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<string> eth_protocolVersion()
         {
-            return ResultWrapper<string>.Success("62");
+            return ResultWrapper<string>.Success("0x41");
         }
 
         public ResultWrapper<SyncingResult> eth_syncing()
@@ -99,7 +99,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<bool?> eth_mining()
         {
-            return ResultWrapper<bool?>.Success(false);
+            return ResultWrapper<bool?>.Success(_blockchainBridge.IsMining);
         }
 
         public ResultWrapper<UInt256?> eth_hashrate()
@@ -421,6 +421,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 var transaction = transactions[i];
                 RecoverTxSenderIfNeeded(transaction, null);
                 transactionsModels[i] = new TransactionForRpc(transaction);
+                transactionsModels[i].BlockHash = Keccak.Zero;
             }
 
             if (_logger.IsTrace) _logger.Trace($"eth_pendingTransactions request, result: {transactionsModels.Length}");
