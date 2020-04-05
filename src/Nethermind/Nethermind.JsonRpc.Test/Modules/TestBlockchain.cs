@@ -67,7 +67,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         public static Address AccountA = TestItem.AddressA;
         public static Address AccountB = TestItem.AddressB;
         public static Address AccountC = TestItem.AddressC;
-        
+        private AutoResetEvent _resetEvent;
+
         public ManualTimestamper Timestamper { get; private set; }
 
         public static TransactionBuilder BuildSimpleTransaction => Core.Test.Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
@@ -118,11 +119,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockProducer = new TestBlockProducer(txSelector, chainProcessor, State, sealer, BlockTree, chainProcessor, Timestamper, LimboLogs.Instance);
             BlockProducer.Start();
 
-            AutoResetEvent resetEvent = new AutoResetEvent(false);
+            _resetEvent = new AutoResetEvent(false);
             BlockTree.NewHeadBlock += (s, e) =>
             {
                 Console.WriteLine(e.Block.Header.Hash);
-                resetEvent.Set();
+                _resetEvent.Set();
             };
 
             var genesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"));
@@ -133,21 +134,29 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Block genesis = genesisBlockBuilder.TestObject;
             BlockTree.SuggestBlock(genesis);
-
-            await resetEvent.WaitOneAsync(CancellationToken.None);
-            Timestamper.AddOneSecond();
-            BlockProducer.BuildNewBlock();
-            await resetEvent.WaitOneAsync(CancellationToken.None);
-            TxPool.AddTransaction(BuildSimpleTransaction.WithNonce(0).TestObject, 1, TxHandlingOptions.None);
-            Timestamper.AddOneSecond();
-            BlockProducer.BuildNewBlock();
-            await resetEvent.WaitOneAsync(CancellationToken.None);
-            TxPool.AddTransaction(BuildSimpleTransaction.WithNonce(1).TestObject, 2, TxHandlingOptions.None);
-            TxPool.AddTransaction(BuildSimpleTransaction.WithNonce(2).TestObject, 2, TxHandlingOptions.None);
-            Timestamper.AddOneSecond();
-            BlockProducer.BuildNewBlock();
-            await resetEvent.WaitOneAsync(CancellationToken.None);
+            await _resetEvent.WaitOneAsync(CancellationToken.None);
+            
+            await AddBlock();
+            await AddBlock(BuildSimpleTransaction.WithNonce(0).TestObject);
+            await AddBlock(BuildSimpleTransaction.WithNonce(1).TestObject, BuildSimpleTransaction.WithNonce(2).TestObject);
             return this;
+        }
+
+        public async Task AddBlock(params Transaction[] transactions)
+        {
+            foreach (Transaction transaction in transactions)
+            {
+                TxPool.AddTransaction(transaction, BlockTree.Head.Number + 1, TxHandlingOptions.None);    
+            }
+            
+            Timestamper.AddOneSecond();
+            BlockProducer.BuildNewBlock();
+            await _resetEvent.WaitOneAsync(CancellationToken.None);
+        }
+        
+        public void AddTransaction(Transaction testObject)
+        {
+            TxPool.AddTransaction(testObject, BlockTree.Head.Number + 1, TxHandlingOptions.None);
         }
 
         public void Dispose()
