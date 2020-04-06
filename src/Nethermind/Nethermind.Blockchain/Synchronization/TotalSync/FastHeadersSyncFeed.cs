@@ -32,18 +32,14 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 {
     public class FastHeadersSyncFeed : SyncFeed<HeadersSyncBatch>
     {
-        private ILogger _logger;
+        private readonly ILogger _logger;
         private readonly IEthSyncPeerPool _syncPeerPool;
         private readonly ISyncReport _syncReport;
-        private IBlockTree _blockTree;
+        private readonly IBlockTree _blockTree;
         private readonly ISyncConfig _syncConfig;
 
         private object _dummyObject = new object();
         private object _handlerLock = new object();
-
-        private long _startNumber;
-        private Keccak _startHeaderHash;
-        private UInt256 _startTotalDifficulty;
 
         private int _headersRequestSize = GethSyncLimits.MaxHeaderFetch;
         private long _lowestRequestedHeaderNumber;
@@ -52,19 +48,17 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
         private UInt256? _nextHeaderDiff;
 
         private long _pivotNumber;
-        private Keccak _pivotHash;
-        private UInt256 _pivotDifficulty;
-        
+
         /// <summary>
         /// Requests awaiting to be sent - these are results of partial or invalid responses being queued again 
         /// </summary>
         private ConcurrentQueue<HeadersSyncBatch> _pending = new ConcurrentQueue<HeadersSyncBatch>();
-        
+
         /// <summary>
         /// Requests sent to peers for which responses have not been received yet  
         /// </summary>
         private ConcurrentDictionary<HeadersSyncBatch, object> _sent = new ConcurrentDictionary<HeadersSyncBatch, object>();
-        
+
         /// <summary>
         /// Responses received from peers but waiting in a queue for some other requests to be handled first
         /// </summary>
@@ -91,18 +85,16 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             }
 
             _pivotNumber = _syncConfig.PivotNumberParsed;
-            _pivotHash = _syncConfig.PivotHashParsed;
-            _pivotDifficulty = _syncConfig.PivotTotalDifficultyParsed;
 
             BlockHeader lowestInserted = _blockTree.LowestInsertedHeader;
-            _startNumber = lowestInserted?.Number ?? _pivotNumber;
-            _startHeaderHash = lowestInserted?.Hash ?? _pivotHash;
-            _startTotalDifficulty = lowestInserted?.TotalDifficulty ?? _pivotDifficulty;
+            long startNumber = lowestInserted?.Number ?? _pivotNumber;
+            Keccak startHeaderHash = lowestInserted?.Hash ?? _syncConfig.PivotHashParsed;
+            UInt256 startTotalDifficulty = lowestInserted?.TotalDifficulty ?? _syncConfig.PivotTotalDifficultyParsed;
 
-            _nextHeaderHash = _startHeaderHash;
-            _nextHeaderDiff = _startTotalDifficulty;
+            _nextHeaderHash = startHeaderHash;
+            _nextHeaderDiff = startTotalDifficulty;
 
-            _lowestRequestedHeaderNumber = _startNumber + 1;
+            _lowestRequestedHeaderNumber = startNumber + 1;
         }
 
         public override bool IsMultiFeed => true;
@@ -134,14 +126,11 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
         private void HandleDependentBatches()
         {
-            long? lowestInsertedNumber = _blockTree.LowestInsertedHeader?.Number;
-            while (lowestInsertedNumber.HasValue && _dependencies.ContainsKey(lowestInsertedNumber.Value - 1))
+            long? lowest = _blockTree.LowestInsertedHeader?.Number;
+            while (lowest.HasValue && _dependencies.TryRemove(lowest.Value - 1, out HeadersSyncBatch dependentBatch))
             {
-                HeadersSyncBatch dependentBatch = _dependencies[lowestInsertedNumber.Value - 1];
-                _dependencies.TryRemove(lowestInsertedNumber.Value - 1, out _);
-
                 InsertHeaders(dependentBatch);
-                lowestInsertedNumber = _blockTree.LowestInsertedHeader?.Number;
+                lowest = _blockTree.LowestInsertedHeader?.Number;
             }
         }
 
@@ -292,7 +281,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 _pending.Enqueue(batch);
                 return 0;
             }
-            
+
             long addedLast = batch.StartNumber - 1;
             long addedEarliest = batch.EndNumber + 1;
             int skippedAtTheEnd = 0;
@@ -473,13 +462,9 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 _nextHeaderDiff = (header.TotalDifficulty ?? 0) - header.Difficulty;
 
                 long parentNumber = header.Number - 1;
-                if (_dependencies.ContainsKey(parentNumber))
+                if (_dependencies.TryRemove(parentNumber, out HeadersSyncBatch batch))
                 {
-                    HeadersSyncBatch batch = _dependencies[parentNumber];
-                    {
-                        _dependencies.TryRemove(parentNumber, out _);
-                        InsertHeaders(batch);
-                    }
+                    InsertHeaders(batch);
                 }
             }
 
