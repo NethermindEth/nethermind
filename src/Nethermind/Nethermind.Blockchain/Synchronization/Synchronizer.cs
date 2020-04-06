@@ -117,7 +117,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void Start()
         {
-            StartFullSyncComponents();
+            // StartFullSyncComponents();
             if (_syncConfig.FastBlocks)
             {
                 StartFastSyncComponents();
@@ -167,16 +167,16 @@ namespace Nethermind.Blockchain.Synchronization
             
             receiptsSyncFeed.Activate();
 
-            DownloaderOptions options = BuildFastSyncOptions();
-            _fastSyncBlockDownloaderFeed = new BlockDownloaderFeed(options, _syncConfig.BeamSync ? 0 : SyncModeSelector.FullSyncThreshold);
-            _fastSyncBlockDownloader = new BlockDownloader(_fastSyncBlockDownloaderFeed, _syncPeerPool, _blockTree, _blockValidator, _sealValidator, _syncReport, _receiptStorage, _specProvider, _logManager);
-            _fastSyncBlockDownloader.Start(_fullSyncCancellation.Token).ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                {
-                    _logger.Error("Fast sync block downloader failed", t.Exception);
-                }
-            });
+            // DownloaderOptions options = BuildFastSyncOptions();
+            // _fastSyncBlockDownloaderFeed = new BlockDownloaderFeed(options, _syncConfig.BeamSync ? 0 : SyncModeSelector.FullSyncThreshold);
+            // _fastSyncBlockDownloader = new BlockDownloader(_fastSyncBlockDownloaderFeed, _syncPeerPool, _blockTree, _blockValidator, _sealValidator, _syncReport, _receiptStorage, _specProvider, _logManager);
+            // _fastSyncBlockDownloader.Start(_fullSyncCancellation.Token).ContinueWith(t =>
+            // {
+            //     if (t.IsFaulted)
+            //     {
+            //         _logger.Error("Fast sync block downloader failed", t.Exception);
+            //     }
+            // });
         }
 
         private DownloaderOptions BuildFastSyncOptions()
