@@ -57,14 +57,14 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
         private object _dummyObject = new object();
 
-        private bool _hasRequestedFinal;
+        private bool _hasRequestedFinalBatch;
         private Keccak _startHash;
         private Keccak _lowestRequestedHash;
 
         private long _pivotNumber;
         private Keccak _pivotHash;
 
-        private bool ShouldFinish => _pending.Count + _sent.Count + _dependencies.Count == 0;
+        private bool ShouldFinish => _receiptStorage.LowestInsertedReceiptBlock == 1;
 
         public FastReceiptsSyncFeed(ISpecProvider specProvider, IBlockTree blockTree, IReceiptStorage receiptStorage, IEthSyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
         {
@@ -103,22 +103,25 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             bool anyHeaderDownloaded = _blockTree.LowestInsertedHeader != null;
 
             bool anyBatchesLeft = !shouldDownloadReceipts
-                              || allReceiptsDownloaded
-                              || isBeamSync && anyHeaderDownloaded;
+                                  || allReceiptsDownloaded
+                                  || isBeamSync && anyHeaderDownloaded;
 
             if (anyBatchesLeft)
             {
-                _syncReport.FastBlocksReceipts.Update(_pivotNumber);
-                _syncReport.FastBlocksReceipts.MarkEnd();
                 if (ShouldFinish)
                 {
                     Finish();
+                    _syncReport.FastBlocksReceipts.Update(_pivotNumber);
+                    _syncReport.FastBlocksReceipts.MarkEnd();
+                    _sent.Clear();
+                    _pending.Clear();
+                    _dependencies.Clear();
                 }
 
                 return false;
             }
 
-            return !_hasRequestedFinal;
+            return !_hasRequestedFinalBatch;
         }
 
         private ReceiptsSyncBatch BuildNewBatch()
@@ -183,7 +186,11 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 // special finishing call
                 // leaving this the bad way as it may be tricky to confirm that it is not called somewhere else
                 // at least I will add a test for it now...
-                _receiptStorage.LowestInsertedReceiptBlock = 1;
+                if (_sent.Count + _pending.Count + _dependencies.Count == 0)
+                {
+                    _receiptStorage.LowestInsertedReceiptBlock = 1;
+                }
+
                 return null;
             }
 
@@ -191,7 +198,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             {
                 batch.Resize(collectedRequests);
             }
-            
+
             batch.IsFinal = _blockTree.LowestInsertedBody.Number == 1;
 
             return batch;
@@ -222,7 +229,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 _sent.TryAdd(batch, _dummyObject);
                 if (batch.IsFinal)
                 {
-                    _hasRequestedFinal = true;
+                    _hasRequestedFinalBatch = true;
                 }
             }
 
