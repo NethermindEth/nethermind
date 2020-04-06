@@ -167,6 +167,11 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 _lowestRequestedHash = block.Hash;
                 if (block.Transactions.Length > 0)
                 {
+                    if (predecessorBlock == null)
+                    {
+                        _logger.Error($"PREDECESSOR IS NULL IN {batch.MinNumber} at block {block.ToString(Block.Format.Short)}");
+                    }
+                    
                     batch.Predecessors[collectedRequests] = predecessorBlock?.Number;
                     batch.Blocks[collectedRequests] = block;
                     batch.Request[collectedRequests] = block.Hash;
@@ -404,7 +409,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                     builder.AppendLine($"SENT {_sent.Count} PENDING {_pending.Count} DEPENDENCIES {_dependencies.Count}");
                     foreach (var headerDependency in _dependencies)
                     {
-                        all.TryAdd(headerDependency.Value.Last().Item1.Number, $"  DEPENDENCY RECEIPTS [{headerDependency.Value.Last().Item1.Number}, {headerDependency.Value.First().Item1.Number}]");
+                        all.TryAdd(headerDependency.Value.Last().Item1.Number, $"  DEPENDENCY RECEIPTS [{headerDependency.Value.Last().Item1.Number}, {headerDependency.Value.First().Item1.Number}] on {headerDependency.Key}");
                     }
 
                     foreach (var pendingBatch in _pending)

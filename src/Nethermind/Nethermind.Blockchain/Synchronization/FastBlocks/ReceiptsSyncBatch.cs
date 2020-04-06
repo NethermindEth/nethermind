@@ -23,8 +23,9 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
     public class ReceiptsSyncBatch : FastBlocksBatch
     {
-        public long StartNumber => Predecessors.Length > 0 ? (Predecessors[^1] ?? long.MaxValue) : long.MaxValue;
+        public long StartNumber => Blocks.Last().Number;
         public long EndNumber => Blocks.First().Number;
+        public long On => Predecessors[0] ?? long.MaxValue;
         public bool IsFinal { get; set; }
         public long?[] Predecessors { get; set; }
         public Block[] Blocks { get; set; }
@@ -36,15 +37,18 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         {
             Block[] currentBlocks = Blocks;
             Keccak[] currentRequests = Request;
+            long?[] currentPredecessors = Predecessors;
             Blocks = new Block[targetSize];
             Request = new Keccak[targetSize];
+            Predecessors = new long?[targetSize];
             Array.Copy(currentBlocks, 0, Blocks, 0, targetSize);
             Array.Copy(currentRequests, 0, Request, 0, targetSize);
+            Array.Copy(currentPredecessors, 0, Predecessors, 0, targetSize);
         }
         
         public override string ToString()
         {
-            string details = $"[{StartNumber}, {EndNumber}]({Blocks.Length})";
+            string details = $"[{StartNumber}, {EndNumber}]({Blocks.Length}) on {On}";
             return $"RECEIPTS {details} [{(Prioritized ? "HIGH" : "LOW")}] [times: S:{SchedulingTime:F0}ms|R:{RequestTime:F0}ms|V:{ValidationTime:F0}ms|W:{WaitingTime:F0}ms|H:{HandlingTime:F0}ms|A:{AgeInMs:F0}ms, retries {Retries}] min#: {MinNumber} {ResponseSourcePeer}";
         }
     }
