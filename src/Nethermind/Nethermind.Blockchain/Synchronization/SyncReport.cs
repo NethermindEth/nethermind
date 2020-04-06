@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain.Synchronization
         private const int SyncReportFrequency = 1;
         private const int NoProgressStateSyncReportFrequency = 120;
         private const int SyncShortPeersReportFrequency = 60;
-        private const int SyncFullPeersReportFrequency = 120;
+        private const int SyncFullPeersReportFrequency = 5;
 
         public double TickTime
         {

@@ -54,9 +54,20 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
         private long _pivotNumber;
         private Keccak _pivotHash;
         private UInt256 _pivotDifficulty;
-
+        
+        /// <summary>
+        /// Requests awaiting to be sent - these are results of partial or invalid responses being queued again 
+        /// </summary>
+        private ConcurrentQueue<HeadersSyncBatch> _pending = new ConcurrentQueue<HeadersSyncBatch>();
+        
+        /// <summary>
+        /// Requests sent to peers for which responses have not been received yet  
+        /// </summary>
         private ConcurrentDictionary<HeadersSyncBatch, object> _sent = new ConcurrentDictionary<HeadersSyncBatch, object>();
-        private ConcurrentStack<HeadersSyncBatch> _pending = new ConcurrentStack<HeadersSyncBatch>();
+        
+        /// <summary>
+        /// Responses received from peers but waiting in a queue for some other requests to be handled first
+        /// </summary>
         private ConcurrentDictionary<long, HeadersSyncBatch> _dependencies = new ConcurrentDictionary<long, HeadersSyncBatch>();
 
         public bool AllHeadersDownloaded => (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) == 1;
@@ -141,7 +152,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             HeadersSyncBatch batch = null;
             if (_pending.Any())
             {
-                _pending.TryPop(out batch);
+                _pending.TryDequeue(out batch);
                 batch.MarkRetry();
             }
             else if (AnyBatchesLeftToBeBuilt())
@@ -169,33 +180,33 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
         private void LogStateOnPrepare()
         {
-            if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number}, LOWEST_REQUESTED {_lowestRequestedHeaderNumber}, DEPENDENCIES {_dependencies.Count}, SENT: {_sent.Count}, PENDING: {_pending.Count}");
+            if (_logger.IsWarn) _logger.Warn($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number}, LOWEST_REQUESTED {_lowestRequestedHeaderNumber}, DEPENDENCIES {_dependencies.Count}, SENT: {_sent.Count}, PENDING: {_pending.Count}");
             if (_logger.IsWarn)
             {
                 lock (_handlerLock)
                 {
-                    Dictionary<long, string> all = new Dictionary<long, string>();
+                    ConcurrentDictionary<long, string> all = new ConcurrentDictionary<long, string>();
                     StringBuilder builder = new StringBuilder();
                     builder.AppendLine($"SENT {_sent.Count} PENDING {_pending.Count} DEPENDENCIES {_dependencies.Count}");
                     foreach (var headerDependency in _dependencies
                         .OrderByDescending(d => d.Value.EndNumber)
                         .ThenByDescending(d => d.Value.StartNumber))
                     {
-                        all.Add(headerDependency.Value.EndNumber, $"  DEPENDENCY {headerDependency.Value}");
+                        all.TryAdd(headerDependency.Value.EndNumber, $"  DEPENDENCY {headerDependency.Value}");
                     }
 
                     foreach (var pendingBatch in _pending
                         .OrderByDescending(d => d.EndNumber)
                         .ThenByDescending(d => d.StartNumber))
                     {
-                        all.Add(pendingBatch.EndNumber, $"  PENDING    {pendingBatch}");
+                        all.TryAdd(pendingBatch.EndNumber, $"  PENDING    {pendingBatch}");
                     }
 
                     foreach (var sentBatch in _sent
                         .OrderByDescending(d => d.Key.EndNumber)
                         .ThenByDescending(d => d.Key.StartNumber))
                     {
-                        all.Add(sentBatch.Key.EndNumber, $"  SENT       {sentBatch.Key}");
+                        all.TryAdd(sentBatch.Key.EndNumber, $"  SENT       {sentBatch.Key}");
                     }
 
                     foreach (KeyValuePair<long, string> keyValuePair in all
@@ -215,7 +226,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             {
                 batch.MarkHandlingStart();
                 if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
-                _pending.Push(batch);
+                _pending.Enqueue(batch);
                 batch.MarkHandlingEnd();
                 return SyncBatchResponseHandlingResult.NoData;
             }
@@ -278,7 +289,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             {
                 if (_logger.IsWarn) _logger.Warn($"Peer sent too long response ({batch.Response.Length}) to {batch}");
                 _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, $"response too long ({batch.Response.Length})");
-                _pending.Push(batch);
+                _pending.Enqueue(batch);
                 return 0;
             }
             
@@ -321,21 +332,21 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                     {
                         if (header.Number == (_blockTree.LowestInsertedHeader?.Number ?? _pivotNumber + 1) - 1)
                         {
-                            if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch - number {header.Number} was {header.Hash} while expected {_nextHeaderHash}");
+                            if (_logger.IsWarn) _logger.Warn($"{batch} - ended up IGNORED - different branch - number {header.Number} was {header.Hash} while expected {_nextHeaderHash}");
                             _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, "headers - different branch");
                             break;
                         }
 
                         if (header.Number == _blockTree.LowestInsertedHeader?.Number)
                         {
-                            if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch");
+                            if (_logger.IsWarn) _logger.Warn($"{batch} - ended up IGNORED - different branch");
                             _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, "headers - different branch");
                             break;
                         }
 
                         if (_dependencies.ContainsKey(header.Number))
                         {
-                            _pending.Push(batch);
+                            _pending.Enqueue(batch);
                             throw new InvalidOperationException($"Only one header dependency expected ({batch})");
                         }
 
@@ -355,7 +366,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
                         HeadersSyncBatch dependentBatch = BuildDependentBatch(batch, addedLast, addedEarliest);
                         _dependencies[header.Number] = dependentBatch;
-                        if (_logger.IsDebug) _logger.Debug($"{batch} -> DEPENDENCY {dependentBatch}");
+                        if (_logger.IsWarn) _logger.Warn($"{batch} -> DEPENDENCY {dependentBatch}");
 
                         // but we cannot do anything with it yet
                         break;
@@ -407,29 +418,29 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 if (added <= 0)
                 {
                     batch.Response = null;
-                    _pending.Push(batch);
+                    _pending.Enqueue(batch);
                 }
                 else
                 {
                     if (leftFillerSize > 0)
                     {
                         HeadersSyncBatch leftFiller = BuildLeftFiller(batch, leftFillerSize);
-                        _pending.Push(leftFiller);
-                        if (_logger.IsDebug) _logger.Debug($"{batch} -> FILLER {leftFiller}");
+                        _pending.Enqueue(leftFiller);
+                        if (_logger.IsWarn) _logger.Warn($"{batch} -> FILLER {leftFiller}");
                     }
 
                     if (rightFillerSize > 0)
                     {
                         HeadersSyncBatch rightFiller = BuildRightFiller(batch, rightFillerSize);
-                        _pending.Push(rightFiller);
-                        if (_logger.IsDebug) _logger.Debug($"{batch} -> FILLER {rightFiller}");
+                        _pending.Enqueue(rightFiller);
+                        if (_logger.IsWarn) _logger.Warn($"{batch} -> FILLER {rightFiller}");
                     }
                 }
             }
 
             if (added == 0)
             {
-                if (_logger.IsDebug) _logger.Debug($"{batch} - reporting no progress");
+                if (_logger.IsWarn) _logger.Warn($"{batch} - reporting no progress");
                 if (batch.ResponseSourcePeer != null)
                 {
                     _syncPeerPool.ReportNoSyncProgress(batch.ResponseSourcePeer);
@@ -442,7 +453,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 _syncReport.FastBlocksHeaders.Update(_pivotNumber - _blockTree.LowestInsertedHeader.Number + 1);
             }
 
-            if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number} | HANDLED {batch}");
+            if (_logger.IsWarn) _logger.Warn($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number} | HANDLED {batch}");
 
             _syncReport.HeadersInQueue.Update(_dependencies.Sum(hd => hd.Value.Response.Length));
             return added;
@@ -455,8 +466,8 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 return AddBlockResult.AlreadyKnown;
             }
 
-            AddBlockResult addBlockResult = _blockTree.Insert(header);
-            if (addBlockResult == AddBlockResult.Added || addBlockResult == AddBlockResult.AlreadyKnown)
+            AddBlockResult insertOutcome = _blockTree.Insert(header);
+            if (insertOutcome == AddBlockResult.Added || insertOutcome == AddBlockResult.AlreadyKnown)
             {
                 _nextHeaderHash = header.ParentHash;
                 _nextHeaderDiff = (header.TotalDifficulty ?? 0) - header.Difficulty;
@@ -472,7 +483,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 }
             }
 
-            return addBlockResult;
+            return insertOutcome;
         }
     }
 }
