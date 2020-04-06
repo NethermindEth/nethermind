@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -52,8 +53,8 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
         private ConcurrentDictionary<ReceiptsSyncBatch, object> _sent =
             new ConcurrentDictionary<ReceiptsSyncBatch, object>();
 
-        private ConcurrentStack<ReceiptsSyncBatch> _pending =
-            new ConcurrentStack<ReceiptsSyncBatch>();
+        private ConcurrentQueue<ReceiptsSyncBatch> _pending =
+            new ConcurrentQueue<ReceiptsSyncBatch>();
 
         private object _dummyObject = new object();
 
@@ -169,7 +170,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                     batch.Predecessors[collectedRequests] = predecessorBlock?.Number;
                     batch.Blocks[collectedRequests] = block;
                     batch.Request[collectedRequests] = block.Hash;
-                    _logger.Warn($"Setting batch {batch.MinNumber} {block.Number}->{predecessorBlock?.Number}");
+                    // _logger.Warn($"Setting batch {batch.MinNumber} {block.Number}->{predecessorBlock?.Number}");
                     predecessorBlock = block;
                     collectedRequests++;
                 }
@@ -203,13 +204,12 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
             return batch;
         }
-
-        [MethodImpl(MethodImplOptions.Synchronized)]
+        
         public override Task<ReceiptsSyncBatch> PrepareRequest()
         {
             HandleDependentBatches();
 
-            if (_pending.TryPop(out ReceiptsSyncBatch batch))
+            if (_pending.TryDequeue(out ReceiptsSyncBatch batch))
             {
                 batch.MarkRetry();
             }
@@ -231,6 +231,8 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 {
                     _hasRequestedFinalBatch = true;
                 }
+                
+                LogStateOnPrepare();
             }
 
             return Task.FromResult(batch);
@@ -250,7 +252,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             {
                 batch.MarkHandlingStart();
                 if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
-                _pending.Push(batch);
+                _pending.Enqueue(batch);
                 batch.MarkHandlingEnd();
                 return SyncBatchResponseHandlingResult.NoData; //(BlocksDataHandlerResult.OK, 0);
             }
@@ -258,7 +260,16 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             try
             {
                 batch.MarkHandlingStart();
-                int added = InsertReceipts(batch);
+                try
+                {
+                    int added = InsertReceipts(batch);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error("buuuu", ex);
+                    _pending.Enqueue(batch);    
+                }
+                
                 return SyncBatchResponseHandlingResult.OK; //(BlocksDataHandlerResult.OK, added);
             }
             finally
@@ -270,12 +281,11 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
         private void HandleDependentBatches()
         {
-            long? lowestReceiptNumber = _receiptStorage.LowestInsertedReceiptBlock;
-            while (lowestReceiptNumber.HasValue && _dependencies.ContainsKey(lowestReceiptNumber.Value))
+            long? lowest = _receiptStorage.LowestInsertedReceiptBlock;
+            while (lowest.HasValue && _dependencies.TryRemove(lowest.Value, out List<(Block, TxReceipt[])> dependency))
             {
-                InsertReceipts(_dependencies[lowestReceiptNumber.Value]);
-                _dependencies.Remove(lowestReceiptNumber.Value, out _);
-                lowestReceiptNumber = _receiptStorage.LowestInsertedReceiptBlock;
+                InsertReceipts(dependency);
+                lowest = _receiptStorage.LowestInsertedReceiptBlock;
             }
         }
 
@@ -342,7 +352,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             if (added < receiptSyncBatch.Request.Length)
             {
                 ReceiptsSyncBatch fillerBatch = PrepareReceiptFiller(added, receiptSyncBatch);
-                _pending.Push(fillerBatch);
+                _pending.Enqueue(fillerBatch);
             }
 
             lock (_handlerLock)
@@ -380,6 +390,44 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             }
         }
 
+        private object _reportLock = new object();
+
+        private void LogStateOnPrepare()
+        {
+            if (_logger.IsWarn) _logger.Warn($"LOWEST_INSERTED {_receiptStorage.LowestInsertedReceiptBlock}, DEPENDENCIES {_dependencies.Count}, SENT: {_sent.Count}, PENDING: {_pending.Count}");
+            if (_logger.IsWarn)
+            {
+                lock (_reportLock)
+                {
+                    ConcurrentDictionary<long, string> all = new ConcurrentDictionary<long, string>();
+                    StringBuilder builder = new StringBuilder();
+                    builder.AppendLine($"SENT {_sent.Count} PENDING {_pending.Count} DEPENDENCIES {_dependencies.Count}");
+                    foreach (var headerDependency in _dependencies)
+                    {
+                        all.TryAdd(headerDependency.Value.Last().Item1.Number, $"  DEPENDENCY RECEIPTS [{headerDependency.Value.Last().Item1.Number}, {headerDependency.Value.First().Item1.Number}]");
+                    }
+
+                    foreach (var pendingBatch in _pending)
+                    {
+                        all.TryAdd(pendingBatch.EndNumber, $"  PENDING    {pendingBatch}");
+                    }
+
+                    foreach (var sentBatch in _sent)
+                    {
+                        all.TryAdd(sentBatch.Key.EndNumber, $"  SENT       {sentBatch.Key}");
+                    }
+
+                    foreach (KeyValuePair<long, string> keyValuePair in all
+                        .OrderByDescending(kvp => kvp.Key))
+                    {
+                        builder.AppendLine(keyValuePair.Value);
+                    }
+
+                    _logger.Warn($"{builder}");
+                }
+            }
+        }
+        
         private void InsertReceipts(List<(Block, TxReceipt[])> receipts)
         {
             for (int i = 0; i < receipts.Count; i++)

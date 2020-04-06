@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -22,7 +23,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
     public class ReceiptsSyncBatch : FastBlocksBatch
     {
-        public long StartBlock => Predecessors.Length > 0 ? (Predecessors[Predecessors.Length] ?? long.MaxValue) : long.MaxValue;
+        public long StartNumber => Predecessors.Length > 0 ? (Predecessors[^1] ?? long.MaxValue) : long.MaxValue;
+        public long EndNumber => Blocks.First().Number;
         public bool IsFinal { get; set; }
         public long?[] Predecessors { get; set; }
         public Block[] Blocks { get; set; }
@@ -38,6 +40,12 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             Request = new Keccak[targetSize];
             Array.Copy(currentBlocks, 0, Blocks, 0, targetSize);
             Array.Copy(currentRequests, 0, Request, 0, targetSize);
+        }
+        
+        public override string ToString()
+        {
+            string details = $"[{StartNumber}, {EndNumber}]({Blocks.Length})";
+            return $"RECEIPTS {details} [{(Prioritized ? "HIGH" : "LOW")}] [times: S:{SchedulingTime:F0}ms|R:{RequestTime:F0}ms|V:{ValidationTime:F0}ms|W:{WaitingTime:F0}ms|H:{HandlingTime:F0}ms|A:{AgeInMs:F0}ms, retries {Retries}] min#: {MinNumber} {ResponseSourcePeer}";
         }
     }
 }
