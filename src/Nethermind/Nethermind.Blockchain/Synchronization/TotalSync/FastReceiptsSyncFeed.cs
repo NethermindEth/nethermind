@@ -174,12 +174,6 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 if (block.Transactions.Length > 0)
                 {
                     _lowestRequestedHash = block.Hash;
-
-                    if (predecessorBlock == null)
-                    {
-                        _logger.Error($"PREDECESSOR IS NULL IN {batch.MinNumber} at block {block.ToString(Block.Format.Short)}");
-                    }
-
                     batch.Predecessors[collectedRequests] = predecessorBlock?.Number;
                     batch.Blocks[collectedRequests] = block;
                     batch.Request[collectedRequests] = block.Hash;
