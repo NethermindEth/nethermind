@@ -39,6 +39,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
     {
         private int _bodiesRequestSize = GethSyncLimits.MaxBodyFetch;
         private object _dummyObject = new object();
+        private object _reportLock = new object();
 
         private ILogger _logger;
         private IBlockTree _blockTree;
@@ -46,21 +47,17 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
         private readonly ISyncReport _syncReport;
         private IEthSyncPeerPool _syncPeerPool;
 
-        private ConcurrentDictionary<long, List<Block>> _bodiesDependencies = new ConcurrentDictionary<long, List<Block>>();
-        private ConcurrentDictionary<BodiesSyncBatch, object> _sentBatches = new ConcurrentDictionary<BodiesSyncBatch, object>();
-        private ConcurrentStack<BodiesSyncBatch> _pendingBatches = new ConcurrentStack<BodiesSyncBatch>();
+        private ConcurrentDictionary<long, List<Block>> _dependencies = new ConcurrentDictionary<long, List<Block>>();
+        private ConcurrentDictionary<BodiesSyncBatch, object> _sent = new ConcurrentDictionary<BodiesSyncBatch, object>();
+        private ConcurrentStack<BodiesSyncBatch> _pending = new ConcurrentStack<BodiesSyncBatch>();
 
         private Keccak _startBodyHash;
         private Keccak _lowestRequestedBodyHash;
-        private int _isMoreLikelyToBeHandlingDependenciesNow;
 
         private long _pivotNumber;
         private Keccak _pivotHash;
 
-        public bool IsFinished =>
-            _pendingBatches.Count
-            + _sentBatches.Count
-            + _bodiesDependencies.Count == 0;
+        public bool ShouldFinish => (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
 
         public FastBodiesSyncFeed(IBlockTree blockTree, IEthSyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
         {
@@ -97,34 +94,79 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             bool isBeamSync = _syncConfig.BeamSync;
             bool anyHeaderSynced = _blockTree.LowestInsertedHeader != null;
             bool allBodiesDownloaded = (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
+            bool requestedGenesis = _lowestRequestedBodyHash == _blockTree.Genesis.Hash;
 
-            bool isFinished = !shouldDownloadBodies
-                              || allBodiesDownloaded
-                              || isBeamSync && anyHeaderSynced;
+            bool noBatchesLeft = !shouldDownloadBodies
+                                 || allBodiesDownloaded
+                                 || isBeamSync && anyHeaderSynced
+                                 || requestedGenesis;
 
-            if (isFinished)
+            if (noBatchesLeft)
             {
-                _syncReport.FastBlocksBodies.Update(_pivotNumber);
-                _syncReport.FastBlocksBodies.MarkEnd();
-                Finish();
+                if (ShouldFinish)
+                {
+                    Finish();
+                    _syncReport.FastBlocksBodies.Update(_pivotNumber);
+                    _syncReport.FastBlocksBodies.MarkEnd();
+                    _dependencies.Clear();
+                    _pending.Clear();
+                    _sent.Clear();
+                }
+
                 return false;
             }
 
-            bool requestedGenesis = _lowestRequestedBodyHash == _blockTree.Genesis.Hash;
-            return !requestedGenesis;
+            return true;
         }
+
+        // private void LogStateOnPrepare()
+        // {
+        //     if (_logger.IsWarn) _logger.Warn($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number}, LOWEST_REQUESTED {_lowestRequestedHeaderNumber}, DEPENDENCIES {_dependencies.Count}, SENT: {_sent.Count}, PENDING: {_pending.Count}");
+        //     if (_logger.IsWarn)
+        //     {
+        //         lock (_reportLock)
+        //         {
+        //             ConcurrentDictionary<long, string> all = new ConcurrentDictionary<long, string>();
+        //             StringBuilder builder = new StringBuilder();
+        //             builder.AppendLine($"SENT {_sent.Count} PENDING {_pending.Count} DEPENDENCIES {_dependencies.Count}");
+        //             foreach (var headerDependency in _dependencies
+        //                 .OrderByDescending(d => d.Value.EndNumber)
+        //                 .ThenByDescending(d => d.Value.StartNumber))
+        //             {
+        //                 all.TryAdd(headerDependency.Value.EndNumber, $"  DEPENDENCY {headerDependency.Value}");
+        //             }
+        //
+        //             foreach (var pendingBatch in _pending
+        //                 .OrderByDescending(d => d.EndNumber)
+        //                 .ThenByDescending(d => d.StartNumber))
+        //             {
+        //                 all.TryAdd(pendingBatch.EndNumber, $"  PENDING    {pendingBatch}");
+        //             }
+        //
+        //             foreach (var sentBatch in _sent
+        //                 .OrderByDescending(d => d.Key.EndNumber)
+        //                 .ThenByDescending(d => d.Key.StartNumber))
+        //             {
+        //                 all.TryAdd(sentBatch.Key.EndNumber, $"  SENT       {sentBatch.Key}");
+        //             }
+        //
+        //             foreach (KeyValuePair<long, string> keyValuePair in all
+        //                 .OrderByDescending(kvp => kvp.Key))
+        //             {
+        //                 builder.AppendLine(keyValuePair.Value);
+        //             }
+        //
+        //             _logger.Warn($"{builder}");
+        //         }
+        //     }
+        // }
 
         public override Task<BodiesSyncBatch> PrepareRequest()
         {
-            if (Interlocked.CompareExchange(ref _isMoreLikelyToBeHandlingDependenciesNow, 1, 0) == 0)
+            HandleDependentBatches();
+            
+            if (_pending.TryPop(out BodiesSyncBatch batch))
             {
-                HandleDependentBatches();
-            }
-
-            BodiesSyncBatch batch = null;
-            if (_pendingBatches.Any())
-            {
-                _pendingBatches.TryPop(out batch);
                 batch.MarkRetry();
             }
             else
@@ -200,7 +242,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
             if (batch != null)
             {
-                _sentBatches.TryAdd(batch, _dummyObject);
+                _sent.TryAdd(batch, _dummyObject);
                 if ((_blockTree.LowestInsertedBody?.Number ?? 0) - batch.Headers[0].Number < 1024)
                 {
                     batch.Prioritized = true;
@@ -213,14 +255,14 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
         private void HandleDependentBatches()
         {
             long? lowestBodyNumber = _blockTree.LowestInsertedBody?.Number;
-            while (lowestBodyNumber.HasValue && _bodiesDependencies.ContainsKey(lowestBodyNumber.Value - 1))
+            while (lowestBodyNumber.HasValue && _dependencies.ContainsKey(lowestBodyNumber.Value - 1))
             {
                 Stopwatch stopwatch = new Stopwatch();
                 stopwatch.Start();
-                List<Block> dependentBatch = _bodiesDependencies[lowestBodyNumber.Value - 1];
+                List<Block> dependentBatch = _dependencies[lowestBodyNumber.Value - 1];
                 dependentBatch.Reverse();
                 InsertBlocks(dependentBatch);
-                _bodiesDependencies.Remove(lowestBodyNumber.Value - 1, out _);
+                _dependencies.Remove(lowestBodyNumber.Value - 1, out _);
                 lowestBodyNumber = _blockTree.LowestInsertedBody?.Number;
                 stopwatch.Stop();
 //                _logger.Warn($"Handled dependent blocks [{dependentBatch.First().Number},{dependentBatch.Last().Number}]({dependentBatch.Count}) in {stopwatch.ElapsedMilliseconds}ms");
@@ -238,7 +280,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             {
                 batch.MarkHandlingStart();
                 if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
-                _pendingBatches.Push(batch);
+                _pending.Push(batch);
                 batch.MarkHandlingEnd();
                 return SyncBatchResponseHandlingResult.NoData; //(BlocksDataHandlerResult.OK, 0);
             }
@@ -256,7 +298,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             finally
             {
                 batch.MarkHandlingEnd();
-                _sentBatches.TryRemove(batch, out _);
+                _sent.TryRemove(batch, out _);
             }
         }
 
@@ -300,7 +342,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"{batch} -> FILLER {fillerBatch}");
-                _pendingBatches.Push(fillerBatch);
+                _pending.Push(fillerBatch);
             }
 
             if (validResponses.Any())
@@ -308,7 +350,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 long expectedNumber = _blockTree.LowestInsertedBody?.Number - 1 ?? LongConverter.FromString(_syncConfig.PivotNumber ?? "0");
                 if (validResponses.Last().Number != expectedNumber)
                 {
-                    _bodiesDependencies.TryAdd(validResponses.Last().Number, validResponses);
+                    _dependencies.TryAdd(validResponses.Last().Number, validResponses);
                 }
                 else
                 {
@@ -325,7 +367,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
             if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedBody?.Number} | HANDLED {batch}");
 
-            _syncReport.BodiesInQueue.Update(_bodiesDependencies.Sum(d => d.Value.Count));
+            _syncReport.BodiesInQueue.Update(_dependencies.Sum(d => d.Value.Count));
             return validResponsesCount;
         }
     }
