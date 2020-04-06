@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -24,11 +25,13 @@ namespace Nethermind.Blockchain.Receipts
     {
         private readonly IReceiptFinder _innerFinder;
         private readonly IReceiptsRecovery _receiptsRecovery;
+        private readonly IBlockFinder _blockFinder;
 
-        public FullInfoReceiptFinder(IReceiptFinder innerFinder, IReceiptsRecovery receiptsRecovery)
+        public FullInfoReceiptFinder(IReceiptFinder innerFinder, IReceiptsRecovery receiptsRecovery, IBlockFinder blockFinder)
         {
             _innerFinder = innerFinder ?? throw new ArgumentNullException(nameof(innerFinder));
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
+            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         }
         
         public Keccak FindBlockHash(Keccak txHash) => _innerFinder.FindBlockHash(txHash);
@@ -36,15 +39,23 @@ namespace Nethermind.Blockchain.Receipts
         public TxReceipt[] Get(Block block)
         {
             var receipts = _innerFinder.Get(block);
-            if (receipts != null)
+            _receiptsRecovery.TryRecover(block, receipts);
+            return receipts;
+        }
+
+        public TxReceipt[] Get(Keccak blockHash)
+        {
+            var receipts = _innerFinder.Get(blockHash);
+            
+            if (_receiptsRecovery.NeedRecover(receipts))
             {
+                var block = _blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 _receiptsRecovery.TryRecover(block, receipts);
             }
 
             return receipts;
         }
 
-        public TxReceipt[] Get(Keccak blockHash) => _innerFinder.Get(blockHash);
         public bool CanGetReceiptsByHash(long blockNumber) => _innerFinder.CanGetReceiptsByHash(blockNumber);
     }
 }

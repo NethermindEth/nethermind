@@ -24,15 +24,7 @@ namespace Nethermind.JsonRpc.Data
         public LogEntryForRpc()
         {
         }
-        
-        public LogEntryForRpc(LogEntry logEntry)
-        {
-            Removed = false;
-            Address = logEntry.LoggersAddress;
-            Data = logEntry.Data;
-            Topics = logEntry.Topics;
-        }
-        
+
         public LogEntryForRpc(TxReceipt receipt, LogEntry logEntry, int index)
         {
             Removed = false;

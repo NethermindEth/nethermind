@@ -38,7 +38,7 @@ namespace Nethermind.WebSockets
             _jsonSerializer = jsonSerializer;
         }
 
-        public Task ReceiveAsync(byte[] data) => Task.CompletedTask;
+        public Task ReceiveAsync(Memory<byte> data) => Task.CompletedTask;
 
         public Task SendAsync(WebSocketsMessage message)
         {

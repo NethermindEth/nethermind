@@ -152,7 +152,7 @@ namespace Nethermind.Blockchain.Producers
                 difficulty,
                 parent.Number + 1,
                 parent.GasLimit,
-                UInt256.Max(parent.Timestamp + 1, Timestamper.Default.EpochSeconds),
+                UInt256.Max(parent.Timestamp + 1, _timestamper.EpochSeconds),
                 Encoding.UTF8.GetBytes("Nethermind"))
             {
                 TotalDifficulty = parent.TotalDifficulty + difficulty

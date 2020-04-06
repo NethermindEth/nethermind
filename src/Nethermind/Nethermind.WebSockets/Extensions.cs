@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Buffers;
 using System.Linq;
 using System.Net.WebSockets;
 using System.Threading;
@@ -37,7 +38,7 @@ namespace Nethermind.WebSockets
                 webSocketsManager = scope.ServiceProvider.GetService<IWebSocketsManager>();
                 logger = scope.ServiceProvider.GetService<ILogManager>().GetClassLogger();
             }
-            
+
             app.Use(async (context, next) =>
             {
                 var id = string.Empty;
@@ -49,7 +50,7 @@ namespace Nethermind.WebSockets
                     if (context.Request.Path.HasValue)
                     {
                         var path = context.Request.Path.Value;
-                        moduleName = path.Split("/").LastOrDefault();                        
+                        moduleName = path.Split("/").LastOrDefault();
                     }
 
                     module = webSocketsManager.GetModule(moduleName);
@@ -73,7 +74,7 @@ namespace Nethermind.WebSockets
                     var webSocket = await context.WebSockets.AcceptWebSocketAsync();
                     var socketsClient = webSocketsManager.CreateClient(module, webSocket, client);
                     id = socketsClient.Id;
-                    await ReceiveAsync(webSocket, socketsClient);
+                    await webSocket.ReceiveAsync(socketsClient);
                 }
                 catch (Exception ex)
                 {
@@ -90,18 +91,46 @@ namespace Nethermind.WebSockets
             });
         }
 
-        private static async Task ReceiveAsync(WebSocket webSocket, IWebSocketsClient client)
+        public const int _maxPooledSize = 1024 * 1024;
+        
+        public static async Task ReceiveAsync(this WebSocket webSocket, IWebSocketsClient client)
         {
-            var buffer = new byte[1024 * 4];
-            var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
-            while (!result.CloseStatus.HasValue)
+            int currentMessageLength = 0;
+            byte[] buffer = new byte[1024 * 4];
+            byte[] combinedData = Bytes.Empty;
+            WebSocketReceiveResult result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+            while (result.MessageType != WebSocketMessageType.Close)
             {
-                var data = buffer.Slice(0, result.Count);
-                await client.ReceiveAsync(data);
+                int newMessageLength = currentMessageLength + result.Count;
+                if (newMessageLength > _maxPooledSize)
+                {
+                    throw new InvalidOperationException("Message too long");
+                }
+                
+                byte[] newBytes = ArrayPool<byte>.Shared.Rent(newMessageLength);
+                buffer.AsSpan(0, result.Count).CopyTo(newBytes.AsSpan(currentMessageLength, result.Count));
+                if (!ReferenceEquals(combinedData, Bytes.Empty))
+                {
+                    combinedData.AsSpan(0, currentMessageLength).CopyTo(newBytes.AsSpan(0, currentMessageLength));
+                    ArrayPool<byte>.Shared.Return(combinedData);
+                }
+
+                combinedData = newBytes;
+                currentMessageLength = newMessageLength;
+
+                if (result.EndOfMessage)
+                {
+                    Memory<byte> data = combinedData.AsMemory().Slice(0, currentMessageLength);
+                    await client.ReceiveAsync(data);
+                    currentMessageLength = 0;
+                    ArrayPool<byte>.Shared.Return(combinedData);
+                    combinedData = Bytes.Empty;
+                }
+                
                 result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
             }
 
-            await webSocket.CloseAsync(result.CloseStatus.Value, result.CloseStatusDescription, CancellationToken.None);
+            await webSocket.CloseAsync(result.CloseStatus ?? WebSocketCloseStatus.Empty, result.CloseStatusDescription, CancellationToken.None);
         }
     }
 }

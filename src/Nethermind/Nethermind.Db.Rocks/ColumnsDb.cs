@@ -25,7 +25,7 @@ namespace Nethermind.Db.Rocks
 {
     public abstract class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T>
     {
-        private readonly IDictionary<T, IDb> _columnDbs = new Dictionary<T, IDb>();
+        private readonly IDictionary<T, IDbWithSpan> _columnDbs = new Dictionary<T, IDbWithSpan>();
         
         protected ColumnsDb(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager, string name, params T[] keys) : base(basePath, dbPath, dbConfig, logManager, GetColumnFamilies(dbConfig, name, GetEnumKeys(keys)))
         {
@@ -71,7 +71,7 @@ namespace Nethermind.Db.Rocks
             return options;
         }
 
-        public IDb GetColumnDb(T key) => _columnDbs[key];
+        public IDbWithSpan GetColumnDb(T key) => _columnDbs[key];
 
         public IEnumerable<T> ColumnKeys => _columnDbs.Keys;
     }

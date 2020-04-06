@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Abstractions;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -42,9 +43,11 @@ namespace Nethermind.JsonRpc
 
         private Recorder _recorder;
 
-        public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonSerializer jsonSerializer, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
+        public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonSerializer jsonSerializer, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            if (fileSystem == null) throw new ArgumentNullException(nameof(fileSystem));
+
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             _jsonRpcService = jsonRpcService ?? throw new ArgumentNullException(nameof(jsonRpcService));
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
@@ -53,11 +56,10 @@ namespace Nethermind.JsonRpc
             {
                 if (_logger.IsWarn) _logger.Warn("Enabling JSON RPC diagnostics recorder - this will affect performance and should be only used in a diagnostics mode.");
                 string recorderBaseFilePath = _jsonRpcConfig.RpcRecorderBaseFilePath.GetApplicationResourcePath();
-                _recorder = new Recorder(recorderBaseFilePath, _logger);
+                _recorder = new Recorder(recorderBaseFilePath, fileSystem, _logger);
             }
 
             BuildTraceJsonSerializer();
-
             _localStats = new JsonRpcLocalStats(Timestamper.Default, jsonRpcConfig, logManager);
         }
 
@@ -84,7 +86,7 @@ namespace Nethermind.JsonRpc
 
         private (JsonRpcRequest Model, List<JsonRpcRequest> Collection) DeserializeObjectOrArray(string json)
         {
-            var token = JToken.Parse(json);
+            JToken token = JToken.Parse(json);
             if (token is JArray array)
             {
                 foreach (var tokenElement in array)
@@ -145,6 +147,8 @@ namespace Nethermind.JsonRpc
                 if (_logger.IsError) _logger.Error($"Error during parsing/validation, request: {request}", ex);
                 JsonRpcResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Incorrect message");
                 TraceResult(response);
+                stopwatch.Stop();
+                _localStats.ReportCall("# parsing error #", stopwatch.ElapsedMicroseconds(), false);
                 return JsonRpcResult.Single(response);
             }
 
@@ -188,7 +192,7 @@ namespace Nethermind.JsonRpc
                     Metrics.JsonRpcRequests++;
                     JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(jsonRpcRequest);
                     JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
-                    bool isSuccess = localErrorResponse == null; 
+                    bool isSuccess = localErrorResponse == null;
                     if (!isSuccess)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Error when handling {jsonRpcRequest} | {_jsonSerializer.Serialize(localErrorResponse)}");
@@ -244,59 +248,6 @@ namespace Nethermind.JsonRpc
                 _traceSerializer.Serialize(jsonWriter, responses);
 
                 _logger.Trace($"Sending JSON RPC response: {builder}");
-            }
-        }
-
-        private class Recorder
-        {
-            private string _recorderBaseFilePath;
-            private readonly ILogger _logger;
-            private int _recorderFileCounter;
-            private string _currentRecorderFilePath;
-            private int _currentRecorderFileLength;
-            private bool _isEnabled = true;
-            private object _recorderSync = new object();
-
-            public Recorder(string basePath, ILogger logger)
-            {
-                _recorderBaseFilePath = basePath;
-                _logger = logger;
-                CreateNewRecorderFile();
-            }
-
-            private void CreateNewRecorderFile()
-            {
-                if (!_recorderBaseFilePath.Contains("{counter}"))
-                {
-                    if (_logger.IsError) _logger.Error("Disabling recorder because of an invalid recorder file path - it should contain '{counter}'");
-                    _isEnabled = false;
-                    return;
-                }
-
-                _currentRecorderFilePath = _recorderBaseFilePath.Replace("{counter}", _recorderFileCounter.ToString());
-                File.Create(_currentRecorderFilePath);
-                _recorderFileCounter++;
-                _currentRecorderFileLength = 0;
-            }
-
-            public void RecordRequest(string request)
-            {
-                if (!_isEnabled)
-                {
-                    return;
-                }
-
-                lock (_recorderSync)
-                {
-                    _currentRecorderFileLength += request.Length;
-                    if (_currentRecorderFileLength > 4 * 1024 * 2014)
-                    {
-                        CreateNewRecorderFile();
-                    }
-
-                    string singleLineRequest = request.Replace(Environment.NewLine, "");
-                    File.AppendAllText(_currentRecorderFilePath, singleLineRequest + Environment.NewLine);
-                }
             }
         }
     }

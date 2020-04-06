@@ -30,6 +30,18 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
         
+        public static T[] DecodeArray<T>(this IRlpValueDecoder<T> decoder, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
+            T[] result = new T[decoderContext.ReadNumberOfItemsRemaining(checkPosition)];
+            for (int i = 0; i < result.Length; i++)
+            {
+                result[i] = decoder.Decode(ref decoderContext, rlpBehaviors);
+            }
+
+            return result;
+        }
+        
         public static Rlp Encode<T>(this IRlpDecoder<T> decoder, T[] items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
             if (items == null)

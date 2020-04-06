@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Rlp;
@@ -24,8 +25,9 @@ namespace Nethermind.Core.Test.Encoding
     [TestFixture]
     public class ChainLevelDecoderTests
     {
-        [Test]
-        public void Can_do_roundtrip()
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Can_do_roundtrip(bool valueDecode)
         {
             BlockInfo blockInfo = new BlockInfo();
             blockInfo.BlockHash = TestItem.KeccakA;
@@ -41,7 +43,9 @@ namespace Nethermind.Core.Test.Encoding
             chainLevelInfo.HasBlockOnMainChain = true;
 
             Rlp rlp = Rlp.Encode(chainLevelInfo);
-            ChainLevelInfo decoded = Rlp.Decode<ChainLevelInfo>(rlp);
+
+            ChainLevelInfo decoded = valueDecode ? Rlp.Decode<ChainLevelInfo>(rlp.Bytes.AsSpan()) : Rlp.Decode<ChainLevelInfo>(rlp);
+            
             Assert.True(decoded.HasBlockOnMainChain, "has block on the main chain");
             Assert.True(decoded.BlockInfos[0].WasProcessed, "0 processed");
             Assert.False(decoded.BlockInfos[1].WasProcessed, "1 not processed");

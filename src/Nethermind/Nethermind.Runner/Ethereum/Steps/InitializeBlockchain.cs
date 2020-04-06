@@ -91,9 +91,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.StateProvider,
                 _context.LogManager);
 
-            _context.ReceiptStorage = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_context.DbProvider.ReceiptsDb, _context.SpecProvider) : NullReceiptStorage.Instance;
-            _context.ReceiptFinder = new FullInfoReceiptFinder(_context.ReceiptStorage, new ReceiptsRecovery());
-
             var bloomConfig = _context.Config<IBloomConfig>();
 
             var fileStoreFactory = initConfig.DiagnosticMode == DiagnosticMode.MemDb
@@ -124,6 +121,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 _context.StateProvider.StateRoot = _context.BlockTree.Head.StateRoot;
             }
+            
+            _context.ReceiptStorage = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_context.DbProvider.ReceiptsDb, _context.SpecProvider, new ReceiptsRecovery()) : NullReceiptStorage.Instance;
+            _context.ReceiptFinder = new FullInfoReceiptFinder(_context.ReceiptStorage, new ReceiptsRecovery(), _context.BlockTree);
 
             _context.RecoveryStep = new TxSignaturesRecoveryStep(_context.EthereumEcdsa, _context.TxPool, _context.LogManager);
 

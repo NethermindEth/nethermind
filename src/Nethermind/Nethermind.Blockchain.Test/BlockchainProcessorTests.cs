@@ -68,13 +68,13 @@ namespace Nethermind.Blockchain.Test
                     _allowedToFail.Add(hash);
                 }
 
-                public Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
+                public Block[] Process(Keccak branchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
                 {
                     _logger.Info($"Processing {suggestedBlocks.Last().ToString(Block.Format.Short)}");
                     while (true)
                     {
                         bool notYet = false;
-                        for (int i = 0; i < suggestedBlocks.Length; i++)
+                        for (int i = 0; i < suggestedBlocks.Count; i++)
                         {
                             Keccak hash = suggestedBlocks[i].Hash;
                             if (!_allowed.Contains(hash))
@@ -98,7 +98,7 @@ namespace Nethermind.Blockchain.Test
                         else
                         {
                             BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last()));
-                            return suggestedBlocks;
+                            return suggestedBlocks.ToArray();
                         }
                     }
                 }
