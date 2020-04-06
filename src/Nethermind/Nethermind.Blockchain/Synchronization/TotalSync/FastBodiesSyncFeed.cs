@@ -41,17 +41,16 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
         private object _dummyObject = new object();
         private object _reportLock = new object();
 
-        private ILogger _logger;
-        private IBlockTree _blockTree;
-        private ISyncConfig _syncConfig;
+        private readonly ILogger _logger;
+        private readonly IBlockTree _blockTree;
+        private readonly ISyncConfig _syncConfig;
         private readonly ISyncReport _syncReport;
-        private IEthSyncPeerPool _syncPeerPool;
+        private readonly IEthSyncPeerPool _syncPeerPool;
 
         private ConcurrentDictionary<long, List<Block>> _dependencies = new ConcurrentDictionary<long, List<Block>>();
         private ConcurrentDictionary<BodiesSyncBatch, object> _sent = new ConcurrentDictionary<BodiesSyncBatch, object>();
         private ConcurrentStack<BodiesSyncBatch> _pending = new ConcurrentStack<BodiesSyncBatch>();
 
-        private Keccak _startBodyHash;
         private Keccak _lowestRequestedBodyHash;
 
         private long _pivotNumber;
@@ -81,9 +80,9 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             _pivotHash = _syncConfig.PivotHashParsed;
 
             Block lowestInsertedBody = _blockTree.LowestInsertedBody;
-            _startBodyHash = lowestInsertedBody?.Hash ?? _pivotHash;
+            Keccak startBodyHash = lowestInsertedBody?.Hash ?? _pivotHash;
 
-            _lowestRequestedBodyHash = _startBodyHash;
+            _lowestRequestedBodyHash = startBodyHash;
         }
 
         public override bool IsMultiFeed => true;
@@ -119,124 +118,120 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             return true;
         }
 
-        // private void LogStateOnPrepare()
-        // {
-        //     if (_logger.IsWarn) _logger.Warn($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number}, LOWEST_REQUESTED {_lowestRequestedHeaderNumber}, DEPENDENCIES {_dependencies.Count}, SENT: {_sent.Count}, PENDING: {_pending.Count}");
-        //     if (_logger.IsWarn)
-        //     {
-        //         lock (_reportLock)
-        //         {
-        //             ConcurrentDictionary<long, string> all = new ConcurrentDictionary<long, string>();
-        //             StringBuilder builder = new StringBuilder();
-        //             builder.AppendLine($"SENT {_sent.Count} PENDING {_pending.Count} DEPENDENCIES {_dependencies.Count}");
-        //             foreach (var headerDependency in _dependencies
-        //                 .OrderByDescending(d => d.Value.EndNumber)
-        //                 .ThenByDescending(d => d.Value.StartNumber))
-        //             {
-        //                 all.TryAdd(headerDependency.Value.EndNumber, $"  DEPENDENCY {headerDependency.Value}");
-        //             }
-        //
-        //             foreach (var pendingBatch in _pending
-        //                 .OrderByDescending(d => d.EndNumber)
-        //                 .ThenByDescending(d => d.StartNumber))
-        //             {
-        //                 all.TryAdd(pendingBatch.EndNumber, $"  PENDING    {pendingBatch}");
-        //             }
-        //
-        //             foreach (var sentBatch in _sent
-        //                 .OrderByDescending(d => d.Key.EndNumber)
-        //                 .ThenByDescending(d => d.Key.StartNumber))
-        //             {
-        //                 all.TryAdd(sentBatch.Key.EndNumber, $"  SENT       {sentBatch.Key}");
-        //             }
-        //
-        //             foreach (KeyValuePair<long, string> keyValuePair in all
-        //                 .OrderByDescending(kvp => kvp.Key))
-        //             {
-        //                 builder.AppendLine(keyValuePair.Value);
-        //             }
-        //
-        //             _logger.Warn($"{builder}");
-        //         }
-        //     }
-        // }
+        private void LogStateOnPrepare()
+        {
+            if (_logger.IsWarn) _logger.Warn($"LOWEST_INSERTED {_blockTree.LowestInsertedBody?.Number}, DEPENDENCIES {_dependencies.Count}, SENT: {_sent.Count}, PENDING: {_pending.Count}");
+            if (_logger.IsWarn)
+            {
+                lock (_reportLock)
+                {
+                    ConcurrentDictionary<long, string> all = new ConcurrentDictionary<long, string>();
+                    StringBuilder builder = new StringBuilder();
+                    builder.AppendLine($"SENT {_sent.Count} PENDING {_pending.Count} DEPENDENCIES {_dependencies.Count}");
+                    foreach (var headerDependency in _dependencies
+                        .OrderByDescending(d => d.Value.First().Number)
+                        .ThenByDescending(d => d.Value.Last().Number))
+                    {
+                        all.TryAdd(headerDependency.Value.Last().Number, $"  DEPENDENCY {headerDependency.Value}");
+                    }
+
+                    foreach (var pendingBatch in _pending
+                        .OrderByDescending(d => d.EndNumber)
+                        .ThenByDescending(d => d.StartNumber))
+                    {
+                        all.TryAdd(pendingBatch.EndNumber, $"  PENDING    {pendingBatch}");
+                    }
+
+                    foreach (var sentBatch in _sent
+                        .OrderByDescending(d => d.Key.EndNumber)
+                        .ThenByDescending(d => d.Key.StartNumber))
+                    {
+                        all.TryAdd(sentBatch.Key.EndNumber, $"  SENT       {sentBatch.Key}");
+                    }
+
+                    foreach (KeyValuePair<long, string> keyValuePair in all
+                        .OrderByDescending(kvp => kvp.Key))
+                    {
+                        builder.AppendLine(keyValuePair.Value);
+                    }
+
+                    _logger.Warn($"{builder}");
+                }
+            }
+        }
 
         public override Task<BodiesSyncBatch> PrepareRequest()
         {
             HandleDependentBatches();
-            
+
             if (_pending.TryPop(out BodiesSyncBatch batch))
             {
                 batch.MarkRetry();
             }
-            else
+            else if (AnyBatchesLeftToPrepare())
             {
-                bool anyBatchesLeftToPrepare = AnyBatchesLeftToPrepare();
-                if (anyBatchesLeftToPrepare)
+                Keccak hash = _lowestRequestedBodyHash;
+                BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                if (header == null)
                 {
-                    Keccak hash = _lowestRequestedBodyHash;
-                    BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                    if (header == null)
+                    return Task.FromResult((BodiesSyncBatch) null);
+                }
+
+                if (_lowestRequestedBodyHash != _pivotHash)
+                {
+                    if (header.ParentHash == _blockTree.Genesis.Hash)
                     {
                         return Task.FromResult((BodiesSyncBatch) null);
                     }
 
-                    if (_lowestRequestedBodyHash != _pivotHash)
+                    header = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                    if (header == null)
                     {
-                        if (header.ParentHash == _blockTree.Genesis.Hash)
-                        {
-                            return Task.FromResult((BodiesSyncBatch) null);
-                        }
-
-                        header = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                        if (header == null)
-                        {
-                            return Task.FromResult((BodiesSyncBatch) null);
-                        }
+                        return Task.FromResult((BodiesSyncBatch) null);
                     }
+                }
 
-                    int requestSize = (int) Math.Min(header.Number, _bodiesRequestSize);
-                    batch = new BodiesSyncBatch();
-                    batch.Request = new Keccak[requestSize];
-                    batch.Headers = new BlockHeader[requestSize];
-                    batch.MinNumber = header.Number;
+                int requestSize = (int) Math.Min(header.Number, _bodiesRequestSize);
+                batch = new BodiesSyncBatch();
+                batch.Request = new Keccak[requestSize];
+                batch.Headers = new BlockHeader[requestSize];
+                batch.MinNumber = header.Number;
 
-                    int collectedRequests = 0;
-                    while (collectedRequests < requestSize)
-                    {
-                        int i = requestSize - collectedRequests - 1;
+                int collectedRequests = 0;
+                while (collectedRequests < requestSize)
+                {
+                    int i = requestSize - collectedRequests - 1;
 //                            while (header != null && !header.HasBody)
 //                            {
 //                                header = _blockTree.FindHeader(header.ParentHash);
 //                            }
 
-                        if (header == null)
-                        {
-                            break;
-                        }
-
-                        batch.Headers[i] = header;
-                        collectedRequests++;
-                        _lowestRequestedBodyHash = batch.Request[i] = header.Hash;
-
-                        header = _blockTree.FindHeader(header.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                    }
-
-                    if (collectedRequests == 0)
+                    if (header == null)
                     {
-                        return Task.FromResult((BodiesSyncBatch) null);
+                        break;
                     }
 
-                    //only for the final one
-                    if (collectedRequests < requestSize)
-                    {
-                        BlockHeader[] currentHeaders = batch.Headers;
-                        Keccak[] currentRequests = batch.Request;
-                        batch.Request = new Keccak[collectedRequests];
-                        batch.Headers = new BlockHeader[collectedRequests];
-                        Array.Copy(currentHeaders, requestSize - collectedRequests, batch.Headers, 0, collectedRequests);
-                        Array.Copy(currentRequests, requestSize - collectedRequests, batch.Request, 0, collectedRequests);
-                    }
+                    batch.Headers[i] = header;
+                    collectedRequests++;
+                    _lowestRequestedBodyHash = batch.Request[i] = header.Hash;
+
+                    header = _blockTree.FindHeader(header.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                }
+
+                if (collectedRequests == 0)
+                {
+                    return Task.FromResult((BodiesSyncBatch) null);
+                }
+
+                //only for the final one
+                if (collectedRequests < requestSize)
+                {
+                    BlockHeader[] currentHeaders = batch.Headers;
+                    Keccak[] currentRequests = batch.Request;
+                    batch.Request = new Keccak[collectedRequests];
+                    batch.Headers = new BlockHeader[collectedRequests];
+                    Array.Copy(currentHeaders, requestSize - collectedRequests, batch.Headers, 0, collectedRequests);
+                    Array.Copy(currentRequests, requestSize - collectedRequests, batch.Request, 0, collectedRequests);
                 }
             }
 
@@ -247,6 +242,8 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 {
                     batch.Prioritized = true;
                 }
+
+                LogStateOnPrepare();
             }
 
             return Task.FromResult(batch);
@@ -254,18 +251,12 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
         private void HandleDependentBatches()
         {
-            long? lowestBodyNumber = _blockTree.LowestInsertedBody?.Number;
-            while (lowestBodyNumber.HasValue && _dependencies.ContainsKey(lowestBodyNumber.Value - 1))
+            long? lowest = _blockTree.LowestInsertedBody?.Number;
+            while (lowest.HasValue && _dependencies.TryRemove(lowest.Value - 1, out List<Block> dependentBatch))
             {
-                Stopwatch stopwatch = new Stopwatch();
-                stopwatch.Start();
-                List<Block> dependentBatch = _dependencies[lowestBodyNumber.Value - 1];
                 dependentBatch.Reverse();
                 InsertBlocks(dependentBatch);
-                _dependencies.Remove(lowestBodyNumber.Value - 1, out _);
-                lowestBodyNumber = _blockTree.LowestInsertedBody?.Number;
-                stopwatch.Stop();
-//                _logger.Warn($"Handled dependent blocks [{dependentBatch.First().Number},{dependentBatch.Last().Number}]({dependentBatch.Count}) in {stopwatch.ElapsedMilliseconds}ms");
+                lowest = _blockTree.LowestInsertedBody?.Number;
             }
         }
 
