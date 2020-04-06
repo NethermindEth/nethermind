@@ -137,20 +137,14 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
         public override Task<HeadersSyncBatch> PrepareRequest()
         {
             HandleDependentBatches();
-
-            HeadersSyncBatch batch = null;
-            if (_pending.Any())
+            
+            if (_pending.TryDequeue(out HeadersSyncBatch batch))
             {
-                _pending.TryDequeue(out batch);
                 batch.MarkRetry();
             }
             else if (AnyBatchesLeftToBeBuilt())
             {
-                batch = new HeadersSyncBatch();
-                batch.MinNumber = _lowestRequestedHeaderNumber - 1;
-                batch.StartNumber = Math.Max(0, _lowestRequestedHeaderNumber - _headersRequestSize);
-                batch.RequestSize = (int) Math.Min(_lowestRequestedHeaderNumber, _headersRequestSize);
-                _lowestRequestedHeaderNumber = batch.StartNumber;
+                batch = BuildNewBatch();
             }
 
             if (batch != null)
@@ -165,6 +159,16 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             }
 
             return Task.FromResult(batch);
+        }
+
+        private HeadersSyncBatch BuildNewBatch()
+        {
+            HeadersSyncBatch batch = new HeadersSyncBatch();
+            batch.MinNumber = _lowestRequestedHeaderNumber - 1;
+            batch.StartNumber = Math.Max(0, _lowestRequestedHeaderNumber - _headersRequestSize);
+            batch.RequestSize = (int) Math.Min(_lowestRequestedHeaderNumber, _headersRequestSize);
+            _lowestRequestedHeaderNumber = batch.StartNumber;
+            return batch;
         }
 
         private void LogStateOnPrepare()
