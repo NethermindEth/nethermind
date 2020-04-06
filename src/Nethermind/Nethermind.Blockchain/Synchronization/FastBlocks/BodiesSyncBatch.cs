@@ -19,10 +19,11 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
-    public class BodiesSyncBatch
+    public class BodiesSyncBatch : FastBlocksBatch
     {
         public BlockHeader[] Headers { get; set; }
         public Keccak[] Request { get; set; }
         public BlockBody[] Response { get; set; }
+        public override bool IsResponseEmpty => Response == null;
     }
 }

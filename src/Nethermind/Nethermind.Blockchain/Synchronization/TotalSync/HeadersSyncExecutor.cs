@@ -22,10 +22,10 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Synchronization.TotalSync
 {
-    public class HeadersSyncExecutor : SyncExecutor<FastBlocksBatch>
+    public class HeadersSyncExecutor : SyncExecutor<HeadersSyncBatch>
     {
         public HeadersSyncExecutor(
-            ISyncFeed<FastBlocksBatch> syncFeed,
+            ISyncFeed<HeadersSyncBatch> syncFeed,
             IEthSyncPeerPool syncPeerPool,
             IPeerSelectionStrategyFactory<FastBlocksBatch> peerSelectionStrategy,
             ILogManager logManager)
@@ -33,15 +33,15 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
         {
         }
 
-        protected override async Task Execute(PeerInfo peerInfo, FastBlocksBatch batch, CancellationToken cancellationToken)
+        protected override async Task Execute(PeerInfo peerInfo, HeadersSyncBatch batch, CancellationToken cancellationToken)
         {
             ISyncPeer peer = peerInfo.SyncPeer;
             batch.MarkSent();
-            Task<BlockHeader[]> getHeadersTask = peer.GetBlockHeaders(batch.Headers.StartNumber, batch.Headers.RequestSize, 0, cancellationToken);
+            Task<BlockHeader[]> getHeadersTask = peer.GetBlockHeaders(batch.StartNumber, batch.RequestSize, 0, cancellationToken);
             await getHeadersTask.ContinueWith(
                 (t, state) =>
                 {
-                    FastBlocksBatch batchLocal = (FastBlocksBatch)state;
+                    HeadersSyncBatch batchLocal = (HeadersSyncBatch)state;
                     if (t.IsCompletedSuccessfully)
                     {
                         if (batchLocal.RequestTime > 1000)
@@ -49,7 +49,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                             if (Logger.IsDebug) Logger.Debug($"{batchLocal} - peer is slow {batchLocal.RequestTime:F2}");
                         }
 
-                        batchLocal.Headers.Response = t.Result;
+                        batchLocal.Response = t.Result;
                     }
                 }, batch);
         }

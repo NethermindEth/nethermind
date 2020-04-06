@@ -35,7 +35,7 @@ using Nethermind.State.Proofs;
 
 namespace Nethermind.Blockchain.Synchronization.TotalSync
 {
-    public class FastBodiesSyncFeed : SyncFeed<FastBlocksBatch>
+    public class FastBodiesSyncFeed : SyncFeed<BodiesSyncBatch>
     {
         private int _bodiesRequestSize = GethSyncLimits.MaxBodyFetch;
         private object _dummyObject = new object();
@@ -47,8 +47,8 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
         private IEthSyncPeerPool _syncPeerPool;
 
         private ConcurrentDictionary<long, List<Block>> _bodiesDependencies = new ConcurrentDictionary<long, List<Block>>();
-        private ConcurrentDictionary<FastBlocksBatch, object> _sentBatches = new ConcurrentDictionary<FastBlocksBatch, object>();
-        private ConcurrentStack<FastBlocksBatch> _pendingBatches = new ConcurrentStack<FastBlocksBatch>();
+        private ConcurrentDictionary<BodiesSyncBatch, object> _sentBatches = new ConcurrentDictionary<BodiesSyncBatch, object>();
+        private ConcurrentStack<BodiesSyncBatch> _pendingBatches = new ConcurrentStack<BodiesSyncBatch>();
 
         private Keccak _startBodyHash;
         private Keccak _lowestRequestedBodyHash;
@@ -114,14 +114,14 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             return !requestedGenesis;
         }
 
-        public override Task<FastBlocksBatch> PrepareRequest()
+        public override Task<BodiesSyncBatch> PrepareRequest()
         {
             if (Interlocked.CompareExchange(ref _isMoreLikelyToBeHandlingDependenciesNow, 1, 0) == 0)
             {
                 HandleDependentBatches();
             }
 
-            FastBlocksBatch batch = null;
+            BodiesSyncBatch batch = null;
             if (_pendingBatches.Any())
             {
                 _pendingBatches.TryPop(out batch);
@@ -136,28 +136,27 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                     BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                     if (header == null)
                     {
-                        return Task.FromResult((FastBlocksBatch) null);
+                        return Task.FromResult((BodiesSyncBatch) null);
                     }
 
                     if (_lowestRequestedBodyHash != _pivotHash)
                     {
                         if (header.ParentHash == _blockTree.Genesis.Hash)
                         {
-                            return Task.FromResult((FastBlocksBatch) null);
+                            return Task.FromResult((BodiesSyncBatch) null);
                         }
 
                         header = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                         if (header == null)
                         {
-                            return Task.FromResult((FastBlocksBatch) null);
+                            return Task.FromResult((BodiesSyncBatch) null);
                         }
                     }
 
                     int requestSize = (int) Math.Min(header.Number, _bodiesRequestSize);
-                    batch = new FastBlocksBatch();
-                    batch.Bodies = new BodiesSyncBatch();
-                    batch.Bodies.Request = new Keccak[requestSize];
-                    batch.Bodies.Headers = new BlockHeader[requestSize];
+                    batch = new BodiesSyncBatch();
+                    batch.Request = new Keccak[requestSize];
+                    batch.Headers = new BlockHeader[requestSize];
                     batch.MinNumber = header.Number;
 
                     int collectedRequests = 0;
@@ -174,27 +173,27 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                             break;
                         }
 
-                        batch.Bodies.Headers[i] = header;
+                        batch.Headers[i] = header;
                         collectedRequests++;
-                        _lowestRequestedBodyHash = batch.Bodies.Request[i] = header.Hash;
+                        _lowestRequestedBodyHash = batch.Request[i] = header.Hash;
 
                         header = _blockTree.FindHeader(header.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                     }
 
                     if (collectedRequests == 0)
                     {
-                        return Task.FromResult((FastBlocksBatch) null);
+                        return Task.FromResult((BodiesSyncBatch) null);
                     }
 
                     //only for the final one
                     if (collectedRequests < requestSize)
                     {
-                        BlockHeader[] currentHeaders = batch.Bodies.Headers;
-                        Keccak[] currentRequests = batch.Bodies.Request;
-                        batch.Bodies.Request = new Keccak[collectedRequests];
-                        batch.Bodies.Headers = new BlockHeader[collectedRequests];
-                        Array.Copy(currentHeaders, requestSize - collectedRequests, batch.Bodies.Headers, 0, collectedRequests);
-                        Array.Copy(currentRequests, requestSize - collectedRequests, batch.Bodies.Request, 0, collectedRequests);
+                        BlockHeader[] currentHeaders = batch.Headers;
+                        Keccak[] currentRequests = batch.Request;
+                        batch.Request = new Keccak[collectedRequests];
+                        batch.Headers = new BlockHeader[collectedRequests];
+                        Array.Copy(currentHeaders, requestSize - collectedRequests, batch.Headers, 0, collectedRequests);
+                        Array.Copy(currentRequests, requestSize - collectedRequests, batch.Request, 0, collectedRequests);
                     }
                 }
             }
@@ -202,7 +201,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             if (batch != null)
             {
                 _sentBatches.TryAdd(batch, _dummyObject);
-                if ((_blockTree.LowestInsertedBody?.Number ?? 0) - batch.Bodies.Headers[0].Number < 1024)
+                if ((_blockTree.LowestInsertedBody?.Number ?? 0) - batch.Headers[0].Number < 1024)
                 {
                     batch.Prioritized = true;
                 }
@@ -233,7 +232,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             _blockTree.Insert(validResponses);
         }
 
-        public override SyncBatchResponseHandlingResult HandleResponse(FastBlocksBatch batch)
+        public override SyncBatchResponseHandlingResult HandleResponse(BodiesSyncBatch batch)
         {
             if (batch.IsResponseEmpty)
             {
@@ -246,29 +245,13 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
             try
             {
-                switch (batch.BatchType)
-                {
-                    case FastBlocksBatchType.Bodies:
-                    {
-                        if (batch.Bodies.Request.Length == 0)
-                        {
-                            return SyncBatchResponseHandlingResult.OK; // (BlocksDataHandlerResult.OK, 1);
-                        }
-
-                        batch.MarkHandlingStart();
-                        Stopwatch stopwatch = Stopwatch.StartNew();
-                        int added = InsertBodies(batch);
-                        stopwatch.Stop();
-//                        var nonNull = batch.Bodies.Headers.Where(h => h != null).OrderBy(h => h.Number).ToArray();
-//                        _logger.Warn($"Handled blocks response blocks [{nonNull.First().Number},{nonNull.Last().Number}]{batch.Bodies.Request.Length} in {stopwatch.ElapsedMilliseconds}ms");
-                        return SyncBatchResponseHandlingResult.OK; //(BlocksDataHandlerResult.OK, added);
-                    }
-
-                    default:
-                    {
-                        return SyncBatchResponseHandlingResult.InvalidFormat; // (BlocksDataHandlerResult.InvalidFormat, 0);
-                    }
-                }
+                batch.MarkHandlingStart();
+                Stopwatch stopwatch = Stopwatch.StartNew();
+                int added = InsertBodies(batch);
+                stopwatch.Stop();
+                //                        var nonNull = batch.Bodies.Headers.Where(h => h != null).OrderBy(h => h.Number).ToArray();
+                //                        _logger.Warn($"Handled blocks response blocks [{nonNull.First().Number},{nonNull.Last().Number}]{batch.Bodies.Request.Length} in {stopwatch.ElapsedMilliseconds}ms");
+                return SyncBatchResponseHandlingResult.OK; //(BlocksDataHandlerResult.OK, added);
             }
             finally
             {
@@ -277,19 +260,18 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             }
         }
 
-        private int InsertBodies(FastBlocksBatch batch)
+        private int InsertBodies(BodiesSyncBatch batch)
         {
-            var bodiesSyncBatch = batch.Bodies;
             List<Block> validResponses = new List<Block>();
-            for (int i = 0; i < bodiesSyncBatch.Response.Length; i++)
+            for (int i = 0; i < batch.Response.Length; i++)
             {
-                BlockBody blockBody = bodiesSyncBatch.Response[i];
+                BlockBody blockBody = batch.Response[i];
                 if (blockBody == null)
                 {
                     break;
                 }
 
-                Block block = new Block(bodiesSyncBatch.Headers[i], blockBody.Transactions, blockBody.Ommers);
+                Block block = new Block(batch.Headers[i], blockBody.Transactions, blockBody.Ommers);
                 if (new TxTrie(block.Transactions).RootHash != block.TxRoot ||
                     OmmersHash.Calculate(block) != block.OmmersHash)
                 {
@@ -302,20 +284,19 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             }
 
             int validResponsesCount = validResponses.Count;
-            if (validResponses.Count < bodiesSyncBatch.Request.Length)
+            if (validResponses.Count < batch.Request.Length)
             {
-                FastBlocksBatch fillerBatch = new FastBlocksBatch();
+                BodiesSyncBatch fillerBatch = new BodiesSyncBatch();
                 fillerBatch.MinNumber = batch.MinNumber;
-                fillerBatch.Bodies = new BodiesSyncBatch();
 
-                int originalLength = bodiesSyncBatch.Request.Length;
-                fillerBatch.Bodies.Request = new Keccak[originalLength - validResponsesCount];
-                fillerBatch.Bodies.Headers = new BlockHeader[originalLength - validResponsesCount];
+                int originalLength = batch.Request.Length;
+                fillerBatch.Request = new Keccak[originalLength - validResponsesCount];
+                fillerBatch.Headers = new BlockHeader[originalLength - validResponsesCount];
 
                 for (int i = validResponsesCount; i < originalLength; i++)
                 {
-                    fillerBatch.Bodies.Request[i - validResponsesCount] = bodiesSyncBatch.Request[i];
-                    fillerBatch.Bodies.Headers[i - validResponsesCount] = bodiesSyncBatch.Headers[i];
+                    fillerBatch.Request[i - validResponsesCount] = batch.Request[i];
+                    fillerBatch.Headers[i - validResponsesCount] = batch.Headers[i];
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"{batch} -> FILLER {fillerBatch}");

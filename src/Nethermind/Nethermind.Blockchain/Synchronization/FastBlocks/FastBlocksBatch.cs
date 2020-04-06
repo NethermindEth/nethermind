@@ -19,7 +19,7 @@ using System.Diagnostics;
 
 namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
-    public class FastBlocksBatch
+    public abstract class FastBlocksBatch
     {
         private Stopwatch _stopwatch = new Stopwatch();
         private long? _scheduledLastTime;
@@ -36,14 +36,10 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         /// </summary>
         public bool Prioritized { get; set; }
 
-        public bool IsResponseEmpty => Bodies?.Response == null && Headers?.Response == null && Receipts?.Response == null;
-        public FastBlocksBatchType BatchType => Headers != null ? FastBlocksBatchType.Headers : Bodies == null ? FastBlocksBatchType.Receipts : FastBlocksBatchType.Bodies;
-        public ReceiptsSyncBatch Receipts { get; set; }
-        public HeadersSyncBatch Headers { get; set; }
-        public BodiesSyncBatch Bodies { get; set; }
+        public abstract bool IsResponseEmpty { get; }
         public PeerInfo ResponseSourcePeer { get; set; }
 
-        public FastBlocksBatch()
+        protected FastBlocksBatch()
         {
             _stopwatch.Start();
             _scheduledLastTime = _stopwatch.ElapsedMilliseconds;
@@ -98,32 +94,32 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         public double? HandlingTime => (_handlingEndTime ?? _stopwatch.ElapsedMilliseconds) - (_handlingStartTime ?? _stopwatch.ElapsedMilliseconds);
         public long? MinNumber { get; set; }
         
-        public override string ToString()
-        {
-            string details = string.Empty;
-            switch (BatchType)
-            {
-                case FastBlocksBatchType.None:
-                    break;
-                case FastBlocksBatchType.Headers:
-                    string startBlock = Headers?.StartNumber.ToString();
-                    string endBlock = (Headers?.StartNumber != null ? Headers.StartNumber + (Headers.RequestSize - 1) : (Headers?.RequestSize ?? 0) - 1).ToString();
-                    details = $"[{startBlock}, {endBlock}]({Headers?.RequestSize ?? Bodies?.Request.Length})";
-                    break;
-                case FastBlocksBatchType.Bodies:
-                    details = $"({Bodies.Request.Length})";
-                    break;
-                case FastBlocksBatchType.Receipts:
-                    details = Receipts.Blocks.Length != 0
-                        ? $"[{Receipts.Blocks[^1].Number},{Receipts.Blocks[0].Number}]({Receipts.Request.Length})"
-                        : "[0,0](0)";
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
-            
-            string priority = Prioritized ? "HIGH" : "LOW";
-            return $"{BatchType} {details} [{priority}] [times: S:{SchedulingTime:F0}ms|R:{RequestTime:F0}ms|V:{ValidationTime:F0}ms|W:{WaitingTime:F0}ms|H:{HandlingTime:F0}ms|A:{AgeInMs:F0}ms, retries {Retries}] min#: {MinNumber} {ResponseSourcePeer}";
-        }
+        // public override string ToString()
+        // {
+        //     string details = string.Empty;
+        //     switch (BatchType)
+        //     {
+        //         case FastBlocksBatchType.None:
+        //             break;
+        //         case FastBlocksBatchType.Headers:
+        //             string startBlock = Headers?.StartNumber.ToString();
+        //             string endBlock = (Headers?.StartNumber != null ? Headers.StartNumber + (Headers.RequestSize - 1) : (Headers?.RequestSize ?? 0) - 1).ToString();
+        //             details = $"[{startBlock}, {endBlock}]({Headers?.RequestSize ?? Bodies?.Request.Length})";
+        //             break;
+        //         case FastBlocksBatchType.Bodies:
+        //             details = $"({Bodies.Request.Length})";
+        //             break;
+        //         case FastBlocksBatchType.Receipts:
+        //             details = Receipts.Blocks.Length != 0
+        //                 ? $"[{Receipts.Blocks[^1].Number},{Receipts.Blocks[0].Number}]({Receipts.Request.Length})"
+        //                 : "[0,0](0)";
+        //             break;
+        //         default:
+        //             throw new ArgumentOutOfRangeException();
+        //     }
+        //     
+        //     string priority = Prioritized ? "HIGH" : "LOW";
+        //     return $"{BatchType} {details} [{priority}] [times: S:{SchedulingTime:F0}ms|R:{RequestTime:F0}ms|V:{ValidationTime:F0}ms|W:{WaitingTime:F0}ms|H:{HandlingTime:F0}ms|A:{AgeInMs:F0}ms, retries {Retries}] min#: {MinNumber} {ResponseSourcePeer}";
+        // }
     }
 }

@@ -18,11 +18,12 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
-    public class HeadersSyncBatch
+    public class HeadersSyncBatch : FastBlocksBatch
     {
         public long StartNumber { get; set; }
         public long EndNumber => StartNumber + RequestSize - 1;
         public int RequestSize { get; set; }
         public BlockHeader[] Response { get; set; }
+        public override bool IsResponseEmpty => Response == null;
     }
 }

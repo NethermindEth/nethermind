@@ -30,7 +30,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Synchronization.TotalSync
 {
-    public class FastHeadersSyncFeed : SyncFeed<FastBlocksBatch>
+    public class FastHeadersSyncFeed : SyncFeed<HeadersSyncBatch>
     {
         private ILogger _logger;
         private readonly IEthSyncPeerPool _syncPeerPool;
@@ -58,9 +58,9 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
         private Keccak _pivotHash;
         private UInt256 _pivotDifficulty;
 
-        private ConcurrentDictionary<FastBlocksBatch, object> _sentBatches = new ConcurrentDictionary<FastBlocksBatch, object>();
-        private ConcurrentStack<FastBlocksBatch> _pendingBatches = new ConcurrentStack<FastBlocksBatch>();
-        private ConcurrentDictionary<long, FastBlocksBatch> _headerDependencies = new ConcurrentDictionary<long, FastBlocksBatch>();
+        private ConcurrentDictionary<HeadersSyncBatch, object> _sentBatches = new ConcurrentDictionary<HeadersSyncBatch, object>();
+        private ConcurrentStack<HeadersSyncBatch> _pendingBatches = new ConcurrentStack<HeadersSyncBatch>();
+        private ConcurrentDictionary<long, HeadersSyncBatch> _headerDependencies = new ConcurrentDictionary<long, HeadersSyncBatch>();
 
         public bool IsFinished =>
             _pendingBatches.Count
@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
             _lowestRequestedHeaderNumber = _startNumber + 1;
         }
-        
+
         public override bool IsMultiFeed => true;
 
         private bool AnyBatchesLeftToBeBuilt()
@@ -132,7 +132,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             {
                 while (lowestHeaderNumber.HasValue && _headerDependencies.ContainsKey(lowestHeaderNumber.Value - 1))
                 {
-                    FastBlocksBatch dependentBatch = _headerDependencies[lowestHeaderNumber.Value - 1];
+                    HeadersSyncBatch dependentBatch = _headerDependencies[lowestHeaderNumber.Value - 1];
                     _headerDependencies.TryRemove(lowestHeaderNumber.Value - 1, out _);
 
                     InsertHeaders(dependentBatch);
@@ -141,14 +141,14 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             }
         }
 
-        public override Task<FastBlocksBatch> PrepareRequest()
+        public override Task<HeadersSyncBatch> PrepareRequest()
         {
             if (Interlocked.CompareExchange(ref _isMoreLikelyToBeHandlingDependenciesNow, 1, 0) == 0)
             {
                 HandleDependentBatches();
             }
 
-            FastBlocksBatch batch = null;
+            HeadersSyncBatch batch = null;
             if (_pendingBatches.Any())
             {
                 _pendingBatches.TryPop(out batch);
@@ -156,18 +156,17 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             }
             else if (AnyBatchesLeftToBeBuilt())
             {
-                batch = new FastBlocksBatch();
+                batch = new HeadersSyncBatch();
                 batch.MinNumber = _lowestRequestedHeaderNumber - 1;
-                batch.Headers = new HeadersSyncBatch();
-                batch.Headers.StartNumber = Math.Max(0, _lowestRequestedHeaderNumber - _headersRequestSize);
-                batch.Headers.RequestSize = (int) Math.Min(_lowestRequestedHeaderNumber, _headersRequestSize);
-                _lowestRequestedHeaderNumber = batch.Headers.StartNumber;
+                batch.StartNumber = Math.Max(0, _lowestRequestedHeaderNumber - _headersRequestSize);
+                batch.RequestSize = (int) Math.Min(_lowestRequestedHeaderNumber, _headersRequestSize);
+                _lowestRequestedHeaderNumber = batch.StartNumber;
             }
 
             if (batch != null)
             {
                 _sentBatches.TryAdd(batch, _dummyObject);
-                if (batch.Headers.StartNumber >= (_blockTree.LowestInsertedHeader?.Number ?? 0) - 2048)
+                if (batch.StartNumber >= (_blockTree.LowestInsertedHeader?.Number ?? 0) - 2048)
                 {
                     batch.Prioritized = true;
                 }
@@ -189,26 +188,24 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                     StringBuilder builder = new StringBuilder();
                     builder.AppendLine($"SENT {_sentBatches.Count} PENDING {_pendingBatches.Count} DEPENDENCIES {_headerDependencies.Count}");
                     foreach (var headerDependency in _headerDependencies
-                        .OrderByDescending(d => d.Value.Headers.EndNumber)
-                        .ThenByDescending(d => d.Value.Headers.StartNumber))
+                        .OrderByDescending(d => d.Value.EndNumber)
+                        .ThenByDescending(d => d.Value.StartNumber))
                     {
-                        all.Add(headerDependency.Value.Headers.EndNumber, $"  DEPENDENCY {headerDependency.Value}");
+                        all.Add(headerDependency.Value.EndNumber, $"  DEPENDENCY {headerDependency.Value}");
                     }
 
                     foreach (var pendingBatch in _pendingBatches
-                        .Where(b => b.BatchType == FastBlocksBatchType.Headers)
-                        .OrderByDescending(d => d.Headers.EndNumber)
-                        .ThenByDescending(d => d.Headers.StartNumber))
+                        .OrderByDescending(d => d.EndNumber)
+                        .ThenByDescending(d => d.StartNumber))
                     {
-                        all.Add(pendingBatch.Headers.EndNumber, $"  PENDING    {pendingBatch}");
+                        all.Add(pendingBatch.EndNumber, $"  PENDING    {pendingBatch}");
                     }
 
                     foreach (var sentBatch in _sentBatches
-                        .Where(sb => sb.Key.BatchType == FastBlocksBatchType.Headers)
-                        .OrderByDescending(d => d.Key.Headers.EndNumber)
-                        .ThenByDescending(d => d.Key.Headers.StartNumber))
+                        .OrderByDescending(d => d.Key.EndNumber)
+                        .ThenByDescending(d => d.Key.StartNumber))
                     {
-                        all.Add(sentBatch.Key.Headers.EndNumber, $"  SENT       {sentBatch.Key}");
+                        all.Add(sentBatch.Key.EndNumber, $"  SENT       {sentBatch.Key}");
                     }
 
                     foreach (KeyValuePair<long, string> keyValuePair in all
@@ -222,13 +219,8 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             }
         }
 
-        public override SyncBatchResponseHandlingResult HandleResponse(FastBlocksBatch batch)
+        public override SyncBatchResponseHandlingResult HandleResponse(HeadersSyncBatch batch)
         {
-            if (batch.BatchType != FastBlocksBatchType.Headers)
-            {
-                return SyncBatchResponseHandlingResult.InvalidFormat;
-            }
-            
             if (batch.IsResponseEmpty)
             {
                 batch.MarkHandlingStart();
@@ -240,27 +232,16 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
             try
             {
-                switch (batch.BatchType)
+                if (batch.RequestSize == 0)
                 {
-                    case FastBlocksBatchType.Headers:
-                    {
-                        if (batch.Headers?.RequestSize == 0)
-                        {
-                            return SyncBatchResponseHandlingResult.OK; // 1
-                        }
+                    return SyncBatchResponseHandlingResult.OK; // 1
+                }
 
-                        lock (_handlerLock)
-                        {
-                            batch.MarkHandlingStart();
-                            int added = InsertHeaders(batch);
-                            return SyncBatchResponseHandlingResult.OK;
-                        }
-                    }
-
-                    default:
-                    {
-                        return SyncBatchResponseHandlingResult.InvalidFormat;
-                    }
+                lock (_handlerLock)
+                {
+                    batch.MarkHandlingStart();
+                    int added = InsertHeaders(batch);
+                    return SyncBatchResponseHandlingResult.OK;
                 }
             }
             finally
@@ -270,44 +251,41 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             }
         }
 
-        private static FastBlocksBatch BuildRightFiller(FastBlocksBatch batch, int rightFillerSize)
+        private static HeadersSyncBatch BuildRightFiller(HeadersSyncBatch batch, int rightFillerSize)
         {
-            FastBlocksBatch rightFiller = new FastBlocksBatch();
-            rightFiller.Headers = new HeadersSyncBatch();
-            rightFiller.Headers.StartNumber = batch.Headers.EndNumber - rightFillerSize + 1;
-            rightFiller.Headers.RequestSize = rightFillerSize;
+            HeadersSyncBatch rightFiller = new HeadersSyncBatch();
+            rightFiller.StartNumber = batch.EndNumber - rightFillerSize + 1;
+            rightFiller.RequestSize = rightFillerSize;
             rightFiller.MinNumber = batch.MinNumber;
             return rightFiller;
         }
 
-        private static FastBlocksBatch BuildLeftFiller(FastBlocksBatch batch, int leftFillerSize)
+        private static HeadersSyncBatch BuildLeftFiller(HeadersSyncBatch batch, int leftFillerSize)
         {
-            FastBlocksBatch leftFiller = new FastBlocksBatch();
-            leftFiller.Headers = new HeadersSyncBatch();
-            leftFiller.Headers.StartNumber = batch.Headers.StartNumber;
-            leftFiller.Headers.RequestSize = leftFillerSize;
+            HeadersSyncBatch leftFiller = new HeadersSyncBatch();
+            leftFiller.StartNumber = batch.StartNumber;
+            leftFiller.RequestSize = leftFillerSize;
             leftFiller.MinNumber = batch.MinNumber;
             return leftFiller;
         }
 
-        private static FastBlocksBatch BuildDependentBatch(FastBlocksBatch batch, long addedLast, long addedEarliest)
+        private static HeadersSyncBatch BuildDependentBatch(HeadersSyncBatch batch, long addedLast, long addedEarliest)
         {
-            FastBlocksBatch dependentBatch = new FastBlocksBatch();
-            dependentBatch.Headers = new HeadersSyncBatch();
-            dependentBatch.Headers.StartNumber = batch.Headers.StartNumber;
-            dependentBatch.Headers.RequestSize = (int) (addedLast - addedEarliest + 1);
+            HeadersSyncBatch dependentBatch = new HeadersSyncBatch();
+            dependentBatch.StartNumber = batch.StartNumber;
+            dependentBatch.RequestSize = (int) (addedLast - addedEarliest + 1);
             dependentBatch.MinNumber = batch.MinNumber;
-            dependentBatch.Headers.Response = batch.Headers.Response
-                .Skip((int) (addedEarliest - batch.Headers.StartNumber))
+            dependentBatch.Response = batch.Response
+                .Skip((int) (addedEarliest - batch.StartNumber))
                 .Take((int) (addedLast - addedEarliest + 1)).ToArray();
             dependentBatch.ResponseSourcePeer = batch.ResponseSourcePeer;
             return dependentBatch;
         }
 
-        private int InsertHeaders(FastBlocksBatch batch)
+        private int InsertHeaders(HeadersSyncBatch batch)
         {
-            var headersSyncBatch = batch.Headers;
-            if (headersSyncBatch.Response.Length > batch.Headers.RequestSize)
+            var headersSyncBatch = batch;
+            if (headersSyncBatch.Response.Length > batch.RequestSize)
             {
                 if (_logger.IsWarn) _logger.Warn($"Peer sent too long response ({headersSyncBatch.Response.Length}) to {batch}");
                 _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, $"response too long ({headersSyncBatch.Response.Length})");
@@ -316,10 +294,10 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             }
 
             decimal ratio = (decimal) _itemsSaved / (_requestsSent == 0 ? 1 : _requestsSent);
-            _requestsSent += batch.Headers.RequestSize;
+            _requestsSent += batch.RequestSize;
 
-            long addedLast = batch.Headers.StartNumber - 1;
-            long addedEarliest = batch.Headers.EndNumber + 1;
+            long addedLast = batch.StartNumber - 1;
+            long addedEarliest = batch.EndNumber + 1;
             int skippedAtTheEnd = 0;
             for (int i = headersSyncBatch.Response.Length - 1; i >= 0; i--)
             {
@@ -375,10 +353,10 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                             throw new InvalidOperationException($"Only one header dependency expected ({batch})");
                         }
 
-                        for (int j = 0; j < batch.Headers.Response.Length; j++)
+                        for (int j = 0; j < batch.Response.Length; j++)
                         {
-                            BlockHeader current = batch.Headers.Response[j];
-                            if (batch.Headers.Response[j] != null)
+                            BlockHeader current = batch.Response[j];
+                            if (batch.Response[j] != null)
                             {
                                 addedEarliest = Math.Min(addedEarliest, current.Number);
                                 addedLast = Math.Max(addedLast, current.Number);
@@ -389,7 +367,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                             }
                         }
 
-                        FastBlocksBatch dependentBatch = BuildDependentBatch(batch, addedLast, addedEarliest);
+                        HeadersSyncBatch dependentBatch = BuildDependentBatch(batch, addedLast, addedEarliest);
                         _headerDependencies[header.Number] = dependentBatch;
                         if (_logger.IsDebug) _logger.Debug($"{batch} -> DEPENDENCY {dependentBatch}");
 
@@ -429,34 +407,34 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             }
 
             int added = (int) (addedLast - addedEarliest + 1);
-            int leftFillerSize = (int) (addedEarliest - batch.Headers.StartNumber);
-            int rightFillerSize = (int) (batch.Headers.EndNumber - addedLast);
-            if (added + leftFillerSize + rightFillerSize != batch.Headers.RequestSize)
+            int leftFillerSize = (int) (addedEarliest - batch.StartNumber);
+            int rightFillerSize = (int) (batch.EndNumber - addedLast);
+            if (added + leftFillerSize + rightFillerSize != batch.RequestSize)
             {
-                throw new Exception($"Added {added} + left {leftFillerSize} + right {rightFillerSize} != request size {batch.Headers.RequestSize} in {batch}");
+                throw new Exception($"Added {added} + left {leftFillerSize} + right {rightFillerSize} != request size {batch.RequestSize} in {batch}");
             }
 
             added = Math.Max(0, added);
 
-            if (added < batch.Headers.RequestSize)
+            if (added < batch.RequestSize)
             {
                 if (added <= 0)
                 {
-                    batch.Headers.Response = null;
+                    batch.Response = null;
                     _pendingBatches.Push(batch);
                 }
                 else
                 {
                     if (leftFillerSize > 0)
                     {
-                        FastBlocksBatch leftFiller = BuildLeftFiller(batch, leftFillerSize);
+                        HeadersSyncBatch leftFiller = BuildLeftFiller(batch, leftFillerSize);
                         _pendingBatches.Push(leftFiller);
                         if (_logger.IsDebug) _logger.Debug($"{batch} -> FILLER {leftFiller}");
                     }
 
                     if (rightFillerSize > 0)
                     {
-                        FastBlocksBatch rightFiller = BuildRightFiller(batch, rightFillerSize);
+                        HeadersSyncBatch rightFiller = BuildRightFiller(batch, rightFillerSize);
                         _pendingBatches.Push(rightFiller);
                         if (_logger.IsDebug) _logger.Debug($"{batch} -> FILLER {rightFiller}");
                     }
@@ -480,7 +458,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
             if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number} | HANDLED {batch}");
 
-            _syncReport.HeadersInQueue.Update(_headerDependencies.Sum(hd => hd.Value.Headers.Response.Length));
+            _syncReport.HeadersInQueue.Update(_headerDependencies.Sum(hd => hd.Value.Response.Length));
             return added;
         }
 
@@ -500,11 +478,11 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 {
                     _itemsSaved++;
                 }
-                
+
                 long parentNumber = header.Number - 1;
                 if (_headerDependencies.ContainsKey(parentNumber))
                 {
-                    FastBlocksBatch batch = _headerDependencies[parentNumber];
+                    HeadersSyncBatch batch = _headerDependencies[parentNumber];
                     {
                         _headerDependencies.TryRemove(parentNumber, out _);
                         InsertHeaders(batch);

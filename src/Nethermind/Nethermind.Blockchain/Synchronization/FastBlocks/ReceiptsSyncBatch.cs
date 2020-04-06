@@ -14,17 +14,30 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
-    public class ReceiptsSyncBatch
+    public class ReceiptsSyncBatch : FastBlocksBatch
     {
+        public long StartBlock => Predecessors.Length > 0 ? (Predecessors[Predecessors.Length] ?? long.MaxValue) : long.MaxValue;
         public bool IsFinal { get; set; }
         public long?[] Predecessors { get; set; }
         public Block[] Blocks { get; set; }
         public Keccak[] Request { get; set; }
         public TxReceipt[][] Response { get; set; }
+        public override bool IsResponseEmpty => Response == null;
+        
+        public void Resize(int targetSize)
+        {
+            Block[] currentBlocks = Blocks;
+            Keccak[] currentRequests = Request;
+            Blocks = new Block[targetSize];
+            Request = new Keccak[targetSize];
+            Array.Copy(currentBlocks, 0, Blocks, 0, targetSize);
+            Array.Copy(currentRequests, 0, Request, 0, targetSize);
+        }
     }
 }

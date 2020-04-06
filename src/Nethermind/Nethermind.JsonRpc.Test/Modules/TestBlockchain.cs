@@ -108,7 +108,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ReceiptStorage = new InMemoryReceiptStorage();
             VirtualMachine virtualMachine = new VirtualMachine(State, Storage, new BlockhashProvider(BlockTree, LimboLogs.Instance), specProvider, LimboLogs.Instance);
             TxProcessor = new TransactionProcessor(specProvider, State, Storage, virtualMachine, LimboLogs.Instance);
-            BlockProcessor = new BlockProcessor(specProvider, AlwaysValidBlockValidator.Instance, new RewardCalculator(specProvider), TxProcessor, StateDb, CodeDb, State, Storage, TxPool, ReceiptStorage, LimboLogs.Instance);
+            BlockProcessor = new BlockProcessor(specProvider, Always.Valid, new RewardCalculator(specProvider), TxProcessor, StateDb, CodeDb, State, Storage, TxPool, ReceiptStorage, LimboLogs.Instance);
 
             BlockchainProcessor chainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor, new TxSignaturesRecoveryStep(EthereumEcdsa, TxPool, LimboLogs.Instance), LimboLogs.Instance, true);
             chainProcessor.Start();
