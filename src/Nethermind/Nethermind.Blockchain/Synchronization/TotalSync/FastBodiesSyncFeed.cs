@@ -49,14 +49,12 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
         private ConcurrentDictionary<long, List<Block>> _dependencies = new ConcurrentDictionary<long, List<Block>>();
         private ConcurrentDictionary<BodiesSyncBatch, object> _sent = new ConcurrentDictionary<BodiesSyncBatch, object>();
-        private ConcurrentStack<BodiesSyncBatch> _pending = new ConcurrentStack<BodiesSyncBatch>();
+        private ConcurrentQueue<BodiesSyncBatch> _pending = new ConcurrentQueue<BodiesSyncBatch>();
 
         private Keccak _lowestRequestedBodyHash;
 
         private long _pivotNumber;
         private Keccak _pivotHash;
-
-        public bool ShouldFinish => (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
 
         public FastBodiesSyncFeed(IBlockTree blockTree, IEthSyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
         {
@@ -84,7 +82,9 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
             _lowestRequestedBodyHash = startBodyHash;
         }
-
+        
+        private bool ShouldFinish => (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
+        
         public override bool IsMultiFeed => true;
 
         private bool AnyBatchesLeftToPrepare()
@@ -120,31 +120,25 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
         private void LogStateOnPrepare()
         {
-            if (_logger.IsWarn) _logger.Warn($"LOWEST_INSERTED {_blockTree.LowestInsertedBody?.Number}, DEPENDENCIES {_dependencies.Count}, SENT: {_sent.Count}, PENDING: {_pending.Count}");
-            if (_logger.IsWarn)
+            if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedBody?.Number}, DEPENDENCIES {_dependencies.Count}, SENT: {_sent.Count}, PENDING: {_pending.Count}");
+            if (_logger.IsTrace)
             {
                 lock (_reportLock)
                 {
                     ConcurrentDictionary<long, string> all = new ConcurrentDictionary<long, string>();
                     StringBuilder builder = new StringBuilder();
                     builder.AppendLine($"SENT {_sent.Count} PENDING {_pending.Count} DEPENDENCIES {_dependencies.Count}");
-                    foreach (var headerDependency in _dependencies
-                        .OrderByDescending(d => d.Value.First().Number)
-                        .ThenByDescending(d => d.Value.Last().Number))
+                    foreach (var headerDependency in _dependencies)
                     {
-                        all.TryAdd(headerDependency.Value.Last().Number, $"  DEPENDENCY {headerDependency.Value}");
+                        all.TryAdd(headerDependency.Value.Last().Number, $"  DEPENDENCY [{headerDependency.Value.First().Number}, {headerDependency.Value.Last().Number}]");
                     }
 
-                    foreach (var pendingBatch in _pending
-                        .OrderByDescending(d => d.EndNumber)
-                        .ThenByDescending(d => d.StartNumber))
+                    foreach (var pendingBatch in _pending)
                     {
                         all.TryAdd(pendingBatch.EndNumber, $"  PENDING    {pendingBatch}");
                     }
 
-                    foreach (var sentBatch in _sent
-                        .OrderByDescending(d => d.Key.EndNumber)
-                        .ThenByDescending(d => d.Key.StartNumber))
+                    foreach (var sentBatch in _sent)
                     {
                         all.TryAdd(sentBatch.Key.EndNumber, $"  SENT       {sentBatch.Key}");
                     }
@@ -155,7 +149,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                         builder.AppendLine(keyValuePair.Value);
                     }
 
-                    _logger.Warn($"{builder}");
+                    _logger.Trace($"{builder}");
                 }
             }
         }
@@ -164,7 +158,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
         {
             HandleDependentBatches();
 
-            if (_pending.TryPop(out BodiesSyncBatch batch))
+            if (_pending.TryDequeue(out BodiesSyncBatch batch))
             {
                 batch.MarkRetry();
             }
@@ -271,7 +265,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             {
                 batch.MarkHandlingStart();
                 if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
-                _pending.Push(batch);
+                _pending.Enqueue(batch);
                 batch.MarkHandlingEnd();
                 return SyncBatchResponseHandlingResult.NoData; //(BlocksDataHandlerResult.OK, 0);
             }
@@ -333,7 +327,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"{batch} -> FILLER {fillerBatch}");
-                _pending.Push(fillerBatch);
+                _pending.Enqueue(fillerBatch);
             }
 
             if (validResponses.Any())

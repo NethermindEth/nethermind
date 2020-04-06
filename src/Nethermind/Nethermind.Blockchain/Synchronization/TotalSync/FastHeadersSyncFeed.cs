@@ -173,31 +173,25 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
         private void LogStateOnPrepare()
         {
-            if (_logger.IsWarn) _logger.Warn($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number}, LOWEST_REQUESTED {_lowestRequestedHeaderNumber}, DEPENDENCIES {_dependencies.Count}, SENT: {_sent.Count}, PENDING: {_pending.Count}");
-            if (_logger.IsWarn)
+            if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number}, LOWEST_REQUESTED {_lowestRequestedHeaderNumber}, DEPENDENCIES {_dependencies.Count}, SENT: {_sent.Count}, PENDING: {_pending.Count}");
+            if (_logger.IsTrace)
             {
                 lock (_handlerLock)
                 {
                     ConcurrentDictionary<long, string> all = new ConcurrentDictionary<long, string>();
                     StringBuilder builder = new StringBuilder();
                     builder.AppendLine($"SENT {_sent.Count} PENDING {_pending.Count} DEPENDENCIES {_dependencies.Count}");
-                    foreach (var headerDependency in _dependencies
-                        .OrderByDescending(d => d.Value.EndNumber)
-                        .ThenByDescending(d => d.Value.StartNumber))
+                    foreach (var headerDependency in _dependencies)
                     {
                         all.TryAdd(headerDependency.Value.EndNumber, $"  DEPENDENCY {headerDependency.Value}");
                     }
 
-                    foreach (var pendingBatch in _pending
-                        .OrderByDescending(d => d.EndNumber)
-                        .ThenByDescending(d => d.StartNumber))
+                    foreach (var pendingBatch in _pending)
                     {
                         all.TryAdd(pendingBatch.EndNumber, $"  PENDING    {pendingBatch}");
                     }
 
-                    foreach (var sentBatch in _sent
-                        .OrderByDescending(d => d.Key.EndNumber)
-                        .ThenByDescending(d => d.Key.StartNumber))
+                    foreach (var sentBatch in _sent)
                     {
                         all.TryAdd(sentBatch.Key.EndNumber, $"  SENT       {sentBatch.Key}");
                     }
@@ -208,7 +202,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                         builder.AppendLine(keyValuePair.Value);
                     }
 
-                    _logger.Warn($"{builder}");
+                    _logger.Trace($"{builder}");
                 }
             }
         }
@@ -359,7 +353,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
                         HeadersSyncBatch dependentBatch = BuildDependentBatch(batch, addedLast, addedEarliest);
                         _dependencies[header.Number] = dependentBatch;
-                        if (_logger.IsWarn) _logger.Warn($"{batch} -> DEPENDENCY {dependentBatch}");
+                        if (_logger.IsDebug) _logger.Debug($"{batch} -> DEPENDENCY {dependentBatch}");
 
                         // but we cannot do anything with it yet
                         break;
@@ -419,14 +413,14 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                     {
                         HeadersSyncBatch leftFiller = BuildLeftFiller(batch, leftFillerSize);
                         _pending.Enqueue(leftFiller);
-                        if (_logger.IsWarn) _logger.Warn($"{batch} -> FILLER {leftFiller}");
+                        if (_logger.IsDebug) _logger.Debug($"{batch} -> FILLER {leftFiller}");
                     }
 
                     if (rightFillerSize > 0)
                     {
                         HeadersSyncBatch rightFiller = BuildRightFiller(batch, rightFillerSize);
                         _pending.Enqueue(rightFiller);
-                        if (_logger.IsWarn) _logger.Warn($"{batch} -> FILLER {rightFiller}");
+                        if (_logger.IsDebug) _logger.Debug($"{batch} -> FILLER {rightFiller}");
                     }
                 }
             }
@@ -446,7 +440,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 _syncReport.FastBlocksHeaders.Update(_pivotNumber - _blockTree.LowestInsertedHeader.Number + 1);
             }
 
-            if (_logger.IsWarn) _logger.Warn($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number} | HANDLED {batch}");
+            if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number} | HANDLED {batch}");
 
             _syncReport.HeadersInQueue.Update(_dependencies.Sum(hd => hd.Value.Response.Length));
             return added;
