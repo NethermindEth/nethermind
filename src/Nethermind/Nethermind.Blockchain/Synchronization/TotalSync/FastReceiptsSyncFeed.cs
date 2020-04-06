@@ -127,6 +127,12 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
         private ReceiptsSyncBatch BuildNewBatch()
         {
+            if (_blockTree.LowestInsertedHeader?.Number != 1 &&
+                (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) > _receiptStorage.LowestInsertedReceiptBlock - 1024)
+            {
+                return null;
+            }
+
             Block predecessorBlock = _blockTree.FindBlock(_lowestRequestedHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (predecessorBlock == null)
             {
@@ -156,6 +162,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
             int requestSize = (int) Math.Min(block.Number, _requestSize);
             ReceiptsSyncBatch batch = new ReceiptsSyncBatch();
+            batch.Description = "NEW BUILD";
             batch.Predecessors = new long?[requestSize];
             batch.Blocks = new Block[requestSize];
             batch.Request = new Keccak[requestSize];
@@ -164,14 +171,15 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
             int collectedRequests = 0;
             while (collectedRequests < requestSize)
             {
-                _lowestRequestedHash = block.Hash;
                 if (block.Transactions.Length > 0)
                 {
+                    _lowestRequestedHash = block.Hash;
+
                     if (predecessorBlock == null)
                     {
                         _logger.Error($"PREDECESSOR IS NULL IN {batch.MinNumber} at block {block.ToString(Block.Format.Short)}");
                     }
-                    
+
                     batch.Predecessors[collectedRequests] = predecessorBlock?.Number;
                     batch.Blocks[collectedRequests] = block;
                     batch.Request[collectedRequests] = block.Hash;
@@ -200,16 +208,22 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 return null;
             }
 
+            if (collectedRequests == 0)
+            {
+                // in parallel sync the body may not yet be there
+                return null;
+            }
+            
             if (collectedRequests < requestSize)
             {
                 batch.Resize(collectedRequests);
             }
 
             batch.IsFinal = _blockTree.LowestInsertedBody.Number == 1;
-
+            
             return batch;
         }
-        
+
         public override Task<ReceiptsSyncBatch> PrepareRequest()
         {
             HandleDependentBatches();
@@ -236,7 +250,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 {
                     _hasRequestedFinalBatch = true;
                 }
-                
+
                 LogStateOnPrepare();
             }
 
@@ -272,9 +286,9 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 catch (Exception ex)
                 {
                     _logger.Error("buuuu", ex);
-                    _pending.Enqueue(batch);    
+                    _pending.Enqueue(batch);
                 }
-                
+
                 return SyncBatchResponseHandlingResult.OK; //(BlocksDataHandlerResult.OK, added);
             }
             finally
@@ -432,7 +446,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                 }
             }
         }
-        
+
         private void InsertReceipts(List<(Block, TxReceipt[])> receipts)
         {
             for (int i = 0; i < receipts.Count; i++)
@@ -446,6 +460,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
         {
             int requestSize = receiptsSyncBatch.Blocks.Length;
             ReceiptsSyncBatch filler = new ReceiptsSyncBatch();
+            filler.Description = "FILLER";
             filler.Predecessors = new long?[requestSize - added];
             filler.Blocks = new Block[requestSize - added];
             filler.Request = new Keccak[requestSize - added];

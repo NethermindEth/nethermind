@@ -23,6 +23,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
     public class ReceiptsSyncBatch : FastBlocksBatch
     {
+        public string Description { get; set; }
         public long StartNumber => Blocks.Last().Number;
         public long EndNumber => Blocks.First().Number;
         public long On => Predecessors[0] ?? long.MaxValue;
@@ -35,6 +36,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         
         public void Resize(int targetSize)
         {
+            Description = "RESIZE";
             Block[] currentBlocks = Blocks;
             Keccak[] currentRequests = Request;
             long?[] currentPredecessors = Predecessors;
@@ -48,7 +50,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         
         public override string ToString()
         {
-            string details = $"[{StartNumber}, {EndNumber}]({Blocks.Length}) on {On}";
+            string details = $"[{StartNumber}, {EndNumber}]({Blocks.Length}) on {On} | {Description}";
             return $"RECEIPTS {details} [{(Prioritized ? "HIGH" : "LOW")}] [times: S:{SchedulingTime:F0}ms|R:{RequestTime:F0}ms|V:{ValidationTime:F0}ms|W:{WaitingTime:F0}ms|H:{HandlingTime:F0}ms|A:{AgeInMs:F0}ms, retries {Retries}] min#: {MinNumber} {ResponseSourcePeer}";
         }
     }
