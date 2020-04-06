@@ -413,8 +413,8 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
 
         private void LogStateOnPrepare()
         {
-            if (_logger.IsWarn) _logger.Warn($"LOWEST_INSERTED {_receiptStorage.LowestInsertedReceiptBlock}, DEPENDENCIES {_dependencies.Count}, SENT: {_sent.Count}, PENDING: {_pending.Count}");
-            if (_logger.IsWarn)
+            if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_receiptStorage.LowestInsertedReceiptBlock}, DEPENDENCIES {_dependencies.Count}, SENT: {_sent.Count}, PENDING: {_pending.Count}");
+            if (_logger.IsTrace)
             {
                 lock (_reportLock)
                 {
@@ -442,7 +442,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
                         builder.AppendLine(keyValuePair.Value);
                     }
 
-                    _logger.Warn($"{builder}");
+                    _logger.Trace($"{builder}");
                 }
             }
         }
