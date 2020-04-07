@@ -96,7 +96,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
 
         public override string ProtocolCode => Protocol.Les;
 
-        public override int MessageIdSpaceSize => 8;
+        public override int MessageIdSpaceSize => 23;
 
         protected override TimeSpan InitTimeout => Timeouts.Les3Status;
 
@@ -137,6 +137,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
                     GetBlockBodiesMessage getBlockBodiesMessage = Deserialize<GetBlockBodiesMessage>(message.Content);
                     if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, getBlockBodiesMessage.ToString());
                     Handle(getBlockBodiesMessage);
+                    break;
+                case LesMessageCode.GetReceipts:
+                    GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, getReceiptsMessage.ToString());
+                    Handle(getReceiptsMessage);
                     break;
             }
         }
@@ -205,6 +210,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             Eth.V62.BlockBodiesMessage ethBlockBodiesMessage = FulfillBlockBodiesRequest(getBlockBodies.EthMessage);
             // todo - implement cost tracking
             Send(new BlockBodiesMessage(ethBlockBodiesMessage, getBlockBodies.RequestId, int.MaxValue));
+        }
+
+        public void Handle(GetReceiptsMessage getReceipts)
+        {
+            Eth.V63.ReceiptsMessage ethReceiptsMessage = FulfillReceiptsRequest(getReceipts.EthMessage);
+            // todo - implement cost tracking
+            Send(new ReceiptsMessage(ethReceiptsMessage, getReceipts.RequestId, int.MaxValue));
         }
 
         public override bool HasAgreedCapability(Capability capability) => false;

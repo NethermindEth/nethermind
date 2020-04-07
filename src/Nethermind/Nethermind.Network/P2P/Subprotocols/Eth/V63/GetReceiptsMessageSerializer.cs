@@ -28,10 +28,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             Keccak[] hashes = rlpStream.DecodeArray(itemContext => itemContext.DecodeKeccak());
             return new GetReceiptsMessage(hashes);
         }
-        
+
         public override GetReceiptsMessage Deserialize(IByteBuffer byteBuffer)
         {
-            Keccak[] hashes = DeserializeHashes(byteBuffer);
+            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            return Deserialize(rlpStream);
+        }
+
+        public static GetReceiptsMessage Deserialize(RlpStream rlpStream)
+        {
+            Keccak[] hashes = DeserializeHashes(rlpStream);
             return new GetReceiptsMessage(hashes);
         }
     }
