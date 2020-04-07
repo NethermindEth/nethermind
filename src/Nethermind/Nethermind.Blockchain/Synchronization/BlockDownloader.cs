@@ -84,6 +84,10 @@ namespace Nethermind.Blockchain.Synchronization
         protected override async Task Execute(PeerInfo bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
         {
             if (!_blockTree.CanAcceptNewBlocks) return;
+            if ((_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) > (_blockTree.BestSuggestedHeader?.Number ?? 0) - 30000)
+            {
+                return;
+            }
 
             _allocationCancellation = new CancellationTokenSource();
             CancellationTokenSource linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _allocationCancellation.Token);
@@ -546,7 +550,7 @@ namespace Nethermind.Blockchain.Synchronization
                     }
                     else
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Block download from with {peerInfo} failed. {t.Exception}");
+                        if (_logger.IsError) _logger.Error($"Block download from with {peerInfo} failed. {t.Exception}");
                         reason = "sync fault";
                     }
 
