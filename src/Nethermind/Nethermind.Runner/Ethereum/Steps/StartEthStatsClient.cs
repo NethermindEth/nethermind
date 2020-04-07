@@ -75,7 +75,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             string node = ClientVersion.Description ?? string.Empty;
             int port = networkConfig.P2PPort;
             string network = _context.SpecProvider.ChainId.ToString();
-            string protocol = _context.Config<ISyncConfig>().FastSync ? "eth/63" : "eth/62";
+            string protocol = "eth/65";
             
             EthStatsClient ethStatsClient = new EthStatsClient(
                 ethStatsConfig.Server,
