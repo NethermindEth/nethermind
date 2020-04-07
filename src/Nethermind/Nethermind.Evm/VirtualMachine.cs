@@ -255,7 +255,11 @@ namespace Nethermind.Evm
                                     currentState.GasAvailable -= gasAvailableForCodeDeposit;
                                     _state.Restore(previousState.StateSnapshot);
                                     _storage.Restore(previousState.StorageSnapshot);
-                                    _state.DeleteAccount(callCodeOwner);
+                                    if (!previousState.IsCreateOnPreExistingAccount)
+                                    {
+                                        _state.DeleteAccount(callCodeOwner);
+                                    }
+
                                     previousCallResult = BytesZero;
                                     previousStateSucceeded = false;
 
@@ -2140,7 +2144,8 @@ namespace Nethermind.Evm
                             0L,
                             0L,
                             vmState.IsStatic,
-                            false);
+                            false,
+                            accountExists);
 
                         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
                         return new CallResult(callState);
@@ -2342,6 +2347,7 @@ namespace Nethermind.Evm
                             (long) outputOffset,
                             (long) outputLength,
                             instruction == Instruction.STATICCALL || vmState.IsStatic,
+                            false,
                             false);
 
                         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
