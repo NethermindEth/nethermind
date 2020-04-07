@@ -51,8 +51,51 @@ namespace Nethermind.Blockchain.Filters
 
             return Address == null || Address == address;
         }
+        
+        public bool Accepts(ref AddressRef address)
+        {
+            if (Addresses != null)
+            {
+                foreach (var a in Addresses)
+                {
+                    if (a == address) return true;
+                }
+
+                return false;
+            }
+
+            return Address == null || Address == address;
+        }
 
         public bool Matches(Core.Bloom bloom)
+        {
+            if (Addresses != null)
+            {
+                bool result = true;
+                var indexes = AddressesBloomExtracts;
+                for (var i = 0; i < indexes.Length; i++)
+                {
+                    var index = indexes[i];
+                    result = bloom.Matches(ref index); 
+                    if (result)
+                    {
+                        break;
+                    }
+                }
+
+                return result;
+            }
+            else if (Address == null)
+            {
+                return true;
+            }
+            else
+            {
+                return bloom.Matches(AddressBloomExtract);
+            }
+        }
+
+        public bool Matches(ref BloomRef bloom)
         {
             if (Addresses != null)
             {

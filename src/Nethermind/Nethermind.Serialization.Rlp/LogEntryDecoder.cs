@@ -21,6 +21,8 @@ namespace Nethermind.Serialization.Rlp
 {
     public class LogEntryDecoder : IRlpDecoder<LogEntry>, IRlpValueDecoder<LogEntry>
     {
+        public static readonly LogEntryDecoder Instance = new LogEntryDecoder();
+        
         public LogEntry Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
@@ -136,7 +138,25 @@ namespace Nethermind.Serialization.Rlp
             
             return topicsLength;
         }
-        
-        
+
+        public void DecodeRef(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors storage, out LogEntryRef item)
+        {
+            if (decoderContext.IsNextItemNull())
+            {
+                decoderContext.ReadByte();
+                item = new LogEntryRef();
+                return;
+            }
+            
+            decoderContext.ReadSequenceLength();
+            decoderContext.DecodeAddressRef(out var address);
+            var peekPrefixAndContentLength = decoderContext.PeekPrefixAndContentLength();
+            var sequenceLength = peekPrefixAndContentLength.PrefixLength + peekPrefixAndContentLength.ContentLength;
+            var topics = decoderContext.Data.Slice(decoderContext.Position, sequenceLength);
+            decoderContext.SkipItem();
+            var data = decoderContext.DecodeByteArraySpan();
+
+            item = new LogEntryRef(address, data, topics);
+        }
     }
 }

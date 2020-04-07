@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Filters.Topics
@@ -40,11 +41,37 @@ namespace Nethermind.Blockchain.Filters.Topics
             return false;
         }
 
-        public override bool Matches(Core.Bloom bloom)
+        public override bool Accepts(ref KeccakRef topic)
+        {
+            for (int i = 0; i < _subexpression.Length; i++)
+            {
+                if (_subexpression[i].Accepts(ref topic))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public override bool Matches(Bloom bloom)
         {
             for (int i = 0; i < _subexpression.Length; i++)
             {
                 if (_subexpression[i].Matches(bloom))
+                {
+                    return true;
+                }
+            }
+
+            return false;            
+        }
+
+        public override bool Matches(ref BloomRef bloom)
+        {
+            for (int i = 0; i < _subexpression.Length; i++)
+            {
+                if (_subexpression[i].Matches(ref bloom))
                 {
                     return true;
                 }

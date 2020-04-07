@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 
@@ -44,6 +45,39 @@ namespace Nethermind.Core
         public Keccak PostTransactionState { get; set; }
         public Bloom Bloom { get; set; }
         public LogEntry[] Logs { get; set; }
+        public string Error { get; set; }
+    }
+
+    public ref struct TxReceiptRef
+    {
+        /// <summary>
+        ///     EIP-658
+        /// </summary>
+        public byte StatusCode { get; set; }
+        public long BlockNumber { get; set; }
+        public KeccakRef BlockHash;
+        public KeccakRef TxHash;
+        public int Index { get; set; }
+        public long GasUsed { get; set; }
+        public long GasUsedTotal { get; set; }
+        public AddressRef Sender;
+        public AddressRef ContractAddress;
+        public AddressRef Recipient;
+
+        [Todo(Improve.Refactor, "Receipt tracer?")]
+        public Span<byte> ReturnValue;
+
+        /// <summary>
+        ///     Removed in EIP-658
+        /// </summary>
+        public KeccakRef PostTransactionState;
+
+        public BloomRef Bloom;
+        
+        /// <summary>
+        /// Rlp encoded logs
+        /// </summary>
+        public Span<byte> Logs;
         public string Error { get; set; }
     }
 }

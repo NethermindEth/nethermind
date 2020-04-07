@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using FluentAssertions;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
@@ -36,6 +38,25 @@ namespace Nethermind.Core.Test.Encoding
             Assert.AreEqual(logEntry.Data, decoded.Data, "data");
             Assert.AreEqual(logEntry.LoggersAddress, decoded.LoggersAddress, "address");
             Assert.AreEqual(logEntry.Topics, decoded.Topics, "topics");
+        }
+        
+        [Test]
+        public void Can_do_roundtrip_ref_struct()
+        {
+            LogEntry logEntry = new LogEntry(TestItem.AddressA, new byte[] {1, 2, 3}, new[] {TestItem.KeccakA, TestItem.KeccakB});
+            Rlp rlp = Rlp.Encode(logEntry);
+            Rlp.ValueDecoderContext valueDecoderContext = new Rlp.ValueDecoderContext(rlp.Bytes);
+            LogEntryDecoder.Instance.DecodeRef(ref valueDecoderContext, RlpBehaviors.None, out var decoded);
+
+            Assert.That(Bytes.AreEqual(logEntry.Data, decoded.Data), "data");
+            Assert.That(logEntry.LoggersAddress == decoded.LoggersAddress, "address");
+            
+            KeccaksIterator iterator = new KeccaksIterator(decoded.Topics);
+            for (int i = 0; i < logEntry.Topics.Length; i++)
+            {
+                iterator.TryGetNext(out var keccak);
+                Assert.That(logEntry.Topics[i] == keccak, $"topics[{i}]"); 
+            }
         }
 
         [Test]

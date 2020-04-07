@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core
@@ -32,5 +33,24 @@ namespace Nethermind.Core
         public byte[] Data { get; }
         
         public static LogEntry[] EmptyLogs = new LogEntry[0];
+    }
+    
+    public ref struct LogEntryRef
+    {
+        public LogEntryRef(AddressRef address, Span<byte> data, Span<byte> topics)
+        {
+            LoggersAddress = address;
+            Data = data;
+            Topics = topics;
+        }
+
+        public AddressRef LoggersAddress;
+
+        /// <summary>
+        /// Rlp encoded array of Keccak
+        /// </summary>
+        public Span<byte> Topics { get; }
+
+        public Span<byte> Data { get; }
     }
 }

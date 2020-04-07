@@ -39,7 +39,7 @@ namespace Nethermind.Blockchain.Receipts
         private readonly IDb _transactionDb;
         private static readonly Keccak MigrationBlockNumberKey = Keccak.Compute(nameof(MigratedBlockNumber));
         private long _migratedBlockNumber;
-        private static readonly ReceiptStorageDecoder StorageDecoder = new ReceiptStorageDecoder();
+        private static readonly ReceiptStorageDecoder StorageDecoder = ReceiptStorageDecoder.Instance;
 
         public PersistentReceiptStorage(IColumnsDb<ReceiptsColumns> receiptsDb, ISpecProvider specProvider, IReceiptsRecovery receiptsRecovery)
         {
@@ -162,6 +162,13 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         public bool CanGetReceiptsByHash(long blockNumber) => blockNumber >= MigratedBlockNumber;
+
+        public bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator)
+        {
+            var result = CanGetReceiptsByHash(blockNumber);
+            iterator = result ? ReceiptsIterator.Get(_blocksDb.GetSpan(blockHash), _blocksDb) : new ReceiptsIterator();
+            return result;
+        }
 
         public void Insert(Block block, params TxReceipt[] txReceipts)
         {

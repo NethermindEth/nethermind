@@ -203,4 +203,154 @@ namespace Nethermind.Core.Crypto
             return !(a == b);
         }
     }
+    
+    public ref struct KeccakRef
+    {
+        public const int Size = 32;
+
+        public int MemorySize => MemorySizes.ArrayOverhead + Size;
+
+        public KeccakRef(Span<byte> bytes)
+        {
+            if (bytes.Length != Size)
+            {
+                throw new ArgumentException($"{nameof(Keccak)} must be {Size} bytes and was {bytes.Length} bytes", nameof(bytes));
+            }
+
+            Bytes = bytes;
+        }
+
+        public Span<byte> Bytes { get; }
+
+        public override string ToString()
+        {
+            return ToString(true);
+        }
+        
+        public string ToShortString(bool withZeroX = true)
+        {
+            string hash = Bytes.ToHexString(withZeroX);
+            return $"{hash?.Substring(0, withZeroX ? 8 : 6)}...{hash?.Substring(hash.Length - 6)}";
+        }
+
+        public string ToString(bool withZeroX)
+        {
+            if (Bytes == null)
+            {
+                return "Keccak<uninitialized>";
+            }
+
+            return Bytes.ToHexString(withZeroX);
+        }
+
+        [DebuggerStepThrough]
+        public static KeccakRef Compute(byte[] input)
+        {
+            if (input == null || input.Length == 0)
+            {
+                return new KeccakRef(Keccak.OfAnEmptyString.Bytes);
+            }
+
+            var result = new KeccakRef();
+            KeccakHash.ComputeHashBytesToSpan(input, result.Bytes);
+            return result;
+        }
+
+        [DebuggerStepThrough]
+        public static KeccakRef Compute(Span<byte> input)
+        {
+            if (input == null || input.Length == 0)
+            {
+                return new KeccakRef(Keccak.OfAnEmptyString.Bytes);
+            }
+
+            var result = new KeccakRef();
+            KeccakHash.ComputeHashBytesToSpan(input, result.Bytes);
+            return result;
+        }
+
+        private static KeccakRef InternalCompute(Span<byte> input)
+        {
+            var result = new KeccakRef();
+            KeccakHash.ComputeHashBytesToSpan(input, result.Bytes);
+            return result;
+        }
+
+        [DebuggerStepThrough]
+        public static KeccakRef Compute(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input))
+            {
+                return new KeccakRef(Keccak.OfAnEmptyString.Bytes);
+            }
+
+            var result = new KeccakRef();
+            KeccakHash.ComputeHashBytesToSpan(System.Text.Encoding.UTF8.GetBytes(input), result.Bytes);
+            return result;
+        }
+
+        public bool Equals(Keccak other)
+        {
+            if (ReferenceEquals(other, null))
+            {
+                return false;
+            }
+
+            return Core.Extensions.Bytes.AreEqual(other.Bytes, Bytes);
+        }
+        
+        public bool Equals(KeccakRef other) => Core.Extensions.Bytes.AreEqual(other.Bytes, Bytes);
+
+        public override bool Equals(object obj)
+        {
+            return obj?.GetType() == typeof(Keccak) && Equals((Keccak) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            return MemoryMarshal.Read<int>(Bytes);
+        }
+
+        public static bool operator ==(KeccakRef a, Keccak b)
+        {
+            if (ReferenceEquals(b, null))
+            {
+                return false;
+            }
+
+            return Core.Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
+        }
+        
+        public static bool operator ==(Keccak a, KeccakRef b)
+        {
+            if (ReferenceEquals(a, null))
+            {
+                return false;
+            }
+
+            return Core.Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
+        }
+        
+        public static bool operator ==(KeccakRef a, KeccakRef b)
+        {
+            return Core.Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
+        }
+
+        public static bool operator !=(KeccakRef a, Keccak b)
+        {
+            return !(a == b);
+        }
+        
+        public static bool operator !=(Keccak a, KeccakRef b)
+        {
+            return !(a == b);
+        } 
+        
+        public static bool operator !=(KeccakRef a, KeccakRef b)
+        {
+            return !(a == b);
+        }
+
+        public Keccak ToKeccak() => new Keccak(Bytes.ToArray());
+    }
 }

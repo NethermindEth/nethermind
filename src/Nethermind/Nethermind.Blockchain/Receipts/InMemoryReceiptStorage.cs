@@ -18,6 +18,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
 {
@@ -42,6 +44,21 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         public bool CanGetReceiptsByHash(long blockNumber) => true;
+        public bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator)
+        {
+            if (_receipts.TryGetValue(blockHash, out var receipts))
+            {
+#pragma warning disable 618
+                iterator = ReceiptsIterator.Get(ReceiptStorageDecoder.Instance.Encode(receipts, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes, new MemDb());
+#pragma warning restore 618
+                return true;
+            }
+            else
+            {
+                iterator = new ReceiptsIterator();
+                return false;
+            }
+        }
 
         public void Insert(Block block, params TxReceipt[] txReceipts)
         {
