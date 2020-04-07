@@ -47,9 +47,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return types.Select(s => (ParityTraceTypes) Enum.Parse(typeof(ParityTraceTypes), s, true)).Aggregate((t1, t2) => t1 | t2);
         }
 
-        public ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc message, string[] traceTypes, BlockParameter quantity)
+        public ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc message, string[] traceTypes, BlockParameter blockParameter)
         {
-            throw new NotImplementedException();
+            Transaction tx = message.ToTransaction();
+            return TraceTx(tx, traceTypes, blockParameter);
         }
 
         public ResultWrapper<ParityTxTraceFromReplay[]> trace_callMany((TransactionForRpc message, string[] traceTypes, BlockParameter numberOrTag)[] a)
@@ -59,7 +60,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes)
         {
-            SearchResult<BlockHeader> headerSearch = _blockFinder.SearchForHeader(BlockParameter.Latest);
+            Transaction tx = _txDecoder.Decode(new RlpStream(data));
+            return TraceTx(tx, traceTypes, BlockParameter.Latest);
+        }
+
+        private ResultWrapper<ParityTxTraceFromReplay> TraceTx(Transaction tx, string[] traceTypes, BlockParameter blockParameter)
+        {
+            SearchResult<BlockHeader> headerSearch = _blockFinder.SearchForHeader(blockParameter);
             if (headerSearch.IsError)
             {
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(headerSearch);
@@ -82,7 +89,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 header.TotalDifficulty = 2 * header.Difficulty;
             }
 
-            Transaction tx = _txDecoder.Decode(new RlpStream(data));
             Block block = new Block(header, new[] {tx}, Enumerable.Empty<BlockHeader>());
 
             ParityLikeTxTrace[] result = TraceBlock(block, GetParityTypes(traceTypes));
