@@ -31,6 +31,7 @@ namespace Nethermind.BeaconNode.Storage
             {
                 services.Configure<InMemoryConfiguration>(x => configuration.Bind("Storage:InMemory", x));
                 services.AddSingleton<IStore, MemoryStore>();
+                services.AddSingleton<IHeadSelectionStrategy, SimpleLatestMessageDrivenGreedyHeaviestObservedSubtree>();
                 services.AddSingleton<StoreAccessor>();
                 services.TryAddTransient<IFileSystem, FileSystem>();
             }

@@ -288,6 +288,7 @@ namespace Nethermind.BeaconNode.Test
             Checkpoint checkpoint = new Checkpoint(Epoch.Zero, root);
             BeaconBlock block = new BeaconBlock(current, Root.Zero, Root.Zero, BeaconBlockBody.Zero);
             var state = TestState.Create(slot: current, finalizedCheckpoint: checkpoint);
+            mockStore.GetHeadAsync().Returns(root);
             mockStore.GetBlockAsync(root).Returns(block);
             mockStore.GetBlockStateAsync(root).Returns(state);
             mockStore.IsInitialized.Returns(true);
@@ -330,6 +331,7 @@ namespace Nethermind.BeaconNode.Test
             Checkpoint checkpoint = new Checkpoint(Epoch.Zero, root);
             BeaconBlock block = new BeaconBlock(current, Root.Zero, Root.Zero, BeaconBlockBody.Zero);
             BeaconState state = TestState.Create(slot: current, finalizedCheckpoint: checkpoint);
+            mockStore.GetHeadAsync().Returns(root);
             mockStore.GetBlockAsync(root).Returns(block);
             mockStore.GetBlockStateAsync(root).Returns(state);
             mockStore.IsInitialized.Returns(true);

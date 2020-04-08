@@ -15,32 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
-using Nethermind.Core2;
-using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Storage
+namespace Nethermind.Core2
 {
-    public class StoreAccessor
+    public interface IHeadSelectionStrategy
     {
-        public async Task<Root> GetAncestorAsync(IStore store, Root root, Slot slot)
-        {
-            BeaconBlock block = await store.GetBlockAsync(root).ConfigureAwait(false);
-
-            if (block.Slot > slot)
-            {
-                return await GetAncestorAsync(store, block.ParentRoot, slot).ConfigureAwait(false);
-            }
-            else if (block.Slot == slot)
-            {
-                return root;
-            }
-            else
-            {
-                // root is older than queried slot, thus a skip slot. Return earliest root prior to slot
-                return root;
-            }
-        }
+        Task<Root> GetHeadAsync(IStore store);
     }
 }

@@ -37,19 +37,21 @@ namespace Nethermind.Core2
         ValueTask<BeaconState> GetBlockStateAsync(Root blockRoot);
         ValueTask<BeaconState?> GetCheckpointStateAsync(Checkpoint checkpoint, bool throwIfMissing);
         IAsyncEnumerable<Root> GetChildKeysAsync(Root parent);
+        Task<Root> GetHeadAsync();
         ValueTask<LatestMessage?> GetLatestMessageAsync(ValidatorIndex validatorIndex, bool throwIfMissing);
 
         Task InitializeForkChoiceStoreAsync(ulong time, ulong genesisTime, Checkpoint justifiedCheckpoint,
-            Checkpoint finalizedCheckpoint, Checkpoint bestJustifiedCheckpoint, IDictionary<Root, SignedBeaconBlock> signedBlocks,
+            Checkpoint finalizedCheckpoint, Checkpoint bestJustifiedCheckpoint,
+            IDictionary<Root, SignedBeaconBlock> signedBlocks,
             IDictionary<Root, BeaconState> states, IDictionary<Checkpoint, BeaconState> checkpointStates);
 
         Task SetBestJustifiedCheckpointAsync(Checkpoint checkpoint);
-        Task SetSignedBlockAsync(Root blockHashTreeRoot, SignedBeaconBlock signedBeaconBlock);
         Task SetBlockStateAsync(Root blockHashTreeRoot, BeaconState beaconState);
         Task SetCheckpointStateAsync(Checkpoint checkpoint, BeaconState state);
         Task SetFinalizedCheckpointAsync(Checkpoint checkpoint);
         Task SetJustifiedCheckpointAsync(Checkpoint checkpoint);
         Task SetLatestMessageAsync(ValidatorIndex validatorIndex, LatestMessage latestMessage);
+        Task SetSignedBlockAsync(Root blockHashTreeRoot, SignedBeaconBlock signedBeaconBlock);
         Task SetTimeAsync(ulong time);
     }
 }

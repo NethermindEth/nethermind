@@ -37,7 +37,6 @@ namespace Nethermind.BeaconNode.Storage
     // Data Class
     public class MemoryStore : IStore
     {
-        private readonly Dictionary<Root, SignedBeaconBlock> _signedBlocks = new Dictionary<Root, SignedBeaconBlock>();
         private readonly Dictionary<Root, BeaconState> _blockStates = new Dictionary<Root, BeaconState>();
 
         private readonly Dictionary<Checkpoint, BeaconState> _checkpointStates =
@@ -45,7 +44,7 @@ namespace Nethermind.BeaconNode.Storage
 
         private readonly DataDirectory _dataDirectory;
         private readonly IFileSystem _fileSystem;
-        private readonly StoreAccessor _storeAccessor;
+        private readonly IHeadSelectionStrategy _headSelectionStrategy;
         private readonly IOptionsMonitor<InMemoryConfiguration> _inMemoryConfigurationOptions;
         private readonly JsonSerializerOptions _jsonSerializerOptions;
 
@@ -55,18 +54,22 @@ namespace Nethermind.BeaconNode.Storage
         private string? _logDirectoryPath;
         private readonly object _logDirectoryPathLock = new object();
         private readonly ILogger _logger;
+        private readonly Dictionary<Root, SignedBeaconBlock> _signedBlocks = new Dictionary<Root, SignedBeaconBlock>();
+        private readonly StoreAccessor _storeAccessor;
         private const string InMemoryDirectory = "memorystore";
 
         public MemoryStore(ILogger<MemoryStore> logger,
             IOptionsMonitor<InMemoryConfiguration> inMemoryConfigurationOptions,
             DataDirectory dataDirectory,
             IFileSystem fileSystem,
+            IHeadSelectionStrategy headSelectionStrategy,
             StoreAccessor storeAccessor)
         {
             _logger = logger;
             _inMemoryConfigurationOptions = inMemoryConfigurationOptions;
             _dataDirectory = dataDirectory;
             _fileSystem = fileSystem;
+            _headSelectionStrategy = headSelectionStrategy;
             _storeAccessor = storeAccessor;
             _jsonSerializerOptions = new JsonSerializerOptions {WriteIndented = true};
             _jsonSerializerOptions.ConfigureNethermindCore2();
@@ -122,7 +125,7 @@ namespace Nethermind.BeaconNode.Storage
 
             return new ValueTask<BeaconState?>(state);
         }
-        
+
         public async IAsyncEnumerable<Root> GetChildKeysAsync(Root parent)
         {
             await Task.CompletedTask;
@@ -134,6 +137,11 @@ namespace Nethermind.BeaconNode.Storage
             {
                 yield return childKey;
             }
+        }
+
+        public async Task<Root> GetHeadAsync()
+        {
+            return await _headSelectionStrategy.GetHeadAsync(this).ConfigureAwait(false);
         }
 
         public ValueTask<LatestMessage?> GetLatestMessageAsync(ValidatorIndex validatorIndex, bool throwIfMissing)
@@ -151,7 +159,8 @@ namespace Nethermind.BeaconNode.Storage
         }
 
         public async Task InitializeForkChoiceStoreAsync(ulong time, ulong genesisTime, Checkpoint justifiedCheckpoint,
-            Checkpoint finalizedCheckpoint, Checkpoint bestJustifiedCheckpoint, IDictionary<Root, SignedBeaconBlock> signedBlocks,
+            Checkpoint finalizedCheckpoint, Checkpoint bestJustifiedCheckpoint,
+            IDictionary<Root, SignedBeaconBlock> signedBlocks,
             IDictionary<Root, BeaconState> states,
             IDictionary<Checkpoint, BeaconState> checkpointStates)
         {
@@ -191,23 +200,6 @@ namespace Nethermind.BeaconNode.Storage
             return Task.CompletedTask;
         }
 
-        public async Task SetSignedBlockAsync(Root blockHashTreeRoot, SignedBeaconBlock signedBeaconBlock)
-        {
-            // NOTE: This stores signed block, rather than just the block (or block header) from the spec,
-            // because we need to store signed blocks anyway, e.g. to respond to syncing clients.
-            
-            _signedBlocks[blockHashTreeRoot] = signedBeaconBlock;
-            if (_inMemoryConfigurationOptions.CurrentValue.LogBlockJson)
-            {
-                string logDirectoryPath = GetLogDirectory();
-                string fileName = string.Format("block{0:0000}_{1}.json", (int) signedBeaconBlock.Message.Slot, blockHashTreeRoot);
-                string path = _fileSystem.Path.Combine(logDirectoryPath, fileName);
-                await using Stream fileStream = _fileSystem.File.OpenWrite(path);
-                await JsonSerializer.SerializeAsync(fileStream, signedBeaconBlock, _jsonSerializerOptions)
-                    .ConfigureAwait(false);
-            }
-        }
-
         public async Task SetBlockStateAsync(Root blockHashTreeRoot, BeaconState beaconState)
         {
             _blockStates[blockHashTreeRoot] = beaconState;
@@ -244,6 +236,24 @@ namespace Nethermind.BeaconNode.Storage
         {
             _latestMessages[validatorIndex] = latestMessage;
             return Task.CompletedTask;
+        }
+
+        public async Task SetSignedBlockAsync(Root blockHashTreeRoot, SignedBeaconBlock signedBeaconBlock)
+        {
+            // NOTE: This stores signed block, rather than just the block (or block header) from the spec,
+            // because we need to store signed blocks anyway, e.g. to respond to syncing clients.
+
+            _signedBlocks[blockHashTreeRoot] = signedBeaconBlock;
+            if (_inMemoryConfigurationOptions.CurrentValue.LogBlockJson)
+            {
+                string logDirectoryPath = GetLogDirectory();
+                string fileName = string.Format("block{0:0000}_{1}.json", (int) signedBeaconBlock.Message.Slot,
+                    blockHashTreeRoot);
+                string path = _fileSystem.Path.Combine(logDirectoryPath, fileName);
+                await using Stream fileStream = _fileSystem.File.OpenWrite(path);
+                await JsonSerializer.SerializeAsync(fileStream, signedBeaconBlock, _jsonSerializerOptions)
+                    .ConfigureAwait(false);
+            }
         }
 
         public Task SetTimeAsync(ulong time)
