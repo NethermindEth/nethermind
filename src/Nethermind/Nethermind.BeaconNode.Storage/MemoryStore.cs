@@ -45,6 +45,7 @@ namespace Nethermind.BeaconNode.Storage
 
         private readonly DataDirectory _dataDirectory;
         private readonly IFileSystem _fileSystem;
+        private readonly StoreAccessor _storeAccessor;
         private readonly IOptionsMonitor<InMemoryConfiguration> _inMemoryConfigurationOptions;
         private readonly JsonSerializerOptions _jsonSerializerOptions;
 
@@ -59,12 +60,14 @@ namespace Nethermind.BeaconNode.Storage
         public MemoryStore(ILogger<MemoryStore> logger,
             IOptionsMonitor<InMemoryConfiguration> inMemoryConfigurationOptions,
             DataDirectory dataDirectory,
-            IFileSystem fileSystem)
+            IFileSystem fileSystem,
+            StoreAccessor storeAccessor)
         {
             _logger = logger;
             _inMemoryConfigurationOptions = inMemoryConfigurationOptions;
             _dataDirectory = dataDirectory;
             _fileSystem = fileSystem;
+            _storeAccessor = storeAccessor;
             _jsonSerializerOptions = new JsonSerializerOptions {WriteIndented = true};
             _jsonSerializerOptions.ConfigureNethermindCore2();
             if (_inMemoryConfigurationOptions.CurrentValue.LogBlockJson ||
@@ -80,6 +83,11 @@ namespace Nethermind.BeaconNode.Storage
         public bool IsInitialized { get; private set; }
         public Checkpoint JustifiedCheckpoint { get; private set; } = Checkpoint.Zero;
         public ulong Time { get; private set; }
+
+        public async Task<Root> GetAncestorAsync(Root root, Slot slot)
+        {
+            return await _storeAccessor.GetAncestorAsync(this, root, slot).ConfigureAwait(false);
+        }
 
         public ValueTask<BeaconBlock> GetBlockAsync(Root blockRoot)
         {
@@ -185,6 +193,9 @@ namespace Nethermind.BeaconNode.Storage
 
         public async Task SetSignedBlockAsync(Root blockHashTreeRoot, SignedBeaconBlock signedBeaconBlock)
         {
+            // NOTE: This stores signed block, rather than just the block (or block header) from the spec,
+            // because we need to store signed blocks anyway, e.g. to respond to syncing clients.
+            
             _signedBlocks[blockHashTreeRoot] = signedBeaconBlock;
             if (_inMemoryConfigurationOptions.CurrentValue.LogBlockJson)
             {

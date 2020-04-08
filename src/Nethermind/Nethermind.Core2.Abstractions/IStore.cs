@@ -31,6 +31,8 @@ namespace Nethermind.Core2
         bool IsInitialized { get; }
         Checkpoint JustifiedCheckpoint { get; }
         ulong Time { get; }
+
+        Task<Root> GetAncestorAsync(Root root, Slot slot);
         ValueTask<BeaconBlock> GetBlockAsync(Root blockRoot);
         ValueTask<BeaconState> GetBlockStateAsync(Root blockRoot);
         ValueTask<BeaconState?> GetCheckpointStateAsync(Checkpoint checkpoint, bool throwIfMissing);

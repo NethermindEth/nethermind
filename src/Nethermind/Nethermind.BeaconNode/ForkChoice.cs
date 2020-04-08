@@ -125,23 +125,7 @@ namespace Nethermind.BeaconNode
 
         public async Task<Root> GetAncestorAsync(IStore store, Root root, Slot slot)
         {
-            // NOTE: This method should probably live in IStore, for various efficient implementations.
-
-            BeaconBlock block = await store.GetBlockAsync(root).ConfigureAwait(false);
-
-            if (block.Slot > slot)
-            {
-                return await GetAncestorAsync(store, block.ParentRoot, slot).ConfigureAwait(false);
-            }
-            else if (block.Slot == slot)
-            {
-                return root;
-            }
-            else
-            {
-                // root is older than queried slot, thus a skip slot. Return earliest root prior to slot
-                return root;
-            }
+            return await store.GetAncestorAsync(root, slot).ConfigureAwait(false);
         }
 
         public Slot GetCurrentSlot(IStore store)

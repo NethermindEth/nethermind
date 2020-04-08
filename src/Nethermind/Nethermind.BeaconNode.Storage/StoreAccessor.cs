@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,30 +14,34 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.IO.Abstractions;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
+using System.Threading.Tasks;
 using Nethermind.Core2;
+using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.BeaconNode.Storage
 {
-    public static class BeaconNodeStorageServiceCollectionExtensions
+    public class StoreAccessor
     {
-        public static void AddBeaconNodeStorage(this IServiceCollection services, IConfiguration configuration)
+        public async Task<Root> GetAncestorAsync(IStore store, Root root, Slot slot)
         {
-            if (configuration.GetSection("Storage:InMemory").Exists())
+            BeaconBlock block = await store.GetBlockAsync(root).ConfigureAwait(false);
+
+            if (block.Slot > slot)
             {
-                services.Configure<InMemoryConfiguration>(x => configuration.Bind("Storage:InMemory", x));
-                services.AddSingleton<IStore, MemoryStore>();
-                services.AddSingleton<StoreAccessor>();
-                services.TryAddTransient<IFileSystem, FileSystem>();
+                return await GetAncestorAsync(store, block.ParentRoot, slot).ConfigureAwait(false);
+            }
+            else if (block.Slot == slot)
+            {
+                return root;
             }
             else
             {
-                throw new Exception("No storage configuration found.");
+                // root is older than queried slot, thus a skip slot. Return earliest root prior to slot
+                return root;
             }
         }
+
     }
 }
