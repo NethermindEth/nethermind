@@ -123,6 +123,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             byte[][] receipts = await SendRequest(msg, token);
             return receipts;
         }
+        public override async Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHashes, CancellationToken token)
+        {
+            if (blockHashes.Count == 0)
+            {
+                return Array.Empty<TxReceipt[]>();
+            }
+
+            GetReceiptsMessage msg = new GetReceiptsMessage(blockHashes);
+            TxReceipt[][] txReceipts = await SendRequest(msg, token);
+            return txReceipts;
+        }
 
         [Todo(Improve.Refactor, "Generic approach to requests")]
         private async Task<byte[][]> SendRequest(GetNodeDataMessage message, CancellationToken token)
