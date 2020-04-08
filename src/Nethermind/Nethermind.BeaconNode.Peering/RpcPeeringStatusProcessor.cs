@@ -45,11 +45,11 @@ namespace Nethermind.BeaconNode.Peering
             ChannelWriter.TryWrite(statusRpcMessage);
         }
 
-        protected override async Task ProcessItemAsync(RpcMessage<PeeringStatus> statusRpcMessage)
+        protected override async Task ProcessItemAsync(RpcMessage<PeeringStatus> rpcMessage)
         {
             try
             {
-                PeerInfo peerInfo = _peerManager.UpdatePeerStatus(statusRpcMessage.PeerId, statusRpcMessage.Content);
+                PeerInfo peerInfo = _peerManager.UpdatePeerStatus(rpcMessage.PeerId, rpcMessage.Content);
                 Session session = _peerManager.OpenSession(peerInfo);
 
                 // Mothra seems to be raising all incoming RPC (sent as request and as response)
@@ -59,19 +59,19 @@ namespace Nethermind.BeaconNode.Peering
                 if (session.Direction == ConnectionDirection.Out)
                 {
                     // If it is a dial out, we must have already sent the status request and this is the response
-                    await _synchronizationManager.OnStatusResponseReceived(statusRpcMessage.PeerId,
-                        statusRpcMessage.Content);
+                    await _synchronizationManager.OnStatusResponseReceived(rpcMessage.PeerId,
+                        rpcMessage.Content);
                 }
                 else
                 {
-                    await _synchronizationManager.OnStatusRequestReceived(statusRpcMessage.PeerId,
-                        statusRpcMessage.Content);
+                    await _synchronizationManager.OnStatusRequestReceived(rpcMessage.PeerId,
+                        rpcMessage.Content);
                 }
             }
             catch (Exception ex)
             {
                 if (_logger.IsError())
-                    Log.HandleRpcStatusError(_logger, statusRpcMessage.PeerId, ex.Message, ex);
+                    Log.HandleRpcStatusError(_logger, rpcMessage.PeerId, ex.Message, ex);
             }
         }
     }

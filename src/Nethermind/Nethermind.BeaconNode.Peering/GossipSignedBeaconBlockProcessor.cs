@@ -75,37 +75,37 @@ namespace Nethermind.BeaconNode.Peering
             ChannelWriter.TryWrite(signedBeaconBlock);
         }
 
-        protected override async Task ProcessItemAsync(SignedBeaconBlock signedBeaconBlock)
+        protected override async Task ProcessItemAsync(SignedBeaconBlock rpcMessage)
         {
             try
             {
                 if (_logger.IsDebug())
-                    LogDebug.ProcessGossipSignedBeaconBlock(_logger, signedBeaconBlock.Message, null);
+                    LogDebug.ProcessGossipSignedBeaconBlock(_logger, rpcMessage.Message, null);
 
                 if (_mothraConfigurationOptions.CurrentValue.LogSignedBeaconBlockJson)
                 {
                     string logDirectoryPath = GetLogDirectory();
                     string fileName = string.Format("signedblock{0:0000}_{1}.json",
-                        (int) signedBeaconBlock.Message.Slot,
-                        signedBeaconBlock.Signature.ToString().Substring(0, 10));
+                        (int) rpcMessage.Message.Slot,
+                        rpcMessage.Signature.ToString().Substring(0, 10));
                     string path = _fileSystem.Path.Combine(logDirectoryPath, fileName);
                     using (Stream fileStream = _fileSystem.File.OpenWrite(path))
                     {
-                        await JsonSerializer.SerializeAsync(fileStream, signedBeaconBlock, _jsonSerializerOptions)
+                        await JsonSerializer.SerializeAsync(fileStream, rpcMessage, _jsonSerializerOptions)
                             .ConfigureAwait(false);
                     }
                 }
 
                 // Update the most recent slot seen (even if we can't add it to the chain yet, e.g. if we are missing prior blocks)
                 // Note: a peer could lie and send a signed block that isn't part of the chain (but it could lie on status as well)
-                _peerManager.UpdateMostRecentSlot(signedBeaconBlock.Message.Slot);
+                _peerManager.UpdateMostRecentSlot(rpcMessage.Message.Slot);
 
-                await _forkChoice.OnBlockAsync(_store, signedBeaconBlock).ConfigureAwait(false);
+                await _forkChoice.OnBlockAsync(_store, rpcMessage).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
                 if (_logger.IsError())
-                    Log.ProcessGossipSignedBeaconBlockError(_logger, signedBeaconBlock.Message, ex.Message, ex);
+                    Log.ProcessGossipSignedBeaconBlockError(_logger, rpcMessage.Message, ex.Message, ex);
             }
         }
 

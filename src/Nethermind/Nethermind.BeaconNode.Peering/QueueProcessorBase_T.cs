@@ -60,7 +60,7 @@ namespace Nethermind.BeaconNode.Peering
             }
         }
 
-        protected abstract Task ProcessItemAsync(T item);
+        protected abstract Task ProcessItemAsync(T rpcMessage);
 
         public override Task StopAsync(CancellationToken cancellationToken)
         {

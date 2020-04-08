@@ -3,6 +3,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core2;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.P2p;
 using Nethermind.Core2.Types;
@@ -51,6 +52,9 @@ namespace Nethermind.BeaconNode.Peering
 
         public Task RequestBlocksAsync(string peerId, Root peerHeadRoot, Slot finalizedSlot, Slot peerHeadSlot)
         {
+            // NOTE: Currently just requests entire range, one at a time, to get small testnet working.
+            // Will need more sophistication in future, e.g. request interleaved blocks and stuff.
+
             ulong count = peerHeadSlot - finalizedSlot;
             ulong step = 1;
             BeaconBlocksByRange beaconBlocksByRange = new BeaconBlocksByRange(peerHeadRoot, finalizedSlot, count, step);
@@ -60,10 +64,28 @@ namespace Nethermind.BeaconNode.Peering
             Ssz.Ssz.Encode(encoded, beaconBlocksByRange);
 
             if (_logger.IsDebug())
-                LogDebug.RpcSend(_logger, RpcDirection.Request, nameof(MethodUtf8.BeaconBlocksByRange), peerId, 0,
+                LogDebug.RpcSend(_logger, RpcDirection.Request, nameof(MethodUtf8.BeaconBlocksByRange), peerId,
+                    encoded.Length,
                     null);
-            
+
             _mothraLibp2p.SendRpcRequest(MethodUtf8.BeaconBlocksByRange, peerUtf8, encoded);
+
+            return Task.CompletedTask;
+        }
+
+        public Task SendBlockAsync(string peerId, BeaconBlock block)
+        {
+            byte[] peerUtf8 = Encoding.UTF8.GetBytes(peerId);
+
+            Span<byte> encoded = new byte[Ssz.Ssz.BeaconBlockLength(block)];
+            Ssz.Ssz.Encode(encoded, block);
+
+            if (_logger.IsDebug())
+                LogDebug.RpcSend(_logger, RpcDirection.Response, nameof(MethodUtf8.BeaconBlocksByRange), peerId,
+                    encoded.Length,
+                    null);
+
+            _mothraLibp2p.SendRpcResponse(MethodUtf8.BeaconBlocksByRange, peerUtf8, encoded);
 
             return Task.CompletedTask;
         }

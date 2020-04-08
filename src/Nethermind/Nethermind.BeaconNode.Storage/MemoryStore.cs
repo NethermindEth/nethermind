@@ -39,14 +39,18 @@ namespace Nethermind.BeaconNode.Storage
     {
         private readonly Dictionary<Root, BeaconBlock> _blocks = new Dictionary<Root, BeaconBlock>();
         private readonly Dictionary<Root, BeaconState> _blockStates = new Dictionary<Root, BeaconState>();
+
         private readonly Dictionary<Checkpoint, BeaconState> _checkpointStates =
             new Dictionary<Checkpoint, BeaconState>();
+
         private readonly DataDirectory _dataDirectory;
         private readonly IFileSystem _fileSystem;
         private readonly IOptionsMonitor<InMemoryConfiguration> _inMemoryConfigurationOptions;
         private readonly JsonSerializerOptions _jsonSerializerOptions;
+
         private readonly Dictionary<ValidatorIndex, LatestMessage> _latestMessages =
             new Dictionary<ValidatorIndex, LatestMessage>();
+
         private string? _logDirectoryPath;
         private readonly object _logDirectoryPathLock = new object();
         private readonly ILogger _logger;
@@ -203,7 +207,8 @@ namespace Nethermind.BeaconNode.Storage
                 string path = _fileSystem.Path.Combine(logDirectoryPath, fileName);
                 using (Stream fileStream = _fileSystem.File.OpenWrite(path))
                 {
-                    await JsonSerializer.SerializeAsync(fileStream, beaconBlock, _jsonSerializerOptions).ConfigureAwait(false);
+                    await JsonSerializer.SerializeAsync(fileStream, beaconBlock, _jsonSerializerOptions)
+                        .ConfigureAwait(false);
                 }
             }
         }
@@ -218,7 +223,8 @@ namespace Nethermind.BeaconNode.Storage
                 string path = _fileSystem.Path.Combine(logDirectoryPath, fileName);
                 using (Stream fileStream = _fileSystem.File.OpenWrite(path))
                 {
-                    await JsonSerializer.SerializeAsync(fileStream, beaconState, _jsonSerializerOptions).ConfigureAwait(false);
+                    await JsonSerializer.SerializeAsync(fileStream, beaconState, _jsonSerializerOptions)
+                        .ConfigureAwait(false);
                 }
             }
         }
@@ -283,7 +289,9 @@ namespace Nethermind.BeaconNode.Storage
                         int newSuffix = existingSuffix + 1;
                         string logDirectoryName = $"log{newSuffix:0000}";
 
-                        if (_logger.IsDebug()) LogDebug.CreatingMemoryStoreLogDirectory(_logger, logDirectoryName, baseDirectoryInfo.FullName, null);
+                        if (_logger.IsDebug())
+                            LogDebug.CreatingMemoryStoreLogDirectory(_logger, logDirectoryName,
+                                baseDirectoryInfo.FullName, null);
                         IDirectoryInfo logDirectory = baseDirectoryInfo.CreateSubdirectory(logDirectoryName);
                         _logDirectoryPath = logDirectory.FullName;
                     }

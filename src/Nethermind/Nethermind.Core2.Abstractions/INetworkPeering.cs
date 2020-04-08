@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.P2p;
 using Nethermind.Core2.Types;
@@ -32,5 +33,6 @@ namespace Nethermind.Core2
         Task PublishBeaconBlockAsync(SignedBeaconBlock signedBlock);
         Task RequestBlocksAsync(string peerId, Root peerHeadRoot, Slot finalizedSlot, Slot peerHeadSlot);
         Task SendStatusAsync(string peerId, RpcDirection rpcDirection, PeeringStatus peeringStatus);
+        Task SendBlockAsync(string peerId, BeaconBlock block);
     }
 }
