@@ -15,11 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.State;
+using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -37,13 +40,13 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Test()
         {
-            byte[] salt = {4, 5, 6};   
-            
+            byte[] salt = {4, 5, 6};
+
             byte[] deployedCode = {1, 2, 3};
-            
+
             byte[] initCode = Prepare.EvmCode
                 .ForInitOf(deployedCode).Done;
-            
+
             byte[] createCode = Prepare.EvmCode
                 .Create2(initCode, salt, 0).Done;
 
@@ -56,11 +59,112 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             Execute(code);
-            
+
             Address expectedAddress = ContractAddress.From(TestItem.AddressC, salt.PadLeft(32).AsSpan(), initCode.AsSpan());
             AssertEip1014(expectedAddress, deployedCode);
         }
-        
+
+        [Test]
+        public void Test_out_of_gas_existing_account()
+        {
+            byte[] salt = {4, 5, 6};
+            byte[] deployedCode = {1, 2, 3};
+
+            byte[] initCode = Prepare.EvmCode
+                .ForInitOf(deployedCode).Done;
+
+            byte[] createCode = Prepare.EvmCode
+                .Create2(initCode, salt, 0).Done;
+
+            Address expectedAddress = ContractAddress.From(TestItem.AddressC, salt.PadLeft(32).AsSpan(), initCode.AsSpan());
+
+            TestState.CreateAccount(expectedAddress, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+
+            Keccak createCodeHash = TestState.UpdateCode(createCode);
+            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+
+            byte[] code = Prepare.EvmCode
+                .Call(TestItem.AddressC, 32100)
+                .Done;
+
+            Execute(code);
+
+            TestState.GetAccount(expectedAddress).Should().NotBeNull();
+            TestState.GetAccount(expectedAddress).Balance.Should().Be(1.Ether());
+            AssertEip1014(expectedAddress, Bytes.Empty);
+        }
+
+        [Test]
+        public void Test_out_of_gas_existing_account_with_storage()
+        {
+            byte[] salt = {4, 5, 6};
+            byte[] deployedCode = {1, 2, 3};
+
+            byte[] initCode = Prepare.EvmCode
+                .ForInitOf(deployedCode).Done;
+
+            byte[] createCode = Prepare.EvmCode
+                .Create2(initCode, salt, 0).Done;
+
+            Address expectedAddress = ContractAddress.From(TestItem.AddressC, salt.PadLeft(32).AsSpan(), initCode.AsSpan());
+
+            TestState.CreateAccount(expectedAddress, 1.Ether());
+            Storage.Set(new StorageCell(expectedAddress, 1), new byte[] {1, 2, 3, 4, 5});
+            Storage.Commit();
+            Storage.CommitTrees();
+            TestState.Commit(Spec);
+            TestState.CommitTree();
+            
+            Keccak storageRoot = TestState.GetAccount(expectedAddress).StorageRoot;
+            storageRoot.Should().NotBe(PatriciaTree.EmptyTreeHash);
+
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+
+            Keccak createCodeHash = TestState.UpdateCode(createCode);
+            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+
+            byte[] code = Prepare.EvmCode
+                .Call(TestItem.AddressC, 32100)
+                .Done;
+
+            Execute(code);
+
+            TestState.GetAccount(expectedAddress).Should().NotBeNull();
+            TestState.GetAccount(expectedAddress).Balance.Should().Be(1.Ether());
+            TestState.GetAccount(expectedAddress).StorageRoot.Should().Be(storageRoot);
+            AssertEip1014(expectedAddress, Bytes.Empty);
+        }
+
+        [Test]
+        public void Test_out_of_gas_non_existing_account()
+        {
+            byte[] salt = {4, 5, 6};
+            byte[] deployedCode = {1, 2, 3};
+
+            byte[] initCode = Prepare.EvmCode
+                .ForInitOf(deployedCode).Done;
+
+            byte[] createCode = Prepare.EvmCode
+                .Create2(initCode, salt, 0).Done;
+
+            Address expectedAddress = ContractAddress.From(TestItem.AddressC, salt.PadLeft(32).AsSpan(), initCode.AsSpan());
+
+            // TestState.CreateAccount(expectedAddress, 1.Ether()); <-- non-existing
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+
+            Keccak createCodeHash = TestState.UpdateCode(createCode);
+            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+
+            byte[] code = Prepare.EvmCode
+                .Call(TestItem.AddressC, 32100)
+                .Done;
+
+            Execute(code);
+
+            TestState.GetAccount(expectedAddress).Should().BeNull();
+        }
+
         /// <summary>
         /// https://eips.ethereum.org/EIPS/eip-1014
         /// </summary>
@@ -73,12 +177,12 @@ namespace Nethermind.Evm.Test
         [TestCase("0x0000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000000000000000000000000", "0x", 32000, "0xE33C0C7F7df4809055C3ebA6c09CFe4BaF1BD9e0")]
         public void Examples_from_eip_spec_are_executed_correctly(string addressHex, string saltHex, string initCodeHex, long gas, string resultHex)
         {
-            byte[] salt = Bytes.FromHexString(saltHex);   
-            
+            byte[] salt = Bytes.FromHexString(saltHex);
+
             byte[] deployedCode = Bytes.Empty;
-            
+
             byte[] initCode = Bytes.FromHexString(initCodeHex);
-            
+
             byte[] createCode = Prepare.EvmCode
                 .Create2(initCode, salt, 0).Done;
 
@@ -91,7 +195,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             var trace = ExecuteAndTrace(code);
-            
+
             Address expectedAddress = new Address(resultHex);
             AssertEip1014(expectedAddress, deployedCode);
 //            Assert.AreEqual(gas, trace.Entries.Single(e => e.Operation == Instruction.CREATE2.ToString()).GasCost);

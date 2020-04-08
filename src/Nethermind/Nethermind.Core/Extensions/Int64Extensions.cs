@@ -168,7 +168,7 @@ namespace Nethermind.Core.Extensions
 
             for (int i = 0; i < length; i++)
             {
-                value += bytes[length - 1 - i] << 8 * i;
+                value += (long)bytes[length - 1 - i] << 8 * i;
             }
 
             return value;
