@@ -73,12 +73,12 @@ namespace Nethermind.BeaconNode.Peering
             return Task.CompletedTask;
         }
 
-        public Task SendBlockAsync(string peerId, BeaconBlock block)
+        public Task SendBlockAsync(string peerId, SignedBeaconBlock signedBlock)
         {
             byte[] peerUtf8 = Encoding.UTF8.GetBytes(peerId);
 
-            Span<byte> encoded = new byte[Ssz.Ssz.BeaconBlockLength(block)];
-            Ssz.Ssz.Encode(encoded, block);
+            Span<byte> encoded = new byte[Ssz.Ssz.SignedBeaconBlockLength(signedBlock)];
+            Ssz.Ssz.Encode(encoded, signedBlock);
 
             if (_logger.IsDebug())
                 LogDebug.RpcSend(_logger, RpcDirection.Response, nameof(MethodUtf8.BeaconBlocksByRange), peerId,

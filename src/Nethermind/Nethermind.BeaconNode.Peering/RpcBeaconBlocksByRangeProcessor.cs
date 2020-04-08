@@ -60,16 +60,16 @@ namespace Nethermind.BeaconNode.Peering
                 {
                     Slot slot = new Slot(rpcMessage.Content.StartSlot +
                                          rpcMessage.Content.Step * (rpcMessage.Content.Count - 1));
-                    Stack<BeaconBlock> blocks = new Stack<BeaconBlock>();
+                    Stack<SignedBeaconBlock> signedBlocks = new Stack<SignedBeaconBlock>();
                     // Search backwards from head for the requested slots
                     Root root = rpcMessage.Content.HeadBlockRoot;
                     while (slot >= rpcMessage.Content.StartSlot)
                     {
                         root = await _forkChoice.GetAncestorAsync(_store, root, slot);
-                        BeaconBlock block = (await _store.GetSignedBlockAsync(root)).Message;
-                        if (block.Slot == slot)
+                        SignedBeaconBlock signedBlock = await _store.GetSignedBlockAsync(root);
+                        if (signedBlock.Message.Slot == slot)
                         {
-                            blocks.Push(block);
+                            signedBlocks.Push(signedBlock);
                         }
                         else
                         {
@@ -78,9 +78,9 @@ namespace Nethermind.BeaconNode.Peering
                     }
 
                     // Send each block in a response chunk, in slot order
-                    foreach (BeaconBlock block in blocks)
+                    foreach (SignedBeaconBlock signedBlock in signedBlocks)
                     {
-                        await _networkPeering.SendBlockAsync(rpcMessage.PeerId, block);
+                        await _networkPeering.SendBlockAsync(rpcMessage.PeerId, signedBlock);
                     }
                 }
                 else

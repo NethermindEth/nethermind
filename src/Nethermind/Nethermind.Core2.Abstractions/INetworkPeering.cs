@@ -33,6 +33,6 @@ namespace Nethermind.Core2
         Task PublishBeaconBlockAsync(SignedBeaconBlock signedBlock);
         Task RequestBlocksAsync(string peerId, Root peerHeadRoot, Slot finalizedSlot, Slot peerHeadSlot);
         Task SendStatusAsync(string peerId, RpcDirection rpcDirection, PeeringStatus peeringStatus);
-        Task SendBlockAsync(string peerId, BeaconBlock block);
+        Task SendBlockAsync(string peerId, SignedBeaconBlock signedBlock);
     }
 }

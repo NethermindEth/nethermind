@@ -92,16 +92,6 @@ namespace Nethermind.BeaconNode.Storage
             return await _storeAccessor.GetAncestorAsync(this, root, slot).ConfigureAwait(false);
         }
 
-        public ValueTask<SignedBeaconBlock> GetSignedBlockAsync(Root blockRoot)
-        {
-            if (!_signedBlocks.TryGetValue(blockRoot, out SignedBeaconBlock? signedBeaconBlock))
-            {
-                throw new ArgumentOutOfRangeException(nameof(blockRoot), blockRoot, "Block not found in store.");
-            }
-
-            return new ValueTask<SignedBeaconBlock>(signedBeaconBlock!);
-        }
-
         public ValueTask<BeaconState> GetBlockStateAsync(Root blockRoot)
         {
             if (!_blockStates.TryGetValue(blockRoot, out BeaconState? state))
@@ -156,6 +146,16 @@ namespace Nethermind.BeaconNode.Storage
             }
 
             return new ValueTask<LatestMessage?>(latestMessage);
+        }
+
+        public ValueTask<SignedBeaconBlock> GetSignedBlockAsync(Root blockRoot)
+        {
+            if (!_signedBlocks.TryGetValue(blockRoot, out SignedBeaconBlock? signedBeaconBlock))
+            {
+                throw new ArgumentOutOfRangeException(nameof(blockRoot), blockRoot, "Block not found in store.");
+            }
+
+            return new ValueTask<SignedBeaconBlock>(signedBeaconBlock!);
         }
 
         public async Task InitializeForkChoiceStoreAsync(ulong time, ulong genesisTime, Checkpoint justifiedCheckpoint,

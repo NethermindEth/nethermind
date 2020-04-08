@@ -33,12 +33,12 @@ namespace Nethermind.Core2
         ulong Time { get; }
 
         Task<Root> GetAncestorAsync(Root root, Slot slot);
-        ValueTask<SignedBeaconBlock> GetSignedBlockAsync(Root blockRoot);
         ValueTask<BeaconState> GetBlockStateAsync(Root blockRoot);
         ValueTask<BeaconState?> GetCheckpointStateAsync(Checkpoint checkpoint, bool throwIfMissing);
         IAsyncEnumerable<Root> GetChildKeysAsync(Root parent);
         Task<Root> GetHeadAsync();
         ValueTask<LatestMessage?> GetLatestMessageAsync(ValidatorIndex validatorIndex, bool throwIfMissing);
+        ValueTask<SignedBeaconBlock> GetSignedBlockAsync(Root blockRoot);
 
         Task InitializeForkChoiceStoreAsync(ulong time, ulong genesisTime, Checkpoint justifiedCheckpoint,
             Checkpoint finalizedCheckpoint, Checkpoint bestJustifiedCheckpoint,
