@@ -37,7 +37,7 @@ namespace Nethermind.BeaconNode.Storage
     // Data Class
     public class MemoryStore : IStore
     {
-        private readonly Dictionary<Root, BeaconBlock> _blocks = new Dictionary<Root, BeaconBlock>();
+        private readonly Dictionary<Root, SignedBeaconBlock> _signedBlocks = new Dictionary<Root, SignedBeaconBlock>();
         private readonly Dictionary<Root, BeaconState> _blockStates = new Dictionary<Root, BeaconState>();
 
         private readonly Dictionary<Checkpoint, BeaconState> _checkpointStates =
@@ -83,12 +83,12 @@ namespace Nethermind.BeaconNode.Storage
 
         public ValueTask<BeaconBlock> GetBlockAsync(Root blockRoot)
         {
-            if (!_blocks.TryGetValue(blockRoot, out BeaconBlock? beaconBlock))
+            if (!_signedBlocks.TryGetValue(blockRoot, out SignedBeaconBlock? signedBeaconBlock))
             {
                 throw new ArgumentOutOfRangeException(nameof(blockRoot), blockRoot, "Block not found in store.");
             }
 
-            return new ValueTask<BeaconBlock>(beaconBlock!);
+            return new ValueTask<BeaconBlock>(signedBeaconBlock!.Message);
         }
 
         public ValueTask<BeaconState> GetBlockStateAsync(Root blockRoot)
@@ -114,27 +114,13 @@ namespace Nethermind.BeaconNode.Storage
 
             return new ValueTask<BeaconState?>(state);
         }
-
-        public async IAsyncEnumerable<Root> GetChildKeysAfterSlotAsync(Root parent, Slot slot)
-        {
-            await Task.CompletedTask;
-            IEnumerable<Root> childKeys = _blocks
-                .Where(kvp =>
-                    kvp.Value.ParentRoot.Equals(parent)
-                    && kvp.Value.Slot > slot)
-                .Select(kvp => kvp.Key);
-            foreach (Root childKey in childKeys)
-            {
-                yield return childKey;
-            }
-        }
-
+        
         public async IAsyncEnumerable<Root> GetChildKeysAsync(Root parent)
         {
             await Task.CompletedTask;
-            IEnumerable<Root> childKeys = _blocks
+            IEnumerable<Root> childKeys = _signedBlocks
                 .Where(kvp =>
-                    kvp.Value.ParentRoot.Equals(parent))
+                    kvp.Value.Message.ParentRoot.Equals(parent))
                 .Select(kvp => kvp.Key);
             foreach (Root childKey in childKeys)
             {
@@ -157,7 +143,7 @@ namespace Nethermind.BeaconNode.Storage
         }
 
         public async Task InitializeForkChoiceStoreAsync(ulong time, ulong genesisTime, Checkpoint justifiedCheckpoint,
-            Checkpoint finalizedCheckpoint, Checkpoint bestJustifiedCheckpoint, IDictionary<Root, BeaconBlock> blocks,
+            Checkpoint finalizedCheckpoint, Checkpoint bestJustifiedCheckpoint, IDictionary<Root, SignedBeaconBlock> signedBlocks,
             IDictionary<Root, BeaconState> states,
             IDictionary<Checkpoint, BeaconState> checkpointStates)
         {
@@ -173,9 +159,9 @@ namespace Nethermind.BeaconNode.Storage
             JustifiedCheckpoint = justifiedCheckpoint;
             FinalizedCheckpoint = finalizedCheckpoint;
             BestJustifiedCheckpoint = bestJustifiedCheckpoint;
-            foreach (KeyValuePair<Root, BeaconBlock> kvp in blocks)
+            foreach (KeyValuePair<Root, SignedBeaconBlock> kvp in signedBlocks)
             {
-                await SetBlockAsync(kvp.Key, kvp.Value);
+                await SetSignedBlockAsync(kvp.Key, kvp.Value);
             }
 
             foreach (KeyValuePair<Root, BeaconState> kvp in states)
@@ -197,19 +183,17 @@ namespace Nethermind.BeaconNode.Storage
             return Task.CompletedTask;
         }
 
-        public async Task SetBlockAsync(Root blockHashTreeRoot, BeaconBlock beaconBlock)
+        public async Task SetSignedBlockAsync(Root blockHashTreeRoot, SignedBeaconBlock signedBeaconBlock)
         {
-            _blocks[blockHashTreeRoot] = beaconBlock;
+            _signedBlocks[blockHashTreeRoot] = signedBeaconBlock;
             if (_inMemoryConfigurationOptions.CurrentValue.LogBlockJson)
             {
                 string logDirectoryPath = GetLogDirectory();
-                string fileName = string.Format("block{0:0000}_{1}.json", (int) beaconBlock.Slot, blockHashTreeRoot);
+                string fileName = string.Format("block{0:0000}_{1}.json", (int) signedBeaconBlock.Message.Slot, blockHashTreeRoot);
                 string path = _fileSystem.Path.Combine(logDirectoryPath, fileName);
-                using (Stream fileStream = _fileSystem.File.OpenWrite(path))
-                {
-                    await JsonSerializer.SerializeAsync(fileStream, beaconBlock, _jsonSerializerOptions)
-                        .ConfigureAwait(false);
-                }
+                await using Stream fileStream = _fileSystem.File.OpenWrite(path);
+                await JsonSerializer.SerializeAsync(fileStream, signedBeaconBlock, _jsonSerializerOptions)
+                    .ConfigureAwait(false);
             }
         }
 
@@ -221,11 +205,9 @@ namespace Nethermind.BeaconNode.Storage
                 string logDirectoryPath = GetLogDirectory();
                 string fileName = string.Format("state{0:0000}_{1}.json", (int) beaconState.Slot, blockHashTreeRoot);
                 string path = _fileSystem.Path.Combine(logDirectoryPath, fileName);
-                using (Stream fileStream = _fileSystem.File.OpenWrite(path))
-                {
-                    await JsonSerializer.SerializeAsync(fileStream, beaconState, _jsonSerializerOptions)
-                        .ConfigureAwait(false);
-                }
+                await using Stream fileStream = _fileSystem.File.OpenWrite(path);
+                await JsonSerializer.SerializeAsync(fileStream, beaconState, _jsonSerializerOptions)
+                    .ConfigureAwait(false);
             }
         }
 

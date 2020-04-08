@@ -247,6 +247,7 @@ namespace Nethermind.BeaconNode
 
             BeaconBlock anchorBlock = new BeaconBlock(anchorState.Slot, anchorState.LatestBlockHeader.ParentRoot,
                 stateRoot, BeaconBlockBody.Zero);
+            SignedBeaconBlock signedAnchorBlock = new SignedBeaconBlock(anchorBlock, BlsSignature.Zero);
 
             Root anchorRoot = _cryptographyService.HashTreeRoot(anchorBlock);
             Epoch anchorEpoch = _beaconStateAccessor.GetCurrentEpoch(anchorState);
@@ -257,9 +258,9 @@ namespace Nethermind.BeaconNode
                 Log.CreateGenesisStore(_logger, anchorState.Fork, anchorRoot, anchorState.GenesisTime, anchorState,
                     anchorBlock, justifiedCheckpoint, null);
 
-            Dictionary<Root, BeaconBlock> blocks = new Dictionary<Root, BeaconBlock>
+            Dictionary<Root, SignedBeaconBlock> signedBlocks = new Dictionary<Root, SignedBeaconBlock>
             {
-                [anchorRoot] = anchorBlock
+                [anchorRoot] = signedAnchorBlock
             };
             Dictionary<Root, BeaconState> blockStates = new Dictionary<Root, BeaconState>
             {
@@ -276,7 +277,7 @@ namespace Nethermind.BeaconNode
                 justifiedCheckpoint,
                 finalizedCheckpoint,
                 justifiedCheckpoint,
-                blocks,
+                signedBlocks,
                 blockStates,
                 checkpointStates);
         }
@@ -406,7 +407,7 @@ namespace Nethermind.BeaconNode
             }
 
             // Add new block to the store
-            await store.SetBlockAsync(blockRoot, block).ConfigureAwait(false);
+            await store.SetSignedBlockAsync(blockRoot, signedBlock).ConfigureAwait(false);
 
             // Check that block is later than the finalized epoch slot (optimization to reduce calls to get_ancestor)
             Slot finalizedSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(store.FinalizedCheckpoint.Epoch);
