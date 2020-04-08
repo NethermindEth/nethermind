@@ -26,13 +26,13 @@ namespace Nethermind.BeaconNode.Storage
     {
         public async Task<Root> GetAncestorAsync(IStore store, Root root, Slot slot)
         {
-            BeaconBlock block = await store.GetBlockAsync(root).ConfigureAwait(false);
+            SignedBeaconBlock signedBlock = await store.GetSignedBlockAsync(root).ConfigureAwait(false);
 
-            if (block.Slot > slot)
+            if (signedBlock.Message.Slot > slot)
             {
-                return await GetAncestorAsync(store, block.ParentRoot, slot).ConfigureAwait(false);
+                return await GetAncestorAsync(store, signedBlock.Message.ParentRoot, slot).ConfigureAwait(false);
             }
-            else if (block.Slot == slot)
+            else if (signedBlock.Message.Slot == slot)
             {
                 return root;
             }

@@ -286,10 +286,12 @@ namespace Nethermind.BeaconNode.Test
             IStore mockStore = Substitute.For<IStore>();
             Root root = new Root(Enumerable.Repeat((byte) 0x12, 32).ToArray());
             Checkpoint checkpoint = new Checkpoint(Epoch.Zero, root);
-            BeaconBlock block = new BeaconBlock(current, Root.Zero, Root.Zero, BeaconBlockBody.Zero);
+            SignedBeaconBlock signedBlock =
+                new SignedBeaconBlock(new BeaconBlock(current, Root.Zero, Root.Zero, BeaconBlockBody.Zero),
+                    BlsSignature.Zero);
             var state = TestState.Create(slot: current, finalizedCheckpoint: checkpoint);
             mockStore.GetHeadAsync().Returns(root);
-            mockStore.GetBlockAsync(root).Returns(block);
+            mockStore.GetSignedBlockAsync(root).Returns(signedBlock);
             mockStore.GetBlockStateAsync(root).Returns(state);
             mockStore.IsInitialized.Returns(true);
             mockStore.JustifiedCheckpoint.Returns(checkpoint);
@@ -329,10 +331,12 @@ namespace Nethermind.BeaconNode.Test
             IStore mockStore = Substitute.For<IStore>();
             Root root = new Root(Enumerable.Repeat((byte) 0x12, 32).ToArray());
             Checkpoint checkpoint = new Checkpoint(Epoch.Zero, root);
-            BeaconBlock block = new BeaconBlock(current, Root.Zero, Root.Zero, BeaconBlockBody.Zero);
+            SignedBeaconBlock signedBlock =
+                new SignedBeaconBlock(new BeaconBlock(current, Root.Zero, Root.Zero, BeaconBlockBody.Zero),
+                    BlsSignature.Zero);
             BeaconState state = TestState.Create(slot: current, finalizedCheckpoint: checkpoint);
             mockStore.GetHeadAsync().Returns(root);
-            mockStore.GetBlockAsync(root).Returns(block);
+            mockStore.GetSignedBlockAsync(root).Returns(signedBlock);
             mockStore.GetBlockStateAsync(root).Returns(state);
             mockStore.IsInitialized.Returns(true);
             mockStore.JustifiedCheckpoint.Returns(checkpoint);

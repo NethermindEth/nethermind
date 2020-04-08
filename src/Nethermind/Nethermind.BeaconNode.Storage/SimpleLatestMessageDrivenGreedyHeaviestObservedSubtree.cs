@@ -52,7 +52,7 @@ namespace Nethermind.BeaconNode.Storage
         public async Task<bool> FilterBlockTreeAsync(IStore store, Root blockRoot,
             IDictionary<Root, BeaconBlock> blocks)
         {
-            BeaconBlock beaconBlock = await store.GetBlockAsync(blockRoot).ConfigureAwait(false);
+            SignedBeaconBlock signedBeaconBlock = await store.GetSignedBlockAsync(blockRoot).ConfigureAwait(false);
 
             // If any children branches contain expected finalized/justified checkpoints,
             // add to filtered block-tree and signal viability to parent.
@@ -70,7 +70,7 @@ namespace Nethermind.BeaconNode.Storage
             {
                 if (anyChildResult)
                 {
-                    blocks[blockRoot] = beaconBlock;
+                    blocks[blockRoot] = signedBeaconBlock.Message;
                 }
 
                 return anyChildResult;
@@ -87,7 +87,7 @@ namespace Nethermind.BeaconNode.Storage
             // If expected finalized/justified, add to viable block-tree and signal viability to parent.
             if (correctJustified && correctFinalized)
             {
-                blocks[blockRoot] = beaconBlock;
+                blocks[blockRoot] = signedBeaconBlock.Message;
                 return true;
             }
 
@@ -157,9 +157,9 @@ namespace Nethermind.BeaconNode.Storage
             BeaconState state = (await store.GetCheckpointStateAsync(justifiedCheckpoint, true).ConfigureAwait(false))!;
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             IList<ValidatorIndex> activeIndexes = _beaconStateAccessor.GetActiveValidatorIndices(state, currentEpoch);
-            BeaconBlock rootBlock = await store.GetBlockAsync(root).ConfigureAwait(false);
+            SignedBeaconBlock rootBlock = await store.GetSignedBlockAsync(root).ConfigureAwait(false);
 
-            Slot rootSlot = rootBlock!.Slot;
+            Slot rootSlot = rootBlock!.Message.Slot;
             Gwei balance = Gwei.Zero;
             foreach (ValidatorIndex index in activeIndexes)
             {

@@ -33,7 +33,7 @@ namespace Nethermind.Core2
         ulong Time { get; }
 
         Task<Root> GetAncestorAsync(Root root, Slot slot);
-        ValueTask<BeaconBlock> GetBlockAsync(Root blockRoot);
+        ValueTask<SignedBeaconBlock> GetSignedBlockAsync(Root blockRoot);
         ValueTask<BeaconState> GetBlockStateAsync(Root blockRoot);
         ValueTask<BeaconState?> GetCheckpointStateAsync(Checkpoint checkpoint, bool throwIfMissing);
         IAsyncEnumerable<Root> GetChildKeysAsync(Root parent);

@@ -112,7 +112,7 @@ namespace Nethermind.BeaconNode
                 if (_store.IsInitialized)
                 {
                     Root head = await _forkChoice.GetHeadAsync(_store).ConfigureAwait(false);
-                    BeaconBlock block = await _store.GetBlockAsync(head).ConfigureAwait(false);
+                    BeaconBlock block = (await _store.GetSignedBlockAsync(head).ConfigureAwait(false)).Message;
                     currentSlot = block.Slot;
                 }
 

@@ -92,14 +92,14 @@ namespace Nethermind.BeaconNode.Storage
             return await _storeAccessor.GetAncestorAsync(this, root, slot).ConfigureAwait(false);
         }
 
-        public ValueTask<BeaconBlock> GetBlockAsync(Root blockRoot)
+        public ValueTask<SignedBeaconBlock> GetSignedBlockAsync(Root blockRoot)
         {
             if (!_signedBlocks.TryGetValue(blockRoot, out SignedBeaconBlock? signedBeaconBlock))
             {
                 throw new ArgumentOutOfRangeException(nameof(blockRoot), blockRoot, "Block not found in store.");
             }
 
-            return new ValueTask<BeaconBlock>(signedBeaconBlock!.Message);
+            return new ValueTask<SignedBeaconBlock>(signedBeaconBlock!);
         }
 
         public ValueTask<BeaconState> GetBlockStateAsync(Root blockRoot)

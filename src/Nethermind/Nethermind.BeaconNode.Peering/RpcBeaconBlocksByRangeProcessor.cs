@@ -66,7 +66,7 @@ namespace Nethermind.BeaconNode.Peering
                     while (slot >= rpcMessage.Content.StartSlot)
                     {
                         root = await _forkChoice.GetAncestorAsync(_store, root, slot);
-                        BeaconBlock block = await _store.GetBlockAsync(root);
+                        BeaconBlock block = (await _store.GetSignedBlockAsync(root)).Message;
                         if (block.Slot == slot)
                         {
                             blocks.Push(block);

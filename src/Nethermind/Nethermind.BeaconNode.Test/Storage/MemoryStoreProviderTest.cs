@@ -74,10 +74,10 @@ namespace Nethermind.BeaconNode.Test.Storage
             Root block1Root = await forkChoice.GetAncestorAsync(store, block2Root, Slot.One);
             Root genesisRoot = await forkChoice.GetAncestorAsync(store, block1Root, Slot.Zero);
 
-            BeaconBlock headBlock = await store.GetBlockAsync(headRoot);
-            BeaconBlock block2 = await store.GetBlockAsync(block2Root);
-            BeaconBlock block1 = await store.GetBlockAsync(block1Root);
-            BeaconBlock genesisBlock = await store.GetBlockAsync(genesisRoot);
+            BeaconBlock headBlock = (await store.GetSignedBlockAsync(headRoot)).Message;
+            BeaconBlock block2 = (await store.GetSignedBlockAsync(block2Root)).Message;
+            BeaconBlock block1 = (await store.GetSignedBlockAsync(block1Root)).Message;
+            BeaconBlock genesisBlock = (await store.GetSignedBlockAsync(genesisRoot)).Message;
 
             BeaconState headState= await store.GetBlockStateAsync(headRoot);
             BeaconState block2State = await store.GetBlockStateAsync(block2Root);

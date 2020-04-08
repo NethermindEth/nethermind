@@ -180,7 +180,7 @@ namespace Nethermind.BeaconNode
             }
 
             // Attestations target be for a known block. If target block is unknown, delay consideration until the block is found
-            BeaconBlock targetBlock = await store.GetBlockAsync(target.Root).ConfigureAwait(false);
+            BeaconBlock targetBlock = (await store.GetSignedBlockAsync(target.Root).ConfigureAwait(false)).Message;
 
             // Attestations cannot be from future epochs. If they are, delay consideration until the epoch arrives
             BeaconState targetStoredState = await store.GetBlockStateAsync(target.Root).ConfigureAwait(false);
@@ -194,7 +194,7 @@ namespace Nethermind.BeaconNode
 
             // Attestations must be for a known block. If block is unknown, delay consideration until the block is found
             BeaconBlock attestationBlock =
-                await store.GetBlockAsync(attestation.Data.BeaconBlockRoot).ConfigureAwait(false);
+                (await store.GetSignedBlockAsync(attestation.Data.BeaconBlockRoot).ConfigureAwait(false)).Message;
 
             // Attestations must not be for blocks in the future. If not, the attestation should not be considered
             if (attestationBlock.Slot > attestation.Data.Slot)
