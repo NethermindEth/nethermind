@@ -21,6 +21,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.FastSync;
+using Nethermind.Blockchain.Synchronization.TotalSync;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -58,8 +59,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             var stats = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
             _pool = new EthSyncPeerPool(_blockTree, stats, 25, LimboLogs.Instance);
-            _synchronizer = new Synchronizer(MainNetSpecProvider.Instance, _blockTree, NullReceiptStorage.Instance, blockValidator, sealValidator, _pool, quickConfig, Substitute.For<INodeDataDownloader>(), Substitute.For<INodeStatsManager>(), LimboLogs.Instance);
-            _syncServer = new SyncServer(_stateDb, _codeDb, _blockTree, _receiptStorage, blockValidator, sealValidator, _pool, _synchronizer, quickConfig, LimboLogs.Instance);
+            SyncConfig syncConfig = new SyncConfig();
+            SyncProgressResolver resolver = new SyncProgressResolver(_blockTree, _receiptStorage, _stateDb, syncConfig, LimboLogs.Instance);
+            SyncModeSelector syncModeSelector = new SyncModeSelector(resolver, _pool, syncConfig, LimboLogs.Instance);
+            _synchronizer = new Synchronizer(MainNetSpecProvider.Instance, _blockTree, NullReceiptStorage.Instance, blockValidator, sealValidator, _pool, quickConfig, Substitute.For<INodeDataFeed>(), Substitute.For<ISyncExecutor<StateSyncBatch>>(), Substitute.For<INodeStatsManager>(), syncModeSelector, LimboLogs.Instance);
+            _syncServer = new SyncServer(_stateDb, _codeDb, _blockTree, _receiptStorage, blockValidator, sealValidator, _pool, syncModeSelector, _synchronizer, quickConfig, LimboLogs.Instance);
         }
 
         [TearDown]

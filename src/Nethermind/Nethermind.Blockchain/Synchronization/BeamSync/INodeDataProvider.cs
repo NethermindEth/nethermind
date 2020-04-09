@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Blockchain.Synchronization.TotalSync;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Synchronization.BeamSync
@@ -27,6 +28,6 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
 
         DataConsumerRequest[] PrepareRequests();
         
-        int HandleResponse(DataConsumerRequest request, byte[][] data);
+        SyncBatchResponseHandlingResult HandleResponse(DataConsumerRequest request, byte[][] data);
     }
 }

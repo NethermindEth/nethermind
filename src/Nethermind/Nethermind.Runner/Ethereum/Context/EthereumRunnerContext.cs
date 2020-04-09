@@ -93,6 +93,7 @@ namespace Nethermind.Runner.Ethereum.Context
         public IReceiptFinder? ReceiptFinder { get; set; }
         public IEthereumEcdsa? EthereumEcdsa { get; set; }
         public IEthSyncPeerPool? SyncPeerPool { get; set; }
+        public ISyncModeSelector? SyncModeSelector { get; set; }
         public ISynchronizer? Synchronizer { get; set; }
         public ISyncServer? SyncServer { get; set; }
         public IKeyStore? KeyStore { get; set; }

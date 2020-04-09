@@ -20,6 +20,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization.TotalSync;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -30,7 +32,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Blockchain.Synchronization.FastSync
 {
-    public class NodeDataFeed : INodeDataFeed
+    public class NodeDataFeed : SyncFeed<StateSyncBatch>, INodeDataFeed
     {
         private const int MaxRequestSize = 384;
 
@@ -403,7 +405,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
         private HashSet<Keccak> _codesSameAsNodes = new HashSet<Keccak>();
 
-        public (NodeDataHandlerResult Result, int NodesConsumed) HandleResponse(StateSyncBatch batch)
+        public override SyncBatchResponseHandlingResult HandleResponse(StateSyncBatch batch)
         {
             int requestLength = batch.RequestedNodes?.Length ?? 0;
             int responseLength = batch.Responses?.Length ?? 0;
@@ -429,14 +431,12 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                     _handleWatch.Restart();
 
                     bool requestWasMade = batch.AssignedPeer?.Current != null;
-                    NodeDataHandlerResult result;
                     if (!requestWasMade)
                     {
                         AddAgainAllItems();
                         if (_logger.IsTrace) _logger.Trace($"Batch was not assigned to any peer.");
                         Interlocked.Increment(ref _notAssignedCount);
-                        result = NodeDataHandlerResult.NotAssigned;
-                        return (result, 0);
+                        return SyncBatchResponseHandlingResult.NotAssigned;
                     }
 
                     bool isMissingRequestData = batch.RequestedNodes == null;
@@ -448,8 +448,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                         AddAgainAllItems();
                         if (_logger.IsDebug) _logger.Debug($"Batch response had invalid format");
                         Interlocked.Increment(ref _invalidFormatCount);
-                        result = NodeDataHandlerResult.InvalidFormat;
-                        return (result, 0);
+                        return SyncBatchResponseHandlingResult.InvalidFormat;
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"Received node data - {responseLength} items in response to {requestLength}");
@@ -532,8 +531,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                     if (isEmpty)
                     {
                         if (_logger.IsDebug) _logger.Debug($"Peer sent no data in response to a request of length {batch.RequestedNodes.Length}");
-                        result = NodeDataHandlerResult.NoData;
-                        return (result, 0);
+                        return SyncBatchResponseHandlingResult.NoData;
                     }
 
                     if (!isEmptish && !isBadQuality)
@@ -541,11 +539,11 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                         Interlocked.Increment(ref _okCount);
                     }
 
-                    result = isEmptish
-                        ? NodeDataHandlerResult.Emptish
+                    SyncBatchResponseHandlingResult result = isEmptish
+                        ? SyncBatchResponseHandlingResult.Emptish
                         : isBadQuality
-                            ? NodeDataHandlerResult.BadQuality
-                            : NodeDataHandlerResult.OK;
+                            ? SyncBatchResponseHandlingResult.BadQuality
+                            : SyncBatchResponseHandlingResult.OK;
 
                     TimeSpan sinceLastReport = DateTime.UtcNow - _lastReportTime.small;
                     if (sinceLastReport > TimeSpan.FromSeconds(1))
@@ -591,7 +589,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                     _lastDbReads = _dbChecks;
                     _averageTimeInHandler = (_averageTimeInHandler * (ProcessedRequestsCount - 1) + _handleWatch.ElapsedMilliseconds) / ProcessedRequestsCount;
                     Interlocked.Add(ref _handledNodesCount, nonEmptyResponses);
-                    return (result, nonEmptyResponses);
+                    return result;
                 }
             }
             finally
@@ -603,6 +601,8 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                 }
             }
         }
+
+        public override bool IsMultiFeed => true;
 
         private void HandleTrieNode(StateSyncItem currentStateSyncItem, byte[] currentResponseItem, ref int invalidNodes)
         {
@@ -810,7 +810,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             if (_logger.IsInfo) _logger.Info(reviewMessage);
         }
 
-        public StateSyncBatch PrepareRequest()
+        public override async Task<StateSyncBatch> PrepareRequest()
         {
             if (_rootNode == Keccak.EmptyTreeHash)
             {

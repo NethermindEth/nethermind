@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization.TotalSync;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -261,7 +262,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             return request;
         }
 
-        public int HandleResponse(DataConsumerRequest request, byte[][] data)
+        public SyncBatchResponseHandlingResult HandleResponse(DataConsumerRequest request, byte[][] data)
         {
             if (request.ConsumerId != _consumerId)
             {
@@ -301,7 +302,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             }
 
             _autoReset.Set();
-            return consumed;
+            return consumed == 0 ? SyncBatchResponseHandlingResult.NoData : SyncBatchResponseHandlingResult.OK;
         }
 
         private AutoResetEvent _autoReset = new AutoResetEvent(true);

@@ -27,7 +27,7 @@ namespace Nethermind.Blockchain.Synchronization.TotalSync
         SyncBatchResponseHandlingResult HandleResponse(T response);
         
         /// <summary>
-        /// Multifeeds can prepare and handle multiple requests concurrently.
+        /// Multifeed can prepare and handle multiple requests concurrently.
         /// </summary>
         bool IsMultiFeed { get; }
         void Activate();

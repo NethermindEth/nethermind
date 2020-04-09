@@ -36,6 +36,7 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
         private readonly IEthSyncPeerPool _pool;
+        private readonly ISyncModeSelector _syncModeSelector;
         private readonly IReceiptFinder _receiptFinder;
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
@@ -47,11 +48,23 @@ namespace Nethermind.Blockchain.Synchronization
         private LruCache<Keccak, object> _recentlySuggested = new LruCache<Keccak, object>(128);
         private long _pivotNumber;
 
-        public SyncServer(ISnapshotableDb stateDb, ISnapshotableDb codeDb, IBlockTree blockTree, IReceiptFinder receiptFinder, IBlockValidator blockValidator, ISealValidator sealValidator, IEthSyncPeerPool pool, ISynchronizer synchronizer, ISyncConfig syncConfig, ILogManager logManager)
+        public SyncServer(
+            ISnapshotableDb stateDb,
+            ISnapshotableDb codeDb,
+            IBlockTree blockTree,
+            IReceiptFinder receiptFinder,
+            IBlockValidator blockValidator,
+            ISealValidator sealValidator,
+            IEthSyncPeerPool pool,
+            ISyncModeSelector syncModeSelector,
+            ISynchronizer synchronizer,
+            ISyncConfig syncConfig,
+            ILogManager logManager)
         {
             _synchronizer = synchronizer ?? throw new ArgumentNullException(nameof(synchronizer));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
+            _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
@@ -149,7 +162,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             ValidateSeal(block, peerInfo);
-            if (_synchronizer.SyncMode == SyncMode.Full)
+            if (_syncModeSelector.Current == SyncMode.Full)
             {
                 LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
                 SyncBlock(block, peerInfo);

@@ -49,7 +49,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             syncConfig.FastBlocks = fastBlocks;
             syncConfig.FastSync = fastSync;
             
-            SyncReport syncReport = new SyncReport(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<ISyncProgressResolver>(), selector,  LimboLogs.Instance, 10);
+            SyncReport syncReport = new SyncReport(pool, Substitute.For<INodeStatsManager>(), selector,  syncConfig, LimboLogs.Instance, 10);
             selector.Current.Returns((ci) => _syncModes.Count > 0 ? _syncModes.Dequeue() : SyncMode.WaitForProcessor);
             Thread.Sleep(200);
             syncReport.FastBlocksHeaders.MarkEnd();

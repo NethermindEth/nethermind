@@ -22,6 +22,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.FastSync;
+using Nethermind.Blockchain.Synchronization.TotalSync;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.DataMarketplace.Core.Configs;
@@ -57,12 +58,14 @@ namespace Nethermind.Runner.Ethereum.Steps
         private readonly EthereumRunnerContext _context;
         private ILogger _logger;
         private INetworkConfig _networkConfig;
+        private ISyncConfig _syncConfig;
 
         public InitializeNetwork(EthereumRunnerContext context)
         {
             _context = context;
             _logger = _context.LogManager.GetClassLogger();
             _networkConfig = _context.Config<INetworkConfig>();
+            _syncConfig = _context.Config<ISyncConfig>();
         }
 
         public async Task Execute()
@@ -93,9 +96,25 @@ namespace Nethermind.Runner.Ethereum.Steps
             int maxPeersCount = _networkConfig.ActivePeersMaxCount;
             _context.SyncPeerPool = new EthSyncPeerPool(_context.BlockTree, _context.NodeStatsManager, maxPeersCount, _context.LogManager);
             _context.DisposeStack.Push(_context.SyncPeerPool);
-            NodeDataFeed feed = new NodeDataFeed(_context.DbProvider.CodeDb, _context.DbProvider.StateDb, _context.LogManager);
-            NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_context.SyncPeerPool, feed, _context.NodeDataConsumer, _context.LogManager);
-            _context.Synchronizer = new Synchronizer(_context.SpecProvider, _context.BlockTree, _context.ReceiptStorage, _context.BlockValidator, _context.SealValidator, _context.SyncPeerPool, _context.Config<ISyncConfig>(), nodeDataDownloader, _context.NodeStatsManager, _context.LogManager);
+
+            INodeDataFeed nodeDataFeed = new NodeDataFeed(_context.DbProvider.CodeDb, _context.DbProvider.StateDb, new MemDb(), _context.LogManager);
+            NodeDataSyncExecutor nodeDataSyncExecutor = new NodeDataSyncExecutor(nodeDataFeed, _context.SyncPeerPool, new NodeDataSyncSelectionStrategyFactory(), _context.LogManager);
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_context.BlockTree, _context.ReceiptStorage, _context.DbProvider.StateDb, _syncConfig, _context.LogManager);
+            _context.SyncModeSelector = new SyncModeSelector(syncProgressResolver, _context.SyncPeerPool, _syncConfig, _context.LogManager);
+            _context.Synchronizer = new Synchronizer(
+                _context.SpecProvider,
+                _context.BlockTree,
+                _context.ReceiptStorage,
+                _context.BlockValidator,
+                _context.SealValidator,
+                _context.SyncPeerPool,
+                _syncConfig,
+                nodeDataFeed,
+                nodeDataSyncExecutor,
+                _context.NodeStatsManager,
+                _context.SyncModeSelector,
+                _context.LogManager);
+                
             _context.DisposeStack.Push(_context.Synchronizer);
 
             _context.SyncServer = new SyncServer(
@@ -106,6 +125,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.BlockValidator,
                 _context.SealValidator,
                 _context.SyncPeerPool,
+                _context.SyncModeSelector,
                 _context.Synchronizer,
                 _context.Config<ISyncConfig>(),
                 _context.LogManager);
@@ -326,10 +346,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             await _context.StaticNodesManager.InitAsync();
 
             var dbName = "PeersDB";
-            IFullDb peersDb = initConfig.DiagnosticMode == DiagnosticMode.MemDb 
+            IFullDb peersDb = initConfig.DiagnosticMode == DiagnosticMode.MemDb
                 ? (IFullDb) new MemDb(dbName)
                 : new SimpleFilePublicKeyDb(dbName, PeersDbPath.GetApplicationResourcePath(initConfig.BaseDbPath), _context.LogManager);
-            
+
             NetworkStorage peerStorage = new NetworkStorage(peersDb, _context.LogManager);
 
             ProtocolValidator protocolValidator = new ProtocolValidator(_context.NodeStatsManager, _context.BlockTree, _context.LogManager);

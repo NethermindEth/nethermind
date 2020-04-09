@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.FastSync;
@@ -38,7 +39,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
                             "(both hash and value) to the node data feed but cannot yet been stored" +
                             "in the StateDb because we only store the nodes whose children are fully resolved." +
                             "Such a node should already be available for other state-related parts of the system.")]
-        public void Can_read_dependent_items_from_state_db_while_waiting_for_dependencies()
+        public async Task Can_read_dependent_items_from_state_db_while_waiting_for_dependencies()
         {
             StateDb codeDb = new StateDb();
             StateDb stateDB = new StateDb();
@@ -62,7 +63,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
 
             nodeDataFeed.SetNewStateRoot(0, branch.Keccak);
             
-            var request = nodeDataFeed.PrepareRequest();
+            var request = await nodeDataFeed.PrepareRequest();
             BuildRequestAndHandleResponse(branch, request, nodeDataFeed);
 
             byte[] value = tempDb.Get(branch.Keccak);
@@ -71,7 +72,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             byte[] valueFromState = stateDB.Get(branch.Keccak);
             valueFromState.Should().BeNull();
 
-            request = nodeDataFeed.PrepareRequest();
+            request = await nodeDataFeed.PrepareRequest();
             
             BuildRequestAndHandleResponse(leaf, request, nodeDataFeed);
             
@@ -82,7 +83,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             valueFromState.Should().BeEquivalentTo(branch.FullRlp);
         }
 
-        private static void BuildRequestAndHandleResponse(TrieNode node,  StateSyncBatch stateSyncBatch, NodeDataFeed nodeDataFeed)
+        private static void BuildRequestAndHandleResponse(TrieNode node, StateSyncBatch stateSyncBatch, NodeDataFeed nodeDataFeed)
         {
             stateSyncBatch.Responses = new[] {node.FullRlp};
             stateSyncBatch.AssignedPeer = new SyncPeerAllocation(new PeerInfo(Substitute.For<ISyncPeer>()));

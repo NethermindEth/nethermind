@@ -14,15 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Blockchain.Synchronization.FastSync
+using Nethermind.Blockchain.Synchronization.FastSync;
+
+namespace Nethermind.Blockchain.Synchronization.TotalSync
 {
-    public enum NodeDataHandlerResult
+    public class NodeDataSyncSelectionStrategyFactory : IPeerSelectionStrategyFactory<StateSyncBatch>
     {
-        OK,
-        NoData,
-        InvalidFormat,
-        NotAssigned,
-        BadQuality,
-        Emptish
+        public IPeerSelectionStrategy Create(StateSyncBatch request)
+        {
+            return BySpeedSelectionStrategy.Fastest;
+        }
     }
 }

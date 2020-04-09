@@ -41,8 +41,8 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
         private readonly ISyncConfig _syncConfig;
+        private readonly INodeDataFeed _nodeDataSyncFeed;
         private readonly IEthSyncPeerPool _syncPeerPool;
-        private readonly INodeDataDownloader _nodeDataDownloader;
         private readonly INodeStatsManager _nodeStatsManager;
         private readonly ILogManager _logManager;
         private readonly ISyncReport _syncReport;
@@ -55,27 +55,29 @@ namespace Nethermind.Blockchain.Synchronization
 
         private CancellationTokenSource _fullSyncCancellation = new CancellationTokenSource();
         private System.Timers.Timer _syncTimer;
-        private ISyncModeSelector _syncMode;
-        private Task _syncLoopTask;
 
         /* sync events are used mainly for managing sync peers reputation */
         public event EventHandler<SyncEventArgs> SyncEvent;
 
         private CancellationTokenSource _fastBlocksCancellation;
-        private SyncProgressResolver _syncProgressResolver;
+        private ISyncModeSelector _syncMode;
+        private ISyncExecutor<StateSyncBatch> _nodeDataSyncExecutor;
 
-        public Synchronizer(
-            ISpecProvider specProvider,
+        public Synchronizer(ISpecProvider specProvider,
             IBlockTree blockTree,
             IReceiptStorage receiptStorage,
             IBlockValidator blockValidator,
             ISealValidator sealValidator,
             IEthSyncPeerPool peerPool,
             ISyncConfig syncConfig,
-            INodeDataDownloader nodeDataDownloader,
+            INodeDataFeed stateSyncFeed,
+            ISyncExecutor<StateSyncBatch> nodeDataSyncExecutor,
             INodeStatsManager nodeStatsManager,
+            ISyncModeSelector syncModeSelector,
             ILogManager logManager)
         {
+            _syncMode = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
+            _nodeDataSyncExecutor = nodeDataSyncExecutor ?? throw new ArgumentNullException(nameof(nodeDataSyncExecutor));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -83,14 +85,12 @@ namespace Nethermind.Blockchain.Synchronization
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
+            _nodeDataSyncFeed = stateSyncFeed ?? throw new ArgumentNullException(nameof(stateSyncFeed));
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
-            _nodeDataDownloader = nodeDataDownloader ?? throw new ArgumentNullException(nameof(nodeDataDownloader));
             _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _logManager = logManager;
-
-            _syncProgressResolver = new SyncProgressResolver(_blockTree, receiptStorage, _nodeDataDownloader, syncConfig, logManager);
-            _syncMode = new SyncModeSelector(_syncProgressResolver, _syncPeerPool, _syncConfig, logManager);
-            _syncReport = new SyncReport(_syncPeerPool, _nodeStatsManager, syncConfig, _syncProgressResolver, _syncMode, logManager);
+            
+            _syncReport = new SyncReport(_syncPeerPool, _nodeStatsManager, _syncMode, syncConfig, logManager);
             _syncPeerPool.PeerAdded += (sender, args) => RequestSynchronization(SyncTriggerType.PeerAdded);
         }
 
@@ -106,24 +106,22 @@ namespace Nethermind.Blockchain.Synchronization
                 }
             });
         }
-
-        public SyncMode SyncMode => _syncMode.Current;
-
-        public event EventHandler<SyncModeChangedEventArgs> SyncModeChanged
-        {
-            add => _syncMode.Changed += value;
-            remove => _syncMode.Changed -= value;
-        }
-
+        
         public void Start()
         {
             // StartFullSyncComponents();
             if (_syncConfig.FastBlocks)
             {
                 StartFastSyncComponents();
+                StartStateSyncComponents();
             }
             
             StartSyncTimer();
+        }
+
+        private void StartStateSyncComponents()
+        {
+            
         }
 
         private void StartFastSyncComponents()
@@ -201,9 +199,8 @@ namespace Nethermind.Blockchain.Synchronization
 
             _fullSyncCancellation?.Cancel();
 
-            await (_syncLoopTask ?? Task.CompletedTask);
-
             if (_logger.IsInfo) _logger.Info("Sync stopped");
+            await Task.CompletedTask;
         }
 
         /// <summary>
@@ -232,7 +229,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             // do this depending on the SyncMode!
-            if (_syncProgressResolver.FindBestHeader() != 0)
+            if ((_blockTree.BestSuggestedHeader?.Number ?? 0) != 0)
             {
                 _fastSyncBlockDownloaderFeed?.Activate();
                 _fullSyncBlockDownloaderFeed?.Activate();
@@ -279,23 +276,23 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        private async Task<long> DownloadStateNodes(CancellationToken cancellation)
+        private void DownloadStateNodes(CancellationToken cancellation)
         {
             BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
             if (bestSuggested == null)
             {
-                return 0;
+                return;
             }
 
             if (_logger.IsInfo) _logger.Info($"Starting the node data sync from the {bestSuggested.ToString(BlockHeader.Format.Short)} {bestSuggested.StateRoot} root");
-            return await _nodeDataDownloader.SyncNodeData(cancellation, bestSuggested.Number, bestSuggested.StateRoot);
+            _nodeDataSyncFeed.SetNewStateRoot(bestSuggested.Number, bestSuggested.StateRoot);
+            _nodeDataSyncFeed.Activate();
         }
 
         public void Dispose()
         {
             _fastBlocksCancellation?.Cancel();
             _syncTimer?.Dispose();
-            _syncLoopTask?.Dispose();
             _fullSyncCancellation?.Dispose();
             _syncReport?.Dispose();
         }

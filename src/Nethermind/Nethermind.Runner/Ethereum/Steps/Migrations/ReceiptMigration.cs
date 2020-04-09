@@ -29,7 +29,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.Db.Rocks.Config;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
@@ -58,7 +57,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
         [NotNull]
         private IBlockTree? _blockTree;
         [NotNull]
-        private ISynchronizer? _synchronizer;
+        private ISyncModeSelector? _syncModeSelector;
         [NotNull]
         private IChainLevelInfoRepository? _chainLevelInfoRepository;
 
@@ -80,7 +79,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
             _dbProvider = _context.DbProvider ?? throw new StepDependencyException(nameof( _context.DbProvider));
             _disposeStack = _context.DisposeStack ?? throw new StepDependencyException(nameof(_context.DisposeStack));
             _blockTree = _context.BlockTree ?? throw new StepDependencyException(nameof(_context.BlockTree));
-            _synchronizer = _context.Synchronizer ?? throw new StepDependencyException(nameof(_context.Synchronizer));
+            _syncModeSelector = _context.SyncModeSelector ?? throw new StepDependencyException(nameof(_context.SyncModeSelector));
             _chainLevelInfoRepository = _context.ChainLevelInfoRepository ?? throw new StepDependencyException(nameof(_context.ChainLevelInfoRepository));
             
             var initConfig = _context.Config<IInitConfig>();
@@ -89,13 +88,13 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
             {
                 if (initConfig.ReceiptsMigration)
                 {
-                    if (CanMigrate(_synchronizer.SyncMode))
+                    if (CanMigrate(_syncModeSelector.Current))
                     {
                         RunMigration();
                     }
                     else
                     {
-                        _synchronizer.SyncModeChanged += SynchronizerOnSyncModeChanged;
+                        _syncModeSelector.Changed += OnSyncModeChanged;
                     }
                 }
                 else
@@ -118,12 +117,12 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
             }
         }
 
-        private void SynchronizerOnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
+        private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
         {
             if (CanMigrate(e.Current))
             {
                 RunMigration();
-                _synchronizer.SyncModeChanged -= SynchronizerOnSyncModeChanged;
+                _syncModeSelector.Changed -= OnSyncModeChanged;
             }
         }
 
@@ -268,7 +267,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
 
         private long MigrateToBlockNumber =>
             _receiptStorage.MigratedBlockNumber == long.MaxValue
-                ? _synchronizer.SyncMode == SyncMode.Full 
+                ? _syncModeSelector.Current == SyncMode.Full 
                     ? _blockTree.Head?.Number ?? 0
                     : _blockTree.BestKnownNumber
                 : _receiptStorage.MigratedBlockNumber - 1;

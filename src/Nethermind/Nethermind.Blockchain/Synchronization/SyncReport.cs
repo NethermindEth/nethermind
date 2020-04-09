@@ -27,7 +27,6 @@ namespace Nethermind.Blockchain.Synchronization
     {
         private readonly IEthSyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
-        private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly ILogger _logger;
 
@@ -44,12 +43,11 @@ namespace Nethermind.Blockchain.Synchronization
             set => _timer.Interval = value;
         }
 
-        public SyncReport(IEthSyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, ISyncProgressResolver syncProgressResolver, ISyncModeSelector syncModeSelector, ILogManager logManager, double tickTime = 1000)
+        public SyncReport(IEthSyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncModeSelector syncModeSelector, ISyncConfig syncConfig, ILogManager logManager, double tickTime = 1000)
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
-            _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _syncPeersReport = new SyncPeersReport(syncPeerPool, nodeStatsManager, logManager);
 

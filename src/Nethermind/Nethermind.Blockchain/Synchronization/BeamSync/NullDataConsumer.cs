@@ -16,6 +16,7 @@
 
 using System;
 using System.Threading;
+using Nethermind.Blockchain.Synchronization.TotalSync;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Synchronization.BeamSync
@@ -43,7 +44,7 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             return Array.Empty<DataConsumerRequest>();
         }
 
-        public int HandleResponse(DataConsumerRequest request, byte[][] data)
+        public SyncBatchResponseHandlingResult HandleResponse(DataConsumerRequest request, byte[][] data)
         {
             throw new InvalidOperationException("Should never receive response here");
         }

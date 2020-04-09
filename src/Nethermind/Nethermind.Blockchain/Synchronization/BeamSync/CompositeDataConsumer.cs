@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain.Synchronization.TotalSync;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 
@@ -63,15 +64,16 @@ namespace Nethermind.Blockchain.Synchronization.BeamSync
             return Array.Empty<DataConsumerRequest>();
         }
 
-        public int HandleResponse(DataConsumerRequest request, byte[][] data)
+        public SyncBatchResponseHandlingResult HandleResponse(DataConsumerRequest request, byte[][] data)
         {
-            int consumed = 0;
-            foreach (INodeDataConsumer nodeDataConsumer in _consumers)
-            {
-                consumed += nodeDataConsumer.HandleResponse(request, data);
-            }
-
-            return consumed;
+            // int consumed = 0;
+            // foreach (INodeDataConsumer nodeDataConsumer in _consumers)
+            // {
+            //     consumed += nodeDataConsumer.HandleResponse(request, data);
+            // }
+            //
+            // return consumed;
+            return SyncBatchResponseHandlingResult.OK;
         }
     }
 }

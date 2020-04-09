@@ -14,17 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Blockchain.Synchronization.TotalSync;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Synchronization.FastSync
 {
-    public interface INodeDataFeed
+    public interface INodeDataFeed : ISyncFeed<StateSyncBatch>
     {
-        StateSyncBatch PrepareRequest();
-        
         void SetNewStateRoot(long number, Keccak stateRoot);
-        
-        (NodeDataHandlerResult Result, int NodesConsumed) HandleResponse(StateSyncBatch syncBatch);
         
         bool IsFullySynced(Keccak stateRoot);
         

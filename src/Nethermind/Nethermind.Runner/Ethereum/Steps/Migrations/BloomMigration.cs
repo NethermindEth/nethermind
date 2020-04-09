@@ -68,13 +68,13 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
             {
                 if (_bloomConfig.Migration)
                 {
-                    if (CanMigrate(_context.Synchronizer.SyncMode))
+                    if (CanMigrate(_context.SyncModeSelector.Current))
                     {
                         RunBloomMigration();
                     }
                     else
                     {
-                        _context.Synchronizer.SyncModeChanged += SynchronizerOnSyncModeChanged;
+                        _context.SyncModeSelector.Changed += SynchronizerOnSyncModeChanged;
                     }
                 }
                 else
@@ -107,7 +107,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
             {
                 if (_context.Synchronizer == null) throw new StepDependencyException(nameof(_context.Synchronizer));
                 RunBloomMigration();
-                _context.Synchronizer.SyncModeChanged -= SynchronizerOnSyncModeChanged;
+                _context.SyncModeSelector.Changed -= SynchronizerOnSyncModeChanged;
             }
         }
 

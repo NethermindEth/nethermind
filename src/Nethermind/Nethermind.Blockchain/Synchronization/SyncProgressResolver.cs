@@ -18,27 +18,39 @@ using System;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    internal class SyncProgressResolver : ISyncProgressResolver
+    public class SyncProgressResolver : ISyncProgressResolver
     {
         private const int _maxLookup = 64;
 
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
-        private readonly INodeDataDownloader _nodeDataDownloader;
+        private readonly IDb _stateDb;
         private readonly ISyncConfig _syncConfig;
         private ILogger _logger;
 
-        public SyncProgressResolver(IBlockTree blockTree, IReceiptStorage receiptStorage, INodeDataDownloader nodeDataDownloader, ISyncConfig syncConfig, ILogManager logManager)
+        public SyncProgressResolver(IBlockTree blockTree, IReceiptStorage receiptStorage, IDb stateDb, ISyncConfig syncConfig, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-            _nodeDataDownloader = nodeDataDownloader ?? throw new ArgumentNullException(nameof(nodeDataDownloader));
+            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
+        }
+
+        private bool IsFullySynced(Keccak stateRoot)
+        {
+            if (stateRoot == Keccak.EmptyTreeHash)
+            {
+                return true;
+            }
+
+            return _stateDb.Get(stateRoot) != null;
         }
 
         public long FindBestFullState()
@@ -68,7 +80,7 @@ namespace Nethermind.Blockchain.Synchronization
                     break;
                 }
 
-                if (_nodeDataDownloader.IsFullySynced(bestSuggested))
+                if (IsFullySynced(bestSuggested.StateRoot))
                 {
                     bestFullState = bestSuggested.Number;
                     break;
@@ -88,22 +100,22 @@ namespace Nethermind.Blockchain.Synchronization
         {
             bool isFastBlocks = _syncConfig.FastBlocks;
             bool isBeamSync = _syncConfig.BeamSync;
-            
+
             if (!isFastBlocks)
             {
                 return true;
             }
-            
+
             if (_syncConfig.PivotNumberParsed == 0L)
             {
                 return true;
             }
-            
+
             bool anyHeaderDownloaded = (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= _syncConfig.PivotNumberParsed;
             bool allHeadersDownloaded = (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1;
             bool allReceiptsDownloaded = !_syncConfig.DownloadReceiptsInFastSync || (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) <= 1;
             bool allBodiesDownloaded = !_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1;
-            
+
             return allBodiesDownloaded && allHeadersDownloaded && allReceiptsDownloaded
                    || isBeamSync && anyHeaderDownloaded;
         }

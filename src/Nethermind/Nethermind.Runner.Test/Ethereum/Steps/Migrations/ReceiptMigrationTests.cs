@@ -56,7 +56,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
             configProvider.GetConfig<IInitConfig>().StoreReceipts.Returns(true);
             configProvider.GetConfig<IInitConfig>().ReceiptsMigration.Returns(true);
-            context.Synchronizer.SyncMode.Returns(SyncMode.Full);
+            context.SyncModeSelector.Current.Returns(SyncMode.Full);
 
             int txIndex = 0;
             for (int i = 1; i < chainLength; i++)
