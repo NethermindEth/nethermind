@@ -33,17 +33,17 @@ namespace Nethermind.Blockchain.Receipts
             Index = -1;
         }
 
-        public bool TryGetNext(out LogEntryRef current)
+        public bool TryGetNext(out LogEntryStructRef current)
         {
             if (_decoderContext.Position < _length)
             {
-                LogEntryDecoder.Instance.DecodeRef(ref _decoderContext, RlpBehaviors.None, out current);
+                LogEntryDecoder.Instance.DecodeStructRef(ref _decoderContext, RlpBehaviors.None, out current);
                 Index++;
                 return true;
             }
             else
             {
-                current = new LogEntryRef();
+                current = new LogEntryStructRef();
                 return false;
             }
         }

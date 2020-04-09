@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Filters.Topics
             return true;
         }
         
-        public bool Accepts(ref LogEntryRef entry)
+        public bool Accepts(ref LogEntryStructRef entry)
         {
             var iterator = new KeccaksIterator(entry.Topics);
             for (int i = 0; i < _expressions.Length; i++)
@@ -85,7 +85,7 @@ namespace Nethermind.Blockchain.Filters.Topics
             return result;
         }
         
-        public bool Matches(ref BloomRef bloom)
+        public bool Matches(ref BloomStructRef bloom)
         {
             bool result = true;
             

@@ -35,16 +35,16 @@ namespace Nethermind.Core
         public static LogEntry[] EmptyLogs = new LogEntry[0];
     }
     
-    public ref struct LogEntryRef
+    public ref struct LogEntryStructRef
     {
-        public LogEntryRef(AddressRef address, Span<byte> data, Span<byte> topics)
+        public LogEntryStructRef(AddressStructRef address, Span<byte> data, Span<byte> topics)
         {
             LoggersAddress = address;
             Data = data;
             Topics = topics;
         }
 
-        public AddressRef LoggersAddress;
+        public AddressStructRef LoggersAddress;
 
         /// <summary>
         /// Rlp encoded array of Keccak

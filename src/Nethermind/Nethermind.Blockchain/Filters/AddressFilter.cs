@@ -52,7 +52,7 @@ namespace Nethermind.Blockchain.Filters
             return Address == null || Address == address;
         }
         
-        public bool Accepts(ref AddressRef address)
+        public bool Accepts(ref AddressStructRef address)
         {
             if (Addresses != null)
             {
@@ -95,7 +95,7 @@ namespace Nethermind.Blockchain.Filters
             }
         }
 
-        public bool Matches(ref BloomRef bloom)
+        public bool Matches(ref BloomStructRef bloom)
         {
             if (Addresses != null)
             {

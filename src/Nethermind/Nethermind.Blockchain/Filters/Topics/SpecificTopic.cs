@@ -33,10 +33,10 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override bool Accepts(Keccak topic) => topic == _topic;
         
-        public override bool Accepts(ref KeccakRef topic) => topic == _topic;
+        public override bool Accepts(ref KeccakStructRef topic) => topic == _topic;
 
         public override bool Matches(Bloom bloom) => bloom.Matches(BloomExtract);
         
-        public override bool Matches(ref BloomRef bloom) => bloom.Matches(BloomExtract);
+        public override bool Matches(ref BloomStructRef bloom) => bloom.Matches(BloomExtract);
     }
 }

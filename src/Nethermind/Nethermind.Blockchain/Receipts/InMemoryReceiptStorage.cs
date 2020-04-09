@@ -25,9 +25,15 @@ namespace Nethermind.Blockchain.Receipts
 {
     public class InMemoryReceiptStorage : IReceiptStorage
     {
+        private readonly bool _allowReceiptIterator;
         private readonly ConcurrentDictionary<Keccak, TxReceipt[]> _receipts = new ConcurrentDictionary<Keccak, TxReceipt[]>();
         
         private readonly ConcurrentDictionary<Keccak, TxReceipt> _transactions = new ConcurrentDictionary<Keccak, TxReceipt>();
+
+        public InMemoryReceiptStorage(bool allowReceiptIterator = true)
+        {
+            _allowReceiptIterator = allowReceiptIterator;
+        }
 
         public Keccak FindBlockHash(Keccak txHash)
         {
@@ -46,10 +52,10 @@ namespace Nethermind.Blockchain.Receipts
         public bool CanGetReceiptsByHash(long blockNumber) => true;
         public bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator)
         {
-            if (_receipts.TryGetValue(blockHash, out var receipts))
+            if (_allowReceiptIterator && _receipts.TryGetValue(blockHash, out var receipts))
             {
 #pragma warning disable 618
-                iterator = ReceiptsIterator.Get(ReceiptStorageDecoder.Instance.Encode(receipts, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes, new MemDb());
+                iterator = new ReceiptsIterator(ReceiptStorageDecoder.Instance.Encode(receipts, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes, new MemDb());
 #pragma warning restore 618
                 return true;
             }

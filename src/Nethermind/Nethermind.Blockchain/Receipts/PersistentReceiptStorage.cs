@@ -166,7 +166,7 @@ namespace Nethermind.Blockchain.Receipts
         public bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator)
         {
             var result = CanGetReceiptsByHash(blockNumber);
-            iterator = result ? ReceiptsIterator.Get(_blocksDb.GetSpan(blockHash), _blocksDb) : new ReceiptsIterator();
+            iterator = result ? new ReceiptsIterator(_blocksDb.GetSpan(blockHash), _blocksDb) : new ReceiptsIterator();
             return result;
         }
 

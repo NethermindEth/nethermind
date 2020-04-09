@@ -46,7 +46,7 @@ namespace Nethermind.Core.Test.Encoding
             LogEntry logEntry = new LogEntry(TestItem.AddressA, new byte[] {1, 2, 3}, new[] {TestItem.KeccakA, TestItem.KeccakB});
             Rlp rlp = Rlp.Encode(logEntry);
             Rlp.ValueDecoderContext valueDecoderContext = new Rlp.ValueDecoderContext(rlp.Bytes);
-            LogEntryDecoder.Instance.DecodeRef(ref valueDecoderContext, RlpBehaviors.None, out var decoded);
+            LogEntryDecoder.Instance.DecodeStructRef(ref valueDecoderContext, RlpBehaviors.None, out var decoded);
 
             Assert.That(Bytes.AreEqual(logEntry.Data, decoded.Data), "data");
             Assert.That(logEntry.LoggersAddress == decoded.LoggersAddress, "address");

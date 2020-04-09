@@ -215,18 +215,18 @@ namespace Nethermind.Core
         }
     }
 
-    public ref struct BloomRef
+    public ref struct BloomStructRef
     {
         public const int BitLength = 2048;
         public const int ByteLength = BitLength / 8;
 
-        public BloomRef(LogEntry[] logEntries, Bloom blockBloom = null)
+        public BloomStructRef(LogEntry[] logEntries, Bloom blockBloom = null)
         {
             Bytes = new byte[ByteLength];
             Add(logEntries, blockBloom);
         }
 
-        public BloomRef(Span<byte> bytes)
+        public BloomStructRef(Span<byte> bytes)
         {
             Bytes = bytes;
         }
@@ -272,14 +272,14 @@ namespace Nethermind.Core
             // return stringBuilder.ToString();
         }
 
-        public static bool operator !=(BloomRef a, Bloom b) => !(a == b);
-        public static bool operator ==(BloomRef a, Bloom b) => a.Equals(b);
+        public static bool operator !=(BloomStructRef a, Bloom b) => !(a == b);
+        public static bool operator ==(BloomStructRef a, Bloom b) => a.Equals(b);
         
-        public static bool operator !=(Bloom a, BloomRef b) => !(a == b);
-        public static bool operator ==(Bloom a, BloomRef b) => b.Equals(a);
+        public static bool operator !=(Bloom a, BloomStructRef b) => !(a == b);
+        public static bool operator ==(Bloom a, BloomStructRef b) => b.Equals(a);
         
-        public static bool operator !=(BloomRef a, BloomRef b) => !(a == b);
-        public static bool operator ==(BloomRef a, BloomRef b) => a.Equals(b);
+        public static bool operator !=(BloomStructRef a, BloomStructRef b) => !(a == b);
+        public static bool operator ==(BloomStructRef a, BloomStructRef b) => a.Equals(b);
 
 
         public bool Equals(Bloom other)
@@ -288,7 +288,7 @@ namespace Nethermind.Core
             return Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
         }
         
-        public bool Equals(BloomRef other)
+        public bool Equals(BloomStructRef other)
         {
             return Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
         }
@@ -297,7 +297,7 @@ namespace Nethermind.Core
         public override bool Equals(object obj)
         {
             if (ReferenceEquals(null, obj)) return false;
-            if (obj.GetType() != typeof(BloomRef)) return false;
+            if (obj.GetType() != typeof(BloomStructRef)) return false;
             return Equals((Bloom) obj);
         }
 
@@ -321,7 +321,7 @@ namespace Nethermind.Core
             }
         }
 
-        public void Accumulate(BloomRef bloom)
+        public void Accumulate(BloomStructRef bloom)
         {
             Bytes.Or(bloom.Bytes);
         }

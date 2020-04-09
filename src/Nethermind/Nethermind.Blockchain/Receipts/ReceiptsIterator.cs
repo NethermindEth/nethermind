@@ -28,30 +28,23 @@ namespace Nethermind.Blockchain.Receipts
         private readonly int _length;
         private Rlp.ValueDecoderContext _decoderContext;
 
-        public static ReceiptsIterator Get(in Span<byte> receiptsData, IDbWithSpan blocksDb)
+        public ReceiptsIterator(in Span<byte> receiptsData, IDbWithSpan blocksDb)
         {
-            var decoderContext = new Rlp.ValueDecoderContext(receiptsData);
-            int length = decoderContext.ReadSequenceLength();
-            return new ReceiptsIterator(receiptsData.Slice(decoderContext.Position, length), blocksDb, length);
-        }
-
-        public ReceiptsIterator(in Span<byte> receiptsData, IDbWithSpan blocksDb, int length)
-        {
-            _blocksDb = blocksDb;
-            _length = length;
             _decoderContext = new Rlp.ValueDecoderContext(receiptsData);
+            _blocksDb = blocksDb;
+            _length = _decoderContext.ReadSequenceLength();;
         }
 
-        public bool TryGetNext(out TxReceiptRef current)
+        public bool TryGetNext(out TxReceiptStructRef current)
         {
             if (_decoderContext.Position < _length)
             {
-                ReceiptStorageDecoder.Instance.DecodeRef(ref _decoderContext, RlpBehaviors.Storage, out current);
+                ReceiptStorageDecoder.Instance.DecodeStructRef(ref _decoderContext, RlpBehaviors.Storage, out current);
                 return true;
             }
             else
             {
-                current = new TxReceiptRef();
+                current = new TxReceiptStructRef();
                 return false;
             }
         }
@@ -59,6 +52,7 @@ namespace Nethermind.Blockchain.Receipts
         public void Reset()
         {
             _decoderContext.Position = 0;
+            _decoderContext.ReadSequenceLength();
         }
 
         public void Dispose()

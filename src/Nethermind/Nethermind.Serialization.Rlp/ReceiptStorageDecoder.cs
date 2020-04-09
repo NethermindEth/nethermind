@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -302,9 +303,9 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
         }
 
-        public void DecodeRef(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors, out TxReceiptRef item)
+        public void DecodeStructRef(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors, out TxReceiptStructRef item)
         {
-            item = new TxReceiptRef();
+            item = new TxReceiptStructRef();
             
             if (decoderContext.IsNextItemNull())
             {
@@ -314,25 +315,25 @@ namespace Nethermind.Serialization.Rlp
             
             bool isStorage = (rlpBehaviors & RlpBehaviors.Storage) != 0;
             decoderContext.ReadSequenceLength();
-            byte[] firstItem = decoderContext.DecodeByteArray();
+            Span<byte> firstItem = decoderContext.DecodeByteArraySpan();
             if (firstItem.Length == 1)
             {
                 item.StatusCode = firstItem[0];
             }
             else
             {
-                item.PostTransactionState = firstItem.Length == 0 ? new KeccakRef() : new KeccakRef(firstItem);
+                item.PostTransactionState = firstItem.Length == 0 ? new KeccakStructRef() : new KeccakStructRef(firstItem);
             }
 
-            if(isStorage) decoderContext.DecodeKeccakRef(out item.BlockHash);
+            if(isStorage) decoderContext.DecodeKeccakStructRef(out item.BlockHash);
             if(isStorage) item.BlockNumber = (long)decoderContext.DecodeUInt256();
             if(isStorage) item.Index = decoderContext.DecodeInt();
-            if(isStorage) decoderContext.DecodeAddressRef(out item.Sender);
-            if(isStorage) decoderContext.DecodeAddressRef(out item.Recipient);
-            if(isStorage) decoderContext.DecodeAddressRef(out item.ContractAddress);
+            if(isStorage) decoderContext.DecodeAddressStructRef(out item.Sender);
+            if(isStorage) decoderContext.DecodeAddressStructRef(out item.Recipient);
+            if(isStorage) decoderContext.DecodeAddressStructRef(out item.ContractAddress);
             if(isStorage) item.GasUsed = (long) decoderContext.DecodeUBigInt();
             item.GasUsedTotal = (long) decoderContext.DecodeUBigInt();
-            decoderContext.DecodeBloomRef(out item.Bloom);
+            decoderContext.DecodeBloomStructRef(out item.BloomStruct);
 
             var peekPrefixAndContentLength = decoderContext.PeekPrefixAndContentLength();
             var logsBytes = peekPrefixAndContentLength.ContentLength + peekPrefixAndContentLength.PrefixLength;
@@ -348,7 +349,7 @@ namespace Nethermind.Serialization.Rlp
                     if (decoderContext.PeekByte() == MarkTxHashByte)
                     {
                         decoderContext.ReadByte();
-                        decoderContext.DecodeKeccakRef(out item.TxHash);
+                        decoderContext.DecodeKeccakStructRef(out item.TxHash);
                     }
                 }
 

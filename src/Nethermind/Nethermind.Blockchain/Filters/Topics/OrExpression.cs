@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Filters.Topics
             return false;
         }
 
-        public override bool Accepts(ref KeccakRef topic)
+        public override bool Accepts(ref KeccakStructRef topic)
         {
             for (int i = 0; i < _subexpression.Length; i++)
             {
@@ -67,7 +67,7 @@ namespace Nethermind.Blockchain.Filters.Topics
             return false;            
         }
 
-        public override bool Matches(ref BloomRef bloom)
+        public override bool Matches(ref BloomStructRef bloom)
         {
             for (int i = 0; i < _subexpression.Length; i++)
             {

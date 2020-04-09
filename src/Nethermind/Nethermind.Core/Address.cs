@@ -153,7 +153,7 @@ namespace Nethermind.Core
         public static bool operator !=(Address a, Address b) => !(a == b);
     }
     
-    public ref struct AddressRef
+    public ref struct AddressStructRef
     {
         public const int ByteLength = 20;
         private const int HexCharsCount = 2 * ByteLength; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
@@ -161,9 +161,9 @@ namespace Nethermind.Core
         
         public Span<byte> Bytes { get; }
 
-        public AddressRef(KeccakRef keccak) : this(keccak.Bytes.Slice(12, ByteLength)) { }
+        public AddressStructRef(KeccakStructRef keccak) : this(keccak.Bytes.Slice(12, ByteLength)) { }
         
-        public AddressRef(in ValueKeccak keccak) : this(keccak.BytesAsSpan.Slice(12, ByteLength).ToArray()) { }
+        public AddressStructRef(in ValueKeccak keccak) : this(keccak.BytesAsSpan.Slice(12, ByteLength).ToArray()) { }
 
         public byte this[int index] => Bytes[index];
 
@@ -196,9 +196,9 @@ namespace Nethermind.Core
             return true;
         }
 
-        public AddressRef(string hexString) : this(Extensions.Bytes.FromHexString(hexString)) { }
+        public AddressStructRef(string hexString) : this(Extensions.Bytes.FromHexString(hexString)) { }
 
-        public AddressRef(Span<byte> bytes)
+        public AddressStructRef(Span<byte> bytes)
         {
             if (bytes == null)
             {
@@ -215,11 +215,11 @@ namespace Nethermind.Core
             Bytes = bytes;
         }
 
-        public static AddressRef FromNumber(UInt256 number)
+        public static AddressStructRef FromNumber(UInt256 number)
         {
             byte[] addressBytes = new byte[20];
             number.ToBigEndian(addressBytes);
-            return new AddressRef(addressBytes);
+            return new AddressStructRef(addressBytes);
         }
 
         public override string ToString() => ToString(true, false);
@@ -238,7 +238,7 @@ namespace Nethermind.Core
 
         public bool Equals(Address other) => !ReferenceEquals(null, other) && Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
 
-        public bool Equals(AddressRef other) => Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
+        public bool Equals(AddressStructRef other) => Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
 
         public override bool Equals(object obj)
         {
@@ -252,17 +252,17 @@ namespace Nethermind.Core
         
         public override int GetHashCode() => MemoryMarshal.Read<int>(Bytes);
 
-        public static bool operator ==(AddressRef a, Address b) => a.Equals(b);
+        public static bool operator ==(AddressStructRef a, Address b) => a.Equals(b);
 
-        public static bool operator !=(AddressRef a, Address b) => !(a == b);
+        public static bool operator !=(AddressStructRef a, Address b) => !(a == b);
         
-        public static bool operator ==(Address a, AddressRef b) => b.Equals(a);
+        public static bool operator ==(Address a, AddressStructRef b) => b.Equals(a);
 
-        public static bool operator !=(Address a, AddressRef b) => !(a == b);
+        public static bool operator !=(Address a, AddressStructRef b) => !(a == b);
         
-        public static bool operator ==(AddressRef a, AddressRef b) => a.Equals(b);
+        public static bool operator ==(AddressStructRef a, AddressStructRef b) => a.Equals(b);
 
-        public static bool operator !=(AddressRef a, AddressRef b) => !(a == b);
+        public static bool operator !=(AddressStructRef a, AddressStructRef b) => !(a == b);
 
         public Address ToAddress() => new Address(Bytes.ToArray());
     }

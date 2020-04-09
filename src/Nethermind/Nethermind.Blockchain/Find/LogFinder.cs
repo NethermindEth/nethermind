@@ -147,7 +147,7 @@ namespace Nethermind.Blockchain.Find
                 while (iterator.TryGetNext(out var receipt))
                 {
                     LogEntriesIterator logsIterator = new LogEntriesIterator(receipt.Logs);
-                    if (filter.Matches(ref receipt.Bloom))
+                    if (filter.Matches(ref receipt.BloomStruct))
                     {
                         while (logsIterator.TryGetNext(out var log))
                         {

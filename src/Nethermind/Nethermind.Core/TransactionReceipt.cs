@@ -48,21 +48,21 @@ namespace Nethermind.Core
         public string Error { get; set; }
     }
 
-    public ref struct TxReceiptRef
+    public ref struct TxReceiptStructRef
     {
         /// <summary>
         ///     EIP-658
         /// </summary>
         public byte StatusCode { get; set; }
         public long BlockNumber { get; set; }
-        public KeccakRef BlockHash;
-        public KeccakRef TxHash;
+        public KeccakStructRef BlockHash;
+        public KeccakStructRef TxHash;
         public int Index { get; set; }
         public long GasUsed { get; set; }
         public long GasUsedTotal { get; set; }
-        public AddressRef Sender;
-        public AddressRef ContractAddress;
-        public AddressRef Recipient;
+        public AddressStructRef Sender;
+        public AddressStructRef ContractAddress;
+        public AddressStructRef Recipient;
 
         [Todo(Improve.Refactor, "Receipt tracer?")]
         public Span<byte> ReturnValue;
@@ -70,9 +70,9 @@ namespace Nethermind.Core
         /// <summary>
         ///     Removed in EIP-658
         /// </summary>
-        public KeccakRef PostTransactionState;
+        public KeccakStructRef PostTransactionState;
 
-        public BloomRef Bloom;
+        public BloomStructRef BloomStruct;
         
         /// <summary>
         /// Rlp encoded logs

@@ -139,24 +139,24 @@ namespace Nethermind.Serialization.Rlp
             return topicsLength;
         }
 
-        public void DecodeRef(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors storage, out LogEntryRef item)
+        public void DecodeStructRef(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors storage, out LogEntryStructRef item)
         {
             if (decoderContext.IsNextItemNull())
             {
                 decoderContext.ReadByte();
-                item = new LogEntryRef();
+                item = new LogEntryStructRef();
                 return;
             }
             
             decoderContext.ReadSequenceLength();
-            decoderContext.DecodeAddressRef(out var address);
+            decoderContext.DecodeAddressStructRef(out var address);
             var peekPrefixAndContentLength = decoderContext.PeekPrefixAndContentLength();
             var sequenceLength = peekPrefixAndContentLength.PrefixLength + peekPrefixAndContentLength.ContentLength;
             var topics = decoderContext.Data.Slice(decoderContext.Position, sequenceLength);
             decoderContext.SkipItem();
             var data = decoderContext.DecodeByteArraySpan();
 
-            item = new LogEntryRef(address, data, topics);
+            item = new LogEntryStructRef(address, data, topics);
         }
     }
 }
