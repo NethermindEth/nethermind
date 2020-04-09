@@ -146,9 +146,9 @@ namespace Nethermind.Blockchain.Find
                 long logIndexInBlock = 0;
                 while (iterator.TryGetNext(out var receipt))
                 {
+                    LogEntriesIterator logsIterator = new LogEntriesIterator(receipt.Logs);
                     if (filter.Matches(ref receipt.Bloom))
                     {
-                        LogEntriesIterator logsIterator = new LogEntriesIterator(receipt.Logs);
                         while (logsIterator.TryGetNext(out var log))
                         {
                             if (filter.Accepts(ref log))
@@ -166,6 +166,15 @@ namespace Nethermind.Blockchain.Find
                                     log.Data.ToArray(),
                                     KeccakDecoder.Instance.DecodeArray(ref topicsValueDecoderContext)));
                             }
+                            
+                            logIndexInBlock++;
+                        }
+                    }
+                    else
+                    {
+                        while (logsIterator.TrySkipNext())
+                        {
+                            logIndexInBlock++;
                         }
                     }
                 }

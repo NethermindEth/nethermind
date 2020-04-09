@@ -53,5 +53,19 @@ namespace Nethermind.Blockchain.Receipts
             _decoderContext.Position = 0;
             _decoderContext.ReadSequenceLength();
         }
+
+        public bool TrySkipNext()
+        {
+            if (_decoderContext.Position < _length)
+            {
+                _decoderContext.SkipItem();
+                Index++;
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
     }
 }
