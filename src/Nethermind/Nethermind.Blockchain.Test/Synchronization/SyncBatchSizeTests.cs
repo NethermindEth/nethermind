@@ -17,6 +17,7 @@
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.Blocks;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization

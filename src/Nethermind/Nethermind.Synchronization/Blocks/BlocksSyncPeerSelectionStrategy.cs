@@ -21,7 +21,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Peers;
 
-namespace Nethermind.Synchronization
+namespace Nethermind.Synchronization.Blocks
 {
     public class BlocksSyncPeerSelectionStrategy : IPeerSelectionStrategy
     {

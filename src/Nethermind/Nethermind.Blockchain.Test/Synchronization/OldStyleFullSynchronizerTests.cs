@@ -30,6 +30,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.TotalSync;

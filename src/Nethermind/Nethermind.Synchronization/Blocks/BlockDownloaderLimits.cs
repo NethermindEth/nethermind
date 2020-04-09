@@ -18,7 +18,7 @@ using System;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.SyncLimits;
 
-namespace Nethermind.Synchronization
+namespace Nethermind.Synchronization.Blocks
 {
     public static class PeerInfoExtensions
     {

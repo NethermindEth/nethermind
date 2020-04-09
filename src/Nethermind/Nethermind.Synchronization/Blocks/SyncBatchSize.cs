@@ -18,7 +18,7 @@ using System;
 using System.Diagnostics;
 using Nethermind.Logging;
 
-namespace Nethermind.Synchronization
+namespace Nethermind.Synchronization.Blocks
 {
     [DebuggerDisplay("{Current}")]
     internal struct SyncBatchSize

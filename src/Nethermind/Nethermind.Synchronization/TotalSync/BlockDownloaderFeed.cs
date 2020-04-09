@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
+using Nethermind.Synchronization.Blocks;
 
 namespace Nethermind.Synchronization.TotalSync
 {

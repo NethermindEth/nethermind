@@ -41,6 +41,7 @@ using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using Nethermind.Store.Bloom;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.TotalSync;
 using Nethermind.TxPool;

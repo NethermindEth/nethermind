@@ -19,7 +19,7 @@ using Nethermind.Blockchain;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.TotalSync;
 
-namespace Nethermind.Synchronization
+namespace Nethermind.Synchronization.Blocks
 {
     internal class BlocksSyncPeerSelectionStrategyFactory : IPeerSelectionStrategyFactory<BlocksRequest>
     {

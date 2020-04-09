@@ -14,26 +14,18 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Synchronization
+using System;
+
+namespace Nethermind.Synchronization.Blocks
 {
-    public class BlocksRequest
+    [Flags]
+    public enum DownloaderOptions
     {
-        public BlocksRequest(DownloaderOptions options, int? numberOfLatestBlocksToBeIgnored)
-        {
-            Options = options;
-            NumberOfLatestBlocksToBeIgnored = numberOfLatestBlocksToBeIgnored;
-        }
-        
-        public BlocksRequest(DownloaderOptions options)
-        {
-            Options = options;
-        }
-        
-        public BlocksRequest()
-        {
-        }
-        
-        public int? NumberOfLatestBlocksToBeIgnored { get; set; }
-        public DownloaderOptions Options { get; set; }
+        None = 0,
+        Process = 1,
+        WithReceipts = 2,
+        MoveToMain = 4,
+        WithBodies = 8,
+        All = 15
     }
 }

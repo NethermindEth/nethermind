@@ -32,7 +32,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.TotalSync;
 
-namespace Nethermind.Synchronization
+namespace Nethermind.Synchronization.Blocks
 {
     internal class BlockDownloader : SyncExecutor<BlocksRequest>
     {

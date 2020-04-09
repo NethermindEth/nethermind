@@ -24,7 +24,7 @@ using Nethermind.Core.Specs;
 using Nethermind.State.Proofs;
 using Nethermind.Synchronization.Peers;
 
-namespace Nethermind.Synchronization
+namespace Nethermind.Synchronization.Blocks
 {
     internal class BlockDownloadContext
     {
