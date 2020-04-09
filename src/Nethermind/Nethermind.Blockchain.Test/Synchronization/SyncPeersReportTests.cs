@@ -17,6 +17,8 @@
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -28,7 +30,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [Test]
         public void Can_write_no_peers()
         {
-            IEthSyncPeerPool syncPeerPool = Substitute.For<IEthSyncPeerPool>();
+            ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
             SyncPeersReport report = new SyncPeersReport(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
             report.WriteShortReport();
             report.WriteFullReport();
@@ -38,7 +40,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void Can_write_one_uninitialized()
         {
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-            IEthSyncPeerPool syncPeerPool = Substitute.For<IEthSyncPeerPool>();
+            ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
             PeerInfo peer1 = new PeerInfo(syncPeer);
             peer1.IsInitialized = false;
             
@@ -54,7 +56,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void Can_write_one_uninitialized_one_initialized()
         {
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-            IEthSyncPeerPool syncPeerPool = Substitute.For<IEthSyncPeerPool>();
+            ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
             PeerInfo peer1 = new PeerInfo(syncPeer);
             peer1.IsInitialized = false;
             
@@ -73,7 +75,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void Can_write_report_update()
         {
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-            IEthSyncPeerPool syncPeerPool = Substitute.For<IEthSyncPeerPool>();
+            ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
             PeerInfo peer1 = new PeerInfo(syncPeer);
             peer1.IsInitialized = false;
             
@@ -98,7 +100,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void Can_write_report_update_with_allocations()
         {
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-            IEthSyncPeerPool syncPeerPool = Substitute.For<IEthSyncPeerPool>();
+            ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
             PeerInfo peer1 = new PeerInfo(syncPeer);
             peer1.IsInitialized = false;
             

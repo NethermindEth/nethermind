@@ -28,6 +28,7 @@ using Nethermind.Network;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Store;
 using Nethermind.Store.Bloom;
+using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;

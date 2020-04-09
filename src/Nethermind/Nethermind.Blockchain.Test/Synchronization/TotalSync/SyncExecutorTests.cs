@@ -21,11 +21,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Synchronization.TotalSync;
 using Nethermind.Blockchain.Test.Synchronization.Mocks;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.TotalSync;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -34,7 +36,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.TotalSync
     [TestFixture]
     public class SyncExecutorTests
     {
-        private class TestSyncPeerPool : IEthSyncPeerPool
+        private class TestSyncPeerPool : ISyncPeerPool
         {
             public void Dispose()
             {
@@ -129,7 +131,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.TotalSync
 
         private class TestExecutor : SyncExecutor<TestBatch>
         {
-            public TestExecutor(ISyncFeed<TestBatch> syncFeed, IEthSyncPeerPool syncPeerPool, IPeerSelectionStrategyFactory<TestBatch> peerSelectionStrategy)
+            public TestExecutor(ISyncFeed<TestBatch> syncFeed, ISyncPeerPool syncPeerPool, IPeerSelectionStrategyFactory<TestBatch> peerSelectionStrategy)
                 : base(syncFeed, syncPeerPool, peerSelectionStrategy, LimboLogs.Instance)
             {
             }

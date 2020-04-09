@@ -29,6 +29,7 @@ using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Steps.Migrations;
 using Nethermind.State.Repositories;
+using Nethermind.Synchronization;
 using NSubstitute;
 using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;

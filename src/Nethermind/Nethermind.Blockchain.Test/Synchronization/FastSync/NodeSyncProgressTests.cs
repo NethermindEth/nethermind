@@ -14,8 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Logging;
+using Nethermind.Synchronization.FastSync;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization.FastSync

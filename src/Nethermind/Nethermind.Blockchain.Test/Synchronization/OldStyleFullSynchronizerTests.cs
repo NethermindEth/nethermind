@@ -20,8 +20,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Synchronization.FastSync;
-using Nethermind.Blockchain.Synchronization.TotalSync;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -31,6 +29,10 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Stats;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.TotalSync;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -58,7 +60,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             ITxValidator txValidator = Build.A.TransactionValidator.ThatAlwaysReturnsTrue.TestObject;
 
             var stats = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
-            _pool = new EthSyncPeerPool(_blockTree, stats, 25, LimboLogs.Instance);
+            _pool = new SyncPeerPool(_blockTree, stats, 25, LimboLogs.Instance);
             SyncConfig syncConfig = new SyncConfig();
             SyncProgressResolver resolver = new SyncProgressResolver(_blockTree, _receiptStorage, _stateDb, syncConfig, LimboLogs.Instance);
             SyncModeSelector syncModeSelector = new SyncModeSelector(resolver, _pool, syncConfig, LimboLogs.Instance);
@@ -80,7 +82,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         private IBlockTree _remoteBlockTree;
         private IReceiptStorage _receiptStorage;
         private Block _genesisBlock;
-        private IEthSyncPeerPool _pool;
+        private ISyncPeerPool _pool;
         private ISyncServer _syncServer;
         private ISynchronizer _synchronizer;
 

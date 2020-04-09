@@ -17,6 +17,8 @@
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -42,7 +44,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [Test]
         public void Can_keep_changing_in_fast_sync()
         {
-            IEthSyncPeerPool syncPeerPool = Substitute.For<IEthSyncPeerPool>();
+            ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.TotalDifficultyOnSessionStart.Returns((UInt256) (1024 * 1024));
 
@@ -183,7 +185,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
         private static SyncModeSelector BuildSelector(SyncConfig syncConfig, long bestRemote = 0L, long bestHeader = 0L, long bestBlock = 0L, long bestLocalState = 0L)
         {
-            IEthSyncPeerPool syncPeerPool = Substitute.For<IEthSyncPeerPool>();
+            ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.TotalDifficultyOnSessionStart.Returns((UInt256) (1024 * 1024));
 
@@ -208,7 +210,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
         private static SyncModeSelector BuildSelectorNoPeers(bool useFastSync, long bestRemote = 0L, long bestHeader = 0L, long bestBlock = 0L, long bestLocalState = 0L)
         {
-            IEthSyncPeerPool syncPeerPool = Substitute.For<IEthSyncPeerPool>();
+            ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
             syncPeerPool.AllPeers.Returns(new PeerInfo[] { });
             syncPeerPool.PeerCount.Returns(0);
 

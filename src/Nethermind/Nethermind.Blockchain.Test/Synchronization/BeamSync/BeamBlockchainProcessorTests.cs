@@ -16,7 +16,6 @@
 
 using System.Threading;
 using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
@@ -27,6 +26,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Synchronization.BeamSync;
 using NSubstitute;
 using NUnit.Framework;
 

@@ -16,6 +16,8 @@
 
 using System.Threading;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
+using Nethermind.Synchronization;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization

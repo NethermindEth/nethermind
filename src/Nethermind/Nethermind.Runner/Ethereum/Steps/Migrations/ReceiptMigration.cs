@@ -33,6 +33,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.State.Repositories;
+using Nethermind.Synchronization;
 using Timer = System.Timers.Timer;
 
 namespace Nethermind.Runner.Ethereum.Steps.Migrations

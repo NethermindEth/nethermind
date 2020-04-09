@@ -21,8 +21,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Synchronization.FastSync;
-using Nethermind.Blockchain.Synchronization.TotalSync;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.DataMarketplace.Core.Configs;
@@ -46,6 +44,10 @@ using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Store;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.TotalSync;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -94,7 +96,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", _networkConfig.NettyArenaOrder.ToString());
 
             int maxPeersCount = _networkConfig.ActivePeersMaxCount;
-            _context.SyncPeerPool = new EthSyncPeerPool(_context.BlockTree, _context.NodeStatsManager, maxPeersCount, _context.LogManager);
+            _context.SyncPeerPool = new SyncPeerPool(_context.BlockTree, _context.NodeStatsManager, maxPeersCount, _context.LogManager);
             _context.DisposeStack.Push(_context.SyncPeerPool);
 
             INodeDataFeed nodeDataFeed = new NodeDataFeed(_context.DbProvider.CodeDb, _context.DbProvider.StateDb, new MemDb(), _context.LogManager);

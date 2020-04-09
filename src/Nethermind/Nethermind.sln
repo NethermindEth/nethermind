@@ -290,6 +290,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.WebSockets.Test", "Nethermind.WebSockets.Test\Nethermind.WebSockets.Test.csproj", "{7655686B-E40E-4D0D-8BEA-B9CE57F5D163}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Synchronization", "Nethermind.Synchronization\Nethermind.Synchronization.csproj", "{1FC0913D-D3D1-44A2-AA35-B2CF4A4F1815}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -776,6 +778,10 @@ Global
 		{7655686B-E40E-4D0D-8BEA-B9CE57F5D163}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7655686B-E40E-4D0D-8BEA-B9CE57F5D163}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7655686B-E40E-4D0D-8BEA-B9CE57F5D163}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1FC0913D-D3D1-44A2-AA35-B2CF4A4F1815}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1FC0913D-D3D1-44A2-AA35-B2CF4A4F1815}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1FC0913D-D3D1-44A2-AA35-B2CF4A4F1815}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1FC0913D-D3D1-44A2-AA35-B2CF4A4F1815}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

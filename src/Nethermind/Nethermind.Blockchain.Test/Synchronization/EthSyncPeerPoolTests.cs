@@ -27,6 +27,8 @@ using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -37,14 +39,14 @@ namespace Nethermind.Blockchain.Test.Synchronization
     {
         private INodeStatsManager _stats;
         private IBlockTree _blockTree;
-        private EthSyncPeerPool _pool;
+        private SyncPeerPool _pool;
 
         [SetUp]
         public void SetUp()
         {
             _blockTree = Substitute.For<IBlockTree>();
             _stats = Substitute.For<INodeStatsManager>();
-            _pool = new EthSyncPeerPool(_blockTree, _stats, 25, 50, LimboLogs.Instance);
+            _pool = new SyncPeerPool(_blockTree, _stats, 25, 50, LimboLogs.Instance);
         }
 
         [TearDown]

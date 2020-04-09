@@ -18,6 +18,8 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Stats;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Blockchain.Test.Synchronization.Mocks
 {

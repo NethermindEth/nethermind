@@ -32,6 +32,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.Stats;
+using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using NSubstitute;

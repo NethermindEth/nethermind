@@ -32,7 +32,6 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Stats.Model;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Synchronization.TotalSync;
 using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Consensus;
 using Nethermind.Db;
@@ -41,6 +40,9 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using Nethermind.Store.Bloom;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.TotalSync;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -51,7 +53,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
     public class BlockDownloaderTests
     {
         private IBlockTree _blockTree;
-        private IEthSyncPeerPool _peerPool;
+        private ISyncPeerPool _peerPool;
         private ISyncFeed<BlocksRequest> _feed;
         private ResponseBuilder _responseBuilder;
         private Dictionary<long, Keccak> _testHeaderMapping;
@@ -356,7 +358,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _testHeaderMapping = new Dictionary<long, Keccak>();
             _testHeaderMapping.Add(0, genesis.Hash);
 
-            _peerPool = Substitute.For<IEthSyncPeerPool>();
+            _peerPool = Substitute.For<ISyncPeerPool>();
             _feed = Substitute.For<ISyncFeed<BlocksRequest>>();
 
             _responseBuilder = new ResponseBuilder(_blockTree, _testHeaderMapping);
@@ -429,8 +431,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
             InMemoryReceiptStorage inMemoryReceiptStorage = new InMemoryReceiptStorage();
 
             _blockTree = Build.A.BlockTree().OfChainLength(1024).TestObject;
-            IEthSyncPeerPool ethSyncPeerPool = Substitute.For<IEthSyncPeerPool>();
-            BlockDownloader downloader = new BlockDownloader(_feed, ethSyncPeerPool, _blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
+            ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+            BlockDownloader downloader = new BlockDownloader(_feed, syncPeerPool, _blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             Response blockResponseOptions = Response.AllCorrect;
             SyncPeerMock syncPeer = new SyncPeerMock(2048 + 1, false, blockResponseOptions);

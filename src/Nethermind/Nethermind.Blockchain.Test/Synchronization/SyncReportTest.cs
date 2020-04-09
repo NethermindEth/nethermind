@@ -19,6 +19,8 @@ using System.Threading;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -33,7 +35,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void Smoke(bool fastSync, bool fastBlocks)
         {
             ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
-            IEthSyncPeerPool pool = Substitute.For<IEthSyncPeerPool>();
+            ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
             pool.UsefulPeerCount.Returns(1);
             
             Queue<SyncMode> _syncModes = new Queue<SyncMode>();
