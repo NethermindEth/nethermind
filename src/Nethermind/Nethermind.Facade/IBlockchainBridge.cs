@@ -35,6 +35,7 @@ namespace Nethermind.Facade
         int GetNetworkId();
         long BestKnown { get; }
         bool IsSyncing { get; }
+        bool IsMining { get; }
         void RecoverTxSenders(Block block);
         void RecoverTxSender(Transaction tx, long? blockNumber);
         (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak txHash);

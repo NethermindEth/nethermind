@@ -1266,7 +1266,7 @@ namespace Nethermind.Serialization.Rlp
                 return Data[Position + offset];
             }
         
-            public void SkipBytes(int length)
+            private void SkipBytes(int length)
             {
                 Position += length;
             }

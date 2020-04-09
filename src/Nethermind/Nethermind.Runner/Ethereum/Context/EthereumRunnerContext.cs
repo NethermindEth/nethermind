@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.IO.Abstractions;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -69,6 +70,7 @@ namespace Nethermind.Runner.Ethereum.Context
             LogManager = logManager;
         }
         
+        public IFileSystem FileSystem { get; set; } = new FileSystem();
         public IConfigProvider ConfigProvider { get; set; }
         public ILogManager LogManager{ get; set; }
         public DisposableStack DisposeStack { get; } = new DisposableStack();

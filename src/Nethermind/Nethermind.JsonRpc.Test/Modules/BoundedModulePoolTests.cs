@@ -71,7 +71,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                     specProvider, 
                     new JsonRpcConfig(),
                     NullBloomStorage.Instance,
-                    LimboLogs.Instance));
+                    LimboLogs.Instance,
+                    false));
         }
 
         [Test]

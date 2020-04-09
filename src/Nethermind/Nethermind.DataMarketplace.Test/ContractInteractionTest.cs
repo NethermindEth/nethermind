@@ -201,6 +201,7 @@ namespace Nethermind.DataMarketplace.Test
             public BlockHeader Head => _headBlock.Header;
             public long BestKnown { get; }
             public bool IsSyncing { get; }
+            public bool IsMining { get; }
 
             public void RecoverTxSenders(Block block)
             {

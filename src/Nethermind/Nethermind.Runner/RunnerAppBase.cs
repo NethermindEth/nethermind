@@ -16,6 +16,7 @@
 
 using System;
 using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
@@ -227,7 +228,7 @@ namespace Nethermind.Runner
             {
                 rpcModuleProvider.Register(new SingletonModulePool<IWeb3Module>(new Web3Module(logManager), true));
                 JsonRpcService jsonRpcService = new JsonRpcService(rpcModuleProvider, logManager);
-                JsonRpcProcessor jsonRpcProcessor = new JsonRpcProcessor(jsonRpcService, jsonSerializer, jsonRpcConfig, logManager);
+                JsonRpcProcessor jsonRpcProcessor = new JsonRpcProcessor(jsonRpcService, jsonSerializer, jsonRpcConfig, new FileSystem(), logManager);
                 if (initConfig.WebSocketsEnabled)
                 {
                     webSocketsManager.AddModule(new JsonRpcWebSocketsModule(jsonRpcProcessor, jsonSerializer), true);

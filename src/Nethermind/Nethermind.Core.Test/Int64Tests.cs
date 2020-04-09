@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using FluentAssertions;
+using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -21,5 +23,12 @@ namespace Nethermind.Core.Test
     [TestFixture]
     public class Int64Tests
     {
+        [Test]
+        public void ToLongFromBytes()
+        {
+            byte[] bytes = Bytes.FromHexString("7fffffffffffffff");
+            long number = bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+            number.Should().Be(long.MaxValue);
+        }
     }
 }

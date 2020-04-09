@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
@@ -77,9 +78,9 @@ namespace Nethermind.Blockchain
         public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
         public event EventHandler<TxProcessedEventArgs> TransactionProcessed;
 
-        public Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
+        public Block[] Process(Keccak branchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
         {
-            if (suggestedBlocks.Length == 0) return Array.Empty<Block>();
+            if (suggestedBlocks.Count == 0) return Array.Empty<Block>();
 
             int stateSnapshot = _stateDb.TakeSnapshot();
             int codeSnapshot = _codeDb.TakeSnapshot();
@@ -100,10 +101,10 @@ namespace Nethermind.Blockchain
             }
 
             var readOnly = (options & ProcessingOptions.ReadOnlyChain) != 0;
-            var processedBlocks = new Block[suggestedBlocks.Length];
+            var processedBlocks = new Block[suggestedBlocks.Count];
             try
             {
-                for (int i = 0; i < suggestedBlocks.Length; i++)
+                for (int i = 0; i < suggestedBlocks.Count; i++)
                 {
                     processedBlocks[i] = ProcessOne(suggestedBlocks[i], options, blockTracer);
                     if (_logger.IsTrace) _logger.Trace($"Committing trees - state root {_stateProvider.StateRoot}");
