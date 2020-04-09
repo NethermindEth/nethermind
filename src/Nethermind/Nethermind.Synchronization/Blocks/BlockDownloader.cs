@@ -86,10 +86,6 @@ namespace Nethermind.Synchronization.Blocks
         protected override async Task Execute(PeerInfo bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
         {
             if (!_blockTree.CanAcceptNewBlocks) return;
-            if ((_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) > (_blockTree.BestSuggestedHeader?.Number ?? 0) - 30000)
-            {
-                return;
-            }
 
             _allocationCancellation = new CancellationTokenSource();
             CancellationTokenSource linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _allocationCancellation.Token);

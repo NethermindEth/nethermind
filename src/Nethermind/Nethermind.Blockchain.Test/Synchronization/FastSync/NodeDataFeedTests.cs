@@ -88,9 +88,6 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
         private static void BuildRequestAndHandleResponse(TrieNode node, StateSyncBatch stateSyncBatch, NodeDataFeed nodeDataFeed)
         {
             stateSyncBatch.Responses = new[] {node.FullRlp};
-            stateSyncBatch.AssignedPeer = new SyncPeerAllocation(new PeerInfo(Substitute.For<ISyncPeer>()));
-            stateSyncBatch.AssignedPeer.AllocateBestPeer(Enumerable.Empty<PeerInfo>(), Substitute.For<INodeStatsManager>(), Substitute.For<IBlockTree>());
-            
             nodeDataFeed.HandleResponse(stateSyncBatch);
         }
     }

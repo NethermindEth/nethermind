@@ -22,9 +22,5 @@ namespace Nethermind.Synchronization.FastSync
     public interface INodeDataFeed : ISyncFeed<StateSyncBatch>
     {
         void SetNewStateRoot(long number, Keccak stateRoot);
-        
-        bool IsFullySynced(Keccak stateRoot);
-        
-        int TotalNodesPending { get; }
     }
 }

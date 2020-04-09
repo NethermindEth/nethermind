@@ -62,7 +62,7 @@ namespace Nethermind.Synchronization
 
         /* sync events are used mainly for managing sync peers reputation */
         public event EventHandler<SyncEventArgs> SyncEvent;
-        
+
         private ISyncModeSelector _syncMode;
         private ISyncExecutor<StateSyncBatch> _nodeDataSyncExecutor;
 
@@ -92,7 +92,7 @@ namespace Nethermind.Synchronization
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
             _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _logManager = logManager;
-            
+
             _syncReport = new SyncReport(_syncPeerPool, _nodeStatsManager, _syncMode, syncConfig, logManager);
             _syncPeerPool.PeerAdded += (sender, args) => RequestSynchronization(SyncTriggerType.PeerAdded);
         }
@@ -109,25 +109,36 @@ namespace Nethermind.Synchronization
                 }
             });
         }
-        
+
         public void Start()
         {
             // StartFullSyncComponents();
             if (_syncConfig.FastBlocks)
             {
+                StartFastBlocksComponents();
+            }
+
+            if (_syncConfig.FastSync)
+            {
                 StartFastSyncComponents();
                 StartStateSyncComponents();
             }
-            
+
             StartSyncTimer();
         }
 
         private void StartStateSyncComponents()
         {
-            
+            Task nodeDataSyncTask = _nodeDataSyncExecutor.Start(_syncCancellation.Token).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    _logger.Error("State sync failed", t.Exception);
+                }
+            });
         }
 
-        private void StartFastSyncComponents()
+        private void StartFastBlocksComponents()
         {
             FastBlockPeerSelectionStrategyFactory fastFactory = new FastBlockPeerSelectionStrategyFactory();
 
@@ -140,7 +151,7 @@ namespace Nethermind.Synchronization
                     _logger.Error("Fast blocks headers downloader failed", t.Exception);
                 }
             });
-            
+
             headersSyncFeed.Activate();
 
             FastBodiesSyncFeed bodiesSyncFeed = new FastBodiesSyncFeed(_blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
@@ -152,7 +163,7 @@ namespace Nethermind.Synchronization
                     _logger.Error("Fast blocks bodies downloader failed", t.Exception);
                 }
             });
-            
+
             bodiesSyncFeed.Activate();
 
             FastReceiptsSyncFeed receiptsSyncFeed = new FastReceiptsSyncFeed(_specProvider, _blockTree, _receiptStorage, _syncPeerPool, _syncConfig, _syncReport, _logManager);
@@ -164,9 +175,12 @@ namespace Nethermind.Synchronization
                     _logger.Error("Fast blocks receipts downloader failed", t.Exception);
                 }
             });
-            
-            receiptsSyncFeed.Activate();
 
+            receiptsSyncFeed.Activate();
+        }
+
+        private void StartFastSyncComponents()
+        {
             DownloaderOptions options = BuildFastSyncOptions();
             _fastSyncBlockDownloaderFeed = new BlockDownloaderFeed(options, _syncConfig.BeamSync ? 0 : SyncModeSelector.FullSyncThreshold);
             _fastSyncBlockDownloader = new BlockDownloader(_fastSyncBlockDownloaderFeed, _syncPeerPool, _blockTree, _blockValidator, _sealValidator, _syncReport, _receiptStorage, _specProvider, _logManager);
@@ -230,14 +244,10 @@ namespace Nethermind.Synchronization
                 }
             }
 
-            // do this depending on the SyncMode!
-            if ((_blockTree.BestSuggestedHeader?.Number ?? 0) != 0)
-            {
-                _fastSyncBlockDownloaderFeed?.Activate();
-                _fullSyncBlockDownloaderFeed?.Activate();
-            }
-            
-            DownloadStateNodes(_syncCancellation.Token);
+            _fastSyncBlockDownloaderFeed?.Activate();
+            // _fullSyncBlockDownloaderFeed?.Activate();
+
+            // DownloadStateNodes(_syncCancellation.Token);
         }
 
         private void StartSyncTimer()
@@ -283,7 +293,7 @@ namespace Nethermind.Synchronization
         private void DownloadStateNodes(CancellationToken cancellation)
         {
             BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
-            if (bestSuggested == null)
+            if (bestSuggested == null || bestSuggested.Number == 0)
             {
                 return;
             }

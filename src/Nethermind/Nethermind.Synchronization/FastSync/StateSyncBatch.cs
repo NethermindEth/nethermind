@@ -29,8 +29,6 @@ namespace Nethermind.Synchronization.FastSync
         public StateSyncItem[] RequestedNodes { get; set; }
         
         public byte[][] Responses { get; set; }
-        
-        public SyncPeerAllocation AssignedPeer { get; set; }
 
         public bool IsAdditionalDataConsumer { get; set; }
         

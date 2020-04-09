@@ -434,7 +434,7 @@ namespace Nethermind.Synchronization.FastSync
 
                     _handleWatch.Restart();
 
-                    bool requestWasMade = batch.AssignedPeer?.Current != null;
+                    bool requestWasMade = batch.Responses != null;
                     if (!requestWasMade)
                     {
                         AddAgainAllItems();
@@ -606,7 +606,7 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        public override bool IsMultiFeed => true;
+        public override bool IsMultiFeed => false;
 
         private void HandleTrieNode(StateSyncItem currentStateSyncItem, byte[] currentResponseItem, ref int invalidNodes)
         {
@@ -873,7 +873,7 @@ namespace Nethermind.Synchronization.FastSync
                 _pendingRequests.TryAdd(result, _nullObject);
             }
 
-            return result;
+            return await Task.FromResult(result);
         }
 
         private NodeSyncProgress _syncProgress;
