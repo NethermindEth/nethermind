@@ -19,7 +19,7 @@ using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Logging;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Processing
 {
     internal class ProcessingStats
     {

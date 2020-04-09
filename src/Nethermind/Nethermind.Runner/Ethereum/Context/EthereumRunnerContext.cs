@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Threading;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;

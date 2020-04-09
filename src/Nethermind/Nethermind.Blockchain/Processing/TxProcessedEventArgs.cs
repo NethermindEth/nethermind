@@ -17,23 +17,24 @@
 using System;
 using Nethermind.Core;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Processing
 {
-    public class CompositeDataRecoveryStep : IBlockDataRecoveryStep
+    public class TxProcessedEventArgs : EventArgs
     {
-        private readonly IBlockDataRecoveryStep[] _recoverySteps;
+        public int Index { get; }
+        public Transaction Transaction { get; }
+        public TxReceipt TxReceipt { get; }
 
-        public CompositeDataRecoveryStep(params IBlockDataRecoveryStep[] recoverySteps)
+        public TxProcessedEventArgs(int index, Transaction transaction, TxReceipt txReceipt)
         {
-            _recoverySteps = recoverySteps ?? throw new ArgumentNullException(nameof(recoverySteps));
+            Index = index;
+            Transaction = transaction;
+            TxReceipt = txReceipt;
         }
-        
-        public void RecoverData(Block block)
+
+        public TxProcessedEventArgs(TxReceipt txTxReceipt)
         {
-            for (int i = 0; i < _recoverySteps.Length; i++)
-            {
-                _recoverySteps[i].RecoverData(block);
-            }
+            TxReceipt = txTxReceipt;
         }
     }
 }

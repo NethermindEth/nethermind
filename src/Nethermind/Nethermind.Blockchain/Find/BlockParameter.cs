@@ -19,7 +19,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Json;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Find
 {
     [Todo(Improve.Refactor, "Can make it struct?")]
     public class BlockParameter : IEquatable<BlockParameter>

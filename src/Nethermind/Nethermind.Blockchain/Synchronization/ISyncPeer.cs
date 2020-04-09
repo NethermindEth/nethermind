@@ -23,7 +23,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Stats.Model;
 using Nethermind.TxPool;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Synchronization
 {
     public interface ISyncPeer : ITxPoolPeer
     {

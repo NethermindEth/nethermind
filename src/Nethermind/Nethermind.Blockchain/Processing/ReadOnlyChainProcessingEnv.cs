@@ -24,7 +24,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Processing
 {
     public class ReadOnlyChainProcessingEnv : IDisposable
     {

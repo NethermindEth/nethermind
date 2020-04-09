@@ -17,7 +17,7 @@
 using System;
 using Nethermind.Core;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Processing
 {
     public class BlockProcessedEventArgs : EventArgs
     {

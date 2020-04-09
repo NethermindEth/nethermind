@@ -16,6 +16,7 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 
 namespace Nethermind.Synchronization
 {

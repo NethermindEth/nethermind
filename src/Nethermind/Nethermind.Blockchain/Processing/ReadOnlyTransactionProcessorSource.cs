@@ -20,7 +20,7 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Processing
 {
     public class ReadOnlyTransactionProcessorSource : IReadOnlyTransactionProcessorSource
     {

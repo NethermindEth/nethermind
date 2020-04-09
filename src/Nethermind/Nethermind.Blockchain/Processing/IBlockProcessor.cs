@@ -20,7 +20,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Processing
 {
     public interface IBlockProcessor
     {

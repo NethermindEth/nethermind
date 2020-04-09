@@ -17,8 +17,9 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Mining.Difficulty;
+using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;

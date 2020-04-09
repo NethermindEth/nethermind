@@ -20,7 +20,7 @@ using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Processing
 {
     public class TxSignaturesRecoveryStep : IBlockDataRecoveryStep
     {

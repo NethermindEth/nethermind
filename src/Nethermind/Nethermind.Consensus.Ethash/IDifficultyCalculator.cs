@@ -14,14 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Blockchain
+using Nethermind.Dirichlet.Numerics;
+
+namespace Nethermind.Consensus.Ethash
 {
-    public enum BlockParameterType
+    public interface IDifficultyCalculator
     {
-        Earliest,
-        Latest,
-        Pending,
-        BlockNumber,
-        BlockHash
+        UInt256 Calculate(UInt256 parentDifficulty, UInt256 parentTimestamp, UInt256 currentTimestamp, long blockNumber, bool parentHasUncles);
     }
 }

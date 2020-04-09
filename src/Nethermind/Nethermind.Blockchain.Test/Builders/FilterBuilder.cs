@@ -17,6 +17,7 @@
 using System.Linq;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Test.Builders

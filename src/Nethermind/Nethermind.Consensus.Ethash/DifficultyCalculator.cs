@@ -18,7 +18,7 @@ using System.Numerics;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Consensus.Mining.Difficulty
+namespace Nethermind.Consensus.Ethash
 {
     public class DifficultyCalculator : IDifficultyCalculator
     {

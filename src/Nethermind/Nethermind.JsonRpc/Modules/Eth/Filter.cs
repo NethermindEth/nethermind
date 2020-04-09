@@ -16,6 +16,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json.Linq;
 

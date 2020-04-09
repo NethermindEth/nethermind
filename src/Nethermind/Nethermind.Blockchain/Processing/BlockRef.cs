@@ -17,7 +17,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Processing
 {
     internal class BlockRef
     {
