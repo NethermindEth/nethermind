@@ -19,15 +19,16 @@ using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class FastBlocksSelectionStrategy : IPeerSelectionStrategy
+    public class FastBlocksAllocationStrategy : IPeerAllocationStrategy
     {
         private readonly long? _minNumber;
         private readonly bool _priority;
 
-        public FastBlocksSelectionStrategy(long? minNumber, bool priority)
+        public FastBlocksAllocationStrategy(long? minNumber, bool priority)
         {
             _minNumber = minNumber;
             _priority = priority;
@@ -35,11 +36,11 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public string Name => "fast blocks";
         public bool CanBeReplaced => false;
-        public PeerInfo Select(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
+        public PeerInfo Allocate(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
-            IPeerSelectionStrategy strategy = _priority ? BySpeedSelectionStrategy.Fastest : BySpeedSelectionStrategy.Slowest;
+            IPeerAllocationStrategy strategy = _priority ? BySpeedStrategy.Fastest : BySpeedStrategy.Slowest;
             peers = _minNumber == null ? peers : peers.Where(p => p.HeadNumber > _minNumber);
-            return strategy.Select(currentPeer, peers, nodeStatsManager, blockTree);
+            return strategy.Allocate(currentPeer, peers, nodeStatsManager, blockTree);
         }
     }
 }

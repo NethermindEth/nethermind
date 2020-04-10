@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using Nethermind.Blockchain;
 using Nethermind.Stats;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.Peers
 {
@@ -31,26 +32,25 @@ namespace Nethermind.Synchronization.Peers
         /// </summary>
         private static object _allocationLock = new object();
 
-        private IPeerSelectionStrategy _peerSelectionStrategy;
-        private string Description => _peerSelectionStrategy.Name;
+        private IPeerAllocationStrategy _peerAllocationStrategy;
         public PeerInfo Current { get; private set; }
 
         public bool HasPeer => Current != null;
 
         public SyncPeerAllocation(PeerInfo peerInfo)
-            : this(new StaticSelectionStrategy(peerInfo))
+            : this(new StaticStrategy(peerInfo))
         {
         }
 
-        public SyncPeerAllocation(IPeerSelectionStrategy peerSelectionStrategy)
+        public SyncPeerAllocation(IPeerAllocationStrategy peerAllocationStrategy)
         {
-            _peerSelectionStrategy = peerSelectionStrategy;
+            _peerAllocationStrategy = peerAllocationStrategy;
         }
 
         public void AllocateBestPeer(IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
             PeerInfo current = Current;
-            PeerInfo selected = _peerSelectionStrategy.Select(Current, peers, nodeStatsManager, blockTree);
+            PeerInfo selected = _peerAllocationStrategy.Allocate(Current, peers, nodeStatsManager, blockTree);
             if (selected == current)
             {
                 return;
@@ -110,7 +110,7 @@ namespace Nethermind.Synchronization.Peers
 
         public override string ToString()
         {
-            return string.Concat("[Allocation|", Description, "]");
+            return $"[Allocation|{Current}]";
         }
     }
 }

@@ -27,6 +27,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.TotalSync;
 using NSubstitute;
 using NUnit.Framework;
@@ -47,7 +48,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.TotalSync
                 throw new NotImplementedException();
             }
 
-            public Task<SyncPeerAllocation> Borrow(IPeerSelectionStrategy peerSelectionStrategy, string description = "", int timeoutMilliseconds = 0)
+            public Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, string description = "", int timeoutMilliseconds = 0)
             {
                 ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
                 syncPeer.ClientId.Returns("Nethermind");

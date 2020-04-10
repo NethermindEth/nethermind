@@ -20,6 +20,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.Peers
 {
@@ -27,7 +28,7 @@ namespace Nethermind.Synchronization.Peers
     {
         bool TryFind(PublicKey nodeId, out PeerInfo peerInfo);
 
-        Task<SyncPeerAllocation> Borrow(IPeerSelectionStrategy peerSelectionStrategy, string description = "", int timeoutMilliseconds = 0);
+        Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, string description = "", int timeoutMilliseconds = 0);
 
         void Free(SyncPeerAllocation syncPeerAllocation);
 

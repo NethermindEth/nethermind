@@ -127,7 +127,7 @@ namespace Nethermind.Synchronization.TotalSync
 
         protected virtual async Task<SyncPeerAllocation> Allocate(T request)
         {
-            SyncPeerAllocation allocation = await SyncPeerPool.Borrow(PeerSelectionStrategy.Create(request), string.Empty, 1000);
+            SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerSelectionStrategy.Create(request), string.Empty, 1000);
             return allocation;
         }
 

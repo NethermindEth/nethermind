@@ -14,10 +14,25 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Synchronization.Peers
+using System.Collections.Generic;
+using Nethermind.Blockchain;
+using Nethermind.Stats;
+
+namespace Nethermind.Synchronization.Peers.AllocationStrategies
 {
-    public interface IFilteringPeerSelectionStrategy : IPeerSelectionStrategy
+    public class StaticStrategy : IPeerAllocationStrategy
     {
-        bool Filter(PeerInfo peerInfo);
+        private readonly PeerInfo _peerInfo;
+
+        public StaticStrategy(PeerInfo peerInfo)
+        {
+            _peerInfo = peerInfo;
+        }
+
+        public bool CanBeReplaced => false;
+        public PeerInfo Allocate(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
+        {
+            return _peerInfo;
+        }
     }
 }

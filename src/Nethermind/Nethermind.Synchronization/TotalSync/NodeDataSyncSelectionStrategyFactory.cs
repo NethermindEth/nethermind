@@ -16,14 +16,15 @@
 
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.TotalSync
 {
     public class NodeDataSyncSelectionStrategyFactory : IPeerSelectionStrategyFactory<StateSyncBatch>
     {
-        public IPeerSelectionStrategy Create(StateSyncBatch request)
+        public IPeerAllocationStrategy Create(StateSyncBatch request)
         {
-            return BySpeedSelectionStrategy.Fastest;
+            return BySpeedStrategy.Fastest;
         }
     }
 }

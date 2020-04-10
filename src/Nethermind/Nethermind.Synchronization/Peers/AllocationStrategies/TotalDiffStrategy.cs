@@ -21,23 +21,22 @@ using Nethermind.Blockchain;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Stats;
 
-namespace Nethermind.Synchronization.Peers
+namespace Nethermind.Synchronization.Peers.AllocationStrategies
 {
-    public class TotalDiffStrategy : IFilteringPeerSelectionStrategy
+    public class TotalDiffStrategy : IPeerAllocationStrategy
     {
-        private readonly IPeerSelectionStrategy _strategy;
+        private readonly IPeerAllocationStrategy _strategy;
         private readonly UInt256 _requiredDifficulty;
-        public TotalDiffStrategy(IPeerSelectionStrategy strategy, UInt256 requiredDifficulty)
+        public TotalDiffStrategy(IPeerAllocationStrategy strategy, UInt256 requiredDifficulty)
         {
             _strategy = strategy ?? throw new ArgumentNullException(nameof(strategy));
             _requiredDifficulty = requiredDifficulty;
         }
 
-        public string Name => $"filter {_strategy.Name}";
         public bool CanBeReplaced => _strategy.CanBeReplaced;
-        public PeerInfo Select(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
+        public PeerInfo Allocate(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
-            return _strategy.Select(currentPeer, peers.Where(Filter), nodeStatsManager, blockTree);
+            return _strategy.Allocate(currentPeer, peers.Where(Filter), nodeStatsManager, blockTree);
         }
 
         public bool Filter(PeerInfo peerInfo)

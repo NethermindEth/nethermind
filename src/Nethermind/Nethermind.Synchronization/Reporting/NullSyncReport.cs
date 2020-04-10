@@ -16,7 +16,7 @@
 
 using Nethermind.Core;
 
-namespace Nethermind.Synchronization
+namespace Nethermind.Synchronization.Reporting
 {
     public class NullSyncReport : ISyncReport
     {

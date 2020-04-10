@@ -23,7 +23,7 @@ using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Peers;
 
-namespace Nethermind.Synchronization
+namespace Nethermind.Synchronization.Reporting
 {
     public class SyncReport : ISyncReport
     {

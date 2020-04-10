@@ -30,6 +30,7 @@ using Nethermind.Stats;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.TotalSync;
 
 namespace Nethermind.Synchronization

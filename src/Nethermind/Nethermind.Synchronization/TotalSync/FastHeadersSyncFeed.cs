@@ -28,6 +28,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SyncLimits;
 
 namespace Nethermind.Synchronization.TotalSync

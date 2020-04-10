@@ -29,6 +29,7 @@ using Nethermind.Store.Bloom;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.TotalSync;
 using Nethermind.TxPool;
 using NSubstitute;

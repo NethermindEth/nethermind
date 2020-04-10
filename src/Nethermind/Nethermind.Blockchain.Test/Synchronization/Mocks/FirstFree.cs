@@ -20,14 +20,15 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Blockchain.Test.Synchronization.Mocks
 {
-    public class FirstFree : IPeerSelectionStrategy
+    public class FirstFree : IPeerAllocationStrategy
     {
         public string Name => "first free";
         public bool CanBeReplaced => false;
-        public PeerInfo Select(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
+        public PeerInfo Allocate(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
             return peers.FirstOrDefault() ?? currentPeer;
         }

@@ -31,6 +31,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.State.Proofs;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SyncLimits;
 
 namespace Nethermind.Synchronization.TotalSync

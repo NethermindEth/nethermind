@@ -17,6 +17,7 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.TotalSync;
 
 namespace Nethermind.Synchronization.Blocks
@@ -30,9 +31,9 @@ namespace Nethermind.Synchronization.Blocks
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         }
         
-        public IPeerSelectionStrategy Create(BlocksRequest request)
+        public IPeerAllocationStrategy Create(BlocksRequest request)
         {
-            IPeerSelectionStrategy baseStrategy = new BlocksSyncPeerSelectionStrategy(request.NumberOfLatestBlocksToBeIgnored);
+            IPeerAllocationStrategy baseStrategy = new BlocksSyncPeerAllocationStrategy(request.NumberOfLatestBlocksToBeIgnored);
             TotalDiffStrategy totalDiffStrategy = new TotalDiffStrategy(baseStrategy, (_blockTree.BestSuggestedHeader?.TotalDifficulty + 1) ?? 0);
             return totalDiffStrategy;
         }

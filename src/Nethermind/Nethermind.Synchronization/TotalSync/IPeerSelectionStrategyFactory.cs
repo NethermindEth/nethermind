@@ -15,11 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.TotalSync
 {
     public interface IPeerSelectionStrategyFactory<in T>
     {
-        IPeerSelectionStrategy Create(T request);
+        IPeerAllocationStrategy Create(T request);
     }
 }

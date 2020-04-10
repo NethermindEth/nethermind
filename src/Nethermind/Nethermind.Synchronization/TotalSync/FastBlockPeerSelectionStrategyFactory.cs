@@ -16,14 +16,15 @@
 
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.TotalSync
 {
     public class FastBlockPeerSelectionStrategyFactory : IPeerSelectionStrategyFactory<FastBlocksBatch>
     {
-        public IPeerSelectionStrategy Create(FastBlocksBatch request)
+        public IPeerAllocationStrategy Create(FastBlocksBatch request)
         {
-            return new FastBlocksSelectionStrategy(request.MinNumber, request.Prioritized);
+            return new FastBlocksAllocationStrategy(request.MinNumber, request.Prioritized);
         }
     }
 }

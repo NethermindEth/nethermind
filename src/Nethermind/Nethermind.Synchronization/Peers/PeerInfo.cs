@@ -70,19 +70,18 @@ namespace Nethermind.Synchronization.Peers
         public UInt256 TotalDifficulty { get; set; }
         public long HeadNumber { get; set; }
         public Keccak HeadHash { get; set; }
-
         public bool HasBeenDisconnected { get; private set; }
 
         public void MarkDisconnected()
         {
             HasBeenDisconnected = true;
         }
-
-        public override string ToString() => $"[Peer|{SyncPeer?.Node:s}|{HeadNumber}|{SyncPeer?.ClientId}|{SyncPeer?.EthDetails}]";
         
         public int IncreaseWeakness()
         {
             return Interlocked.Increment(ref _weakness);
         }
+        
+                public override string ToString() => $"[Peer|{SyncPeer?.Node:s}|{HeadNumber}|{SyncPeer?.ClientId}|{SyncPeer?.EthDetails}]";
     }
 }

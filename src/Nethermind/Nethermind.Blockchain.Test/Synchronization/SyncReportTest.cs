@@ -21,6 +21,7 @@ using Nethermind.Stats;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
 

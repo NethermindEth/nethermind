@@ -31,6 +31,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Timer = System.Timers.Timer;
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
@@ -295,12 +296,12 @@ namespace Nethermind.Synchronization.Peers
 
         private object _isAllocatedChecks = new object();
 
-        public async Task<SyncPeerAllocation> Borrow(IPeerSelectionStrategy peerSelectionStrategy, string description = "", int timeoutMilliseconds = 0)
+        public async Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, string description = "", int timeoutMilliseconds = 0)
         {
             int tryCount = 1;
             DateTime startTime = DateTime.UtcNow;
 
-            SyncPeerAllocation allocation = new SyncPeerAllocation(peerSelectionStrategy);
+            SyncPeerAllocation allocation = new SyncPeerAllocation(peerAllocationStrategy);
             while (true)
             {
                 lock (_isAllocatedChecks)
@@ -308,7 +309,7 @@ namespace Nethermind.Synchronization.Peers
                     allocation.AllocateBestPeer(UsefulPeers.Where(p => !p.IsAllocated), _stats, _blockTree);
                     if (allocation.HasPeer)
                     {
-                        if (peerSelectionStrategy.CanBeReplaced)
+                        if (peerAllocationStrategy.CanBeReplaced)
                         {
                             _replaceableAllocations.TryAdd(allocation, null);
                         }

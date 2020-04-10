@@ -14,25 +14,29 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
-using Nethermind.Blockchain;
-using Nethermind.Stats;
+using System;
+using Nethermind.Core;
 
-namespace Nethermind.Synchronization.Peers
+namespace Nethermind.Synchronization.Reporting
 {
-    public class StaticSelectionStrategy : IPeerSelectionStrategy
+    public interface ISyncReport : IDisposable
     {
-        private readonly PeerInfo _peerInfo;
-
-        public StaticSelectionStrategy(PeerInfo peerInfo)
-        {
-            _peerInfo = peerInfo;
-        }
-        public string Name => "static";
-        public bool CanBeReplaced => false;
-        public PeerInfo Select(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
-        {
-            return _peerInfo;
-        }
+        MeasuredProgress FullSyncBlocksDownloaded { get; }
+        
+        long FullSyncBlocksKnown { get; set; }
+        
+        long FastBlocksPivotNumber { get; set; }
+        
+        MeasuredProgress HeadersInQueue { get; }
+        
+        MeasuredProgress BodiesInQueue { get; }
+        
+        MeasuredProgress ReceiptsInQueue { get; }
+        
+        MeasuredProgress FastBlocksHeaders { get; }
+        
+        MeasuredProgress FastBlocksBodies { get; }
+        
+        MeasuredProgress FastBlocksReceipts { get; }
     }
 }

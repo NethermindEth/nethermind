@@ -17,26 +17,24 @@
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Stats;
-using Nethermind.Synchronization.Peers;
 
-namespace Nethermind.Synchronization
+namespace Nethermind.Synchronization.Peers.AllocationStrategies
 {
-    public class BySpeedSelectionStrategy : IPeerSelectionStrategy
+    public class BySpeedStrategy : IPeerAllocationStrategy
     {
         private readonly bool _priority;
 
-        private BySpeedSelectionStrategy(bool priority)
+        private BySpeedStrategy(bool priority)
         {
             _priority = priority;
         }
 
-        public static BySpeedSelectionStrategy Slowest = new BySpeedSelectionStrategy(false);
-        public static BySpeedSelectionStrategy Fastest = new BySpeedSelectionStrategy(true);
+        public static BySpeedStrategy Slowest = new BySpeedStrategy(false);
+        public static BySpeedStrategy Fastest = new BySpeedStrategy(true);
 
-        public string Name => "fast blocks";
         public bool CanBeReplaced => false;
 
-        public PeerInfo Select(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
+        public PeerInfo Allocate(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
             long nullSpeed = _priority ? -1 : long.MaxValue;
             long currentSpeed = currentPeer == null ? nullSpeed : nodeStatsManager.GetOrAdd(currentPeer.SyncPeer.Node).GetAverageTransferSpeed() ?? nullSpeed;
@@ -44,7 +42,7 @@ namespace Nethermind.Synchronization
 
             foreach (PeerInfo info in peers)
             {
-                (this as IPeerSelectionStrategy).CheckAsyncState(info);
+                (this as IPeerAllocationStrategy).CheckAsyncState(info);
 
                 long averageTransferSpeed = nodeStatsManager.GetOrAdd(info.SyncPeer.Node).GetAverageTransferSpeed() ?? 0;
                 if (_priority ? averageTransferSpeed > bestPeer.TransferSpeed : averageTransferSpeed < bestPeer.TransferSpeed)

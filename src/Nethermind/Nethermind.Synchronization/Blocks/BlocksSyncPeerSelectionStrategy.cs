@@ -20,17 +20,18 @@ using Nethermind.Blockchain;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    public class BlocksSyncPeerSelectionStrategy : IPeerSelectionStrategy
+    public class BlocksSyncPeerAllocationStrategy : IPeerAllocationStrategy
     {
         private readonly long? _minBlocksAhead;
 
         private const decimal MinDiffPercentageForSpeedSwitch = 0.10m;
         private const int MinDiffForSpeedSwitch = 10;
 
-        public BlocksSyncPeerSelectionStrategy(long? minBlocksAhead)
+        public BlocksSyncPeerAllocationStrategy(long? minBlocksAhead)
         {
             _minBlocksAhead = minBlocksAhead;
         }
@@ -38,7 +39,7 @@ namespace Nethermind.Synchronization.Blocks
         public string Name => "blocks";
         public bool CanBeReplaced => true;
 
-        public PeerInfo Select(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
+        public PeerInfo Allocate(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
             int nullSpeed = -1;
             decimal averageSpeed = 0M;
@@ -54,7 +55,7 @@ namespace Nethermind.Synchronization.Blocks
             
             foreach (PeerInfo info in peers)
             {
-                (this as IPeerSelectionStrategy).CheckAsyncState(info);
+                (this as IPeerAllocationStrategy).CheckAsyncState(info);
                 peersCount++;
 
                 if (_minBlocksAhead != null)
