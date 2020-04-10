@@ -97,6 +97,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             public TxReceipt[] Get(Keccak blockHash) => _inStorage.Get(blockHash);
 
             public bool CanGetReceiptsByHash(long blockNumber) => _inStorage.CanGetReceiptsByHash(blockNumber);
+            public bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator) => _outStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
 
             public void Insert(Block block, params TxReceipt[] txReceipts)
             {

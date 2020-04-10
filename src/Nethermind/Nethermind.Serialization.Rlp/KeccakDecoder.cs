@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,19 +14,18 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.Filters.Topics
+namespace Nethermind.Serialization.Rlp
 {
-    public abstract class TopicExpression
+    public class KeccakDecoder : IRlpValueDecoder<Keccak>
     {
-        public abstract bool Accepts(Keccak topic);
+        public static readonly KeccakDecoder Instance = new KeccakDecoder();
         
-        public abstract bool Accepts(ref KeccakStructRef topic);
+        public Keccak Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => decoderContext.DecodeKeccak();
 
-        public abstract bool Matches(Bloom bloom);
-        
-        public abstract bool Matches(ref BloomStructRef bloom);
+        public Rlp Encode(Keccak item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.Encode(item);
+
+        public int GetLength(Keccak item, RlpBehaviors rlpBehaviors) => Rlp.LengthOf(item);
     }
 }

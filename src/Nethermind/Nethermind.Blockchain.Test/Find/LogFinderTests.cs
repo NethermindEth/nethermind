@@ -46,9 +46,14 @@ namespace Nethermind.Blockchain.Test.Find
         [SetUp]
         public void SetUp()
         {
+            SetUp(true);
+        }
+
+        private void SetUp(bool allowReceiptIterator)
+        {
             var specProvider = Substitute.For<ISpecProvider>();
             specProvider.GetSpec(Arg.Any<long>()).IsEip155Enabled.Returns(true);
-            _receiptStorage = new InMemoryReceiptStorage();
+            _receiptStorage = new InMemoryReceiptStorage(allowReceiptIterator);
             _blockTree = Build.A.BlockTree().WithTransactions(_receiptStorage, specProvider, LogsForBlockBuilder).OfChainLength(5).TestObject;
             _bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
             _receiptsRecovery = Substitute.For<IReceiptsRecovery>();
@@ -92,8 +97,9 @@ namespace Nethermind.Blockchain.Test.Find
         }
 
         [Test]
-        public void filter_all_logs([ValueSource(nameof(WithBloomValues))] bool withBloomDb)
+        public void filter_all_logs([ValueSource(nameof(WithBloomValues))] bool withBloomDb, [Values(false, true)] bool allowReceiptIterator)
         {
+            SetUp(allowReceiptIterator);
             StoreTreeBlooms(withBloomDb);
             var logFilter = AllBlockFilter().Build();
             var logs = _logFinder.FindLogs(logFilter).ToArray();
