@@ -962,6 +962,34 @@ namespace Nethermind.Serialization.Rlp
 
                 return new Keccak(keccakSpan.ToArray());
             }
+            
+            public void DecodeKeccakStructRef(out KeccakStructRef keccak)
+            {
+                int prefix = ReadByte();
+                if (prefix == 128)
+                {
+                    keccak = new KeccakStructRef(Keccak.Zero.Bytes);
+                }
+                else if (prefix != 128 + 32)
+                {
+                    throw new DecodeKeccakRlpException(prefix, Position, Data.Length);
+                }
+                else
+                {
+                    Span<byte> keccakSpan = Read(32);
+                    if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
+                    {
+                        keccak = new KeccakStructRef(Keccak.OfAnEmptyString.Bytes);
+                    }
+                    else if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
+                    {
+                        keccak = new KeccakStructRef(Keccak.EmptyTreeHash.Bytes);
+                    }
+
+                    keccak = new KeccakStructRef(keccakSpan);
+                }
+            }
+            
 
             public Address DecodeAddress()
             {
@@ -978,6 +1006,23 @@ namespace Nethermind.Serialization.Rlp
 
                 byte[] buffer = Read(20).ToArray();
                 return new Address(buffer);
+            }
+            
+            public void DecodeAddressStructRef(out AddressStructRef address)
+            {
+                int prefix = ReadByte();
+                if (prefix == 128)
+                {
+                    address = new AddressStructRef(Address.Zero.Bytes);
+                }
+                else if (prefix != 128 + 20)
+                {
+                    throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Keccak)} at position {Position} in the message of length {Data.Length} starting with {Data.Slice(0, Math.Min(DebugMessageContentLength, Data.Length)).ToHexString()}");
+                }
+                else
+                {
+                    address = new AddressStructRef(Read(20));
+                }
             }
 
             public UInt256 DecodeUInt256()
@@ -1024,6 +1069,35 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 return bloomBytes.SequenceEqual(Bloom.Empty.Bytes) ? Bloom.Empty : new Bloom(bloomBytes.ToArray());
+            }
+            
+            public void DecodeBloomStructRef(out BloomStructRef bloom)
+            {
+                Span<byte> bloomBytes;
+
+                // tks: not sure why but some nodes send us Blooms in a sequence form
+                // https://github.com/NethermindEth/nethermind/issues/113
+                if (Data[Position] == 249)
+                {
+                    Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes 
+                    bloomBytes = Read(256);
+                }
+                else
+                {
+                    bloomBytes = DecodeByteArraySpan();
+                    if (bloomBytes.Length == 0)
+                    {
+                        bloom = new BloomStructRef(Bloom.Empty.Bytes);
+                        return;
+                    }
+                }
+
+                if (bloomBytes.Length != 256)
+                {
+                    throw new InvalidOperationException("Incorrect bloom RLP");
+                }
+
+                bloom = bloomBytes.SequenceEqual(Bloom.Empty.Bytes) ? new BloomStructRef(Bloom.Empty.Bytes) : new BloomStructRef(bloomBytes);
             }
 
             public Span<byte> PeekNextItem()
@@ -1081,14 +1155,10 @@ namespace Nethermind.Serialization.Rlp
             public Span<byte> DecodeByteArraySpan()
             {
                 int prefix = ReadByte();
-                if (prefix == 0)
-                {
-                    return new byte[] {0};
-                }
 
                 if (prefix < 128)
                 {
-                    return new[] {(byte) prefix};
+                    return Data.Slice(Position - 1, 1);
                 }
 
                 if (prefix == 128)

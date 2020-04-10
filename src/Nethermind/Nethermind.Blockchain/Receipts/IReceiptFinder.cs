@@ -26,5 +26,6 @@ namespace Nethermind.Blockchain.Receipts
         TxReceipt[] Get(Block block);
         TxReceipt[] Get(Keccak blockHash);
         bool CanGetReceiptsByHash(long blockNumber);
+        bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator);
     }
 }
