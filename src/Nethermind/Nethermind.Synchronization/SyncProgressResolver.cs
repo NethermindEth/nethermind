@@ -97,17 +97,15 @@ namespace Nethermind.Synchronization
 
         public long FindBestFullBlock() => Math.Min(FindBestHeader(), _blockTree.BestSuggestedBody?.Number ?? 0); // avoiding any potential concurrency issue
 
+        public long FindBestProcessedBlock() => _blockTree.Head?.Number ?? -1;
+        
         public bool IsFastBlocksFinished()
         {
             bool isFastBlocks = _syncConfig.FastBlocks;
             bool isBeamSync = _syncConfig.BeamSync;
 
-            if (!isFastBlocks)
-            {
-                return true;
-            }
-
-            if (_syncConfig.PivotNumberParsed == 0L)
+            // if pivot number is 0 then it is equivalent to fast blocks disabled
+            if (!isFastBlocks || _syncConfig.PivotNumberParsed == 0L)
             {
                 return true;
             }
@@ -120,7 +118,5 @@ namespace Nethermind.Synchronization
             return allBodiesDownloaded && allHeadersDownloaded && allReceiptsDownloaded
                    || isBeamSync && anyHeaderDownloaded;
         }
-
-        public long FindBestProcessedBlock() => _blockTree.Head?.Number ?? -1;
     }
 }
