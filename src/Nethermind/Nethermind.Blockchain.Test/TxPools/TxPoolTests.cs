@@ -18,8 +18,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Test.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -72,7 +70,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             _txPool = CreatePool(_noTxStorage);
             var peers = GetPeers();
 
-            foreach ((ISyncPeer peer, _) in peers)
+            foreach ((ITxPoolPeer peer, _) in peers)
             {
                 _txPool.AddPeer(peer);
             }
@@ -84,14 +82,14 @@ namespace Nethermind.Blockchain.Test.TxPools
             _txPool = CreatePool(_noTxStorage);
             var peers = GetPeers();
 
-            foreach ((ISyncPeer peer, _) in peers)
+            foreach ((ITxPoolPeer peer, _) in peers)
             {
                 _txPool.AddPeer(peer);
             }
 
-            foreach ((ISyncPeer peer, _) in peers)
+            foreach ((ITxPoolPeer peer, _) in peers)
             {
-                _txPool.RemovePeer(peer.Node.Id);
+                _txPool.RemovePeer(peer.Id);
             }
         }
 
@@ -332,9 +330,9 @@ namespace Nethermind.Blockchain.Test.TxPools
             return new Transactions(pendingTransactions, filteredTransactions);
         }
 
-        private IDictionary<ISyncPeer, PrivateKey> GetPeers(int limit = 100)
+        private IDictionary<ITxPoolPeer, PrivateKey> GetPeers(int limit = 100)
         {
-            var peers = new Dictionary<ISyncPeer, PrivateKey>();
+            var peers = new Dictionary<ITxPoolPeer, PrivateKey>();
             for (var i = 0; i < limit; i++)
             {
                 var privateKey = Build.A.PrivateKey.TestObject;
@@ -348,8 +346,12 @@ namespace Nethermind.Blockchain.Test.TxPools
             => new TxPool.TxPool(txStorage,
                 Timestamper.Default, _ethereumEcdsa, _specProvider, new TxPoolConfig(), _stateProvider, _logManager);
 
-        private ISyncPeer GetPeer(PublicKey publicKey)
-            => new SyncPeerMock(_remoteBlockTree, publicKey);
+        private ITxPoolPeer GetPeer(PublicKey publicKey)
+        {
+            ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
+            peer.Id.Returns(publicKey);
+            return peer;
+        }
 
         private Transaction[] AddTransactionsToPool(bool sameTransactionSenderPerPeer = true, bool sameNoncePerPeer= true, int transactionsPerPeer = 10)
         {
@@ -381,7 +383,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             IEnumerable<Transaction> transactions)
             => transactions.Select(t => storage.Get(t.Hash)).Where(t => !(t is null)).ToArray();
 
-        private Transaction[] GetTransactions(IDictionary<ISyncPeer, PrivateKey> peers, bool sameTransactionSenderPerPeer = true, bool sameNoncePerPeer = true, int transactionsPerPeer = 10)
+        private Transaction[] GetTransactions(IDictionary<ITxPoolPeer, PrivateKey> peers, bool sameTransactionSenderPerPeer = true, bool sameNoncePerPeer = true, int transactionsPerPeer = 10)
         {
             var transactions = new List<Transaction>();
             foreach ((_, PrivateKey privateKey) in peers)

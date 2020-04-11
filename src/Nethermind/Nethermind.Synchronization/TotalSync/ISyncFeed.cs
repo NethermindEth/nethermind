@@ -24,7 +24,7 @@ namespace Nethermind.Synchronization.TotalSync
         SyncFeedState CurrentState { get; }
         event EventHandler<SyncFeedStateEventArgs> StateChanged;
         Task<T> PrepareRequest();
-        SyncBatchResponseHandlingResult HandleResponse(T response);
+        SyncResponseHandlingResult HandleResponse(T response);
         
         /// <summary>
         /// Multifeed can prepare and handle multiple requests concurrently.

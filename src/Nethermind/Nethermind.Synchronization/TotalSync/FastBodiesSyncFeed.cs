@@ -260,7 +260,7 @@ namespace Nethermind.Synchronization.TotalSync
             _blockTree.Insert(validResponses);
         }
 
-        public override SyncBatchResponseHandlingResult HandleResponse(BodiesSyncBatch batch)
+        public override SyncResponseHandlingResult HandleResponse(BodiesSyncBatch batch)
         {
             if (batch.IsResponseEmpty)
             {
@@ -268,7 +268,7 @@ namespace Nethermind.Synchronization.TotalSync
                 if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
                 _pending.Enqueue(batch);
                 batch.MarkHandlingEnd();
-                return SyncBatchResponseHandlingResult.NoData; //(BlocksDataHandlerResult.OK, 0);
+                return SyncResponseHandlingResult.NoData; //(BlocksDataHandlerResult.OK, 0);
             }
 
             try
@@ -279,7 +279,7 @@ namespace Nethermind.Synchronization.TotalSync
                 stopwatch.Stop();
                 //                        var nonNull = batch.Bodies.Headers.Where(h => h != null).OrderBy(h => h.Number).ToArray();
                 //                        _logger.Warn($"Handled blocks response blocks [{nonNull.First().Number},{nonNull.Last().Number}]{batch.Bodies.Request.Length} in {stopwatch.ElapsedMilliseconds}ms");
-                return SyncBatchResponseHandlingResult.OK; //(BlocksDataHandlerResult.OK, added);
+                return SyncResponseHandlingResult.OK; //(BlocksDataHandlerResult.OK, added);
             }
             finally
             {

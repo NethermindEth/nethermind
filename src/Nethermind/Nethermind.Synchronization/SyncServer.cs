@@ -231,13 +231,14 @@ namespace Nethermind.Synchronization
                 if (_logger.IsTrace) _logger.Trace($"{block.Hash} ({block.Number}) adding result is {result}");
             }
 
-            // do not change to if..else
-            // there are some rare cases when it did not work...
-            // do not remember why
-            if (result == AddBlockResult.UnknownParent)
-            {
-                _synchronizer.RequestSynchronization(SyncTriggerType.NewBlock);
-            }
+            // TODO: now it should be done by sync peer pool?
+            // // do not change to if..else
+            // // there are some rare cases when it did not work...
+            // // do not remember why
+            // if (result == AddBlockResult.UnknownParent)
+            // {
+            //     _synchronizer.RequestSynchronization(SyncTriggerType.NewBlock);
+            // }
         }
 
         private void LogBlockAuthorNicely(Block block, Node nodeWhoSentTheBlock)
@@ -273,12 +274,13 @@ namespace Nethermind.Synchronization
 
                     /* do not add as this is a hint only */
                 }
-
-                if (!_blockTree.IsKnownBlock(number, hash))
-                {
-                    _pool.RefreshTotalDifficulty(peerInfo, hash);
-                    _synchronizer.RequestSynchronization(SyncTriggerType.NewBlock);
-                }
+                
+                // TODO: now it should be done by sync peer pool?
+                // if (!_blockTree.IsKnownBlock(number, hash))
+                // {
+                //     _pool.RefreshTotalDifficulty(peerInfo, hash);
+                //     _synchronizer.RequestSynchronization(SyncTriggerType.NewBlock);
+                // }
             }
         }
 

@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -31,6 +32,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization;
 using Nethermind.Synchronization.BeamSync;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.Peers;
@@ -264,9 +266,10 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
 
         private ILogManager _logManager;
 
+        private ISyncModeSelector _syncModeSelector;
         private ISyncPeerPool _pool;
-        private NodeDataFeed _feed;
-        private NodeDataSyncExecutor _downloader;
+        private StateSyncFeed _feed;
+        private StateSyncDispatcher _downloader;
 
         private void PrepareDownloader(ISyncPeer syncPeer)
         {
@@ -276,8 +279,12 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             _pool.Start();
             _pool.AddPeer(syncPeer);
 
-            _feed = new NodeDataFeed(dbContext.LocalCodeDb, dbContext.LocalStateDb, _logManager);
-            _downloader = new NodeDataSyncExecutor(_feed, _pool, new NodeDataSyncSelectionStrategyFactory(), _logManager);
+            SyncConfig syncConfig = new SyncConfig();
+            syncConfig.FastSync = true;
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, NullReceiptStorage.Instance, dbContext.LocalStateDb, syncConfig, _logManager);
+            _syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, _pool, syncConfig, _logManager);
+            _feed = new StateSyncFeed(dbContext.LocalCodeDb, dbContext.LocalStateDb, _syncModeSelector, blockTree, _logManager);
+            _downloader = new StateSyncDispatcher(_feed, _pool, new StateSyncAllocationStrategyFactory(), _logManager);
         }
 
         private const int TimeoutLength = 1000;

@@ -14,16 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.TotalSync
 {
-    public class StaticPeerSelectionStrategyFactory<T> : IPeerSelectionStrategyFactory<T>
+    public class StaticPeerAllocationStrategyFactory<T> : IPeerAllocationStrategyFactory<T>
     {
         private readonly IPeerAllocationStrategy _allocationStrategy;
 
-        public StaticPeerSelectionStrategyFactory(IPeerAllocationStrategy allocationStrategy)
+        public StaticPeerAllocationStrategyFactory(IPeerAllocationStrategy allocationStrategy)
         {
             _allocationStrategy = allocationStrategy;
         }

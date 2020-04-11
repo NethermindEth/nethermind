@@ -21,6 +21,8 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -32,7 +34,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    public class NodeDataFeed : SyncFeed<StateSyncBatch>, INodeDataFeed
+    public class StateSyncFeed : SyncFeed<StateSyncBatch>, INodeDataFeed
     {
         private const int MaxRequestSize = 384;
 
@@ -90,6 +92,8 @@ namespace Nethermind.Synchronization.FastSync
         private ILogger _logger;
         private ISnapshotableDb _stateDb;
         private readonly IDb _tempDb;
+        private readonly ISyncModeSelector _syncModeSelector;
+        private readonly IBlockTree _blockTree;
 
         private ConcurrentStack<StateSyncItem>[] _nodes = new ConcurrentStack<StateSyncItem>[7];
 
@@ -108,11 +112,15 @@ namespace Nethermind.Synchronization.FastSync
         private Dictionary<Keccak, HashSet<DependentItem>> _dependencies = new Dictionary<Keccak, HashSet<DependentItem>>();
         private LruCache<Keccak, object> _alreadySaved = new LruCache<Keccak, object>(1024 * 64);
 
-        public NodeDataFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, IDb tempDb, ILogManager logManager)
+        public StateSyncFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, IBlockTree blockTree, ILogManager logManager)
         {
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _tempDb = tempDb ?? throw new ArgumentNullException(nameof(tempDb));
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
+            _syncModeSelector.Changed += SyncModeSelectorOnChanged;
+            
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             byte[] progress = _codeDb.Get(_fastSyncProgressKey);
@@ -139,8 +147,27 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        public NodeDataFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, ILogManager logManager)
-            : this(codeDb, stateDb, new MemDb(), logManager) { }
+        private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
+        {
+            if (CurrentState == SyncFeedState.Dormant)
+            {
+                if ((e.Current & SyncMode.StateNodes) == SyncMode.StateNodes)
+                {
+                    BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
+                    if (bestSuggested == null || bestSuggested.Number == 0)
+                    {
+                        return;
+                    }
+                 
+                    if (_logger.IsInfo) _logger.Info($"Starting the node data sync from the {bestSuggested.ToString(BlockHeader.Format.Short)} {bestSuggested.StateRoot} root");
+                    SetNewStateRoot(bestSuggested.Number, bestSuggested.StateRoot);
+                    Activate();
+                }
+            }
+        }
+
+        public StateSyncFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, ISyncModeSelector syncModeSelector, IBlockTree blockTree, ILogManager logManager)
+            : this(codeDb, stateDb, new MemDb(), syncModeSelector, blockTree, logManager) { }
 
         private AddNodeResult AddNode(StateSyncItem syncItem, DependentItem dependentItem, string reason, bool missing = false)
         {
@@ -409,7 +436,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private HashSet<Keccak> _codesSameAsNodes = new HashSet<Keccak>();
 
-        public override SyncBatchResponseHandlingResult HandleResponse(StateSyncBatch batch)
+        public override SyncResponseHandlingResult HandleResponse(StateSyncBatch batch)
         {
             int requestLength = batch.RequestedNodes?.Length ?? 0;
             int responseLength = batch.Responses?.Length ?? 0;
@@ -440,7 +467,7 @@ namespace Nethermind.Synchronization.FastSync
                         AddAgainAllItems();
                         if (_logger.IsTrace) _logger.Trace($"Batch was not assigned to any peer.");
                         Interlocked.Increment(ref _notAssignedCount);
-                        return SyncBatchResponseHandlingResult.NotAssigned;
+                        return SyncResponseHandlingResult.NotAssigned;
                     }
 
                     bool isMissingRequestData = batch.RequestedNodes == null;
@@ -452,7 +479,7 @@ namespace Nethermind.Synchronization.FastSync
                         AddAgainAllItems();
                         if (_logger.IsDebug) _logger.Debug($"Batch response had invalid format");
                         Interlocked.Increment(ref _invalidFormatCount);
-                        return SyncBatchResponseHandlingResult.InvalidFormat;
+                        return SyncResponseHandlingResult.InvalidFormat;
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"Received node data - {responseLength} items in response to {requestLength}");
@@ -535,7 +562,7 @@ namespace Nethermind.Synchronization.FastSync
                     if (isEmpty)
                     {
                         if (_logger.IsDebug) _logger.Debug($"Peer sent no data in response to a request of length {batch.RequestedNodes.Length}");
-                        return SyncBatchResponseHandlingResult.NoData;
+                        return SyncResponseHandlingResult.NoData;
                     }
 
                     if (!isEmptish && !isBadQuality)
@@ -543,11 +570,11 @@ namespace Nethermind.Synchronization.FastSync
                         Interlocked.Increment(ref _okCount);
                     }
 
-                    SyncBatchResponseHandlingResult result = isEmptish
-                        ? SyncBatchResponseHandlingResult.Emptish
+                    SyncResponseHandlingResult result = isEmptish
+                        ? SyncResponseHandlingResult.Emptish
                         : isBadQuality
-                            ? SyncBatchResponseHandlingResult.BadQuality
-                            : SyncBatchResponseHandlingResult.OK;
+                            ? SyncResponseHandlingResult.BadQuality
+                            : SyncResponseHandlingResult.OK;
 
                     TimeSpan sinceLastReport = DateTime.UtcNow - _lastReportTime.small;
                     if (sinceLastReport > TimeSpan.FromSeconds(1))

@@ -25,18 +25,18 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.TotalSync
 {
-    public class HeadersSyncExecutor : SyncExecutor<HeadersSyncBatch>
+    public class HeadersSyncDispatcher : SyncDispatcher<HeadersSyncBatch>
     {
-        public HeadersSyncExecutor(
+        public HeadersSyncDispatcher(
             ISyncFeed<HeadersSyncBatch> syncFeed,
             ISyncPeerPool syncPeerPool,
-            IPeerSelectionStrategyFactory<FastBlocksBatch> peerSelectionStrategy,
+            IPeerAllocationStrategyFactory<FastBlocksBatch> peerAllocationStrategy,
             ILogManager logManager)
-            : base(syncFeed, syncPeerPool, peerSelectionStrategy, logManager)
+            : base(syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
         {
         }
 
-        protected override async Task Execute(PeerInfo peerInfo, HeadersSyncBatch batch, CancellationToken cancellationToken)
+        protected override async Task Dispatch(PeerInfo peerInfo, HeadersSyncBatch batch, CancellationToken cancellationToken)
         {
             ISyncPeer peer = peerInfo.SyncPeer;
             batch.MarkSent();

@@ -22,30 +22,30 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.TotalSync
 {
-    public abstract class SyncExecutor<T> : ISyncExecutor<T>
+    public abstract class SyncDispatcher<T> : ISyncDispatcher<T>
     {
         private object _feedStateManipulation = new object();
         private SyncFeedState _currentFeedState = SyncFeedState.Dormant;
         
-        private IPeerSelectionStrategyFactory<T> PeerSelectionStrategy { get; }
+        private IPeerAllocationStrategyFactory<T> PeerAllocationStrategy { get; }
 
         protected ILogger Logger { get; }
         protected ISyncFeed<T> Feed { get; }
         protected ISyncPeerPool SyncPeerPool { get; }
 
-        protected SyncExecutor(ISyncFeed<T> syncFeed, ISyncPeerPool syncPeerPool, IPeerSelectionStrategyFactory<T> peerSelectionStrategy, ILogManager logManager)
+        protected SyncDispatcher(ISyncFeed<T> syncFeed, ISyncPeerPool syncPeerPool, IPeerAllocationStrategyFactory<T> peerAllocationStrategy, ILogManager logManager)
         {
-            Logger = logManager?.GetClassLogger<SyncExecutor<T>>() ?? throw new ArgumentNullException(nameof(logManager));
+            Logger = logManager?.GetClassLogger<SyncDispatcher<T>>() ?? throw new ArgumentNullException(nameof(logManager));
             Feed = syncFeed ?? throw new ArgumentNullException(nameof(syncFeed));
             SyncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
-            PeerSelectionStrategy = peerSelectionStrategy ?? throw new ArgumentNullException(nameof(peerSelectionStrategy));
+            PeerAllocationStrategy = peerAllocationStrategy ?? throw new ArgumentNullException(nameof(peerAllocationStrategy));
 
             syncFeed.StateChanged += SyncFeedOnStateChanged;
         }
 
         private TaskCompletionSource<object> _dormantStateTask;
 
-        protected abstract Task Execute(PeerInfo peerInfo, T request, CancellationToken cancellationToken);
+        protected abstract Task Dispatch(PeerInfo peerInfo, T request, CancellationToken cancellationToken);
 
         public async Task<long> Start(CancellationToken cancellationToken)
         {
@@ -76,7 +76,7 @@ namespace Nethermind.Synchronization.TotalSync
                     PeerInfo allocatedPeer = allocation.Current; // TryGetCurrent?
                     if (allocatedPeer != null)
                     {
-                        Task task = Execute(allocatedPeer, request, cancellationToken);
+                        Task task = Dispatch(allocatedPeer, request, cancellationToken);
                         if (!Feed.IsMultiFeed)
                         {
                             await task;
@@ -94,7 +94,7 @@ namespace Nethermind.Synchronization.TotalSync
                             Free(allocation);
                             try
                             {
-                                SyncBatchResponseHandlingResult result = Feed.HandleResponse(request);
+                                SyncResponseHandlingResult result = Feed.HandleResponse(request);
                                 ReactToHandlingResult(result, allocatedPeer);
                             }
                             catch (Exception e)
@@ -107,7 +107,7 @@ namespace Nethermind.Synchronization.TotalSync
                     }
                     else
                     {
-                        SyncBatchResponseHandlingResult result = Feed.HandleResponse(request);
+                        SyncResponseHandlingResult result = Feed.HandleResponse(request);
                         ReactToHandlingResult(result, null);
                     }
                 }
@@ -127,11 +127,11 @@ namespace Nethermind.Synchronization.TotalSync
 
         protected virtual async Task<SyncPeerAllocation> Allocate(T request)
         {
-            SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerSelectionStrategy.Create(request), string.Empty, 1000);
+            SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerAllocationStrategy.Create(request), string.Empty, 1000);
             return allocation;
         }
 
-        protected virtual void ReactToHandlingResult(SyncBatchResponseHandlingResult result, PeerInfo peer)
+        protected virtual void ReactToHandlingResult(SyncResponseHandlingResult result, PeerInfo peer)
         {
             if (peer == null)
             {
@@ -141,20 +141,20 @@ namespace Nethermind.Synchronization.TotalSync
 
             switch (result)
             {
-                case SyncBatchResponseHandlingResult.Emptish:
+                case SyncResponseHandlingResult.Emptish:
                     break;
-                case SyncBatchResponseHandlingResult.BadQuality:
+                case SyncResponseHandlingResult.BadQuality:
                     SyncPeerPool.ReportWeakPeer(peer);
                     break;
-                case SyncBatchResponseHandlingResult.InvalidFormat:
+                case SyncResponseHandlingResult.InvalidFormat:
                     SyncPeerPool.ReportWeakPeer(peer);
                     break;
-                case SyncBatchResponseHandlingResult.NoData:
+                case SyncResponseHandlingResult.NoData:
                     SyncPeerPool.ReportNoSyncProgress(peer);
                     break;
-                case SyncBatchResponseHandlingResult.NotAssigned:
+                case SyncResponseHandlingResult.NotAssigned:
                     break;
-                case SyncBatchResponseHandlingResult.OK:
+                case SyncResponseHandlingResult.OK:
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(result), result, null);

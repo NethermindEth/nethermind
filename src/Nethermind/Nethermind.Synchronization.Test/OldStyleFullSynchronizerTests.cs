@@ -49,24 +49,21 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             _genesisBlock = Build.A.Block.WithNumber(0).TestObject;
             _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(1).TestObject;
-            _stateDb = new StateDb();
-            _codeDb = new StateDb();
-            _receiptsDb = new MemDb();
+            MemDbProvider dbProvider = new MemDbProvider();
+            _stateDb = dbProvider.StateDb;
+            _codeDb = dbProvider.CodeDb;
+            _receiptsDb = dbProvider.ReceiptsDb;
             _receiptStorage = Substitute.For<IReceiptStorage>();
             SyncConfig quickConfig = new SyncConfig();
             quickConfig.FastSync = false;
-
-            ISealValidator sealValidator = Build.A.SealValidator.ThatAlwaysReturnsTrue.TestObject;
-            IBlockValidator blockValidator = Build.A.BlockValidator.ThatAlwaysReturnsTrue.TestObject;
-            ITxValidator txValidator = Build.A.TransactionValidator.ThatAlwaysReturnsTrue.TestObject;
 
             var stats = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
             _pool = new SyncPeerPool(_blockTree, stats, 25, LimboLogs.Instance);
             SyncConfig syncConfig = new SyncConfig();
             SyncProgressResolver resolver = new SyncProgressResolver(_blockTree, _receiptStorage, _stateDb, syncConfig, LimboLogs.Instance);
             SyncModeSelector syncModeSelector = new SyncModeSelector(resolver, _pool, syncConfig, LimboLogs.Instance);
-            _synchronizer = new Synchronizer(MainNetSpecProvider.Instance, _blockTree, NullReceiptStorage.Instance, blockValidator, sealValidator, _pool, quickConfig, Substitute.For<INodeDataFeed>(), Substitute.For<ISyncExecutor<StateSyncBatch>>(), Substitute.For<INodeStatsManager>(), syncModeSelector, LimboLogs.Instance);
-            _syncServer = new SyncServer(_stateDb, _codeDb, _blockTree, _receiptStorage, blockValidator, sealValidator, _pool, syncModeSelector, _synchronizer, quickConfig, LimboLogs.Instance);
+            _synchronizer = new Synchronizer(dbProvider, MainNetSpecProvider.Instance, _blockTree, NullReceiptStorage.Instance, Always.Valid, Always.Valid, _pool,  Substitute.For<INodeStatsManager>(), syncModeSelector, quickConfig, LimboLogs.Instance);
+            _syncServer = new SyncServer(_stateDb, _codeDb, _blockTree, _receiptStorage, Always.Valid, Always.Valid, _pool, syncModeSelector, _synchronizer, quickConfig, LimboLogs.Instance);
         }
 
         [TearDown]

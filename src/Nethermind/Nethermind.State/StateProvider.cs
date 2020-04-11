@@ -31,6 +31,7 @@ using Metrics = Nethermind.Db.Metrics;
 [assembly: InternalsVisibleTo("Nethermind.State.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
 
 namespace Nethermind.State
 {

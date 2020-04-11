@@ -262,7 +262,7 @@ namespace Nethermind.Synchronization.BeamSync
             return request;
         }
 
-        public SyncBatchResponseHandlingResult HandleResponse(DataConsumerRequest request, byte[][] data)
+        public SyncResponseHandlingResult HandleResponse(DataConsumerRequest request, byte[][] data)
         {
             if (request.ConsumerId != _consumerId)
             {
@@ -302,7 +302,7 @@ namespace Nethermind.Synchronization.BeamSync
             }
 
             _autoReset.Set();
-            return consumed == 0 ? SyncBatchResponseHandlingResult.NoData : SyncBatchResponseHandlingResult.OK;
+            return consumed == 0 ? SyncResponseHandlingResult.NoData : SyncResponseHandlingResult.OK;
         }
 
         private AutoResetEvent _autoReset = new AutoResetEvent(true);

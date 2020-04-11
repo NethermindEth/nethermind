@@ -22,8 +22,6 @@ namespace Nethermind.Synchronization
     public interface ISynchronizer : IDisposable
     {
         event EventHandler<SyncEventArgs> SyncEvent;
-        
-        void RequestSynchronization(SyncTriggerType syncTriggerType);
 
         void Start();
 

@@ -22,7 +22,7 @@ namespace Nethermind.Synchronization.TotalSync
     public abstract class SyncFeed<T> : ISyncFeed<T>
     {
         public abstract Task<T> PrepareRequest();
-        public abstract SyncBatchResponseHandlingResult HandleResponse(T response);
+        public abstract SyncResponseHandlingResult HandleResponse(T response);
 
         public abstract bool IsMultiFeed { get; }
         public SyncFeedState CurrentState { get; private set; }

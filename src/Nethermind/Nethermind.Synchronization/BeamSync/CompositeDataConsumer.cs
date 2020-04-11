@@ -64,7 +64,7 @@ namespace Nethermind.Synchronization.BeamSync
             return Array.Empty<DataConsumerRequest>();
         }
 
-        public SyncBatchResponseHandlingResult HandleResponse(DataConsumerRequest request, byte[][] data)
+        public SyncResponseHandlingResult HandleResponse(DataConsumerRequest request, byte[][] data)
         {
             // int consumed = 0;
             // foreach (INodeDataConsumer nodeDataConsumer in _consumers)
@@ -73,7 +73,7 @@ namespace Nethermind.Synchronization.BeamSync
             // }
             //
             // return consumed;
-            return SyncBatchResponseHandlingResult.OK;
+            return SyncResponseHandlingResult.OK;
         }
     }
 }

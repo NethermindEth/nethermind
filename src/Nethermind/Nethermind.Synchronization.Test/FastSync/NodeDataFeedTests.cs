@@ -17,6 +17,7 @@
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -46,7 +47,16 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             StateDb codeDb = new StateDb();
             StateDb stateDB = new StateDb();
             MemDb tempDb = new MemDb();
-            NodeDataFeed nodeDataFeed = new NodeDataFeed(codeDb, stateDB, tempDb, LimboLogs.Instance);
+            
+            SyncConfig syncConfig = new SyncConfig();
+            syncConfig.FastSync = true;
+
+            IBlockTree blockTree = Substitute.For<IBlockTree>(); 
+            ISyncPeerPool pool = Substitute.For<ISyncPeerPool>(); 
+            
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, NullReceiptStorage.Instance, stateDB, syncConfig, LimboLogs.Instance);
+            ISyncModeSelector syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, pool, syncConfig, LimboLogs.Instance);
+            StateSyncFeed stateSyncFeed = new StateSyncFeed(codeDb, stateDB, tempDb, syncModeSelector, blockTree, LimboLogs.Instance);
 
             // so we want to setup a trie in a structure of -> branch into two leaves
             // so we can respond with the branch node and with leaves missing
@@ -63,10 +73,10 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             // tree = new PatriciaTree();
             // tree.Set(branch.Keccak.Bytes, branch.Value);
 
-            nodeDataFeed.SetNewStateRoot(0, branch.Keccak);
+            stateSyncFeed.SetNewStateRoot(0, branch.Keccak);
             
-            var request = await nodeDataFeed.PrepareRequest();
-            BuildRequestAndHandleResponse(branch, request, nodeDataFeed);
+            var request = await stateSyncFeed.PrepareRequest();
+            BuildRequestAndHandleResponse(branch, request, stateSyncFeed);
 
             byte[] value = tempDb.Get(branch.Keccak);
             value.Should().BeEquivalentTo(branch.FullRlp);
@@ -74,9 +84,9 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             byte[] valueFromState = stateDB.Get(branch.Keccak);
             valueFromState.Should().BeNull();
 
-            request = await nodeDataFeed.PrepareRequest();
+            request = await stateSyncFeed.PrepareRequest();
             
-            BuildRequestAndHandleResponse(leaf, request, nodeDataFeed);
+            BuildRequestAndHandleResponse(leaf, request, stateSyncFeed);
             
             value = tempDb.Get(branch.Keccak);
             value.Should().BeNull();
@@ -85,10 +95,10 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             valueFromState.Should().BeEquivalentTo(branch.FullRlp);
         }
 
-        private static void BuildRequestAndHandleResponse(TrieNode node, StateSyncBatch stateSyncBatch, NodeDataFeed nodeDataFeed)
+        private static void BuildRequestAndHandleResponse(TrieNode node, StateSyncBatch stateSyncBatch, StateSyncFeed stateSyncFeed)
         {
             stateSyncBatch.Responses = new[] {node.FullRlp};
-            nodeDataFeed.HandleResponse(stateSyncBatch);
+            stateSyncFeed.HandleResponse(stateSyncBatch);
         }
     }
 }

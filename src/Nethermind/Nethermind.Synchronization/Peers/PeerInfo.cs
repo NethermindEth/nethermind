@@ -22,7 +22,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
-[assembly:InternalsVisibleTo("Nethermind.Blockchain.Test")]
+[assembly:InternalsVisibleTo("Nethermind.Synchronization.Test")]
 namespace Nethermind.Synchronization.Peers
 {
     public class PeerInfo

@@ -25,18 +25,18 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.TotalSync
 {
-    public class ReceiptsSyncExecutor : SyncExecutor<ReceiptsSyncBatch>
+    public class ReceiptsSyncDispatcher : SyncDispatcher<ReceiptsSyncBatch>
     {
-        public ReceiptsSyncExecutor(
+        public ReceiptsSyncDispatcher(
             ISyncFeed<ReceiptsSyncBatch> syncFeed,
             ISyncPeerPool syncPeerPool,
-            IPeerSelectionStrategyFactory<ReceiptsSyncBatch> peerSelectionStrategy,
+            IPeerAllocationStrategyFactory<ReceiptsSyncBatch> peerAllocationStrategy,
             ILogManager logManager)
-            : base(syncFeed, syncPeerPool, peerSelectionStrategy, logManager)
+            : base(syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
         {
         }
 
-        protected override async Task Execute(PeerInfo peerInfo, ReceiptsSyncBatch batch, CancellationToken cancellationToken)
+        protected override async Task Dispatch(PeerInfo peerInfo, ReceiptsSyncBatch batch, CancellationToken cancellationToken)
         {
             ISyncPeer peer = peerInfo.SyncPeer;
             batch.MarkSent();

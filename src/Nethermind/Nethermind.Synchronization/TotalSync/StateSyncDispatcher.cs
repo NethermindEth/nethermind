@@ -14,47 +14,37 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
 using Nethermind.Logging;
-using Nethermind.Synchronization.FastBlocks;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.TotalSync
 {
-    public class BodiesSyncExecutor : SyncExecutor<BodiesSyncBatch>
+    public class StateSyncDispatcher : SyncDispatcher<StateSyncBatch>
     {
-        public BodiesSyncExecutor(
-            ISyncFeed<BodiesSyncBatch> syncFeed,
-            ISyncPeerPool syncPeerPool,
-            IPeerSelectionStrategyFactory<BodiesSyncBatch> peerSelectionStrategy,
-            ILogManager logManager)
-            : base(syncFeed, syncPeerPool, peerSelectionStrategy, logManager)
+        public StateSyncDispatcher(ISyncFeed<StateSyncBatch> syncFeed, ISyncPeerPool syncPeerPool, IPeerAllocationStrategyFactory<StateSyncBatch> peerAllocationStrategy, ILogManager logManager)
+            : base(syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
         {
         }
 
-        protected override async Task Execute(PeerInfo peerInfo, BodiesSyncBatch batch, CancellationToken cancellationToken)
+        protected override async Task Dispatch(PeerInfo peerInfo, StateSyncBatch request, CancellationToken cancellationToken)
         {
             ISyncPeer peer = peerInfo.SyncPeer;
-            batch.MarkSent();
-            Task<BlockBody[]> getBodiesTask = peer.GetBlockBodies(batch.Request, cancellationToken);
-            await getBodiesTask.ContinueWith(
+            var getNodeDataTask = peer.GetNodeData(request.RequestedNodes.Select(n => n.Hash).ToArray(), cancellationToken);
+            await getNodeDataTask.ContinueWith(
                 (t, state) =>
                 {
-                    BodiesSyncBatch batchLocal = (BodiesSyncBatch)state;
+                    StateSyncBatch batchLocal = (StateSyncBatch) state;
                     if (t.IsCompletedSuccessfully)
                     {
-                        if (batchLocal.RequestTime > 1000)
-                        {
-                            if (Logger.IsDebug) Logger.Debug($"{batchLocal} - peer is slow {batchLocal.RequestTime:F2}");
-                        }
-
-                        batchLocal.Response = t.Result;
+                        batchLocal.Responses = t.Result;
                     }
-                }, batch);
+                }, request);
         }
     }
 }

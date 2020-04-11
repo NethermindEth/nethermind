@@ -28,6 +28,6 @@ namespace Nethermind.Synchronization.BeamSync
 
         DataConsumerRequest[] PrepareRequests();
         
-        SyncBatchResponseHandlingResult HandleResponse(DataConsumerRequest request, byte[][] data);
+        SyncResponseHandlingResult HandleResponse(DataConsumerRequest request, byte[][] data);
     }
 }

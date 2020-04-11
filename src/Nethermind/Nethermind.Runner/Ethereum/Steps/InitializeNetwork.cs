@@ -99,24 +99,21 @@ namespace Nethermind.Runner.Ethereum.Steps
             int maxPeersCount = _networkConfig.ActivePeersMaxCount;
             _ctx.SyncPeerPool = new SyncPeerPool(_ctx.BlockTree, _ctx.NodeStatsManager, maxPeersCount, _ctx.LogManager);
             _ctx.DisposeStack.Push(_ctx.SyncPeerPool);
-
-            INodeDataFeed nodeDataFeed = new NodeDataFeed(_ctx.DbProvider.CodeDb, _ctx.DbProvider.StateDb, new MemDb(), _ctx.LogManager);
-            ISyncExecutor<StateSyncBatch> nodeDataSyncExecutor = new NodeDataSyncExecutor(nodeDataFeed, _ctx.SyncPeerPool, new NodeDataSyncSelectionStrategyFactory(), _ctx.LogManager);            
+            
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_ctx.BlockTree, _ctx.ReceiptStorage, _ctx.DbProvider.StateDb, _syncConfig, _ctx.LogManager);
             
             _ctx.SyncModeSelector = new SyncModeSelector(syncProgressResolver, _ctx.SyncPeerPool, _syncConfig, _ctx.LogManager);
             _ctx.Synchronizer = new Synchronizer(
+                _ctx.DbProvider,
                 _ctx.SpecProvider,
                 _ctx.BlockTree,
                 _ctx.ReceiptStorage,
                 _ctx.BlockValidator,
                 _ctx.SealValidator,
                 _ctx.SyncPeerPool,
-                _syncConfig,
-                nodeDataFeed,
-                nodeDataSyncExecutor,
                 _ctx.NodeStatsManager,
                 _ctx.SyncModeSelector,
+                _syncConfig,
                 _ctx.LogManager);
                 
             _ctx.DisposeStack.Push(_ctx.Synchronizer);

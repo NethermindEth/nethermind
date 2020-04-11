@@ -130,16 +130,16 @@ namespace Nethermind.Blockchain.Test.Synchronization.TotalSync
             public int[] Result { get; set; }
         }
 
-        private class TestExecutor : SyncExecutor<TestBatch>
+        private class TestDispatcher : SyncDispatcher<TestBatch>
         {
-            public TestExecutor(ISyncFeed<TestBatch> syncFeed, ISyncPeerPool syncPeerPool, IPeerSelectionStrategyFactory<TestBatch> peerSelectionStrategy)
-                : base(syncFeed, syncPeerPool, peerSelectionStrategy, LimboLogs.Instance)
+            public TestDispatcher(ISyncFeed<TestBatch> syncFeed, ISyncPeerPool syncPeerPool, IPeerAllocationStrategyFactory<TestBatch> peerAllocationStrategy)
+                : base(syncFeed, syncPeerPool, peerAllocationStrategy, LimboLogs.Instance)
             {
             }
 
             private int _failureSwitch;
 
-            protected override async Task Execute(PeerInfo allocation, TestBatch request, CancellationToken cancellationToken)
+            protected override async Task Dispatch(PeerInfo allocation, TestBatch request, CancellationToken cancellationToken)
             {
                 if (++_failureSwitch % 2 == 0)
                 {
@@ -174,7 +174,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.TotalSync
 
             private ConcurrentQueue<TestBatch> _returned = new ConcurrentQueue<TestBatch>();
 
-            public override SyncBatchResponseHandlingResult HandleResponse(TestBatch response)
+            public override SyncResponseHandlingResult HandleResponse(TestBatch response)
             {
                 if (response.Result == null)
                 {
@@ -195,7 +195,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.TotalSync
 
                 Console.WriteLine("Decrementing");
                 Interlocked.Decrement(ref _pendingRequests);
-                return SyncBatchResponseHandlingResult.OK;
+                return SyncResponseHandlingResult.OK;
             }
 
             public override bool IsMultiFeed { get; }
@@ -247,8 +247,8 @@ namespace Nethermind.Blockchain.Test.Synchronization.TotalSync
         public async Task Simple_test_sync()
         {
             TestSyncFeed syncFeed = new TestSyncFeed();
-            TestExecutor executor = new TestExecutor(syncFeed, new TestSyncPeerPool(), new StaticPeerSelectionStrategyFactory<TestBatch>(new FirstFree()));
-            Task executorTask = executor.Start(CancellationToken.None);
+            TestDispatcher dispatcher = new TestDispatcher(syncFeed, new TestSyncPeerPool(), new StaticPeerAllocationStrategyFactory<TestBatch>(new FirstFree()));
+            Task executorTask = dispatcher.Start(CancellationToken.None);
             syncFeed.Activate();
             await executorTask;
             for (int i = 0; i < TestSyncFeed.Max; i++)

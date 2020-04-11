@@ -44,7 +44,7 @@ namespace Nethermind.Synchronization.BeamSync
             return Array.Empty<DataConsumerRequest>();
         }
 
-        public SyncBatchResponseHandlingResult HandleResponse(DataConsumerRequest request, byte[][] data)
+        public SyncResponseHandlingResult HandleResponse(DataConsumerRequest request, byte[][] data)
         {
             throw new InvalidOperationException("Should never receive response here");
         }

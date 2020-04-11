@@ -210,7 +210,7 @@ namespace Nethermind.Synchronization.TotalSync
             }
         }
 
-        public override SyncBatchResponseHandlingResult HandleResponse(HeadersSyncBatch batch)
+        public override SyncResponseHandlingResult HandleResponse(HeadersSyncBatch batch)
         {
             if (batch.IsResponseEmpty)
             {
@@ -218,21 +218,21 @@ namespace Nethermind.Synchronization.TotalSync
                 if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
                 _pending.Enqueue(batch);
                 batch.MarkHandlingEnd();
-                return SyncBatchResponseHandlingResult.NoData;
+                return SyncResponseHandlingResult.NoData;
             }
 
             try
             {
                 if (batch.RequestSize == 0)
                 {
-                    return SyncBatchResponseHandlingResult.OK; // 1
+                    return SyncResponseHandlingResult.OK; // 1
                 }
 
                 lock (_handlerLock)
                 {
                     batch.MarkHandlingStart();
                     int added = InsertHeaders(batch);
-                    return SyncBatchResponseHandlingResult.OK;
+                    return SyncResponseHandlingResult.OK;
                 }
             }
             finally

@@ -22,11 +22,11 @@ using Nethermind.Synchronization.TotalSync;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    internal class BlocksSyncPeerSelectionStrategyFactory : IPeerSelectionStrategyFactory<BlocksRequest>
+    internal class BlocksSyncPeerAllocationStrategyFactory : IPeerAllocationStrategyFactory<BlocksRequest>
     {
         private readonly IBlockTree _blockTree;
 
-        public BlocksSyncPeerSelectionStrategyFactory(IBlockTree blockTree)
+        public BlocksSyncPeerAllocationStrategyFactory(IBlockTree blockTree)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         }

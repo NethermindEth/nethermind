@@ -35,7 +35,7 @@ using Nethermind.Synchronization.TotalSync;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    internal class BlockDownloader : SyncExecutor<BlocksRequest>
+    internal class BlockDownloader : SyncDispatcher<BlocksRequest>
     {
         public const int MaxReorganizationLength = SyncBatchSize.Max * 2;
 
@@ -64,7 +64,7 @@ namespace Nethermind.Synchronization.Blocks
             IReceiptStorage receiptStorage,
             ISpecProvider specProvider,
             ILogManager logManager)
-            : base(feed, syncPeerPool, new BlocksSyncPeerSelectionStrategyFactory(blockTree), logManager)
+            : base(feed, syncPeerPool, new BlocksSyncPeerAllocationStrategyFactory(blockTree), logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -84,7 +84,7 @@ namespace Nethermind.Synchronization.Blocks
             _syncReport.FullSyncBlocksKnown = Math.Max(_syncReport.FullSyncBlocksKnown, e.Block.Number);
         }
 
-        protected override async Task Execute(PeerInfo bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
+        protected override async Task Dispatch(PeerInfo bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
         {
             if (!_blockTree.CanAcceptNewBlocks) return;
 

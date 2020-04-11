@@ -261,7 +261,7 @@ namespace Nethermind.Synchronization.TotalSync
             }
         }
 
-        public override SyncBatchResponseHandlingResult HandleResponse(ReceiptsSyncBatch batch)
+        public override SyncResponseHandlingResult HandleResponse(ReceiptsSyncBatch batch)
         {
             if (batch.IsResponseEmpty)
             {
@@ -269,7 +269,7 @@ namespace Nethermind.Synchronization.TotalSync
                 if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
                 _pending.Enqueue(batch);
                 batch.MarkHandlingEnd();
-                return SyncBatchResponseHandlingResult.NoData; //(BlocksDataHandlerResult.OK, 0);
+                return SyncResponseHandlingResult.NoData; //(BlocksDataHandlerResult.OK, 0);
             }
 
             try
@@ -285,7 +285,7 @@ namespace Nethermind.Synchronization.TotalSync
                     _pending.Enqueue(batch);
                 }
 
-                return SyncBatchResponseHandlingResult.OK; //(BlocksDataHandlerResult.OK, added);
+                return SyncResponseHandlingResult.OK; //(BlocksDataHandlerResult.OK, added);
             }
             finally
             {
