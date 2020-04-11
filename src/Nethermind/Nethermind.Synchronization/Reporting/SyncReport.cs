@@ -162,40 +162,60 @@ namespace Nethermind.Synchronization.Reporting
                 return;
             }
 
-            switch (currentSyncMode)
+            if (currentSyncMode == SyncMode.None)
             {
-                case SyncMode.NotStarted:
-                    WriteNotStartedReport();
-                    break;
-                case SyncMode.Full:
-                    WriteFullSyncReport("Full Sync");
-                    break;
-                case SyncMode.Beam:
-                    WriteFullSyncReport("Beam Sync");
-                    break;
-                case SyncMode.FastSync:
-                    WriteFullSyncReport($"Fast Sync From Block {(_syncConfig.FastBlocks ? _syncConfig.PivotNumber : "0")}");
-                    break;
-                case SyncMode.FastBlocks:
-                    WriteFastBlocksReport();
-                    break;
-                case SyncMode.DbSync:
-                    WriteDbSyncReport();
-                    break;
-                case SyncMode.StateNodes:
-                    if (_reportId % NoProgressStateSyncReportFrequency == 0)
-                    {
-                        WriteStateNodesReport();
-                    }
-
-                    break;
-                case SyncMode.WaitForProcessor:
-                    WriteWaitForProcessorReport();
-                    break;
-                default:
-                    _logger.Info($"Sync mode: {currentSyncMode}");
-                    break;
+                WriteNotStartedReport();
             }
+
+            if ((currentSyncMode & SyncMode.Full) == SyncMode.Full)
+            {
+                WriteFullSyncReport("Full Sync");
+            }
+            
+            if ((currentSyncMode & SyncMode.FastSync) == SyncMode.FastSync)
+            {
+                WriteFullSyncReport($"Fast Sync From Block {(_syncConfig.FastBlocks ? _syncConfig.PivotNumber : "0")}");
+            }
+            
+            if ((currentSyncMode & SyncMode.FastBlocks) == SyncMode.FastBlocks)
+            {
+                WriteFastBlocksReport();
+            }
+            
+            if ((currentSyncMode & SyncMode.StateNodes) == SyncMode.StateNodes)
+            {
+                if (_reportId % NoProgressStateSyncReportFrequency == 0)
+                {
+                    WriteStateNodesReport();
+                }
+            }
+            
+            //
+            // case var syncMode when syncMode == SyncMode.Full:
+            //         WriteFullSyncReport("Full Sync");
+            //     case var syncMode when syncMode == SyncMode.FastSync:
+            //     case var syncMode when syncMode == SyncMode.FastSync:
+            //         WriteFullSyncReport($"Fast Sync From Block {(_syncConfig.FastBlocks ? _syncConfig.PivotNumber : "0")}");
+            //         break;
+            //     case SyncMode.FastBlocks:
+            //         WriteFastBlocksReport();
+            //         break;
+            //     case SyncMode.DbSync:
+            //         WriteDbSyncReport();
+            //         break;
+            //     case SyncMode.StateNodes:
+            //         if (_reportId % NoProgressStateSyncReportFrequency == 0)
+            //         {
+            //             WriteStateNodesReport();
+            //         }
+            //
+            //         break;
+            //     case SyncMode.WaitForProcessor:
+            //         WriteWaitForProcessorReport();
+            //         break;
+            //     default:
+            //         _logger.Info($"Sync mode: {currentSyncMode}");
+            //         break;
         }
 
         private void WriteSyncConfigReport()

@@ -33,7 +33,12 @@ namespace Nethermind.Synchronization.Blocks
         {
         }
         
-        public int? NumberOfLatestBlocksToBeIgnored { get; set; }
-        public DownloaderOptions Options { get; set; }
+        public int? NumberOfLatestBlocksToBeIgnored { get; }
+        public DownloaderOptions Options { get; }
+
+        public override string ToString()
+        {
+            return $"Blocks Request: {Options}";
+        }
     }
 }

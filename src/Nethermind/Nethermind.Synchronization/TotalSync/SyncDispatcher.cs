@@ -18,6 +18,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.TotalSync
@@ -26,7 +27,7 @@ namespace Nethermind.Synchronization.TotalSync
     {
         private object _feedStateManipulation = new object();
         private SyncFeedState _currentFeedState = SyncFeedState.Dormant;
-        
+
         private IPeerAllocationStrategyFactory<T> PeerAllocationStrategy { get; }
 
         protected ILogger Logger { get; }
@@ -74,6 +75,8 @@ namespace Nethermind.Synchronization.TotalSync
 
                     SyncPeerAllocation allocation = await Allocate(request);
                     PeerInfo allocatedPeer = allocation.Current; // TryGetCurrent?
+                    // if (Logger.IsWarn) Logger.Warn($"Alllocated {allocatedPeer} to {request}");
+
                     if (allocatedPeer != null)
                     {
                         Task task = Dispatch(allocatedPeer, request, cancellationToken);

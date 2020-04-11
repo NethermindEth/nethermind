@@ -115,7 +115,7 @@ namespace Nethermind.Synchronization
             }
 
             bool hasEverBeenInFullSync = best.Processed > 0;
-            long heightDelta = best.PeerBlock - best.State;
+            long heightDelta = best.PeerBlock - best.Header;
             return
                 // (catch up after node is off for a while
                 // OR standard fast sync)
@@ -146,7 +146,7 @@ namespace Nethermind.Synchronization
                    // not downloading headers and bodies any more
                    && !ShouldBeInFastSyncMode(best)
                    // state is not yet downloaded
-                   && best.PeerBlock - best.State < FullSyncThreshold
+                   && best.PeerBlock - best.State > FullSyncThreshold
                    // full sync is not in progress
                    && best.Block < FullSyncThreshold;
         }

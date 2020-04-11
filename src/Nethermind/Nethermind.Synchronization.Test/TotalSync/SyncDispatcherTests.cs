@@ -34,7 +34,7 @@ using NUnit.Framework;
 namespace Nethermind.Synchronization.Test.TotalSync
 {
     [TestFixture]
-    public class SyncExecutorTests
+    public class SyncDispatcherTests
     {
         private class TestSyncPeerPool : ISyncPeerPool
         {

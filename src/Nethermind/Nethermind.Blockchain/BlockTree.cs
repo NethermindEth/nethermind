@@ -172,6 +172,9 @@ namespace Nethermind.Blockchain
             {
                 throw new InvalidOperationException($"Best known is {BestKnownNumber}");
             }
+
+            BestSuggestedHeader = FindHeader(BestKnownNumber, BlockTreeLookupOptions.None);
+            BestSuggestedBody = FindBlock(BestSuggestedHeader.Hash, BlockTreeLookupOptions.None);
         }
 
         private void LoadLowestInsertedHeader()
@@ -1074,8 +1077,7 @@ namespace Nethermind.Blockchain
 
                 headBlockHeader.TotalDifficulty = level.BlockInfos[index.Value].TotalDifficulty;
 
-                Head = BestSuggestedHeader = headBlockHeader;
-                BestSuggestedBody = FindBlock(headBlockHeader.Hash, BlockTreeLookupOptions.None);
+                Head = headBlockHeader;
             }
         }
 

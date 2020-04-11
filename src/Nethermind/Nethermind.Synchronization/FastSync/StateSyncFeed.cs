@@ -39,7 +39,7 @@ namespace Nethermind.Synchronization.FastSync
         private const int MaxRequestSize = 384;
 
         private static AccountDecoder _accountDecoder = new AccountDecoder();
-        private StateSyncBatch _emptyBatch = new StateSyncBatch {RequestedNodes = new StateSyncItem[0]};
+        private StateSyncBatch _emptyBatch = null;
 
         private Keccak _fastSyncProgressKey = Keccak.Zero;
         private (DateTime small, DateTime full) _lastReportTime = (DateTime.MinValue, DateTime.MinValue);
@@ -120,7 +120,7 @@ namespace Nethermind.Synchronization.FastSync
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;
-            
+
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             byte[] progress = _codeDb.Get(_fastSyncProgressKey);
@@ -158,7 +158,7 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         return;
                     }
-                 
+
                     if (_logger.IsInfo) _logger.Info($"Starting the node data sync from the {bestSuggested.ToString(BlockHeader.Format.Short)} {bestSuggested.StateRoot} root");
                     SetNewStateRoot(bestSuggested.Number, bestSuggested.StateRoot);
                     Activate();
@@ -167,7 +167,9 @@ namespace Nethermind.Synchronization.FastSync
         }
 
         public StateSyncFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, ISyncModeSelector syncModeSelector, IBlockTree blockTree, ILogManager logManager)
-            : this(codeDb, stateDb, new MemDb(), syncModeSelector, blockTree, logManager) { }
+            : this(codeDb, stateDb, new MemDb(), syncModeSelector, blockTree, logManager)
+        {
+        }
 
         private AddNodeResult AddNode(StateSyncItem syncItem, DependentItem dependentItem, string reason, bool missing = false)
         {
@@ -438,6 +440,11 @@ namespace Nethermind.Synchronization.FastSync
 
         public override SyncResponseHandlingResult HandleResponse(StateSyncBatch batch)
         {
+            if (batch == _emptyBatch)
+            {
+                _logger.Error("Received empty batch as a response");
+            }
+            
             int requestLength = batch.RequestedNodes?.Length ?? 0;
             int responseLength = batch.Responses?.Length ?? 0;
 
@@ -623,17 +630,22 @@ namespace Nethermind.Synchronization.FastSync
                     return result;
                 }
             }
+            catch (Exception e)
+            {
+                _logger.Error("Error when handling state sync response", e);
+                return SyncResponseHandlingResult.InvalidFormat;
+            }
             finally
             {
                 _handleWatch.Stop();
                 if (!_pendingRequests.TryRemove(batch, out _))
                 {
-                    _logger.Error("Cannot remove pending request");
+                    _logger.Error($"Cannot remove pending request {batch}");
                 }
             }
         }
 
-        public override bool IsMultiFeed => false;
+        public override bool IsMultiFeed => true;
 
         private void HandleTrieNode(StateSyncItem currentStateSyncItem, byte[] currentResponseItem, ref int invalidNodes)
         {
@@ -860,8 +872,6 @@ namespace Nethermind.Synchronization.FastSync
                 }
             }
 
-            StateSyncBatch batch = new StateSyncBatch();
-
             // the limitation is to prevent an early explosion of request sizes with low level nodes
             // the moment we find the first leaf we will know something more about the tree structure and hence
             // prevent lot of Stream2 entries to stay in memory for a long time 
@@ -887,20 +897,20 @@ namespace Nethermind.Synchronization.FastSync
                 }
             }
 
-            batch.RequestedNodes = requestHashes.ToArray();
-
-            StateSyncBatch result = batch.RequestedNodes == null ? _emptyBatch : batch;
-            Interlocked.Add(ref _requestedNodesCount, result.RequestedNodes.Length);
-            Interlocked.Exchange(ref _secondsInSync, _currentSyncStartSecondsInSync + (long) (DateTime.UtcNow - _currentSyncStart).TotalSeconds);
-
-            if (_logger.IsTrace) _logger.Trace($"After preparing a request of {length} from ({StreamsDescription}) nodes");
-
-            if (result.RequestedNodes.Length > 0)
+            if (requestHashes.Count > 0)
             {
+                StateSyncBatch result = new StateSyncBatch();
+                result.RequestedNodes = requestHashes.ToArray();
+                Interlocked.Add(ref _requestedNodesCount, result.RequestedNodes.Length);
+                Interlocked.Exchange(ref _secondsInSync, _currentSyncStartSecondsInSync + (long) (DateTime.UtcNow - _currentSyncStart).TotalSeconds);
+
+                if (_logger.IsTrace) _logger.Trace($"After preparing a request of {length} from ({StreamsDescription}) nodes");
+
                 _pendingRequests.TryAdd(result, _nullObject);
+                return await Task.FromResult(result);
             }
 
-            return await Task.FromResult(result);
+            return await Task.FromResult(_emptyBatch);
         }
 
         private NodeSyncProgress _syncProgress;
