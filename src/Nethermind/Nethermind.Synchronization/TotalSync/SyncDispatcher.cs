@@ -141,7 +141,7 @@ namespace Nethermind.Synchronization.TotalSync
                 // unassigned
                 return;
             }
-
+            
             switch (result)
             {
                 case SyncResponseHandlingResult.Emptish:

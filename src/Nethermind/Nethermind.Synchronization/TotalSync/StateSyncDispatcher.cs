@@ -39,6 +39,11 @@ namespace Nethermind.Synchronization.TotalSync
             await getNodeDataTask.ContinueWith(
                 (t, state) =>
                 {
+                    if (t.IsFaulted)
+                    {
+                        Logger.Error("Error after dispatching the state sync request");
+                    }
+                    
                     StateSyncBatch batchLocal = (StateSyncBatch) state;
                     if (t.IsCompletedSuccessfully)
                     {

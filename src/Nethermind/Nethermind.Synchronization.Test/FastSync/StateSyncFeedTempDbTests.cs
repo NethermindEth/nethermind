@@ -32,7 +32,7 @@ using NUnit.Framework;
 namespace Nethermind.Synchronization.Test.FastSync
 {
     [TestFixture]
-    public class NodeDataFeedTests
+    public class StateSyncFeedTempDbTests
     {
         [Test(Description = "We are ensuring that other parts of the system (beam sync in particular)" +
                             "can benefit from the state nodes awaiting resolution for their children." +

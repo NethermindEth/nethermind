@@ -21,12 +21,12 @@ using NUnit.Framework;
 namespace Nethermind.Synchronization.Test.FastSync
 {
     [TestFixture]
-    public class NodeSyncProgressTests
+    public class StateSyncProgressTests
     {
         [Test]
         public void Start_values_are_correct()
         {
-            NodeSyncProgress progress = new NodeSyncProgress(7, LimboTraceLogger.Instance);
+            StateSyncProgress progress = new StateSyncProgress(7, LimboTraceLogger.Instance);
             Assert.AreEqual(7, progress.CurrentSyncBlock);
             Assert.AreEqual(0M, progress.LastProgress);
         }
@@ -39,39 +39,39 @@ namespace Nethermind.Synchronization.Test.FastSync
         [TestCase(2, -1, 1, (double) 1 / 16)]
         public void Single_item_progress_is_correct(int level, int parentIndex, int childIndex, double expectedResult)
         {
-            NodeSyncProgress progress = new NodeSyncProgress(7, LimboTraceLogger.Instance);
+            StateSyncProgress progress = new StateSyncProgress(7, LimboTraceLogger.Instance);
             progress.ReportSynced(level, parentIndex, childIndex, NodeDataType.State, NodeProgressState.Empty);
             Assert.AreEqual((decimal) expectedResult, progress.LastProgress, "state, empty");
 
-            progress = new NodeSyncProgress(7, LimboTraceLogger.Instance);
+            progress = new StateSyncProgress(7, LimboTraceLogger.Instance);
             progress.ReportSynced(level, parentIndex, childIndex, NodeDataType.Storage, NodeProgressState.Empty);
             Assert.AreEqual(0d, progress.LastProgress, "storage, empty");
 
-            progress = new NodeSyncProgress(7, LimboTraceLogger.Instance);
+            progress = new StateSyncProgress(7, LimboTraceLogger.Instance);
             progress.ReportSynced(level, parentIndex, childIndex, NodeDataType.Code, NodeProgressState.Empty);
             Assert.AreEqual(0d, progress.LastProgress, "code, empty");
 
-            progress = new NodeSyncProgress(7, LimboTraceLogger.Instance);
+            progress = new StateSyncProgress(7, LimboTraceLogger.Instance);
             progress.ReportSynced(level, parentIndex, childIndex, NodeDataType.State, NodeProgressState.Saved);
             Assert.AreEqual((decimal) expectedResult, progress.LastProgress, "state, saved");
 
-            progress = new NodeSyncProgress(7, LimboTraceLogger.Instance);
+            progress = new StateSyncProgress(7, LimboTraceLogger.Instance);
             progress.ReportSynced(level, parentIndex, childIndex, NodeDataType.Storage, NodeProgressState.Saved);
             Assert.AreEqual(0d, progress.LastProgress, "storage, saved");
 
-            progress = new NodeSyncProgress(7, LimboTraceLogger.Instance);
+            progress = new StateSyncProgress(7, LimboTraceLogger.Instance);
             progress.ReportSynced(level, parentIndex, childIndex, NodeDataType.Code, NodeProgressState.Saved);
             Assert.AreEqual(0d, progress.LastProgress, "code, saved");
 
-            progress = new NodeSyncProgress(7, LimboTraceLogger.Instance);
+            progress = new StateSyncProgress(7, LimboTraceLogger.Instance);
             progress.ReportSynced(level, parentIndex, childIndex, NodeDataType.State, NodeProgressState.AlreadySaved);
             Assert.AreEqual((decimal) expectedResult, progress.LastProgress, "state, already");
 
-            progress = new NodeSyncProgress(7, LimboTraceLogger.Instance);
+            progress = new StateSyncProgress(7, LimboTraceLogger.Instance);
             progress.ReportSynced(level, parentIndex, childIndex, NodeDataType.Storage, NodeProgressState.AlreadySaved);
             Assert.AreEqual(0d, progress.LastProgress, "storage, already");
 
-            progress = new NodeSyncProgress(7, LimboTraceLogger.Instance);
+            progress = new StateSyncProgress(7, LimboTraceLogger.Instance);
             progress.ReportSynced(level, parentIndex, childIndex, NodeDataType.Code, NodeProgressState.AlreadySaved);
             Assert.AreEqual(0d, progress.LastProgress, "code, already");
         }
@@ -79,7 +79,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Test]
         public void Multiple_items()
         {
-            NodeSyncProgress progress = new NodeSyncProgress(7, LimboTraceLogger.Instance);
+            StateSyncProgress progress = new StateSyncProgress(7, LimboTraceLogger.Instance);
             progress.ReportSynced(2, 1, 1, NodeDataType.State, NodeProgressState.Saved);
             Assert.AreEqual((decimal) 1/256, progress.LastProgress, "0");
             

@@ -444,7 +444,7 @@ namespace Nethermind.Synchronization.FastSync
             {
                 _logger.Error("Received empty batch as a response");
             }
-            
+
             int requestLength = batch.RequestedNodes?.Length ?? 0;
             int responseLength = batch.Responses?.Length ?? 0;
 
@@ -855,68 +855,77 @@ namespace Nethermind.Synchronization.FastSync
 
         public override async Task<StateSyncBatch> PrepareRequest()
         {
-            if (_rootNode == Keccak.EmptyTreeHash)
+            try
             {
-                FallAsleep();
-                return _emptyBatch;
-            }
-
-            lock (_stateDbLock)
-            {
-                // if finished downloading
-                if (_stateDb.KeyExists(_rootNode))
+                if (_rootNode == Keccak.EmptyTreeHash)
                 {
-                    VerifyPostSyncCleanUp();
                     FallAsleep();
                     return _emptyBatch;
                 }
-            }
 
-            // the limitation is to prevent an early explosion of request sizes with low level nodes
-            // the moment we find the first leaf we will know something more about the tree structure and hence
-            // prevent lot of Stream2 entries to stay in memory for a long time 
-            int length = _maxStateLevel == 64 ? MaxRequestSize : Math.Max(1, (int) (MaxRequestSize * ((decimal) _maxStateLevel / 64) * ((decimal) _maxStateLevel / 64)));
-            if (length < MaxRequestSize)
-            {
-                if (_logger.IsInfo) _logger.Info($"Sending limited size request {length} at level {_maxStateLevel}");
-            }
-
-            if (_logger.IsTrace) _logger.Trace($"Preparing a request of length {length} from ({StreamsDescription}) nodes");
-
-            List<StateSyncItem> requestHashes = new List<StateSyncItem>();
-            for (int i = 0; i < length; i++)
-            {
-                if (TryTake(out StateSyncItem requestItem))
+                lock (_stateDbLock)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Requesting {requestItem.Hash}");
-                    requestHashes.Add(requestItem);
+                    // if finished downloading
+                    if (_stateDb.KeyExists(_rootNode))
+                    {
+                        VerifyPostSyncCleanUp();
+                        FallAsleep();
+                        return _emptyBatch;
+                    }
                 }
-                else
+
+                // the limitation is to prevent an early explosion of request sizes with low level nodes
+                // the moment we find the first leaf we will know something more about the tree structure and hence
+                // prevent lot of Stream2 entries to stay in memory for a long time 
+                int length = _maxStateLevel == 64 ? MaxRequestSize : Math.Max(1, (int) (MaxRequestSize * ((decimal) _maxStateLevel / 64) * ((decimal) _maxStateLevel / 64)));
+                if (length < MaxRequestSize)
                 {
-                    break;
+                    if (_logger.IsInfo) _logger.Info($"Sending limited size request {length} at level {_maxStateLevel}");
                 }
-            }
 
-            if (requestHashes.Count > 0)
+                if (_logger.IsTrace) _logger.Trace($"Preparing a request of length {length} from ({StreamsDescription}) nodes");
+
+                List<StateSyncItem> requestHashes = new List<StateSyncItem>();
+                for (int i = 0; i < length; i++)
+                {
+                    if (TryTake(out StateSyncItem requestItem))
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Requesting {requestItem.Hash}");
+                        requestHashes.Add(requestItem);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+                if (requestHashes.Count > 0)
+                {
+                    StateSyncBatch result = new StateSyncBatch();
+                    result.RequestedNodes = requestHashes.ToArray();
+                    Interlocked.Add(ref _requestedNodesCount, result.RequestedNodes.Length);
+                    Interlocked.Exchange(ref _secondsInSync, _currentSyncStartSecondsInSync + (long) (DateTime.UtcNow - _currentSyncStart).TotalSeconds);
+
+                    if (_logger.IsTrace) _logger.Trace($"After preparing a request of {length} from ({StreamsDescription}) nodes");
+
+                    _pendingRequests.TryAdd(result, _nullObject);
+                    return await Task.FromResult(result);
+                }
+
+                return await Task.FromResult(_emptyBatch);
+            }
+            catch (Exception e)
             {
-                StateSyncBatch result = new StateSyncBatch();
-                result.RequestedNodes = requestHashes.ToArray();
-                Interlocked.Add(ref _requestedNodesCount, result.RequestedNodes.Length);
-                Interlocked.Exchange(ref _secondsInSync, _currentSyncStartSecondsInSync + (long) (DateTime.UtcNow - _currentSyncStart).TotalSeconds);
-
-                if (_logger.IsTrace) _logger.Trace($"After preparing a request of {length} from ({StreamsDescription}) nodes");
-
-                _pendingRequests.TryAdd(result, _nullObject);
-                return await Task.FromResult(result);
+                _logger.Error("Error when preparing a batch", e);
+                return await Task.FromResult(_emptyBatch);
             }
-
-            return await Task.FromResult(_emptyBatch);
         }
 
-        private NodeSyncProgress _syncProgress;
+        private StateSyncProgress _syncProgress;
 
         public void SetNewStateRoot(long number, Keccak stateRoot)
         {
+            _logger.Warn($"Setting new state root to {number} {stateRoot}");
             _currentSyncStart = DateTime.UtcNow;
             _currentSyncStartSecondsInSync = _secondsInSync;
 
@@ -925,7 +934,7 @@ namespace Nethermind.Synchronization.FastSync
             _lastRequestedNodesCount = _requestedNodesCount;
             if (_rootNode != stateRoot)
             {
-                _syncProgress = new NodeSyncProgress(number, _logger);
+                _syncProgress = new StateSyncProgress(number, _logger);
                 _rootNode = stateRoot;
                 lock (_dependencies) _dependencies.Clear();
                 lock (_codesSameAsNodes) _codesSameAsNodes.Clear();
