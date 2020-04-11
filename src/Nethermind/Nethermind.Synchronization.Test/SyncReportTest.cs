@@ -39,20 +39,19 @@ namespace Nethermind.Synchronization.Test
             pool.UsefulPeerCount.Returns(1);
             
             Queue<SyncMode> _syncModes = new Queue<SyncMode>();
-            _syncModes.Enqueue(SyncMode.NotStarted);
+            _syncModes.Enqueue(SyncMode.None);
             _syncModes.Enqueue(SyncMode.DbSync);
             _syncModes.Enqueue(SyncMode.FastSync);
             _syncModes.Enqueue(SyncMode.Full);
             _syncModes.Enqueue(SyncMode.FastBlocks);
             _syncModes.Enqueue(SyncMode.StateNodes);
-            _syncModes.Enqueue(SyncMode.WaitForProcessor);
 
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.FastBlocks = fastBlocks;
             syncConfig.FastSync = fastSync;
             
             SyncReport syncReport = new SyncReport(pool, Substitute.For<INodeStatsManager>(), selector,  syncConfig, LimboLogs.Instance, 10);
-            selector.Current.Returns((ci) => _syncModes.Count > 0 ? _syncModes.Dequeue() : SyncMode.WaitForProcessor);
+            selector.Current.Returns((ci) => _syncModes.Count > 0 ? _syncModes.Dequeue() : SyncMode.Full);
             Thread.Sleep(200);
             syncReport.FastBlocksHeaders.MarkEnd();
             syncReport.FastBlocksBodies.MarkEnd();

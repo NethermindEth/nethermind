@@ -25,20 +25,20 @@ using NUnit.Framework;
 namespace Nethermind.Synchronization.Test
 {
     [TestFixture]
-    public class SyncModeSelectorTests
+    public class MultiSyncModeSelectorTests
     {
         [Test]
-        public void Starts_with_not_started_in_fast_sync_enabled()
+        public void Starts_with_none_in_fast_sync_enabled()
         {
-            SyncModeSelector selector = BuildSelector(new SyncConfig() {FastSync = true});
-            Assert.AreEqual(SyncMode.NotStarted, selector.Current);
+            MultiSyncModeSelector selector = BuildSelector(new SyncConfig() {FastSync = true});
+            Assert.AreEqual(SyncMode.None, selector.Current);
         }
 
         [Test]
-        public void Starts_with_not_started()
+        public void Starts_with_none()
         {
-            SyncModeSelector selector = BuildSelector(new SyncConfig() {FastSync = false});
-            Assert.AreEqual(SyncMode.NotStarted, selector.Current);
+            MultiSyncModeSelector selector = BuildSelector(new SyncConfig() {FastSync = false});
+            Assert.AreEqual(SyncMode.None, selector.Current);
         }
 
         [Test]
@@ -61,12 +61,12 @@ namespace Nethermind.Synchronization.Test
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             IBlockTree blockTree = Substitute.For<IBlockTree>();
 
-            SyncModeSelector selector = new SyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
-            Assert.AreEqual(SyncMode.NotStarted, selector.Current);
+            MultiSyncModeSelector selector = new MultiSyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
+            Assert.AreEqual(SyncMode.None, selector.Current);
 
             (long BestRemote, long BestLocalHeader, long BestLocalFullBlock, long BestLocalState, SyncMode ExpectedState, string Description)[] states =
             {
-                (0, 0, 0, 0, SyncMode.NotStarted, "start"),
+                (0, 0, 0, 0, SyncMode.None, "start"),
                 (1032, 0, 0, 0, SyncMode.FastSync, "learn about remote"),
                 (1032, 512, 0, 0, SyncMode.FastSync, "start downloading headers"),
                 (1032, 1000, 0, 0, SyncMode.StateNodes, "finish downloading headers"),
@@ -75,7 +75,7 @@ namespace Nethermind.Synchronization.Test
                 (1048, 1032, 0, 1016, SyncMode.StateNodes, "headers went too far, catch up with the nodes"),
                 (1048, 1032, 0, 1032, SyncMode.Full, "ready to full sync"),
                 (1068, 1048, 1048, 1036, SyncMode.Full, "full sync - blocks ahead of processing"),
-                (1093, 1060, 1060, 1056, SyncMode.WaitForProcessor, "found better peer, need to catch up"),
+                (1093, 1060, 1060, 1056, SyncMode.Full, "found better peer, need to catch up"),
                 (1093, 1060, 1060, 1060, SyncMode.FastSync, "first take headers"),
                 (1093, 1092, 1060, 1060, SyncMode.StateNodes, "then nodes again"),
                 (2096, 1092, 1060, 1092, SyncMode.FastSync, "found even better peer - get all headers"),
@@ -101,16 +101,16 @@ namespace Nethermind.Synchronization.Test
         [TestCase(false, 1032, 1000, 0, 0, SyncMode.Full)]
         [TestCase(true, 1032, 1000, 0, 0, SyncMode.StateNodes)]
         [TestCase(true, 1032, 1000, 0, 1000, SyncMode.Full)]
-        [TestCase(true, 0, 1032, 0, 1032, SyncMode.NotStarted)]
-        [TestCase(true, 1, 1032, 0, 1032, SyncMode.NotStarted)]
-        [TestCase(true, 33, 1032, 0, 1032, SyncMode.NotStarted)]
-        [TestCase(false, 0, 1032, 0, 1032, SyncMode.Full)]
+        [TestCase(true, 0, 1032, 0, 1032, SyncMode.None)]
+        [TestCase(true, 1, 1032, 0, 1032, SyncMode.Full)]
+        [TestCase(true, 33, 1032, 0, 1032, SyncMode.Full)]
+        [TestCase(false, 0, 1032, 0, 1032, SyncMode.None)]
         [TestCase(true, 4506571, 4506571, 4506571, 4506452, SyncMode.Full)]
         public void Selects_correctly(bool useFastSync, long bestRemote, long bestHeader, long bestBlock, long bestLocalState, SyncMode expected)
         {
             bool changedInvoked = false;
 
-            SyncModeSelector selector = BuildSelector(new SyncConfig() {FastSync = useFastSync}, bestRemote, bestHeader, bestBlock, bestLocalState);
+            MultiSyncModeSelector selector = BuildSelector(new SyncConfig() {FastSync = useFastSync}, bestRemote, bestHeader, bestBlock, bestLocalState);
             selector.Changed += (s, e) => changedInvoked = true;
 
             SyncMode beforeUpdate = selector.Current;
@@ -122,12 +122,12 @@ namespace Nethermind.Synchronization.Test
                 Assert.True(changedInvoked, "changed");
             }
         }
-        
+
         [TestCase(1032, 999, 0, 0, SyncMode.Beam)]
         [TestCase(1032, 1000, 0, 0, SyncMode.Beam)]
         [TestCase(1032, 1000, 0, 0, SyncMode.Beam)]
         [TestCase(1032, 1000, 0, 1000, SyncMode.Beam)]
-        [TestCase(0, 1032, 0, 1032, SyncMode.NotStarted)]
+        [TestCase(0, 1032, 0, 1032, SyncMode.None)]
         [TestCase(1, 1032, 0, 1032, SyncMode.Beam)]
         [TestCase(33, 1032, 0, 1032, SyncMode.Beam)]
         [TestCase(4506571, 4506571, 4506571, 4506452, SyncMode.Beam)]
@@ -135,7 +135,7 @@ namespace Nethermind.Synchronization.Test
         {
             bool changedInvoked = false;
 
-            SyncModeSelector selector = BuildSelector(new SyncConfig(){BeamSync = true}, bestRemote, bestHeader, bestBlock, bestLocalState);
+            MultiSyncModeSelector selector = BuildSelector(new SyncConfig() {BeamSync = true}, bestRemote, bestHeader, bestBlock, bestLocalState);
             selector.Changed += (s, e) => changedInvoked = true;
 
             SyncMode beforeUpdate = selector.Current;
@@ -148,34 +148,34 @@ namespace Nethermind.Synchronization.Test
             }
         }
 
-        [TestCase(true, 1032, 0, 0, 0, SyncMode.NotStarted)]
-        [TestCase(false, 1032, 0, 0, 0, SyncMode.NotStarted)]
-        [TestCase(true, 1032, 1000, 0, 0, SyncMode.NotStarted)]
-        [TestCase(false, 1032, 1000, 0, 0, SyncMode.NotStarted)]
-        [TestCase(true, 1032, 1000, 0, 1000, SyncMode.NotStarted)]
-        [TestCase(false, 1032, 1000, 0, 1000, SyncMode.NotStarted)]
+        [TestCase(true, 1032, 0, 0, 0, SyncMode.None)]
+        [TestCase(false, 1032, 0, 0, 0, SyncMode.None)]
+        [TestCase(true, 1032, 1000, 0, 0, SyncMode.None)]
+        [TestCase(false, 1032, 1000, 0, 0, SyncMode.None)]
+        [TestCase(true, 1032, 1000, 0, 1000, SyncMode.None)]
+        [TestCase(false, 1032, 1000, 0, 1000, SyncMode.None)]
         public void Does_not_change_when_no_peers(bool useFastSync, long bestRemote, long bestLocalHeader, long bestLocalFullBLock, long bestLocalState, SyncMode expected)
         {
-            SyncModeSelector selector = BuildSelectorNoPeers(useFastSync, bestRemote, bestLocalHeader, bestLocalFullBLock, bestLocalState);
+            MultiSyncModeSelector selector = BuildSelectorNoPeers(useFastSync, bestRemote, bestLocalHeader, bestLocalFullBLock, bestLocalState);
             selector.Update();
             Assert.AreEqual(expected, selector.Current);
         }
-        
+
         [TestCase(0, 1032, 1000000, SyncMode.FastSync)]
         [TestCase(0, 1032, 100, SyncMode.FastSync)]
-        [TestCase(0,  1032, null, SyncMode.FastSync)]
+        [TestCase(0, 1032, null, SyncMode.FastSync)]
         [TestCase(10, 1032, 100, SyncMode.FastSync)]
         [TestCase(10, 1032, 1000000, SyncMode.Full)]
         public void Selects_correctly_in_fast_sync_based_on_CatchUpHeightDelta(long currentHead, long bestRemote, long? fastSyncCatchUpHeightDelta, SyncMode expected)
         {
             bool changedInvoked = false;
 
-            SyncModeSelector selector = BuildSelector(new SyncConfig() {FastSync = true, FastSyncCatchUpHeightDelta = fastSyncCatchUpHeightDelta}, bestRemote, 0, 0, currentHead);
+            MultiSyncModeSelector selector = BuildSelector(new SyncConfig() {FastSync = true, FastSyncCatchUpHeightDelta = fastSyncCatchUpHeightDelta}, bestRemote, currentHead, currentHead, currentHead, currentHead);
             selector.Changed += (s, e) => changedInvoked = true;
+            selector.Update();
 
             SyncMode beforeUpdate = selector.Current;
 
-            selector.Update();
             Assert.AreEqual(expected, selector.Current, "as expected");
             if (expected != beforeUpdate)
             {
@@ -183,7 +183,7 @@ namespace Nethermind.Synchronization.Test
             }
         }
 
-        private static SyncModeSelector BuildSelector(SyncConfig syncConfig, long bestRemote = 0L, long bestHeader = 0L, long bestBlock = 0L, long bestLocalState = 0L)
+        private static MultiSyncModeSelector BuildSelector(SyncConfig syncConfig, long bestRemote = 0L, long bestHeader = 0L, long bestBlock = 0L, long bestLocalState = 0L, long bestProcessed = 0L)
         {
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -202,13 +202,13 @@ namespace Nethermind.Synchronization.Test
             syncProgressResolver.FindBestFullBlock().Returns(bestBlock);
             syncProgressResolver.FindBestFullState().Returns(bestLocalState);
             syncProgressResolver.IsFastBlocksFinished().Returns(true);
-            syncProgressResolver.FindBestProcessedBlock().Returns(bestLocalState);
+            syncProgressResolver.FindBestProcessedBlock().Returns(bestProcessed);
 
-            SyncModeSelector selector = new SyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
+            MultiSyncModeSelector selector = new MultiSyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
             return selector;
         }
 
-        private static SyncModeSelector BuildSelectorNoPeers(bool useFastSync, long bestRemote = 0L, long bestHeader = 0L, long bestBlock = 0L, long bestLocalState = 0L)
+        private static MultiSyncModeSelector BuildSelectorNoPeers(bool useFastSync, long bestRemote = 0L, long bestHeader = 0L, long bestBlock = 0L, long bestLocalState = 0L)
         {
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
             syncPeerPool.AllPeers.Returns(new PeerInfo[] { });
@@ -224,7 +224,7 @@ namespace Nethermind.Synchronization.Test
             syncProgressResolver.IsFastBlocksFinished().Returns(true);
             syncProgressResolver.FindBestProcessedBlock().Returns(bestLocalState);
 
-            SyncModeSelector selector = new SyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
+            MultiSyncModeSelector selector = new MultiSyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
             return selector;
         }
     }

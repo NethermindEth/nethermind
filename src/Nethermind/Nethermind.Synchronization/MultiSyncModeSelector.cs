@@ -100,6 +100,18 @@ namespace Nethermind.Synchronization
 
         public SyncMode Current { get; private set; } = SyncMode.None;
 
+        private bool IsInAStickyFullSyncMode(Snapshot best)
+        {
+            bool hasEverBeenInFullSync = best.Processed > 0;
+            long heightDelta = best.PeerBlock - best.Header;
+            return hasEverBeenInFullSync && heightDelta < FastSyncCatchUpHeightDelta;
+        }
+
+        private bool IsWaitingForBlockProcessor(Snapshot best)
+        {
+            return best.Block > best.State && best.State > 0;
+        }
+        
         private bool ShouldBeInFastSyncMode(Snapshot best)
         {
             if (!FastSyncEnabled)
@@ -114,15 +126,14 @@ namespace Nethermind.Synchronization
                 return false;
             }
 
-            bool hasEverBeenInFullSync = best.Processed > 0;
             long heightDelta = best.PeerBlock - best.Header;
             return
                 // (catch up after node is off for a while
                 // OR standard fast sync)
-                (heightDelta > FastSyncCatchUpHeightDelta
-                 || !hasEverBeenInFullSync && heightDelta > FullSyncThreshold)
+                !IsInAStickyFullSyncMode(best)
+                && heightDelta > FullSyncThreshold
                 // AND not waiting for processor
-                && !(best.Block > best.State && best.State > 0);
+                && !IsWaitingForBlockProcessor(best);
         }
 
         private bool ShouldBeInFullSyncMode(Snapshot best)
@@ -146,9 +157,12 @@ namespace Nethermind.Synchronization
                    // not downloading headers and bodies any more
                    && !ShouldBeInFastSyncMode(best)
                    // state is not yet downloaded
-                   && best.PeerBlock - best.State > FullSyncThreshold
+                   && (best.PeerBlock - best.State > FullSyncThreshold
+                   // headers went too far
+                   || best.Header > best.State)
                    // full sync is not in progress
-                   && best.Block < FullSyncThreshold;
+                   && !IsWaitingForBlockProcessor(best)
+                   && !IsInAStickyFullSyncMode(best);
         }
 
         private bool ShouldBeInBeamSyncMode(Snapshot best)
@@ -156,7 +170,7 @@ namespace Nethermind.Synchronization
             return BeamSyncEnabled && !ShouldBeInFastBlocksMode(best);
         }
 
-        private void Update()
+        public void Update()
         {
             bool hasPeers = HasPeers;
             long peerBlock = MaxPeerBlockNumber;
