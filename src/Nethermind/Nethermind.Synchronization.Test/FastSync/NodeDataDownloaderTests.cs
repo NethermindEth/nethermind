@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -32,15 +33,13 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Nethermind.Synchronization;
-using Nethermind.Synchronization.BeamSync;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.TotalSync;
 using Nethermind.Trie;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.Synchronization.FastSync
+namespace Nethermind.Synchronization.Test.FastSync
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]

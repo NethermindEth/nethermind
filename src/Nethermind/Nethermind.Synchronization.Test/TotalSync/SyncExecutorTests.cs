@@ -21,18 +21,17 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Test.Synchronization.Mocks;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
-using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
+using Nethermind.Synchronization.Test.Mocks;
 using Nethermind.Synchronization.TotalSync;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.Synchronization.TotalSync
+namespace Nethermind.Synchronization.Test.TotalSync
 {
     [TestFixture]
     public class SyncExecutorTests
@@ -115,6 +114,8 @@ namespace Nethermind.Blockchain.Test.Synchronization.TotalSync
                 add { }
                 remove { }
             }
+
+            public event EventHandler PeerRemoved;
         }
 
         private class TestBatch

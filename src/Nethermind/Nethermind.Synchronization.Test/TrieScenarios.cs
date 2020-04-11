@@ -25,7 +25,7 @@ using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.State;
 
-namespace Nethermind.Blockchain.Test.Synchronization
+namespace Nethermind.Synchronization.Test
 {
     public static class TrieScenarios
     {

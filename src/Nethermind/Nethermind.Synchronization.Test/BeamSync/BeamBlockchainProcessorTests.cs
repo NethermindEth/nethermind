@@ -15,8 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Test;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -30,7 +32,7 @@ using Nethermind.Synchronization.BeamSync;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
+namespace Nethermind.Synchronization.Test.BeamSync
 {
     [TestFixture]
     public class BeamBlockchainProcessorTests

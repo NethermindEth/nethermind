@@ -18,7 +18,7 @@ using Nethermind.Logging;
 using Nethermind.Synchronization.FastSync;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.Synchronization.FastSync
+namespace Nethermind.Synchronization.Test.FastSync
 {
     [TestFixture]
     public class NodeSyncProgressTests

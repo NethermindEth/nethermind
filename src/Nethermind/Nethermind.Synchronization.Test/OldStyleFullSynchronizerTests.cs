@@ -17,27 +17,24 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.Stats;
-using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.TotalSync;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.Synchronization
+namespace Nethermind.Synchronization.Test
 {
     [TestFixture]
     public class OldStyleFullSynchronizerTests

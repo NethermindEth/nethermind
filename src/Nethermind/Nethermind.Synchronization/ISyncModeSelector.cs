@@ -20,8 +20,8 @@ namespace Nethermind.Synchronization
 {
     public interface ISyncModeSelector
     {
-        event EventHandler<SyncModeChangedEventArgs> Changed;
         SyncMode Current { get; }
-        void Update();
+        
+        event EventHandler<SyncModeChangedEventArgs> Changed;
     }
 }

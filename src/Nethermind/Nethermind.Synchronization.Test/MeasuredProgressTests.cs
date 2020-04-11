@@ -15,12 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
-using Nethermind.Synchronization;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.Synchronization
+namespace Nethermind.Synchronization.Test
 {
     [TestFixture]
     public class MeasuredProgressTests

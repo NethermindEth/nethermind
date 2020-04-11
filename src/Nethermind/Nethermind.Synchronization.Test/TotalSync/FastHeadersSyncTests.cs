@@ -17,6 +17,7 @@
 using System;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -26,7 +27,6 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State.Repositories;
 using Nethermind.Store.Bloom;
-using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
@@ -35,7 +35,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.Synchronization.TotalSync
+namespace Nethermind.Synchronization.Test.TotalSync
 {
     public class FastHeadersSyncTests
     {

@@ -16,7 +16,7 @@
 
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.Synchronization.BeamSync
+namespace Nethermind.Synchronization.Test.BeamSync
 {
     
     

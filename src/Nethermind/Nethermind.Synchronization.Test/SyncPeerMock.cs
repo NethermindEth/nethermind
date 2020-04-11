@@ -19,15 +19,15 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Stats.Model;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Synchronization;
 
-namespace Nethermind.Blockchain.Test.Synchronization
+namespace Nethermind.Synchronization.Test
 {
     public class SyncPeerMock : ISyncPeer
     {

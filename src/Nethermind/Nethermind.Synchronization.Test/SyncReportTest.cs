@@ -16,16 +16,15 @@
 
 using System.Collections.Generic;
 using System.Threading;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
 using Nethermind.Stats;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.Synchronization
+namespace Nethermind.Synchronization.Test
 {
     [TestFixture]
     public class SyncReportTest

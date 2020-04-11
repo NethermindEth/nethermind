@@ -106,5 +106,10 @@ namespace Nethermind.Synchronization.Peers
         /// Whenever a new sync peer is added
         /// </summary>
         event EventHandler PeerAdded;
+        
+        /// <summary>
+        /// Whenever a peer is removed
+        /// </summary>
+        event EventHandler PeerRemoved;
     }
 }

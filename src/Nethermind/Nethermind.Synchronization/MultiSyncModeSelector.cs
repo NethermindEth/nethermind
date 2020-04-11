@@ -15,14 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Timers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization
 {
-    public class MultiSyncModeSelector : ISyncModeSelector
+    public class MultiSyncModeSelector : ISyncModeSelector, IDisposable
     {
         /// <summary>
         /// Number of blocks before the best peer's head when we switch from fast sync to full sync
@@ -41,7 +44,21 @@ namespace Nethermind.Synchronization
         private bool FastBlocksFinished => !FastBlocksEnabled || _syncProgressResolver.IsFastBlocksFinished();
         private long FastSyncCatchUpHeightDelta => _syncConfig.FastSyncCatchUpHeightDelta ?? FullSyncThreshold;
 
-        private long MaxPeerBlockNumber => _syncPeerPool.UsefulPeers.Max(p => p.HeadNumber);
+        private long MaxPeerBlockNumber
+        {
+            get
+            {
+                long maxPeerBlock = 0;
+                foreach (PeerInfo usefulPeer in _syncPeerPool.UsefulPeers)
+                {
+                    maxPeerBlock = Math.Max(maxPeerBlock, usefulPeer.HeadNumber);
+                }
+                
+                return maxPeerBlock;
+            }
+        }
+
+        private System.Timers.Timer _timer;
 
         public MultiSyncModeSelector(ISyncProgressResolver syncProgressResolver, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ILogManager logManager)
         {
@@ -55,11 +72,33 @@ namespace Nethermind.Synchronization
                 if (_logger.IsWarn) _logger.Warn($"'FastSyncCatchUpHeightDelta' parameter is less or equal to {FullSyncThreshold}, which is a threshold of blocks always downloaded in full sync. 'FastSyncCatchUpHeightDelta' will have no effect.");
             }
 
-            // we start with none of the sync modes enabled, waiting for the first updates when we start peering
-            Current = SyncMode.None;
+            StartUpdateTimer();
         }
 
-        public SyncMode Current { get; private set; }
+        private void StartUpdateTimer()
+        {
+            _timer = new System.Timers.Timer();
+            _timer.Interval = 1000;
+            _timer.AutoReset = false;
+            _timer.Elapsed += TimerOnElapsed;
+            _timer.Enabled = true;
+        }
+
+        private void TimerOnElapsed(object sender, ElapsedEventArgs e)
+        {
+            try
+            {
+                Update();
+            }
+            catch (Exception exception)
+            {
+                if (_logger.IsError) _logger.Error("Sync mode update failed", exception);
+            }
+
+            _timer.Enabled = true;
+        }
+
+        public SyncMode Current { get; private set; } = SyncMode.None;
 
         private bool ShouldBeInFastSyncMode(Snapshot best)
         {
@@ -67,7 +106,14 @@ namespace Nethermind.Synchronization
             {
                 return false;
             }
-            
+
+            if (!_syncProgressResolver.IsFastBlocksFinished() && best.Header == 0)
+            {
+                // do not start fast sync until at least one header is downloaded or we would start from zero
+                // we are fine to start from zero if we do not use fast blocks
+                return false;
+            }
+
             bool hasEverBeenInFullSync = best.Processed > 0;
             long heightDelta = best.PeerBlock - best.State;
             return
@@ -82,7 +128,7 @@ namespace Nethermind.Synchronization
         private bool ShouldBeInFullSyncMode(Snapshot best)
         {
             // it can be still in fast blocks but not any other sync mode
-            return !ShouldBeInBeamSyncMode(best) && 
+            return !ShouldBeInBeamSyncMode(best) &&
                    !ShouldBeInFastSyncMode(best) &&
                    !ShouldBeInStateNodesMode(best);
         }
@@ -104,13 +150,13 @@ namespace Nethermind.Synchronization
                    // full sync is not in progress
                    && best.Block < FullSyncThreshold;
         }
-        
+
         private bool ShouldBeInBeamSyncMode(Snapshot best)
         {
             return BeamSyncEnabled && !ShouldBeInFastBlocksMode(best);
         }
 
-        public void Update()
+        private void Update()
         {
             bool hasPeers = HasPeers;
             long peerBlock = MaxPeerBlockNumber;
@@ -136,22 +182,22 @@ namespace Nethermind.Synchronization
             {
                 newModes |= SyncMode.Beam;
             }
-            
+
             if (ShouldBeInFastBlocksMode(best))
             {
                 newModes |= SyncMode.FastBlocks;
             }
-            
+
             if (ShouldBeInFastSyncMode(best))
             {
                 newModes |= SyncMode.FastSync;
             }
-            
+
             if (ShouldBeInFullSyncMode(best))
             {
                 newModes |= SyncMode.Full;
             }
-            
+
             if (ShouldBeInStateNodesMode(best))
             {
                 newModes |= SyncMode.StateNodes;
@@ -253,6 +299,11 @@ namespace Nethermind.Synchronization
             /// Best peer block - this is what other peers are advertising - it may be lower than our best block if we get disconnected from best peers
             /// </summary>
             public long PeerBlock { get; }
+        }
+
+        public void Dispose()
+        {
+            _timer?.Dispose();
         }
     }
 }

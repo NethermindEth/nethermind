@@ -16,13 +16,12 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain;
 using Nethermind.Stats;
-using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 
-namespace Nethermind.Blockchain.Test.Synchronization.Mocks
+namespace Nethermind.Synchronization.Test.Mocks
 {
     public class FirstFree : IPeerAllocationStrategy
     {

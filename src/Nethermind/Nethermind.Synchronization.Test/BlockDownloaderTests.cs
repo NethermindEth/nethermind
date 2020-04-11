@@ -20,26 +20,26 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Logging;
-using Nethermind.Network.P2P.Subprotocols.Eth.V63;
-using Nethermind.Stats.Model;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Consensus;
-using Nethermind.Db;
 using Nethermind.Network;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Specs;
 using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
+using Nethermind.Stats.Model;
 using Nethermind.Store.Bloom;
-using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
@@ -48,7 +48,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.Synchronization
+namespace Nethermind.Synchronization.Test
 {
     [TestFixture]
     public class BlockDownloaderTests

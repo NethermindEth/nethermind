@@ -179,6 +179,7 @@ namespace Nethermind.Synchronization.Peers
         }
 
         public event EventHandler PeerAdded;
+        public event EventHandler PeerRemoved;
 
         public IEnumerable<PeerInfo> AllPeers
         {
@@ -287,6 +288,7 @@ namespace Nethermind.Synchronization.Peers
             }
 
             if (_refreshCancelTokens.TryGetValue(id, out CancellationTokenSource initCancelTokenSource)) initCancelTokenSource?.Cancel();
+            PeerRemoved?.Invoke(this, EventArgs.Empty);
         }
 
         public bool TryFind(PublicKey nodeId, out PeerInfo peerInfo)
