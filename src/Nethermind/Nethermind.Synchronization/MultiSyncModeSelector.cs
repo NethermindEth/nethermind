@@ -68,7 +68,6 @@ namespace Nethermind.Synchronization
                 return false;
             }
             
-            // this does not really work well with beam sync
             bool hasEverBeenInFullSync = best.Processed > 0;
             long heightDelta = best.PeerBlock - best.State;
             return
@@ -82,7 +81,7 @@ namespace Nethermind.Synchronization
 
         private bool ShouldBeInFullSyncMode(Snapshot best)
         {
-            // it can be still in fast blocks
+            // it can be still in fast blocks but not any other sync mode
             return !ShouldBeInBeamSyncMode(best) && 
                    !ShouldBeInFastSyncMode(best) &&
                    !ShouldBeInStateNodesMode(best);
@@ -91,6 +90,7 @@ namespace Nethermind.Synchronization
         private bool ShouldBeInFastBlocksMode(Snapshot best)
         {
             // this is really the only condition - fast blocks can always run if there are peers until it is done
+            // also fast blocks can run in parallel with all other sync modes
             return FastBlocksEnabled && !FastBlocksFinished;
         }
 
@@ -101,7 +101,7 @@ namespace Nethermind.Synchronization
                    && !ShouldBeInFastSyncMode(best)
                    // state is not yet downloaded
                    && best.PeerBlock - best.State < FullSyncThreshold
-                   // full sync has not started
+                   // full sync is not in progress
                    && best.Block < FullSyncThreshold;
         }
         
@@ -118,14 +118,14 @@ namespace Nethermind.Synchronization
             // if there are no peers that we could use then we cannot sync
             if (!hasPeers || peerBlock == 0)
             {
-                ChangeSyncModes(SyncMode.None);
+                UpdateSyncModes(SyncMode.None);
                 return;
             }
 
             // to avoid expensive checks we make this simple check at the beginning
             if (!FastSyncEnabled && !BeamSyncEnabled)
             {
-                ChangeSyncModes(SyncMode.Full);
+                UpdateSyncModes(SyncMode.Full);
                 return;
             }
 
@@ -157,7 +157,7 @@ namespace Nethermind.Synchronization
                 newModes |= SyncMode.StateNodes;
             }
 
-            ChangeSyncModes(newModes);
+            UpdateSyncModes(newModes);
         }
 
         private Snapshot TakeSnapshot(long peerBlock)
@@ -196,7 +196,7 @@ namespace Nethermind.Synchronization
             }
         }
 
-        private void ChangeSyncModes(SyncMode newModes)
+        private void UpdateSyncModes(SyncMode newModes)
         {
             if (Current == newModes)
             {
