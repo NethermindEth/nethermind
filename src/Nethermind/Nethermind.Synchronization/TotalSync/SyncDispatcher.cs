@@ -93,10 +93,10 @@ namespace Nethermind.Synchronization.TotalSync
                             {
                                 if (Logger.IsWarn) Logger.Warn($"Failure when executing request {t.Exception}");
                             }
-
-                            Free(allocation);
+                            
                             try
                             {
+                                Free(allocation);
                                 SyncResponseHandlingResult result = Feed.HandleResponse(request);
                                 ReactToHandlingResult(result, allocatedPeer);
                             }

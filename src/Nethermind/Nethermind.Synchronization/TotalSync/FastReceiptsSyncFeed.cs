@@ -67,7 +67,7 @@ namespace Nethermind.Synchronization.TotalSync
         private long _pivotNumber;
         private Keccak _pivotHash;
 
-        private bool ShouldFinish => _receiptStorage.LowestInsertedReceiptBlock == 1;
+        private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || _receiptStorage.LowestInsertedReceiptBlock == 1;
 
         public FastReceiptsSyncFeed(ISpecProvider specProvider, IBlockTree blockTree, IReceiptStorage receiptStorage, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
         {

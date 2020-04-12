@@ -107,15 +107,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
         
         private bool CanMigrate(SyncMode syncMode)
         {
-            switch (syncMode)
-            {
-                case SyncMode.NotStarted:
-                case SyncMode.FastBlocks:
-                case SyncMode.Beam:
-                    return false;
-                default:
-                    return true;
-            }
+            return (syncMode & SyncMode.Full) == SyncMode.Full;
         }
 
         private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)

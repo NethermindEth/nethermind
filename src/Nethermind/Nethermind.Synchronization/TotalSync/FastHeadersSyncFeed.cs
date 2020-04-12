@@ -430,9 +430,9 @@ namespace Nethermind.Synchronization.TotalSync
 
             if (added == 0)
             {
-                if (_logger.IsWarn) _logger.Warn($"{batch} - reporting no progress");
                 if (batch.ResponseSourcePeer != null)
                 {
+                    if (_logger.IsWarn) _logger.Warn($"{batch} - reporting no progress");
                     _syncPeerPool.ReportNoSyncProgress(batch.ResponseSourcePeer);
                 }
             }

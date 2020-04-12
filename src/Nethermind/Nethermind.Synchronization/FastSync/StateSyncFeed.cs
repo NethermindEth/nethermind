@@ -280,10 +280,10 @@ namespace Nethermind.Synchronization.FastSync
                         string nodeNodes = dependentItems.Count == 1 ? "node" : "nodes";
                         _logger.Trace($"{dependentItems.Count} {nodeNodes} dependent on {hash}");
                     }
-
-                    _dependencies.Remove(hash);
+                    
                     foreach (DependentItem dependentItem in dependentItems)
                     {
+                        _dependencies.Remove(hash);
                         dependentItem.Counter--;
                         if (dependentItem.Counter == 0)
                         {
@@ -438,6 +438,8 @@ namespace Nethermind.Synchronization.FastSync
 
         private HashSet<Keccak> _codesSameAsNodes = new HashSet<Keccak>();
 
+        private int _noResponsesInARow;
+        
         public override SyncResponseHandlingResult HandleResponse(StateSyncBatch batch)
         {
             if (batch == _emptyBatch)
@@ -480,13 +482,19 @@ namespace Nethermind.Synchronization.FastSync
                     bool isMissingRequestData = batch.RequestedNodes == null;
                     bool isMissingResponseData = batch.Responses == null;
                     bool hasValidFormat = !isMissingRequestData && !isMissingResponseData;
-
+                    
                     if (!hasValidFormat)
                     {
+                        _noResponsesInARow++;
+                        
                         AddAgainAllItems();
-                        if (_logger.IsDebug) _logger.Debug($"Batch response had invalid format");
+                        if (_logger.IsWarn) _logger.Warn($"Batch response had invalid format");
                         Interlocked.Increment(ref _invalidFormatCount);
                         return SyncResponseHandlingResult.InvalidFormat;
+                    }
+                    else
+                    {
+                        _noResponsesInARow = 0;
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"Received node data - {responseLength} items in response to {requestLength}");
@@ -642,6 +650,10 @@ namespace Nethermind.Synchronization.FastSync
                 {
                     _logger.Error($"Cannot remove pending request {batch}");
                 }
+                else
+                {
+                    _logger.Warn($"Removing pending request {batch}");
+                }
             }
         }
 
@@ -725,11 +737,10 @@ namespace Nethermind.Synchronization.FastSync
                     if (nodeDataType == NodeDataType.State)
                     {
                         _maxStateLevel = 64;
-                        DependentItem dependentItem = null;
+                        DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 0, true);
                         (Keccak codeHash, Keccak storageRoot) = _accountDecoder.DecodeHashesOnly(new RlpStream(trieNode.Value));
                         if (codeHash != Keccak.OfAnEmptyString)
                         {
-                            dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 0, true);
                             // prepare a branch without the code DB
                             // this only protects against being same as storage root?
                             if (codeHash == storageRoot)
@@ -748,12 +759,11 @@ namespace Nethermind.Synchronization.FastSync
 
                         if (storageRoot != Keccak.EmptyTreeHash)
                         {
-                            dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 0, true);
                             AddNodeResult addStorageNodeResult = AddNode(new StateSyncItem(storageRoot, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
                             if (addStorageNodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
                         }
 
-                        if (dependentItem == null)
+                        if (dependentItem.Counter == 0)
                         {
                             Interlocked.Increment(ref _savedAccounts);
                             SaveNode(currentStateSyncItem, currentResponseItem);
@@ -862,6 +872,12 @@ namespace Nethermind.Synchronization.FastSync
                     FallAsleep();
                     return _emptyBatch;
                 }
+                
+                if (_noResponsesInARow == 20)
+                {
+                    FallAsleep();
+                    return _emptyBatch;
+                }
 
                 lock (_stateDbLock)
                 {
@@ -908,6 +924,7 @@ namespace Nethermind.Synchronization.FastSync
 
                     if (_logger.IsTrace) _logger.Trace($"After preparing a request of {length} from ({StreamsDescription}) nodes");
 
+                    _logger.Warn($"Adding pending request {result}");
                     _pendingRequests.TryAdd(result, _nullObject);
                     return await Task.FromResult(result);
                 }
@@ -925,7 +942,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public void SetNewStateRoot(long number, Keccak stateRoot)
         {
-            _logger.Warn($"Setting new state root to {number} {stateRoot}");
+            _logger.Error($"Setting new state root to {number} {stateRoot}");
             _currentSyncStart = DateTime.UtcNow;
             _currentSyncStartSecondsInSync = _secondsInSync;
 
