@@ -194,8 +194,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     }
                 }
 
-                Console.WriteLine("Decrementing");
-                Interlocked.Decrement(ref _pendingRequests);
+                Console.WriteLine($"Decrementing Pending Requests {Interlocked.Decrement(ref _pendingRequests)}");
                 return SyncResponseHandlingResult.OK;
             }
 
@@ -238,8 +237,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     testBatch = new TestBatch(start, 8);
                 }
 
-                Console.WriteLine("Incrementing");
-                Interlocked.Increment(ref _pendingRequests);
+                Console.WriteLine($"Incrementing Pending Requests {Interlocked.Increment(ref _pendingRequests)}");
                 return testBatch;
             }
         }
@@ -248,7 +246,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         public async Task Simple_test_sync()
         {
             TestSyncFeed syncFeed = new TestSyncFeed();
-            TestDispatcher dispatcher = new TestDispatcher(syncFeed, new TestSyncPeerPool(), new StaticPeerAllocationStrategyFactory<TestBatch>(new FirstFree()));
+            TestDispatcher dispatcher = new TestDispatcher(syncFeed, new TestSyncPeerPool(), new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance));
             Task executorTask = dispatcher.Start(CancellationToken.None);
             syncFeed.Activate();
             await executorTask;

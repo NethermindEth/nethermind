@@ -27,6 +27,7 @@ namespace Nethermind.Synchronization.ParallelSync
         public abstract bool IsMultiFeed { get; }
         public SyncFeedState CurrentState { get; private set; }
         public event EventHandler<SyncFeedStateEventArgs> StateChanged;
+
         private void ChangeState(SyncFeedState newState)
         {
             CurrentState = newState;
@@ -35,16 +36,31 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public void Activate()
         {
+            if (CurrentState == SyncFeedState.Finished)
+            {
+                throw new InvalidOperationException($"{GetType().Name} has already finished and cannot be activated again.");
+            }
+
             ChangeState(SyncFeedState.Active);
         }
-        
+
         protected void Finish()
         {
+            if (CurrentState == SyncFeedState.Finished)
+            {
+                throw new InvalidOperationException($"{GetType().Name} has already finished and cannot be finished again.");
+            }
+            
             ChangeState(SyncFeedState.Finished);
         }
-        
+
         protected void FallAsleep()
         {
+            if (CurrentState == SyncFeedState.Finished)
+            {
+                throw new InvalidOperationException($"{GetType().Name} has already finished and cannot be put to sleep again.");
+            }
+            
             ChangeState(SyncFeedState.Dormant);
         }
     }

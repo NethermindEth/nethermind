@@ -16,6 +16,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Peers;
@@ -25,8 +26,24 @@ namespace Nethermind.Synchronization.Test.Mocks
 {
     public class FirstFree : IPeerAllocationStrategy
     {
-        public string Name => "first free";
+        private static FirstFree _instance;
+
+        public static FirstFree Instance
+        {
+            get
+            {
+                if (_instance == null) LazyInitializer.EnsureInitialized(ref _instance, () => new FirstFree());
+
+                return _instance;
+            }
+        }
+
+        private FirstFree()
+        {
+        }
+
         public bool CanBeReplaced => false;
+
         public PeerInfo Allocate(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
             return peers.FirstOrDefault() ?? currentPeer;

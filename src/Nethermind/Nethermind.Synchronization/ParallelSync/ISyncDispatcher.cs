@@ -21,6 +21,6 @@ namespace Nethermind.Synchronization.ParallelSync
 {
     public interface ISyncDispatcher<T>
     {
-        Task<long> Start(CancellationToken cancellationToken);
+        Task Start(CancellationToken cancellationToken);
     }
 }

@@ -47,7 +47,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         protected abstract Task Dispatch(PeerInfo peerInfo, T request, CancellationToken cancellationToken);
 
-        public async Task<long> Start(CancellationToken cancellationToken)
+        public async Task Start(CancellationToken cancellationToken)
         {
             cancellationToken.Register(() => _dormantStateTask?.SetCanceled());
 
@@ -120,8 +120,6 @@ namespace Nethermind.Synchronization.ParallelSync
                     break;
                 }
             }
-
-            return 1000;
         }
 
         protected virtual void Free(SyncPeerAllocation allocation)
@@ -185,6 +183,10 @@ namespace Nethermind.Synchronization.ParallelSync
                     _currentFeedState = state;
                     _dormantStateTask?.TrySetResult(null);
                     _dormantStateTask = null;
+                }
+                else if (state == SyncFeedState.Finished)
+                {
+                    _currentFeedState = state;
                 }
             }
         }

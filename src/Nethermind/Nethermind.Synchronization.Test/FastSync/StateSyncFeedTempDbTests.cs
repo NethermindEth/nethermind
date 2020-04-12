@@ -41,6 +41,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                             "(both hash and value) to the node data feed but cannot yet been stored" +
                             "in the StateDb because we only store the nodes whose children are fully resolved." +
                             "Such a node should already be available for other state-related parts of the system.")]
+        [Ignore("Temporarily disabled temp DB as it was causing trouble")]
         public async Task Can_read_dependent_items_from_state_db_while_waiting_for_dependencies()
         {
             StateDb codeDb = new StateDb();
