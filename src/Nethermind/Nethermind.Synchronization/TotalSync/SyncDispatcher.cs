@@ -44,7 +44,7 @@ namespace Nethermind.Synchronization.TotalSync
             syncFeed.StateChanged += SyncFeedOnStateChanged;
         }
 
-        private TaskCompletionSource<object> _dormantStateTask;
+        private TaskCompletionSource<object> _dormantStateTask = new TaskCompletionSource<object>();
 
         protected abstract Task Dispatch(PeerInfo peerInfo, T request, CancellationToken cancellationToken);
 
@@ -66,7 +66,7 @@ namespace Nethermind.Synchronization.TotalSync
                 }
                 else if (_currentFeedState == SyncFeedState.Active)
                 {
-                    T request = await Feed.PrepareRequest();
+                    T request = await (Feed.PrepareRequest() ?? Task.FromResult<T>(default)); // just to avoid null refs
                     if (request == null)
                     {
                         await Task.Delay(50);
@@ -94,7 +94,7 @@ namespace Nethermind.Synchronization.TotalSync
                             {
                                 if (Logger.IsWarn) Logger.Warn($"Failure when executing request {t.Exception}");
                             }
-                            
+
                             try
                             {
                                 // Logger.Warn($"Freeing allocation of {allocatedPeer}");
@@ -143,7 +143,7 @@ namespace Nethermind.Synchronization.TotalSync
                 // unassigned
                 return;
             }
-            
+
             switch (result)
             {
                 case SyncResponseHandlingResult.Emptish:
@@ -176,13 +176,14 @@ namespace Nethermind.Synchronization.TotalSync
         {
             lock (_feedStateManipulation)
             {
-                _currentFeedState = state;
                 if (state == SyncFeedState.Dormant)
                 {
                     _dormantStateTask = new TaskCompletionSource<object>();
+                    _currentFeedState = state;
                 }
                 else if (state == SyncFeedState.Active)
                 {
+                    _currentFeedState = state;
                     _dormantStateTask?.TrySetResult(null);
                     _dormantStateTask = null;
                 }
