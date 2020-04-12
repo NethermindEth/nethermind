@@ -53,7 +53,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 DbProvider = Substitute.For<IDbProvider>(),
                 BlockTree = blockTreeBuilder.TestObject,
                 Synchronizer = Substitute.For<ISynchronizer>(),
-                ChainLevelInfoRepository = blockTreeBuilder.ChainLevelInfoRepository
+                ChainLevelInfoRepository = blockTreeBuilder.ChainLevelInfoRepository,
+                SyncModeSelector = Substitute.For<ISyncModeSelector>()
             };
 
             configProvider.GetConfig<IInitConfig>().StoreReceipts.Returns(true);

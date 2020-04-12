@@ -133,7 +133,7 @@ namespace Nethermind.Runner.Test
         [TestCase("rinkeby_archive.cfg", true)]
         [TestCase("rinkeby.cfg", true)]
         [TestCase("goerli_archive.cfg", true)]
-        [TestCase("goerli.cfg", false)]
+        [TestCase("goerli.cfg", true)]
         [TestCase("mainnet_archive.cfg", true)]
         [TestCase("mainnet.cfg", true)]
         [TestCase("sokol.cfg", false)]
