@@ -172,20 +172,18 @@ namespace Nethermind.Blockchain
             {
                 throw new InvalidOperationException($"Best known is {BestKnownNumber}");
             }
-
-            long currentNumber = BestKnownNumber;
-            // TODO: fix this idea
-            while (true)
+            
+            for (int i = 0; i < 2 * 1024; i++)
             {
                 try
                 {
-                    BestSuggestedHeader = FindHeader(currentNumber, BlockTreeLookupOptions.None);
+                    BestSuggestedHeader = FindHeader(BestKnownNumber - i, BlockTreeLookupOptions.None);
                     BestSuggestedBody = FindBlock(BestSuggestedHeader.Hash, BlockTreeLookupOptions.None);
                     break;
                 }
                 catch (Exception e)
                 {
-                    currentNumber--;
+                    // ignored
                 }
             }
         }
