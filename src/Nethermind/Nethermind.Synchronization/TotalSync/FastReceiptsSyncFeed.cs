@@ -129,8 +129,10 @@ namespace Nethermind.Synchronization.TotalSync
 
         private ReceiptsSyncBatch BuildNewBatch()
         {
-            if (_blockTree.LowestInsertedBody?.Number != 1 &&
-                (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) > (_receiptStorage.LowestInsertedReceiptBlock ?? 0) - 1024 * 32)
+            long? lowestInsertedBody = _blockTree.LowestInsertedBody?.Number;
+            long? lowestInsertedReceipt = _receiptStorage.LowestInsertedReceiptBlock;
+            if (lowestInsertedBody != 1 &&
+                (lowestInsertedBody ?? _pivotNumber) > (lowestInsertedReceipt ?? _pivotNumber) - 1024 * 32)
             {
                 return null;
             }

@@ -83,9 +83,9 @@ namespace Nethermind.Synchronization.TotalSync
 
             _lowestRequestedBodyHash = startBodyHash;
         }
-        
+
         private bool ShouldFinish => !_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
-        
+
         public override bool IsMultiFeed => true;
 
         private bool AnyBatchesLeftToPrepare()
@@ -165,10 +165,12 @@ namespace Nethermind.Synchronization.TotalSync
             }
             else if (AnyBatchesLeftToPrepare())
             {
-                if ((_blockTree.LowestInsertedHeader?.Number ?? 0) != 1 &&
-                    (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) > (_blockTree.LowestInsertedBody?.Number ?? 0) - 1024 * 32)
+                long? lowestInsertedHeader = _blockTree.LowestInsertedHeader?.Number;
+                long? lowestInsertedBody = _blockTree.LowestInsertedBody?.Number;
+                if (lowestInsertedHeader != 1 &&
+                    (lowestInsertedHeader ?? _pivotNumber) > (lowestInsertedBody ?? _pivotNumber) - 1024 * 32)
                 {
-                    return Task.FromResult((BodiesSyncBatch)null);
+                    return Task.FromResult((BodiesSyncBatch) null);
                 }
 
                 Keccak hash = _lowestRequestedBodyHash;
