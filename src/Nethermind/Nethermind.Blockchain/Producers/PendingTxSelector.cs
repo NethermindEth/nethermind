@@ -27,7 +27,7 @@ using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.TxPool;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Producers
 {
     public class PendingTxSelector : IPendingTxSelector
     {
