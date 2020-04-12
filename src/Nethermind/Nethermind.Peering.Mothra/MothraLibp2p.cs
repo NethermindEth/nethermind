@@ -53,15 +53,19 @@ namespace Nethermind.Peering.Mothra
             _receiveGossipHandle = GCHandle.Alloc(_receiveGossip);
             _receiveRpcHandle = GCHandle.Alloc(_receiveRpc);
         }
-        
+
         public event GossipReceivedEventHandler? GossipReceived;
-        
+
         public event PeerDiscoveredEventHandler? PeerDiscovered;
 
         public event RpcReceivedEventHandler? RpcReceived;
 
-        public void SendGossip(ReadOnlySpan<byte> topicUtf8, ReadOnlySpan<byte> data)
+        public bool IsStarted { get; private set; }
+
+        public bool SendGossip(ReadOnlySpan<byte> topicUtf8, ReadOnlySpan<byte> data)
         {
+            if (!IsStarted) return false;
+
             unsafe
             {
                 fixed (byte* topicUtf8Ptr = topicUtf8)
@@ -70,34 +74,46 @@ namespace Nethermind.Peering.Mothra
                     MothraInterop.SendGossip(topicUtf8Ptr, topicUtf8.Length, dataPtr, data.Length);
                 }
             }
+
+            return true;
         }
 
-        public void SendRpcRequest(ReadOnlySpan<byte> methodUtf8, ReadOnlySpan<byte> peerUtf8, ReadOnlySpan<byte> data)
+        public bool SendRpcRequest(ReadOnlySpan<byte> methodUtf8, ReadOnlySpan<byte> peerUtf8, ReadOnlySpan<byte> data)
         {
+            if (!IsStarted) return false;
+
             unsafe
             {
                 fixed (byte* methodUtf8Ptr = methodUtf8)
                 fixed (byte* peerUtf8Ptr = peerUtf8)
                 fixed (byte* dataPtr = data)
                 {
-                    MothraInterop.SendRequest(methodUtf8Ptr, methodUtf8.Length, peerUtf8Ptr, peerUtf8.Length, dataPtr,
+                    MothraInterop.SendRequest(methodUtf8Ptr, methodUtf8.Length, peerUtf8Ptr, peerUtf8.Length,
+                        dataPtr,
                         data.Length);
                 }
             }
+
+            return true;
         }
 
-        public void SendRpcResponse(ReadOnlySpan<byte> methodUtf8, ReadOnlySpan<byte> peerUtf8, ReadOnlySpan<byte> data)
+        public bool SendRpcResponse(ReadOnlySpan<byte> methodUtf8, ReadOnlySpan<byte> peerUtf8, ReadOnlySpan<byte> data)
         {
+            if (!IsStarted) return false;
+
             unsafe
             {
                 fixed (byte* methodUtf8Ptr = methodUtf8)
                 fixed (byte* peerUtf8Ptr = peerUtf8)
                 fixed (byte* dataPtr = data)
                 {
-                    MothraInterop.SendRequest(methodUtf8Ptr, methodUtf8.Length, peerUtf8Ptr, peerUtf8.Length, dataPtr,
+                    MothraInterop.SendRequest(methodUtf8Ptr, methodUtf8.Length, peerUtf8Ptr, peerUtf8.Length,
+                        dataPtr,
                         data.Length);
                 }
             }
+
+            return true;
         }
 
         public void Start(MothraSettings settings)
@@ -105,6 +121,7 @@ namespace Nethermind.Peering.Mothra
             MothraInterop.RegisterHandlers(_discoveredPeer, _receiveGossip, _receiveRpc);
             string[] args = BuildArgs(settings);
             MothraInterop.Start(args, args.Length);
+            IsStarted = true;
         }
 
         private string[] BuildArgs(MothraSettings settings)
@@ -193,7 +210,7 @@ namespace Nethermind.Peering.Mothra
             ReadOnlySpan<byte> peerUtf8 = new ReadOnlySpan<byte>(peerUtf8Ptr, peerLength);
             PeerDiscovered?.Invoke(peerUtf8);
         }
-        
+
         private unsafe void ReceiveGossipHandler(byte* topicUtf8Ptr, int topicLength, byte* dataPtr, int dataLength)
         {
             ReadOnlySpan<byte> topicUtf8 = new ReadOnlySpan<byte>(topicUtf8Ptr, topicLength);

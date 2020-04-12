@@ -129,9 +129,15 @@ namespace Nethermind.BeaconNode
 
                 // TODO: Need more sophistication, like Eth1; as peers are discovered, just put into a pool,
                 // then, when need for sync determined, select the best peer(s) to use.
-                
+
                 await _networkPeering.RequestBlocksAsync(peerId, peerPeeringStatus.HeadRoot, finalizedSlot,
                     peerPeeringStatus.HeadSlot);
+            }
+            else
+            {
+                if (_logger.IsDebug())
+                    LogDebug.PeerBehind(_logger, peerId, peerPeeringStatus.FinalizedEpoch, peerPeeringStatus.HeadRoot,
+                        peerPeeringStatus.HeadSlot, null);
             }
         }
 

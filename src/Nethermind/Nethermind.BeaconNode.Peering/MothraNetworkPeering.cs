@@ -3,7 +3,6 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core2;
-using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.P2p;
 using Nethermind.Core2.Types;
@@ -44,8 +43,12 @@ namespace Nethermind.BeaconNode.Peering
             Span<byte> encoded = new byte[Ssz.Ssz.SignedBeaconBlockLength(signedBlock)];
             Ssz.Ssz.Encode(encoded, signedBlock);
 
-            LogDebug.GossipSend(_logger, nameof(TopicUtf8.BeaconBlock), encoded.Length, null);
-            _mothraLibp2p.SendGossip(TopicUtf8.BeaconBlock, encoded);
+            if (_logger.IsDebug()) LogDebug.GossipSend(_logger, nameof(TopicUtf8.BeaconBlock), encoded.Length, null);
+            if (!_mothraLibp2p.SendGossip(TopicUtf8.BeaconBlock, encoded))
+            {
+                if (_logger.IsWarn())
+                    Log.GossipNotPublishedAsPeeeringNotStarted(_logger, nameof(TopicUtf8.BeaconBlock), null);
+            }
 
             return Task.CompletedTask;
         }
@@ -68,7 +71,11 @@ namespace Nethermind.BeaconNode.Peering
                     encoded.Length,
                     null);
 
-            _mothraLibp2p.SendRpcRequest(MethodUtf8.BeaconBlocksByRange, peerUtf8, encoded);
+            if (!_mothraLibp2p.SendRpcRequest(MethodUtf8.BeaconBlocksByRange, peerUtf8, encoded))
+            {
+                if (_logger.IsWarn())
+                    Log.RpcRequestNotSentAsPeeeringNotStarted(_logger, nameof(MethodUtf8.BeaconBlocksByRange), null);
+            }
 
             return Task.CompletedTask;
         }
@@ -85,7 +92,11 @@ namespace Nethermind.BeaconNode.Peering
                     encoded.Length,
                     null);
 
-            _mothraLibp2p.SendRpcResponse(MethodUtf8.BeaconBlocksByRange, peerUtf8, encoded);
+            if (!_mothraLibp2p.SendRpcResponse(MethodUtf8.BeaconBlocksByRange, peerUtf8, encoded))
+            {
+                if (_logger.IsWarn())
+                    Log.RpcResponseNotSentAsPeeeringNotStarted(_logger, nameof(MethodUtf8.BeaconBlocksByRange), null);
+            }
 
             return Task.CompletedTask;
         }
@@ -100,11 +111,19 @@ namespace Nethermind.BeaconNode.Peering
                 LogDebug.RpcSend(_logger, rpcDirection, nameof(MethodUtf8.Status), peerId, encoded.Length, null);
             if (rpcDirection == RpcDirection.Request)
             {
-                _mothraLibp2p.SendRpcRequest(MethodUtf8.Status, peerUtf8, encoded);
+                if (!_mothraLibp2p.SendRpcRequest(MethodUtf8.Status, peerUtf8, encoded))
+                {
+                    if (_logger.IsWarn())
+                        Log.RpcRequestNotSentAsPeeeringNotStarted(_logger, nameof(MethodUtf8.Status), null);
+                }
             }
             else
             {
-                _mothraLibp2p.SendRpcResponse(MethodUtf8.Status, peerUtf8, encoded);
+                if (!_mothraLibp2p.SendRpcResponse(MethodUtf8.Status, peerUtf8, encoded))
+                {
+                    if (_logger.IsWarn())
+                        Log.RpcResponseNotSentAsPeeeringNotStarted(_logger, nameof(MethodUtf8.Status), null);
+                }
             }
 
             return Task.CompletedTask;

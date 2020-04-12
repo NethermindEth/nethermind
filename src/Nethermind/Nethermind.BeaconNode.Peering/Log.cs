@@ -79,6 +79,21 @@ namespace Nethermind.BeaconNode.Peering
                 new EventId(4051, nameof(UnknownRpcReceived)),
                 "Unknown RPC {RpcDirection} ({RequestResponseFlag}) received, unknown method '{Method}', peer {Peer}, {ByteCount} bytes.");
 
+        public static readonly Action<ILogger, string, Exception?> GossipNotPublishedAsPeeeringNotStarted =
+            LoggerMessage.Define<string>(LogLevel.Warning,
+                new EventId(4052, nameof(GossipNotPublishedAsPeeeringNotStarted)),
+                "Gossip topic '{Topic}' not published as peering not started yet.");
+
+        public static readonly Action<ILogger, string, Exception?> RpcRequestNotSentAsPeeeringNotStarted =
+            LoggerMessage.Define<string>(LogLevel.Warning,
+                new EventId(4053, nameof(RpcRequestNotSentAsPeeeringNotStarted)),
+                "RPC request '{Method}' not sent as peering not started yet.");
+
+        public static readonly Action<ILogger, string, Exception?> RpcResponseNotSentAsPeeeringNotStarted =
+            LoggerMessage.Define<string>(LogLevel.Warning,
+                new EventId(4053, nameof(RpcResponseNotSentAsPeeeringNotStarted)),
+                "RPC response '{Method}' not sent as peering not started yet.");
+
         // 5bxx error
 
         public static readonly Action<ILogger, string, string, Exception?> PeerDiscoveredError =
