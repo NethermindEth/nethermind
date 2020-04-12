@@ -274,13 +274,12 @@ namespace Nethermind.Blockchain.Test.TxPools
         }
         
         [Test]
-        public void should_retrieve_stored_transaction_correctly()
+        public void Should_not_try_to_load_transactions_from_storage()
         {
             var transaction = Build.A.Transaction.SignedAndResolved().TestObject;
             _txPool = CreatePool(_inMemoryTxStorage);
             _inMemoryTxStorage.Add(transaction, 100);
-            _txPool.TryGetPendingTransaction(transaction.Hash, out var retrievedTransaction).Should().BeTrue();
-            retrievedTransaction.Should().BeEquivalentTo(transaction);
+            _txPool.TryGetPendingTransaction(transaction.Hash, out var retrievedTransaction).Should().BeFalse();
         }
         
         [Test]
