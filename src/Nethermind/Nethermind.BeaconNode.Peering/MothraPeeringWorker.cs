@@ -228,7 +228,7 @@ namespace Nethermind.BeaconNode.Peering
                     || methodUtf8.SequenceEqual(MethodUtf8.StatusMothraAlternative))
                 {
                     if (_logger.IsDebug())
-                        LogDebug.RpcReceived(_logger, rpcDirection, requestResponseFlag, nameof(MethodUtf8.Status),
+                        LogDebug.RpcReceived(_logger, rpcDirection, requestResponseFlag, Encoding.UTF8.GetString(methodUtf8),
                             peerId, data.Length, null);
 
                     PeeringStatus peeringStatus = Ssz.Ssz.DecodePeeringStatus(data);
@@ -239,7 +239,7 @@ namespace Nethermind.BeaconNode.Peering
                 else if (methodUtf8.SequenceEqual(MethodUtf8.BeaconBlocksByRange))
                 {
                     if (_logger.IsDebug())
-                        LogDebug.RpcReceived(_logger, rpcDirection, requestResponseFlag, nameof(MethodUtf8.Status),
+                        LogDebug.RpcReceived(_logger, rpcDirection, requestResponseFlag, Encoding.UTF8.GetString(methodUtf8),
                             peerId, data.Length, null);
 
                     if (rpcDirection == RpcDirection.Request)
