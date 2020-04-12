@@ -283,8 +283,8 @@ namespace Nethermind.Synchronization.FastSync
                     
                     foreach (DependentItem dependentItem in dependentItems)
                     {
-                        _dependencies.Remove(hash);
                         dependentItem.Counter--;
+                        _dependencies.Remove(hash);
                         if (dependentItem.Counter == 0)
                         {
                             nodesToSave.Add(dependentItem);
@@ -652,7 +652,7 @@ namespace Nethermind.Synchronization.FastSync
                 }
                 else
                 {
-                    _logger.Warn($"Removing pending request {batch}");
+                    // _logger.Warn($"Removing pending request {batch}");
                 }
             }
         }
@@ -924,7 +924,7 @@ namespace Nethermind.Synchronization.FastSync
 
                     if (_logger.IsTrace) _logger.Trace($"After preparing a request of {length} from ({StreamsDescription}) nodes");
 
-                    _logger.Warn($"Adding pending request {result}");
+                    // _logger.Warn($"Adding pending request {result}");
                     _pendingRequests.TryAdd(result, _nullObject);
                     return await Task.FromResult(result);
                 }
