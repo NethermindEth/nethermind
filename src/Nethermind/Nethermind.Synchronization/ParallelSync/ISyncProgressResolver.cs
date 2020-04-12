@@ -14,12 +14,21 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Synchronization.TotalSync
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]
+namespace Nethermind.Synchronization.ParallelSync
 {
-    public enum SyncFeedState
+    public interface ISyncProgressResolver
     {
-        Dormant,
-        Active,
-        Finished
+        long FindBestFullState();
+        
+        long FindBestHeader();
+        
+        long FindBestFullBlock();
+        
+        bool IsFastBlocksFinished();
+        
+        long FindBestProcessedBlock();
     }
 }

@@ -14,13 +14,17 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Synchronization.FastBlocks
+using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
+
+namespace Nethermind.Synchronization.StateSync
 {
-    public enum FastBlocksBatchType
+    public class StateSyncAllocationStrategyFactory : IPeerAllocationStrategyFactory<StateSyncBatch>
     {
-        None,
-        Headers,
-        Bodies,
-        Receipts
+        public IPeerAllocationStrategy Create(StateSyncBatch request)
+        {
+            return BySpeedStrategy.Fastest;
+        }
     }
 }

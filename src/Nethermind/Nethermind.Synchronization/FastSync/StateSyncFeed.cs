@@ -29,12 +29,12 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Synchronization.TotalSync;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    public class StateSyncFeed : SyncFeed<StateSyncBatch>, INodeDataFeed
+    public class StateSyncFeed : SyncFeed<StateSyncBatch>
     {
         private const int MaxRequestSize = 384;
 

@@ -16,7 +16,7 @@
 
 using System;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Synchronization.TotalSync;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Synchronization.BeamSync
 {

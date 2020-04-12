@@ -16,10 +16,9 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Synchronization.Blocks;
+using Nethermind.Synchronization.ParallelSync;
 
-namespace Nethermind.Synchronization.TotalSync
+namespace Nethermind.Synchronization.Blocks
 {
     public class FullSyncFeed : SyncFeed<BlocksRequest>
     {

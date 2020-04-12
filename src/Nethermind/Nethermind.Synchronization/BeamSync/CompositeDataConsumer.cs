@@ -19,7 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
-using Nethermind.Synchronization.TotalSync;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Synchronization.BeamSync
 {

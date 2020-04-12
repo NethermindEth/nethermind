@@ -15,15 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Timers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
 
-namespace Nethermind.Synchronization
+namespace Nethermind.Synchronization.ParallelSync
 {
     public class MultiSyncModeSelector : ISyncModeSelector, IDisposable
     {

@@ -16,35 +16,34 @@
 
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Logging;
-using Nethermind.Synchronization.FastBlocks;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
-namespace Nethermind.Synchronization.TotalSync
+namespace Nethermind.Synchronization.FastBlocks
 {
-    public class ReceiptsSyncDispatcher : SyncDispatcher<ReceiptsSyncBatch>
+    public class BodiesSyncDispatcher : SyncDispatcher<BodiesSyncBatch>
     {
-        public ReceiptsSyncDispatcher(
-            ISyncFeed<ReceiptsSyncBatch> syncFeed,
+        public BodiesSyncDispatcher(
+            ISyncFeed<BodiesSyncBatch> syncFeed,
             ISyncPeerPool syncPeerPool,
-            IPeerAllocationStrategyFactory<ReceiptsSyncBatch> peerAllocationStrategy,
+            IPeerAllocationStrategyFactory<BodiesSyncBatch> peerAllocationStrategy,
             ILogManager logManager)
             : base(syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
         {
         }
 
-        protected override async Task Dispatch(PeerInfo peerInfo, ReceiptsSyncBatch batch, CancellationToken cancellationToken)
+        protected override async Task Dispatch(PeerInfo peerInfo, BodiesSyncBatch batch, CancellationToken cancellationToken)
         {
             ISyncPeer peer = peerInfo.SyncPeer;
             batch.MarkSent();
-            Task<TxReceipt[][]> getReceiptsTask = peer.GetReceipts(batch.Request, cancellationToken);
-            await getReceiptsTask.ContinueWith(
+            Task<BlockBody[]> getBodiesTask = peer.GetBlockBodies(batch.Request, cancellationToken);
+            await getBodiesTask.ContinueWith(
                 (t, state) =>
                 {
-                    ReceiptsSyncBatch batchLocal = (ReceiptsSyncBatch)state;
+                    BodiesSyncBatch batchLocal = (BodiesSyncBatch)state;
                     if (t.IsCompletedSuccessfully)
                     {
                         if (batchLocal.RequestTime > 1000)

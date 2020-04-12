@@ -14,17 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-
-namespace Nethermind.Synchronization.TotalSync
+namespace Nethermind.Synchronization.ParallelSync
 {
-    public class SyncFeedStateEventArgs : EventArgs
+    public enum SyncFeedState
     {
-        public SyncFeedStateEventArgs(SyncFeedState newState)
-        {
-            NewState = newState;
-        }
-
-        public SyncFeedState NewState { get; }
+        Dormant,
+        Active,
+        Finished
     }
 }

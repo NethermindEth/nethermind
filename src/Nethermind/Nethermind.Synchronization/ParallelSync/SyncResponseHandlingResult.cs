@@ -14,22 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.Threading.Tasks;
-
-namespace Nethermind.Synchronization.TotalSync
+namespace Nethermind.Synchronization.ParallelSync
 {
-    public interface ISyncFeed<T>
+    public enum SyncResponseHandlingResult
     {
-        SyncFeedState CurrentState { get; }
-        event EventHandler<SyncFeedStateEventArgs> StateChanged;
-        Task<T> PrepareRequest();
-        SyncResponseHandlingResult HandleResponse(T response);
-        
-        /// <summary>
-        /// Multifeed can prepare and handle multiple requests concurrently.
-        /// </summary>
-        bool IsMultiFeed { get; }
-        void Activate();
+        OK,
+        NoData,
+        InvalidFormat,
+        NotAssigned,
+        BadQuality,
+        Emptish
     }
 }

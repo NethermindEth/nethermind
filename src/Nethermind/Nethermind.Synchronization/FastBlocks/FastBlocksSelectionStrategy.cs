@@ -33,8 +33,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _minNumber = minNumber;
             _priority = priority;
         }
-
-        public string Name => "fast blocks";
+        
         public bool CanBeReplaced => false;
         public PeerInfo Allocate(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {

@@ -18,9 +18,6 @@ namespace Nethermind.Synchronization
 {
     public enum SyncEvent
     {
-        InitFailed,
-        InitCancelled,
-        InitCompleted,
         Started,
         Failed,
         Cancelled,

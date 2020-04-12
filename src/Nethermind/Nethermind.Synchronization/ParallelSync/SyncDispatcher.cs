@@ -18,10 +18,9 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.Peers;
 
-namespace Nethermind.Synchronization.TotalSync
+namespace Nethermind.Synchronization.ParallelSync
 {
     public abstract class SyncDispatcher<T> : ISyncDispatcher<T>
     {

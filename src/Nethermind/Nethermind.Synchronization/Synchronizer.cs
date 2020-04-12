@@ -29,10 +29,12 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Blocks;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
-using Nethermind.Synchronization.TotalSync;
+using Nethermind.Synchronization.StateSync;
 
 namespace Nethermind.Synchronization
 {

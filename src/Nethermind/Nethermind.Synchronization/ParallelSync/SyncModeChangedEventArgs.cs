@@ -14,17 +14,19 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Synchronization.FastSync;
-using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Peers.AllocationStrategies;
+using System;
 
-namespace Nethermind.Synchronization.TotalSync
+namespace Nethermind.Synchronization.ParallelSync
 {
-    public class StateSyncAllocationStrategyFactory : IPeerAllocationStrategyFactory<StateSyncBatch>
+    public class SyncModeChangedEventArgs : EventArgs
     {
-        public IPeerAllocationStrategy Create(StateSyncBatch request)
+        public SyncModeChangedEventArgs(SyncMode previous, SyncMode current)
         {
-            return BySpeedStrategy.Fastest;
+            Previous = previous;
+            Current = current;
         }
+        
+        public SyncMode Previous { get; }
+        public SyncMode Current { get; }
     }
 }

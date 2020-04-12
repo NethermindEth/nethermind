@@ -17,7 +17,7 @@
 using System;
 using System.Threading.Tasks;
 
-namespace Nethermind.Synchronization.TotalSync
+namespace Nethermind.Synchronization.ParallelSync
 {
     public abstract class SyncFeed<T> : ISyncFeed<T>
     {

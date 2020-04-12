@@ -30,6 +30,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Blocks;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using NUnit.Framework;

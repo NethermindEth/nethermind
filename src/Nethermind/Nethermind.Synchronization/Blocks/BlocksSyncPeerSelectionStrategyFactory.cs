@@ -16,9 +16,9 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
-using Nethermind.Synchronization.TotalSync;
 
 namespace Nethermind.Synchronization.Blocks
 {

@@ -16,7 +16,7 @@
 
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 
-namespace Nethermind.Synchronization.TotalSync
+namespace Nethermind.Synchronization.ParallelSync
 {
     public class StaticPeerAllocationStrategyFactory<T> : IPeerAllocationStrategyFactory<T>
     {

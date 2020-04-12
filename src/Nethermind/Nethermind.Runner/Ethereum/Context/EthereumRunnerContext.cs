@@ -53,6 +53,7 @@ using Nethermind.Store;
 using Nethermind.Store.Bloom;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.BeamSync;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using Nethermind.Wallet;

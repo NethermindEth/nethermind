@@ -14,21 +14,22 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Runtime.CompilerServices;
+using System;
+using System.Threading.Tasks;
 
-[assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]
-namespace Nethermind.Synchronization
+namespace Nethermind.Synchronization.ParallelSync
 {
-    public interface ISyncProgressResolver
+    public interface ISyncFeed<T>
     {
-        long FindBestFullState();
+        SyncFeedState CurrentState { get; }
+        event EventHandler<SyncFeedStateEventArgs> StateChanged;
+        Task<T> PrepareRequest();
+        SyncResponseHandlingResult HandleResponse(T response);
         
-        long FindBestHeader();
-        
-        long FindBestFullBlock();
-        
-        bool IsFastBlocksFinished();
-        
-        long FindBestProcessedBlock();
+        /// <summary>
+        /// Multifeed can prepare and handle multiple requests concurrently.
+        /// </summary>
+        bool IsMultiFeed { get; }
+        void Activate();
     }
 }

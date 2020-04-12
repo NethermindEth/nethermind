@@ -47,8 +47,8 @@ using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Store;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.TotalSync;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {

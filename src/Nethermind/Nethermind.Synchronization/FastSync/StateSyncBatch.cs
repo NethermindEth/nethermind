@@ -14,9 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Diagnostics;
-using System.Threading;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Synchronization.FastSync
@@ -24,18 +22,7 @@ namespace Nethermind.Synchronization.FastSync
     [DebuggerDisplay("Requested Nodes: {RequestedNodes?.Length ?? 0}, Responses: {Responses?.Length ?? 0}, Assigned: {AssignedPeer?.Current}")]
     public class StateSyncBatch
     {
-        private static int BatchNumber = 0;
-        
-        private int MyBatchNumber = 0;
-
-        public StateSyncBatch()
-        {
-            MyBatchNumber = Interlocked.Increment(ref BatchNumber);
-        }
-        
         public int Type { get; set; }
-        
-        public static StateSyncBatch Empty = new StateSyncBatch{RequestedNodes = Array.Empty<StateSyncItem>()};
         
         public StateSyncItem[] RequestedNodes { get; set; }
         
@@ -46,10 +33,5 @@ namespace Nethermind.Synchronization.FastSync
         public UInt256 RequiredPeerDifficulty { get; set; }
 
         public int ConsumerId { get; set; }
-
-        public override string ToString()
-        {
-            return $"state sync batch {MyBatchNumber}";
-        }
     }
 }

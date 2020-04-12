@@ -17,7 +17,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Nethermind.Synchronization.TotalSync
+namespace Nethermind.Synchronization.ParallelSync
 {
     public interface ISyncDispatcher<T>
     {

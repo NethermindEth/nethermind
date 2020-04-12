@@ -14,12 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Synchronization.Peers.AllocationStrategies;
+using System;
 
-namespace Nethermind.Synchronization.TotalSync
+namespace Nethermind.Synchronization.ParallelSync
 {
-    public interface IPeerAllocationStrategyFactory<in T>
+    public interface ISyncModeSelector
     {
-        IPeerAllocationStrategy Create(T request);
+        SyncMode Current { get; }
+        
+        event EventHandler<SyncModeChangedEventArgs> Changed;
     }
 }

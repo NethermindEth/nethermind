@@ -16,7 +16,7 @@
 
 using System;
 
-namespace Nethermind.Synchronization
+namespace Nethermind.Synchronization.ParallelSync
 {
     [Flags]
     public enum SyncMode

@@ -29,12 +29,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State.Proofs;
-using Nethermind.Synchronization.FastBlocks;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SyncLimits;
 
-namespace Nethermind.Synchronization.TotalSync
+namespace Nethermind.Synchronization.FastBlocks
 {
     public class FastBodiesSyncFeed : SyncFeed<BodiesSyncBatch>
     {
