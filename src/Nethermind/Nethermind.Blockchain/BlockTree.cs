@@ -173,8 +173,21 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException($"Best known is {BestKnownNumber}");
             }
 
-            BestSuggestedHeader = FindHeader(BestKnownNumber, BlockTreeLookupOptions.None);
-            BestSuggestedBody = FindBlock(BestSuggestedHeader.Hash, BlockTreeLookupOptions.None);
+            long currentNumber = BestKnownNumber;
+            // TODO: fix this idea
+            while (true)
+            {
+                try
+                {
+                    BestSuggestedHeader = FindHeader(currentNumber, BlockTreeLookupOptions.None);
+                    BestSuggestedBody = FindBlock(BestSuggestedHeader.Hash, BlockTreeLookupOptions.None);
+                    break;
+                }
+                catch (Exception e)
+                {
+                    currentNumber--;
+                }
+            }
         }
 
         private void LoadLowestInsertedHeader()

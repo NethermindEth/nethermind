@@ -53,7 +53,7 @@ namespace Nethermind.Synchronization
                 {
                     maxPeerBlock = Math.Max(maxPeerBlock, usefulPeer.HeadNumber);
                 }
-                
+
                 return maxPeerBlock;
             }
         }
@@ -111,7 +111,7 @@ namespace Nethermind.Synchronization
         {
             return best.Block > best.State && best.State > 0;
         }
-        
+
         private bool ShouldBeInFastSyncMode(Snapshot best)
         {
             if (!FastSyncEnabled)
@@ -158,8 +158,8 @@ namespace Nethermind.Synchronization
                    && !ShouldBeInFastSyncMode(best)
                    // state is not yet downloaded
                    && (best.PeerBlock - best.State > FullSyncThreshold
-                   // headers went too far
-                   || best.Header > best.State)
+                       // headers went too far
+                       || best.Header > best.State)
                    // full sync is not in progress
                    && !IsWaitingForBlockProcessor(best)
                    && !IsInAStickyFullSyncMode(best);
@@ -217,6 +217,13 @@ namespace Nethermind.Synchronization
                 newModes |= SyncMode.StateNodes;
             }
 
+            if (newModes != Current)
+            {
+                string stateString = BuildStateString(best);
+                string message = $"Changing state to {newModes} at {stateString}";
+                if (_logger.IsInfo) _logger.Info(message);
+            }
+
             UpdateSyncModes(newModes);
         }
 
@@ -258,10 +265,10 @@ namespace Nethermind.Synchronization
 
         private void UpdateSyncModes(SyncMode newModes)
         {
-            if (Current == newModes)
-            {
-                return;
-            }
+            // if (Current == newModes)
+            // {
+            //     return;
+            // }
 
             SyncMode previous = Current;
             Current = newModes;

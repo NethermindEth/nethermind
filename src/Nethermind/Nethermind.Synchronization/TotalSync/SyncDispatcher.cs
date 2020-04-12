@@ -82,6 +82,7 @@ namespace Nethermind.Synchronization.TotalSync
                         Task task = Dispatch(allocatedPeer, request, cancellationToken);
                         if (!Feed.IsMultiFeed)
                         {
+                            Logger.Warn($"Awaiting single feed with allocated {allocatedPeer}");
                             await task;
                         }
 
@@ -96,6 +97,7 @@ namespace Nethermind.Synchronization.TotalSync
                             
                             try
                             {
+                                // Logger.Warn($"Freeing allocation of {allocatedPeer}");
                                 Free(allocation);
                                 SyncResponseHandlingResult result = Feed.HandleResponse(request);
                                 ReactToHandlingResult(result, allocatedPeer);
