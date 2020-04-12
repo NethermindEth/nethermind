@@ -42,6 +42,7 @@ namespace Nethermind.BeaconNode.Peering
         private readonly IMothraLibp2p _mothraLibp2P;
         private readonly PeerDiscoveredProcessor _peerDiscoveredProcessor;
         private readonly RpcPeeringStatusProcessor _rpcPeeringStatusProcessor;
+        private readonly RpcBeaconBlocksByRangeProcessor _rpcBeaconBlocksByRangeProcessor;
         private readonly PeerManager _peerManager;
         private readonly IStore _store;
         internal const string MothraDirectory = "mothra";
@@ -56,6 +57,7 @@ namespace Nethermind.BeaconNode.Peering
             PeerManager peerManager,
             PeerDiscoveredProcessor peerDiscoveredProcessor,
             RpcPeeringStatusProcessor rpcPeeringStatusProcessor,
+            RpcBeaconBlocksByRangeProcessor rpcBeaconBlocksByRangeProcessor,
             GossipSignedBeaconBlockProcessor gossipSignedBeaconBlockProcessor)
         {
             _logger = logger;
@@ -67,6 +69,7 @@ namespace Nethermind.BeaconNode.Peering
             _peerManager = peerManager;
             _peerDiscoveredProcessor = peerDiscoveredProcessor;
             _rpcPeeringStatusProcessor = rpcPeeringStatusProcessor;
+            _rpcBeaconBlocksByRangeProcessor = rpcBeaconBlocksByRangeProcessor;
             _gossipSignedBeaconBlockProcessor = gossipSignedBeaconBlockProcessor;
             _store = store;
         }
@@ -227,6 +230,24 @@ namespace Nethermind.BeaconNode.Peering
                     RpcMessage<PeeringStatus> statusRpcMessage =
                         new RpcMessage<PeeringStatus>(peerId, rpcDirection, peeringStatus);
                     _rpcPeeringStatusProcessor.Enqueue(statusRpcMessage);
+                }
+                else if (methodUtf8.SequenceEqual(MethodUtf8.BeaconBlocksByRange))
+                {
+                    if (_logger.IsDebug())
+                        LogDebug.RpcReceived(_logger, rpcDirection, requestResponseFlag, nameof(MethodUtf8.Status),
+                            peerId, data.Length, null);
+
+                    if (rpcDirection == RpcDirection.Request)
+                    {
+                        BeaconBlocksByRange beaconBlocksByRange = Ssz.Ssz.DecodeBeaconBlocksByRange(data);
+                        RpcMessage<BeaconBlocksByRange> rpcMessage =
+                            new RpcMessage<BeaconBlocksByRange>(peerId, rpcDirection, beaconBlocksByRange);
+                        _rpcBeaconBlocksByRangeProcessor.Enqueue(rpcMessage);
+                    }
+                    else
+                    {
+                        // TODO: Handle incoming blocks
+                    }
                 }
                 else
                 {
