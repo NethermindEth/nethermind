@@ -82,6 +82,8 @@ namespace Nethermind.Synchronization.FastBlocks
             Keccak startBodyHash = lowestInsertedBody?.Hash ?? _pivotHash;
 
             _lowestRequestedBodyHash = startBodyHash;
+            
+            Activate();
         }
 
         private bool ShouldFinish => !_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;

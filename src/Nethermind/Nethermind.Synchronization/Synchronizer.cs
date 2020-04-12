@@ -149,8 +149,6 @@ namespace Nethermind.Synchronization
                 }
             });
 
-            headersFeed.Activate();
-
             FastBodiesSyncFeed bodiesFeed = new FastBodiesSyncFeed(_blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
             BodiesSyncDispatcher bodiesDispatcher = new BodiesSyncDispatcher(bodiesFeed, _syncPeerPool, fastFactory, _logManager);
             Task bodiesTask = bodiesDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
@@ -161,8 +159,6 @@ namespace Nethermind.Synchronization
                 }
             });
 
-            bodiesFeed.Activate();
-
             FastReceiptsSyncFeed receiptsFeed = new FastReceiptsSyncFeed(_specProvider, _blockTree, _receiptStorage, _syncPeerPool, _syncConfig, _syncReport, _logManager);
             ReceiptsSyncDispatcher receiptsDispatcher = new ReceiptsSyncDispatcher(receiptsFeed, _syncPeerPool, fastFactory, _logManager);
             Task receiptsTask = receiptsDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
@@ -172,8 +168,6 @@ namespace Nethermind.Synchronization
                     _logger.Error("Fast receipts sync failed", t.Exception);
                 }
             });
-
-            receiptsFeed.Activate();
         }
 
         private void StartFastSyncComponents()

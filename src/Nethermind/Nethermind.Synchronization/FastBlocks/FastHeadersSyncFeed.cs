@@ -98,6 +98,8 @@ namespace Nethermind.Synchronization.FastBlocks
             _nextHeaderDiff = startTotalDifficulty;
 
             _lowestRequestedHeaderNumber = startNumber + 1;
+            
+            Activate();
         }
 
         public override bool IsMultiFeed => true;

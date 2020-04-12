@@ -94,6 +94,8 @@ namespace Nethermind.Synchronization.FastBlocks
 
             _startHash = _blockTree.FindHash(_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) ?? _pivotHash;
             _lowestRequestedHash = _startHash;
+            
+            Activate();
         }
 
         public override bool IsMultiFeed => true;
