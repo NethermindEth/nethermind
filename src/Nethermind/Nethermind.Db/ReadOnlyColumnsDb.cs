@@ -43,5 +43,12 @@ namespace Nethermind.Db
                 columnDbsValue.ClearTempChanges();
             }
         }
+
+        public Span<byte> GetSpan(byte[] key) => _wrappedDb.GetSpan(key);
+
+        public void DangerousReleaseMemory(in Span<byte> span)
+        {
+            _wrappedDb.DangerousReleaseMemory(span);
+        }
     }
 }

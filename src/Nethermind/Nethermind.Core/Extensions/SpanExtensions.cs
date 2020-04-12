@@ -32,7 +32,7 @@ namespace Nethermind.Core.Extensions
             return ToHexString(span, false, false, false);
         }
         
-        private static string ToHexString(this Span<byte> span, bool withZeroX, bool noLeadingZeros, bool withEip55Checksum)
+        public static string ToHexString(this Span<byte> span, bool withZeroX, bool noLeadingZeros, bool withEip55Checksum)
         {
             return ToHexViaLookup(span, withZeroX, noLeadingZeros, withEip55Checksum);
         }

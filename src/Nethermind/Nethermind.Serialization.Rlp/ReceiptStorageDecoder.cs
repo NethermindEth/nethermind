@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -25,6 +26,8 @@ namespace Nethermind.Serialization.Rlp
     {
         private readonly bool _supportTxHash;
         private const byte MarkTxHashByte = 255;
+        
+        public static readonly ReceiptStorageDecoder Instance = new ReceiptStorageDecoder();
 
         public ReceiptStorageDecoder(bool supportTxHash = true)
         {
@@ -298,6 +301,64 @@ namespace Nethermind.Serialization.Rlp
         public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
+        }
+
+        public void DecodeStructRef(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors, out TxReceiptStructRef item)
+        {
+            item = new TxReceiptStructRef();
+            
+            if (decoderContext.IsNextItemNull())
+            {
+                decoderContext.ReadByte();
+                return;
+            }
+            
+            bool isStorage = (rlpBehaviors & RlpBehaviors.Storage) != 0;
+            decoderContext.ReadSequenceLength();
+            Span<byte> firstItem = decoderContext.DecodeByteArraySpan();
+            if (firstItem.Length == 1)
+            {
+                item.StatusCode = firstItem[0];
+            }
+            else
+            {
+                item.PostTransactionState = firstItem.Length == 0 ? new KeccakStructRef() : new KeccakStructRef(firstItem);
+            }
+
+            if(isStorage) decoderContext.DecodeKeccakStructRef(out item.BlockHash);
+            if(isStorage) item.BlockNumber = (long)decoderContext.DecodeUInt256();
+            if(isStorage) item.Index = decoderContext.DecodeInt();
+            if(isStorage) decoderContext.DecodeAddressStructRef(out item.Sender);
+            if(isStorage) decoderContext.DecodeAddressStructRef(out item.Recipient);
+            if(isStorage) decoderContext.DecodeAddressStructRef(out item.ContractAddress);
+            if(isStorage) item.GasUsed = (long) decoderContext.DecodeUBigInt();
+            item.GasUsedTotal = (long) decoderContext.DecodeUBigInt();
+            decoderContext.DecodeBloomStructRef(out item.BloomStruct);
+
+            var peekPrefixAndContentLength = decoderContext.PeekPrefixAndContentLength();
+            var logsBytes = peekPrefixAndContentLength.ContentLength + peekPrefixAndContentLength.PrefixLength;
+            item.Logs = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
+            decoderContext.SkipItem();
+            
+            bool allowExtraData = (rlpBehaviors & RlpBehaviors.AllowExtraData) != 0;
+            if (!allowExtraData)
+            {
+                if (isStorage && _supportTxHash)
+                {
+                    // since txHash was added later and may not be in rlp, we provide special mark byte that it will be next
+                    if (decoderContext.PeekByte() == MarkTxHashByte)
+                    {
+                        decoderContext.ReadByte();
+                        decoderContext.DecodeKeccakStructRef(out item.TxHash);
+                    }
+                }
+
+                // since error was added later we can only rely on it in cases where we read receipt only and no data follows, empty errors might not be serialized
+                if (decoderContext.Position != decoderContext.Length)
+                {
+                    item.Error = decoderContext.DecodeString();
+                }
+            }
         }
     }
 }

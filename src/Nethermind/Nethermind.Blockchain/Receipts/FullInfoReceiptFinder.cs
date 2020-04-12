@@ -57,5 +57,6 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         public bool CanGetReceiptsByHash(long blockNumber) => _innerFinder.CanGetReceiptsByHash(blockNumber);
+        public bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator) => _innerFinder.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
     }
 }
