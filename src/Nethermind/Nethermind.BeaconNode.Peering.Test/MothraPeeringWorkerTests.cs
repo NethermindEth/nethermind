@@ -26,6 +26,10 @@ using Microsoft.Extensions.Logging.Console;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2;
 using Nethermind.Core2.Configuration;
+using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
+using Nethermind.Core2.P2p;
+using Nethermind.Core2.Types;
 using NSubstitute;
 using NUnit.Framework;
 using Shouldly;
@@ -209,6 +213,81 @@ namespace Nethermind.BeaconNode.Peering.Test
             session.State.ShouldBe(SessionState.New);
             session.Peer.Id.ShouldBe("peer1");
             session.Peer.Status.ShouldBeNull();
+        }
+        
+        [Test]
+        public async Task BlocksByRangeRequestShouldCreateResponse()
+        {
+            // arrange
+            Root root6 = new Root(Enumerable.Repeat((byte) 0x67, 32).ToArray());
+            Root root4 = new Root(Enumerable.Repeat((byte) 0x45, 32).ToArray());
+            Root root2 = new Root(Enumerable.Repeat((byte) 0x23, 32).ToArray());
+            Root requestRoot = root6;
+
+            SignedBeaconBlock block6 = new SignedBeaconBlock(new BeaconBlock(new Slot(6), root4, Root.Zero, BeaconBlockBody.Zero),
+                BlsSignature.Zero);
+            SignedBeaconBlock block4 = new SignedBeaconBlock(new BeaconBlock(new Slot(4), root2, Root.Zero, BeaconBlockBody.Zero),
+                BlsSignature.Zero);
+            SignedBeaconBlock block2 = new SignedBeaconBlock(new BeaconBlock(new Slot(2), Root.Zero, Root.Zero, BeaconBlockBody.Zero),
+                BlsSignature.Zero);
+
+            _mockForkChoice.GetAncestorAsync(Arg.Any<IStore>(), Arg.Any<Root>(), Arg.Any<Slot>()).Returns(Root.Zero);
+            _mockForkChoice.GetAncestorAsync(Arg.Any<IStore>(), Arg.Any<Root>(), new Slot(6)).Returns(root6);
+            _mockForkChoice.GetAncestorAsync(Arg.Any<IStore>(), Arg.Any<Root>(), new Slot(5)).Returns(root4);
+            _mockForkChoice.GetAncestorAsync(Arg.Any<IStore>(), Arg.Any<Root>(), new Slot(4)).Returns(root4);
+            _mockForkChoice.GetAncestorAsync(Arg.Any<IStore>(), Arg.Any<Root>(), new Slot(3)).Returns(root2);
+
+            _mockStore.GetSignedBlockAsync(root6).Returns(block6);
+            _mockStore.GetSignedBlockAsync(root4).Returns(block4);
+            _mockStore.GetSignedBlockAsync(root2).Returns(block2);
+                
+            MothraPeeringWorker peeringWorker = new MothraPeeringWorker(
+                _loggerFactory.CreateLogger<MothraPeeringWorker>(),
+                _mockMothraConfigurationMonitor,
+                Substitute.For<IHostEnvironment>(),
+                Substitute.For<IClientVersion>(),
+                _mockStore,
+                _mockMothra,
+                _dataDirectory,
+                _peerManager,
+                _peerDiscoveredProcessor,
+                _rpcPeeringStatusProcessor,
+                _rpcBeaconBlocksByRangeProcessor,
+                _signedBeaconBlockProcessor
+            );
+        
+            // act - start worker
+            await peeringWorker.StartAsync(CancellationToken.None);
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
+            // - request for 4 blocks: 3, 4, 5, 6
+            BeaconBlocksByRange request = new BeaconBlocksByRange(
+                requestRoot,
+                new Slot(3),
+                4,
+                1);
+            byte[] data = new Byte[Ssz.Ssz.BeaconBlocksByRangeLength];
+            Ssz.Ssz.Encode(data, request);
+            _mockMothra.RaiseRpcReceived(
+                Encoding.UTF8.GetBytes("/eth2/beacon_chain/req/beacon_blocks_by_range/1/"),
+                0,
+                Encoding.UTF8.GetBytes("peer1"),
+                data);
+            // - wait for event to be handled
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
+            // - finish
+            await peeringWorker.StopAsync(CancellationToken.None);
+
+            // assert - should receive in slot order
+            var receivedCalls = _mockNetworkPeering.ReceivedCalls().ToList();
+            
+            receivedCalls.Count.ShouldBe(2);
+            
+            receivedCalls[0].GetMethodInfo().Name.ShouldBe(nameof(_mockNetworkPeering.SendBlockAsync));
+            SignedBeaconBlock response0 = receivedCalls[0].GetArguments()[1].ShouldBeOfType<SignedBeaconBlock>();
+            response0.Message.Slot.ShouldBe(new Slot(4));
+            
+            SignedBeaconBlock response1 = receivedCalls[1].GetArguments()[1].ShouldBeOfType<SignedBeaconBlock>();
+            response1.Message.Slot.ShouldBe(new Slot(6));
         }
     }
 }

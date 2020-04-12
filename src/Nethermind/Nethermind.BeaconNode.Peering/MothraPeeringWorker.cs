@@ -86,6 +86,7 @@ namespace Nethermind.BeaconNode.Peering
                 
                 await _peerDiscoveredProcessor.StartAsync(stoppingToken).ConfigureAwait(false);
                 await _rpcPeeringStatusProcessor.StartAsync(stoppingToken).ConfigureAwait(false);
+                await _rpcBeaconBlocksByRangeProcessor.StartAsync(stoppingToken).ConfigureAwait(false);
                 await _signedBeaconBlockProcessor.StartAsync(stoppingToken).ConfigureAwait(false);
 
                 _mothraLibp2P.PeerDiscovered += OnPeerDiscovered;
@@ -138,9 +139,10 @@ namespace Nethermind.BeaconNode.Peering
 
         public override async Task StopAsync(CancellationToken cancellationToken)
         {
-            await _peerDiscoveredProcessor.StopAsync(cancellationToken);
-            await _rpcPeeringStatusProcessor.StopAsync(cancellationToken);
-            await _signedBeaconBlockProcessor.StopAsync(cancellationToken);
+            await _peerDiscoveredProcessor.StopAsync(cancellationToken).ConfigureAwait(false);
+            await _rpcPeeringStatusProcessor.StopAsync(cancellationToken).ConfigureAwait(false);
+            await _rpcBeaconBlocksByRangeProcessor.StopAsync(cancellationToken).ConfigureAwait(false);
+            await _signedBeaconBlockProcessor.StopAsync(cancellationToken).ConfigureAwait(false);
             
             if (_logger.IsDebug()) LogDebug.PeeringWorkerStopping(_logger, null);
             await base.StopAsync(cancellationToken).ConfigureAwait(false);

@@ -75,6 +75,8 @@ namespace Nethermind.BeaconNode.Peering
                         {
                             // block is skipped
                         }
+
+                        slot = slot - Slot.One;
                     }
 
                     // Send each block in a response chunk, in slot order

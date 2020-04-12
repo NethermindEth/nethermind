@@ -58,9 +58,20 @@ namespace Nethermind.BeaconNode.Peering.Test
         
         private event RpcReceivedEventHandler? _rpcReceived;
         
+        public void RaiseGossipReceived(ReadOnlySpan<byte> topicUtf8, ReadOnlySpan<byte> data)
+        {
+            _gossipReceived?.Invoke(topicUtf8, data);
+        }
+
         public void RaisePeerDiscovered(ReadOnlySpan<byte> peerUtf8)
         {
             _peerDiscovered?.Invoke(peerUtf8);
+        }
+        
+        public void RaiseRpcReceived(ReadOnlySpan<byte> methodUtf8, int requestResponseFlag, ReadOnlySpan<byte> peerUtf8,
+            ReadOnlySpan<byte> data)
+        {
+            _rpcReceived?.Invoke(methodUtf8, requestResponseFlag, peerUtf8, data);
         }
 
         void IMothraLibp2p.SendGossip(ReadOnlySpan<byte> topicUtf8, ReadOnlySpan<byte> data)
