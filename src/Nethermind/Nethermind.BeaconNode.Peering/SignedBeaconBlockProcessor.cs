@@ -30,7 +30,7 @@ using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode.Peering
 {
-    public class GossipSignedBeaconBlockProcessor : QueueProcessorBase<SignedBeaconBlock>
+    public class SignedBeaconBlockProcessor : QueueProcessorBase<SignedBeaconBlock>
     {
         private readonly DataDirectory _dataDirectory;
         private readonly IFileSystem _fileSystem;
@@ -45,7 +45,7 @@ namespace Nethermind.BeaconNode.Peering
         private readonly IStore _store;
         private const int MaximumQueue = 1024;
 
-        public GossipSignedBeaconBlockProcessor(ILogger<GossipSignedBeaconBlockProcessor> logger,
+        public SignedBeaconBlockProcessor(ILogger<SignedBeaconBlockProcessor> logger,
             IOptionsMonitor<MothraConfiguration> mothraConfigurationOptions,
             IFileSystem fileSystem,
             IForkChoice forkChoice,
@@ -80,7 +80,7 @@ namespace Nethermind.BeaconNode.Peering
             try
             {
                 if (_logger.IsDebug())
-                    LogDebug.ProcessGossipSignedBeaconBlock(_logger, rpcMessage.Message, null);
+                    LogDebug.ProcessSignedBeaconBlock(_logger, rpcMessage.Message, null);
 
                 if (_mothraConfigurationOptions.CurrentValue.LogSignedBeaconBlockJson)
                 {
@@ -101,6 +101,11 @@ namespace Nethermind.BeaconNode.Peering
                 _peerManager.UpdateMostRecentSlot(rpcMessage.Message.Slot);
 
                 await _forkChoice.OnBlockAsync(_store, rpcMessage).ConfigureAwait(false);
+                
+                // NOTE: We don't know peer from Mothra for gossipped blocks, so can't penalise if there is an issue,
+                // however we could do for RPC responses if we wanted to.
+
+                // TODO: Handling for blocks we are missing parents for, i.e. BeaconBlocksByRoot
             }
             catch (Exception ex)
             {

@@ -47,7 +47,7 @@ namespace Nethermind.BeaconNode.Peering.Test
         private PeerDiscoveredProcessor _peerDiscoveredProcessor;
         private RpcPeeringStatusProcessor _rpcPeeringStatusProcessor;
         private RpcBeaconBlocksByRangeProcessor _rpcBeaconBlocksByRangeProcessor;
-        private GossipSignedBeaconBlockProcessor _gossipSignedBeaconBlockProcessor;
+        private SignedBeaconBlockProcessor _signedBeaconBlockProcessor;
         private DataDirectory _dataDirectory;
 
         [SetUp]
@@ -93,8 +93,8 @@ namespace Nethermind.BeaconNode.Peering.Test
                 _loggerFactory.CreateLogger<RpcPeeringStatusProcessor>(), _mockSynchronizationManager, _peerManager);
             _rpcBeaconBlocksByRangeProcessor = new RpcBeaconBlocksByRangeProcessor(_loggerFactory.CreateLogger<RpcBeaconBlocksByRangeProcessor>(),
                 _mockNetworkPeering, _mockForkChoice, _mockStore);
-            _gossipSignedBeaconBlockProcessor = new GossipSignedBeaconBlockProcessor(
-                _loggerFactory.CreateLogger<GossipSignedBeaconBlockProcessor>(), _mockMothraConfigurationMonitor,
+            _signedBeaconBlockProcessor = new SignedBeaconBlockProcessor(
+                _loggerFactory.CreateLogger<SignedBeaconBlockProcessor>(), _mockMothraConfigurationMonitor,
                 Substitute.For<IFileSystem>(), _mockForkChoice, _mockStore, _dataDirectory, _peerManager);
         }
         
@@ -114,7 +114,7 @@ namespace Nethermind.BeaconNode.Peering.Test
                 _peerDiscoveredProcessor,
                 _rpcPeeringStatusProcessor,
                 _rpcBeaconBlocksByRangeProcessor,
-                _gossipSignedBeaconBlockProcessor
+                _signedBeaconBlockProcessor
             );
         
             // act
@@ -145,7 +145,7 @@ namespace Nethermind.BeaconNode.Peering.Test
                 _peerDiscoveredProcessor,
                 _rpcPeeringStatusProcessor,
                 _rpcBeaconBlocksByRangeProcessor,
-                _gossipSignedBeaconBlockProcessor
+                _signedBeaconBlockProcessor
             );
         
             // act - start worker
@@ -187,7 +187,7 @@ namespace Nethermind.BeaconNode.Peering.Test
                 _peerDiscoveredProcessor,
                 _rpcPeeringStatusProcessor,
                 _rpcBeaconBlocksByRangeProcessor,
-                _gossipSignedBeaconBlockProcessor
+                _signedBeaconBlockProcessor
             );
             
             // act - start worker

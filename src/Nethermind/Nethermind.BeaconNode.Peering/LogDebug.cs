@@ -103,10 +103,10 @@ namespace Nethermind.BeaconNode.Peering
                 new EventId(6064, nameof(CreatedPeerSession)),
                 "Disconnecting peer {Peer} session {Session} with direction {ConnectionDirection}.");
         
-        public static readonly Action<ILogger, BeaconBlock, Exception?> ProcessGossipSignedBeaconBlock =
+        public static readonly Action<ILogger, BeaconBlock, Exception?> ProcessSignedBeaconBlock =
             LoggerMessage.Define<BeaconBlock>(LogLevel.Debug,
-                new EventId(6065, nameof(ProcessGossipSignedBeaconBlock)),
-                "Processing gossip signed beacon block, {BeaconBlock}");
+                new EventId(6065, nameof(ProcessSignedBeaconBlock)),
+                "Processing signed beacon block, {BeaconBlock}");
         
         public static readonly Action<ILogger, string, Exception?> ProcessPeerDiscovered =
             LoggerMessage.Define<string>(LogLevel.Debug,

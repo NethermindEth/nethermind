@@ -36,7 +36,7 @@ namespace Nethermind.BeaconNode.Peering
         private readonly IClientVersion _clientVersion;
         private readonly DataDirectory _dataDirectory;
         private readonly IHostEnvironment _environment;
-        private readonly GossipSignedBeaconBlockProcessor _gossipSignedBeaconBlockProcessor;
+        private readonly SignedBeaconBlockProcessor _signedBeaconBlockProcessor;
         private readonly ILogger _logger;
         private readonly IOptionsMonitor<MothraConfiguration> _mothraConfigurationOptions;
         private readonly IMothraLibp2p _mothraLibp2P;
@@ -58,7 +58,7 @@ namespace Nethermind.BeaconNode.Peering
             PeerDiscoveredProcessor peerDiscoveredProcessor,
             RpcPeeringStatusProcessor rpcPeeringStatusProcessor,
             RpcBeaconBlocksByRangeProcessor rpcBeaconBlocksByRangeProcessor,
-            GossipSignedBeaconBlockProcessor gossipSignedBeaconBlockProcessor)
+            SignedBeaconBlockProcessor signedBeaconBlockProcessor)
         {
             _logger = logger;
             _environment = environment;
@@ -70,7 +70,7 @@ namespace Nethermind.BeaconNode.Peering
             _peerDiscoveredProcessor = peerDiscoveredProcessor;
             _rpcPeeringStatusProcessor = rpcPeeringStatusProcessor;
             _rpcBeaconBlocksByRangeProcessor = rpcBeaconBlocksByRangeProcessor;
-            _gossipSignedBeaconBlockProcessor = gossipSignedBeaconBlockProcessor;
+            _signedBeaconBlockProcessor = signedBeaconBlockProcessor;
             _store = store;
         }
 
@@ -86,7 +86,7 @@ namespace Nethermind.BeaconNode.Peering
                 
                 await _peerDiscoveredProcessor.StartAsync(stoppingToken).ConfigureAwait(false);
                 await _rpcPeeringStatusProcessor.StartAsync(stoppingToken).ConfigureAwait(false);
-                await _gossipSignedBeaconBlockProcessor.StartAsync(stoppingToken).ConfigureAwait(false);
+                await _signedBeaconBlockProcessor.StartAsync(stoppingToken).ConfigureAwait(false);
 
                 _mothraLibp2P.PeerDiscovered += OnPeerDiscovered;
                 _mothraLibp2P.GossipReceived += OnGossipReceived;
@@ -140,7 +140,7 @@ namespace Nethermind.BeaconNode.Peering
         {
             await _peerDiscoveredProcessor.StopAsync(cancellationToken);
             await _rpcPeeringStatusProcessor.StopAsync(cancellationToken);
-            await _gossipSignedBeaconBlockProcessor.StopAsync(cancellationToken);
+            await _signedBeaconBlockProcessor.StopAsync(cancellationToken);
             
             if (_logger.IsDebug()) LogDebug.PeeringWorkerStopping(_logger, null);
             await base.StopAsync(cancellationToken).ConfigureAwait(false);
@@ -180,7 +180,10 @@ namespace Nethermind.BeaconNode.Peering
                         LogDebug.GossipReceived(_logger, nameof(TopicUtf8.BeaconBlock), data.Length, null);
                     // Need to deserialize in synchronous context (can't pass Span async)
                     SignedBeaconBlock signedBeaconBlock = Ssz.Ssz.DecodeSignedBeaconBlock(data);
-                    _gossipSignedBeaconBlockProcessor.Enqueue(signedBeaconBlock);
+                    _signedBeaconBlockProcessor.Enqueue(signedBeaconBlock);
+                    
+                    // TODO: After receiving a gossip, should we re-gossip it, i.e. to our peers?
+                    // NOTE: Need to apply validations, from spec, before forwarding; also, avoid loops (i.e. don't gossip twice)
                 }
                 else
                 {
@@ -246,7 +249,8 @@ namespace Nethermind.BeaconNode.Peering
                     }
                     else
                     {
-                        // TODO: Handle incoming blocks
+                        SignedBeaconBlock signedBeaconBlock = Ssz.Ssz.DecodeSignedBeaconBlock(data);
+                        _signedBeaconBlockProcessor.Enqueue(signedBeaconBlock);
                     }
                 }
                 else
