@@ -105,11 +105,11 @@ namespace Nethermind.Synchronization.TotalSync
             bool isBeamSync = _syncConfig.BeamSync;
             bool anyHeaderDownloaded = _blockTree.LowestInsertedHeader != null;
 
-            bool anyBatchesLeft = !shouldDownloadReceipts
+            bool noBatchesLeft = !shouldDownloadReceipts
                                   || allReceiptsDownloaded
                                   || isBeamSync && anyHeaderDownloaded;
 
-            if (anyBatchesLeft)
+            if (noBatchesLeft)
             {
                 if (ShouldFinish)
                 {
