@@ -24,6 +24,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Test.Validators;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -37,8 +38,9 @@ using Nethermind.State.Repositories;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Store.Bloom;
-using Nethermind.Synchronization.BeamSync;
 using Nethermind.Synchronization.Blocks;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using Metrics = Nethermind.Blockchain.Metrics;
@@ -281,7 +283,7 @@ namespace Nethermind.Synchronization.Test
 
             private ISynchronizer Synchronizer { get; set; }
 
-            private IEthSyncPeerPool SyncPeerPool { get; set; }
+            private ISyncPeerPool SyncPeerPool { get; set; }
 
 //            ILogManager _logManager = LimboLogs.Instance;
             ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
@@ -291,31 +293,31 @@ namespace Nethermind.Synchronization.Test
             public SyncingContext(SynchronizerType synchronizerType)
             {
                 _logger = _logManager.GetClassLogger();
-                ISyncConfig syncConfig = new SyncConfig();
-                syncConfig.FastSync = synchronizerType == SynchronizerType.Fast;
-                ISnapshotableDb stateDb = new StateDb();
-                ISnapshotableDb codeDb = new StateDb();
+                ISyncConfig syncConfig = synchronizerType == SynchronizerType.Fast ? SyncConfig.WithFastSync : SyncConfig.WithFullSyncOnly;
+                MemDbProvider dbProvider = new MemDbProvider();
+                ISnapshotableDb stateDb = dbProvider.StateDb;
+                ISnapshotableDb codeDb = dbProvider.CodeDb;
                 MemDb blockInfoDb = new MemDb();
                 BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullTxPool.Instance, NullBloomStorage.Instance, _logManager);
                 NodeStatsManager stats = new NodeStatsManager(new StatsConfig(), _logManager);
-                SyncPeerPool = new EthSyncPeerPool(BlockTree, stats, 25, _logManager);
+                SyncPeerPool = new SyncPeerPool(BlockTree, stats, 25, _logManager);
 
-                NodeDataFeed feed = new NodeDataFeed(codeDb, stateDb, _logManager);
-
-                NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(SyncPeerPool, feed, NullDataConsumer.Instance, _logManager);
+                SyncProgressResolver syncProgressResolver = new SyncProgressResolver(BlockTree, NullReceiptStorage.Instance, stateDb, syncConfig, _logManager);
+                MultiSyncModeSelector syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, SyncPeerPool, syncConfig, _logManager);
                 Synchronizer = new Synchronizer(
+                    dbProvider,
                     MainNetSpecProvider.Instance,
                     BlockTree,
                     NullReceiptStorage.Instance,
-                    TestBlockValidator.AlwaysValid,
-                    TestSealValidator.AlwaysValid,
+                    Always.Valid,
+                    Always.Valid,
                     SyncPeerPool,
-                    syncConfig,
-                    nodeDataDownloader,
                     stats,
+                    syncModeSelector,
+                    syncConfig,
                     _logManager);
 
-                SyncServer = new SyncServer(stateDb, codeDb, BlockTree, NullReceiptStorage.Instance, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, SyncPeerPool, Synchronizer, syncConfig, _logManager);
+                SyncServer = new SyncServer(stateDb, codeDb, BlockTree, NullReceiptStorage.Instance, Always.Valid, Always.Valid, SyncPeerPool, syncModeSelector, Synchronizer, syncConfig, _logManager);
                 SyncPeerPool.Start();
 
                 Synchronizer.Start();

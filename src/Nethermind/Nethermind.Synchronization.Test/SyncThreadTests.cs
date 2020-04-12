@@ -20,6 +20,7 @@ using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -40,6 +41,9 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Stats;
 using Nethermind.Store.Bloom;
+using Nethermind.Synchronization.BeamSync;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using NUnit.Framework;
@@ -213,7 +217,7 @@ namespace Nethermind.Synchronization.Test
             public IEthereumEcdsa Ecdsa { get; set; }
             public ITxPool TxPool { get; set; }
             public ISyncServer SyncServer { get; set; }
-            public IEthSyncPeerPool PeerPool { get; set; }
+            public ISyncPeerPool PeerPool { get; set; }
             public IBlockchainProcessor BlockchainProcessor { get; set; }
             public ISynchronizer Synchronizer { get; set; }
             public IBlockTree Tree { get; set; }
@@ -239,11 +243,12 @@ namespace Nethermind.Synchronization.Test
 //            var logManager = new OneLoggerLogManager(logger);
             var specProvider = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, MainNetSpecProvider.Instance.ChainId);
 
-            MemDb blockDb = new MemDb();
-            MemDb headerDb = new MemDb();
-            MemDb blockInfoDb = new MemDb();
-            StateDb codeDb = new StateDb();
-            StateDb stateDb = new StateDb();
+            var dbProvider = new MemDbProvider();
+            IDb blockDb = dbProvider.BlocksDb;
+            IDb headerDb = dbProvider.HeadersDb;
+            IDb blockInfoDb = dbProvider.BlockInfosDb;
+            ISnapshotableDb codeDb = dbProvider.CodeDb;
+            ISnapshotableDb stateDb = dbProvider.StateDb;
 
             var stateReader = new StateReader(stateDb, codeDb, logManager);
             var stateProvider = new StateProvider(stateDb, codeDb, logManager);
@@ -262,15 +267,13 @@ namespace Nethermind.Synchronization.Test
             var blockhashProvider = new BlockhashProvider(tree, LimboLogs.Instance);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, logManager);
 
-            var sealValidator = TestSealValidator.AlwaysValid;
+            var sealValidator = Always.Valid;
             var headerValidator = new HeaderValidator(tree, sealValidator, specProvider, logManager);
-            var txValidator = TestTxValidator.AlwaysValid;
+            var txValidator = Always.Valid;
             var ommersValidator = new OmmersValidator(tree, headerValidator, logManager);
             var blockValidator = new BlockValidator(txValidator, headerValidator, ommersValidator, specProvider, logManager);
-//            var blockValidator = TestBlockValidator.AlwaysValid;
 
-            SyncConfig syncConfig = new SyncConfig();
-            syncConfig.FastSync = _synchronizerType == SynchronizerType.Fast;
+            ISyncConfig syncConfig = _synchronizerType == SynchronizerType.Fast ? SyncConfig.WithFastSync : SyncConfig.WithFullSyncOnly;
 
             var rewardCalculator = new RewardCalculator(specProvider);
             var txProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
@@ -280,7 +283,7 @@ namespace Nethermind.Synchronization.Test
             var processor = new BlockchainProcessor(tree, blockProcessor, step, logManager, true);
 
             var nodeStatsManager = new NodeStatsManager(new StatsConfig(), logManager);
-            var syncPeerPool = new EthSyncPeerPool(tree, nodeStatsManager, 25, logManager);
+            var syncPeerPool = new SyncPeerPool(tree, nodeStatsManager, 25, logManager);
 
             StateProvider devState = new StateProvider(stateDb, codeDb, logManager);
             StorageProvider devStorage = new StorageProvider(stateDb, devState, logManager);
@@ -290,17 +293,22 @@ namespace Nethermind.Synchronization.Test
             var devChainProcessor = new BlockchainProcessor(tree, devBlockProcessor, step, logManager, false);
             var transactionSelector = new PendingTxSelector(txPool, stateReader, logManager);
             var producer = new DevBlockProducer(transactionSelector, devChainProcessor, stateProvider, tree, processor, txPool, new Timestamper(), logManager);
-
-            NodeDataFeed feed = new NodeDataFeed(codeDb, stateDb, logManager);
-            NodeDataDownloader downloader = new NodeDataDownloader(syncPeerPool, feed, NullDataConsumer.Instance,  logManager);
+            
+            SyncProgressResolver resolver = new SyncProgressResolver(tree, receiptStorage, stateDb, syncConfig, logManager);
+            MultiSyncModeSelector selector = new MultiSyncModeSelector(resolver, syncPeerPool, syncConfig, logManager);
             Synchronizer synchronizer = new Synchronizer(
+                dbProvider,
                 MainNetSpecProvider.Instance,
                 tree,
                 NullReceiptStorage.Instance,
                 blockValidator,
                 sealValidator,
-                syncPeerPool, syncConfig, downloader, nodeStatsManager, logManager);
-            var syncServer = new SyncServer(stateDb, codeDb, tree, receiptStorage, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, syncPeerPool, synchronizer, syncConfig, logManager);
+                syncPeerPool,
+                nodeStatsManager,
+                StaticSelector.Full,
+                syncConfig,
+                logManager);
+            var syncServer = new SyncServer(stateDb, codeDb, tree, receiptStorage, Always.Valid, Always.Valid, syncPeerPool, selector, synchronizer, syncConfig, logManager);
 
             ManualResetEventSlim waitEvent = new ManualResetEventSlim();
             tree.NewHeadBlock += (s, e) => waitEvent.Set();

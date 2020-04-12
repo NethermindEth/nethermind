@@ -17,7 +17,6 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -27,6 +26,8 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -36,7 +37,7 @@ namespace Nethermind.Synchronization.Test
     public class SyncServerTests
     {
         private IBlockTree _blockTree;
-        private IEthSyncPeerPool _peerPool;
+        private ISyncPeerPool _peerPool;
         private ISynchronizer _synchronizer;
         private SyncServer _syncServer;
         private Node _nodeWhoSentTheBlock;
@@ -45,7 +46,7 @@ namespace Nethermind.Synchronization.Test
         public void Setup()
         {
             _nodeWhoSentTheBlock = new Node(TestItem.PublicKeyA, "127.0.0.1", 30303);
-            _peerPool = Substitute.For<IEthSyncPeerPool>();
+            _peerPool = Substitute.For<ISyncPeerPool>();
             _peerPool.TryFind(_nodeWhoSentTheBlock.Id, out PeerInfo peerInfo).Returns(x =>
             {
                 ISyncPeer peer = Substitute.For<ISyncPeer>();
@@ -55,7 +56,8 @@ namespace Nethermind.Synchronization.Test
 
             _blockTree = Substitute.For<IBlockTree>();
             _synchronizer = Substitute.For<ISynchronizer>();
-            _syncServer = new SyncServer(new StateDb(), new StateDb(), _blockTree, NullReceiptStorage.Instance, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, _peerPool, _synchronizer, new SyncConfig(), LimboLogs.Instance);
+            var selector = StaticSelector.Full;
+            _syncServer = new SyncServer(new StateDb(), new StateDb(), _blockTree, NullReceiptStorage.Instance, Always.Valid, Always.Valid, _peerPool,  selector, _synchronizer, new SyncConfig(), LimboLogs.Instance);
         }
 
         [Test]
@@ -101,14 +103,12 @@ namespace Nethermind.Synchronization.Test
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
 
-            ISealValidator sealValidator = sealOk ? TestSealValidator.AlwaysValid : TestSealValidator.NeverValid;
-            IBlockValidator blockValidator = validationOk ? TestBlockValidator.AlwaysValid : TestBlockValidator.NeverValid;
-            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, blockValidator, sealValidator, _peerPool, _synchronizer, new SyncConfig(), LimboLogs.Instance);
+            ISealValidator sealValidator = sealOk ? Always.Valid : Always.Invalid;
+            IBlockValidator blockValidator = validationOk ? Always.Valid : Always.Invalid;
+            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, blockValidator, sealValidator, _peerPool, StaticSelector.Full, _synchronizer, new SyncConfig(), LimboLogs.Instance);
 
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
 
-            _synchronizer.SyncMode.Returns(SyncMode.Full);
-            
             if (!accepted)
             {
                 Assert.Throws<EthSyncException>(() => _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock));
@@ -134,11 +134,10 @@ namespace Nethermind.Synchronization.Test
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
 
-            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, _peerPool, _synchronizer, new SyncConfig(), LimboLogs.Instance);
+            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, Always.Valid, Always.Valid, _peerPool, StaticSelector.Full, _synchronizer, new SyncConfig(), LimboLogs.Instance);
 
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
-
-            _synchronizer.SyncMode.Returns(SyncMode.Full);
+            
             _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock);
 
             Assert.AreEqual(localBlockTree.BestSuggestedHeader, block.Header);
@@ -150,12 +149,11 @@ namespace Nethermind.Synchronization.Test
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
 
-            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, new BlockValidator(TestTxValidator.AlwaysValid, new HeaderValidator(localBlockTree, TestSealValidator.AlwaysValid, MainNetSpecProvider.Instance, LimboLogs.Instance), Always.Valid, MainNetSpecProvider.Instance, LimboLogs.Instance), TestSealValidator.AlwaysValid, _peerPool, _synchronizer, new SyncConfig(), LimboLogs.Instance);
+            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, new BlockValidator(Always.Valid, new HeaderValidator(localBlockTree, Always.Valid, MainNetSpecProvider.Instance, LimboLogs.Instance), Always.Valid, MainNetSpecProvider.Instance, LimboLogs.Instance), Always.Valid, _peerPool, StaticSelector.Full, _synchronizer, new SyncConfig(), LimboLogs.Instance);
 
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
             block.Header.TotalDifficulty *= 2;
 
-            _synchronizer.SyncMode.Returns(SyncMode.Full);
             _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock);
             Assert.AreEqual(localBlockTree.BestSuggestedHeader.Hash, block.Header.Hash);
             
@@ -170,12 +168,10 @@ namespace Nethermind.Synchronization.Test
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(600).TestObject;
 
             ISealValidator sealValidator = Substitute.For<ISealValidator>();
-            IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
-            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, blockValidator, sealValidator, _peerPool, _synchronizer, new SyncConfig(), LimboLogs.Instance);
+            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, Always.Valid, sealValidator, _peerPool, StaticSelector.Full, _synchronizer, new SyncConfig(), LimboLogs.Instance);
 
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
-
-            _synchronizer.SyncMode.Returns(SyncMode.Full);
+            
             _syncServer.AddNewBlock(block, _nodeWhoSentTheBlock);
 
             sealValidator.DidNotReceive().ValidateSeal(Arg.Any<BlockHeader>(), Arg.Any<bool>());

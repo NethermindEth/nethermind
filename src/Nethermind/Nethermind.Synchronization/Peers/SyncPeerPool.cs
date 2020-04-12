@@ -174,8 +174,6 @@ namespace Nethermind.Synchronization.Peers
         public void WakeUpAll()
         {
             foreach (var peer in _peers) WakeUpPeer(peer.Value);
-
-            _signals.Set();
         }
 
         public event EventHandler PeerAdded;
@@ -344,7 +342,7 @@ namespace Nethermind.Synchronization.Peers
 
             if (_replaceableAllocations.Count > 1024 * 16) _logger.Warn($"Peer allocations leakage - {_replaceableAllocations.Count}");
 
-            _signals.Set();
+            SignalPeersChanged();
         }
 
         private async Task RunRefreshPeerLoop()
@@ -495,7 +493,15 @@ namespace Nethermind.Synchronization.Peers
         {
             info.SleepingSince = null;
             info.IsSleepingDeeply = false;
-            _signals.Set();
+            SignalPeersChanged();
+        }
+
+        private void SignalPeersChanged()
+        {
+            if (!_signals.SafeWaitHandle.IsClosed)
+            {
+                _signals.Set();
+            }
         }
 
         private async Task ExecuteRefreshTask(RefreshTotalDiffTask refreshTotalDiffTask, CancellationToken token)
@@ -566,7 +572,7 @@ namespace Nethermind.Synchronization.Peers
                                 if (allocation.Current == peerInfo)
                                     allocation.Refresh();
 
-                            _signals.Set();
+                            SignalPeersChanged();
                             PeerAdded?.Invoke(this, EventArgs.Empty);
                         }
                     }
