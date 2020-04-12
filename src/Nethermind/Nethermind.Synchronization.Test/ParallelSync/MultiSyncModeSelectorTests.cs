@@ -23,7 +23,7 @@ using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Synchronization.Test
+namespace Nethermind.Synchronization.Test.ParallelSync
 {
     [TestFixture]
     public class MultiSyncModeSelectorTests

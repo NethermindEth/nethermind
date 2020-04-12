@@ -31,7 +31,7 @@ using Nethermind.Synchronization.Test.Mocks;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Synchronization.Test.TotalSync
+namespace Nethermind.Synchronization.Test.ParallelSync
 {
     [TestFixture]
     public class SyncDispatcherTests

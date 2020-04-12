@@ -15,10 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading;
-using Nethermind.Core;
 using NUnit.Framework;
 
-namespace Nethermind.Synchronization.Test
+namespace Nethermind.Core.Test
 {
     [TestFixture]
     public class MeasuredProgressTests

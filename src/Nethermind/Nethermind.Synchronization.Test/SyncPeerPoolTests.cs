@@ -37,7 +37,7 @@ using NUnit.Framework;
 namespace Nethermind.Synchronization.Test
 {
     [TestFixture]
-    public class EthSyncPeerPoolTests
+    public class SyncPeerPoolTests
     {
         private INodeStatsManager _stats;
         private IBlockTree _blockTree;

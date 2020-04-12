@@ -35,7 +35,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Synchronization.Test.TotalSync
+namespace Nethermind.Synchronization.Test.FastBlocks
 {
     public class FastHeadersSyncTests
     {
