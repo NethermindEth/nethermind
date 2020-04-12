@@ -110,7 +110,7 @@ namespace Nethermind.BeaconNode.Peering
             catch (Exception ex)
             {
                 if (_logger.IsError())
-                    Log.ProcessGossipSignedBeaconBlockError(_logger, rpcMessage.Message, ex.Message, ex);
+                    Log.ProcessSignedBeaconBlockError(_logger, rpcMessage.Message, ex.Message, ex);
             }
         }
 

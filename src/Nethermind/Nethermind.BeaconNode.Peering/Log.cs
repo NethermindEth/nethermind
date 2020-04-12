@@ -96,9 +96,9 @@ namespace Nethermind.BeaconNode.Peering
                 new EventId(5052, nameof(RpcReceivedError)),
                 "Peer error processing RPC method, '{Method}': {ErrorMessage}");
 
-        public static readonly Action<ILogger, BeaconBlock, string, Exception?> ProcessGossipSignedBeaconBlockError =
+        public static readonly Action<ILogger, BeaconBlock, string, Exception?> ProcessSignedBeaconBlockError =
             LoggerMessage.Define<BeaconBlock, string>(LogLevel.Error,
-                new EventId(5053, nameof(ProcessGossipSignedBeaconBlockError)),
+                new EventId(5053, nameof(ProcessSignedBeaconBlockError)),
                 "Error handling signed beacon block, {BeaconBlock}: {ErrorMessage}");
         
         public static readonly Action<ILogger, string, string, Exception?> HandleRpcStatusError =
