@@ -36,10 +36,10 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
         public bool CanBeReplaced => _strategy.CanBeReplaced;
         public PeerInfo Allocate(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
-            return _strategy.Allocate(currentPeer, peers.Where(Filter), nodeStatsManager, blockTree);
+            return _strategy.Allocate(currentPeer, peers.Where(HasEnoughDifficulty), nodeStatsManager, blockTree);
         }
 
-        public bool Filter(PeerInfo peerInfo)
+        private bool HasEnoughDifficulty(PeerInfo peerInfo)
         {
             return peerInfo.TotalDifficulty >= _requiredDifficulty;
         }

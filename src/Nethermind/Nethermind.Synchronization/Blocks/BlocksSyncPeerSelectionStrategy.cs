@@ -36,7 +36,6 @@ namespace Nethermind.Synchronization.Blocks
             _minBlocksAhead = minBlocksAhead;
         }
 
-        public string Name => "blocks";
         public bool CanBeReplaced => true;
 
         public PeerInfo Allocate(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
