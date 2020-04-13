@@ -259,7 +259,12 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private void SetBatchPriority(ReceiptsSyncBatch batch)
         {
-            if (_receiptStorage.LowestInsertedReceiptBlock - batch.MinNumber < 1024)
+            if (batch.MinNumber == null)
+            {
+                throw new InvalidOperationException("Batch needs to have the min number set to determine priority");
+            }
+            
+            if (_receiptStorage.LowestInsertedReceiptBlock - batch.MinNumber < 2 * 1024)
             {
                 batch.Prioritized = true;
             }
@@ -458,8 +463,14 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private static ReceiptsSyncBatch PrepareReceiptFiller(int added, ReceiptsSyncBatch receiptsSyncBatch)
         {
+            if (added == 0)
+            {
+                return receiptsSyncBatch;
+            }
+            
             int requestSize = receiptsSyncBatch.Blocks.Length;
             ReceiptsSyncBatch filler = new ReceiptsSyncBatch();
+            filler.MinNumber = receiptsSyncBatch.MinNumber;
             filler.Description = "FILLER";
             filler.Predecessors = new long?[requestSize - added];
             filler.Blocks = new Block[requestSize - added];
