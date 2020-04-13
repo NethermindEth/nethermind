@@ -27,6 +27,7 @@ using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.P2p;
+using Nethermind.Core2.Types;
 using Nethermind.Logging.Microsoft;
 using Nethermind.Peering.Mothra;
 
@@ -47,7 +48,8 @@ namespace Nethermind.BeaconNode.Peering
         private readonly SignedBeaconBlockProcessor _signedBeaconBlockProcessor;
         private readonly IStore _store;
         internal const string MothraDirectory = "mothra";
-
+        private int _minimumSignedBeaconBlockLength;
+        
         public MothraPeeringWorker(ILogger<MothraPeeringWorker> logger,
             IOptionsMonitor<MothraConfiguration> mothraConfigurationOptions,
             IHostEnvironment environment,
@@ -73,6 +75,12 @@ namespace Nethermind.BeaconNode.Peering
             _rpcBeaconBlocksByRangeProcessor = rpcBeaconBlocksByRangeProcessor;
             _signedBeaconBlockProcessor = signedBeaconBlockProcessor;
             _store = store;
+            
+            // 396 bytes
+            _minimumSignedBeaconBlockLength = Ssz.Ssz.SignedBeaconBlockLength(
+                new SignedBeaconBlock(new BeaconBlock(Slot.Zero, Root.Zero, Root.Zero, BeaconBlockBody.Zero),
+                    BlsSignature.Zero));
+            
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -221,11 +229,6 @@ namespace Nethermind.BeaconNode.Peering
         {
             try
             {
-                // 396 bytes
-                const int minimumSignedBeaconBlockLength =
-                    Ssz.Ssz.BlsSignatureLength + sizeof(uint) + // Envelope
-                    Ssz.Ssz.SlotLength + Ssz.Ssz.RootLength * 2 + sizeof(uint) + // BeaconBlock
-                    Ssz.Ssz.BeaconBlockBodyDynamicOffset; // BeaconBlockBody + Eth1Data
                 string peerId = Encoding.UTF8.GetString(peerUtf8);
                 RpcDirection rpcDirection = requestResponseFlag == 0 ? RpcDirection.Request : RpcDirection.Response;
 
@@ -246,7 +249,7 @@ namespace Nethermind.BeaconNode.Peering
                 }
                 //else if (methodUtf8.SequenceEqual(MethodUtf8.BeaconBlocksByRange))
                 else if (data.Length == Ssz.Ssz.BeaconBlocksByRangeLength ||
-                         data.Length >= minimumSignedBeaconBlockLength)
+                         data.Length >= _minimumSignedBeaconBlockLength)
                 {
                     if (_logger.IsDebug())
                         LogDebug.RpcReceived(_logger, rpcDirection, requestResponseFlag,
