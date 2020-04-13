@@ -222,10 +222,9 @@ namespace Nethermind.Synchronization.FastBlocks
             if (collectedRequests < requestSize)
             {
                 batch.Resize(collectedRequests);
+                batch.IsFinal = _blockTree.LowestInsertedBody.Number == 1;
             }
 
-            batch.IsFinal = _blockTree.LowestInsertedBody.Number == 1;
-            
             return batch;
         }
 
