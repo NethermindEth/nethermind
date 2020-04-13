@@ -191,11 +191,22 @@ namespace Nethermind.Synchronization.Peers
         {
             get
             {
+                int sleepingCount = 0;
+                int uninitializedCount = 0;
+                
                 foreach ((_, PeerInfo peerInfo) in _peers)
                 {
-                    if (peerInfo.IsAsleep) continue;
+                    if (peerInfo.IsAsleep)
+                    {
+                        sleepingCount++;
+                        continue;
+                    }
 
-                    if (!peerInfo.IsInitialized) continue;
+                    if (!peerInfo.IsInitialized)
+                    {
+                        uninitializedCount++;
+                        continue;
+                    }
 
                     /* While there are scenarios where we want peers with equal difficulty (node sync)
                      * I can think of no scenarios where lower difficulty node would be exceptionally useful
@@ -205,6 +216,8 @@ namespace Nethermind.Synchronization.Peers
 
                     yield return peerInfo;
                 }
+                
+                _logger.Warn($"Sleeping: {sleepingCount}, Uninitialized: {uninitializedCount}");
             }
         }
 
