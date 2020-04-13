@@ -113,8 +113,10 @@ namespace Nethermind.Synchronization.FastBlocks
 
             if (noBatchesLeft)
             {
+                _logger.Warn("No batches left");
                 if (ShouldFinish)
                 {
+                    _logger.Warn("should finish finish");
                     Finish();
                     _syncReport.FastBlocksReceipts.Update(_pivotNumber);
                     _syncReport.FastBlocksReceipts.MarkEnd();
@@ -226,10 +228,12 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override Task<ReceiptsSyncBatch> PrepareRequest()
         {
+            _logger.Warn("handle dependent");
             HandleDependentBatches();
 
             if (_pending.TryDequeue(out ReceiptsSyncBatch batch))
             {
+                _logger.Warn("retry");
                 batch.MarkRetry();
             }
             else if (AnyBatchesLeftToPrepare())
@@ -238,16 +242,23 @@ namespace Nethermind.Synchronization.FastBlocks
                                          < (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue);
                 if (moreBodiesWaiting)
                 {
+                    _logger.Warn("more bodies waiting");
                     batch = BuildNewBatch();
+                }
+                else
+                {
+                    _logger.Warn("no bodies");
                 }
             }
 
             if (batch != null)
             {
+                _logger.Warn("setting priority");
                 SetBatchPriority(batch);
                 _sent.TryAdd(batch, _dummyObject);
                 if (batch.IsFinal)
                 {
+                    _logger.Warn("FINAL BATCH!");
                     _hasRequestedFinalBatch = true;
                 }
 
