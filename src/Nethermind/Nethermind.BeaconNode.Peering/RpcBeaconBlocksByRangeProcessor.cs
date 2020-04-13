@@ -59,6 +59,9 @@ namespace Nethermind.BeaconNode.Peering
                 {
                     if (_logger.IsDebug())
                         LogDebug.ProcessBeaconBlocksByRange(_logger, rpcMessage.Content, null);
+                    
+                    // TODO: Add some sanity checks on request to prevent DoS
+                    // TODO: Maybe add limit on number of blocks (as allowed by spec)
 
                     Slot slot = new Slot(rpcMessage.Content.StartSlot +
                                          rpcMessage.Content.Step * (rpcMessage.Content.Count - 1));
@@ -81,6 +84,11 @@ namespace Nethermind.BeaconNode.Peering
                                 Log.RequestedBlockSkippedSlot(_logger, slot, rpcMessage.Content.HeadBlockRoot, null);
                         }
 
+                        // If they requested for slot 0, then include it (anchor block is usually null), but don't underflow
+                        if (slot == Slot.Zero)
+                        {
+                            break;
+                        }
                         slot = slot - Slot.One;
                     }
 
