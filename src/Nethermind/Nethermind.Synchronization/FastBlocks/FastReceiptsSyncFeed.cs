@@ -230,6 +230,7 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             _logger.Warn("handle dependent");
             HandleDependentBatches();
+            _logger.Warn("handled dependent - done");
 
             if (_pending.TryDequeue(out ReceiptsSyncBatch batch))
             {
@@ -263,6 +264,10 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
 
                 LogStateOnPrepare();
+            }
+            else
+            {
+                _logger.Warn("batch is null");
             }
 
             return Task.FromResult(batch);
