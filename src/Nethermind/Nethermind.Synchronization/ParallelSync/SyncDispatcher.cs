@@ -82,10 +82,10 @@ namespace Nethermind.Synchronization.ParallelSync
 
                 if (currentStateLocal == SyncFeedState.Dormant)
                 {
-                    Logger.Info($"{GetType().Name} is going to sleep.");
+                    if(Logger.IsDebug) Logger.Debug($"{GetType().Name} is going to sleep.");
                     await Task.Delay(50);
                     await dormantTaskLocal.Task;
-                    Logger.Info($"{GetType().Name} got activated.");
+                    if(Logger.IsDebug) Logger.Debug($"{GetType().Name} got activated.");
                 }
                 else if (currentStateLocal == SyncFeedState.Active)
                 {
@@ -94,7 +94,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     {
                         if (!Feed.IsMultiFeed)
                         {
-                            Logger.Warn($"{Feed.GetType().Name} enqueued a null request.");
+                            if(Logger.IsTrace) Logger.Trace($"{Feed.GetType().Name} enqueued a null request.");
                         }
 
                         await Task.Delay(50);
@@ -134,7 +134,7 @@ namespace Nethermind.Synchronization.ParallelSync
                             {
                                 // possibly clear the response and handle empty response batch here (to avoid missing parts)
                                 // this practically corrupts sync
-                                if (Logger.IsError) Logger.Error($"Error when handling response", e);
+                                if (Logger.IsError) Logger.Error("Error when handling response", e);
                             }
                         });
                     }
@@ -146,7 +146,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 }
                 else if (currentStateLocal == SyncFeedState.Finished)
                 {
-                    Logger.Info($"{GetType().Name} has finished work.");
+                    if(Logger.IsInfo) Logger.Info($"{GetType().Name} has finished work.");
                     break;
                 }
             }
@@ -197,7 +197,7 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             if (!Feed.IsMultiFeed)
             {
-                Logger.Warn($"{Feed.GetType().Name} state changed to {e.NewState}");
+                if(Logger.IsDebug) Logger.Debug($"{Feed.GetType().Name} state changed to {e.NewState}");
             }
 
             SyncFeedState state = e.NewState;
