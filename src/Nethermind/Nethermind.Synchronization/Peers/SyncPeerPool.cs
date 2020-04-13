@@ -357,11 +357,10 @@ namespace Nethermind.Synchronization.Peers
                 if (timeoutReached) return SyncPeerAllocation.FailedAllocation;
 
                 int waitTime = 10 * tryCount++;
-
-                await _signals.WaitOneAsync(waitTime, CancellationToken.None);
-
+                
                 if (!_signals.SafeWaitHandle.IsClosed)
                 {
+                    await _signals.WaitOneAsync(waitTime, CancellationToken.None);
                     _signals.Reset(); // without this we have no delay
                 }
             }
