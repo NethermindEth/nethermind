@@ -180,7 +180,7 @@ namespace Nethermind.Blockchain.Test
             BlockTree blockTree = new BlockTree(_blocksDb, _headersDb, blocksInfosDb, new ChainLevelInfoRepository(blocksInfosDb), MainNetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
 
 
-            Assert.AreEqual(255_999_998, blockTree.BestKnownNumber);
+            Assert.AreEqual(256000000, blockTree.BestKnownNumber);
         }
 
         [Test]
@@ -663,7 +663,7 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public async Task Can_load_blocks_from_db()
         {
-            for (int chainLength = 1; chainLength <= 32; chainLength++)
+            for (int chainLength = 30; chainLength <= 32; chainLength++)
             {
                 Block genesisBlock = Build.A.Block.Genesis.TestObject;
 
@@ -676,6 +676,8 @@ namespace Nethermind.Blockchain.Test
                 {
                     Block ithBlock = testTree.FindBlock(i, BlockTreeLookupOptions.None);
                     blocksDb.Set(ithBlock.Hash, Rlp.Encode(ithBlock).Bytes);
+                    
+                    headersDb.Set(ithBlock.Hash, Rlp.Encode(ithBlock.Header).Bytes);
 
                     ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value) {WasProcessed = true}});
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
@@ -684,11 +686,11 @@ namespace Nethermind.Blockchain.Test
                 blockInfosDb.Set(Keccak.Zero, Rlp.Encode(genesisBlock.Header).Bytes);
                 headersDb.Set(genesisBlock.Header.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
 
-                BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, Substitute.For<ITxPool>(), NullBloomStorage.Instance, LimboLogs.Instance);
+                BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
 
                 await blockTree.LoadBlocksFromDb(CancellationToken.None);
 
-                Assert.AreEqual(blockTree.BestSuggestedHeader.Hash, testTree.Head.Hash, $"head {chainLength}");
+                Assert.AreEqual(testTree.Head.Hash, blockTree.BestSuggestedHeader.Hash, $"head {chainLength}");
             }
         }
 
@@ -708,17 +710,20 @@ namespace Nethermind.Blockchain.Test
                 {
                     Block ithBlock = testTree.FindBlock(i, BlockTreeLookupOptions.None);
                     blocksDb.Set(ithBlock.Hash, Rlp.Encode(ithBlock).Bytes);
+                    
+                    headersDb.Set(ithBlock.Hash, Rlp.Encode(ithBlock.Header).Bytes);
 
                     ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value)});
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
                 }
 
-                blocksDb.Set(Keccak.Zero, Rlp.Encode(testTree.FindBlock(1, BlockTreeLookupOptions.None)).Bytes);
+                blockInfosDb.Set(Keccak.Zero, Rlp.Encode(genesisBlock.Header).Bytes);
+                headersDb.Set(genesisBlock.Header.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
 
                 BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, Substitute.For<ITxPool>(), NullBloomStorage.Instance, LimboLogs.Instance);
                 await blockTree.LoadBlocksFromDb(CancellationToken.None);
 
-                Assert.AreEqual(blockTree.BestSuggestedHeader.Hash, testTree.Head.Hash, $"head {chainLength}");
+                Assert.AreEqual(testTree.Head.Hash, blockTree.BestSuggestedHeader.Hash, $"head {chainLength}");
             }
         }
 
@@ -869,7 +874,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block1.Header, tree.BestSuggestedHeader);
         }
 
-        private int _dbLoadTimeout = 5000;
+        private int _dbLoadTimeout = 5000000;
 
         [Test]
         public void When_deleting_invalid_block_deletes_its_descendants()
@@ -1151,11 +1156,9 @@ namespace Nethermind.Blockchain.Test
 
             await tree2.LoadBlocksFromDb(tokenSource.Token, startBlockNumber: null, batchSize: 1);
 
-            /* note the block tree historically loads one less block than it could */
-
             Assert.AreEqual(3L, tree2.BestKnownNumber, "best known");
-            Assert.AreEqual(block2B.Hash, tree2.Head.Hash, "head");
-            Assert.AreEqual(block2B.Hash, tree2.BestSuggestedHeader.Hash, "suggested");
+            Assert.AreEqual(block3B.Hash, tree2.Head.Hash, "head");
+            Assert.AreEqual(block3B.Hash, tree2.BestSuggestedHeader.Hash, "suggested");
 
             Assert.IsNull(blocksDb.Get(block1.Hash), "block 1");
             Assert.IsNull(blocksDb.Get(block2.Hash), "block 2");
