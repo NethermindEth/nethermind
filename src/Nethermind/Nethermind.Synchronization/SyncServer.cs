@@ -156,12 +156,12 @@ namespace Nethermind.Synchronization
             // Now it is important that all the following checks happen after the peer information was updated
             // even if the block is not something that we want to include in the block tree
             // it delivers information about the peer's chain.
-            
+
             bool isBlockBeforeTheSyncPivot = block.Number < _pivotNumber;
             bool isBlockOlderThanMaxReorgAllows = block.Number < (_blockTree.Head?.Number ?? 0) - Sync.MaxReorgLength;
             bool isBlockTotalDifficultyLow = block.TotalDifficulty < _blockTree.BestSuggestedHeader.TotalDifficulty;
-            if(isBlockBeforeTheSyncPivot || isBlockTotalDifficultyLow || isBlockOlderThanMaxReorgAllows) return;
-            
+            if (isBlockBeforeTheSyncPivot || isBlockTotalDifficultyLow || isBlockOlderThanMaxReorgAllows) return;
+
             lock (_recentlySuggested)
             {
                 if (_recentlySuggested.Get(block.Hash) != null) return;
@@ -179,7 +179,7 @@ namespace Nethermind.Synchronization
         private void ValidateSeal(Block block, PeerInfo peerInfo)
         {
             if (_logger.IsTrace) _logger.Trace($"Validating seal of {block.ToString(Block.Format.Short)}) from {peerInfo:c}");
-            
+
             // We hint validation range mostly to help ethash to cache epochs.
             // It is important that we only do that here, after we ensured that the block is
             // in the range of [Head - MaxReorganizationLength, Head].
@@ -211,7 +211,7 @@ namespace Nethermind.Synchronization
             // we do not trust total difficulty from peers
             // Parity sends invalid data here and it is equally expensive to validate and to set from null
             block.Header.TotalDifficulty = null;
-            
+
             AddBlockResult result = AddBlockResult.UnknownParent;
             bool isKnownParent = _blockTree.IsKnownBlock(block.Number - 1, block.ParentHash);
             if (isKnownParent)
@@ -275,13 +275,13 @@ namespace Nethermind.Synchronization
 
                     /* do not add as this is a hint only */
                 }
-                
-                // TODO: now it should be done by sync peer pool?
-                // if (!_blockTree.IsKnownBlock(number, hash))
-                // {
-                //     _pool.RefreshTotalDifficulty(peerInfo, hash);
-                //     _synchronizer.RequestSynchronization(SyncTriggerType.NewBlock);
-                // }
+
+                if (!_blockTree.IsKnownBlock(number, hash))
+                {
+                    _pool.RefreshTotalDifficulty(peerInfo, hash);
+                    // TODO: now it should be done by sync peer pool?
+                    // _synchronizer.RequestSynchronization(SyncTriggerType.NewBlock);
+                }
             }
         }
 
