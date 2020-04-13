@@ -45,7 +45,7 @@ namespace Nethermind.Blockchain.Test
             _blocksDb = new MemDb();
             _headersDb = new MemDb();
             _blocksInfosDb = new MemDb();
-            return new BlockTree(_blocksDb, _headersDb, _blocksInfosDb, new ChainLevelInfoRepository(_blocksInfosDb),  MainNetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            return new BlockTree(_blocksDb, _headersDb, _blocksInfosDb, new ChainLevelInfoRepository(_blocksInfosDb), MainNetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
         }
 
         private static void AddToMain(BlockTree blockTree, Block block0)
@@ -202,14 +202,14 @@ namespace Nethermind.Blockchain.Test
             Block found = blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.RequireCanonical);
             Assert.AreEqual(block.Hash, found.Header.CalculateHash());
         }
-        
+
         [Test]
         public void Add_on_branch_move_find_via_block_finder_interface()
         {
             BlockTree blockTree = BuildBlockTree();
             Block block = Build.A.Block.TestObject;
             AddToMain(blockTree, block);
-            Block found = ((IBlockFinder)blockTree).FindBlock(new BlockParameter(block.Hash, true));
+            Block found = ((IBlockFinder) blockTree).FindBlock(new BlockParameter(block.Hash, true));
             Assert.AreEqual(block.Hash, found.Header.CalculateHash());
         }
 
@@ -222,14 +222,14 @@ namespace Nethermind.Blockchain.Test
             Block found = blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.RequireCanonical);
             Assert.IsNull(found);
         }
-        
+
         [Test]
         public void Add_on_branch_and_not_find_on_main_via_block_finder_interface()
         {
             BlockTree blockTree = BuildBlockTree();
             Block block = Build.A.Block.TestObject;
             blockTree.SuggestBlock(block);
-            Block found = ((IBlockFinder)blockTree).FindBlock(new BlockParameter(block.Hash, true));
+            Block found = ((IBlockFinder) blockTree).FindBlock(new BlockParameter(block.Hash, true));
             Assert.IsNull(found);
         }
 
@@ -677,13 +677,15 @@ namespace Nethermind.Blockchain.Test
                     Block ithBlock = testTree.FindBlock(i, BlockTreeLookupOptions.None);
                     blocksDb.Set(ithBlock.Hash, Rlp.Encode(ithBlock).Bytes);
 
-                    ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value)});
+                    ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value) {WasProcessed = true}});
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
                 }
 
-                blocksDb.Set(Keccak.Zero, Rlp.Encode(genesisBlock).Bytes);
+                blockInfosDb.Set(Keccak.Zero, Rlp.Encode(genesisBlock.Header).Bytes);
+                headersDb.Set(genesisBlock.Header.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
 
                 BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, Substitute.For<ITxPool>(), NullBloomStorage.Instance, LimboLogs.Instance);
+
                 await blockTree.LoadBlocksFromDb(CancellationToken.None);
 
                 Assert.AreEqual(blockTree.BestSuggestedHeader.Hash, testTree.Head.Hash, $"head {chainLength}");
@@ -788,7 +790,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.UpdateMainChain(block1);
             Assert.True(blockTree.IsMainChain(block1.Hash));
         }
-        
+
         [Test]
         public void Pending_returns_head()
         {
@@ -804,7 +806,7 @@ namespace Nethermind.Blockchain.Test
             ((IBlockFinder) blockTree).FindPendingHeader().Should().BeSameAs(block0.Header);
             ((IBlockFinder) blockTree).FindPendingBlock().Should().BeSameAs(block0);
         }
-        
+
         [Test]
         public void Is_main_chain_returns_true_on_fast_sync_block()
         {
@@ -813,7 +815,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(block0, false);
             blockTree.IsMainChain(block0.Hash).Should().BeTrue();
         }
-        
+
         [Test]
         public void Was_processed_returns_true_on_fast_sync_block()
         {
@@ -1232,7 +1234,7 @@ namespace Nethermind.Blockchain.Test
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.PivotNumber = beginIndex.ToString();
 
-            BlockTree tree = new BlockTree(blocksDb, headersDb,blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainNetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainNetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
             tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
             for (long i = beginIndex; i > beginIndex - insertedBlocks; i--)
@@ -1382,7 +1384,7 @@ namespace Nethermind.Blockchain.Test
 
             tree.Insert(blocks);
         }
-        
+
         [Test]
         public void Inserts_blooms()
         {
@@ -1398,7 +1400,7 @@ namespace Nethermind.Blockchain.Test
             var bloomStorage = Substitute.For<IBloomStorage>();
             BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainNetSpecProvider.Instance, NullTxPool.Instance, bloomStorage, syncConfig, LimboLogs.Instance);
             tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
-            
+
             for (long i = 5; i > 0; i--)
             {
                 Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(1L).TestObject;
@@ -1485,7 +1487,7 @@ namespace Nethermind.Blockchain.Test
 
             txPoolMock.Received().AddTransaction(t1, 1, TxHandlingOptions.None);
         }
-        
+
         [Test]
         public void When_block_is_moved_to_main_blooms_are_storred()
         {
@@ -1508,11 +1510,11 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(block1B);
             blockTree.SuggestBlock(block1A);
             blockTree.UpdateMainChain(block1A);
-            
+
             bloomStorage.Received().Store(block1A.Number, block1A.Bloom);
         }
-        
-        
+
+
         [Test]
         public void Can_find_genesis_level()
         {
@@ -1521,7 +1523,7 @@ namespace Nethermind.Blockchain.Test
             Assert.True(info.HasBlockOnMainChain);
             Assert.AreEqual(1, info.BlockInfos.Length);
         }
-        
+
         [Test]
         public void Can_find_some_level()
         {
@@ -1530,7 +1532,7 @@ namespace Nethermind.Blockchain.Test
             Assert.True(info.HasBlockOnMainChain);
             Assert.AreEqual(1, info.BlockInfos.Length);
         }
-        
+
         [Test]
         public void Cannot_find_future_level()
         {
@@ -1538,7 +1540,7 @@ namespace Nethermind.Blockchain.Test
             ChainLevelInfo info = blockTree.FindLevel(1000);
             Assert.IsNull(info);
         }
-        
+
         [Test]
         public void Can_delete_a_future_slice()
         {
@@ -1556,7 +1558,7 @@ namespace Nethermind.Blockchain.Test
             Assert.Null(blockTree.FindHeader(2, BlockTreeLookupOptions.None));
             Assert.Null(blockTree.FindLevel(2));
         }
-        
+
         [Test]
         public void Does_not_delete_outside_of_the_slice()
         {
@@ -1566,7 +1568,7 @@ namespace Nethermind.Blockchain.Test
             Assert.NotNull(blockTree.FindHeader(1, BlockTreeLookupOptions.None));
             Assert.NotNull(blockTree.FindLevel(1));
         }
-        
+
         [Test]
         public void Can_delete_one_block()
         {
@@ -1574,7 +1576,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.DeleteChainSlice(2, 2);
             Assert.AreEqual(1, blockTree.Head.Number);
         }
-        
+
         [Test]
         public void Can_delete_two_blocks()
         {
@@ -1590,28 +1592,28 @@ namespace Nethermind.Blockchain.Test
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
             blockTree.DeleteChainSlice(1, 1);
         }
-        
+
         [Test]
         public void Throws_when_start_after_end()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
             Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(2, 1));
         }
-        
+
         [Test]
         public void Throws_when_start_at_zero()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
             Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(0, 1));
         }
-        
+
         [Test]
         public void Throws_when_start_below_zero()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
             Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(-1, 1));
         }
-        
+
         [Test]
         public void Cannot_delete_too_many()
         {

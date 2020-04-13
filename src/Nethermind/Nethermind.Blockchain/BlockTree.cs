@@ -127,16 +127,16 @@ namespace Nethermind.Blockchain
                     //throw new InvalidOperationException($"Genesis level in DB has {genesisLevel.BlockInfos.Length} blocks");
                 }
 
-                LoadLowestInsertedHeader();
-                LoadLowestInsertedBody();
-                LoadBestKnown();
-
                 if (genesisLevel.BlockInfos[0].WasProcessed)
                 {
                     BlockHeader genesisHeader = FindHeader(genesisLevel.BlockInfos[0].BlockHash, BlockTreeLookupOptions.None);
                     Genesis = genesisHeader;
                     LoadHeadBlockAtStart();
                 }
+                
+                LoadLowestInsertedHeader();
+                LoadLowestInsertedBody();
+                LoadBestKnown();
             }
 
             if (_logger.IsInfo) _logger.Info($"Block tree initialized, last processed is {Head?.ToString(BlockHeader.Format.Short) ?? "0"}, best queued is {BestSuggestedHeader?.Number.ToString() ?? "0"}, best known is {BestKnownNumber}, lowest inserted header {LowestInsertedHeader?.Number}, body {LowestInsertedBody?.Number}");
@@ -177,8 +177,20 @@ namespace Nethermind.Blockchain
             {
                 try
                 {
-                    BestSuggestedHeader = FindHeader(BestKnownNumber - i, BlockTreeLookupOptions.None);
-                    BestSuggestedBody = FindBlock(BestSuggestedHeader.Hash, BlockTreeLookupOptions.None);
+                    if (BestKnownNumber - i == 0)
+                    {
+                        if (Genesis != null)
+                        {
+                            BestSuggestedHeader = Genesis;
+                            BestSuggestedBody = FindBlock(GenesisHash, BlockTreeLookupOptions.None);
+                        }
+                    }
+                    else
+                    {
+                        BestSuggestedHeader = FindHeader(BestKnownNumber - i, BlockTreeLookupOptions.None);
+                        BestSuggestedBody = FindBlock(BestSuggestedHeader.Hash, BlockTreeLookupOptions.None);
+                    }
+
                     break;
                 }
                 catch (Exception e)
@@ -347,6 +359,11 @@ namespace Nethermind.Blockchain
             int batchSize = DbLoadBatchSize,
             int maxBlocksToLoad = int.MaxValue)
         {
+            if (Genesis == null)
+            {
+                return;
+            }
+
             try
             {
                 CanAcceptNewBlocks = false;
@@ -368,7 +385,8 @@ namespace Nethermind.Blockchain
                     Head = startBlockNumber == 0 ? null : FindBlock(startBlockNumber.Value - 1, BlockTreeLookupOptions.RequireCanonical)?.Header;
                 }
 
-                long blocksToLoad = Math.Min(CountKnownAheadOfHead(), maxBlocksToLoad);
+                // we will also load the current head block again to test continuity
+                long blocksToLoad = Math.Min(CountKnownAheadOfHead(), maxBlocksToLoad) + 1;
                 if (blocksToLoad == 0)
                 {
                     if (_logger.IsInfo) _logger.Info("Found no blocks to load from DB");
@@ -1066,7 +1084,7 @@ namespace Nethermind.Blockchain
 
             if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.Short)} added to main chain");
         }
-        
+
         private long CountKnownAheadOfHead()
         {
             long headNumber = Head?.Number ?? 0;
