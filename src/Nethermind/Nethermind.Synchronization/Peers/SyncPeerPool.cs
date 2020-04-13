@@ -131,7 +131,7 @@ namespace Nethermind.Synchronization.Peers
                 weakPeer.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "peer is too weak");
             }
         }
-        
+
         public void ReportWeakPeer(SyncPeerAllocation allocation)
         {
             ReportWeakPeer(allocation.Current);
@@ -194,6 +194,14 @@ namespace Nethermind.Synchronization.Peers
             {
                 foreach (PeerInfo peerInfo in UsefulPeersWhateverDiff)
                 {
+                    /* This condition is critical when trying to recognize the chain head for sync mode selections
+                     */
+                    if (peerInfo.TotalDifficulty < (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0))
+                    {
+                        continue;
+                    }
+
+
                     if (peerInfo.TotalDifficulty < (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0))
                     {
                         continue;
@@ -203,7 +211,7 @@ namespace Nethermind.Synchronization.Peers
                 }
             }
         }
-        
+
         public IEnumerable<PeerInfo> UsefulPeersWhateverDiff
         {
             get
@@ -211,8 +219,7 @@ namespace Nethermind.Synchronization.Peers
                 int sleepingCount = 0;
                 int uninitializedCount = 0;
                 int okCount = 0;
-                int lowTotalDiff = 0;
-                
+
                 foreach ((_, PeerInfo peerInfo) in _peers)
                 {
                     if (peerInfo.IsAsleep)
@@ -227,20 +234,10 @@ namespace Nethermind.Synchronization.Peers
                         continue;
                     }
 
-                    /* While there are scenarios where we want peers with equal difficulty (node sync)
-                     * I can think of no scenarios where lower difficulty node would be exceptionally useful
-                     * Such nodes are not necessarily malicious or weak - they may be within their own sync processes.
-                     */
-                    if (peerInfo.TotalDifficulty < (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0))
-                    {
-                        lowTotalDiff++;
-                        continue;
-                    }
-
                     okCount++;
                     yield return peerInfo;
                 }
-                
+
                 // _logger.Warn($"Sleeping: {sleepingCount}, Uninitialized: {uninitializedCount}, Low Diff: {lowTotalDiff}, OK: {okCount}");
             }
         }
@@ -468,7 +465,7 @@ namespace Nethermind.Synchronization.Peers
             return lowestInsertedBody > 1 && lowestInsertedBody < blockNumber ||
                    lowestInsertedHeader > 1 && lowestInsertedHeader < blockNumber;
         }
-        
+
         internal void DropUselessPeers(bool force = false)
         {
             if (!force && DateTime.UtcNow - _lastUselessPeersDropTime < TimeSpan.FromSeconds(30))
@@ -491,7 +488,7 @@ namespace Nethermind.Synchronization.Peers
                     && peerInfo.PeerClientType != PeerClientType.Nethermind)
                     // we know that Nethermind reports 0 HeadNumber when it is in sync (and it can still serve a lot of data to other nodes)
                 {
-                    if(!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
+                    if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
                     {
                         peersDropped++;
                         peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / HEAD 0");
