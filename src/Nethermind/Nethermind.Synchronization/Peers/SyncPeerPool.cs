@@ -360,8 +360,11 @@ namespace Nethermind.Synchronization.Peers
                 
                 if (!_signals.SafeWaitHandle.IsClosed)
                 {
-                    await _signals.WaitOneAsync(waitTime, CancellationToken.None);
-                    _signals.Reset(); // without this we have no delay
+                    await _signals.WaitOneAsync(waitTime, _refreshLoopCancellation.Token);
+                    if (!_signals.SafeWaitHandle.IsClosed)
+                    {
+                        _signals.Reset(); // without this we have no delay
+                    }
                 }
             }
         }

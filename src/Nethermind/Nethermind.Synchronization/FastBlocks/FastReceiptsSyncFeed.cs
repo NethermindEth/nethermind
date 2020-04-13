@@ -103,7 +103,9 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool AnyBatchesLeftToPrepare()
         {
             bool shouldDownloadReceipts = _syncConfig.DownloadReceiptsInFastSync;
+            _logger.Warn($"should download receipts {shouldDownloadReceipts}");
             bool allReceiptsDownloaded = _receiptStorage.LowestInsertedReceiptBlock == 1;
+            _logger.Warn($"all receipts downloaded {allReceiptsDownloaded}");
             bool isBeamSync = _syncConfig.BeamSync;
             bool anyHeaderDownloaded = _blockTree.LowestInsertedHeader != null;
 
@@ -128,6 +130,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 return false;
             }
 
+            _logger.Warn($"requested final batch - {_hasRequestedFinalBatch}");
             return !_hasRequestedFinalBatch;
         }
 
