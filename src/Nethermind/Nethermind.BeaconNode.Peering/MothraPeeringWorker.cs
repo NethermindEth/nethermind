@@ -220,10 +220,11 @@ namespace Nethermind.BeaconNode.Peering
         {
             try
             {
+                // 396 bytes
                 const int minimumSignedBeaconBlockLength =
-                    Ssz.Ssz.BlsSignatureLength + sizeof(ulong) + // Envelope
-                    Ssz.Ssz.SlotLength + Ssz.Ssz.RootLength * 2 + sizeof(ulong) + // BeaconBlock
-                    Ssz.Ssz.BlsSignatureLength + Ssz.Ssz.Bytes32Length + sizeof(ulong) * 6 + // BeaconBlockBody
+                    Ssz.Ssz.BlsSignatureLength + sizeof(uint) + // Envelope
+                    Ssz.Ssz.SlotLength + Ssz.Ssz.RootLength * 2 + sizeof(uint) + // BeaconBlock
+                    Ssz.Ssz.BeaconBlockBodyDynamicOffset + // BeaconBlockBody
                     Ssz.Ssz.RootLength + sizeof(ulong) + Ssz.Ssz.Bytes32Length; // Eth1Data
                 string peerId = Encoding.UTF8.GetString(peerUtf8);
                 RpcDirection rpcDirection = requestResponseFlag == 0 ? RpcDirection.Request : RpcDirection.Response;
