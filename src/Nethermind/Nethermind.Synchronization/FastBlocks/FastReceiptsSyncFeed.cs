@@ -103,9 +103,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool AnyBatchesLeftToPrepare()
         {
             bool shouldDownloadReceipts = _syncConfig.DownloadReceiptsInFastSync;
-            _logger.Warn($"should download receipts {shouldDownloadReceipts}");
             bool allReceiptsDownloaded = _receiptStorage.LowestInsertedReceiptBlock == 1;
-            _logger.Warn($"all receipts downloaded {allReceiptsDownloaded}");
             bool isBeamSync = _syncConfig.BeamSync;
             bool anyHeaderDownloaded = _blockTree.LowestInsertedHeader != null;
 
@@ -115,10 +113,8 @@ namespace Nethermind.Synchronization.FastBlocks
 
             if (noBatchesLeft)
             {
-                _logger.Warn("No batches left");
                 if (ShouldFinish)
                 {
-                    _logger.Warn("should finish finish");
                     Finish();
                     _syncReport.FastBlocksReceipts.Update(_pivotNumber);
                     _syncReport.FastBlocksReceipts.MarkEnd();
@@ -130,7 +126,6 @@ namespace Nethermind.Synchronization.FastBlocks
                 return false;
             }
 
-            _logger.Warn($"requested final batch - {_hasRequestedFinalBatch}");
             return !_hasRequestedFinalBatch;
         }
 
@@ -188,7 +183,6 @@ namespace Nethermind.Synchronization.FastBlocks
                     batch.Predecessors[collectedRequests] = predecessorBlock?.Number;
                     batch.Blocks[collectedRequests] = block;
                     batch.Request[collectedRequests] = block.Hash;
-                    // _logger.Warn($"Setting batch {batch.MinNumber} {block.Number}->{predecessorBlock?.Number}");
                     predecessorBlock = block;
                     collectedRequests++;
                 }
@@ -230,13 +224,10 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override Task<ReceiptsSyncBatch> PrepareRequest()
         {
-            _logger.Warn("handle dependent");
             HandleDependentBatches();
-            _logger.Warn("handled dependent - done");
 
             if (_pending.TryDequeue(out ReceiptsSyncBatch batch))
             {
-                _logger.Warn("retry");
                 batch.MarkRetry();
             }
             else if (AnyBatchesLeftToPrepare())
@@ -245,31 +236,21 @@ namespace Nethermind.Synchronization.FastBlocks
                                          < (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue);
                 if (moreBodiesWaiting)
                 {
-                    _logger.Warn("more bodies waiting");
                     batch = BuildNewBatch();
-                }
-                else
-                {
-                    _logger.Warn("no bodies");
                 }
             }
 
             if (batch != null)
             {
-                _logger.Warn("setting priority");
                 SetBatchPriority(batch);
                 _sent.TryAdd(batch, _dummyObject);
                 if (batch.IsFinal)
                 {
-                    _logger.Warn("FINAL BATCH!");
+                    _logger.Info($"Marking the receipts batch as final: {batch}");
                     _hasRequestedFinalBatch = true;
                 }
 
                 LogStateOnPrepare();
-            }
-            else
-            {
-                _logger.Warn("batch is null");
             }
 
             return Task.FromResult(batch);
@@ -296,7 +277,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
                 _pending.Enqueue(batch);
                 batch.MarkHandlingEnd();
-                return SyncResponseHandlingResult.NoData; //(BlocksDataHandlerResult.OK, 0);
+                return SyncResponseHandlingResult.NoData;
             }
 
             try
@@ -305,14 +286,21 @@ namespace Nethermind.Synchronization.FastBlocks
                 try
                 {
                     int added = InsertReceipts(batch);
+                    if (added == 0)
+                    {
+                        return SyncResponseHandlingResult.BadQuality;
+                    }
+                    else
+                    {
+                        return SyncResponseHandlingResult.OK;
+                    }
                 }
                 catch (Exception ex)
                 {
-                    _logger.Error("buuuu", ex);
+                    if(_logger.IsDebug) _logger.Error("Error when adding receipts", ex);
                     _pending.Enqueue(batch);
+                    return SyncResponseHandlingResult.InvalidFormat;
                 }
-
-                return SyncResponseHandlingResult.OK; //(BlocksDataHandlerResult.OK, added);
             }
             finally
             {
