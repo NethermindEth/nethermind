@@ -68,8 +68,7 @@ namespace Nethermind.BeaconNode.Peering
 
             if (_logger.IsDebug())
                 LogDebug.RpcSend(_logger, RpcDirection.Request, nameof(MethodUtf8.BeaconBlocksByRange), peerId,
-                    encoded.Length,
-                    null);
+                    encoded.Length, null);
 
             if (!_mothraLibp2p.SendRpcRequest(MethodUtf8.BeaconBlocksByRange, peerUtf8, encoded))
             {
@@ -89,8 +88,7 @@ namespace Nethermind.BeaconNode.Peering
 
             if (_logger.IsDebug())
                 LogDebug.RpcSend(_logger, RpcDirection.Response, nameof(MethodUtf8.BeaconBlocksByRange), peerId,
-                    encoded.Length,
-                    null);
+                    encoded.Length, null);
 
             if (!_mothraLibp2p.SendRpcResponse(MethodUtf8.BeaconBlocksByRange, peerUtf8, encoded))
             {

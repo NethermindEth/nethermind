@@ -380,19 +380,22 @@ namespace Nethermind.Ssz
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ThrowTargetLength<T>(int targetLength, int expectedLength)
         {
-            throw new InvalidDataException($"Invalid target length in SSZ encoding of {nameof(T)}. Target length is {targetLength} and expected length is {expectedLength}.");
+            Type type = typeof(T);
+            throw new InvalidDataException($"Invalid target length in SSZ encoding of {type.Name}. Target length is {targetLength} and expected length is {expectedLength}.");
         }
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ThrowSourceLength<T>(int sourceLength, int expectedLength)
         {
-            throw new InvalidDataException($"Invalid source length in SSZ decoding of {nameof(T)}. Source length is {sourceLength} and expected length is {expectedLength}.");
+            Type type = typeof(T);
+            throw new InvalidDataException($"Invalid source length in SSZ decoding of {type.Name}. Source length is {sourceLength} and expected length is {expectedLength}.");
         }
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ThrowInvalidSourceArrayLength<T>(int sourceLength, int expectedItemLength)
         {
-            throw new InvalidDataException($"Invalid source length in SSZ decoding of {nameof(T)}. Source length is {sourceLength} and expected length is a multiple of {expectedItemLength}.");
+            Type type = typeof(T);
+            throw new InvalidDataException($"Invalid source length in SSZ decoding of {type.Name}. Source length is {sourceLength} and expected length is a multiple of {expectedItemLength}.");
         }
     }
 }

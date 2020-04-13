@@ -31,7 +31,7 @@ namespace Nethermind.Ssz
         public static BeaconBlocksByRange DecodeBeaconBlocksByRange(ReadOnlySpan<byte> span)
         {
             if (span.Length != BeaconBlocksByRangeLength)
-                ThrowSourceLength<Checkpoint>(span.Length, BeaconBlocksByRangeLength);
+                ThrowSourceLength<BeaconBlocksByRange>(span.Length, BeaconBlocksByRangeLength);
             int offset = 0;
             Root headBlockRoot = DecodeRoot(span, ref offset);
             Slot startSlot = DecodeSlot(span, ref offset);
@@ -45,7 +45,7 @@ namespace Nethermind.Ssz
         public static void Encode(Span<byte> span, BeaconBlocksByRange container)
         {
             if (span.Length != BeaconBlocksByRangeLength)
-                ThrowTargetLength<Checkpoint>(span.Length, BeaconBlocksByRangeLength);
+                ThrowTargetLength<BeaconBlocksByRange>(span.Length, BeaconBlocksByRangeLength);
             int offset = 0;
             Encode(span, container.HeadBlockRoot, ref offset);
             Encode(span, container.StartSlot, ref offset);

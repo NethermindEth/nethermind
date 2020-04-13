@@ -30,7 +30,7 @@ namespace Nethermind.Ssz
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static PeeringStatus DecodePeeringStatus(ReadOnlySpan<byte> span)
         {
-            if (span.Length != PeeringStatusLength) ThrowSourceLength<Checkpoint>(span.Length, PeeringStatusLength);
+            if (span.Length != PeeringStatusLength) ThrowSourceLength<PeeringStatus>(span.Length, PeeringStatusLength);
             int offset = 0;
             ForkVersion headForkVersion = DecodeForkVersion(span, ref offset);
             Root finalizedRoot = DecodeRoot(span, ref offset);
@@ -44,7 +44,7 @@ namespace Nethermind.Ssz
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Encode(Span<byte> span, PeeringStatus container)
         {
-            if (span.Length != PeeringStatusLength) ThrowTargetLength<Checkpoint>(span.Length, PeeringStatusLength);
+            if (span.Length != PeeringStatusLength) ThrowTargetLength<PeeringStatus>(span.Length, PeeringStatusLength);
             int offset = 0;
             Encode(span, container.HeadForkVersion, ref offset);
             Encode(span, container.FinalizedRoot, ref offset);

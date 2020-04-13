@@ -179,7 +179,7 @@ namespace Nethermind.BeaconNode.Peering
                 if (topicUtf8.SequenceEqual(TopicUtf8.BeaconBlock))
                 {
                     if (_logger.IsDebug())
-                        LogDebug.GossipReceived(_logger, nameof(TopicUtf8.BeaconBlock), data.Length, null);
+                        LogDebug.GossipReceived(_logger, Encoding.UTF8.GetString(topicUtf8), data.Length, null);
                     // Need to deserialize in synchronous context (can't pass Span async)
                     SignedBeaconBlock signedBeaconBlock = Ssz.Ssz.DecodeSignedBeaconBlock(data);
                     _signedBeaconBlockProcessor.Enqueue(signedBeaconBlock);
@@ -229,7 +229,7 @@ namespace Nethermind.BeaconNode.Peering
                 {
                     if (_logger.IsDebug())
                         LogDebug.RpcReceived(_logger, rpcDirection, requestResponseFlag, Encoding.UTF8.GetString(methodUtf8),
-                            peerId, data.Length, null);
+                            peerId, data.Length, nameof(MethodUtf8.Status), null);
 
                     PeeringStatus peeringStatus = Ssz.Ssz.DecodePeeringStatus(data);
                     RpcMessage<PeeringStatus> statusRpcMessage =
@@ -240,7 +240,7 @@ namespace Nethermind.BeaconNode.Peering
                 {
                     if (_logger.IsDebug())
                         LogDebug.RpcReceived(_logger, rpcDirection, requestResponseFlag, Encoding.UTF8.GetString(methodUtf8),
-                            peerId, data.Length, null);
+                            peerId, data.Length, nameof(MethodUtf8.BeaconBlocksByRange), null);
 
                     if (rpcDirection == RpcDirection.Request)
                     {
