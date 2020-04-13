@@ -108,17 +108,24 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (ShouldFinish)
                 {
                     Finish();
-                    _syncReport.FastBlocksBodies.Update(_pivotNumber);
-                    _syncReport.FastBlocksBodies.MarkEnd();
-                    _dependencies.Clear();
-                    _pending.Clear();
-                    _sent.Clear();
+                    PostFinishCleanUp();
                 }
 
                 return false;
             }
 
             return true;
+        }
+
+        private void PostFinishCleanUp()
+        {
+            _syncReport.FastBlocksBodies.Update(_pivotNumber);
+            _syncReport.FastBlocksBodies.MarkEnd();
+            _dependencies.Clear();
+            _pending.Clear();
+            _sent.Clear();
+            _syncReport.BodiesInQueue.Update(0L);
+            _syncReport.BodiesInQueue.MarkEnd();
         }
 
         private void LogStateOnPrepare()

@@ -116,17 +116,24 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (ShouldFinish)
                 {
                     Finish();
-                    _syncReport.FastBlocksReceipts.Update(_pivotNumber);
-                    _syncReport.FastBlocksReceipts.MarkEnd();
-                    _sent.Clear();
-                    _pending.Clear();
-                    _dependencies.Clear();
+                    PostFinishCleanUp();
                 }
 
                 return false;
             }
 
             return !_hasRequestedFinalBatch;
+        }
+
+        private void PostFinishCleanUp()
+        {
+            _syncReport.FastBlocksReceipts.Update(_pivotNumber);
+            _syncReport.FastBlocksReceipts.MarkEnd();
+            _sent.Clear();
+            _pending.Clear();
+            _dependencies.Clear();
+            _syncReport.ReceiptsInQueue.Update(0L);
+            _syncReport.ReceiptsInQueue.MarkEnd();
         }
 
         private ReceiptsSyncBatch BuildNewBatch()

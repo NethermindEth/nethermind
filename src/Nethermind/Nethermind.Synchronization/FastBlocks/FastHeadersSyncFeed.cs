@@ -116,17 +116,24 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (AllHeadersDownloaded)
                 {
                     Finish();
-                    _syncReport.FastBlocksHeaders.Update(_pivotNumber);
-                    _syncReport.FastBlocksHeaders.MarkEnd();
-                    _dependencies.Clear(); // there may be some dependencies from wrong branches
-                    _pending.Clear(); // there may be pending wrong branches
-                    _sent.Clear(); // we my still be waiting for some bad branches
+                    PostFinishCleanUp();
                 }
 
                 return false;
             }
 
             return true;
+        }
+
+        private void PostFinishCleanUp()
+        {
+            _syncReport.FastBlocksHeaders.Update(_pivotNumber);
+            _syncReport.FastBlocksHeaders.MarkEnd();
+            _dependencies.Clear(); // there may be some dependencies from wrong branches
+            _pending.Clear(); // there may be pending wrong branches
+            _sent.Clear(); // we my still be waiting for some bad branches
+            _syncReport.HeadersInQueue.Update(0L);
+            _syncReport.HeadersInQueue.MarkEnd();
         }
 
         private void HandleDependentBatches()
