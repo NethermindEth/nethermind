@@ -161,9 +161,9 @@ namespace Nethermind.Synchronization.Reporting
                 {
                     _lastTimeComplainedAboutNoPeers = _reportId;
                     WriteFullSyncReport($"Waiting for useful peers in '{currentSyncMode}' sync mode");
+                    
+                    return;
                 }
-
-                return;
             }
 
             if (currentSyncMode == SyncMode.None)
