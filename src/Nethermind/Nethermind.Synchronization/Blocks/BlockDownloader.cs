@@ -545,12 +545,12 @@ namespace Nethermind.Synchronization.Blocks
             {
                 case { } t when t.IsFaulted:
                     string reason;
-                    if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x is TimeoutException))
+                    if (t.Exception != null && t.Exception.Flatten().InnerExceptions.Any(x => x is TimeoutException))
                     {
                         if (_logger.IsDebug) _logger.Debug($"Block download from {peerInfo} timed out. {t.Exception?.Message}");
                         reason = "timeout";
                     }
-                    if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x is TaskCanceledException))
+                    if (t.Exception != null && t.Exception.Flatten().InnerExceptions.Any(x => x is TaskCanceledException))
                     {
                         if (_logger.IsDebug) _logger.Debug($"Block download from {peerInfo} was canceled.");
                         reason = "cancel";
