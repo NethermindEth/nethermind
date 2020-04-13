@@ -16,7 +16,7 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.Consensus.Mining;
+using Nethermind.Consensus.Ethash;
 using Nethermind.Logging;
 using NUnit.Framework;
 

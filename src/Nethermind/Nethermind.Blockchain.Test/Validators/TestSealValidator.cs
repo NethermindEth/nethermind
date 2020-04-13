@@ -16,26 +16,22 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Test.Validators
 {
+    // ReSharper disable once ClassNeverInstantiated.Global
     public class TestSealValidator : ISealValidator
     {
-        public static TestSealValidator AlwaysValid = new TestSealValidator(true, true);
-        public static TestSealValidator NeverValid = new TestSealValidator(false, false);
+        public static ISealValidator AlwaysValid = Always.Valid;
+        public static ISealValidator NeverValid = Always.Invalid;
+        
         private readonly Queue<bool> _processedValidationResults;
-
         private readonly Queue<bool> _suggestedValidationResults;
         private bool? _alwaysSameResultForSeal;
-
         private bool? _alwaysSameResultForParams;
-
-        public TestSealValidator()
-            : this(true, true)
-        {
-        }
 
         public TestSealValidator(bool validateParamsResult, bool validateSealResult)
         {

@@ -23,7 +23,7 @@ namespace Nethermind.Evm.Test
     public class Eip152Tests : VirtualMachineTestsBase
     {
         private const int InputLength = 213;
-        protected override long BlockNumber => MainNetSpecProvider.IstanbulBlockNumber + _blockNumberAdjustment;
+        protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber + _blockNumberAdjustment;
 
         private int _blockNumberAdjustment;
 
