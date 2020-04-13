@@ -359,7 +359,11 @@ namespace Nethermind.Synchronization.Peers
                 int waitTime = 10 * tryCount++;
 
                 await _signals.WaitOneAsync(waitTime, CancellationToken.None);
-                _signals.Reset(); // without this we have no delay
+
+                if (!_signals.SafeWaitHandle.IsClosed)
+                {
+                    _signals.Reset(); // without this we have no delay
+                }
             }
         }
 
