@@ -352,7 +352,7 @@ namespace Nethermind.Synchronization.Blocks
                     AggregateException aggregateException = exception as AggregateException;
                     if (aggregateException != null)
                     {
-                        exception = aggregateException.InnerExceptions[0];
+                        exception = aggregateException.Flatten().InnerExceptions[0];
                     }
 
                     if (_logger.IsInfo) _logger.Error($"Failed to retrieve {entities} when synchronizing.", exception);
