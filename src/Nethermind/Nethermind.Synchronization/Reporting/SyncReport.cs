@@ -73,7 +73,7 @@ namespace Nethermind.Synchronization.Reporting
         {
             if (e.Previous != e.Current)
             {
-                if(_logger.IsInfo) _logger.Info($"Sync mode changed from {e.Previous} to {e.Current}");
+                if (_logger.IsInfo) _logger.Info($"Sync mode changed from {e.Previous} to {e.Current}");
             }
         }
 
@@ -155,9 +155,9 @@ namespace Nethermind.Synchronization.Reporting
                 WriteFastBlocksReport();
             }
 
-            if (_syncPeerPool.UsefulPeerCount == 0)
+            if (_lastTimeComplainedAboutNoPeers == 0 || _reportId - _lastTimeComplainedAboutNoPeers > 60)
             {
-                if (_lastTimeComplainedAboutNoPeers == 0 || _reportId - _lastTimeComplainedAboutNoPeers > 60)
+                if (_syncPeerPool.UsefulPeerCount == 0)
                 {
                     _lastTimeComplainedAboutNoPeers = _reportId;
                     WriteFullSyncReport($"Waiting for useful peers in '{currentSyncMode}' sync mode");
@@ -180,17 +180,17 @@ namespace Nethermind.Synchronization.Reporting
             {
                 WriteFullSyncReport("Full Sync");
             }
-            
+
             if ((currentSyncMode & SyncMode.FastSync) == SyncMode.FastSync)
             {
                 WriteFullSyncReport($"Fast Sync From Block {(_syncConfig.FastBlocks ? _syncConfig.PivotNumber : "0")}");
             }
-            
+
             if ((currentSyncMode & SyncMode.FastBlocks) == SyncMode.FastBlocks)
             {
                 WriteFastBlocksReport();
             }
-            
+
             if ((currentSyncMode & SyncMode.StateNodes) == SyncMode.StateNodes)
             {
                 if (_reportId % NoProgressStateSyncReportFrequency == 0)
@@ -198,7 +198,7 @@ namespace Nethermind.Synchronization.Reporting
                     WriteStateNodesReport();
                 }
             }
-            
+
             //
             // case var syncMode when syncMode == SyncMode.Full:
             //         WriteFullSyncReport("Full Sync");

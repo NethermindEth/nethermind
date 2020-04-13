@@ -34,27 +34,12 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
         private readonly ILogger _logger;
-
-        private bool HasPeers => _syncPeerPool.UsefulPeers.Any();
+        
         private bool BeamSyncEnabled => _syncConfig.BeamSync;
         private bool FastSyncEnabled => _syncConfig.FastSync;
         private bool FastBlocksEnabled => _syncConfig.FastSync && _syncConfig.FastBlocks;
         private bool FastBlocksFinished => !FastBlocksEnabled || _syncProgressResolver.IsFastBlocksFinished();
         private long FastSyncCatchUpHeightDelta => _syncConfig.FastSyncCatchUpHeightDelta ?? FullSyncThreshold;
-
-        private long MaxPeerBlockNumber
-        {
-            get
-            {
-                long maxPeerBlock = 0;
-                foreach (PeerInfo usefulPeer in _syncPeerPool.UsefulPeers)
-                {
-                    maxPeerBlock = Math.Max(maxPeerBlock, usefulPeer.HeadNumber);
-                }
-
-                return maxPeerBlock;
-            }
-        }
 
         private System.Timers.Timer _timer;
 
@@ -168,6 +153,17 @@ namespace Nethermind.Synchronization.ParallelSync
             return BeamSyncEnabled && !ShouldBeInFastBlocksMode(best);
         }
 
+        private long? ReloadDataFromPeers()
+        {
+            long? maxPeerBlock = null;
+            foreach (PeerInfo usefulPeer in _syncPeerPool.UsefulPeers)
+            {
+                maxPeerBlock = Math.Max(maxPeerBlock ?? 0L, usefulPeer.HeadNumber);
+            }
+
+            return maxPeerBlock;
+        }
+        
         public void Update()
         {
             if (_syncProgressResolver.IsLoadingBlocksFromDb())
@@ -176,11 +172,10 @@ namespace Nethermind.Synchronization.ParallelSync
                 return;
             }
             
-            bool hasPeers = HasPeers;
-            long peerBlock = MaxPeerBlockNumber;
-
+            long? peerBlock = ReloadDataFromPeers();
+            
             // if there are no peers that we could use then we cannot sync
-            if (!hasPeers || peerBlock == 0)
+            if ((peerBlock ?? 0) == 0)
             {
                 UpdateSyncModes(SyncMode.None);
                 return;
@@ -193,7 +188,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 return;
             }
 
-            Snapshot best = TakeSnapshot(peerBlock);
+            Snapshot best = TakeSnapshot(peerBlock ?? 0);
 
             SyncMode newModes = SyncMode.None;
             if (ShouldBeInBeamSyncMode(best))
