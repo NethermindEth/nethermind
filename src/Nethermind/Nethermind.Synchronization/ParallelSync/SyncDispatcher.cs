@@ -61,7 +61,9 @@ namespace Nethermind.Synchronization.ParallelSync
 
                 if (_currentFeedState == SyncFeedState.Dormant)
                 {
+                    Logger.Info($"{GetType().Name} is going to sleep.");
                     await _dormantStateTask.Task;
+                    Logger.Info($"{GetType().Name} got acivated.");
                 }
                 else if (_currentFeedState == SyncFeedState.Active)
                 {
@@ -83,6 +85,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         {
                             Logger.Warn($"Awaiting single feed with allocated {allocatedPeer}");
                             await task;
+                            Logger.Warn($"Single feed with allocated {allocatedPeer} has finished work");
                         }
 
 #pragma warning disable 4014
@@ -117,6 +120,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 }
                 else if (_currentFeedState == SyncFeedState.Finished)
                 {
+                    Logger.Info($"{GetType().Name} has finished work.");
                     break;
                 }
             }
