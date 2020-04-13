@@ -24,6 +24,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2;
 using Nethermind.Core2.Configuration;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.P2p;
 using Nethermind.Logging.Microsoft;
@@ -224,8 +225,7 @@ namespace Nethermind.BeaconNode.Peering
                 const int minimumSignedBeaconBlockLength =
                     Ssz.Ssz.BlsSignatureLength + sizeof(uint) + // Envelope
                     Ssz.Ssz.SlotLength + Ssz.Ssz.RootLength * 2 + sizeof(uint) + // BeaconBlock
-                    Ssz.Ssz.BeaconBlockBodyDynamicOffset + // BeaconBlockBody
-                    Ssz.Ssz.RootLength + sizeof(ulong) + Ssz.Ssz.Bytes32Length; // Eth1Data
+                    Ssz.Ssz.BeaconBlockBodyDynamicOffset; // BeaconBlockBody + Eth1Data
                 string peerId = Encoding.UTF8.GetString(peerUtf8);
                 RpcDirection rpcDirection = requestResponseFlag == 0 ? RpcDirection.Request : RpcDirection.Response;
 
