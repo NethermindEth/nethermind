@@ -457,7 +457,7 @@ namespace Nethermind.Runner.Test
         [TestCase("ropsten.cfg", true, true)]
         [TestCase("rinkeby.cfg", true, true)]
         [TestCase("goerli.cfg", true, true)]
-        [TestCase("mainnet.cfg", false, false)]
+        [TestCase("mainnet.cfg", true, true)]
         [TestCase("sokol.cfg", true, true)]
         [TestCase("sokol_validator.cfg", true, false)]
         [TestCase("sokol_fastsync.cfg", true, true)]
