@@ -945,7 +945,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public void SetNewStateRoot(long number, Keccak stateRoot)
         {
-            _logger.Error($"Setting new state root to {number} {stateRoot}");
+            if(_logger.IsInfo) _logger.Info($"Setting state sync state root to {number} {stateRoot}");
             _currentSyncStart = DateTime.UtcNow;
             _currentSyncStartSecondsInSync = _secondsInSync;
 
