@@ -170,6 +170,12 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public void Update()
         {
+            if (_syncProgressResolver.IsLoadingBlocksFromDb())
+            {
+                UpdateSyncModes(SyncMode.DbLoad);
+                return;
+            }
+            
             bool hasPeers = HasPeers;
             long peerBlock = MaxPeerBlockNumber;
 

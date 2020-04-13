@@ -171,6 +171,11 @@ namespace Nethermind.Synchronization.Reporting
                 WriteNotStartedReport();
             }
 
+            if (currentSyncMode == SyncMode.DbLoad)
+            {
+                WriteDbSyncReport();
+            }
+
             if ((currentSyncMode & SyncMode.Full) == SyncMode.Full)
             {
                 WriteFullSyncReport("Full Sync");
