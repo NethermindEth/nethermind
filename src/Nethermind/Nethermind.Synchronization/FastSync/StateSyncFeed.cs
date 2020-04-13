@@ -36,6 +36,7 @@ namespace Nethermind.Synchronization.FastSync
 {
     public class StateSyncFeed : SyncFeed<StateSyncBatch>
     {
+        private const int _alreadySavedCapacity = 1024 * 64;
         private const int MaxRequestSize = 384;
 
         private static AccountDecoder _accountDecoder = new AccountDecoder();
@@ -108,9 +109,10 @@ namespace Nethermind.Synchronization.FastSync
         private ConcurrentStack<StateSyncItem> Stream2 => _nodes[6];
 
         public int TotalNodesPending => _nodes.Sum(n => n?.Count ?? 0);
+        
         private ConcurrentDictionary<StateSyncBatch, object> _pendingRequests = new ConcurrentDictionary<StateSyncBatch, object>();
         private Dictionary<Keccak, HashSet<DependentItem>> _dependencies = new Dictionary<Keccak, HashSet<DependentItem>>();
-        private LruCache<Keccak, object> _alreadySaved = new LruCache<Keccak, object>(1024 * 64);
+        private LruCache<Keccak, object> _alreadySaved = new LruCache<Keccak, object>(_alreadySavedCapacity);
 
         public StateSyncFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, IBlockTree blockTree, ILogManager logManager)
         {
@@ -380,6 +382,9 @@ namespace Nethermind.Synchronization.FastSync
                 {
                     if (_logger.IsError) _logger.Error($"POSSIBLE FAST SYNC CORRUPTION | Dependencies hanging after the root node saved - count: {_dependencies.Count}, first: {_dependencies.Keys.First()}");
                 }
+                
+                _dependencies = new Dictionary<Keccak, HashSet<DependentItem>>();
+                _alreadySaved = new LruCache<Keccak, object>(_alreadySavedCapacity);
             }
 
             if (TotalNodesPending != 0)
