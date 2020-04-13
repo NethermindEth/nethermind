@@ -57,8 +57,8 @@ namespace Nethermind.Evm.Test
         protected static PrivateKey RecipientKey { get; } = TestItem.PrivateKeyB;
         protected static PrivateKey MinerKey { get; } = TestItem.PrivateKeyD;
 
-        protected virtual long BlockNumber => MainNetSpecProvider.ByzantiumBlockNumber;
-        protected virtual ISpecProvider SpecProvider => MainNetSpecProvider.Instance;
+        protected virtual long BlockNumber => MainnetSpecProvider.ByzantiumBlockNumber;
+        protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
         protected IReleaseSpec Spec => SpecProvider.GetSpec(BlockNumber);
 
         [SetUp]

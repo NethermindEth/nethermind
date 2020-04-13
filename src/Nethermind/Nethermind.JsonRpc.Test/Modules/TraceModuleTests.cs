@@ -75,7 +75,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
             
             _ethSerializer.RegisterConverter(new ParityTraceActionConverter());
-            ISpecProvider specProvider = MainNetSpecProvider.Instance;
+            ISpecProvider specProvider = MainnetSpecProvider.Instance;
             IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider, LimboLogs.Instance);
             ITxStorage txStorage = new InMemoryTxStorage();
             _stateDb = new StateDb();

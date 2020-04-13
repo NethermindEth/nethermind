@@ -108,7 +108,7 @@ namespace Nethermind.Network.Test
                     _nodeStatsManager,
                     _protocolValidator,
                     _peerStorage,
-                    MainNetSpecProvider.Instance, 
+                    MainnetSpecProvider.Instance, 
                     LimboLogs.Instance);
 
                 _serializer.Register(new HelloMessageSerializer());

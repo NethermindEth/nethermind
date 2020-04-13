@@ -241,7 +241,7 @@ namespace Nethermind.Synchronization.Test
             var logManager = NoErrorLimboLogs.Instance;
             ConsoleAsyncLogger logger = new ConsoleAsyncLogger(LogLevel.Debug, "PEER " + index + " ");
 //            var logManager = new OneLoggerLogManager(logger);
-            var specProvider = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, MainNetSpecProvider.Instance.ChainId);
+            var specProvider = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, MainnetSpecProvider.Instance.ChainId);
 
             var dbProvider = new MemDbProvider();
             IDb blockDb = dbProvider.BlocksDb;
@@ -298,7 +298,7 @@ namespace Nethermind.Synchronization.Test
             MultiSyncModeSelector selector = new MultiSyncModeSelector(resolver, syncPeerPool, syncConfig, logManager);
             Synchronizer synchronizer = new Synchronizer(
                 dbProvider,
-                MainNetSpecProvider.Instance,
+                MainnetSpecProvider.Instance,
                 tree,
                 NullReceiptStorage.Instance,
                 blockValidator,

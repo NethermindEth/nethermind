@@ -306,7 +306,7 @@ namespace Nethermind.Synchronization.Test
                 MultiSyncModeSelector syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, SyncPeerPool, syncConfig, _logManager);
                 Synchronizer = new Synchronizer(
                     dbProvider,
-                    MainNetSpecProvider.Instance,
+                    MainnetSpecProvider.Instance,
                     BlockTree,
                     NullReceiptStorage.Instance,
                     Always.Valid,

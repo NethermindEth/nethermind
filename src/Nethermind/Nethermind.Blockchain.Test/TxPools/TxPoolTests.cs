@@ -97,8 +97,8 @@ namespace Nethermind.Blockchain.Test.TxPools
         public void should_ignore_transactions_with_different_chain_id()
         {
             _txPool = CreatePool(_noTxStorage);
-            EthereumEcdsa ecdsa = new EthereumEcdsa(MainNetSpecProvider.Instance, _logManager);
-            Transaction tx = Build.A.Transaction.SignedAndResolved(ecdsa, TestItem.PrivateKeyA, MainNetSpecProvider.ByzantiumBlockNumber).TestObject;
+            EthereumEcdsa ecdsa = new EthereumEcdsa(MainnetSpecProvider.Instance, _logManager);
+            Transaction tx = Build.A.Transaction.SignedAndResolved(ecdsa, TestItem.PrivateKeyA, MainnetSpecProvider.ByzantiumBlockNumber).TestObject;
             AddTxResult result = _txPool.AddTransaction(tx, 1, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(0);
             result.Should().Be(AddTxResult.InvalidChainId);

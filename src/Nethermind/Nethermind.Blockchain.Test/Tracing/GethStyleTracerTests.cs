@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain.Test.Tracing
             ISnapshotableDb codeDb = new StateDb();
             
             ChainLevelInfoRepository repository = new ChainLevelInfoRepository(blocksInfoDb);
-            ISpecProvider specProvider = MainNetSpecProvider.Instance;
+            ISpecProvider specProvider = MainnetSpecProvider.Instance;
             _blockTree = new BlockTree(blocksDb, headersDb, blocksInfoDb, repository, specProvider, NullTxPool.Instance, NullBloomStorage.Instance, new SyncConfig(), LimboLogs.Instance);
             
             StateProvider stateProvider = new StateProvider(stateDb, codeDb, LimboLogs.Instance);

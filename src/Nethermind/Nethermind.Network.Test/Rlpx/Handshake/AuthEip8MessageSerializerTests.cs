@@ -53,7 +53,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Assert.AreEqual(authMessage.Version, after.Version);
         }
 
-        [TestCase(ChainId.MainNet)]
+        [TestCase(ChainId.Mainnet)]
         [TestCase(ChainId.Morden)]
         [TestCase(ChainId.RootstockMainnet)]
         [TestCase(ChainId.DefaultGethPrivateChain)]
@@ -65,7 +65,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             TestEncodeDecode(ecdsa);
         }
 
-        [TestCase(ChainId.MainNet)]
+        [TestCase(ChainId.Mainnet)]
         [TestCase(ChainId.Ropsten)]
         [TestCase(ChainId.Kovan)]
         public void Encode_decode_with_eip155(int chainId)

@@ -60,7 +60,7 @@ namespace Nethermind.Synchronization.Test
             SyncConfig syncConfig = new SyncConfig();
             SyncProgressResolver resolver = new SyncProgressResolver(_blockTree, _receiptStorage, _stateDb, syncConfig, LimboLogs.Instance);
             MultiSyncModeSelector syncModeSelector = new MultiSyncModeSelector(resolver, _pool, syncConfig, LimboLogs.Instance);
-            _synchronizer = new Synchronizer(dbProvider, MainNetSpecProvider.Instance, _blockTree, NullReceiptStorage.Instance, Always.Valid, Always.Valid, _pool,  Substitute.For<INodeStatsManager>(), syncModeSelector, quickConfig, LimboLogs.Instance);
+            _synchronizer = new Synchronizer(dbProvider, MainnetSpecProvider.Instance, _blockTree, NullReceiptStorage.Instance, Always.Valid, Always.Valid, _pool,  Substitute.For<INodeStatsManager>(), syncModeSelector, quickConfig, LimboLogs.Instance);
             _syncServer = new SyncServer(_stateDb, _codeDb, _blockTree, _receiptStorage, Always.Valid, Always.Valid, _pool, syncModeSelector, _synchronizer, quickConfig, LimboLogs.Instance);
         }
 

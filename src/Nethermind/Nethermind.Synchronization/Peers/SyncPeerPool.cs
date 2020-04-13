@@ -500,7 +500,7 @@ namespace Nethermind.Synchronization.Peers
                         peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / HEAD 0");
                     }
                 }
-                else if (peerInfo.HeadNumber == 1920000 && _blockTree.ChainId == ChainId.MainNet) // mainnet, stuck Geth nodes
+                else if (peerInfo.HeadNumber == 1920000 && _blockTree.ChainId == ChainId.Mainnet) // mainnet, stuck Geth nodes
                 {
                     if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
                     {
@@ -508,7 +508,7 @@ namespace Nethermind.Synchronization.Peers
                         peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 1920000");
                     }
                 }
-                else if (peerInfo.HeadNumber == 7280022 && _blockTree.ChainId == ChainId.MainNet) // mainnet, stuck Geth nodes
+                else if (peerInfo.HeadNumber == 7280022 && _blockTree.ChainId == ChainId.Mainnet) // mainnet, stuck Geth nodes
                 {
                     if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
                     {
@@ -518,7 +518,7 @@ namespace Nethermind.Synchronization.Peers
                 }
                 else if (peerInfo.HeadNumber > ourNumber + 1024L && peerInfo.TotalDifficulty < ourDifficulty)
                 {
-                    if (!CanBeUsefulForFastBlocks(MainNetSpecProvider.Instance.DaoBlockNumber ?? 0))
+                    if (!CanBeUsefulForFastBlocks(MainnetSpecProvider.Instance.DaoBlockNumber ?? 0))
                     {
                         // probably Ethereum Classic nodes tht remain connected after we went pass the DAO
                         // worth to find a better way to discard them at the right time

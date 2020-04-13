@@ -72,7 +72,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             ProofModuleFactory moduleFactory = new ProofModuleFactory(
                 _dbProvider,
                 _blockTree,
-                new CompositeDataRecoveryStep(new TxSignaturesRecoveryStep(new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance), NullTxPool.Instance, LimboLogs.Instance)),
+                new CompositeDataRecoveryStep(new TxSignaturesRecoveryStep(new EthereumEcdsa(MainnetSpecProvider.Instance, LimboLogs.Instance), NullTxPool.Instance, LimboLogs.Instance)),
                 receiptStorage,
                 _specProvider,
                 LimboLogs.Instance);
@@ -745,7 +745,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             storageProvider.Commit();
             storageProvider.CommitTrees();
 
-            stateProvider.Commit(MainNetSpecProvider.Instance.GenesisSpec, null);
+            stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, null);
             stateProvider.CommitTree();
 
             _dbProvider.StateDb.Commit();
@@ -843,7 +843,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Keccak codeHash = stateProvider.UpdateCode(code);
             stateProvider.UpdateCodeHash(account, codeHash, MuirGlacier.Instance);
 
-            stateProvider.Commit(MainNetSpecProvider.Instance.GenesisSpec, null);
+            stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, null);
             stateProvider.CommitTree();
             _dbProvider.CodeDb.Commit();
             _dbProvider.StateDb.Commit();

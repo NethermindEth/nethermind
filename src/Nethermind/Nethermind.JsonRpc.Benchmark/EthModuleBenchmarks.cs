@@ -57,8 +57,8 @@ namespace Nethermind.JsonRpc.Benchmark
             ISnapshotableDb stateDb = new StateDb();
             IDb blockInfoDb = new MemDb(10, 5);
 
-            ISpecProvider specProvider = MainNetSpecProvider.Instance;
-            IReleaseSpec spec = MainNetSpecProvider.Instance.GenesisSpec;
+            ISpecProvider specProvider = MainnetSpecProvider.Instance;
+            IReleaseSpec spec = MainnetSpecProvider.Instance.GenesisSpec;
             
             StateProvider stateProvider = new StateProvider(stateDb, codeDb, LimboLogs.Instance);
             stateProvider.CreateAccount(Address.Zero, 1000.Ether());
@@ -79,7 +79,7 @@ namespace Nethermind.JsonRpc.Benchmark
             blockTree.SuggestBlock(block1);
             
             TransactionProcessor transactionProcessor
-                 = new TransactionProcessor(MainNetSpecProvider.Instance, stateProvider, storageProvider, _virtualMachine, LimboLogs.Instance);
+                 = new TransactionProcessor(MainnetSpecProvider.Instance, stateProvider, storageProvider, _virtualMachine, LimboLogs.Instance);
             
             BlockProcessor blockProcessor = new BlockProcessor(specProvider, Always.Valid, new RewardCalculator(specProvider), transactionProcessor,
                 stateDb, codeDb, stateProvider, storageProvider, NullTxPool.Instance, NullReceiptStorage.Instance, LimboLogs.Instance);
@@ -107,7 +107,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 NullFilterManager.Instance, 
                 new DevWallet(new WalletConfig(), LimboLogs.Instance), 
                 transactionProcessor, 
-                new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance),
+                new EthereumEcdsa(MainnetSpecProvider.Instance, LimboLogs.Instance),
                 bloomStorage,
                 LimboLogs.Instance,
                 false);

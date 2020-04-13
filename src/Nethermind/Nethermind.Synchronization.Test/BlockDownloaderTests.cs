@@ -86,7 +86,7 @@ namespace Nethermind.Synchronization.Test
                 var builder = Build.A.BlockTree();
                 if (withReceipts)
                 {
-                    builder = builder.WithTransactions(_receiptStorage, MainNetSpecProvider.Instance);
+                    builder = builder.WithTransactions(_receiptStorage, MainnetSpecProvider.Instance);
                 }
 
                 builder = builder.OfChainLength((int) chainLength);
@@ -340,7 +340,7 @@ namespace Nethermind.Synchronization.Test
 
                     _headers[blockHashes[i]].ReceiptsRoot = flags.HasFlag(Response.IncorrectReceiptRoot)
                         ? Keccak.EmptyTreeHash
-                        : new ReceiptTrie(_headers[blockHashes[i]].Number, MainNetSpecProvider.Instance, receipts[i]).RootHash;
+                        : new ReceiptTrie(_headers[blockHashes[i]].Number, MainnetSpecProvider.Instance, receipts[i]).RootHash;
                 }
 
                 ReceiptsMessage message = new ReceiptsMessage(receipts);
@@ -354,7 +354,7 @@ namespace Nethermind.Synchronization.Test
         {
             Block genesis = Build.A.Block.Genesis.TestObject;
             MemDb blockInfoDb = new MemDb();
-            _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainNetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
             _blockTree.SuggestBlock(genesis);
 
             _testHeaderMapping = new Dictionary<long, Keccak>();

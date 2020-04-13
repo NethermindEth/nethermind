@@ -189,7 +189,7 @@ namespace Nethermind.DataMarketplace.Test
                 _spec = spec;
                 _receiptsTracer = new BlockReceiptsTracer();
                 _processor = processor;
-                _tx = Build.A.Transaction.SignedAndResolved(new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance), TestItem.PrivateKeyA, 2).TestObject;
+                _tx = Build.A.Transaction.SignedAndResolved(new EthereumEcdsa(MainnetSpecProvider.Instance, LimboLogs.Instance), TestItem.PrivateKeyA, 2).TestObject;
                 _headBlock = Build.A.Block.WithNumber(1).WithTransactions(Enumerable.Repeat(_tx, 100).ToArray()).TestObject;
 
                 _receiptsTracer.SetOtherTracer(GethTracer);

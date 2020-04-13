@@ -46,8 +46,8 @@ namespace Nethermind.Synchronization.Test.BeamSync
         {
             _blockchainProcessor = Substitute.For<IBlockProcessingQueue>();
             _blockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
-            HeaderValidator headerValidator = new HeaderValidator(_blockTree, NullSealEngine.Instance, MainNetSpecProvider.Instance, LimboLogs.Instance);
-            _validator = new BlockValidator(Always.Valid, headerValidator, Always.Valid, MainNetSpecProvider.Instance, LimboLogs.Instance);
+            HeaderValidator headerValidator = new HeaderValidator(_blockTree, NullSealEngine.Instance, MainnetSpecProvider.Instance, LimboLogs.Instance);
+            _validator = new BlockValidator(Always.Valid, headerValidator, Always.Valid, MainnetSpecProvider.Instance, LimboLogs.Instance);
             SetupBeamProcessor();
         }
 
@@ -63,7 +63,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         [Test, Retry(3)]
         public void Valid_block_with_transactions_makes_it_all_the_way()
         {
-            EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance);
+            EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(MainnetSpecProvider.Instance, LimboLogs.Instance);
             Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA, 10000000).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB, 10000000).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
             _blockTree.SuggestBlock(newBlock);
             Thread.Sleep(1000);
@@ -76,7 +76,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
             _ = new BeamBlockchainProcessor(
                 new ReadOnlyDbProvider(memDbProvider, false),
                 _blockTree,
-                MainNetSpecProvider.Instance,
+                MainnetSpecProvider.Instance,
                 LimboLogs.Instance,
                 _validator,
                 NullRecoveryStep.Instance,

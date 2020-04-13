@@ -79,7 +79,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             Timestamper = new ManualTimestamper(DateTime.MinValue);
             JsonSerializer = new EthereumJsonSerializer();
-            ISpecProvider specProvider = MainNetSpecProvider.Instance;
+            ISpecProvider specProvider = MainnetSpecProvider.Instance;
             EthereumEcdsa = new EthereumEcdsa(specProvider, LimboLogs.Instance);
             ITxStorage txStorage = new InMemoryTxStorage();
             StateDb = new StateDb();

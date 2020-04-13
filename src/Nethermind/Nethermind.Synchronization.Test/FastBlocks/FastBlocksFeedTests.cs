@@ -41,7 +41,7 @@
 //     [SingleThreaded]
 //     public class FastBlocksFeedTests
 //     {
-//         private ISpecProvider _specProvider = MainNetSpecProvider.Instance;
+//         private ISpecProvider _specProvider = MainnetSpecProvider.Instance;
 //         private InMemoryReceiptStorage _remoteReceiptStorage;
 //         private BlockTree _validTree2048;
 //         private BlockTree _validTree2048NoTransactions;
@@ -147,7 +147,7 @@
 //         private void SetupLocalTree(int length = 1)
 //         {
 //             var blockInfoDb = new MemDb();
-//             _localBlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainNetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, _syncConfig, LimboLogs.Instance);
+//             _localBlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, _syncConfig, LimboLogs.Instance);
 //             for (int i = 0; i < length; i++)
 //             {
 //                 _localBlockTree.SuggestBlock(_validTree2048.FindBlock(i, BlockTreeLookupOptions.None));

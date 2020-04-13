@@ -29,7 +29,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void When_more_uncles_than_allowed_returns_false()
         {
-            TxValidator txValidator = new TxValidator(ChainId.MainNet);
+            TxValidator txValidator = new TxValidator(ChainId.Mainnet);
             ReleaseSpec releaseSpec = new ReleaseSpec();
             releaseSpec.MaximumUncleCount = 0;
             ISpecProvider specProvider = new CustomSpecProvider((0, releaseSpec));
