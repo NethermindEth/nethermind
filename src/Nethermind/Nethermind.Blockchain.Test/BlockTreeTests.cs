@@ -874,7 +874,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block1.Header, tree.BestSuggestedHeader);
         }
 
-        private int _dbLoadTimeout = 5000000;
+        private int _dbLoadTimeout = 5000;
 
         [Test]
         public void When_deleting_invalid_block_deletes_its_descendants()

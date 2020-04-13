@@ -119,6 +119,8 @@ namespace Nethermind.Synchronization
                 {
                     _logger.Error("Full sync block downloader failed", t.Exception);
                 }
+                
+                _logger.Warn("Full sync block downloader task completed.");
             });
         }
         
@@ -132,6 +134,8 @@ namespace Nethermind.Synchronization
                 {
                     _logger.Error("State sync failed", t.Exception);
                 }
+                
+                _logger.Warn("State sync task completed.");
             });
         }
 
@@ -147,6 +151,8 @@ namespace Nethermind.Synchronization
                 {
                     _logger.Error("Fast blocks headers downloader failed", t.Exception);
                 }
+                
+                _logger.Warn("Fast blocks headers task completed.");
             });
 
             FastBodiesSyncFeed bodiesFeed = new FastBodiesSyncFeed(_blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
@@ -157,6 +163,8 @@ namespace Nethermind.Synchronization
                 {
                     _logger.Error("Fast bodies sync failed", t.Exception);
                 }
+                
+                _logger.Warn("Fast blocks bodies task completed.");
             });
 
             FastReceiptsSyncFeed receiptsFeed = new FastReceiptsSyncFeed(_specProvider, _blockTree, _receiptStorage, _syncPeerPool, _syncConfig, _syncReport, _logManager);
@@ -167,6 +175,8 @@ namespace Nethermind.Synchronization
                 {
                     _logger.Error("Fast receipts sync failed", t.Exception);
                 }
+                
+                _logger.Warn("Fast blocks receipts task completed.");
             });
         }
 
@@ -180,6 +190,8 @@ namespace Nethermind.Synchronization
                 {
                     _logger.Error("Fast sync failed", t.Exception);
                 }
+                
+                _logger.Warn("Fast sync blocks downloader task completed.");
             });
         }
 

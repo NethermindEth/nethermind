@@ -186,20 +186,15 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             lock (_feedStateManipulation)
             {
+                _currentFeedState = state;
+                _dormantStateTask?.TrySetResult(null);
                 if (state == SyncFeedState.Dormant)
                 {
                     _dormantStateTask = new TaskCompletionSource<object>();
-                    _currentFeedState = state;
                 }
                 else if (state == SyncFeedState.Active)
                 {
-                    _currentFeedState = state;
-                    _dormantStateTask?.TrySetResult(null);
                     _dormantStateTask = null;
-                }
-                else if (state == SyncFeedState.Finished)
-                {
-                    _currentFeedState = state;
                 }
             }
         }
