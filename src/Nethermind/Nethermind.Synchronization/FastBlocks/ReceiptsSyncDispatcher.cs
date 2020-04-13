@@ -38,6 +38,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected override async Task Dispatch(PeerInfo peerInfo, ReceiptsSyncBatch batch, CancellationToken cancellationToken)
         {
             ISyncPeer peer = peerInfo.SyncPeer;
+            batch.ResponseSourcePeer = peerInfo;
             batch.MarkSent();
             Task<TxReceipt[][]> getReceiptsTask = peer.GetReceipts(batch.Request, cancellationToken);
             await getReceiptsTask.ContinueWith(

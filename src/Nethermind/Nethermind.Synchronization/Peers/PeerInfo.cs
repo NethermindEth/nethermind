@@ -22,7 +22,8 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
-[assembly:InternalsVisibleTo("Nethermind.Synchronization.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
+
 namespace Nethermind.Synchronization.Peers
 {
     public class PeerInfo
@@ -76,12 +77,12 @@ namespace Nethermind.Synchronization.Peers
         {
             HasBeenDisconnected = true;
         }
-        
+
         public int IncreaseWeakness()
         {
             return Interlocked.Increment(ref _weakness);
         }
-        
-                public override string ToString() => $"[Peer|{SyncPeer?.Node:s}|{HeadNumber}|{SyncPeer?.ClientId}|{SyncPeer?.EthDetails}]";
+
+        public override string ToString() => $"[Peer|{SyncPeer?.Node:s}|{HeadNumber}|{SyncPeer?.ClientId}|{SyncPeer?.EthDetails}]";
     }
 }

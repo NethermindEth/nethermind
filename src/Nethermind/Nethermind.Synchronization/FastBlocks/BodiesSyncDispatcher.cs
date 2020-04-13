@@ -38,6 +38,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected override async Task Dispatch(PeerInfo peerInfo, BodiesSyncBatch batch, CancellationToken cancellationToken)
         {
             ISyncPeer peer = peerInfo.SyncPeer;
+            batch.ResponseSourcePeer = peerInfo;
             batch.MarkSent();
             Task<BlockBody[]> getBodiesTask = peer.GetBlockBodies(batch.Request, cancellationToken);
             await getBodiesTask.ContinueWith(
