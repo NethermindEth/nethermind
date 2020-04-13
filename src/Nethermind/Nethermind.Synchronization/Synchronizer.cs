@@ -51,7 +51,7 @@ namespace Nethermind.Synchronization
         private readonly INodeStatsManager _nodeStatsManager;
         private readonly ILogManager _logManager;
         private readonly ISyncReport _syncReport;
-        
+
         private CancellationTokenSource _syncCancellation = new CancellationTokenSource();
 
         /* sync events are used mainly for managing sync peers reputation */
@@ -117,13 +117,15 @@ namespace Nethermind.Synchronization
             {
                 if (t.IsFaulted)
                 {
-                    _logger.Error("Full sync block downloader failed", t.Exception);
+                    if (_logger.IsError) _logger.Error("Full sync block downloader failed", t.Exception);
                 }
-                
-                _logger.Warn("Full sync block downloader task completed.");
+                else
+                {
+                    if (_logger.IsInfo) _logger.Info("Full sync block downloader task completed.");
+                }
             });
         }
-        
+
         private void StartStateSyncComponents()
         {
             StateSyncFeed stateSyncFeed = new StateSyncFeed(_dbProvider.CodeDb, _dbProvider.StateDb, new MemDb(), _syncMode, _blockTree, _logManager);
@@ -132,10 +134,12 @@ namespace Nethermind.Synchronization
             {
                 if (t.IsFaulted)
                 {
-                    _logger.Error("State sync failed", t.Exception);
+                    if (_logger.IsError) _logger.Error("State sync failed", t.Exception);
                 }
-                
-                _logger.Warn("State sync task completed.");
+                else
+                {
+                    if (_logger.IsInfo) _logger.Info("State sync task completed.");
+                }
             });
         }
 
@@ -149,10 +153,12 @@ namespace Nethermind.Synchronization
             {
                 if (t.IsFaulted)
                 {
-                    _logger.Error("Fast blocks headers downloader failed", t.Exception);
+                    if (_logger.IsError) _logger.Error("Fast blocks headers downloader failed", t.Exception);
                 }
-                
-                _logger.Warn("Fast blocks headers task completed.");
+                else
+                {
+                    if (_logger.IsInfo) _logger.Info("Fast blocks headers task completed.");
+                }
             });
 
             FastBodiesSyncFeed bodiesFeed = new FastBodiesSyncFeed(_blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
@@ -161,10 +167,12 @@ namespace Nethermind.Synchronization
             {
                 if (t.IsFaulted)
                 {
-                    _logger.Error("Fast bodies sync failed", t.Exception);
+                    if (_logger.IsError) _logger.Error("Fast bodies sync failed", t.Exception);
                 }
-                
-                _logger.Warn("Fast blocks bodies task completed.");
+                else
+                {
+                    if (_logger.IsInfo) _logger.Info("Fast blocks bodies task completed.");
+                }
             });
 
             FastReceiptsSyncFeed receiptsFeed = new FastReceiptsSyncFeed(_specProvider, _blockTree, _receiptStorage, _syncPeerPool, _syncConfig, _syncReport, _logManager);
@@ -173,10 +181,12 @@ namespace Nethermind.Synchronization
             {
                 if (t.IsFaulted)
                 {
-                    _logger.Error("Fast receipts sync failed", t.Exception);
+                    if (_logger.IsError) _logger.Error("Fast receipts sync failed", t.Exception);
                 }
-                
-                _logger.Warn("Fast blocks receipts task completed.");
+                else
+                {
+                    if (_logger.IsInfo) _logger.Info("Fast blocks receipts task completed.");
+                }
             });
         }
 
@@ -188,10 +198,12 @@ namespace Nethermind.Synchronization
             {
                 if (t.IsFaulted)
                 {
-                    _logger.Error("Fast sync failed", t.Exception);
+                    if (_logger.IsError) _logger.Error("Fast sync failed", t.Exception);
                 }
-                
-                _logger.Warn("Fast sync blocks downloader task completed.");
+                else
+                {
+                    if (_logger.IsInfo) _logger.Info("Fast sync blocks downloader task completed.");
+                }
             });
         }
 
