@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Stats;
@@ -42,6 +43,11 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
 
             foreach (PeerInfo info in peers)
             {
+                if (info.HeadNumber < (blockTree.BestSuggestedHeader?.Number ?? 0) - 1000000)
+                {
+                    Console.WriteLine($"Thinking of peer with number {info.HeadNumber}");
+                }
+                
                 (this as IPeerAllocationStrategy).CheckAsyncState(info);
 
                 long averageTransferSpeed = nodeStatsManager.GetOrAdd(info.SyncPeer.Node).GetAverageTransferSpeed() ?? 0;
@@ -51,6 +57,11 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
                 }
             }
 
+            if (bestPeer.Info.HeadNumber < (blockTree.BestSuggestedHeader?.Number ?? 0) - 1000000)
+            {
+                Console.WriteLine($"Chose peer with number {bestPeer.Info.HeadNumber}");
+            }
+            
             return bestPeer.Info;
         }
     }
