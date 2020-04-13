@@ -210,15 +210,15 @@ namespace Nethermind.Synchronization.Peers
                         continue;
                     }
 
-                    // /* While there are scenarios where we want peers with equal difficulty (node sync)
-                    //  * I can think of no scenarios where lower difficulty node would be exceptionally useful
-                    //  * Such nodes are not necessarily malicious or weak - they may be within their own sync processes.
-                    //  */
-                    // if (peerInfo.TotalDifficulty < (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0))
-                    // {
-                    //     lowTotalDiff++;
-                    //     continue;
-                    // }
+                    /* While there are scenarios where we want peers with equal difficulty (node sync)
+                     * I can think of no scenarios where lower difficulty node would be exceptionally useful
+                     * Such nodes are not necessarily malicious or weak - they may be within their own sync processes.
+                     */
+                    if (peerInfo.TotalDifficulty < (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0))
+                    {
+                        lowTotalDiff++;
+                        continue;
+                    }
 
                     okCount++;
                     yield return peerInfo;
