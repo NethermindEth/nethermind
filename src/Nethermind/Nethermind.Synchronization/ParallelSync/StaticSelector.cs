@@ -26,19 +26,23 @@ namespace Nethermind.Synchronization.ParallelSync
         }
 
         public static StaticSelector Full { get; } = new StaticSelector(SyncMode.Full);
-        
+
         public static StaticSelector FastSync { get; } = new StaticSelector(SyncMode.FastSync);
-        
+
         public static StaticSelector FastBlocks { get; } = new StaticSelector(SyncMode.FastBlocks);
-        
+
         public static StaticSelector FastSyncWithFastBlocks { get; } = new StaticSelector(SyncMode.FastSync | SyncMode.FastBlocks);
-        
+
         public static StaticSelector StateNodesWithFastBlocks { get; } = new StaticSelector(SyncMode.StateNodes | SyncMode.FastBlocks);
-        
+
         public static StaticSelector FullWithFastBlocks { get; } = new StaticSelector(SyncMode.Full | SyncMode.FastBlocks);
 
         public SyncMode Current { get; }
 
-        public event EventHandler<SyncModeChangedEventArgs> Changed;
+        public event EventHandler<SyncModeChangedEventArgs> Changed
+        {
+            add { }
+            remove { }
+        }
     }
 }

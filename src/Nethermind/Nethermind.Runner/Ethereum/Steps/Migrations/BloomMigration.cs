@@ -64,6 +64,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
         {
             if (_context.BloomStorage == null) throw new StepDependencyException(nameof(_context.BloomStorage));
             if (_context.Synchronizer == null) throw new StepDependencyException(nameof(_context.Synchronizer));
+            if (_context.SyncModeSelector == null) throw new StepDependencyException(nameof(_context.SyncModeSelector));
 
             IBloomStorage? storage = _context.BloomStorage;
             if (storage.NeedsMigration)
@@ -99,7 +100,8 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
         {
             if (CanMigrate(e.Current))
             {
-                if (_context.Synchronizer == null) throw new StepDependencyException(nameof(_context.Synchronizer));
+                if (_context.SyncModeSelector == null) throw new StepDependencyException(nameof(_context.SyncModeSelector));
+
                 RunBloomMigration();
                 _context.SyncModeSelector.Changed -= SynchronizerOnSyncModeChanged;
             }

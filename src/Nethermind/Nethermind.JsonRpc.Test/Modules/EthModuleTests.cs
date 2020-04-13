@@ -176,7 +176,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
-        public async Task Eth_get_filter_changes_with_tx()
+        public void Eth_get_filter_changes_with_tx()
         {
             string serialized1 = _test.TestEthRpc("eth_newPendingTransactionFilter");
             _test.AddTransaction(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject);

@@ -116,7 +116,11 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 remove { }
             }
 
-            public event EventHandler PeerRemoved;
+            public event EventHandler PeerRemoved
+            {
+                add { }
+                remove { }
+            }
         }
 
         private class TestBatch
