@@ -14,27 +14,17 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using Nethermind.Blockchain;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.Blocks
 {
     internal class BlocksSyncPeerAllocationStrategyFactory : IPeerAllocationStrategyFactory<BlocksRequest>
     {
-        private readonly IBlockTree _blockTree;
-
-        public BlocksSyncPeerAllocationStrategyFactory(IBlockTree blockTree)
-        {
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        }
-        
         public IPeerAllocationStrategy Create(BlocksRequest request)
         {
             IPeerAllocationStrategy baseStrategy = new BlocksSyncPeerAllocationStrategy(request.NumberOfLatestBlocksToBeIgnored);
-            TotalDiffStrategy totalDiffStrategy = new TotalDiffStrategy(baseStrategy, (_blockTree.BestSuggestedHeader?.TotalDifficulty + 1) ?? 0);
+            TotalDiffStrategy totalDiffStrategy = new TotalDiffStrategy(baseStrategy);
             return totalDiffStrategy;
         }
     }

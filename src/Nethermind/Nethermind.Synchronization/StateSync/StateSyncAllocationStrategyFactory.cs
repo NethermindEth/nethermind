@@ -22,9 +22,11 @@ namespace Nethermind.Synchronization.StateSync
 {
     public class StateSyncAllocationStrategyFactory : IPeerAllocationStrategyFactory<StateSyncBatch>
     {
+        private IPeerAllocationStrategy _strategy = new TotalDiffStrategy(BySpeedStrategy.Fastest, TotalDiffStrategy.TotalDiffSelectionType.CanBeSlightlyWorse);
+
         public IPeerAllocationStrategy Create(StateSyncBatch request)
         {
-            return BySpeedStrategy.Fastest;
+            return _strategy;
         }
     }
 }

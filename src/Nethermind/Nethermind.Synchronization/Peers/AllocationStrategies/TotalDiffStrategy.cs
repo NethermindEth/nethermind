@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Dirichlet.Numerics;
@@ -25,23 +26,53 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
 {
     public class TotalDiffStrategy : IPeerAllocationStrategy
     {
-        private readonly IPeerAllocationStrategy _strategy;
-        private readonly UInt256 _requiredDifficulty;
-        public TotalDiffStrategy(IPeerAllocationStrategy strategy, UInt256 requiredDifficulty)
+        public enum TotalDiffSelectionType
         {
+            Better = 1,
+            AtLeastTheSame = 0,
+            CanBeSlightlyWorse = -1
+        }
+
+        private readonly IPeerAllocationStrategy _strategy;
+        private readonly TotalDiffSelectionType _selectionType;
+
+        public TotalDiffStrategy(IPeerAllocationStrategy strategy, TotalDiffSelectionType selectionType = TotalDiffSelectionType.Better)
+        {
+            if (!Enum.IsDefined(typeof(TotalDiffSelectionType), selectionType)) throw new InvalidEnumArgumentException(nameof(selectionType), (int) selectionType, typeof(TotalDiffSelectionType));
             _strategy = strategy ?? throw new ArgumentNullException(nameof(strategy));
-            _requiredDifficulty = requiredDifficulty;
+            _selectionType = selectionType;
         }
 
         public bool CanBeReplaced => _strategy.CanBeReplaced;
+
         public PeerInfo Allocate(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
-            return _strategy.Allocate(currentPeer, peers.Where(HasEnoughDifficulty), nodeStatsManager, blockTree);
-        }
+            UInt256? currentDiff = blockTree.BestSuggestedHeader?.TotalDifficulty;
+            if (currentDiff == null)
+            {
+                return _strategy.Allocate(currentPeer, peers, nodeStatsManager, blockTree);    
+            }
 
-        private bool HasEnoughDifficulty(PeerInfo peerInfo)
-        {
-            return peerInfo.TotalDifficulty >= _requiredDifficulty;
+            switch (_selectionType)
+            {
+                case TotalDiffSelectionType.Better:
+                    currentDiff += UInt256.One;
+                    break;
+                case TotalDiffSelectionType.AtLeastTheSame:
+                    break;
+                case TotalDiffSelectionType.CanBeSlightlyWorse:
+                    var lastBlockDiff = blockTree.BestSuggestedHeader?.Difficulty;
+                    if (currentDiff.Value >= lastBlockDiff)
+                    {
+                        currentDiff -= lastBlockDiff;
+                    }
+                    
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+            
+            return _strategy.Allocate(currentPeer, peers.Where(p => p.TotalDifficulty >= currentDiff), nodeStatsManager, blockTree);
         }
     }
 }
