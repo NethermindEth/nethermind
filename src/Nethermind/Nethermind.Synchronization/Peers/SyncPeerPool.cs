@@ -224,7 +224,7 @@ namespace Nethermind.Synchronization.Peers
                     yield return peerInfo;
                 }
                 
-                _logger.Warn($"Sleeping: {sleepingCount}, Uninitialized: {uninitializedCount}, Low Diff: {lowTotalDiff}, OK: {okCount}");
+                // _logger.Warn($"Sleeping: {sleepingCount}, Uninitialized: {uninitializedCount}, Low Diff: {lowTotalDiff}, OK: {okCount}");
             }
         }
 
