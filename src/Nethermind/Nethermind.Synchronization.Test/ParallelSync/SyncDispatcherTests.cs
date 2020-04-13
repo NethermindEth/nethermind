@@ -84,6 +84,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             public IEnumerable<PeerInfo> AllPeers { get; }
             public IEnumerable<PeerInfo> UsefulPeers { get; }
+            public IEnumerable<PeerInfo> UsefulPeersWhateverDiff { get; }
             public int PeerCount { get; }
             public int UsefulPeerCount { get; }
             public int PeerMaxCount { get; }

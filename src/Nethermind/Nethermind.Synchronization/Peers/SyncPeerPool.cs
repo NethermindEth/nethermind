@@ -192,6 +192,22 @@ namespace Nethermind.Synchronization.Peers
         {
             get
             {
+                foreach (PeerInfo peerInfo in UsefulPeersWhateverDiff)
+                {
+                    if (peerInfo.TotalDifficulty < (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0))
+                    {
+                        continue;
+                    }
+
+                    yield return peerInfo;
+                }
+            }
+        }
+        
+        public IEnumerable<PeerInfo> UsefulPeersWhateverDiff
+        {
+            get
+            {
                 int sleepingCount = 0;
                 int uninitializedCount = 0;
                 int okCount = 0;
@@ -327,7 +343,7 @@ namespace Nethermind.Synchronization.Peers
             {
                 lock (_isAllocatedChecks)
                 {
-                    allocation.AllocateBestPeer(UsefulPeers.Where(p => !p.IsAllocated), _stats, _blockTree);
+                    allocation.AllocateBestPeer(UsefulPeersWhateverDiff.Where(p => !p.IsAllocated), _stats, _blockTree);
                     if (allocation.HasPeer)
                     {
                         if (peerAllocationStrategy.CanBeReplaced)
@@ -638,7 +654,7 @@ namespace Nethermind.Synchronization.Peers
             {
                 lock (_isAllocatedChecks)
                 {
-                    var unallocatedPeers = UsefulPeers.Where(p => !p.IsAllocated);
+                    var unallocatedPeers = UsefulPeersWhateverDiff.Where(p => !p.IsAllocated);
                     allocation.AllocateBestPeer(unallocatedPeers, _stats, _blockTree);
                 }
             }

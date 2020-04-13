@@ -55,6 +55,12 @@ namespace Nethermind.Synchronization.Peers
         /// These peers may not be useful for everyone but they are not asleep.
         /// </summary>
         IEnumerable<PeerInfo> UsefulPeers { get; }
+        
+        /// <summary>
+        /// All the useful peers available for allocation.
+        /// These peers may not be useful for everyone but they are not asleep.
+        /// </summary>
+        IEnumerable<PeerInfo> UsefulPeersWhateverDiff { get; }
 
         /// <summary>
         /// Number of all sync peers
