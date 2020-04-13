@@ -109,9 +109,9 @@ namespace Nethermind.Synchronization.ParallelSync
                         Task task = Dispatch(allocatedPeer, request, cancellationToken);
                         if (!Feed.IsMultiFeed)
                         {
-                            Logger.Warn($"Awaiting single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer}");
+                            if(Logger.IsDebug) Logger.Debug($"Awaiting single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer}");
                             await task;
-                            Logger.Warn($"Single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer} has been processed");
+                            if(Logger.IsDebug) Logger.Debug($"Single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer} has been processed");
                         }
 
 #pragma warning disable 4014

@@ -94,15 +94,15 @@ namespace Nethermind.Synchronization.Blocks
             SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, Synchronization.SyncEvent.Started));
             if ((blocksRequest.Options & DownloaderOptions.WithBodies) == DownloaderOptions.WithBodies)
             {
-                Logger.Warn("Downloading bodies");
+                if(Logger.IsDebug) Logger.Debug("Downloading bodies");
                 await DownloadBlocks(bestPeer, blocksRequest, linkedCancellation.Token).ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
-                Logger.Warn("Finished downloading bodies");
+                if(Logger.IsDebug) Logger.Debug("Finished downloading bodies");
             }
             else
             {
-                Logger.Warn("Downloading headers");
+                if(Logger.IsDebug) Logger.Debug("Downloading headers");
                 await DownloadHeaders(bestPeer, blocksRequest, linkedCancellation.Token).ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
-                Logger.Warn("Finished downloading headers");
+                if(Logger.IsDebug) Logger.Debug("Finished downloading headers");
             }
         }
 
