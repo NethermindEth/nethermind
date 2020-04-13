@@ -70,22 +70,26 @@ namespace Nethermind.Synchronization.ParallelSync
                     T request = await (Feed.PrepareRequest() ?? Task.FromResult<T>(default)); // just to avoid null refs
                     if (request == null)
                     {
+                        if (!Feed.IsMultiFeed)
+                        {
+                            Logger.Warn($"{Feed.GetType().Name} enqueued a null request.");
+                        }
+                        
                         await Task.Delay(50);
                         continue;
                     }
 
                     SyncPeerAllocation allocation = await Allocate(request);
                     PeerInfo allocatedPeer = allocation.Current; // TryGetCurrent?
-                    // if (Logger.IsWarn) Logger.Warn($"Alllocated {allocatedPeer} to {request}");
 
                     if (allocatedPeer != null)
                     {
                         Task task = Dispatch(allocatedPeer, request, cancellationToken);
                         if (!Feed.IsMultiFeed)
                         {
-                            Logger.Warn($"Awaiting single feed with allocated {allocatedPeer}");
+                            Logger.Warn($"Awaiting single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer}");
                             await task;
-                            Logger.Warn($"Single feed with allocated {allocatedPeer} has finished work");
+                            Logger.Warn($"Single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer} has been processed");
                         }
 
 #pragma warning disable 4014
@@ -169,6 +173,11 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private void SyncFeedOnStateChanged(object sender, SyncFeedStateEventArgs e)
         {
+            if (!Feed.IsMultiFeed)
+            {
+                Logger.Warn($"{Feed.GetType().Name} state changed to {e.NewState}");
+            }
+            
             SyncFeedState state = e.NewState;
             UpdateState(state);
         }
