@@ -47,9 +47,18 @@ namespace Nethermind.Synchronization.ParallelSync
 
         protected abstract Task Dispatch(PeerInfo peerInfo, T request, CancellationToken cancellationToken);
 
+        private bool isCanceled;
+        
         public async Task Start(CancellationToken cancellationToken)
         {
-            cancellationToken.Register(() => _dormantStateTask?.SetCanceled());
+            cancellationToken.Register(() =>
+            {
+                lock (_feedStateManipulation)
+                {
+                    isCanceled = true;
+                    _dormantStateTask?.SetCanceled();
+                }
+            });
 
             UpdateState(Feed.CurrentState);
             while (true)
@@ -59,13 +68,26 @@ namespace Nethermind.Synchronization.ParallelSync
                     break;
                 }
 
-                if (_currentFeedState == SyncFeedState.Dormant)
+                SyncFeedState currentStateLocal;
+                TaskCompletionSource<object> dormantTaskLocal;
+                lock (_feedStateManipulation)
+                {
+                    currentStateLocal = _currentFeedState;
+                    dormantTaskLocal = _dormantStateTask;
+                    if (isCanceled)
+                    {
+                        break;
+                    }
+                }
+
+                if (currentStateLocal == SyncFeedState.Dormant)
                 {
                     Logger.Info($"{GetType().Name} is going to sleep.");
-                    await _dormantStateTask.Task;
-                    Logger.Info($"{GetType().Name} got acivated.");
+                    await Task.Delay(50);
+                    await dormantTaskLocal.Task;
+                    Logger.Info($"{GetType().Name} got activated.");
                 }
-                else if (_currentFeedState == SyncFeedState.Active)
+                else if (currentStateLocal == SyncFeedState.Active)
                 {
                     T request = await (Feed.PrepareRequest() ?? Task.FromResult<T>(default)); // just to avoid null refs
                     if (request == null)
@@ -74,7 +96,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         {
                             Logger.Warn($"{Feed.GetType().Name} enqueued a null request.");
                         }
-                        
+
                         await Task.Delay(50);
                         continue;
                     }
@@ -122,7 +144,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         ReactToHandlingResult(result, null);
                     }
                 }
-                else if (_currentFeedState == SyncFeedState.Finished)
+                else if (currentStateLocal == SyncFeedState.Finished)
                 {
                     Logger.Info($"{GetType().Name} has finished work.");
                     break;
@@ -177,7 +199,7 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 Logger.Warn($"{Feed.GetType().Name} state changed to {e.NewState}");
             }
-            
+
             SyncFeedState state = e.NewState;
             UpdateState(state);
         }
@@ -187,15 +209,14 @@ namespace Nethermind.Synchronization.ParallelSync
             lock (_feedStateManipulation)
             {
                 _currentFeedState = state;
-                _dormantStateTask?.TrySetResult(null);
+                TaskCompletionSource<object> newDormantStateTask = null;
                 if (state == SyncFeedState.Dormant)
                 {
-                    _dormantStateTask = new TaskCompletionSource<object>();
+                    newDormantStateTask = new TaskCompletionSource<object>();
                 }
-                else if (state == SyncFeedState.Active)
-                {
-                    _dormantStateTask = null;
-                }
+
+                var previous = Interlocked.Exchange(ref _dormantStateTask, newDormantStateTask);
+                previous?.TrySetResult(null);
             }
         }
     }
