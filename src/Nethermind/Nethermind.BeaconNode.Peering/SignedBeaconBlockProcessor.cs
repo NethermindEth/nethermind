@@ -30,7 +30,7 @@ using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode.Peering
 {
-    public class SignedBeaconBlockProcessor : QueueProcessorBase<SignedBeaconBlock>
+    public class SignedBeaconBlockProcessor : QueueProcessorBase<(SignedBeaconBlock signedBeaconBlock, string? peerId)>
     {
         private readonly DataDirectory _dataDirectory;
         private readonly IFileSystem _fileSystem;
@@ -70,38 +70,45 @@ namespace Nethermind.BeaconNode.Peering
             }
         }
 
-        public void Enqueue(SignedBeaconBlock signedBeaconBlock)
+        public void Enqueue(SignedBeaconBlock signedBeaconBlock, string peerId)
         {
-            ChannelWriter.TryWrite(signedBeaconBlock);
+            ChannelWriter.TryWrite((signedBeaconBlock, peerId));
         }
 
-        protected override async Task ProcessItemAsync(SignedBeaconBlock rpcMessage)
+        public void EnqueueGossip(SignedBeaconBlock signedBeaconBlock)
+        {
+            ChannelWriter.TryWrite((signedBeaconBlock, null));
+        }
+
+        protected override async Task ProcessItemAsync((SignedBeaconBlock signedBeaconBlock, string? peerId) item)
         {
             try
             {
                 if (_logger.IsDebug())
-                    LogDebug.ProcessSignedBeaconBlock(_logger, rpcMessage.Message, null);
+                    LogDebug.ProcessSignedBeaconBlock(_logger, item.signedBeaconBlock.Message, item.peerId ?? "gossip",
+                        null);
 
                 if (_mothraConfigurationOptions.CurrentValue.LogSignedBeaconBlockJson)
                 {
                     string logDirectoryPath = GetLogDirectory();
-                    string fileName = string.Format("signedblock{0:0000}_{1}.json",
-                        (int) rpcMessage.Message.Slot,
-                        rpcMessage.Signature.ToString().Substring(0, 10));
+                    string fileName = string.Format("signedblock{0:0000}_{1}{2}.json",
+                        (int) item.signedBeaconBlock.Message.Slot,
+                        item.signedBeaconBlock.Signature.ToString().Substring(0, 10),
+                        item.peerId == null ? "" : "_" + item.peerId);
                     string path = _fileSystem.Path.Combine(logDirectoryPath, fileName);
                     using (Stream fileStream = _fileSystem.File.OpenWrite(path))
                     {
-                        await JsonSerializer.SerializeAsync(fileStream, rpcMessage, _jsonSerializerOptions)
+                        await JsonSerializer.SerializeAsync(fileStream, item.signedBeaconBlock, _jsonSerializerOptions)
                             .ConfigureAwait(false);
                     }
                 }
 
                 // Update the most recent slot seen (even if we can't add it to the chain yet, e.g. if we are missing prior blocks)
                 // Note: a peer could lie and send a signed block that isn't part of the chain (but it could lie on status as well)
-                _peerManager.UpdateMostRecentSlot(rpcMessage.Message.Slot);
+                _peerManager.UpdateMostRecentSlot(item.signedBeaconBlock.Message.Slot);
 
-                await _forkChoice.OnBlockAsync(_store, rpcMessage).ConfigureAwait(false);
-                
+                await _forkChoice.OnBlockAsync(_store, item.signedBeaconBlock).ConfigureAwait(false);
+
                 // NOTE: We don't know peer from Mothra for gossipped blocks, so can't penalise if there is an issue,
                 // however we could do for RPC responses if we wanted to.
 
@@ -110,7 +117,7 @@ namespace Nethermind.BeaconNode.Peering
             catch (Exception ex)
             {
                 if (_logger.IsError())
-                    Log.ProcessSignedBeaconBlockError(_logger, rpcMessage.Message, ex.Message, ex);
+                    Log.ProcessSignedBeaconBlockError(_logger, item.signedBeaconBlock.Message, ex.Message, ex);
             }
         }
 

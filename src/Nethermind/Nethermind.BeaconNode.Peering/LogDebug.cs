@@ -18,6 +18,7 @@ using System;
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 using Nethermind.Core2.P2p;
 using Nethermind.Core2.Types;
 
@@ -103,14 +104,24 @@ namespace Nethermind.BeaconNode.Peering
                 new EventId(6064, nameof(CreatedPeerSession)),
                 "Disconnecting peer {Peer} session {Session} with direction {ConnectionDirection}.");
         
-        public static readonly Action<ILogger, BeaconBlock, Exception?> ProcessSignedBeaconBlock =
-            LoggerMessage.Define<BeaconBlock>(LogLevel.Debug,
+        public static readonly Action<ILogger, BeaconBlock, string, Exception?> ProcessSignedBeaconBlock =
+            LoggerMessage.Define<BeaconBlock, string>(LogLevel.Debug,
                 new EventId(6065, nameof(ProcessSignedBeaconBlock)),
-                "Processing signed beacon block, {BeaconBlock}");
+                "Processing signed beacon block, {BeaconBlock}, from {BlockSource}");
         
         public static readonly Action<ILogger, string, Exception?> ProcessPeerDiscovered =
             LoggerMessage.Define<string>(LogLevel.Debug,
                 new EventId(6066, nameof(ProcessPeerDiscovered)),
                 "Processing peer discovered, {PeerId}");
+
+        public static readonly Action<ILogger, BeaconBlocksByRange, Exception?> ProcessBeaconBlocksByRange =
+            LoggerMessage.Define<BeaconBlocksByRange>(LogLevel.Debug,
+                new EventId(6078, nameof(ProcessBeaconBlocksByRange)),
+                "Processing beacon blocks by range request {BlockRoot}.");
+
+        public static readonly Action<ILogger, BeaconBlock, Root, Exception?> SendingRequestBlocksByRangeResponse =
+            LoggerMessage.Define<BeaconBlock, Root>(LogLevel.Debug,
+                new EventId(6079, nameof(SendingRequestBlocksByRangeResponse)),
+                "Sending (signed) beacon block {BeaconBlock} with root {BlockRoot}.");
     }
 }

@@ -19,7 +19,6 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core2;
-using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.P2p;
 using Nethermind.Core2.Types;
@@ -58,9 +57,13 @@ namespace Nethermind.BeaconNode.Peering
             {
                 if (rpcMessage.Direction == RpcDirection.Request)
                 {
+                    if (_logger.IsDebug())
+                        LogDebug.ProcessBeaconBlocksByRange(_logger, rpcMessage.Content, null);
+
                     Slot slot = new Slot(rpcMessage.Content.StartSlot +
                                          rpcMessage.Content.Step * (rpcMessage.Content.Count - 1));
-                    Stack<SignedBeaconBlock> signedBlocks = new Stack<SignedBeaconBlock>();
+                    Stack<(Root root, SignedBeaconBlock signedBlock)> signedBlocks =
+                        new Stack<(Root, SignedBeaconBlock)>();
                     // Search backwards from head for the requested slots
                     Root root = rpcMessage.Content.HeadBlockRoot;
                     while (slot >= rpcMessage.Content.StartSlot)
@@ -69,20 +72,26 @@ namespace Nethermind.BeaconNode.Peering
                         SignedBeaconBlock signedBlock = await _store.GetSignedBlockAsync(root);
                         if (signedBlock.Message.Slot == slot)
                         {
-                            signedBlocks.Push(signedBlock);
+                            signedBlocks.Push((root, signedBlock));
                         }
                         else
                         {
                             // block is skipped
+                            if (_logger.IsWarn())
+                                Log.RequestedBlockSkippedSlot(_logger, slot, rpcMessage.Content.HeadBlockRoot, null);
                         }
 
                         slot = slot - Slot.One;
                     }
 
                     // Send each block in a response chunk, in slot order
-                    foreach (SignedBeaconBlock signedBlock in signedBlocks)
+                    foreach (var data in signedBlocks)
                     {
-                        await _networkPeering.SendBlockAsync(rpcMessage.PeerId, signedBlock);
+                        if (_logger.IsDebug())
+                            LogDebug.SendingRequestBlocksByRangeResponse(_logger, data.signedBlock.Message, data.root,
+                                null);
+
+                        await _networkPeering.SendBlockAsync(rpcMessage.PeerId, data.signedBlock);
                     }
                 }
                 else

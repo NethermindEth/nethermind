@@ -91,8 +91,13 @@ namespace Nethermind.BeaconNode.Peering
 
         public static readonly Action<ILogger, string, Exception?> RpcResponseNotSentAsPeeeringNotStarted =
             LoggerMessage.Define<string>(LogLevel.Warning,
-                new EventId(4053, nameof(RpcResponseNotSentAsPeeeringNotStarted)),
+                new EventId(4054, nameof(RpcResponseNotSentAsPeeeringNotStarted)),
                 "RPC response '{Method}' not sent as peering not started yet.");
+
+        public static readonly Action<ILogger, Slot, Root, Exception?> RequestedBlockSkippedSlot =
+            LoggerMessage.Define<Slot, Root>(LogLevel.Warning,
+                new EventId(4055, nameof(RequestedBlockSkippedSlot)),
+                "Requested block missing for slot {Slot} from head {HeadRoot} (may be skipped slot).");
 
         // 5bxx error
 
