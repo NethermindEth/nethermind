@@ -193,6 +193,8 @@ namespace Nethermind.Synchronization.Peers
             {
                 int sleepingCount = 0;
                 int uninitializedCount = 0;
+                int okCount = 0;
+                int lowTotalDiff = 0;
                 
                 foreach ((_, PeerInfo peerInfo) in _peers)
                 {
@@ -212,12 +214,17 @@ namespace Nethermind.Synchronization.Peers
                      * I can think of no scenarios where lower difficulty node would be exceptionally useful
                      * Such nodes are not necessarily malicious or weak - they may be within their own sync processes.
                      */
-                    if (peerInfo.TotalDifficulty < (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0)) continue;
+                    if (peerInfo.TotalDifficulty < (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0))
+                    {
+                        lowTotalDiff++;
+                        continue;
+                    }
 
+                    okCount++;
                     yield return peerInfo;
                 }
                 
-                _logger.Warn($"Sleeping: {sleepingCount}, Uninitialized: {uninitializedCount}");
+                _logger.Warn($"Sleeping: {sleepingCount}, Uninitialized: {uninitializedCount}, Low Diff: {lowTotalDiff}, OK: {okCount}");
             }
         }
 
