@@ -58,9 +58,11 @@ namespace Nethermind.BeaconNode.Peering
             // NOTE: Currently just requests entire range, one at a time, to get small testnet working.
             // Will need more sophistication in future, e.g. request interleaved blocks and stuff.
 
+            // Start with the block for the next slot after our finalized state
+            Slot startSlot = finalizedSlot + Slot.One;
             ulong count = peerHeadSlot - finalizedSlot;
             ulong step = 1;
-            BeaconBlocksByRange beaconBlocksByRange = new BeaconBlocksByRange(peerHeadRoot, finalizedSlot, count, step);
+            BeaconBlocksByRange beaconBlocksByRange = new BeaconBlocksByRange(peerHeadRoot, startSlot, count, step);
 
             byte[] peerUtf8 = Encoding.UTF8.GetBytes(peerId);
             Span<byte> encoded = new byte[Ssz.Ssz.BeaconBlocksByRangeLength];
