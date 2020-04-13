@@ -220,12 +220,18 @@ namespace Nethermind.BeaconNode.Peering
         {
             try
             {
+                const int minimumSignedBeaconBlockLength =
+                    Ssz.Ssz.BlsSignatureLength + sizeof(ulong) + // Envelope
+                    Ssz.Ssz.SlotLength + Ssz.Ssz.RootLength * 2 + sizeof(ulong) + // BeaconBlock
+                    Ssz.Ssz.BlsSignatureLength + Ssz.Ssz.Bytes32Length + sizeof(ulong) * 6 + // BeaconBlockBody
+                    Ssz.Ssz.RootLength + sizeof(ulong) + Ssz.Ssz.Bytes32Length; // Eth1Data
                 string peerId = Encoding.UTF8.GetString(peerUtf8);
                 RpcDirection rpcDirection = requestResponseFlag == 0 ? RpcDirection.Request : RpcDirection.Response;
 
                 // Even though the value '/eth2/beacon_chain/req/status/1/' is sent, when Mothra calls the received event it is 'HELLO'
-                if (methodUtf8.SequenceEqual(MethodUtf8.Status)
-                    || methodUtf8.SequenceEqual(MethodUtf8.StatusMothraAlternative))
+                // if (methodUtf8.SequenceEqual(MethodUtf8.Status)
+                //     || methodUtf8.SequenceEqual(MethodUtf8.StatusMothraAlternative))
+                if (data.Length == Ssz.Ssz.PeeringStatusLength)
                 {
                     if (_logger.IsDebug())
                         LogDebug.RpcReceived(_logger, rpcDirection, requestResponseFlag, Encoding.UTF8.GetString(methodUtf8),
@@ -236,13 +242,15 @@ namespace Nethermind.BeaconNode.Peering
                         new RpcMessage<PeeringStatus>(peerId, rpcDirection, peeringStatus);
                     _rpcPeeringStatusProcessor.Enqueue(statusRpcMessage);
                 }
-                else if (methodUtf8.SequenceEqual(MethodUtf8.BeaconBlocksByRange))
+                //else if (methodUtf8.SequenceEqual(MethodUtf8.BeaconBlocksByRange))
+                else if (data.Length == Ssz.Ssz.BeaconBlocksByRangeLength || data.Length >= minimumSignedBeaconBlockLength)
                 {
                     if (_logger.IsDebug())
                         LogDebug.RpcReceived(_logger, rpcDirection, requestResponseFlag, Encoding.UTF8.GetString(methodUtf8),
                             peerId, data.Length, nameof(MethodUtf8.BeaconBlocksByRange), null);
 
-                    if (rpcDirection == RpcDirection.Request)
+                    //if (rpcDirection == RpcDirection.Request)
+                    if (data.Length == Ssz.Ssz.BeaconBlocksByRangeLength)
                     {
                         BeaconBlocksByRange beaconBlocksByRange = Ssz.Ssz.DecodeBeaconBlocksByRange(data);
                         RpcMessage<BeaconBlocksByRange> rpcMessage =
