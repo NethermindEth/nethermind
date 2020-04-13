@@ -23,29 +23,25 @@ namespace Nethermind.Synchronization.ParallelSync
     {
         None = 0,
         /// <summary>
-        /// Just after the node is launched and it synchronizes blocks from the DB (before going to network sync)
-        /// </summary>
-        DbSync = 1,
-        /// <summary>
         /// First stage of fast sync that downloads headers, bodies and receipts.
         /// </summary>
-        FastBlocks = 2,
+        FastBlocks = 1,
         /// <summary>
         /// A standard fast sync mode before the peers head - 32 (threshold). It happens after the fast blocks finishes to download from pivot downwards. By default the picot for fast blocks is 0 so the fast blocks finish immediately. 
         /// </summary>
-        FastSync = 4,
+        FastSync = 2,
         /// <summary>
         /// This is the stage of the fast sync when all the trie nodes are downloaded. The node can keep switching between StateNodes and FastSync while it has to catch up with the Head - 32 due to peers not returning old trie nodes.
         /// </summary>
-        StateNodes = 8,
+        StateNodes = 4,
         /// <summary>
         /// This is either a standard full archive sync from genesis or full sync after StateNodes finish.
         /// </summary>
-        Full = 16,
+        Full = 8,
         /// <summary>
         /// Beam sync is not implemented yet.
         /// </summary>
-        Beam = 32,
-        All = 63
+        Beam = 16,
+        All = 31
     }
 }

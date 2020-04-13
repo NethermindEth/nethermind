@@ -172,7 +172,7 @@ namespace Nethermind.Blockchain
             {
                 throw new InvalidOperationException($"Best known is {BestKnownNumber}");
             }
-            
+
             for (int i = 0; i < 2 * 1024; i++)
             {
                 try
@@ -338,7 +338,7 @@ namespace Nethermind.Blockchain
                 _logger.Info($"Canceled visiting blocks in DB at block {blockNumber}");
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Completed visiting blocks in DB at block {blockNumber} - best known {BestKnownNumber}");            
+            if (_logger.IsDebug) _logger.Debug($"Completed visiting blocks in DB at block {blockNumber} - best known {BestKnownNumber}");
         }
 
         public async Task LoadBlocksFromDb(
@@ -424,6 +424,10 @@ namespace Nethermind.Blockchain
 
                 await VisitBlocks(startBlockNumber.Value, blocksToLoad, BlockFound, HeaderFound, NoneFound, cancellationToken);
             }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error("Failed to load blocks from DB", ex);
+            }
             finally
             {
                 CanAcceptNewBlocks = true;
@@ -446,7 +450,7 @@ namespace Nethermind.Blockchain
             {
                 SetTotalDifficulty(header);
             }
-            
+
             // validate hash here
             Rlp newRlp = _headerDecoder.Encode(header);
             _headerDb.Set(header.Hash, newRlp.Bytes);
@@ -569,7 +573,7 @@ namespace Nethermind.Blockchain
 
                 return AddBlockResult.UnknownParent;
             }
-            
+
             SetTotalDifficulty(header);
 
             if (block != null && !isKnown)
@@ -1062,11 +1066,10 @@ namespace Nethermind.Blockchain
 
             if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.Short)} added to main chain");
         }
-
-        [Todo(Improve.Refactor, "Look at this magic -1 behaviour, never liked it, now when it is split between BestKnownNumber and Head it is even worse")]
+        
         private long CountKnownAheadOfHead()
         {
-            long headNumber = Head?.Number ?? -1;
+            long headNumber = Head?.Number ?? 0;
             return BestKnownNumber - headNumber;
         }
 
@@ -1256,7 +1259,7 @@ namespace Nethermind.Blockchain
             {
                 return null;
             }
-            
+
             bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) == BlockTreeLookupOptions.None;
             bool requiresCanonical = (options & BlockTreeLookupOptions.RequireCanonical) == BlockTreeLookupOptions.RequireCanonical;
 
@@ -1300,7 +1303,7 @@ namespace Nethermind.Blockchain
             {
                 return;
             }
-            
+
             if (_logger.IsTrace)
             {
                 _logger.Trace($"Calculating total difficulty for {header}");
@@ -1351,12 +1354,12 @@ namespace Nethermind.Blockchain
         {
             int deleted = 0;
             endNumber ??= BestKnownNumber;
-            
+
             if (endNumber - startNumber < 0)
             {
                 throw new ArgumentException("Start number must be equal or greater end number.", nameof(startNumber));
             }
-            
+
             if (endNumber - startNumber > 50000)
             {
                 throw new ArgumentException($"Cannot delete that many blocks at once (start: {startNumber}, end {endNumber}).", nameof(startNumber));
@@ -1368,7 +1371,7 @@ namespace Nethermind.Blockchain
             }
 
             Block newHeadBlock = null;
-            
+
             // we are running these checks before all the deletes
             if (Head.Number >= startNumber)
             {
@@ -1389,7 +1392,7 @@ namespace Nethermind.Blockchain
                     {
                         continue;
                     }
-                    
+
                     _chainLevelInfoRepository.Delete(i);
                     deleted++;
 

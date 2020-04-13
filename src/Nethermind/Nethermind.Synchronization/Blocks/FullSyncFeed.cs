@@ -36,7 +36,7 @@ namespace Nethermind.Synchronization.Blocks
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;
         }
 
-        private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
+        private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
         {
             if ((e.Current & SyncMode.Full) == SyncMode.Full)
             {
@@ -46,7 +46,7 @@ namespace Nethermind.Synchronization.Blocks
 
         private static DownloaderOptions BuildOptions()
         {
-            return DownloaderOptions.WithBodies;
+            return DownloaderOptions.WithBodies | DownloaderOptions.Process;
         }
 
         public override Task<BlocksRequest> PrepareRequest()

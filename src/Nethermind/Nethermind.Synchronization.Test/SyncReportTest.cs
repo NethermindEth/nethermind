@@ -41,11 +41,11 @@ namespace Nethermind.Synchronization.Test
             
             Queue<SyncMode> _syncModes = new Queue<SyncMode>();
             _syncModes.Enqueue(SyncMode.None);
-            _syncModes.Enqueue(SyncMode.DbSync);
             _syncModes.Enqueue(SyncMode.FastSync);
             _syncModes.Enqueue(SyncMode.Full);
             _syncModes.Enqueue(SyncMode.FastBlocks);
             _syncModes.Enqueue(SyncMode.StateNodes);
+            _syncModes.Enqueue(SyncMode.Beam);
 
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.FastBlocks = fastBlocks;

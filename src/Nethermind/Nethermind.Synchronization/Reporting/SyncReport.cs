@@ -71,7 +71,10 @@ namespace Nethermind.Synchronization.Reporting
 
         private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
         {
-            _logger.Info($"Sync mode changed from {e.Previous} to {e.Current}");
+            if (e.Previous != e.Current)
+            {
+                if(_logger.IsInfo) _logger.Info($"Sync mode changed from {e.Previous} to {e.Current}");
+            }
         }
 
         private DateTime StartTime { get; }

@@ -97,6 +97,11 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public long FindBestFullBlock() => Math.Min(FindBestHeader(), _blockTree.BestSuggestedBody?.Number ?? 0); // avoiding any potential concurrency issue
 
+        public bool IsLoadingBlocksFromDb()
+        {
+            return !_blockTree.CanAcceptNewBlocks;
+        }
+
         public long FindBestProcessedBlock() => _blockTree.Head?.Number ?? -1;
         
         public bool IsFastBlocksFinished()
