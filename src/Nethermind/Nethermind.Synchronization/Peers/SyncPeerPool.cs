@@ -29,6 +29,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -444,6 +445,14 @@ namespace Nethermind.Synchronization.Peers
             _upgradeTimer.Start();
         }
 
+        private bool CanBeUsefulForFastBlocks(long blockNumber)
+        {
+            long lowestInsertedBody = _blockTree.LowestInsertedBody?.Number ?? long.MaxValue;
+            long lowestInsertedHeader = _blockTree.LowestInsertedHeader?.Number ?? long.MaxValue;
+            return lowestInsertedBody > 1 && lowestInsertedBody < blockNumber ||
+                   lowestInsertedHeader > 1 && lowestInsertedHeader < blockNumber;
+        }
+        
         internal void DropUselessPeers(bool force = false)
         {
             if (!force && DateTime.UtcNow - _lastUselessPeersDropTime < TimeSpan.FromSeconds(30))
@@ -460,35 +469,43 @@ namespace Nethermind.Synchronization.Peers
             UInt256 ourDifficulty = _blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero;
             foreach (PeerInfo peerInfo in AllPeers)
             {
-                if (peerInfo.HeadNumber > ourNumber)
-                    // as long as we are behind we can use the stuck peers
-                    continue;
-
                 if (peerInfo.HeadNumber == 0
                     && peerInfo.IsInitialized
                     && ourNumber != 0
                     && peerInfo.PeerClientType != PeerClientType.Nethermind)
                     // we know that Nethermind reports 0 HeadNumber when it is in sync (and it can still serve a lot of data to other nodes)
                 {
-                    peersDropped++;
-                    peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / HEAD 0");
+                    if(!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
+                    {
+                        peersDropped++;
+                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / HEAD 0");
+                    }
                 }
-                else if (peerInfo.HeadNumber == 1920000) // mainnet, stuck Geth nodes
+                else if (peerInfo.HeadNumber == 1920000 && _blockTree.ChainId == ChainId.MainNet) // mainnet, stuck Geth nodes
                 {
-                    peersDropped++;
-                    peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 1920000");
+                    if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
+                    {
+                        peersDropped++;
+                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 1920000");
+                    }
                 }
-                else if (peerInfo.HeadNumber == 7280022) // mainnet, stuck Geth nodes
+                else if (peerInfo.HeadNumber == 7280022 && _blockTree.ChainId == ChainId.MainNet) // mainnet, stuck Geth nodes
                 {
-                    peersDropped++;
-                    peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 7280022");
+                    if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
+                    {
+                        peersDropped++;
+                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 7280022");
+                    }
                 }
                 else if (peerInfo.HeadNumber > ourNumber + 1024L && peerInfo.TotalDifficulty < ourDifficulty)
                 {
-                    // probably Ethereum Classic nodes tht remain connected after we went pass the DAO
-                    // worth to find a better way to discard them at the right time
-                    peersDropped++;
-                    peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "STRAY PEER");
+                    if (!CanBeUsefulForFastBlocks(MainNetSpecProvider.Instance.DaoBlockNumber ?? 0))
+                    {
+                        // probably Ethereum Classic nodes tht remain connected after we went pass the DAO
+                        // worth to find a better way to discard them at the right time
+                        peersDropped++;
+                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "STRAY PEER");
+                    }
                 }
             }
 
