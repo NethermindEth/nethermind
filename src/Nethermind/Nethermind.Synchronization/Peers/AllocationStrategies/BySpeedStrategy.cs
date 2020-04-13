@@ -43,11 +43,6 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
 
             foreach (PeerInfo info in peers)
             {
-                if (info.HeadNumber < (blockTree.BestSuggestedHeader?.Number ?? 0) - 1000000)
-                {
-                    Console.WriteLine($"Thinking of peer with number {info.HeadNumber}");
-                }
-                
                 (this as IPeerAllocationStrategy).CheckAsyncState(info);
 
                 long averageTransferSpeed = nodeStatsManager.GetOrAdd(info.SyncPeer.Node).GetAverageTransferSpeed() ?? 0;
@@ -57,11 +52,6 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
                 }
             }
 
-            if (bestPeer.Info.HeadNumber < (blockTree.BestSuggestedHeader?.Number ?? 0) - 1000000)
-            {
-                Console.WriteLine($"Chose peer with number {bestPeer.Info.HeadNumber}");
-            }
-            
             return bestPeer.Info;
         }
     }
