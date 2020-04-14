@@ -118,7 +118,7 @@ namespace Nethermind.JsonRpc
         {
             var expectedParameters = method.Info.GetParameters();
             var providedParameters = request.Params;
-            if (_logger.IsInfo) _logger.Info($"Executing JSON RPC call {methodName} with params {(providedParameters == null ? string.Empty : string.Join(',', providedParameters))}");
+            if (_logger.IsInfo) _logger.Info($"Executing JSON RPC call {methodName}{(providedParameters == null ? string.Empty : $" with params {string.Join(',', providedParameters)}")}");
 
             int missingParamsCount = expectedParameters.Length - (providedParameters?.Length ?? 0) + providedParameters?.Count(string.IsNullOrWhiteSpace) ?? 0;
 
