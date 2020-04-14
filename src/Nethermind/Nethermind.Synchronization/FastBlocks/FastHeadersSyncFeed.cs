@@ -286,7 +286,7 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             if (batch.Response.Length > batch.RequestSize)
             {
-                if (_logger.IsWarn) _logger.Warn($"Peer sent too long response ({batch.Response.Length}) to {batch}");
+                if (_logger.IsDebug) _logger.Debug($"Peer sent too long response ({batch.Response.Length}) to {batch}");
                 _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, $"response too long ({batch.Response.Length})");
                 _pending.Enqueue(batch);
                 return 0;
@@ -319,7 +319,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     {
                         if (batch.ResponseSourcePeer != null)
                         {
-                            if (_logger.IsWarn) _logger.Warn($"{batch} - reporting INVALID hash");
+                            if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID hash");
                             _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, "first hash inconsistent with request");
                         }
 
@@ -331,14 +331,14 @@ namespace Nethermind.Synchronization.FastBlocks
                     {
                         if (header.Number == (_blockTree.LowestInsertedHeader?.Number ?? _pivotNumber + 1) - 1)
                         {
-                            if (_logger.IsWarn) _logger.Warn($"{batch} - ended up IGNORED - different branch - number {header.Number} was {header.Hash} while expected {_nextHeaderHash}");
+                            if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch - number {header.Number} was {header.Hash} while expected {_nextHeaderHash}");
                             _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, "headers - different branch");
                             break;
                         }
 
                         if (header.Number == _blockTree.LowestInsertedHeader?.Number)
                         {
-                            if (_logger.IsWarn) _logger.Warn($"{batch} - ended up IGNORED - different branch");
+                            if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch");
                             _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, "headers - different branch");
                             break;
                         }
@@ -377,7 +377,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     {
                         if (batch.ResponseSourcePeer != null)
                         {
-                            if (_logger.IsWarn) _logger.Warn($"{batch} - reporting INVALID inconsistent");
+                            if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID inconsistent");
                             _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, "headers - response not matching request");
                         }
 
@@ -391,7 +391,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 {
                     if (batch.ResponseSourcePeer != null)
                     {
-                        if (_logger.IsWarn) _logger.Warn($"{batch} - reporting INVALID bad block");
+                        if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID bad block");
                         _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, $"invalid header {header.ToString(BlockHeader.Format.Short)}");
                     }
 
@@ -441,7 +441,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 if (batch.ResponseSourcePeer != null)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"{batch} - reporting no progress");
+                    if (_logger.IsDebug) _logger.Debug($"{batch} - reporting no progress");
                     _syncPeerPool.ReportNoSyncProgress(batch.ResponseSourcePeer);
                 }
             }
