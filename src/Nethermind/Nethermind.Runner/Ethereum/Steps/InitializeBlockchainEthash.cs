@@ -16,8 +16,7 @@
 
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Mining;
-using Nethermind.Consensus.Mining.Difficulty;
+using Nethermind.Consensus.Ethash;
 using Nethermind.Runner.Ethereum.Context;
 
 namespace Nethermind.Runner.Ethereum.Steps

@@ -21,6 +21,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
 [assembly: InternalsVisibleTo("Ethereum.Trie.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 
 namespace Nethermind.Trie
 {

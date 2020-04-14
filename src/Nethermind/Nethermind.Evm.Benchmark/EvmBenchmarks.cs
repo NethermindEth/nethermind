@@ -34,11 +34,11 @@ namespace Nethermind.Evm.Benchmark
     {
         public static byte[] ByteCode { get; set; }
 
-        private IReleaseSpec _spec = MainNetSpecProvider.Instance.GetSpec(MainNetSpecProvider.IstanbulBlockNumber);
+        private IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.IstanbulBlockNumber);
         private ITxTracer _txTracer = NullTxTracer.Instance;
         private ExecutionEnvironment _environment;
         private IVirtualMachine _virtualMachine;
-        private BlockHeader _header = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainNetSpecProvider.IstanbulBlockNumber, Int64.MaxValue, UInt256.One, Bytes.Empty);
+        private BlockHeader _header = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.IstanbulBlockNumber, Int64.MaxValue, UInt256.One, Bytes.Empty);
         private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
         private EvmState _evmState;
         private StateProvider _stateProvider;
@@ -57,7 +57,7 @@ namespace Nethermind.Evm.Benchmark
             _stateProvider.Commit(_spec);
 
             _storageProvider = new StorageProvider(stateDb, _stateProvider, LimboLogs.Instance);
-            _virtualMachine = new VirtualMachine(_stateProvider, _storageProvider, _blockhashProvider, MainNetSpecProvider.Instance, LimboLogs.Instance);
+            _virtualMachine = new VirtualMachine(_stateProvider, _storageProvider, _blockhashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
             
             _environment = new ExecutionEnvironment();
             _environment.ExecutingAccount = Address.Zero;

@@ -17,10 +17,10 @@
 using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -33,6 +33,7 @@ using Nethermind.Runner.Ethereum.Context;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Store.Bloom;
+using Nethermind.Synchronization.BeamSync;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 

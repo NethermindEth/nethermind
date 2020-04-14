@@ -28,7 +28,7 @@ namespace Nethermind.Evm.Test
     public class CmpTests : VirtualMachineTestsBase
     {
         private readonly bool _simdDisabled;
-        protected override long BlockNumber => MainNetSpecProvider.ConstantinopleFixBlockNumber;
+        protected override long BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
 
         private void AssertEip1014(Address address, byte[] code)
         {

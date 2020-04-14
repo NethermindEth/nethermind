@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Tracing;
@@ -63,7 +64,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             var readOnlyTree = new ReadOnlyBlockTree(_blockTree);
             var readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             var readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree, _specProvider, _logManager);
-            var readOnlyChainProcessingEnv = new ReadOnlyChainProcessingEnv(readOnlyTxProcessingEnv, AlwaysValidBlockValidator.Instance, _recoveryStep, _rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor), _receiptStorage, readOnlyDbProvider, _specProvider, _logManager);
+            var readOnlyChainProcessingEnv = new ReadOnlyChainProcessingEnv(readOnlyTxProcessingEnv, Always.Valid, _recoveryStep, _rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor), _receiptStorage, readOnlyDbProvider, _specProvider, _logManager);
             Tracer tracer = new Tracer(readOnlyChainProcessingEnv.StateProvider, readOnlyChainProcessingEnv.ChainProcessor);
             
             return new TraceModule(_receiptStorage, tracer, readOnlyTree);

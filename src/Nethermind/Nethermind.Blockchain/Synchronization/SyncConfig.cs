@@ -21,6 +21,11 @@ namespace Nethermind.Blockchain.Synchronization
     [ConfigCategory(Description = "Configuration of the synchronization modes.")]
     public class SyncConfig : ISyncConfig
     {
+        public static ISyncConfig Default { get; } = new SyncConfig();
+        public static ISyncConfig WithFullSyncOnly { get; } = new SyncConfig {FastSync = false, FastBlocks = false};
+        public static ISyncConfig WithFastSync { get; } = new SyncConfig {FastSync = true};
+        public static ISyncConfig WithFastBlocks { get; } = new SyncConfig {FastSync = true, FastBlocks = true};
+
         public bool SynchronizationEnabled { get; set; } = true;
         public long? FastSyncCatchUpHeightDelta { get; set; }
         public bool FastBlocks { get; set; }
@@ -30,7 +35,7 @@ namespace Nethermind.Blockchain.Synchronization
         public bool DownloadBodiesInFastSync { get; set; } = true;
         public bool DownloadReceiptsInFastSync { get; set; } = true;
         public string PivotTotalDifficulty { get; set; }
-        public string PivotNumber { get; set;}
-        public string PivotHash { get; set;}
+        public string PivotNumber { get; set; }
+        public string PivotHash { get; set; }
     }
 }

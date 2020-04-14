@@ -5,7 +5,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.DataMarketplace.Consumers.Deposits.Queries;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.Repositories;
 using Nethermind.DataMarketplace.Core.Domain;
-using Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.Mongo;
 using NUnit.Framework;
 
 namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.Mongo

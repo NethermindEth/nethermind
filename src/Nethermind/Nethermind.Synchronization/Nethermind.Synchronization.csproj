@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>netcoreapp3.1</TargetFramework>
@@ -6,7 +6,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
-      <ProjectReference Include="..\Nethermind.Stats\Nethermind.Stats.csproj" />
+      <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
     </ItemGroup>
 
 </Project>

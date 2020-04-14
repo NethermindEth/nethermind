@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Blockchain.Find;
 
 namespace Nethermind.Blockchain.Filters
 {

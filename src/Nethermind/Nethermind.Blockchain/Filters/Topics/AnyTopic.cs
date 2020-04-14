@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Filters.Topics
@@ -23,7 +24,9 @@ namespace Nethermind.Blockchain.Filters.Topics
         public static readonly AnyTopic Instance = new AnyTopic(); 
         
         public override bool Accepts(Keccak topic) => true;
+        public override bool Accepts(ref KeccakStructRef topic) => true;
 
-        public override bool Matches(Core.Bloom bloom) => true;
+        public override bool Matches(Bloom bloom) => true;
+        public override bool Matches(ref BloomStructRef bloom) => true;
     }
 }

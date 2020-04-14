@@ -65,26 +65,26 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/foundation.json");
             ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
             ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
-            MainNetSpecProvider mainnet = MainNetSpecProvider.Instance;
+            MainnetSpecProvider mainnet = MainnetSpecProvider.Instance;
 
             var blockNumbersToTest = new List<long>
             {
                 0,
                 1,
-                MainNetSpecProvider.HomesteadBlockNumber - 1,
-                MainNetSpecProvider.HomesteadBlockNumber,
-                MainNetSpecProvider.TangerineWhistleBlockNumber - 1,
-                MainNetSpecProvider.TangerineWhistleBlockNumber,
-                MainNetSpecProvider.SpuriousDragonBlockNumber - 1,
-                MainNetSpecProvider.SpuriousDragonBlockNumber,
-                MainNetSpecProvider.ByzantiumBlockNumber - 1,
-                MainNetSpecProvider.ByzantiumBlockNumber,
-                MainNetSpecProvider.ConstantinopleFixBlockNumber - 1,
-                MainNetSpecProvider.ConstantinopleFixBlockNumber,
-                MainNetSpecProvider.IstanbulBlockNumber - 1,
-                MainNetSpecProvider.IstanbulBlockNumber,
-                MainNetSpecProvider.MuirGlacierBlockNumber - 1,
-                MainNetSpecProvider.MuirGlacierBlockNumber,
+                MainnetSpecProvider.HomesteadBlockNumber - 1,
+                MainnetSpecProvider.HomesteadBlockNumber,
+                MainnetSpecProvider.TangerineWhistleBlockNumber - 1,
+                MainnetSpecProvider.TangerineWhistleBlockNumber,
+                MainnetSpecProvider.SpuriousDragonBlockNumber - 1,
+                MainnetSpecProvider.SpuriousDragonBlockNumber,
+                MainnetSpecProvider.ByzantiumBlockNumber - 1,
+                MainnetSpecProvider.ByzantiumBlockNumber,
+                MainnetSpecProvider.ConstantinopleFixBlockNumber - 1,
+                MainnetSpecProvider.ConstantinopleFixBlockNumber,
+                MainnetSpecProvider.IstanbulBlockNumber - 1,
+                MainnetSpecProvider.IstanbulBlockNumber,
+                MainnetSpecProvider.MuirGlacierBlockNumber - 1,
+                MainnetSpecProvider.MuirGlacierBlockNumber,
                 100000000, // far in the future
             };
             

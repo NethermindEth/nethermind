@@ -384,7 +384,12 @@ namespace Nethermind.TxPool
         {
             if (!_transactions.TryGetValue(hash, out transaction))
             {
-                transaction = _txStorage.Get(hash);
+                // commented out as it puts too much pressure on the database
+                // and it not really required in any scenario
+                  // * tx recovery usually will fetch from pending
+                  // * get tx via RPC usually will fetch from block or from pending
+                  // * internal tx pool scenarios are handled directly elsewhere
+                // transaction = _txStorage.Get(hash);
             }
 
             return transaction != null;

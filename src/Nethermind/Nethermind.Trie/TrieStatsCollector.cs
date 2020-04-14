@@ -24,7 +24,7 @@ namespace Nethermind.Trie
     {
         private readonly IKeyValueStore _codeKeyValueStore;
         private int _lastAccountNodeCount = 0;
-        
+
         private readonly ILogger _logger;
 
         public TrieStatsCollector(IKeyValueStore codeKeyValueStore, ILogManager logManager)
@@ -32,7 +32,7 @@ namespace Nethermind.Trie
             _codeKeyValueStore = codeKeyValueStore ?? throw new ArgumentNullException(nameof(codeKeyValueStore));
             _logger = logManager.GetClassLogger();
         }
-        
+
         public TrieStats Stats { get; } = new TrieStats();
 
         public bool ShouldVisit(Keccak nextNode)
@@ -69,7 +69,7 @@ namespace Nethermind.Trie
         }
 
         public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
-                 {
+        {
             if (trieVisitContext.IsStorage)
             {
                 Stats.StorageExtensionCount++;
@@ -79,7 +79,7 @@ namespace Nethermind.Trie
                 Stats.StateExtensionCount++;
             }
         }
-        
+
         public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null)
         {
             if (Stats.NodesCount - _lastAccountNodeCount > 100000)
@@ -87,7 +87,7 @@ namespace Nethermind.Trie
                 _lastAccountNodeCount = Stats.NodesCount;
                 _logger.Warn($"Collected info from {Stats.NodesCount} nodes. Missing CODE {Stats.MissingCode} STATE {Stats.MissingState} STORAGE {Stats.MissingStorage}");
             }
-            
+
             if (trieVisitContext.IsStorage)
             {
                 Stats.StorageLeafCount++;
@@ -97,7 +97,7 @@ namespace Nethermind.Trie
                 Stats.AccountCount++;
             }
         }
-        
+
         public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext)
         {
             byte[] code = _codeKeyValueStore[codeHash.Bytes];
