@@ -1,8 +1,12 @@
 name: Publish Debian arm32 image to docker registry
 
+# on:
+#   repository_dispatch:
+#     types: docker_arm32_debian
 on:
-  repository_dispatch:
-    types: docker_arm32_debian
+  push:
+    tags:
+    - '*'
 
 jobs:
   arm32-build:

@@ -1,9 +1,12 @@
 name: Publish Alpine arm64 image to docker registry
 
+# on:
+#   repository_dispatch:
+#     types: docker_arm64_alpine
 on:
-  repository_dispatch:
-    types: docker_arm64_alpine
-
+  push:
+    tags:
+    - '*'
 jobs:
   arm64-alpine-build:
     runs-on: ubuntu-latest

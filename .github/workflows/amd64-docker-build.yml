@@ -1,8 +1,12 @@
 name: Publish Debian amd64 image to docker registry
 
+# on:
+#   repository_dispatch:
+#     types: docker_amd64_debian
 on:
-  repository_dispatch:
-    types: docker_amd64_debian
+  push:
+    tags:
+    - '*'
 
 jobs:
   amd64-build:
