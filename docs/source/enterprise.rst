@@ -6,14 +6,14 @@ Nethermind supports clients through monitoring their Ethereum Nodes with a nice 
 Seq 
 ^^^
 
-With `Seq <https://datalust.co/seq>`_  we can create a visibility to identify and diagnose problems in Nethermind. We can setup some useful dashboards to monitor node's behaviour and also 
-send alerts when some critical errors occurs. With the help of NLog logging the application logs are being sent over to our Seq instance to maintenance client's nodes 
-and solve a wide range of production issues and outages. We can easily query over the events by simply writing SQL queries.
+With `Seq <https://datalust.co/seq>`_  you can quickly identify and diagnose problems with your Nethermind nodes. You can setup dashboards to monitor node's behaviour and also send alerts whenever critical errors occur. With the help of NLog logging the application logs are being sent over to a Seq instance to enable monitoring. You can easily search through the events by simply writing SQL queries.
+
+Clients can entrust monitoring and support of the nodes to us or configure their own dashboard and Seq tools. Nethermind team can use Seq dashboards and alerts to quickly address any production issues and outages.
 
 Dashboards and Alerts
 ---------------------
 
-In Seq we are able to visualize events data with some simple charts. They're very useful when it comes to alert the Team when something wrong happens with nodes.
+In Seq we are able to visualize events data with simple charts. They're very useful when it comes to alert the Team when something wrong happens with nodes.
 
 .. image:: seq/seq-dashboard1.png
 
