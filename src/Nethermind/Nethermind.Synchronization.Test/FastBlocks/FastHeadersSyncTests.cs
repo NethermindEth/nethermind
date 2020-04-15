@@ -89,6 +89,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1000).TestObject);
             ISyncReport report = Substitute.For<ISyncReport>();
+            report.HeadersInQueue.Returns(new MeasuredProgress());
             MeasuredProgress measuredProgress = new MeasuredProgress();
             report.FastBlocksHeaders.Returns(measuredProgress);
             FastHeadersSyncFeed feed = new FastHeadersSyncFeed(blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig{FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000"}, report, LimboLogs.Instance);

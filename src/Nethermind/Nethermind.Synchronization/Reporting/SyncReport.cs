@@ -36,9 +36,9 @@ namespace Nethermind.Synchronization.Reporting
         private SyncPeersReport _syncPeersReport;
         private int _reportId;
         private const int SyncReportFrequency = 1;
-        private const int NoProgressStateSyncReportFrequency = 120;
-        private const int SyncShortPeersReportFrequency = 1200;
-        private const int SyncFullPeersReportFrequency = 30;
+        private const int NoProgressStateSyncReportFrequency = 30;
+        private const int SyncShortPeersReportFrequency = 60;
+        private const int SyncFullPeersReportFrequency = 120;
 
         public double TickTime
         {
