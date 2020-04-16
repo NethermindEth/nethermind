@@ -846,7 +846,7 @@ namespace Nethermind.Blockchain.Test
             tree.DeleteInvalidBlock(block2);
 
             Assert.AreEqual(block1.Number, tree.BestKnownNumber);
-            Assert.AreEqual(block1.Header, tree.Head);
+            Assert.AreEqual(block1.Header, tree.Head?.Header);
             Assert.AreEqual(block1.Header, tree.BestSuggestedHeader);
         }
 
@@ -1000,7 +1000,7 @@ namespace Nethermind.Blockchain.Test
             Assert.Null(blockInfosDb.Get(5), "level 5");
 
             Assert.AreEqual(2L, tree.BestKnownNumber, "best known");
-            Assert.AreEqual(block2.Header, tree.Head, "head");
+            Assert.AreEqual(block2.Header, tree.Head?.Header, "head");
             Assert.AreEqual(block2.Hash, tree.BestSuggestedHeader.Hash, "suggested");
         }
 
@@ -1033,7 +1033,7 @@ namespace Nethermind.Blockchain.Test
             tree.DeleteInvalidBlock(block3bad);
 
             Assert.AreEqual(5L, tree.BestKnownNumber, "best known");
-            Assert.AreEqual(block5.Header, tree.Head, "head");
+            Assert.AreEqual(block5.Header, tree.Head?.Header, "head");
             Assert.AreEqual(block5.Hash, tree.BestSuggestedHeader.Hash, "suggested");
         }
 
