@@ -19,6 +19,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -143,6 +144,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
                     if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, getReceiptsMessage.ToString());
                     Handle(getReceiptsMessage);
                     break;
+                case LesMessageCode.GetContractCodes:
+                    GetContractCodesMessage getContractCodesMessage = Deserialize<GetContractCodesMessage>(message.Content);
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, getContractCodesMessage.ToString());
+                    Handle(getContractCodesMessage);
+                    break;
             }
         }
 
@@ -217,6 +223,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             Eth.V63.ReceiptsMessage ethReceiptsMessage = FulfillReceiptsRequest(getReceipts.EthMessage);
             // todo - implement cost tracking
             Send(new ReceiptsMessage(ethReceiptsMessage, getReceipts.RequestId, int.MaxValue));
+        }
+
+        public void Handle(GetContractCodesMessage getContractCodes)
+        {
+            var codes = SyncServer.GetNodeData(getContractCodes.RequestAddresses, NodeDataType.Code);
+            // todo - implement cost tracking
+            Send(new ContractCodesMessage(codes, getContractCodes.RequestId, int.MaxValue));
         }
 
         public override bool HasAgreedCapability(Capability capability) => false;

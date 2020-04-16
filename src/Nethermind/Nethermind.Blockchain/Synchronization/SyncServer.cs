@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -281,14 +282,19 @@ namespace Nethermind.Blockchain.Synchronization
             return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
         }
 
-        public byte[][] GetNodeData(IList<Keccak> keys)
+        public byte[][] GetNodeData(IList<Keccak> keys, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
         {
             var values = new byte[keys.Count][];
             for (int i = 0; i < keys.Count; i++)
             {
                 IDb stateDb = _stateDb.Innermost;
                 IDb codeDb = _codeDb.Innermost;
-                values[i] = stateDb.Get(keys[i]) ?? codeDb.Get(keys[i]);
+
+                values[i] = null;
+                if (includedTypes.HasFlag(NodeDataType.State))
+                    values[i] = stateDb.Get(keys[i]);
+                if (values[i] == null && includedTypes.HasFlag(NodeDataType.Code))
+                    values[i] = codeDb.Get(keys[i]);
             }
 
             return values;
