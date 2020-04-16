@@ -20,79 +20,73 @@ using System.Numerics;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Core;
+using Nethermind.Serialization.Json.Abi;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class RewardContract : SystemContract
+    public class RewardContract : SystemContract, IBlockTransitionable
     {
+        /// <summary>
+        /// produce rewards for the given benefactors,
+        /// with corresponding reward codes.
+        /// only callable by `SYSTEM_ADDRESS`
+        /// function reward(address[] benefactors, uint16[] kind) external returns (address[], uint256[]);
+        ///
+        /// Kind:
+        /// 0 - Author - Reward attributed to the block author
+        /// 2 - Empty step - Reward attributed to the author(s) of empty step(s) included in the block (AuthorityRound engine)
+        /// 3 - External - Reward attributed by an external protocol (e.g. block reward contract)
+        /// 101-106 - Uncle - Reward attributed to uncles, with distance 1 to 6 (Ethash engine)
+        /// </summary>
+        private const string RewardFunction = "reward";
+        
         public long TransitionBlock { get; }
         
         private readonly IAbiEncoder _abiEncoder;
         
-        [SuppressMessage("ReSharper", "InconsistentNaming")]
-        public static class Definition
+        private static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<RewardContract>();
+        
+        public static class BenefactorKind
         {
-            
-            /// <summary>
-            /// produce rewards for the given benefactors,
-            /// with corresponding reward codes.
-            /// only callable by `SYSTEM_ADDRESS`
-            /// function reward(address[] benefactors, uint16[] kind) external returns (address[], uint256[]);
-            ///
-            /// Kind:
-            /// 0 - Author - Reward attributed to the block author
-            /// 2 - Empty step - Reward attributed to the author(s) of empty step(s) included in the block (AuthorityRound engine)
-            /// 3 - External - Reward attributed by an external protocol (e.g. block reward contract)
-            /// 101-106 - Uncle - Reward attributed to uncles, with distance 1 to 6 (Ethash engine)
-            /// </summary>
-            public static readonly AbiEncodingInfo reward = new AbiEncodingInfo(AbiEncodingStyle.IncludeSignature,
-                new AbiSignature(nameof(reward), new AbiArray(AbiType.Address), new AbiArray(AbiType.UInt16)));
+            public const ushort Author = 0;
+            public const ushort EmptyStep = 2;
+            public const ushort External = 3;
+            private const ushort uncleOffset = 100;
+            private const ushort minDistance = 1;
+            private const ushort maxDistance = 6;
 
-            public static readonly AbiEncodingInfo rewardReturn = new AbiEncodingInfo(AbiEncodingStyle.None,
-                new AbiSignature(nameof(rewardReturn), new AbiArray(AbiType.Address), new AbiArray(AbiType.UInt256)));
-
-            public static class BenefactorKind
+            public static bool TryGetUncle(long distance, out ushort kind)
             {
-                public const ushort Author = 0;
-                public const ushort EmptyStep = 2;
-                public const ushort External = 3;
-                private const ushort uncleOffset = 100;
-                private const ushort minDistance = 1;
-                private const ushort maxDistance = 6;
-
-                public static bool TryGetUncle(long distance, out ushort kind)
+                if (IsValidDistance(distance))
                 {
-                    if (IsValidDistance(distance))
-                    {
-                        kind = (ushort) (uncleOffset + distance);
-                        return true;
-                    }
-
-                    kind = 0;
-                    return false;
+                    kind = (ushort) (uncleOffset + distance);
+                    return true;
                 }
 
-                public static BlockRewardType ToBlockRewardType(ushort kind)
+                kind = 0;
+                return false;
+            }
+
+            public static BlockRewardType ToBlockRewardType(ushort kind)
+            {
+                switch (kind)
                 {
-                    switch (kind)
-                    {
-                        case Author:
-                            return BlockRewardType.Block;
-                        case External:
-                            return BlockRewardType.External;
-                        case EmptyStep:
-                            return BlockRewardType.EmptyStep;
-                        case ushort uncle when IsValidDistance(uncle - uncleOffset):
-                            return BlockRewardType.Uncle;
-                        default:
-                            throw new ArgumentException($"Invalid BlockRewardType for kind {kind}", nameof(kind));
-                    }
+                    case Author:
+                        return BlockRewardType.Block;
+                    case External:
+                        return BlockRewardType.External;
+                    case EmptyStep:
+                        return BlockRewardType.EmptyStep;
+                    case ushort uncle when IsValidDistance(uncle - uncleOffset):
+                        return BlockRewardType.Uncle;
+                    default:
+                        throw new ArgumentException($"Invalid BlockRewardType for kind {kind}", nameof(kind));
                 }
+            }
                 
-                private static bool IsValidDistance(long distance)
-                {
-                    return distance >= minDistance && distance <= maxDistance;
-                }
+            private static bool IsValidDistance(long distance)
+            {
+                return distance >= minDistance && distance <= maxDistance;
             }
         }
         
@@ -117,11 +111,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// 101-106 - Uncle - Reward attributed to uncles, with distance 1 to 6 (Ethash engine)
         /// </param>
         public Transaction Reward(Address[] benefactors, ushort[] kind)
-            => GenerateTransaction(_abiEncoder.Encode(Definition.reward, benefactors, kind), Address.SystemUser);
+            => GenerateSystemTransaction(_abiEncoder.Encode(Definition.Functions[RewardFunction].GetCallInfo(), benefactors, kind));
         
         public (Address[] Addresses, BigInteger[] Rewards) DecodeRewards(byte[] data)
         {
-            var objects = _abiEncoder.Decode(Definition.rewardReturn, data);
+            var objects = _abiEncoder.Decode(Definition.Functions[RewardFunction].GetReturnInfo(), data);
             return ((Address[]) objects[0], (BigInteger[]) objects[1]);
         }
     }

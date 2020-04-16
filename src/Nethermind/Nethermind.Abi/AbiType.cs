@@ -40,9 +40,9 @@ namespace Nethermind.Abi
 
         public static AbiString String { get; } = AbiString.Instance;
 
-        public static AbiFixed Fixed { get; } = new AbiFixed(128, 19);
+        public static AbiFixed Fixed { get; } = new AbiFixed(128, 18);
 
-        public static AbiUFixed UFixed { get; } = new AbiUFixed(128, 19);
+        public static AbiUFixed UFixed { get; } = new AbiUFixed(128, 18);
 
         public virtual bool IsDynamic => false;
 
@@ -52,22 +52,11 @@ namespace Nethermind.Abi
 
         public abstract byte[] Encode(object? arg, bool packed);
 
-        public override string ToString()
-        {
-            return Name;
-        }
+        public override string ToString() => Name;
 
-        public override int GetHashCode()
-        {
-            return Name.GetHashCode();
-        }
+        public override int GetHashCode() => Name.GetHashCode();
 
-        public override bool Equals(object? obj)
-        {
-            AbiType? type = obj as AbiType;
-            return type != null &&
-                   Name == type.Name;
-        }
+        public override bool Equals(object? obj) => obj is AbiType type && Name == type.Name;
 
         protected string AbiEncodingExceptionMessage => $"Argument cannot be encoded by { GetType().Name}";
 
