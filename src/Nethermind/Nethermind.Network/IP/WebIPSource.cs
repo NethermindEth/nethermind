@@ -14,7 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Net;
+using System.Net.Http;
 using Nethermind.Logging;
 
 namespace Nethermind.Network.IP
@@ -34,14 +36,16 @@ namespace Nethermind.Network.IP
         {
             try
             {
+                HttpClient httpClient = new HttpClient();
+                httpClient.Timeout = TimeSpan.FromSeconds(3);
                 if(_logger.IsInfo) _logger.Info($"Using {_url} to get external ip");
-                string ip = new WebClient().DownloadString(_url).Trim();
+                string ip = httpClient.GetStringAsync(_url).Result.Trim();
                 if(_logger.IsDebug) _logger.Debug($"External ip: {ip}");
                 return IPAddress.TryParse(ip, out ipAddress);
             }
-            catch (WebException e)
+            catch (Exception e)
             {
-                if(_logger.IsError) _logger.Error($"Error while getting external ip from {_url}", e);
+                if(_logger.IsDebug) _logger.Error($"Error while getting external ip from {_url}", e);
                 ipAddress = null;
                 return false;
             }

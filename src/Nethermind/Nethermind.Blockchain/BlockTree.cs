@@ -45,8 +45,8 @@ namespace Nethermind.Blockchain
     public class BlockTree : IBlockTree
     {
         private const int CacheSize = 64;
-        private readonly LruCache<Keccak, Block> _blockCache = new LruCache<Keccak, Block>(CacheSize, "blocks");
-        private readonly LruCache<Keccak, BlockHeader> _headerCache = new LruCache<Keccak, BlockHeader>(CacheSize, "headers");
+        private readonly LruCache<Keccak, Block> _blockCache = new LruCache<Keccak, Block>(CacheSize, CacheSize, "blocks");
+        private readonly LruCache<Keccak, BlockHeader> _headerCache = new LruCache<Keccak, BlockHeader>(CacheSize, CacheSize, "headers");
 
         private const int BestKnownSearchLimit = 256_000_000;
         public const int DbLoadBatchSize = 4000;
@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain
         private readonly IDb _headerDb;
         private readonly IDb _blockInfoDb;
 
-        private LruCache<long, HashSet<Keccak>> _invalidBlocks = new LruCache<long, HashSet<Keccak>>(128, "invalid blocks");
+        private LruCache<long, HashSet<Keccak>> _invalidBlocks = new LruCache<long, HashSet<Keccak>>(128, 128, "invalid blocks");
         private readonly BlockDecoder _blockDecoder = new BlockDecoder();
         private readonly HeaderDecoder _headerDecoder = new HeaderDecoder();
         private readonly ILogger _logger;
@@ -163,7 +163,7 @@ namespace Nethermind.Blockchain
                 {
                     return false;
                 }
-                
+
                 foreach (BlockInfo blockInfo in level.BlockInfos)
                 {
                     if (FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.None) != null)
@@ -182,7 +182,7 @@ namespace Nethermind.Blockchain
                 {
                     return false;
                 }
-                
+
                 foreach (BlockInfo blockInfo in level.BlockInfos)
                 {
                     if (FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None) != null)
@@ -197,7 +197,7 @@ namespace Nethermind.Blockchain
             BestKnownNumber = BinarySearchBlockNumber(left, right, LevelExists) ?? 0;
             long bestSuggestedHeaderNumber = BinarySearchBlockNumber(left, right, HeaderExists) ?? 0;
             long bestSuggestedBodyNumber = BinarySearchBlockNumber(left, right, BodyExists) ?? 0;
-            
+
             if (BestKnownNumber < 0 ||
                 bestSuggestedHeaderNumber < 0 ||
                 bestSuggestedBodyNumber < 0 ||
@@ -215,7 +215,7 @@ namespace Nethermind.Blockchain
         {
             long left = 1L;
             long right = _syncConfig.PivotNumberParsed;
-            
+
             bool HasLevel(long blockNumber)
             {
                 ChainLevelInfo level = LoadLevel(blockNumber);
@@ -241,7 +241,7 @@ namespace Nethermind.Blockchain
                 ChainLevelInfo level = LoadLevel(blockNumber, true);
                 return level == null ? null : FindBlock(level.BlockInfos[0].BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             }
-            
+
             bool HasBody(long blockNumber)
             {
                 Block block = LoadBody(blockNumber);
@@ -257,14 +257,14 @@ namespace Nethermind.Blockchain
             Up,
             Down
         }
-        
+
         private static long? BinarySearchBlockNumber(long left, long right, Func<long, bool> isBlockFound, BinarySearchDirection direction = BinarySearchDirection.Up)
         {
             if (left > right)
             {
                 return null;
             }
-            
+
             long? result = null;
             while (left != right)
             {
