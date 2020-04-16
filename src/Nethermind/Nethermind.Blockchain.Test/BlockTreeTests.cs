@@ -659,7 +659,7 @@ namespace Nethermind.Blockchain.Test
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
                 }
 
-                blockInfosDb.Set(Keccak.Zero, Rlp.Encode(genesisBlock.Header).Bytes);
+                blockInfosDb.Set(Keccak.Zero, genesisBlock.Header.Hash.Bytes);
                 headersDb.Set(genesisBlock.Header.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
 
                 BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
@@ -693,7 +693,7 @@ namespace Nethermind.Blockchain.Test
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
                 }
 
-                blockInfosDb.Set(Keccak.Zero, Rlp.Encode(genesisBlock.Header).Bytes);
+                blockInfosDb.Set(Keccak.Zero, genesisBlock.Header.Hash.Bytes);
                 headersDb.Set(genesisBlock.Header.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
 
                 BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, Substitute.For<ITxPool>(), NullBloomStorage.Instance, LimboLogs.Instance);
