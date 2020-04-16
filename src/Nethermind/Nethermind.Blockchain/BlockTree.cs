@@ -45,8 +45,8 @@ namespace Nethermind.Blockchain
     public class BlockTree : IBlockTree
     {
         private const int CacheSize = 64;
-        private readonly LruCache<Keccak, Block> _blockCache = new LruCache<Keccak, Block>(CacheSize);
-        private readonly LruCache<Keccak, BlockHeader> _headerCache = new LruCache<Keccak, BlockHeader>(CacheSize);
+        private readonly LruCache<Keccak, Block> _blockCache = new LruCache<Keccak, Block>(CacheSize, "blocks");
+        private readonly LruCache<Keccak, BlockHeader> _headerCache = new LruCache<Keccak, BlockHeader>(CacheSize, "headers");
 
         private const int BestKnownSearchLimit = 256_000_000;
         public const int DbLoadBatchSize = 4000;
@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain
         private readonly IDb _headerDb;
         private readonly IDb _blockInfoDb;
 
-        private LruCache<long, HashSet<Keccak>> _invalidBlocks = new LruCache<long, HashSet<Keccak>>(128);
+        private LruCache<long, HashSet<Keccak>> _invalidBlocks = new LruCache<long, HashSet<Keccak>>(128, "invalid blocks");
         private readonly BlockDecoder _blockDecoder = new BlockDecoder();
         private readonly HeaderDecoder _headerDecoder = new HeaderDecoder();
         private readonly ILogger _logger;

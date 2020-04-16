@@ -186,7 +186,6 @@ namespace Nethermind.Trie
         {
             try
             {
-
                 if (NodeType == NodeType.Unknown)
                 {
                     if (FullRlp == null)

@@ -261,7 +261,7 @@ namespace Nethermind.Store.Bloom
                 LevelElementSize = levelElementSize;
                 LevelMultiplier = levelMultiplier;
                 _migrationStatistics = migrationStatistics;
-                _cache = new LruCache<long, Core.Bloom>(levelMultiplier);
+                _cache = new LruCache<long, Core.Bloom>(levelMultiplier, "blooms");
             }
 
             public void Store(long blockNumber, Core.Bloom bloom)
