@@ -51,7 +51,6 @@ namespace Nethermind.Consensus.AuRa.Validators
         protected Address ContractAddress { get; }
         protected IAbiEncoder AbiEncoder { get; }
         protected long InitBlockNumber { get; }
-        protected CallOutputTracer Output { get; } = new CallOutputTracer();
         protected ValidatorContract ValidatorContract => _validatorContract ??= CreateValidatorContract(ContractAddress);
 
         private PendingValidators CurrentPendingValidators => _currentPendingValidators;
@@ -212,17 +211,17 @@ namespace Nethermind.Consensus.AuRa.Validators
                 if (block.Number == InitBlockNumber)
                 {
                     ValidatorContract.EnsureSystemAccount(_stateProvider);
-                    ValidatorContract.TryInvokeTransaction(block, _transactionProcessor, ValidatorContract.FinalizeChange(), Output);
+                    ValidatorContract.FinalizeChange(block);
                 }
                 else
                 {
-                    ValidatorContract.Call(block, _transactionProcessor, ValidatorContract.FinalizeChange(), Output);
+                    ValidatorContract.FinalizeChange(block);
                 }
                 SetPendingValidators(null, isProcessingBlock);
             }
         }
         
-        protected virtual ValidatorContract CreateValidatorContract(Address contractAddress) => new ValidatorContract(AbiEncoder, contractAddress);
+        protected virtual ValidatorContract CreateValidatorContract(Address contractAddress) => new ValidatorContract(_transactionProcessor, AbiEncoder, contractAddress);
         
         private void InitiateChange(Block block, Address[] potentialValidators, bool isProcessingBlock, bool initiateChangeIsImmediatelyFinalized = false)
         {
@@ -240,14 +239,8 @@ namespace Nethermind.Consensus.AuRa.Validators
         private Address[] LoadValidatorsFromContract(BlockHeader blockHeader)
         {
             using var readOnlyTransactionProcessor = _readOnlyReadOnlyTransactionProcessorSource.Get(_stateProvider.StateRoot);
-            ValidatorContract.Call(blockHeader, readOnlyTransactionProcessor, ValidatorContract.GetValidators(), Output);
+            var validators = ValidatorContract.GetValidators(blockHeader);
 
-            if (Output.ReturnValue.Length == 0)
-            {
-                throw new AuRaException("Failed to initialize validators list.");
-            }
-            
-            var validators = ValidatorContract.DecodeAddresses(Output.ReturnValue);
             if (validators.Length == 0)
             {
                 throw new AuRaException("Failed to initialize validators list.");

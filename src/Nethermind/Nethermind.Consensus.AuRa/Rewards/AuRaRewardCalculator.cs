@@ -33,8 +33,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly StaticRewardCalculator _blockRewardCalculator;
         private readonly IList<RewardContract> _contracts;
-        private readonly CallOutputTracer _tracer = new CallOutputTracer();
-
+        
         public AuRaRewardCalculator(AuRaParameters auRaParameters, IAbiEncoder abiEncoder, ITransactionProcessor transactionProcessor)
         {
             IList<RewardContract> BuildTransitions()
@@ -43,7 +42,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
 
                 if (auRaParameters.BlockRewardContractTransitions != null)
                 {
-                    contracts.AddRange(auRaParameters.BlockRewardContractTransitions.Select(t => new RewardContract(abiEncoder, t.Value, t.Key)));
+                    contracts.AddRange(auRaParameters.BlockRewardContractTransitions.Select(t => new RewardContract(transactionProcessor, abiEncoder, t.Value, t.Key)));
                 }
                 
                 contracts.Sort((a, b) => a.TransitionBlock.CompareTo(b.TransitionBlock));
@@ -56,7 +55,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
                         throw new ArgumentException($"{nameof(auRaParameters.BlockRewardContractTransition)} provided for {nameof(auRaParameters.BlockRewardContractAddress)} is higher than first {nameof(auRaParameters.BlockRewardContractTransitions)}.");
                     }
                     
-                    contracts.Insert(0, new RewardContract(abiEncoder, auRaParameters.BlockRewardContractAddress, contractTransition));
+                    contracts.Insert(0, new RewardContract(transactionProcessor, abiEncoder, auRaParameters.BlockRewardContractAddress, contractTransition));
                 }
 
                 return contracts;
@@ -82,12 +81,12 @@ namespace Nethermind.Consensus.AuRa.Rewards
                 Address[] beneficiariesList = new Address[length];
                 ushort[] kindsList = new ushort[length];
                 beneficiariesList[0] = block.Beneficiary;
-                kindsList[0] = RewardContract.BenefactorKind.Author;
+                kindsList[0] = BenefactorKind.Author;
                 
                 for (int i = 0; i < block.Ommers.Length; i++)
                 {
                     var uncle = block.Ommers[i];
-                    if (RewardContract.BenefactorKind.TryGetUncle(block.Number - uncle.Number, out var kind))
+                    if (BenefactorKind.TryGetUncle(block.Number - uncle.Number, out var kind))
                     {
                         beneficiariesList[i + 1] = uncle.Beneficiary;
                         kindsList[i + 1] = kind;
@@ -98,9 +97,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
             }
 
             var (beneficiaries, kinds) = GetBeneficiaries();
-            var transaction = contract.Reward(beneficiaries, kinds);
-            contract.Call(block.Header, _transactionProcessor, transaction, _tracer);
-            var (addresses, rewards) = contract.DecodeRewards(_tracer.ReturnValue);
+            var (addresses, rewards) = contract.Reward(block.Header, beneficiaries, kinds);
 
             var blockRewards = new BlockReward[addresses.Length];
             for (int index = 0; index < addresses.Length; index++)
@@ -126,7 +123,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
             }
             
             bool indexInBounds = index < beneficiaries.Length;
-            ushort kind = RewardContract.BenefactorKind.External;
+            ushort kind = BenefactorKind.External;
             if (!indexInBounds || !TryGetKind(index, ref kind))
             {
                 for (int i = 0; i < beneficiaries.Length; i++)
@@ -138,7 +135,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
                 }
             }
 
-            return RewardContract.BenefactorKind.ToBlockRewardType(kind);
+            return BenefactorKind.ToBlockRewardType(kind);
         }
 
         public static IRewardCalculatorSource GetSource(AuRaParameters auRaParameters, IAbiEncoder abiEncoder) => new AuRaRewardCalculatorSource(auRaParameters, abiEncoder);
@@ -155,6 +152,50 @@ namespace Nethermind.Consensus.AuRa.Rewards
             }
 
             public IRewardCalculator Get(ITransactionProcessor processor) => new AuRaRewardCalculator(_auRaParameters, _abiEncoder, processor);
+        }
+        
+        public static class BenefactorKind
+        {
+            public const ushort Author = 0;
+            public const ushort EmptyStep = 2;
+            public const ushort External = 3;
+            private const ushort uncleOffset = 100;
+            private const ushort minDistance = 1;
+            private const ushort maxDistance = 6;
+
+            public static bool TryGetUncle(long distance, out ushort kind)
+            {
+                if (IsValidDistance(distance))
+                {
+                    kind = (ushort) (uncleOffset + distance);
+                    return true;
+                }
+
+                kind = 0;
+                return false;
+            }
+
+            public static BlockRewardType ToBlockRewardType(ushort kind)
+            {
+                switch (kind)
+                {
+                    case Author:
+                        return BlockRewardType.Block;
+                    case External:
+                        return BlockRewardType.External;
+                    case EmptyStep:
+                        return BlockRewardType.EmptyStep;
+                    case ushort uncle when IsValidDistance(uncle - uncleOffset):
+                        return BlockRewardType.Uncle;
+                    default:
+                        throw new ArgumentException($"Invalid BlockRewardType for kind {kind}", nameof(kind));
+                }
+            }
+                
+            private static bool IsValidDistance(long distance)
+            {
+                return distance >= minDistance && distance <= maxDistance;
+            }
         }
     }
 }

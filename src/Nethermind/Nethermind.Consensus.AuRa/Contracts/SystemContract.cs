@@ -14,8 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Evm;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 
@@ -23,7 +25,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 {
     public class SystemContract : Contract
     {
-        protected SystemContract(Address contractAddress) : base(contractAddress)
+        protected SystemContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress) : base(transactionProcessor, abiEncoder, contractAddress)
         {
         }
         

@@ -15,25 +15,34 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Consensus
+namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class SinglePendingTxSelector : IPendingTxSelector
+    public class InjectionPendingTxSelector : IPendingTxSelector
     {
         private readonly IPendingTxSelector _innerPendingTxSelector;
+        private readonly IImmediateTransactionSource[] _immediateTransactionSources;
 
-        public SinglePendingTxSelector(IPendingTxSelector innerPendingTxSelector)
+        public InjectionPendingTxSelector(IPendingTxSelector innerPendingTxSelector, params IImmediateTransactionSource[] immediateTransactionSources)
         {
             _innerPendingTxSelector = innerPendingTxSelector;
+            _immediateTransactionSources = immediateTransactionSources;
         }
-        
-        public IEnumerable<Transaction> SelectTransactions(long blockNumber, Keccak stateRoot, long gasLimit) => 
-            _innerPendingTxSelector.SelectTransactions(blockNumber, stateRoot, gasLimit)
-                .OrderBy(t => t.Nonce)
-                .ThenByDescending(t => t.Timestamp)
-                .Take(1);
-    }
+
+        public IEnumerable<Transaction> SelectTransactions(long blockNumber, Keccak stateRoot, long gasLimit)
+        {
+            for (int i = 0; i < _immediateTransactionSources.Length; i++)
+            {
+                if (_immediateTransactionSources[i].TryCreateTransaction(blockNumber, gasLimit, out var tx))
+                {
+                    gasLimit -= tx.GasLimit;
+                    yield return tx;
+                }
+            }
+            
+            foreach (var tx in _innerPendingTxSelector.SelectTransactions(blockNumber, stateRoot, gasLimit)) yield return tx;
+        }
+    }           
 }

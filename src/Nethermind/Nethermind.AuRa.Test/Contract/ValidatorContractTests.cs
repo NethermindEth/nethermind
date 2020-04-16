@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
+using FluentAssertions.Common;
 using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
@@ -26,9 +27,12 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Store;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
+using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Contract
@@ -38,29 +42,31 @@ namespace Nethermind.AuRa.Test.Contract
     {
         private Block _block;
         private readonly Address _contractAddress = Address.FromNumber(long.MaxValue);
+        private ITransactionProcessor _transactionProcessor;
 
         [SetUp]
         public void SetUp()
         {
             _block = new Block(Build.A.BlockHeader.TestObject, new BlockBody());
+            _transactionProcessor = Substitute.For<ITransactionProcessor>();
         }
 
         [Test]
         public void constructor_throws_ArgumentNullException_on_null_encoder()
         {
-            Action action = () => new ValidatorContract(null, _contractAddress);
+            Action action = () => new ValidatorContract(_transactionProcessor, null, _contractAddress);
             action.Should().Throw<ArgumentNullException>();
         }
         
         [Test]
         public void constructor_throws_ArgumentNullException_on_null_contractAddress()
         {
-            Action action = () => new ValidatorContract(new AbiEncoder(), null);
+            Action action = () => new ValidatorContract(_transactionProcessor, new AbiEncoder(), null);
             action.Should().Throw<ArgumentNullException>();
         }
         
         [Test]
-        public void finalize_change_should_return_valid_transaction_when_validator_available()
+        public void finalize_change_should_call_correct_transaction()
         {
             var expectation = new Transaction()
             {
@@ -74,11 +80,24 @@ namespace Nethermind.AuRa.Test.Contract
                 Nonce = 0
             };
             
-            var contract = new ValidatorContract(new AbiEncoder(), _contractAddress);
+            var contract = new ValidatorContract(_transactionProcessor, new AbiEncoder(), _contractAddress);
             
-            var transaction = contract.FinalizeChange();
+            contract.FinalizeChange(_block.Header);
             
-            transaction.Should().BeEquivalentTo(expectation);
+            _transactionProcessor.Received().Execute(Arg.Is<Transaction>(t => IsEquivalentTo(t, expectation)), _block.Header, Arg.Any<ITxTracer>());
+        }
+        
+        private static bool IsEquivalentTo(object expected, object item)
+        {
+            try
+            {
+                item.Should().BeEquivalentTo(expected);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
     }
 }

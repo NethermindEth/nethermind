@@ -140,8 +140,8 @@ namespace Nethermind.Blockchain.Test
             SetAccountStates(testCase.MissingAddresses);
 
             PendingTxSelector selector = new PendingTxSelector(transactionPool, stateReader, LimboLogs.Instance, testCase.MinGasPriceForMining);
-
-            IEnumerable<Transaction> selectedTransactions = selector.SelectTransactions(stateProvider.StateRoot, testCase.GasLimit);
+            
+            IEnumerable<Transaction> selectedTransactions = selector.SelectTransactions(10, stateProvider.StateRoot, testCase.GasLimit);
             selectedTransactions.Should().BeEquivalentTo(testCase.ExpectedSelectedTransactions);
         }
     }

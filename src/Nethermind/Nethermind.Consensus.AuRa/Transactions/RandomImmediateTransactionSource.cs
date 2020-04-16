@@ -14,24 +14,33 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Abi;
+using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Evm;
-using Nethermind.Serialization.Json.Abi;
 
-namespace Nethermind.Consensus.AuRa.Contracts
+namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class RandomContract : Contract, IBlockTransitionable
+    public class RandomImmediateTransactionSource : IImmediateTransactionSource
     {
-        private readonly IAbiEncoder _abiEncoder;
-        private static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<RandomContract>();
-        
-        public RandomContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, long transitionBlock) : base(transactionProcessor, abiEncoder, contractAddress)
-        {
-            _abiEncoder = abiEncoder;
-            TransitionBlock = transitionBlock;
-        }
+        private readonly IList<RandomContract> _contracts;
 
-        public long TransitionBlock { get; }
+        public RandomImmediateTransactionSource(IDictionary<long, Address> randomnessContractAddress, ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder)
+        {
+            _contracts = randomnessContractAddress.Select(kvp => new RandomContract(transactionProcessor, abiEncoder, kvp.Value, kvp.Key)).ToList();
+        }
+        
+        public bool TryCreateTransaction(long blockNumber, long gasLimit, out Transaction tx)
+        {
+            if (_contracts.TryGetForBlock(blockNumber, out var contract))
+            {
+                
+            }
+            
+            tx = null;
+            return false;
+        }
     }
 }

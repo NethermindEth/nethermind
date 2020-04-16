@@ -22,6 +22,6 @@ namespace Nethermind.Consensus
 {
     public interface IPendingTxSelector
     {
-        IEnumerable<Transaction> SelectTransactions(Keccak stateRoot, long gasLimit);
+        IEnumerable<Transaction> SelectTransactions(long blockNumber, Keccak stateRoot, long gasLimit);
     }
 }

@@ -21,6 +21,8 @@ using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Serialization.Json.Abi;
 
 namespace Nethermind.Consensus.AuRa.Contracts
@@ -66,16 +68,23 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// </summary>
         public  const string GetValidatorsFunction = "getValidators";
 
-        public ValidatorContract(IAbiEncoder abiEncoder, Address contractAddress) : base(contractAddress)
+        public ValidatorContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress) : base(transactionProcessor, abiEncoder, contractAddress)
         {
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _finalizeChangeTransactionData = _abiEncoder.Encode(Definition.Functions[FinalizeChangeFunction].GetCallInfo());
             _getValidatorsTransactionData = _abiEncoder.Encode(Definition.Functions[GetValidatorsFunction].GetCallInfo());
         }
 
-        public Transaction FinalizeChange() => GenerateSystemTransaction(_finalizeChangeTransactionData);
+        public void FinalizeChange(BlockHeader blockHeader) => TryInvokeTransaction(blockHeader, GenerateSystemTransaction(_finalizeChangeTransactionData), new CallOutputTracer());
 
-        public Transaction GetValidators() => GenerateTransaction(_getValidatorsTransactionData, ContractAddress);
+        public Address[] GetValidators(BlockHeader blockHeader)
+        {
+            CallOutputTracer tracer = new CallOutputTracer();
+            var transaction = GenerateTransaction(_getValidatorsTransactionData, ContractAddress);
+            InvokeTransaction(blockHeader, transaction, tracer);
+            var data = tracer.ReturnValue;
+            return data.Length == 0 ? Array.Empty<Address>() : DecodeAddresses(data);
+        }
 
         public bool CheckInitiateChangeEvent(Address contractAddress, BlockHeader blockHeader, TxReceipt[] receipts, out Address[] addresses)
         {

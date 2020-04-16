@@ -16,6 +16,7 @@
 
 using Nethermind.Abi;
 using Nethermind.Core;
+using Nethermind.Evm;
 using Nethermind.Serialization.Json.Abi;
 
 namespace Nethermind.Consensus.AuRa.Contracts
@@ -24,7 +25,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
     {
         private new static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<ReportingValidatorContract>();
         
-        public ReportingValidatorContract(IAbiEncoder abiEncoder, Address contractAddress) : base(abiEncoder, contractAddress)
+        public ReportingValidatorContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress) : base(transactionProcessor, abiEncoder, contractAddress)
         {
         }
     }

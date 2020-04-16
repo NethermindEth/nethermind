@@ -14,24 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Abi;
 using Nethermind.Core;
-using Nethermind.Evm;
-using Nethermind.Serialization.Json.Abi;
 
-namespace Nethermind.Consensus.AuRa.Contracts
+namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class RandomContract : Contract, IBlockTransitionable
+    public interface IImmediateTransactionSource
     {
-        private readonly IAbiEncoder _abiEncoder;
-        private static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<RandomContract>();
-        
-        public RandomContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, long transitionBlock) : base(transactionProcessor, abiEncoder, contractAddress)
-        {
-            _abiEncoder = abiEncoder;
-            TransitionBlock = transitionBlock;
-        }
-
-        public long TransitionBlock { get; }
+        bool TryCreateTransaction(long blockNumber, long gasLimit, out Transaction tx);
     }
 }

@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Producers
             _minGasPriceForMining = minGasPriceForMining;
         }
 
-        public IEnumerable<Transaction> SelectTransactions(Keccak stateRoot, long gasLimit)
+        public IEnumerable<Transaction> SelectTransactions(long blockNumber, Keccak stateRoot, long gasLimit)
         {
             T GetFromState<T>(Func<Keccak, Address, T> stateGetter, Address address, T defaultValue)
             {

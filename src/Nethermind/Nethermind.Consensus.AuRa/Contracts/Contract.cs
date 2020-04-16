@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -28,10 +29,14 @@ namespace Nethermind.Consensus.AuRa.Contracts
 {
     public class Contract
     {
+        private readonly ITransactionProcessor _transactionProcessor;
+        protected IAbiEncoder AbiEncoder { get; }
         protected Address ContractAddress { get; }
 
-        protected Contract(Address contractAddress)
+        protected Contract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress)
         {
+            _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
+            AbiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             ContractAddress = contractAddress ?? throw new ArgumentNullException(nameof(contractAddress));
         }
         
@@ -53,13 +58,13 @@ namespace Nethermind.Consensus.AuRa.Contracts
             return transaction;
         }
         
-        public void Call(BlockHeader header, ITransactionProcessor transactionProcessor, Transaction transaction, CallOutputTracer tracer)
+        protected void InvokeTransaction(BlockHeader header, Transaction transaction, CallOutputTracer tracer)
         {
             bool failure;
             
             try
             {
-                transactionProcessor.Execute(transaction, header, tracer);
+                _transactionProcessor.Execute(transaction, header, tracer);
                 failure = tracer.StatusCode != StatusCode.Success;
             }
             catch (Exception e)
@@ -73,12 +78,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
             }
         }
 
-        public bool TryInvokeTransaction(BlockHeader header, ITransactionProcessor transactionProcessor, Transaction transaction, CallOutputTracer tracer)
+        protected bool TryInvokeTransaction(BlockHeader header, Transaction transaction, CallOutputTracer tracer)
         {
             try
             {
-                transactionProcessor.Execute(transaction, header, tracer);
-                
+                _transactionProcessor.Execute(transaction, header, tracer);
                 return tracer.StatusCode == StatusCode.Success;
             }
             catch (Exception)
