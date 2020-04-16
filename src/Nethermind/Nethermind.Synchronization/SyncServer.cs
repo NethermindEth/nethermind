@@ -110,7 +110,7 @@ namespace Nethermind.Synchronization
                     }
                 }
 
-                return headIsGenesis ? _pivotHeader ?? _blockTree.Genesis : _blockTree.Head;
+                return headIsGenesis ? _pivotHeader ?? _blockTree.Genesis : _blockTree.Head?.Header;
             }
         }
 

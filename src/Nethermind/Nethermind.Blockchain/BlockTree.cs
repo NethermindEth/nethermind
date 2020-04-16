@@ -73,7 +73,7 @@ namespace Nethermind.Blockchain
         internal static Keccak HeadAddressInDb = Keccak.Zero;
 
         public BlockHeader Genesis { get; private set; }
-        public BlockHeader Head { get; private set; }
+        public Block Head { get; private set; }
         public BlockHeader BestSuggestedHeader { get; private set; }
         public Block BestSuggestedBody { get; private set; }
         public BlockHeader LowestInsertedHeader { get; private set; }
@@ -140,9 +140,9 @@ namespace Nethermind.Blockchain
                 LoadBestKnown();
             }
 
-            if (_logger.IsInfo) _logger.Info($"Block tree initialized, last processed is {Head?.ToString(BlockHeader.Format.Short) ?? "0"}, best queued is {BestSuggestedHeader?.Number.ToString() ?? "0"}, best known is {BestKnownNumber}, lowest inserted header {LowestInsertedHeader?.Number}, body {LowestInsertedBody?.Number}");
+            if (_logger.IsInfo) _logger.Info($"Block tree initialized, last processed is {Head?.Header?.ToString(BlockHeader.Format.Short) ?? "0"}, best queued is {BestSuggestedHeader?.Number.ToString() ?? "0"}, best known is {BestKnownNumber}, lowest inserted header {LowestInsertedHeader?.Number}, body {LowestInsertedBody?.Number}");
             ThisNodeInfo.AddInfo("Chain ID     :", $"{Nethermind.Core.ChainId.GetChainName(ChainId)}");
-            ThisNodeInfo.AddInfo("Chain head   :", $"{Head?.ToString(BlockHeader.Format.Short) ?? "0"}");
+            ThisNodeInfo.AddInfo("Chain head   :", $"{Head?.Header?.ToString(BlockHeader.Format.Short) ?? "0"}");
         }
 
         private void LoadBestKnown()
@@ -395,7 +395,7 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    Head = startBlockNumber == 0 ? null : FindBlock(startBlockNumber.Value - 1, BlockTreeLookupOptions.RequireCanonical)?.Header;
+                    Head = startBlockNumber == 0 ? null : FindBlock(startBlockNumber.Value - 1, BlockTreeLookupOptions.RequireCanonical);
                 }
 
                 // we will also load the current head block again to test continuity
@@ -406,7 +406,7 @@ namespace Nethermind.Blockchain
                     return;
                 }
 
-                if (_logger.IsInfo) _logger.Info($"Found {blocksToLoad} blocks to load from DB starting from current head block {Head?.ToString(BlockHeader.Format.Short)}");
+                if (_logger.IsInfo) _logger.Info($"Found {blocksToLoad} blocks to load from DB starting from current head block {Head?.Header.ToString(BlockHeader.Format.Short)}");
 
                 Task<bool> NoneFound(long number)
                 {
@@ -848,8 +848,8 @@ namespace Nethermind.Blockchain
             invalidBlocksWithThisNumber.Add(invalidBlock.Hash);
             _invalidBlocks.Set(invalidBlock.Number, invalidBlocksWithThisNumber);
 
-            BestSuggestedHeader = Head;
-            BestSuggestedBody = Head == null ? null : FindBlock(Head.Hash, BlockTreeLookupOptions.None);
+            BestSuggestedHeader = Head?.Header;
+            BestSuggestedBody = Head;
 
             try
             {
@@ -1115,20 +1115,17 @@ namespace Nethermind.Blockchain
             byte[] data = _blockInfoDb.Get(HeadAddressInDb);
             if (data != null)
             {
-                BlockHeader headBlockHeader = data.Length == 32
-                    ? FindHeader(new Keccak(data), BlockTreeLookupOptions.None)
-                    : Rlp.Decode<BlockHeader>(data.AsRlpStream(), RlpBehaviors.AllowExtraData);
+                Block headBlock = FindBlock(new Keccak(data), BlockTreeLookupOptions.None);
 
-                ChainLevelInfo level = LoadLevel(headBlockHeader.Number);
-                int? index = FindIndex(headBlockHeader.Hash, level);
+                ChainLevelInfo level = LoadLevel(headBlock.Number);
+                int? index = FindIndex(headBlock.Hash, level);
                 if (!index.HasValue)
                 {
                     throw new InvalidDataException("Head block data missing from chain info");
                 }
 
-                headBlockHeader.TotalDifficulty = level.BlockInfos[index.Value].TotalDifficulty;
-
-                Head = headBlockHeader;
+                headBlock.Header.TotalDifficulty = level.BlockInfos[index.Value].TotalDifficulty;
+                Head = headBlock;
             }
         }
 
@@ -1175,7 +1172,7 @@ namespace Nethermind.Blockchain
                 Genesis = block.Header;
             }
 
-            Head = block.Header;
+            Head = block;
             _blockInfoDb.Set(HeadAddressInDb, Head.Hash.Bytes);
             NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
             if (_dbBatchProcessed != null)
@@ -1504,7 +1501,7 @@ namespace Nethermind.Blockchain
                 {
                     if (_logger.IsWarn) _logger.Warn($"Deleting blocks starting with {firstInvalidHash} due to the gap found between {gapStart} and {gapEnd}");
                     DeleteBlocks(firstInvalidHash);
-                    BestSuggestedHeader = Head;
+                    BestSuggestedHeader = Head?.Header;
                     BestSuggestedBody = Head == null ? null : FindBlock(Head.Hash, BlockTreeLookupOptions.None);
                 }
             }

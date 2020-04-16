@@ -161,7 +161,7 @@ namespace Nethermind.Runner.Hive
             try
             {
                 _blockTree.SuggestBlock(block);
-                if (_logger.IsInfo) _logger.Info($"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head.ToString(BlockHeader.Format.Short)}");
+                if (_logger.IsInfo) _logger.Info($"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
             }
             catch (InvalidBlockException e)
             {

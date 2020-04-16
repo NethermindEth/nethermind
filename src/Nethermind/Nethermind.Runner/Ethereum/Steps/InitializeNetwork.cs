@@ -288,7 +288,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 return Task.CompletedTask;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Starting synchronization from block {_ctx.BlockTree.Head.ToString(BlockHeader.Format.Short)}.");
+            if (_logger.IsDebug) _logger.Debug($"Starting synchronization from block {_ctx.BlockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}.");
 
             _ctx.SyncPeerPool.Start();
             _ctx.Synchronizer.Start();

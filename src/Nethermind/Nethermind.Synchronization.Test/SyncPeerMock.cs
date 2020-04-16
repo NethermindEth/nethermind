@@ -135,7 +135,7 @@ namespace Nethermind.Synchronization.Test
 
         public Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token)
         {
-            return Task.FromResult(_remoteTree.Head);
+            return Task.FromResult(_remoteTree.Head?.Header);
         }
 
         private BlockingCollection<Action> _sendQueue = new BlockingCollection<Action>();

@@ -34,7 +34,7 @@ namespace Nethermind.JsonRpc.Modules.TxPool
 
         public ResultWrapper<TxPoolStatus> txpool_status()
         {
-            var poolInfo = _txPoolInfoProvider.GetInfo(_blockFinder.Head);
+            var poolInfo = _txPoolInfoProvider.GetInfo(_blockFinder.Head?.Header);
             var poolStatus = new TxPoolStatus(poolInfo);
          
             return ResultWrapper<TxPoolStatus>.Success(poolStatus);
@@ -42,13 +42,13 @@ namespace Nethermind.JsonRpc.Modules.TxPool
 
         public ResultWrapper<TxPoolContent> txpool_content()
         {
-            var poolInfo = _txPoolInfoProvider.GetInfo(_blockFinder.Head);
+            var poolInfo = _txPoolInfoProvider.GetInfo(_blockFinder.Head?.Header);
             return ResultWrapper<TxPoolContent>.Success(new TxPoolContent(poolInfo));
         }
 
         public ResultWrapper<TxPoolInspection> txpool_inspect()
         {
-            var poolInfo = _txPoolInfoProvider.GetInfo(_blockFinder.Head);
+            var poolInfo = _txPoolInfoProvider.GetInfo(_blockFinder.Head?.Header);
             return ResultWrapper<TxPoolInspection>.Success(new TxPoolInspection(poolInfo));
         }
     }
