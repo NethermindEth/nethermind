@@ -36,7 +36,7 @@ namespace Nethermind.Evm.Test
 
         private class AfterIstanbul : Eip2028Tests
         {
-            protected override long BlockNumber => MainNetSpecProvider.IstanbulBlockNumber;
+            protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
             protected override ISpecProvider SpecProvider => new CustomSpecProvider(32000, (0, Istanbul.Instance));
 
             [Test]
@@ -58,8 +58,8 @@ namespace Nethermind.Evm.Test
 
         private class BeforeIstanbul : Eip2028Tests
         {
-            protected override long BlockNumber => MainNetSpecProvider.IstanbulBlockNumber - 1;
-            protected override ISpecProvider SpecProvider => MainNetSpecProvider.Instance;
+            protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber - 1;
+            protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
             [Test]
             public void non_zero_transaction_data_cost_should_be_68()

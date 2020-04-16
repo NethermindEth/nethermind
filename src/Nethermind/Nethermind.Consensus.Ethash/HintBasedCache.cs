@@ -23,7 +23,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 
-namespace Nethermind.Consensus.Mining
+namespace Nethermind.Consensus.Ethash
 {
     public class HintBasedCache
     {

@@ -85,9 +85,9 @@ namespace Nethermind.Consensus.AuRa
 
         public bool CanSeal(long blockNumber, Keccak parentHash)
         {
-            bool StepNotYetProduced(long step) => !_blockTree.Head.AuRaStep.HasValue
+            bool StepNotYetProduced(long step) => !_blockTree.Head.Header.AuRaStep.HasValue
                 ? throw new InvalidOperationException("Head block doesn't have AuRaStep specified.'")
-                : _blockTree.Head.AuRaStep.Value < step;
+                : _blockTree.Head.Header.AuRaStep.Value < step;
 
             bool IsThisNodeTurn(long step)
             {

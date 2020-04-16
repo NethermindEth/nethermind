@@ -290,6 +290,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.WebSockets.Test", "Nethermind.WebSockets.Test\Nethermind.WebSockets.Test.csproj", "{7655686B-E40E-4D0D-8BEA-B9CE57F5D163}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Synchronization", "Nethermind.Synchronization\Nethermind.Synchronization.csproj", "{1FC0913D-D3D1-44A2-AA35-B2CF4A4F1815}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Synchronization.Test", "Nethermind.Synchronization.Test\Nethermind.Synchronization.Test.csproj", "{41C27830-0B6C-40E8-B328-76FDB3E6FDA4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -776,6 +780,14 @@ Global
 		{7655686B-E40E-4D0D-8BEA-B9CE57F5D163}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7655686B-E40E-4D0D-8BEA-B9CE57F5D163}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7655686B-E40E-4D0D-8BEA-B9CE57F5D163}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1FC0913D-D3D1-44A2-AA35-B2CF4A4F1815}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1FC0913D-D3D1-44A2-AA35-B2CF4A4F1815}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1FC0913D-D3D1-44A2-AA35-B2CF4A4F1815}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1FC0913D-D3D1-44A2-AA35-B2CF4A4F1815}.Release|Any CPU.Build.0 = Release|Any CPU
+		{41C27830-0B6C-40E8-B328-76FDB3E6FDA4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{41C27830-0B6C-40E8-B328-76FDB3E6FDA4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{41C27830-0B6C-40E8-B328-76FDB3E6FDA4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{41C27830-0B6C-40E8-B328-76FDB3E6FDA4}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -868,6 +880,7 @@ Global
 		{F497B61E-1159-4170-85ED-056BA35061E6} = {1584F88E-C618-4B37-BAB5-05AAC31DF60A}
 		{CDDEBD56-F81A-4B6B-89FF-EE5BEAFB9513} = {F497B61E-1159-4170-85ED-056BA35061E6}
 		{7655686B-E40E-4D0D-8BEA-B9CE57F5D163} = {1564814A-27F8-40A3-943E-8E950D5EE17D}
+		{41C27830-0B6C-40E8-B328-76FDB3E6FDA4} = {1564814A-27F8-40A3-943E-8E950D5EE17D}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}

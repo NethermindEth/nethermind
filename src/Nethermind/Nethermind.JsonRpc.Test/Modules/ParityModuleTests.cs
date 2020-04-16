@@ -44,7 +44,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Initialize()
         {
             var logger = LimboLogs.Instance;
-            var specProvider = MainNetSpecProvider.Instance;
+            var specProvider = MainnetSpecProvider.Instance;
             var ethereumEcdsa = new EthereumEcdsa(specProvider, logger);
             var txStorage = new InMemoryTxStorage();
             var txPool = new TxPool.TxPool(txStorage, Timestamper.Default, ethereumEcdsa, specProvider, new TxPoolConfig(),

@@ -17,14 +17,16 @@
 using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -33,6 +35,7 @@ using Nethermind.Runner.Ethereum.Context;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Store.Bloom;
+using Nethermind.Synchronization.BeamSync;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 
@@ -121,7 +124,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 _context.StateProvider.StateRoot = _context.BlockTree.Head.StateRoot;
             }
-            
+
             _context.ReceiptStorage = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_context.DbProvider.ReceiptsDb, _context.SpecProvider, new ReceiptsRecovery()) : NullReceiptStorage.Instance;
             _context.ReceiptFinder = new FullInfoReceiptFinder(_context.ReceiptStorage, new ReceiptsRecovery(), _context.BlockTree);
 
@@ -204,7 +207,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.BlockProcessingQueue);
             }
 
-            ThisNodeInfo.AddInfo("Mem est trie :", $"{Trie.MemoryAllowance.TrieNodeCacheSize * 400 / 1024 / 1024}MB".PadLeft(8));
+            ThisNodeInfo.AddInfo("Mem est trie :", $"{LruCache<Keccak, byte[]>.CalculateMemorySize(52 + 320, Trie.MemoryAllowance.TrieNodeCacheSize) / 1024 / 1024}MB".PadLeft(8));
 
             return Task.CompletedTask;
         }

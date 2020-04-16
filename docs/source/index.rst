@@ -13,6 +13,7 @@ ToC
    :maxdepth: 2
    
    start
+   enterprise
    cloud
    platforms
    hardware_requirements

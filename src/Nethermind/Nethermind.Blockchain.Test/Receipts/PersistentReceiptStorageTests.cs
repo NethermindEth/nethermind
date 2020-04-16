@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         public void Returns_null_for_missing_tx()
         {
             MemColumnsDb<ReceiptsColumns> receiptsDb = new MemColumnsDb<ReceiptsColumns>();
-            PersistentReceiptStorage persistentReceiptStorage = new PersistentReceiptStorage(receiptsDb, MainNetSpecProvider.Instance, new ReceiptsRecovery());
+            PersistentReceiptStorage persistentReceiptStorage = new PersistentReceiptStorage(receiptsDb, MainnetSpecProvider.Instance, new ReceiptsRecovery());
             Keccak blockHash = persistentReceiptStorage.FindBlockHash(Keccak.Zero);
             blockHash.Should().BeNull();
         }

@@ -52,7 +52,7 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public Task<Block?> GetLatestBlockAsync()
         {
-            BlockHeader head = _blockchainBridge.Head;
+            Block head = _blockchainBridge.Head;
             return head is null
                 ? Task.FromResult<Block?>(null)
                 : Task.FromResult<Block?>(_blockchainBridge.FindBlock(head.Hash));
@@ -81,7 +81,7 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public Task<byte[]> CallAsync(Transaction transaction)
         {
-            var callOutput = _blockchainBridge.Call(_blockchainBridge.Head, transaction);
+            var callOutput = _blockchainBridge.Call(_blockchainBridge.Head?.Header, transaction);
             return Task.FromResult(callOutput.OutputData ?? new byte[] {0});
         }
 

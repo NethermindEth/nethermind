@@ -18,10 +18,10 @@ using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Threading;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -51,6 +51,10 @@ using Nethermind.State.Repositories;
 using Nethermind.Stats;
 using Nethermind.Store;
 using Nethermind.Store.Bloom;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.BeamSync;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.WebSockets;
@@ -92,7 +96,8 @@ namespace Nethermind.Runner.Ethereum.Context
         public IReceiptStorage? ReceiptStorage { get; set; }
         public IReceiptFinder? ReceiptFinder { get; set; }
         public IEthereumEcdsa? EthereumEcdsa { get; set; }
-        public IEthSyncPeerPool? SyncPeerPool { get; set; }
+        public ISyncPeerPool? SyncPeerPool { get; set; }
+        public ISyncModeSelector? SyncModeSelector { get; set; }
         public ISynchronizer? Synchronizer { get; set; }
         public ISyncServer? SyncServer { get; set; }
         public IKeyStore? KeyStore { get; set; }

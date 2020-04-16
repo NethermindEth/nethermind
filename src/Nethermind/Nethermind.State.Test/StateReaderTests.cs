@@ -38,7 +38,7 @@ namespace Nethermind.Store.Test
         [Test]
         public async Task Can_ask_about_balance_in_parallel()
         {
-            IReleaseSpec spec = MainNetSpecProvider.Instance.GetSpec(MainNetSpecProvider.ConstantinopleFixBlockNumber);
+            IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.ConstantinopleFixBlockNumber);
             StateDb stateDb = new StateDb(new MemDb());
             StateProvider provider = new StateProvider(stateDb, Substitute.For<IDb>(), Logger);
             provider.CreateAccount(_address1, 0);

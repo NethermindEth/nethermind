@@ -52,7 +52,7 @@ namespace Nethermind.AuRa.Test
         {
             _blockTree = Substitute.For<IBlockTree>();
             _headStep = 10;
-            _blockTree.Head.Returns(Build.A.BlockHeader.WithHash(Keccak.Compute("hash")).WithAura(_headStep, Bytes.Empty).TestObject);
+            _blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithHash(Keccak.Compute("hash")).WithAura(_headStep, Bytes.Empty).TestObject).TestObject);
 
             _auRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
             _validatorStore = Substitute.For<IValidatorStore>();

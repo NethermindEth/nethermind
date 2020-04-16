@@ -49,7 +49,7 @@ namespace Nethermind.Blockchain.Test
         [TestCase(10, 20, 15, 16, false, TestName = "Allow deletion.")]
         public void DeleteChainSlice_throws_when_corrupted_blocks_not_found(long? head, long bestKnown, long start, long? corruptedBlock, bool throws)
         {
-            _innerBlockTree.Head.Returns(head == null ? null : Build.A.BlockHeader.WithNumber(head.Value).TestObject);
+            _innerBlockTree.Head.Returns(head == null ? null : Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(head.Value).TestObject).TestObject);
             _innerBlockTree.BestKnownNumber.Returns(bestKnown);
             _innerBlockTree.FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>())
                 .Returns(c => c.Arg<long>() == corruptedBlock ? null : Build.A.BlockHeader.WithNumber(c.Arg<long>()).TestObject);

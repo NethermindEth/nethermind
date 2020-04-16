@@ -18,6 +18,7 @@ using System;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -71,7 +72,7 @@ namespace Nethermind.Blockchain.Producers
         {
             lock (_newBlockLock)
             {
-                BlockHeader parentHeader = BlockTree.Head;
+                BlockHeader parentHeader = BlockTree.Head?.Header;
                 if (parentHeader == null)
                 {
                     if (Logger.IsWarn) Logger.Warn($"Preparing new block - parent header is null");

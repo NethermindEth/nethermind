@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;

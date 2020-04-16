@@ -4,7 +4,6 @@
     <IsPackable>false</IsPackable>
     <LangVersion>8.0</LangVersion>
     <OutputType>Library</OutputType>
-    <RootNamespace>Nethermind.Consensus.Mining</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
     <DotNetCliToolReference Include="dotnet-xunit" Version="2.3.1" />

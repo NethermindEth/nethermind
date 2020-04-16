@@ -20,6 +20,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -175,7 +176,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
-        public async Task Eth_get_filter_changes_with_tx()
+        public void Eth_get_filter_changes_with_tx()
         {
             string serialized1 = _test.TestEthRpc("eth_newPendingTransactionFilter");
             _test.AddTransaction(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject);
@@ -211,7 +212,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public async Task Eth_get_balance_internal_error()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            bridge.Head.Returns((BlockHeader) null);
+            bridge.Head.Returns((Block) null);
 
             _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
             string serialized = _test.TestEthRpc("eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true), "0x01");
@@ -231,7 +232,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.IsSyncing.Returns(false);
-            bridge.Head.Returns(Build.A.BlockHeader.WithNumber(900).TestObject);
+            bridge.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(900).TestObject).TestObject);
             bridge.BestKnown.Returns(1000L);
             bridge.IsSyncing.Returns(true);
 
@@ -246,7 +247,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.IsSyncing.Returns(false);
-            bridge.Head.Returns(Build.A.BlockHeader.WithNumber(900).TestObject);
+            bridge.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(900).TestObject).TestObject);
             bridge.BestKnown.Returns(1000L);
 
             _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
@@ -596,7 +597,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.IsSyncing.Returns(true);
             bridge.BestKnown.Returns(6178000L);
-            bridge.Head.Returns(Build.A.BlockHeader.WithNumber(6170000L).TestObject);
+            bridge.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6170000L).TestObject).TestObject);
 
             _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
             string serialized = _test.TestEthRpc("eth_syncing");
@@ -624,7 +625,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             bridge.SendTransaction(null, TxHandlingOptions.PersistentBroadcast).ReturnsForAnyArgs(TestItem.KeccakA);
 
             _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
-            Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance), TestItem.PrivateKeyA, 10000000).TestObject;
+            Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(MainnetSpecProvider.Instance, LimboLogs.Instance), TestItem.PrivateKeyA, 10000000).TestObject;
             string serialized = _test.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(tx, RlpBehaviors.None).Bytes.ToHexString());
 
             bridge.DidNotReceiveWithAnyArgs().Sign(null);

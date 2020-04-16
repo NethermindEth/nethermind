@@ -584,7 +584,7 @@ namespace Nethermind.AuRa.Test.Validators
                 .OfChainLength(9, 0, 0, validators);
             
             var blockTree = blockTreeBuilder.TestObject;
-            SetupInitialValidators(blockTree.Head, validators);
+            SetupInitialValidators(blockTree.Head?.Header, validators);
             IAuRaValidatorProcessorExtension validator = new ContractBasedValidator(_validator, _stateProvider, _abiEncoder, _transactionProcessor, _readOnlyTransactionProcessorSource, blockTree, inMemoryReceiptStorage, _validatorStore, _validSealerStrategy, _logManager, 1);
             validator.SetFinalizationManager(_blockFinalizationManager);
 
