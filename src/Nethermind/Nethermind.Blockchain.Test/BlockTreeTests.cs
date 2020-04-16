@@ -614,30 +614,6 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
-        public void Can_init_head_block_from_db_by_header()
-        {
-            Block genesisBlock = Build.A.Block.Genesis.TestObject;
-            Block headBlock = genesisBlock;
-
-            MemDb blocksDb = new MemDb();
-            MemDb headersDb = new MemDb();
-            blocksDb.Set(genesisBlock.Hash, Rlp.Encode(genesisBlock).Bytes);
-            headersDb.Set(genesisBlock.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
-
-            MemDb blockInfosDb = new MemDb();
-            blockInfosDb.Set(Keccak.Zero, Rlp.Encode(genesisBlock.Header).Bytes);
-
-            ChainLevelInfo level = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(headBlock.Hash, headBlock.Difficulty)});
-            level.BlockInfos[0].WasProcessed = true;
-
-            blockInfosDb.Set(0, Rlp.Encode(level).Bytes);
-
-            BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, Substitute.For<ITxPool>(), NullBloomStorage.Instance, LimboLogs.Instance);
-            Assert.AreEqual(headBlock.Hash, blockTree.Head?.Hash, "head");
-            Assert.AreEqual(headBlock.Hash, blockTree.Genesis?.Hash, "genesis");
-        }
-
-        [Test]
         public void Can_init_head_block_from_db_by_hash()
         {
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
