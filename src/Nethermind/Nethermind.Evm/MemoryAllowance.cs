@@ -18,6 +18,6 @@ namespace Nethermind.Evm
 {
     public static class MemoryAllowance
     {
-        public static int CodeCacheSize { get; set; } = 2 << 12;
+        public static int CodeCacheSize { get; } = 1 << 13;
     }
 }

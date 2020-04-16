@@ -112,7 +112,7 @@ namespace Nethermind.Synchronization.FastSync
         
         private ConcurrentDictionary<StateSyncBatch, object> _pendingRequests = new ConcurrentDictionary<StateSyncBatch, object>();
         private Dictionary<Keccak, HashSet<DependentItem>> _dependencies = new Dictionary<Keccak, HashSet<DependentItem>>();
-        private LruCache<Keccak, object> _alreadySaved = new LruCache<Keccak, object>(_alreadySavedCapacity);
+        private LruCache<Keccak, object> _alreadySaved = new LruCache<Keccak, object>(_alreadySavedCapacity, "saved nodes");
 
         public StateSyncFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, IBlockTree blockTree, ILogManager logManager)
         {
@@ -384,7 +384,7 @@ namespace Nethermind.Synchronization.FastSync
                 }
                 
                 _dependencies = new Dictionary<Keccak, HashSet<DependentItem>>();
-                _alreadySaved = new LruCache<Keccak, object>(_alreadySavedCapacity);
+                _alreadySaved = new LruCache<Keccak, object>(_alreadySavedCapacity, "saved nodes");
             }
 
             if (TotalNodesPending != 0)

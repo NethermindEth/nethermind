@@ -69,7 +69,7 @@ namespace Nethermind.Synchronization.Test
             syncConfig.PivotNumber = "1";
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, syncConfig, LimboLogs.Instance);
-            var head = Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject;
+            var head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject).TestObject;
             blockTree.Head.Returns(head);
             stateDb.Get(head.StateRoot).Returns(new byte[] {1});
             Assert.AreEqual(head.Number, syncProgressResolver.FindBestFullState());
@@ -85,11 +85,11 @@ namespace Nethermind.Synchronization.Test
             syncConfig.PivotNumber = "1";
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, syncConfig, LimboLogs.Instance);
-            var head = Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject;
+            var head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject).TestObject;
             var suggested = Build.A.BlockHeader.WithNumber(6).WithStateRoot(TestItem.KeccakB).TestObject;
             blockTree.Head.Returns(head);
             blockTree.BestSuggestedHeader.Returns(suggested);
-            blockTree.FindHeader(Arg.Any<Keccak>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(head);
+            blockTree.FindHeader(Arg.Any<Keccak>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(head.Header);
             stateDb.Get(head.StateRoot).Returns(new byte[] {1});
             stateDb.Get(suggested.StateRoot).Returns(new byte[] {1});
             Assert.AreEqual(suggested.Number, syncProgressResolver.FindBestFullState());
@@ -105,11 +105,11 @@ namespace Nethermind.Synchronization.Test
             syncConfig.PivotNumber = "1";
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, syncConfig, LimboLogs.Instance);
-            var head = Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject;
+            var head =  Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject).TestObject;
             var suggested = Build.A.BlockHeader.WithNumber(6).WithStateRoot(TestItem.KeccakB).TestObject;
             blockTree.Head.Returns(head);
             blockTree.BestSuggestedHeader.Returns(suggested);
-            blockTree.FindHeader(Arg.Any<Keccak>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(head);
+            blockTree.FindHeader(Arg.Any<Keccak>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(head?.Header);
             stateDb.Get(head.StateRoot).Returns(new byte[] {1});
             stateDb.Get(suggested.StateRoot).Returns((byte[]) null);
             Assert.AreEqual(head.Number, syncProgressResolver.FindBestFullState());

@@ -65,7 +65,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         [Test]
         public async Task get_latest_block_number_should_return_head_number()
         {
-            var header = Build.A.BlockHeader.TestObject;
+            var header = Build.A.Block.TestObject;
             _blockchainBridge.Head.Returns(header);
             var result = await _ndmBridge.GetLatestBlockNumberAsync();
             result.Should().Be(_blockchainBridge.Head.Number);
@@ -113,12 +113,11 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task get_latest_block_should_return_head_number()
         {
             var block = Build.A.Block.TestObject;
-            var header = Build.A.BlockHeader.TestObject;
-            _blockchainBridge.Head.Returns(header);
-            _blockchainBridge.FindBlock(header.Hash).Returns(block);
+            _blockchainBridge.Head.Returns(block);
+            _blockchainBridge.FindBlock(block.Hash).Returns(block);
             var result = await _ndmBridge.GetLatestBlockAsync();
             result.Should().Be(block);
-            _blockchainBridge.Received().FindBlock(header.Hash);
+            _blockchainBridge.Received().FindBlock(block.Hash);
         }
         
         [Test]
@@ -182,14 +181,14 @@ namespace Nethermind.DataMarketplace.Test.Services
         [Test]
         public async Task call_should_invoke_blockchain_bridge_call_and_return_data()
         {
-            var head = Build.A.BlockHeader.TestObject;
+            var head = Build.A.Block.TestObject;
             var transaction = Build.A.Transaction.TestObject;
             var data = new byte[] {0, 1, 2};
             _blockchainBridge.Head.Returns(head);
             var output = new BlockchainBridge.CallOutput(data, 0, null);
-            _blockchainBridge.Call(head, transaction).Returns(output);
+            _blockchainBridge.Call(head?.Header, transaction).Returns(output);
             var result = await _ndmBridge.CallAsync(transaction);
-            _blockchainBridge.Received().Call(head, transaction);
+            _blockchainBridge.Received().Call(head?.Header, transaction);
             result.Should().BeSameAs(data);
         }
         

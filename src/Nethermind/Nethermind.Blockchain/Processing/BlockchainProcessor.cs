@@ -275,7 +275,7 @@ namespace Nethermind.Blockchain.Processing
             
             if (!shouldProcess)
             {
-                if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
+                if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
                 return null;
             }
 
@@ -381,7 +381,7 @@ namespace Nethermind.Blockchain.Processing
                     break;
                 }
 
-                bool isFastSyncTransition = _blockTree.Head == _blockTree.Genesis && toBeProcessed.Number > 1;
+                bool isFastSyncTransition = _blockTree.Head?.Header == _blockTree.Genesis && toBeProcessed.Number > 1;
                 if (!isFastSyncTransition)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)}");
@@ -402,7 +402,7 @@ namespace Nethermind.Blockchain.Processing
 
             if (branchingPoint != null && branchingPoint.Hash != _blockTree.Head?.Hash)
             {
-                if (_logger.IsTrace) _logger.Trace($"Head block was: {_blockTree.Head?.ToString(BlockHeader.Format.Short)}");
+                if (_logger.IsTrace) _logger.Trace($"Head block was: {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
                 if (_logger.IsTrace) _logger.Trace($"Branching from: {branchingPoint.ToString(BlockHeader.Format.Short)}");
             }
             else
