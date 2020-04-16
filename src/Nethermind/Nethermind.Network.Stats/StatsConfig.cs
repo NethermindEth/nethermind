@@ -22,10 +22,8 @@ namespace Nethermind.Stats
     {
         public StatsConfig()
         {
-            FailedConnectionDelays = new []{ 100, 100, 100, 500, 500, 500, 1000, 5000, 1000 * 60 * 10 };
-            DisconnectDelays =       new []{ 100, 100, 100, 500, 500, 500, 1000, 5000, 1000 * 60 * 5 };
-//            FailedConnectionDelays = new []{ 100, 100, 100, 100, 100, 500, 500, 500, 500, 500, 1000, 1000, 1000, 1000, 1000, 5000, 10000, 1000 * 60, 1000 * 60 * 5, 1000 * 60 * 10 };
-//            DisconnectDelays = new []{ 100, 100, 100, 100, 100, 500, 500, 500, 500, 500, 1000, 1000, 1000, 1000, 1000, 5000, 10000, 1000 * 60, 1000 * 60 * 5 };
+            FailedConnectionDelays = new []{ 100, 200, 500, 1000, 2000, 5000, 10000, 15000, 30000, 60000, 60000 * 5 };
+            DisconnectDelays =       new []{ 100, 200, 500, 1000, 2000, 5000, 10000, 15000, 30000, 60000, 60000 * 5 };
         }
         
         public bool CaptureNodeStatsEventHistory { get; set; } = false;

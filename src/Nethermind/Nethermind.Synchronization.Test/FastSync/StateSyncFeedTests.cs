@@ -212,7 +212,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             public Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token)
             {
-                return Task.FromResult(BlockTree.Head);
+                return Task.FromResult(BlockTree.Head?.Header);
             }
 
             public void SendNewBlock(Block block)

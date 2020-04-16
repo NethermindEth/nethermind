@@ -72,7 +72,7 @@ namespace Nethermind.Blockchain.Producers
         {
             lock (_newBlockLock)
             {
-                BlockHeader parentHeader = BlockTree.Head;
+                BlockHeader parentHeader = BlockTree.Head?.Header;
                 if (parentHeader == null)
                 {
                     if (Logger.IsWarn) Logger.Warn($"Preparing new block - parent header is null");

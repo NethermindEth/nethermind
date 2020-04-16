@@ -212,7 +212,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public async Task Eth_get_balance_internal_error()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            bridge.Head.Returns((BlockHeader) null);
+            bridge.Head.Returns((Block) null);
 
             _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
             string serialized = _test.TestEthRpc("eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true), "0x01");
@@ -232,7 +232,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.IsSyncing.Returns(false);
-            bridge.Head.Returns(Build.A.BlockHeader.WithNumber(900).TestObject);
+            bridge.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(900).TestObject).TestObject);
             bridge.BestKnown.Returns(1000L);
             bridge.IsSyncing.Returns(true);
 
@@ -247,7 +247,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.IsSyncing.Returns(false);
-            bridge.Head.Returns(Build.A.BlockHeader.WithNumber(900).TestObject);
+            bridge.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(900).TestObject).TestObject);
             bridge.BestKnown.Returns(1000L);
 
             _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
@@ -597,7 +597,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
             bridge.IsSyncing.Returns(true);
             bridge.BestKnown.Returns(6178000L);
-            bridge.Head.Returns(Build.A.BlockHeader.WithNumber(6170000L).TestObject);
+            bridge.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6170000L).TestObject).TestObject);
 
             _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
             string serialized = _test.TestEthRpc("eth_syncing");
