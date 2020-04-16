@@ -228,10 +228,13 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private Snapshot TakeSnapshot(long peerBlock)
         {
-            long header = _syncProgressResolver.FindBestHeader();
-            long block = _syncProgressResolver.FindBestFullBlock();
-            long state = _syncProgressResolver.FindBestFullState();
+            // need to find them in the reversed order otherwise we may fall behind the processing
+            // and think that we have an invalid snapshot
             long processed = _syncProgressResolver.FindBestProcessedBlock();
+            long state = _syncProgressResolver.FindBestFullState();
+            long block = _syncProgressResolver.FindBestFullBlock();
+            long header = _syncProgressResolver.FindBestHeader();
+            
 
             Snapshot best = new Snapshot(processed, state, block, header, peerBlock);
             VerifySnapshot(best);
