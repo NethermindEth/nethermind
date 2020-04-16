@@ -14,28 +14,24 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.Specs.Forks;
-using Nethermind.State;
+using System;
+using Nethermind.Abi;
+using Newtonsoft.Json;
 
-namespace Nethermind.Consensus.AuRa.Contracts
+namespace Nethermind.Serialization.Json.Abi
 {
-    public class SystemContract : Contract
+    public class AbiTypeConverter : JsonConverter<AbiType>
     {
-        protected SystemContract(Address contractAddress) : base(contractAddress)
+        public override void WriteJson(JsonWriter writer, AbiType value, JsonSerializer serializer)
         {
-        }
-        
-        public void EnsureSystemAccount(IStateProvider stateProvider)
-        {
-            if (!stateProvider.AccountExists(Address.SystemUser))
-            {
-                stateProvider.CreateAccount(Address.SystemUser, UInt256.Zero);
-                stateProvider.Commit(Homestead.Instance);
-            }
+            writer.WriteValue(value.Name);
         }
 
-        protected Transaction GenerateSystemTransaction(byte[] transactionData, long gasLimit = long.MaxValue, UInt256? nonce = null) => GenerateTransaction(transactionData, Address.SystemUser, gasLimit, nonce);
+        public override AbiType ReadJson(JsonReader reader, Type objectType, AbiType existingValue, bool hasExistingValue, JsonSerializer serializer)
+        {
+            throw new NotSupportedException();
+        }
+
+        public override bool CanRead { get; } = false;
     }
 }

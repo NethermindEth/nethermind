@@ -14,28 +14,18 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Abi;
 using Nethermind.Core;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Serialization.Json.Abi;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class SystemContract : Contract
+    public class RandomContract : Contract
     {
-        protected SystemContract(Address contractAddress) : base(contractAddress)
-        {
-        }
+        private static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<RandomContract>();
         
-        public void EnsureSystemAccount(IStateProvider stateProvider)
+        protected RandomContract(Address contractAddress) : base(contractAddress)
         {
-            if (!stateProvider.AccountExists(Address.SystemUser))
-            {
-                stateProvider.CreateAccount(Address.SystemUser, UInt256.Zero);
-                stateProvider.Commit(Homestead.Instance);
-            }
         }
-
-        protected Transaction GenerateSystemTransaction(byte[] transactionData, long gasLimit = long.MaxValue, UInt256? nonce = null) => GenerateTransaction(transactionData, Address.SystemUser, gasLimit, nonce);
     }
 }

@@ -577,7 +577,7 @@ namespace Nethermind.AuRa.Test.Validators
                         {
                             Build.A.LogEntry.WithAddress(_contractAddress)
                                 .WithData(new[] {(byte) (block.Number * 10 + i++)})
-                                .WithTopics(ValidatorContract.Definition.initiateChangeEventHash, block.ParentHash)
+                                .WithTopics(ValidatorContract.Definition.Events[ValidatorContract.InitiateChangeEvent].GetHash(), block.ParentHash)
                                 .TestObject
                         };
                     })
@@ -588,7 +588,7 @@ namespace Nethermind.AuRa.Test.Validators
             IAuRaValidatorProcessorExtension validator = new ContractBasedValidator(_validator, _stateProvider, _abiEncoder, _transactionProcessor, _readOnlyTransactionProcessorSource, blockTree, inMemoryReceiptStorage, _validatorStore, _validSealerStrategy, _logManager, 1);
             validator.SetFinalizationManager(_blockFinalizationManager);
 
-            _abiEncoder.Decode(ValidatorContract.Definition.addressArrayResult, Arg.Any<byte[]>())
+            _abiEncoder.Decode(ValidatorContract.Definition.Functions[ValidatorContract.GetValidatorsFunction].GetReturnInfo(), Arg.Any<byte[]>())
                 .Returns(c =>
                 {
                     var addressIndex = c.Arg<byte[]>()[0];
@@ -702,7 +702,7 @@ namespace Nethermind.AuRa.Test.Validators
                     {
                         new LogEntry(contractAddress,
                             dataFunc(validators),
-                            new[] {ValidatorContract.Definition.initiateChangeEventHash, block.ParentHash})
+                            new[] {ValidatorContract.Definition.Events[ValidatorContract.InitiateChangeEvent].GetHash(), block.ParentHash})
                     };
                     
                     return new TxReceipt[]

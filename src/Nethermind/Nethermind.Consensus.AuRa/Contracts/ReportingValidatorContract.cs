@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,28 +14,18 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Abi;
 using Nethermind.Core;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Serialization.Json.Abi;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class SystemContract : Contract
+    public class ReportingValidatorContract : ValidatorContract
     {
-        protected SystemContract(Address contractAddress) : base(contractAddress)
-        {
-        }
+        private new static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<ReportingValidatorContract>();
         
-        public void EnsureSystemAccount(IStateProvider stateProvider)
+        public ReportingValidatorContract(IAbiEncoder abiEncoder, Address contractAddress) : base(abiEncoder, contractAddress)
         {
-            if (!stateProvider.AccountExists(Address.SystemUser))
-            {
-                stateProvider.CreateAccount(Address.SystemUser, UInt256.Zero);
-                stateProvider.Commit(Homestead.Instance);
-            }
         }
-
-        protected Transaction GenerateSystemTransaction(byte[] transactionData, long gasLimit = long.MaxValue, UInt256? nonce = null) => GenerateTransaction(transactionData, Address.SystemUser, gasLimit, nonce);
     }
 }
