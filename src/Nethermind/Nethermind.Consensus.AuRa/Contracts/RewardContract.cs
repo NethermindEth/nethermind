@@ -47,7 +47,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private readonly IAbiEncoder _abiEncoder;
         
         private static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<RewardContract>();
-
+        
         public RewardContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, long transitionBlock) : base(transactionProcessor, abiEncoder, contractAddress)
         {
             TransitionBlock = transitionBlock;

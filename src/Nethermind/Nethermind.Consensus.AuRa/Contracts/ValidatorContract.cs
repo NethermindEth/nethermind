@@ -90,7 +90,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         {
             var logEntry = new LogEntry(contractAddress, 
                 Array.Empty<byte>(),
-                new[] {Definition.Events[InitiateChangeEvent].GetKeccak(), blockHeader.ParentHash});
+                new[] {Definition.Events[InitiateChangeEvent].GetHash(), blockHeader.ParentHash});
 
             if (blockHeader.TryFindLog(receipts, logEntry, LogEntryEqualityComparer, out var foundEntry))
             {

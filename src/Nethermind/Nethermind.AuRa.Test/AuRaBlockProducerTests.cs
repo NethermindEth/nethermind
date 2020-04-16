@@ -76,7 +76,7 @@ namespace Nethermind.AuRa.Test
             _blockProcessingQueue.IsEmpty.Returns(true);
             _auRaStepCalculator.TimeToNextStep.Returns(_stepDelay);
             _blockTree.BestKnownNumber.Returns(1);
-            _blockTree.Head.Returns(Build.A.BlockHeader.WithAura(10, Bytes.Empty).TestObject);
+            _blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithAura(10, Bytes.Empty).TestObject).TestObject);
             _blockchainProcessor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>()).Returns(c => c.Arg<Block>());
         }
 
@@ -179,7 +179,7 @@ namespace Nethermind.AuRa.Test
         [Test]
         public async Task Does_not_produce_block_when_head_is_null()
         {
-            _blockTree.Head.Returns((BlockHeader) null);
+            _blockTree.Head.Returns((Block) null);
             (await StartStop()).ShouldProduceBlocks(Quantity.None());
         }
         

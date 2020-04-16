@@ -98,7 +98,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 _blockFinalizationManager.BlocksFinalized += OnBlocksFinalized;
                 if (_blockTree.Head != null)
                 {
-                    Validators = LoadValidatorsFromContract(_blockTree.Head);
+                    Validators = LoadValidatorsFromContract(_blockTree.Head?.Header);
                 }
             }
         }

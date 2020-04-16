@@ -219,7 +219,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         [Test]
         public void Can_call_by_hash_canonical()
         {
-            BlockHeader lastHead = _blockTree.Head;
+            Block lastHead = _blockTree.Head;
             Block block = Build.A.Block.WithParent(lastHead).TestObject;
             Block newBlockOnMain = Build.A.Block.WithParent(lastHead).WithDifficulty(block.Difficulty + 1).TestObject;
             BlockTreeBuilder.AddBlock(_blockTree, block);

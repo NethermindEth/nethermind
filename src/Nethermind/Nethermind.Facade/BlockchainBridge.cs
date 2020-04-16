@@ -104,7 +104,7 @@ namespace Nethermind.Facade
             _wallet.Sign(tx, _blockTree.ChainId);
         }
 
-        public BlockHeader Head => _blockTree.Head;
+        public Block Head => _blockTree.Head;
 
         public long BestKnown => _blockTree.BestKnownNumber;
 

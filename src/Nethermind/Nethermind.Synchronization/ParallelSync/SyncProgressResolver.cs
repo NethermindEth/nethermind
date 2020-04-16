@@ -64,7 +64,7 @@ namespace Nethermind.Synchronization.ParallelSync
              when it causes a full sync vs node sync race at every block.*/
 
             BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
-            BlockHeader head = _blockTree.Head;
+            Block head = _blockTree.Head;
             long bestFullState = head?.Number ?? 0;
             long maxLookup = Math.Min(_maxLookup * 2, (bestSuggested?.Number ?? 0L) - bestFullState);
 

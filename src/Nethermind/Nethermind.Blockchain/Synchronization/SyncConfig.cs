@@ -27,7 +27,7 @@ namespace Nethermind.Blockchain.Synchronization
         public static ISyncConfig WithFastBlocks { get; } = new SyncConfig {FastSync = true, FastBlocks = true};
 
         public bool SynchronizationEnabled { get; set; } = true;
-        public long? FastSyncCatchUpHeightDelta { get; set; }
+        public long? FastSyncCatchUpHeightDelta { get; set; } = 1024;
         public bool FastBlocks { get; set; }
         public bool UseGethLimitsInFastBlocks { get; set; } = true;
         public bool BeamSync { get; set; }

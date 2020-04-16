@@ -101,7 +101,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             _ctx.DisposeStack.Push(_ctx.SyncPeerPool);
             
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_ctx.BlockTree, _ctx.ReceiptStorage, _ctx.DbProvider.StateDb, _syncConfig, _ctx.LogManager);
-            _ctx.SyncModeSelector = new MultiSyncModeSelector(syncProgressResolver, _ctx.SyncPeerPool, _syncConfig, _ctx.LogManager);
+            MultiSyncModeSelector syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, _ctx.SyncPeerPool, _syncConfig, _ctx.LogManager);
+            _ctx.SyncModeSelector = syncModeSelector;
+            _ctx.DisposeStack.Push(syncModeSelector);
+            
             _ctx.Synchronizer = new Synchronizer(
                 _ctx.DbProvider,
                 _ctx.SpecProvider,
@@ -288,7 +291,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 return Task.CompletedTask;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Starting synchronization from block {_ctx.BlockTree.Head.ToString(BlockHeader.Format.Short)}.");
+            if (_logger.IsDebug) _logger.Debug($"Starting synchronization from block {_ctx.BlockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}.");
 
             _ctx.SyncPeerPool.Start();
             _ctx.Synchronizer.Start();
