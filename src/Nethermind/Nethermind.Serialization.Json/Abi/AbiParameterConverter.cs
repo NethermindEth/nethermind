@@ -26,7 +26,21 @@ namespace Nethermind.Serialization.Json.Abi
 {
     internal static class AbiParameterConverterStatics
     {
-        internal static readonly Regex TypeExpression = new Regex(@"^(?<T>u?int(?<M>\d{1,3})?|address|bool|u?fixed(?<P>(?<M>\d{1,3})x(?<N>\d{1,2}))?|bytes(?<M>\d{1,3})?|function|string|tuple)(?<A>\[(?<L>\d+)?\])?$",
+        internal const string TypeGroup = "T";
+        internal const string TypeLengthGroup = "M";
+        internal const string PrecisionGroup = "N";
+        internal const string ArrayGroup = "A";
+        internal const string LengthGroup = "L";
+        
+        /// <remarks>
+        /// Groups:
+        /// T - type or base type if array
+        /// M - length of type https://solidity.readthedocs.io/en/v0.5.3/abi-spec.html#types 
+        /// N - precision of type https://solidity.readthedocs.io/en/v0.5.3/abi-spec.html#types
+        /// A - if matched type is array
+        /// L - if matched, denotes length of fixed length array 
+        /// </remarks>
+        internal static readonly Regex TypeExpression = new Regex(@"^(?<T>u?int(?<M>\d{1,3})?|address|bool|u?fixed((?<M>\d{1,3})x(?<N>\d{1,2}))?|bytes(?<M>\d{1,3})?|function|string|tuple)(?<A>\[(?<L>\d+)?\])?$",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         
         
@@ -73,11 +87,11 @@ namespace Nethermind.Serialization.Json.Abi
             var match = AbiParameterConverterStatics.TypeExpression.Match(type);
             if (match.Success)
             {
-                var baseType = new string(match.Groups["T"].Value.TakeWhile(char.IsLetter).ToArray());
+                var baseType = new string(match.Groups[AbiParameterConverterStatics.TypeGroup].Value.TakeWhile(char.IsLetter).ToArray());
                 var baseAbiType = GetBaseType(baseType, match, components);
-                return match.Groups["A"].Success
-                    ? match.Groups["L"].Success
-                        ? (AbiType) new AbiFixedLengthArray(baseAbiType, int.Parse(match.Groups["L"].Value))
+                return match.Groups[AbiParameterConverterStatics.ArrayGroup].Success
+                    ? match.Groups[AbiParameterConverterStatics.LengthGroup].Success
+                        ? (AbiType) new AbiFixedLengthArray(baseAbiType, int.Parse(match.Groups[AbiParameterConverterStatics.LengthGroup].Value))
                         : new AbiArray(baseAbiType)
                     : baseAbiType;
             }
@@ -89,8 +103,8 @@ namespace Nethermind.Serialization.Json.Abi
 
         private static AbiType GetBaseType(string baseType, Match match, JToken components)
         {
-            int? m = match.Groups["M"].Success ? int.Parse(match.Groups["M"].Value) : (int?) null;
-            int? n = match.Groups["N"].Success ? int.Parse(match.Groups["N"].Value) : (int?) null;
+            int? m = match.Groups[AbiParameterConverterStatics.TypeLengthGroup].Success ? int.Parse(match.Groups[AbiParameterConverterStatics.TypeLengthGroup].Value) : (int?) null;
+            int? n = match.Groups[AbiParameterConverterStatics.PrecisionGroup].Success ? int.Parse(match.Groups[AbiParameterConverterStatics.PrecisionGroup].Value) : (int?) null;
             return AbiParameterConverterStatics.SimpleTypeFactories[baseType](m, n);
         }
     }
