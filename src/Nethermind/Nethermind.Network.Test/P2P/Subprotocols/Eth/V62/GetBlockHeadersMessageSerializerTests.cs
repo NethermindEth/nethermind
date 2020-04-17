@@ -21,6 +21,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class GetBlockHeadersMessageSerializerTests
     {

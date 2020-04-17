@@ -29,6 +29,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.BeamSync
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class BeamSyncDbTests
     {

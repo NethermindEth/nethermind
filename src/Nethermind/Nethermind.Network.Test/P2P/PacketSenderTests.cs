@@ -14,18 +14,16 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.Net.NetworkInformation;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
-using Nethermind.Network.Rlpx;
 using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class PacketSenderTests
     {

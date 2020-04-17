@@ -478,7 +478,7 @@ namespace Nethermind.Synchronization.Test
 
             public SyncingContext PeerCountIs(long i)
             {
-                Assert.AreEqual(i, Metrics.SyncPeers, "peer count");
+                Assert.AreEqual(i, SyncPeerPool.AllPeers.Count(), "peer count");
                 return this;
             }
 
