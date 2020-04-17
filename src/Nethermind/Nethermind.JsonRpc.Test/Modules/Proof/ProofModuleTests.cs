@@ -44,6 +44,7 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Proof
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture(true, true)]
     [TestFixture(true, false)]
     [TestFixture(false, false)]

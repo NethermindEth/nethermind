@@ -25,6 +25,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.ParallelSync
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class MultiSyncModeSelectorTests
     {

@@ -29,6 +29,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Mining.Test
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class EthashSealEngineTests
     {

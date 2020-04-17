@@ -55,7 +55,7 @@ namespace Nethermind.JsonRpc
                 converterList.Add(converter);
             }
 
-            foreach (JsonConverter converter in EthereumJsonSerializer.BasicConverters)
+            foreach (JsonConverter converter in EthereumJsonSerializer.CommonConverters)
             {
                 if (_logger.IsDebug) _logger.Debug($"Registering {converter.GetType().Name} (default)");
                 _serializer.Converters.Add(converter);

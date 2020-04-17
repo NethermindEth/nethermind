@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -31,6 +32,7 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class AdminModuleTests
     {
@@ -61,7 +63,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = RpcTest.TestSerializedRequest(_adminModule, "admin_nodeInfo");
             JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
             JsonSerializerSettings settings = new JsonSerializerSettings();
-            settings.Converters = EthereumJsonSerializer.BasicConverters;
+            settings.Converters = EthereumJsonSerializer.CommonConverters.ToList();
             
             NodeInfo nodeInfo = ((JObject) response.Result).ToObject<NodeInfo>(JsonSerializer.Create(settings));
             nodeInfo.Enode.Should().Be(_enodeString);

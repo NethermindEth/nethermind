@@ -33,6 +33,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class SyncServerTests
     {

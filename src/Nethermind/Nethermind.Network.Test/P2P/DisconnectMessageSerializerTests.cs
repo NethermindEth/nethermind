@@ -22,6 +22,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class DisconnectMessageSerializerTests
     {

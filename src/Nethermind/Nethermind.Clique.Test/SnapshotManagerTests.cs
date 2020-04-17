@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Clique;
 using Nethermind.Core;
@@ -24,15 +23,15 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store;
 using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.Clique.Test
 {
+    [Parallelizable(ParallelScope.Self)]
+    [TestFixture]
     public class SnapshotManagerTests
     {
         private IDb _snapshotDb = new MemDb();
