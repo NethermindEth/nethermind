@@ -25,6 +25,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization;
 using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
@@ -54,7 +55,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             IDb blocksInfoDb = new MemDb();
             IDb headersDb = new MemDb();
             ChainLevelInfoRepository repository = new ChainLevelInfoRepository(blocksInfoDb);
-            ISpecProvider specProvider = MainNetSpecProvider.Instance;
+            ISpecProvider specProvider = MainnetSpecProvider.Instance;
             _blockTree = new BlockTree(blocksDb, headersDb, blocksInfoDb, repository, specProvider, NullTxPool.Instance, NullBloomStorage.Instance, new SyncConfig(), LimboLogs.Instance);
 
             ISnapshotableDb stateDb = new StateDb();
@@ -67,9 +68,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, LimboLogs.Instance);
 
             TransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
-            BlockProcessor blockProcessor = new BlockProcessor(specProvider, AlwaysValidBlockValidator.Instance, NoBlockRewards.Instance, transactionProcessor, stateDb, codeDb, stateProvider, storageProvider, NullTxPool.Instance, NullReceiptStorage.Instance, LimboLogs.Instance);
+            BlockProcessor blockProcessor = new BlockProcessor(specProvider, Always.Valid, NoBlockRewards.Instance, transactionProcessor, stateDb, codeDb, stateProvider, storageProvider, NullTxPool.Instance, NullReceiptStorage.Instance, LimboLogs.Instance);
 
-            _processor = new BlockchainProcessor(_blockTree, blockProcessor, new CompositeDataRecoveryStep(new TxSignaturesRecoveryStep(new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance), NullTxPool.Instance, LimboLogs.Instance)), LimboLogs.Instance, false);
+            _processor = new BlockchainProcessor(_blockTree, blockProcessor, new CompositeDataRecoveryStep(new TxSignaturesRecoveryStep(new EthereumEcdsa(MainnetSpecProvider.Instance, LimboLogs.Instance), NullTxPool.Instance, LimboLogs.Instance)), LimboLogs.Instance, false);
             Block genesis = Build.A.Block.Genesis.TestObject;
             _blockTree.SuggestBlock(genesis);
             _processor.Process(genesis, ProcessingOptions.None, NullBlockTracer.Instance);

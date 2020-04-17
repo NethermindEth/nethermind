@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Consensus.Mining.Difficulty;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -23,7 +22,7 @@ using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 
-namespace Nethermind.Consensus.Mining
+namespace Nethermind.Consensus.Ethash
 {
     public class EthashSealValidator : ISealValidator
     {
@@ -32,7 +31,7 @@ namespace Nethermind.Consensus.Mining
         private IEthash _ethash;
         private ILogger _logger;
 
-        private LruCache<Keccak, bool> _sealCache = new LruCache<Keccak, bool>(2048);
+        private LruCache<Keccak, bool> _sealCache = new LruCache<Keccak, bool>(2048, 2048, "ethash seals");
         private const int SealValidationIntervalConstantComponent = 1024;
         private int sealValidationInterval = SealValidationIntervalConstantComponent;
 

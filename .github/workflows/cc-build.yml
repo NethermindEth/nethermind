@@ -26,7 +26,9 @@ jobs:
       run: git submodule update --init src/Dirichlet src/rocksdb-sharp
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
-      run: sudo apt-get install libsnappy-dev libc6-dev libc6
+      run: |
+        sudo apt-get update
+        sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Installing macOS packages
       if: matrix.os == 'macOS'
       run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
@@ -96,6 +98,9 @@ jobs:
     - name: Nethermind.Runner.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Runner.Test
+    - name: Nethermind.Synchronization.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Synchronization.Test
     - name: Nethermind.State.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.State.Test
@@ -105,6 +110,9 @@ jobs:
     - name: Nethermind.Wallet.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Wallet.Test
+    - name: Nethermind.WebSockets.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.WebSockets.Test
     - name: Nethermind.DataMarketplace.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.DataMarketplace.Test

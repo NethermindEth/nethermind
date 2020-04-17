@@ -18,6 +18,7 @@ using System;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Network;
+using Nethermind.Synchronization;
 
 namespace Nethermind.JsonRpc.Modules.Net
 {

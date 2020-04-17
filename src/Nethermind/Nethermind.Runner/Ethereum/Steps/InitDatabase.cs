@@ -19,7 +19,6 @@ using System.IO;
 using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Core;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.Db;
@@ -29,6 +28,7 @@ using Nethermind.Db.Rpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Synchronization.BeamSync;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {

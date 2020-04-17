@@ -65,7 +65,11 @@ namespace Nethermind.BeaconNode
         public static readonly Action<ILogger, ulong, ulong, long, int, Exception?> WorkerStoreAvailableTickStarted =
             LoggerMessage.Define<ulong, ulong, long, int>(LogLevel.Information,
                 new EventId(2000, nameof(WorkerStoreAvailableTickStarted)),
-                "Store available with genesis time {GenesisTime}, at clock time {Time} (slot {SlotValue}), starting clock tick [{ThreadId}]");
+                "Store available with genesis time {GenesisTime}, at clock time {Time} (slot {SlotValue}), starting clock tick [{ThreadId}].");
+        public static readonly Action<ILogger, string, Slot, Root, Slot, Exception?> RequestingBlocksFromAheadPeer =
+            LoggerMessage.Define<string, Slot, Root, Slot>(LogLevel.Information,
+                new EventId(2001, nameof(RequestingBlocksFromAheadPeer)),
+                "Peer {PeerId} is ahead, requesting blocks from finalized slot {FinalizedSlot} up to head {PeerHeadRoot}, slot {PeerHeadSlot}.");
         
         public static readonly Action<ILogger, Root, BeaconState, Root, BeaconBlock, Exception?> ValidatedStateTransition =
             LoggerMessage.Define<Root, BeaconState, Root, BeaconBlock>(LogLevel.Information,
@@ -98,6 +102,15 @@ namespace Nethermind.BeaconNode
                 "Countdown {Time:n0} seconds to expected genesis.");
 
         // 4bxx warning
+
+        public static readonly Action<ILogger, string, ForkVersion, Slot, Epoch, ForkVersion, Exception?> PeerStatusInvalidForkVersion =
+            LoggerMessage.Define<string, ForkVersion, Slot, Epoch, ForkVersion>(LogLevel.Warning,
+                new EventId(4000, nameof(PeerStatusInvalidForkVersion)),
+                "Disconnecting peer {PeerId} because it has fork version {PeerForkVersion} at slot {PeerSlot} (epoch {PeerEpoch}) different from expected {ExpectedForkVersion}.");
+        public static readonly Action<ILogger, string, Root, Epoch, Root, Exception?> PeerStatusInvalidFinalizedCheckpoint =
+            LoggerMessage.Define<string, Root, Epoch, Root>(LogLevel.Warning,
+                new EventId(4001, nameof(PeerStatusInvalidFinalizedCheckpoint)),
+                "Disconnecting peer {PeerId} because it has finalized checkpoint {PeerFinalizedRoot} at epoch {PeerFinalizedEpoch} different from expected {ExpectedRoot}.");
 
         public static readonly Action<ILogger, CommitteeIndex, Slot, int, Exception?> InvalidIndexedAttestationBit1 =
             LoggerMessage.Define<CommitteeIndex, Slot, int>(LogLevel.Warning,

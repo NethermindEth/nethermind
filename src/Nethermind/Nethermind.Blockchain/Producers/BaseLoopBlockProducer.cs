@@ -17,6 +17,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Logging;
@@ -29,9 +30,9 @@ namespace Nethermind.Blockchain.Producers
         private const int ChainNotYetProcessedMillisecondsDelay = 100;
         private readonly string _name;
         private Task _producerTask;
-        private readonly CancellationTokenSource _loopCancellationTokenSource = new CancellationTokenSource();
-        private readonly CancellationTokenSource _stepCancellationTokenSource = new CancellationTokenSource();
-        private bool _canProduce;
+        
+        protected CancellationTokenSource LoopCancellationTokenSource { get; } = new CancellationTokenSource();
+        protected bool CanProduce { get; set; }
 
         protected BaseLoopBlockProducer(
             IPendingTxSelector pendingTxSelector,
@@ -53,7 +54,7 @@ namespace Nethermind.Blockchain.Producers
             BlockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
             BlockTree.NewBestSuggestedBlock += BlockTreeOnNewBestSuggestedBlock;
             
-            _producerTask = Task.Run(ProducerLoop, _loopCancellationTokenSource.Token).ContinueWith(t =>
+            _producerTask = Task.Run(ProducerLoop, LoopCancellationTokenSource.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {
@@ -75,23 +76,22 @@ namespace Nethermind.Blockchain.Producers
             BlockProcessingQueue.ProcessingQueueEmpty -= OnBlockProcessorQueueEmpty;
             BlockTree.NewBestSuggestedBlock -= BlockTreeOnNewBestSuggestedBlock;
             
-            _loopCancellationTokenSource?.Cancel();
-            _stepCancellationTokenSource?.Cancel();
+            LoopCancellationTokenSource?.Cancel();
             await (_producerTask ?? Task.CompletedTask);
         }
         
         protected virtual async ValueTask ProducerLoop()
         {
-            while (!_loopCancellationTokenSource.IsCancellationRequested)
+            while (!LoopCancellationTokenSource.IsCancellationRequested)
             {
-                if (_canProduce && BlockProcessingQueue.IsEmpty)
+                if (CanProduce && BlockProcessingQueue.IsEmpty)
                 {
-                    await ProducerLoopStep(_stepCancellationTokenSource.Token);
+                    await ProducerLoopStep(LoopCancellationTokenSource.Token);
                 }
                 else
                 {
                     if (Logger.IsDebug) Logger.Debug("Delaying producing block, chain not processed yet.");
-                    await Task.Delay(ChainNotYetProcessedMillisecondsDelay);
+                    await Task.Delay(ChainNotYetProcessedMillisecondsDelay, LoopCancellationTokenSource.Token);
                 }
             }
         }
@@ -103,12 +103,12 @@ namespace Nethermind.Blockchain.Producers
         
         private void BlockTreeOnNewBestSuggestedBlock(object sender, BlockEventArgs e)
         {
-            _canProduce = false;
+            CanProduce = false;
         }
 
         private void OnBlockProcessorQueueEmpty(object sender, EventArgs e)
         {
-            _canProduce = true;
+            CanProduce = true;
         }
     }
 }

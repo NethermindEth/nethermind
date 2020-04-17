@@ -43,7 +43,7 @@ namespace Nethermind.TxPool
 
         private readonly ConcurrentDictionary<Address, AddressNonces> _nonces = new ConcurrentDictionary<Address, AddressNonces>();
 
-        private LruCache<Keccak, object> _hashCache = new LruCache<Keccak, object>(MemoryAllowance.TxHashCacheSize);
+        private LruCache<Keccak, object> _hashCache = new LruCache<Keccak, object>(MemoryAllowance.TxHashCacheSize, MemoryAllowance.TxHashCacheSize, "tx hashes");
 
         /// <summary>
         /// Number of blocks after which own transaction will not be resurrected any more
@@ -146,7 +146,7 @@ namespace Nethermind.TxPool
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
-            ThisNodeInfo.AddInfo("Mem est tx   :", $"{(MemoryAllowance.TxHashCacheSize * 64 + MemoryAllowance.MemPoolSize * 4096) / 1024 / 1024}MB".PadLeft(8));
+            ThisNodeInfo.AddInfo("Mem est tx   :", $"{(LruCache<Keccak, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Keccak, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1024 / 1024}MB".PadLeft(8));
             _transactions = new DistinctValueSortedPool<Keccak, Transaction>(MemoryAllowance.MemPoolSize, (t1, t2) => t1.GasPrice.CompareTo(t2.GasPrice), PendingTransactionComparer.Default);
             _peerNotificationThreshold = txPoolConfig.PeerNotificationThreshold;
 
@@ -289,7 +289,7 @@ namespace Nethermind.TxPool
             {
                 _ownTransactions.TryAdd(transaction.Hash, transaction);
                 _ownTimer.Enabled = true;
-                if (_logger.IsInfo) _logger.Info($"Broadcasting own transaction {transaction.Hash} to {_peers.Count} peers");
+                if (_logger.IsDebug) _logger.Debug($"Broadcasting own transaction {transaction.Hash} to {_peers.Count} peers");
             }
         }
 
@@ -384,7 +384,12 @@ namespace Nethermind.TxPool
         {
             if (!_transactions.TryGetValue(hash, out transaction))
             {
-                transaction = _txStorage.Get(hash);
+                // commented out as it puts too much pressure on the database
+                // and it not really required in any scenario
+                  // * tx recovery usually will fetch from pending
+                  // * get tx via RPC usually will fetch from block or from pending
+                  // * internal tx pool scenarios are handled directly elsewhere
+                // transaction = _txStorage.Get(hash);
             }
 
             return transaction != null;

@@ -19,8 +19,10 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class LogEntryDecoder : IRlpDecoder<LogEntry>
+    public class LogEntryDecoder : IRlpDecoder<LogEntry>, IRlpValueDecoder<LogEntry>
     {
+        public static readonly LogEntryDecoder Instance = new LogEntryDecoder();
+        
         public LogEntry Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
@@ -39,6 +41,28 @@ namespace Nethermind.Serialization.Rlp
             }
 
             byte[] data = rlpStream.DecodeByteArray();
+
+            return new LogEntry(address, data, topics);
+        }
+
+        public LogEntry Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (decoderContext.IsNextItemNull())
+            {
+                decoderContext.ReadByte();
+                return null;
+            }
+            
+            decoderContext.ReadSequenceLength();
+            Address address = decoderContext.DecodeAddress();
+            long sequenceLength = decoderContext.ReadSequenceLength();
+            Keccak[] topics = new Keccak[sequenceLength / 33];
+            for (int i = 0; i < topics.Length; i++)
+            {
+                topics[i] = decoderContext.DecodeKeccak();
+            }
+
+            byte[] data = decoderContext.DecodeByteArray();
 
             return new LogEntry(address, data, topics);
         }
@@ -114,7 +138,25 @@ namespace Nethermind.Serialization.Rlp
             
             return topicsLength;
         }
-        
-        
+
+        public void DecodeStructRef(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors storage, out LogEntryStructRef item)
+        {
+            if (decoderContext.IsNextItemNull())
+            {
+                decoderContext.ReadByte();
+                item = new LogEntryStructRef();
+                return;
+            }
+            
+            decoderContext.ReadSequenceLength();
+            decoderContext.DecodeAddressStructRef(out var address);
+            var peekPrefixAndContentLength = decoderContext.PeekPrefixAndContentLength();
+            var sequenceLength = peekPrefixAndContentLength.PrefixLength + peekPrefixAndContentLength.ContentLength;
+            var topics = decoderContext.Data.Slice(decoderContext.Position, sequenceLength);
+            decoderContext.SkipItem();
+            var data = decoderContext.DecodeByteArraySpan();
+
+            item = new LogEntryStructRef(address, data, topics);
+        }
     }
 }

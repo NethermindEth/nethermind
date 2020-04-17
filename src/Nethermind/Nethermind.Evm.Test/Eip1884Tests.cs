@@ -29,8 +29,8 @@ namespace Nethermind.Evm.Test
 {
     public class Eip1884Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainNetSpecProvider.IstanbulBlockNumber;
-        protected override ISpecProvider SpecProvider => MainNetSpecProvider.Instance;
+        protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
+        protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
         
         [Test]
         public void after_istanbul_selfbalance_opcode_puts_current_address_balance_onto_the_stack()

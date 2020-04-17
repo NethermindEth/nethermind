@@ -1,7 +1,6 @@
 using System.Threading.Tasks;
 using MongoDB.Driver;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.Repositories;
-using Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.Mongo;
 using NUnit.Framework;
 
 namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.Mongo

@@ -22,11 +22,17 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 
 namespace Nethermind.Consensus
-{  
+{
     public class FakeSealer : ISealer, ISealValidator
     {
         private readonly TimeSpan _miningDelay;
         private readonly bool _exact;
+
+        public FakeSealer()
+        {
+            _miningDelay = TimeSpan.Zero;
+            _exact = false;
+        }
 
         public FakeSealer(TimeSpan miningDelay, bool exact = true)
         {
@@ -38,9 +44,9 @@ namespace Nethermind.Consensus
 
         private TimeSpan RandomizeDelay()
         {
-            return _miningDelay + TimeSpan.FromMilliseconds((_exact ? 0 : 1) * (Random.Next((int)_miningDelay.TotalMilliseconds) - (int)_miningDelay.TotalMilliseconds / 2));
+            return _miningDelay + TimeSpan.FromMilliseconds((_exact ? 0 : 1) * (Random.Next((int) _miningDelay.TotalMilliseconds) - (int) _miningDelay.TotalMilliseconds / 2));
         }
-        
+
         public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
         {
             block.Header.MixHash = Keccak.Zero;

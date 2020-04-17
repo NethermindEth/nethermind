@@ -152,7 +152,7 @@ namespace Nethermind.BeaconNode.Storage
             return new ValueTask<LatestMessage?>(latestMessage);
         }
 
-        public Task InitializeForkChoiceStoreAsync(ulong time, ulong genesisTime, Checkpoint justifiedCheckpoint,
+        public async Task InitializeForkChoiceStoreAsync(ulong time, ulong genesisTime, Checkpoint justifiedCheckpoint,
             Checkpoint finalizedCheckpoint, Checkpoint bestJustifiedCheckpoint, IDictionary<Root, BeaconBlock> blocks,
             IDictionary<Root, BeaconState> states,
             IDictionary<Checkpoint, BeaconState> checkpointStates)
@@ -171,21 +171,20 @@ namespace Nethermind.BeaconNode.Storage
             BestJustifiedCheckpoint = bestJustifiedCheckpoint;
             foreach (KeyValuePair<Root, BeaconBlock> kvp in blocks)
             {
-                _blocks[kvp.Key] = kvp.Value;
+                await SetBlockAsync(kvp.Key, kvp.Value);
             }
 
             foreach (KeyValuePair<Root, BeaconState> kvp in states)
             {
-                _blockStates[kvp.Key] = kvp.Value;
+                await SetBlockStateAsync(kvp.Key, kvp.Value);
             }
 
             foreach (KeyValuePair<Checkpoint, BeaconState> kvp in checkpointStates)
             {
-                _checkpointStates[kvp.Key] = kvp.Value;
+                await SetCheckpointStateAsync(kvp.Key, kvp.Value);
             }
 
             IsInitialized = true;
-            return Task.CompletedTask;
         }
 
         public Task SetBestJustifiedCheckpointAsync(Checkpoint checkpoint)

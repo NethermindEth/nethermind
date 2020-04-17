@@ -195,7 +195,7 @@ namespace Ethereum.Transaction.Test
 
             bool useChainId = transaction.Signature.V > 28;            
             
-            TxValidator validator = new TxValidator(useChainId ? ChainId.MainNet : 0);
+            TxValidator validator = new TxValidator(useChainId ? ChainId.Mainnet : 0);
 
             if (validTest != null)
             {
@@ -211,7 +211,7 @@ namespace Ethereum.Transaction.Test
                 Assert.AreEqual(expectedSignature, transaction.Signature, "signature");
 //                if(useChainId && spec.IsEip155Enabled)
 //                
-                IEthereumEcdsa ecdsa = new EthereumEcdsa(new SingleReleaseSpecProvider(spec, useChainId ? (int)ChainId.MainNet : 0), LimboLogs.Instance);
+                IEthereumEcdsa ecdsa = new EthereumEcdsa(new SingleReleaseSpecProvider(spec, useChainId ? (int)ChainId.Mainnet : 0), LimboLogs.Instance);
                 bool verified = ecdsa.Verify(
                     validTest.Sender,
                     transaction,

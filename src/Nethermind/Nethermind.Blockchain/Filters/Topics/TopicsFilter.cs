@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Filters.Topics
@@ -46,6 +47,27 @@ namespace Nethermind.Blockchain.Filters.Topics
 
             return true;
         }
+        
+        public bool Accepts(ref LogEntryStructRef entry)
+        {
+            var iterator = new KeccaksIterator(entry.Topics);
+            for (int i = 0; i < _expressions.Length; i++)
+            {
+                if (iterator.TryGetNext(out var keccak))
+                {
+                    if (!_expressions[i].Accepts(ref keccak))
+                    {
+                        return false;
+                    }
+                }
+                else
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
 
         public bool Matches(Core.Bloom bloom)
         {
@@ -54,6 +76,22 @@ namespace Nethermind.Blockchain.Filters.Topics
             for (int i = 0; i < _expressions.Length; i++)
             {
                 result = _expressions[i].Matches(bloom);
+                if (!result)
+                {
+                    break;
+                }
+            }
+
+            return result;
+        }
+        
+        public bool Matches(ref BloomStructRef bloom)
+        {
+            bool result = true;
+            
+            for (int i = 0; i < _expressions.Length; i++)
+            {
+                result = _expressions[i].Matches(ref bloom);
                 if (!result)
                 {
                     break;

@@ -1,8 +1,7 @@
-using Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence;
 using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
 using Nethermind.Logging;
 
-namespace Nethermind.DataMarketplace.Providers.Infrastructure.Tests.Persistence.Mongo
+namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence
 {
     internal static class MongoForTest
     {

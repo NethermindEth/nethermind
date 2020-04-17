@@ -41,13 +41,13 @@ namespace Nethermind.Consensus.Clique
         private readonly ICache<Keccak, Address> _signatures;
         private readonly IEthereumEcdsa _ecdsa;
         private IDb _blocksDb;
-        private ICache<Keccak, Snapshot> _snapshotCache = new LruCache<Keccak, Snapshot>(Clique.InMemorySnapshots);
+        private ICache<Keccak, Snapshot> _snapshotCache = new LruCache<Keccak, Snapshot>(Clique.InMemorySnapshots, "clique snapshots");
 
         public SnapshotManager(ICliqueConfig cliqueConfig, IDb blocksDb, IBlockTree blockTree, IEthereumEcdsa ecdsa, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _cliqueConfig = cliqueConfig ?? throw new ArgumentNullException(nameof(cliqueConfig));
-            _signatures = new LruCache<Keccak, Address>(Clique.InMemorySignatures);
+            _signatures = new LruCache<Keccak, Address>(Clique.InMemorySignatures, Clique.InMemorySignatures, "signatures");
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _blocksDb = blocksDb ?? throw new ArgumentNullException(nameof(blocksDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -350,7 +350,7 @@ namespace Nethermind.Consensus.Clique
             
             // was this needed?
 //            snapshot.Hash = headers[headers.Count - 1].CalculateHash();
-            snapshot.Hash = headers[headers.Count - 1].Hash;
+            snapshot.Hash = headers[^1].Hash;
             return snapshot;
         }
 

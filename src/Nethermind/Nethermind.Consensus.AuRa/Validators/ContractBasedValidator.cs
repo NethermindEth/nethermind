@@ -18,6 +18,7 @@ using System;
 using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
@@ -98,7 +99,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 _blockFinalizationManager.BlocksFinalized += OnBlocksFinalized;
                 if (_blockTree.Head != null)
                 {
-                    Validators = LoadValidatorsFromContract(_blockTree.Head);
+                    Validators = LoadValidatorsFromContract(_blockTree.Head?.Header);
                 }
             }
         }

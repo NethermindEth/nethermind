@@ -18,13 +18,13 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Store;
 
 namespace Nethermind.Consensus.AuRa
 {
@@ -49,6 +49,7 @@ namespace Nethermind.Consensus.AuRa
         {
             _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
             _config = config ?? throw new ArgumentNullException(nameof(config));
+            CanProduce = _config.AllowAuRaPrivateChains;
             _nodeAddress = nodeAddress ?? throw new ArgumentNullException(nameof(nodeAddress));
         }
 
@@ -58,7 +59,6 @@ namespace Nethermind.Consensus.AuRa
             var timeToNextStep = _auRaStepCalculator.TimeToNextStep;
             if (Logger.IsDebug) Logger.Debug($"Waiting {timeToNextStep} for next AuRa step.");
             await TaskExt.DelayAtLeast(timeToNextStep, cancellationToken);
-
         }
         
         protected override Block PrepareBlock(BlockHeader parent)

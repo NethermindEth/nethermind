@@ -15,8 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.P2p;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.BeaconNode.Peering
@@ -29,12 +31,12 @@ namespace Nethermind.BeaconNode.Peering
         public static readonly Action<ILogger, Exception?> PeeringWorkerExecute =
             LoggerMessage.Define(LogLevel.Debug,
                 new EventId(6050, nameof(PeeringWorkerExecute)),
-                "Peering worker execute running.");
+                "Peering worker execute running, awaiting store to be initialised with anchor state.");
         
-        public static readonly Action<ILogger, Exception?> PeeringWorkerStarted =
+        public static readonly Action<ILogger, Exception?> PeeringWorkerExecuteCompleted =
             LoggerMessage.Define(LogLevel.Debug,
-                new EventId(6051, nameof(PeeringWorkerStarted)),
-                "Peering worker started.");
+                new EventId(6051, nameof(PeeringWorkerExecuteCompleted)),
+                "Peering worker execute completed, peering now running.");
         
         public static readonly Action<ILogger, Exception?> PeeringWorkerStopping =
             LoggerMessage.Define(LogLevel.Debug,
@@ -44,17 +46,17 @@ namespace Nethermind.BeaconNode.Peering
         public static readonly Action<ILogger, string, int, Exception?> GossipReceived =
             LoggerMessage.Define<string, int>(LogLevel.Debug,
                 new EventId(6053, nameof(GossipReceived)),
-                "Gossip received, topic '{Topic}', {ByteCount} bytes.");
+                "Gossip received, topic {Topic}, {ByteCount} bytes.");
         
-        public static readonly Action<ILogger, bool, string, string, int, Exception?> RpcReceived =
-            LoggerMessage.Define<bool, string, string, int>(LogLevel.Debug,
+        public static readonly Action<ILogger, RpcDirection, int, string, string, int, Exception?> RpcReceived =
+            LoggerMessage.Define<RpcDirection, int, string, string, int>(LogLevel.Debug,
                 new EventId(6054, nameof(RpcReceived)),
-                "RPC (response {IsResponse}) received, method '{Method}', peer {Peer}, {ByteCount} bytes.");
+                "RPC {RpcDirection} ({RequestResponseFlag}) received, method {Method}, peer {Peer}, {ByteCount} bytes.");
         
         public static readonly Action<ILogger, string, int, Exception?> GossipSend =
             LoggerMessage.Define<string, int>(LogLevel.Debug,
                 new EventId(6055, nameof(GossipSend)),
-                "Gossip send, topic '{Topic}', {ByteCount} bytes.");
+                "Gossip send, topic {Topic}, {ByteCount} bytes.");
         
         public static readonly Action<ILogger, string?, int?, int, Exception?> MothraStarting =
             LoggerMessage.Define<string?, int?, int>(LogLevel.Debug,
@@ -65,5 +67,50 @@ namespace Nethermind.BeaconNode.Peering
             LoggerMessage.Define<string, string>(LogLevel.Debug,
                 new EventId(6057, nameof(CreatingMothraLogDirectory)),
                 "Creating Mothra log directory {LogDirectoryName} in {MothraBasePath}.");
+
+        public static readonly Action<ILogger, RpcDirection, string, string, int, Exception?> RpcSend =
+            LoggerMessage.Define<RpcDirection, string, string, int>(LogLevel.Debug,
+                new EventId(6058, nameof(RpcSend)),
+                "RPC send {RpcDirection}, method {Method}, peer {Peer}, {ByteCount} bytes.");
+        
+        public static readonly Action<ILogger, string, Exception?> AddingExpectedPeer =
+            LoggerMessage.Define<string>(LogLevel.Debug,
+                new EventId(6059, nameof(AddingExpectedPeer)),
+                "Adding expected peer with ENR {PeerEnr}.");
+        
+        public static readonly Action<ILogger, string, Guid, ConnectionDirection, Exception?> CreatedPeerSession =
+            LoggerMessage.Define<string, Guid, ConnectionDirection>(LogLevel.Debug,
+                new EventId(6060, nameof(CreatedPeerSession)),
+                "Created peer {Peer} session {Session} with direction {ConnectionDirection}.");
+        
+        public static readonly Action<ILogger, Exception?> StoreInitializedStartingPeering =
+            LoggerMessage.Define(LogLevel.Debug,
+                new EventId(6061, nameof(StoreInitializedStartingPeering)),
+                "Store initialized, peering worker starting peer-to-peer.");
+        
+        public static readonly Action<ILogger, ulong, Exception?> PeeringWaitingForAnchorState =
+            LoggerMessage.Define<ulong>(LogLevel.Debug,
+                new EventId(6062, nameof(PeeringWaitingForAnchorState)),
+                "Store not initialized, waiting for anchor state (waiting {WaitSeconds} seconds).");
+        
+        public static readonly Action<ILogger, string, Guid, ConnectionDirection, Exception?> OpenedPeerSession =
+            LoggerMessage.Define<string, Guid, ConnectionDirection>(LogLevel.Debug,
+                new EventId(6063, nameof(CreatedPeerSession)),
+                "Opened peer {Peer} session {Session} with direction {ConnectionDirection}.");
+        
+        public static readonly Action<ILogger, string, Guid, ConnectionDirection, Exception?> DisconnectingPeerSession =
+            LoggerMessage.Define<string, Guid, ConnectionDirection>(LogLevel.Debug,
+                new EventId(6064, nameof(CreatedPeerSession)),
+                "Disconnecting peer {Peer} session {Session} with direction {ConnectionDirection}.");
+        
+        public static readonly Action<ILogger, BeaconBlock, Exception?> ProcessGossipSignedBeaconBlock =
+            LoggerMessage.Define<BeaconBlock>(LogLevel.Debug,
+                new EventId(6065, nameof(ProcessGossipSignedBeaconBlock)),
+                "Processing gossip signed beacon block, {BeaconBlock}");
+        
+        public static readonly Action<ILogger, string, Exception?> ProcessPeerDiscovered =
+            LoggerMessage.Define<string>(LogLevel.Debug,
+                new EventId(6066, nameof(ProcessPeerDiscovered)),
+                "Processing peer discovered, {PeerId}");
     }
 }

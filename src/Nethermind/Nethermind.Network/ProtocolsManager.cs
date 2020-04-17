@@ -34,6 +34,8 @@ using Nethermind.Network.P2P.Subprotocols.Les;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 
 namespace Nethermind.Network
@@ -43,7 +45,7 @@ namespace Nethermind.Network
         private readonly ConcurrentDictionary<Guid, SyncPeerProtocolHandlerBase> _syncPeers =
             new ConcurrentDictionary<Guid, SyncPeerProtocolHandlerBase>();
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new ConcurrentDictionary<Guid, ISession>();
-        private readonly IEthSyncPeerPool _syncPool;
+        private readonly ISyncPeerPool _syncPool;
         private readonly ISyncServer _syncServer;
         private readonly ITxPool _txPool;
         private readonly IDiscoveryApp _discoveryApp;
@@ -60,7 +62,7 @@ namespace Nethermind.Network
         public event EventHandler<ProtocolInitializedEventArgs> P2PProtocolInitialized;
 
         public ProtocolsManager(
-            IEthSyncPeerPool ethSyncPeerPool,
+            ISyncPeerPool syncPeerPool,
             ISyncServer syncServer,
             ITxPool txPool,
             IDiscoveryApp discoveryApp,
@@ -72,7 +74,7 @@ namespace Nethermind.Network
             ISpecProvider specProvider,
             ILogManager logManager)
         {
-            _syncPool = ethSyncPeerPool ?? throw new ArgumentNullException(nameof(ethSyncPeerPool));
+            _syncPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _discoveryApp = discoveryApp ?? throw new ArgumentNullException(nameof(discoveryApp));

@@ -19,7 +19,7 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs
 {
-    public class MainNetSpecProvider : ISpecProvider
+    public class MainnetSpecProvider : ISpecProvider
     {
         public IReleaseSpec GenesisSpec => Frontier.Instance;
 
@@ -91,10 +91,10 @@ namespace Nethermind.Specs
             MuirGlacierBlockNumber
         };
 
-        private MainNetSpecProvider()
+        private MainnetSpecProvider()
         {
         }
 
-        public static MainNetSpecProvider Instance = new MainNetSpecProvider();
+        public static MainnetSpecProvider Instance = new MainnetSpecProvider();
     }
 }

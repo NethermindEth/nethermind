@@ -19,7 +19,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class BlockDecoder : IRlpDecoder<Block>
+    public class BlockDecoder : IRlpDecoder<Block>, IRlpValueDecoder<Block>
     {
         private HeaderDecoder _headerDecoder = new HeaderDecoder();
         private TransactionDecoder _txDecoder = new TransactionDecoder();
@@ -108,6 +108,47 @@ namespace Nethermind.Serialization.Rlp
             }
             
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
+        }
+
+        public Block Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (decoderContext.IsNextItemNull())
+            {
+                decoderContext.ReadByte();
+                return null;
+            }
+            
+            int sequenceLength = decoderContext.ReadSequenceLength();
+            int blockCheck = decoderContext.Position + sequenceLength;
+
+            BlockHeader header = Rlp.Decode<BlockHeader>(ref decoderContext);
+
+            int transactionsSequenceLength = decoderContext.ReadSequenceLength();
+            int transactionsCheck = decoderContext.Position + transactionsSequenceLength;
+            List<Transaction> transactions = new List<Transaction>();
+            while (decoderContext.Position < transactionsCheck)
+            {
+                transactions.Add(Rlp.Decode<Transaction>(ref decoderContext));
+            }
+
+            decoderContext.Check(transactionsCheck);
+
+            int ommersSequenceLength = decoderContext.ReadSequenceLength();
+            int ommersCheck = decoderContext.Position + ommersSequenceLength;
+            List<BlockHeader> ommerHeaders = new List<BlockHeader>();
+            while (decoderContext.Position < ommersCheck)
+            {
+                ommerHeaders.Add(Rlp.Decode<BlockHeader>(ref decoderContext, rlpBehaviors));
+            }
+
+            decoderContext.Check(ommersCheck);
+
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
+            {
+                decoderContext.Check(blockCheck);
+            }
+
+            return new Block(header, transactions, ommerHeaders);
         }
 
         public Rlp Encode(Block item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

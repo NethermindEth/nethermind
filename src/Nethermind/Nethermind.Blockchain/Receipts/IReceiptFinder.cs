@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -27,6 +26,6 @@ namespace Nethermind.Blockchain.Receipts
         TxReceipt[] Get(Block block);
         TxReceipt[] Get(Keccak blockHash);
         bool CanGetReceiptsByHash(long blockNumber);
-        public TxReceipt Get(Block block, Keccak txHash) => Get(block).ElementAtOrDefault(Array.FindIndex(block.Transactions, t => t.Hash == txHash));
+        bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator);
     }
 }

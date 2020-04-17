@@ -17,6 +17,7 @@
 using System.IO;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core.Services;
@@ -64,6 +65,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 services.Ecdsa,
                 services.BloomStorage,
                 logManager,
+                false,
                 jsonRpcConfig.FindLogBlockDepthLimit);
             var dataAssetRlpDecoder = new DataAssetDecoder();
             var encoder = new AbiEncoder();

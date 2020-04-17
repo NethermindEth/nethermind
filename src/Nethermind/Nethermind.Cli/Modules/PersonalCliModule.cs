@@ -28,9 +28,9 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("personal", "newAccount")]
-        public JsValue NewAccount(string password)
+        public string NewAccount(string password)
         {
-            return NodeManager.PostJint($"personal_newAccount", password).Result;
+            return NodeManager.Post<string>($"personal_newAccount", password).Result;
         }
         
         [CliFunction("personal", "lockAccount")]

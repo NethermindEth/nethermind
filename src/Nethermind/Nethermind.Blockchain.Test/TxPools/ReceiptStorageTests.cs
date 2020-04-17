@@ -46,11 +46,11 @@ namespace Nethermind.Blockchain.Test.TxPools
 
         [Test]
         public void should_add_and_fetch_receipt_from_persistent_storage()
-            => TestAddAndGetReceipt(new PersistentReceiptStorage(new MemColumnsDb<ReceiptsColumns>(), _specProvider));
+            => TestAddAndGetReceipt(new PersistentReceiptStorage(new MemColumnsDb<ReceiptsColumns>(), _specProvider, new ReceiptsRecovery()));
         
         [Test]
         public void should_add_and_fetch_receipt_from_persistent_storage_with_eip_658()
-            => TestAddAndGetReceiptEip658(new PersistentReceiptStorage(new MemColumnsDb<ReceiptsColumns>(), _specProvider));
+            => TestAddAndGetReceiptEip658(new PersistentReceiptStorage(new MemColumnsDb<ReceiptsColumns>(), _specProvider, new ReceiptsRecovery()));
 
         private void TestAddAndGetReceipt(IReceiptStorage storage)
         {
@@ -60,7 +60,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             storage.Insert(block, receipt);
             var blockHash = storage.FindBlockHash(transaction.Hash);
             blockHash.Should().Be(block.Hash);
-            var fetchedReceipt = storage.Get(block, transaction.Hash);
+            var fetchedReceipt = storage.Get(block).ForTransaction(transaction.Hash);
             receipt.StatusCode.Should().Be(fetchedReceipt.StatusCode);
             receipt.PostTransactionState.Should().Be(fetchedReceipt.PostTransactionState);
             receipt.TxHash.Should().Be(transaction.Hash);
@@ -74,7 +74,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             storage.Insert(block, receipt);
             var blockHash = storage.FindBlockHash(transaction.Hash);
             blockHash.Should().Be(block.Hash);
-            var fetchedReceipt = storage.Get(block, transaction.Hash);
+            var fetchedReceipt = storage.Get(block).ForTransaction(transaction.Hash);
             receipt.StatusCode.Should().Be(fetchedReceipt.StatusCode);
             receipt.PostTransactionState.Should().Be(fetchedReceipt.PostTransactionState);
             receipt.TxHash.Should().Be(transaction.Hash);

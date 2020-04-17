@@ -19,6 +19,7 @@ using System.Linq;
 using System.Reflection;
 using FluentAssertions.Specialized;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;

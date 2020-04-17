@@ -118,9 +118,18 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
+        private EthereumEcdsa _ecdsa = new EthereumEcdsa(MainnetSpecProvider.Instance, LimboLogs.Instance);
+        
+        public TransactionBuilder SignedAndResolved(PrivateKey privateKey)
+        {
+            _ecdsa.Sign(privateKey, TestObjectInternal, MainnetSpecProvider.MuirGlacierBlockNumber);
+            TestObjectInternal.SenderAddress = privateKey.Address;
+            return this;
+        }
+        
         public TransactionBuilder SignedAndResolved()
         {
-            EthereumEcdsa ecdsa = new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new EthereumEcdsa(MainnetSpecProvider.Instance, LimboLogs.Instance);
             ecdsa.Sign(TestItem.IgnoredPrivateKey, TestObjectInternal, 10000000);
             TestObjectInternal.SenderAddress = TestItem.IgnoredPrivateKey.Address;
             return this;

@@ -30,7 +30,7 @@ using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode
 {
-    public class ForkChoice
+    public class ForkChoice : IForkChoice
     {
         private readonly BeaconChainUtility _beaconChainUtility;
         private readonly BeaconStateAccessor _beaconStateAccessor;

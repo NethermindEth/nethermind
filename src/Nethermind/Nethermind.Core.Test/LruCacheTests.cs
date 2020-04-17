@@ -41,7 +41,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Beyond_capacity()
         {
-            LruCache<Address, Account> cache = new LruCache<Address, Account>(Capacity);
+            LruCache<Address, Account> cache = new LruCache<Address, Account>(Capacity, "test");
             for (int i = 0; i < Capacity; i++)
             {
                 cache.Set(_addresses[i], _accounts[i]);

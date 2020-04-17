@@ -18,8 +18,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Synchronization.FastSync;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -27,7 +26,9 @@ using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using Nethermind.Blockchain.Synchronization;
 
 namespace Nethermind.Network.P2P.Subprotocols.Les
 {

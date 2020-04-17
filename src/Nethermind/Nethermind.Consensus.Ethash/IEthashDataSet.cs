@@ -16,7 +16,7 @@
 
 using System;
 
-namespace Nethermind.Consensus.Mining
+namespace Nethermind.Consensus.Ethash
 {
     public interface IEthashDataSet : IDisposable
     {

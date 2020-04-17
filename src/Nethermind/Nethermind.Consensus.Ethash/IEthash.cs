@@ -18,7 +18,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Consensus.Mining
+namespace Nethermind.Consensus.Ethash
 {
     public interface IEthash
     {

@@ -28,7 +28,7 @@ using Nethermind.Serialization.Rlp;
 
 [assembly: InternalsVisibleTo("Nethermind.Mining.Test")]
 
-namespace Nethermind.Consensus.Mining
+namespace Nethermind.Consensus.Ethash
 {
     public class Ethash : IEthash
     {

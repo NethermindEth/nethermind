@@ -18,7 +18,7 @@ using System;
 using System.Buffers;
 using Nethermind.Crypto;
 
-namespace Nethermind.Consensus.Mining
+namespace Nethermind.Consensus.Ethash
 {
     public class EthashCache : IEthashDataSet
     {

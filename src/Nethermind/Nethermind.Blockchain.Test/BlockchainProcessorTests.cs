@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -68,13 +69,13 @@ namespace Nethermind.Blockchain.Test
                     _allowedToFail.Add(hash);
                 }
 
-                public Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
+                public Block[] Process(Keccak branchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
                 {
                     _logger.Info($"Processing {suggestedBlocks.Last().ToString(Block.Format.Short)}");
                     while (true)
                     {
                         bool notYet = false;
-                        for (int i = 0; i < suggestedBlocks.Length; i++)
+                        for (int i = 0; i < suggestedBlocks.Count; i++)
                         {
                             Keccak hash = suggestedBlocks[i].Hash;
                             if (!_allowed.Contains(hash))
@@ -98,7 +99,7 @@ namespace Nethermind.Blockchain.Test
                         else
                         {
                             BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last()));
-                            return suggestedBlocks;
+                            return suggestedBlocks.ToArray();
                         }
                     }
                 }
@@ -180,7 +181,7 @@ namespace Nethermind.Blockchain.Test
                 MemDb blockDb = new MemDb();
                 MemDb blockInfoDb = new MemDb();
                 MemDb headersDb = new MemDb();
-                _blockTree = new BlockTree(blockDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainNetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+                _blockTree = new BlockTree(blockDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
                 _blockProcessor = new BlockProcessorMock(_logManager);
                 _recoveryStep = new RecoveryStepMock(_logManager);
                 _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, LimboLogs.Instance, true);

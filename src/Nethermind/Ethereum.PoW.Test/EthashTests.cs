@@ -23,7 +23,7 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using Ethereum.Test.Base;
-using Nethermind.Consensus.Mining;
+using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;

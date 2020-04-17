@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -70,7 +71,7 @@ namespace Nethermind.Consensus.AuRa
             // This is needed if processing was stopped between processing last block and running finalization logic 
             if (hasHead)
             {
-                FinalizeBlocks(_blockTree.Head);
+                FinalizeBlocks(_blockTree.Head?.Header);
             }
         }
 
