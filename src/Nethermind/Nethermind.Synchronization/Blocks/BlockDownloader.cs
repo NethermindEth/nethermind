@@ -88,21 +88,33 @@ namespace Nethermind.Synchronization.Blocks
         {
             if (!_blockTree.CanAcceptNewBlocks) return;
 
-            _allocationCancellation = new CancellationTokenSource();
-            CancellationTokenSource linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _allocationCancellation.Token);
+            CancellationTokenSource thisAllocationCancellation = new CancellationTokenSource();
+            CancellationTokenSource linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation, thisAllocationCancellation.Token);
+            CancellationTokenSource previousAllocationCancellation = Interlocked.Exchange(ref _allocationCancellation, thisAllocationCancellation);
+            previousAllocationCancellation?.Dispose();
+            
+            try
+            {
+                
 
-            SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, Synchronization.SyncEvent.Started));
-            if ((blocksRequest.Options & DownloaderOptions.WithBodies) == DownloaderOptions.WithBodies)
-            {
-                if(Logger.IsDebug) Logger.Debug("Downloading bodies");
-                await DownloadBlocks(bestPeer, blocksRequest, linkedCancellation.Token).ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
-                if(Logger.IsDebug) Logger.Debug("Finished downloading bodies");
+                SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, Synchronization.SyncEvent.Started));
+                if ((blocksRequest.Options & DownloaderOptions.WithBodies) == DownloaderOptions.WithBodies)
+                {
+                    if (Logger.IsDebug) Logger.Debug("Downloading bodies");
+                    await DownloadBlocks(bestPeer, blocksRequest, linkedCancellation.Token).ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
+                    if (Logger.IsDebug) Logger.Debug("Finished downloading bodies");
+                }
+                else
+                {
+                    if (Logger.IsDebug) Logger.Debug("Downloading headers");
+                    await DownloadHeaders(bestPeer, blocksRequest, linkedCancellation.Token).ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
+                    if (Logger.IsDebug) Logger.Debug("Finished downloading headers");
+                }
             }
-            else
+            finally
             {
-                if(Logger.IsDebug) Logger.Debug("Downloading headers");
-                await DownloadHeaders(bestPeer, blocksRequest, linkedCancellation.Token).ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
-                if(Logger.IsDebug) Logger.Debug("Finished downloading headers");
+                thisAllocationCancellation.Dispose();
+                linkedCancellation?.Dispose();
             }
         }
 
@@ -130,6 +142,7 @@ namespace Nethermind.Synchronization.Blocks
                 {
                     break;
                 }
+
                 if (_logger.IsWarn) _logger.Warn($"Headers request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
                 BlockHeader[] headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
 
