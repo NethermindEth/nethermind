@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -49,6 +50,7 @@ namespace Nethermind.Synchronization.Test
 {
     [TestFixture(SynchronizerType.Fast)]
     [TestFixture(SynchronizerType.Full)]
+    [Parallelizable(ParallelScope.All)]
     public class SynchronizerTests
     {
         private readonly SynchronizerType _synchronizerType;
@@ -274,7 +276,7 @@ namespace Nethermind.Synchronization.Test
 
         public class SyncingContext
         {
-            public static HashSet<SyncingContext> AllInstances = new HashSet<SyncingContext>();
+            public static ConcurrentBag<SyncingContext> AllInstances = new ConcurrentBag<SyncingContext>();
 
             private Dictionary<string, ISyncPeer> _peers = new Dictionary<string, ISyncPeer>();
             private BlockTree BlockTree { get; }
@@ -499,12 +501,12 @@ namespace Nethermind.Synchronization.Test
             }
         }
 
-        [SetUp]
+        [OneTimeSetUp]
         public void Setup()
         {
         }
 
-        [TearDown]
+        [OneTimeTearDown]
         public void TearDown()
         {
             foreach (SyncingContext syncingContext in SyncingContext.AllInstances)
