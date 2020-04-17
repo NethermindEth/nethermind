@@ -77,7 +77,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         protected virtual async Task<TestBlockchain> Build()
         {
-            Timestamper = new ManualTimestamper();
+            Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30));
             JsonSerializer = new EthereumJsonSerializer();
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             EthereumEcdsa = new EthereumEcdsa(specProvider, LimboLogs.Instance);
