@@ -20,6 +20,7 @@ using System.Linq;
 using FluentAssertions;
 using FluentAssertions.Common;
 using Nethermind.Abi;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -29,6 +30,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.State;
 using Nethermind.Store;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -43,25 +45,31 @@ namespace Nethermind.AuRa.Test.Contract
         private Block _block;
         private readonly Address _contractAddress = Address.FromNumber(long.MaxValue);
         private ITransactionProcessor _transactionProcessor;
+        private IReadOnlyTransactionProcessorSource _readOnlyTransactionProcessorSource;
+        private IStateProvider _stateProvider;
 
         [SetUp]
         public void SetUp()
         {
             _block = new Block(Build.A.BlockHeader.TestObject, new BlockBody());
             _transactionProcessor = Substitute.For<ITransactionProcessor>();
+            _readOnlyTransactionProcessorSource = Substitute.For<IReadOnlyTransactionProcessorSource>();
+            _readOnlyTransactionProcessorSource.Get(TestItem.KeccakA).Returns(_transactionProcessor);
+            _stateProvider = Substitute.For<IStateProvider>();
+            _stateProvider.StateRoot.Returns(TestItem.KeccakA);
         }
 
         [Test]
         public void constructor_throws_ArgumentNullException_on_null_encoder()
         {
-            Action action = () => new ValidatorContract(_transactionProcessor, null, _contractAddress);
+            Action action = () => new ValidatorContract(_transactionProcessor, null, _contractAddress, _stateProvider, _readOnlyTransactionProcessorSource);
             action.Should().Throw<ArgumentNullException>();
         }
         
         [Test]
         public void constructor_throws_ArgumentNullException_on_null_contractAddress()
         {
-            Action action = () => new ValidatorContract(_transactionProcessor, new AbiEncoder(), null);
+            Action action = () => new ValidatorContract(_transactionProcessor, new AbiEncoder(), null, _stateProvider, _readOnlyTransactionProcessorSource);
             action.Should().Throw<ArgumentNullException>();
         }
         
@@ -80,7 +88,7 @@ namespace Nethermind.AuRa.Test.Contract
                 Nonce = 0
             };
             
-            var contract = new ValidatorContract(_transactionProcessor, new AbiEncoder(), _contractAddress);
+            var contract = new ValidatorContract(_transactionProcessor, new AbiEncoder(), _contractAddress, _stateProvider, _readOnlyTransactionProcessorSource);
             
             contract.FinalizeChange(_block.Header);
             

@@ -210,7 +210,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 if (_logger.IsInfo && isProcessingBlock) _logger.Info($"Applying validator set change signalled at block {CurrentPendingValidators.BlockNumber} before block {block.ToString(BlockHeader.Format.Short)}.");
                 if (block.Number == InitBlockNumber)
                 {
-                    ValidatorContract.EnsureSystemAccount(_stateProvider);
+                    ValidatorContract.EnsureSystemAccount();
                     ValidatorContract.FinalizeChange(block);
                 }
                 else
@@ -221,7 +221,8 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
         
-        protected virtual ValidatorContract CreateValidatorContract(Address contractAddress) => new ValidatorContract(_transactionProcessor, AbiEncoder, contractAddress);
+        protected virtual ValidatorContract CreateValidatorContract(Address contractAddress) => 
+            new ValidatorContract(_transactionProcessor, AbiEncoder, contractAddress, _stateProvider, _readOnlyReadOnlyTransactionProcessorSource);
         
         private void InitiateChange(Block block, Address[] potentialValidators, bool isProcessingBlock, bool initiateChangeIsImmediatelyFinalized = false)
         {
@@ -238,7 +239,6 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private Address[] LoadValidatorsFromContract(BlockHeader blockHeader)
         {
-            using var readOnlyTransactionProcessor = _readOnlyReadOnlyTransactionProcessorSource.Get(_stateProvider.StateRoot);
             var validators = ValidatorContract.GetValidators(blockHeader);
 
             if (validators.Length == 0)

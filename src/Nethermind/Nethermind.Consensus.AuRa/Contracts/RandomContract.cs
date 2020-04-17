@@ -14,24 +14,55 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Numerics;
 using Nethermind.Abi;
 using Nethermind.Core;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Serialization.Json.Abi;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class RandomContract : Contract, IBlockTransitionable
+    public class RandomContract : ConstantContract, IBlockTransitionable
     {
-        private readonly IAbiEncoder _abiEncoder;
         private static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<RandomContract>();
         
-        public RandomContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, long transitionBlock) : base(transactionProcessor, abiEncoder, contractAddress)
+        public RandomContract(
+            ITransactionProcessor transactionProcessor,
+            IAbiEncoder abiEncoder,
+            Address contractAddress,
+            IStateProvider stateProvider, 
+            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource,
+            long transitionBlock) : base(transactionProcessor, abiEncoder, contractAddress, stateProvider, readOnlyReadOnlyTransactionProcessorSource)
         {
-            _abiEncoder = abiEncoder;
             TransitionBlock = transitionBlock;
         }
 
         public long TransitionBlock { get; }
+        
+        public enum Phase {
+            /// Waiting for the next phase.
+            ///
+            /// This state indicates either the successful revelation in this round or having missed the
+            /// window to make a commitment, i.e. having failed to commit during the commit phase.
+            Waiting,
+            /// Indicates a commitment is possible, but still missing.
+            BeforeCommit,
+            /// Indicates a successful commitment, waiting for the commit phase to end.
+            Committed,
+            /// Indicates revealing is expected as the next step.
+            Reveal
+    }
+
+        public Phase GetPhase(BlockHeader blockHeader)
+        {
+            UInt256 round = CurrentCollectRound(blockHeader);
+        }
+
+        private UInt256 CurrentCollectRound(BlockHeader blockHeader) => CallConstant<UInt256>(blockHeader, Definition.Functions["currentCollectRound"]);
+        
+        private UInt256 CurrentCollectRound(BlockHeader blockHeader) => CallConstant<UInt256>(blockHeader, Definition.Functions["currentCollectRound"]);
     }
 }

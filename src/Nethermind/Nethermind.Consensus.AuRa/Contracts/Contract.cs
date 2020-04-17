@@ -17,6 +17,7 @@
 using System;
 using Nethermind.Abi;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
@@ -40,14 +41,14 @@ namespace Nethermind.Consensus.AuRa.Contracts
             ContractAddress = contractAddress ?? throw new ArgumentNullException(nameof(contractAddress));
         }
         
-        protected Transaction GenerateTransaction(byte[] transactionData, Address sender, long gasLimit = long.MaxValue, UInt256? nonce = null)
+        protected Transaction GenerateTransaction(byte[] transactionData, Address sender = null, long gasLimit = long.MaxValue, UInt256? nonce = null)
         {
             var transaction = new Transaction(true)
             {
                 Value = UInt256.Zero,
                 Data = transactionData,
                 To = ContractAddress,
-                SenderAddress = sender,
+                SenderAddress = sender ?? Address.SystemUser,
                 GasLimit = gasLimit,
                 GasPrice = UInt256.Zero,
                 Nonce = nonce ?? UInt256.Zero,
@@ -57,14 +58,29 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
             return transaction;
         }
+
+        protected byte[] Call(BlockHeader header, Transaction transaction)
+        {
+            return CallCore(_transactionProcessor, header, transaction);
+        }
         
-        protected void InvokeTransaction(BlockHeader header, Transaction transaction, CallOutputTracer tracer)
+        protected object[] Call(BlockHeader header, AbiFunctionDescription function, params object[] arguments)
+        {
+            var transaction = GenerateTransaction(AbiEncoder.Encode(function.GetCallInfo(), arguments));
+            var result = Call(header, transaction);
+            var objects = AbiEncoder.Decode(function.GetReturnInfo(), result);
+            return objects;
+        }
+        
+        protected byte[] CallCore(ITransactionProcessor transactionProcessor, BlockHeader header, Transaction transaction)
         {
             bool failure;
             
+            CallOutputTracer tracer = new CallOutputTracer();
+            
             try
             {
-                _transactionProcessor.Execute(transaction, header, tracer);
+                transactionProcessor.Execute(transaction, header, tracer);
                 failure = tracer.StatusCode != StatusCode.Success;
             }
             catch (Exception e)
@@ -76,18 +92,48 @@ namespace Nethermind.Consensus.AuRa.Contracts
             {
                 throw new AuRaException($"System call returned error '{tracer.Error}' at block {header.Number}.");
             }
+            else
+            {
+                return tracer.ReturnValue;
+            }
         }
 
-        protected bool TryInvokeTransaction(BlockHeader header, Transaction transaction, CallOutputTracer tracer)
+        protected bool TryCall(BlockHeader header, Transaction transaction, out byte[] result)
         {
+            CallOutputTracer tracer = new CallOutputTracer();
+            
             try
             {
                 _transactionProcessor.Execute(transaction, header, tracer);
+                result = tracer.ReturnValue;
                 return tracer.StatusCode == StatusCode.Success;
             }
             catch (Exception)
             {
+                result = null;
                 return false;
+            }
+        }
+
+        protected bool TryCall(BlockHeader header, AbiFunctionDescription function, out object[] result, params object[] arguments)
+        {
+            var transaction = GenerateTransaction(AbiEncoder.Encode(function.GetCallInfo(), arguments));
+            if (TryCall(header, transaction, out var bytes))
+            {
+                result = AbiEncoder.Decode(function.GetReturnInfo(), bytes);
+                return true;
+            }
+
+            result = null;
+            return false;
+        }
+        
+        protected void EnsureSystemAccount(IStateProvider stateProvider)
+        {
+            if (!stateProvider.AccountExists(Address.SystemUser))
+            {
+                stateProvider.CreateAccount(Address.SystemUser, UInt256.Zero);
+                stateProvider.Commit(Homestead.Instance);
             }
         }
     }

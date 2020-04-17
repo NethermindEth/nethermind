@@ -26,32 +26,15 @@ using Nethermind.Serialization.Json.Abi;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class RewardContract : SystemContract, IBlockTransitionable
+    public class RewardContract : Contract, IBlockTransitionable
     {
-        /// <summary>
-        /// produce rewards for the given benefactors,
-        /// with corresponding reward codes.
-        /// only callable by `SYSTEM_ADDRESS`
-        /// function reward(address[] benefactors, uint16[] kind) external returns (address[], uint256[]);
-        ///
-        /// Kind:
-        /// 0 - Author - Reward attributed to the block author
-        /// 2 - Empty step - Reward attributed to the author(s) of empty step(s) included in the block (AuthorityRound engine)
-        /// 3 - External - Reward attributed by an external protocol (e.g. block reward contract)
-        /// 101-106 - Uncle - Reward attributed to uncles, with distance 1 to 6 (Ethash engine)
-        /// </summary>
-        private const string RewardFunction = "reward";
-        
         public long TransitionBlock { get; }
-        
-        private readonly IAbiEncoder _abiEncoder;
         
         private static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<RewardContract>();
         
         public RewardContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, long transitionBlock) : base(transactionProcessor, abiEncoder, contractAddress)
         {
             TransitionBlock = transitionBlock;
-            _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
         }
 
         /// <summary>
@@ -71,12 +54,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// </param>
         public (Address[] Addresses, BigInteger[] Rewards) Reward(BlockHeader blockHeader, Address[] benefactors, ushort[] kind)
         {
-            CallOutputTracer tracer = new CallOutputTracer();
-            var rewardFunction = Definition.Functions[RewardFunction];
-            var transaction = GenerateSystemTransaction(_abiEncoder.Encode(rewardFunction.GetCallInfo(), benefactors, kind));
-            InvokeTransaction(blockHeader, transaction, tracer);
-            var objects = _abiEncoder.Decode(rewardFunction.GetReturnInfo(), tracer.ReturnValue);
-            return ((Address[]) objects[0], (BigInteger[]) objects[1]);
+            var result = Call(blockHeader, Definition.Functions["reward"], benefactors, kind);
+            return ((Address[]) result[0], (BigInteger[]) result[1]);
         }
     }
 }
