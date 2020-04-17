@@ -40,7 +40,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         private EthereumJsonSerializer _serializer;
         private NetworkConfig _networkConfig;
         private IBlockTree _blockTree;
-        private const string _enodeString = "enode://44826a5d6a55f88a18298bca4773fca5749cdc3a5c9f308aa7d810e9b31123f3e7c5fba0b1d70aac5308426f47df2a128a6747040a3815cc7dd7167d03be320d@127.0.0.1:30303";
+        private const string _enodeString = "enode://e1b7e0dc09aae610c9dec8a0bee62bab9946cc27ebdd2f9e3571ed6d444628f99e91e43f4a14d42d498217608bb3e1d1bc8ec2aa27d7f7e423413b851bae02bc@127.0.0.1:30303";
         private const string _exampleDataDir = "/example/dbdir";
         
         [SetUp]
@@ -67,7 +67,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             NodeInfo nodeInfo = ((JObject) response.Result).ToObject<NodeInfo>(JsonSerializer.Create(settings));
             nodeInfo.Enode.Should().Be(_enodeString);
-            nodeInfo.Id.Should().Be("44826a5d6a55f88a18298bca4773fca5749cdc3a5c9f308aa7d810e9b31123f3e7c5fba0b1d70aac5308426f47df2a128a6747040a3815cc7dd7167d03be320d");
+            nodeInfo.Id.Should().Be("ae3623ef35c06ab49e9ae4b9f5a2b0f1983c28f85de1ccc98e2174333fdbdf1f");
             nodeInfo.Ip.Should().Be("127.0.0.1");
             nodeInfo.Name.Should().Be(ClientVersion.Description);
             nodeInfo.ListenAddress.Should().Be("127.0.0.1:30303");
