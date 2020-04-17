@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,79 +14,19 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using Nethermind.Core;
-using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.Store;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class SystemContract
+    public class SystemContract : Contract
     {
-        protected Address ContractAddress { get; }
-
-        public SystemContract(Address contractAddress)
+        protected SystemContract(Address contractAddress) : base(contractAddress)
         {
-            ContractAddress = contractAddress ?? throw new ArgumentNullException(nameof(contractAddress));
         }
         
-        protected Transaction GenerateTransaction(byte[] transactionData, Address sender, long gasLimit = long.MaxValue, UInt256? nonce = null)
-        {
-            var transaction = new Transaction(true)
-            {
-                Value = UInt256.Zero,
-                Data = transactionData,
-                To = ContractAddress,
-                SenderAddress = sender,
-                GasLimit = gasLimit,
-                GasPrice = UInt256.Zero,
-                Nonce = nonce ?? UInt256.Zero,
-            };
-                
-            transaction.Hash = transaction.CalculateHash();
-
-            return transaction;
-        }
-        
-        public void Call(BlockHeader header, ITransactionProcessor transactionProcessor, Transaction transaction, CallOutputTracer tracer)
-        {
-            bool failure;
-            
-            try
-            {
-                transactionProcessor.Execute(transaction, header, tracer);
-                failure = tracer.StatusCode != StatusCode.Success;
-            }
-            catch (Exception e)
-            {
-                throw new AuRaException($"System call returned an exception '{e.Message}' at block {header.Number}.", e);
-            }
-           
-            if (failure)
-            {
-                throw new AuRaException($"System call returned error '{tracer.Error}' at block {header.Number}.");
-            }
-        }
-
-        public bool TryInvokeTransaction(BlockHeader header, ITransactionProcessor transactionProcessor, Transaction transaction, CallOutputTracer tracer)
-        {
-            try
-            {
-                transactionProcessor.Execute(transaction, header, tracer);
-                
-                return tracer.StatusCode == StatusCode.Success;
-            }
-            catch (Exception)
-            {
-                return false;
-            }
-        }
-
         public void EnsureSystemAccount(IStateProvider stateProvider)
         {
             if (!stateProvider.AccountExists(Address.SystemUser))
@@ -95,5 +35,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 stateProvider.Commit(Homestead.Instance);
             }
         }
+
+        protected Transaction GenerateSystemTransaction(byte[] transactionData, long gasLimit = long.MaxValue, UInt256? nonce = null) => GenerateTransaction(transactionData, Address.SystemUser, gasLimit, nonce);
     }
 }

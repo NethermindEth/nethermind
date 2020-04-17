@@ -87,7 +87,7 @@ namespace Nethermind.Synchronization.Peers
                     return;
                 }
                 
-                _stringBuilder.AppendLine($"Sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}");
+                _stringBuilder.Append($"Sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}");
                 foreach (PeerInfo peerInfo in OrderedPeers)
                 {
                     _stringBuilder.AppendLine();

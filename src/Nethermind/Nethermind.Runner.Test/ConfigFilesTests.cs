@@ -496,7 +496,7 @@ namespace Nethermind.Runner.Test
             }
             else
             {
-                syncConfig.FastSyncCatchUpHeightDelta.Should().Be(null);
+                syncConfig.FastSyncCatchUpHeightDelta.Should().Be(1024);
             }
         }
         

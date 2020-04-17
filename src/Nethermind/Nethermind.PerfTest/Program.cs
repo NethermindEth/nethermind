@@ -89,7 +89,7 @@ namespace Nethermind.PerfTest
             public Block LowestInsertedBody => _blockTree.LowestInsertedBody;
             public Block BestSuggestedBody => _blockTree.BestSuggestedBody;
             public long BestKnownNumber => _blockTree.BestKnownNumber;
-            public BlockHeader Head => _blockTree.Head;
+            public Block Head => _blockTree.Head;
             public bool CanAcceptNewBlocks { get; } = true;
 
             public async Task LoadBlocksFromDb(CancellationToken cancellationToken, long? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue)

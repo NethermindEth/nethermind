@@ -92,13 +92,34 @@ namespace Nethermind.WebSockets
         }
 
         public const int _maxPooledSize = 1024 * 1024;
-        
+
         public static async Task ReceiveAsync(this WebSocket webSocket, IWebSocketsClient client)
         {
             int currentMessageLength = 0;
             byte[] buffer = new byte[1024 * 4];
             byte[] combinedData = Bytes.Empty;
-            WebSocketReceiveResult result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+
+            WebSocketReceiveResult result = null;
+            Task<WebSocketReceiveResult> receiveBeforeTheLoop = webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+            await receiveBeforeTheLoop.ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                { 
+                    // TODO: how to log it from here
+                }
+
+                if (t.IsCompletedSuccessfully)
+                {
+                    result = t.Result;
+                }
+            });
+
+            if (result == null)
+            {
+                // TODO: how to log it from here
+                return;
+            }
+
             while (result.MessageType != WebSocketMessageType.Close)
             {
                 int newMessageLength = currentMessageLength + result.Count;
@@ -106,7 +127,7 @@ namespace Nethermind.WebSockets
                 {
                     throw new InvalidOperationException("Message too long");
                 }
-                
+
                 byte[] newBytes = ArrayPool<byte>.Shared.Rent(newMessageLength);
                 buffer.AsSpan(0, result.Count).CopyTo(newBytes.AsSpan(currentMessageLength, result.Count));
                 if (!ReferenceEquals(combinedData, Bytes.Empty))
@@ -126,8 +147,26 @@ namespace Nethermind.WebSockets
                     ArrayPool<byte>.Shared.Return(combinedData);
                     combinedData = Bytes.Empty;
                 }
-                
-                result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+
+                Task<WebSocketReceiveResult> receiveInTheLoop = webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+                await receiveInTheLoop.ContinueWith(t =>
+                {
+                    if (t.IsFaulted)
+                    { 
+                        // TODO: how to log it from here
+                    }
+
+                    if (t.IsCompletedSuccessfully)
+                    {
+                        result = t.Result;
+                    }
+                });
+
+                if (result == null)
+                {
+                    // TODO: how to log it from here
+                    return;
+                }
             }
 
             await webSocket.CloseAsync(result.CloseStatus ?? WebSocketCloseStatus.Empty, result.CloseStatusDescription, CancellationToken.None);

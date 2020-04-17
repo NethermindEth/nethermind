@@ -16,4 +16,15 @@
       <PackageReference Include="Nito.Collections.Deque" Version="1.0.4" />
     </ItemGroup>
 
+    <ItemGroup>
+      <None Remove="Contracts\RandomContract.json" />
+      <EmbeddedResource Include="Contracts\RandomContract.json" />
+      <None Remove="Contracts\ReportingValidatorContract.json" />
+      <EmbeddedResource Include="Contracts\ReportingValidatorContract.json" />
+      <None Remove="Contracts\RewardContract.json" />
+      <EmbeddedResource Include="Contracts\RewardContract.json" />
+      <None Remove="Contracts\ValidatorContract.json" />
+      <EmbeddedResource Include="Contracts\ValidatorContract.json" />
+    </ItemGroup>
+
 </Project>

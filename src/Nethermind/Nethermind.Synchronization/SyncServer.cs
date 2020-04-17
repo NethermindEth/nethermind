@@ -52,7 +52,7 @@ namespace Nethermind.Synchronization
         private readonly ISynchronizer _synchronizer;
         private readonly ISyncConfig _syncConfig;
         private object _dummyValue = new object();
-        private LruCache<Keccak, object> _recentlySuggested = new LruCache<Keccak, object>(128);
+        private LruCache<Keccak, object> _recentlySuggested = new LruCache<Keccak, object>(128, 128, "recently suggested blocks");
         private long _pivotNumber;
 
         public SyncServer(
@@ -110,7 +110,7 @@ namespace Nethermind.Synchronization
                     }
                 }
 
-                return headIsGenesis ? _pivotHeader ?? _blockTree.Genesis : _blockTree.Head;
+                return headIsGenesis ? _pivotHeader ?? _blockTree.Genesis : _blockTree.Head?.Header;
             }
         }
 

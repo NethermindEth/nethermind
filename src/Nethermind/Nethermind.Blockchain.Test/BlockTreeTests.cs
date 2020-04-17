@@ -614,30 +614,6 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
-        public void Can_init_head_block_from_db_by_header()
-        {
-            Block genesisBlock = Build.A.Block.Genesis.TestObject;
-            Block headBlock = genesisBlock;
-
-            MemDb blocksDb = new MemDb();
-            MemDb headersDb = new MemDb();
-            blocksDb.Set(genesisBlock.Hash, Rlp.Encode(genesisBlock).Bytes);
-            headersDb.Set(genesisBlock.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
-
-            MemDb blockInfosDb = new MemDb();
-            blockInfosDb.Set(Keccak.Zero, Rlp.Encode(genesisBlock.Header).Bytes);
-
-            ChainLevelInfo level = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(headBlock.Hash, headBlock.Difficulty)});
-            level.BlockInfos[0].WasProcessed = true;
-
-            blockInfosDb.Set(0, Rlp.Encode(level).Bytes);
-
-            BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, Substitute.For<ITxPool>(), NullBloomStorage.Instance, LimboLogs.Instance);
-            Assert.AreEqual(headBlock.Hash, blockTree.Head?.Hash, "head");
-            Assert.AreEqual(headBlock.Hash, blockTree.Genesis?.Hash, "genesis");
-        }
-
-        [Test]
         public void Can_init_head_block_from_db_by_hash()
         {
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
@@ -683,7 +659,7 @@ namespace Nethermind.Blockchain.Test
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
                 }
 
-                blockInfosDb.Set(Keccak.Zero, Rlp.Encode(genesisBlock.Header).Bytes);
+                blockInfosDb.Set(Keccak.Zero, genesisBlock.Header.Hash.Bytes);
                 headersDb.Set(genesisBlock.Header.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
 
                 BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
@@ -717,7 +693,7 @@ namespace Nethermind.Blockchain.Test
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
                 }
 
-                blockInfosDb.Set(Keccak.Zero, Rlp.Encode(genesisBlock.Header).Bytes);
+                blockInfosDb.Set(Keccak.Zero, genesisBlock.Header.Hash.Bytes);
                 headersDb.Set(genesisBlock.Header.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
 
                 BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, Substitute.For<ITxPool>(), NullBloomStorage.Instance, LimboLogs.Instance);
@@ -870,7 +846,7 @@ namespace Nethermind.Blockchain.Test
             tree.DeleteInvalidBlock(block2);
 
             Assert.AreEqual(block1.Number, tree.BestKnownNumber);
-            Assert.AreEqual(block1.Header, tree.Head);
+            Assert.AreEqual(block1.Header, tree.Head?.Header);
             Assert.AreEqual(block1.Header, tree.BestSuggestedHeader);
         }
 
@@ -1024,7 +1000,7 @@ namespace Nethermind.Blockchain.Test
             Assert.Null(blockInfosDb.Get(5), "level 5");
 
             Assert.AreEqual(2L, tree.BestKnownNumber, "best known");
-            Assert.AreEqual(block2.Header, tree.Head, "head");
+            Assert.AreEqual(block2.Header, tree.Head?.Header, "head");
             Assert.AreEqual(block2.Hash, tree.BestSuggestedHeader.Hash, "suggested");
         }
 
@@ -1057,7 +1033,7 @@ namespace Nethermind.Blockchain.Test
             tree.DeleteInvalidBlock(block3bad);
 
             Assert.AreEqual(5L, tree.BestKnownNumber, "best known");
-            Assert.AreEqual(block5.Header, tree.Head, "head");
+            Assert.AreEqual(block5.Header, tree.Head?.Header, "head");
             Assert.AreEqual(block5.Hash, tree.BestSuggestedHeader.Hash, "suggested");
         }
 
