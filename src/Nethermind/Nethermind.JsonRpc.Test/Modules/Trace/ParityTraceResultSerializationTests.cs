@@ -14,13 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.JsonRpc.Test.Data;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class ParityTraceResultSerializationTests : SerializationTestBase
     {

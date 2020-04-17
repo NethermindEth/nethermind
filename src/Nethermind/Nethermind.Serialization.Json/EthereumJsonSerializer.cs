@@ -15,8 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
@@ -27,7 +29,7 @@ namespace Nethermind.Serialization.Json
     {
         private JsonSerializer _internalSerializer;
         private JsonSerializer _internalReadableSerializer;
-        
+
         private JsonSerializerSettings _settings;
         private JsonSerializerSettings _readableSettings;
 
@@ -36,22 +38,25 @@ namespace Nethermind.Serialization.Json
             RebuildSerializers();
         }
 
-        public static IList<JsonConverter> BasicConverters { get; } = new List<JsonConverter>
-        {
-            new AddressConverter(),
-            new KeccakConverter(),
-            new BloomConverter(),
-            new ByteArrayConverter(),
-            new LongConverter(),
-            new NullableLongConverter(),
-            new UInt256Converter(),
-            new NullableUInt256Converter(),
-            new BigIntegerConverter(),
-            new NullableBigIntegerConverter(),
-            new PublicKeyConverter()
-        };
+        public static IReadOnlyList<JsonConverter> CommonConverters { get; } = new ReadOnlyCollection<JsonConverter>(
+            new List<JsonConverter>
+            {
+                new AddressConverter(),
+                new KeccakConverter(),
+                new BloomConverter(),
+                new ByteArrayConverter(),
+                new LongConverter(),
+                new NullableLongConverter(),
+                new UInt256Converter(),
+                new NullableUInt256Converter(),
+                new BigIntegerConverter(),
+                new NullableBigIntegerConverter(),
+                new PublicKeyConverter()
+            });
 
-        private static IList<JsonConverter> ReadableConverters { get; } = new List<JsonConverter>
+        public IList<JsonConverter> BasicConverters { get; } = CommonConverters.ToList();
+
+        private IList<JsonConverter> ReadableConverters { get; } = new List<JsonConverter>
         {
             new AddressConverter(),
             new KeccakConverter(),
@@ -86,13 +91,13 @@ namespace Nethermind.Serialization.Json
                 else
                 {
                     jsonTextWriter.Formatting = _internalSerializer.Formatting;
-                    _internalSerializer.Serialize(jsonTextWriter, value, typeof(T));    
+                    _internalSerializer.Serialize(jsonTextWriter, value, typeof(T));
                 }
             }
-            
+
             return stringWriter.ToString();
         }
-        
+
         public void Serialize<T>(Stream stream, T value, bool indented = false)
         {
             StreamWriter streamWriter = new StreamWriter(stream);
@@ -105,7 +110,7 @@ namespace Nethermind.Serialization.Json
             else
             {
                 jsonTextWriter.Formatting = _internalSerializer.Formatting;
-                _internalSerializer.Serialize(jsonTextWriter, value, typeof(T));    
+                _internalSerializer.Serialize(jsonTextWriter, value, typeof(T));
             }
         }
 
