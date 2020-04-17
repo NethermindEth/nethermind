@@ -95,8 +95,6 @@ namespace Nethermind.Synchronization.Blocks
             
             try
             {
-                
-
                 SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, Synchronization.SyncEvent.Started));
                 if ((blocksRequest.Options & DownloaderOptions.WithBodies) == DownloaderOptions.WithBodies)
                 {
@@ -114,7 +112,7 @@ namespace Nethermind.Synchronization.Blocks
             finally
             {
                 thisAllocationCancellation.Dispose();
-                linkedCancellation?.Dispose();
+                linkedCancellation.Dispose();
             }
         }
 
@@ -619,7 +617,7 @@ namespace Nethermind.Synchronization.Blocks
 
         protected override void Free(SyncPeerAllocation allocation)
         {
-            allocation.Cancelled -= AllocationOnReplaced;
+            allocation.Cancelled -= AllocationOnCancelled;
             allocation.Replaced -= AllocationOnReplaced;
             allocation.Refreshed -= AllocationOnRefreshed;
             base.Free(allocation);
