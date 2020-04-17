@@ -50,6 +50,7 @@ namespace Nethermind.Clique.Test
 {
     [Parallelizable(ParallelScope.Self)]
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class CliqueBlockProducerTests
     {
         private class On
