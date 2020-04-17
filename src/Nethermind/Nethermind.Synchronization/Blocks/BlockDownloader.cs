@@ -48,7 +48,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly ILogger _logger;
 
         private bool _cancelDueToBetterPeer;
-        private CancellationTokenSource _allocationCancellation;
+        private AllocationWithCancellation _allocationWithCancellation;
 
         private SyncBatchSize _syncBatchSize;
         private int _sinceLastTimeout;
@@ -87,12 +87,8 @@ namespace Nethermind.Synchronization.Blocks
         protected override async Task Dispatch(PeerInfo bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
         {
             if (!_blockTree.CanAcceptNewBlocks) return;
+            CancellationTokenSource linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _allocationWithCancellation.Cancellation.Token);
 
-            CancellationTokenSource thisAllocationCancellation = new CancellationTokenSource();
-            CancellationTokenSource linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation, thisAllocationCancellation.Token);
-            CancellationTokenSource previousAllocationCancellation = Interlocked.Exchange(ref _allocationCancellation, thisAllocationCancellation);
-            previousAllocationCancellation?.Dispose();
-            
             try
             {
                 SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, Synchronization.SyncEvent.Started));
@@ -111,7 +107,7 @@ namespace Nethermind.Synchronization.Blocks
             }
             finally
             {
-                thisAllocationCancellation.Dispose();
+                _allocationWithCancellation.Dispose();
                 linkedCancellation.Dispose();
             }
         }
@@ -609,6 +605,9 @@ namespace Nethermind.Synchronization.Blocks
         protected override async Task<SyncPeerAllocation> Allocate(BlocksRequest request)
         {
             SyncPeerAllocation allocation = await base.Allocate(request);
+            CancellationTokenSource cancellation = new CancellationTokenSource();
+            _allocationWithCancellation = new AllocationWithCancellation(allocation, cancellation);
+            
             allocation.Cancelled += AllocationOnCancelled;
             allocation.Replaced += AllocationOnReplaced;
             allocation.Refreshed += AllocationOnRefreshed;
@@ -625,7 +624,13 @@ namespace Nethermind.Synchronization.Blocks
 
         private void AllocationOnCancelled(object sender, AllocationChangeEventArgs e)
         {
-            _allocationCancellation.Cancel();
+            AllocationWithCancellation allocationWithCancellation = _allocationWithCancellation;
+            if (allocationWithCancellation.Allocation != sender)
+            {
+                return;
+            }
+            
+            allocationWithCancellation.Cancel();
         }
 
         private void AllocationOnRefreshed(object sender, EventArgs e)
@@ -647,7 +652,7 @@ namespace Nethermind.Synchronization.Blocks
             if (e.Previous != null)
             {
                 _cancelDueToBetterPeer = true;
-                _allocationCancellation.Cancel();
+                _allocationWithCancellation.Cancel();
             }
 
             PeerInfo newPeer = e.Current;
@@ -655,6 +660,38 @@ namespace Nethermind.Synchronization.Blocks
             if (newPeer.TotalDifficulty > bestSuggested.TotalDifficulty)
             {
                 Feed.Activate();
+            }
+        }
+
+        private struct AllocationWithCancellation : IDisposable
+        {
+            public AllocationWithCancellation(SyncPeerAllocation allocation, CancellationTokenSource cancellation)
+            {
+                Allocation = allocation;
+                Cancellation = cancellation;
+                _isDisposed = false;
+            }
+            
+            public CancellationTokenSource Cancellation { get; }
+            public SyncPeerAllocation Allocation { get; }
+
+            public void Cancel()
+            {
+                if (!_isDisposed)
+                {
+                    Cancellation.Cancel();
+                }
+            }
+
+            private bool _isDisposed;
+            
+            public void Dispose()
+            {
+                if (!_isDisposed)
+                {
+                    _isDisposed = true;
+                    Cancellation?.Dispose();
+                }
             }
         }
     }
