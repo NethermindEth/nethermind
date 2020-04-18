@@ -92,7 +92,13 @@ namespace Nethermind.Synchronization.FastBlocks
             _pivotNumber = _syncConfig.PivotNumberParsed;
             _pivotHash = _syncConfig.PivotHashParsed;
 
-            _startHash = _blockTree.FindHash(_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) ?? _pivotHash;
+            long lowestInserted = _receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue;
+            if (lowestInserted < _pivotNumber)
+            {
+                _startHash = _blockTree.FindHash(lowestInserted) ?? _pivotHash;    
+            }
+            
+            _startHash ??= _pivotHash;
             _lowestRequestedHash = _startHash;
             
             Activate();
