@@ -112,7 +112,7 @@ namespace Nethermind.Synchronization.FastSync
         
         private ConcurrentDictionary<StateSyncBatch, object> _pendingRequests = new ConcurrentDictionary<StateSyncBatch, object>();
         private Dictionary<Keccak, HashSet<DependentItem>> _dependencies = new Dictionary<Keccak, HashSet<DependentItem>>();
-        private LruCache<Keccak, object> _alreadySaved = new LruCache<Keccak, object>(_alreadySavedCapacity, "saved nodes");
+        private LruKeyCache<Keccak> _alreadySaved = new LruKeyCache<Keccak>(_alreadySavedCapacity, "saved nodes");
 
         public StateSyncFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, IBlockTree blockTree, ILogManager logManager)
         {
@@ -182,7 +182,7 @@ namespace Nethermind.Synchronization.FastSync
                     _syncProgress.ReportSynced(syncItem.Level, syncItem.ParentBranchChildIndex, syncItem.BranchChildIndex, syncItem.NodeDataType, NodeProgressState.Requested);
                 }
 
-                if (_alreadySaved.Get(syncItem.Hash) != null)
+                if (_alreadySaved.Get(syncItem.Hash))
                 {
                     Interlocked.Increment(ref _checkWasCached);
                     if (_logger.IsTrace) _logger.Trace($"Node already in the DB - skipping {syncItem.Hash}");
@@ -198,7 +198,7 @@ namespace Nethermind.Synchronization.FastSync
                     if (keyExists)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Node already in the DB - skipping {syncItem.Hash}");
-                        _alreadySaved.Set(syncItem.Hash, _nullObject);
+                        _alreadySaved.Set(syncItem.Hash);
                         Interlocked.Increment(ref _stateWasThere);
                         return AddNodeResult.AlreadySaved;
                     }
@@ -384,7 +384,7 @@ namespace Nethermind.Synchronization.FastSync
                 }
                 
                 _dependencies = new Dictionary<Keccak, HashSet<DependentItem>>();
-                _alreadySaved = new LruCache<Keccak, object>(_alreadySavedCapacity, "saved nodes");
+                _alreadySaved = new LruKeyCache<Keccak>(_alreadySavedCapacity, "saved nodes");
             }
 
             if (TotalNodesPending != 0)

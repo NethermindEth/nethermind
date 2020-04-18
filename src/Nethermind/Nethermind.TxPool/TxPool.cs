@@ -43,7 +43,7 @@ namespace Nethermind.TxPool
 
         private readonly ConcurrentDictionary<Address, AddressNonces> _nonces = new ConcurrentDictionary<Address, AddressNonces>();
 
-        private LruCache<Keccak, object> _hashCache = new LruCache<Keccak, object>(MemoryAllowance.TxHashCacheSize, MemoryAllowance.TxHashCacheSize, "tx hashes");
+        private LruKeyCache<Keccak> _hashCache = new LruKeyCache<Keccak>(MemoryAllowance.TxHashCacheSize, MemoryAllowance.TxHashCacheSize, "tx hashes");
 
         /// <summary>
         /// Number of blocks after which own transaction will not be resurrected any more
@@ -195,8 +195,6 @@ namespace Nethermind.TxPool
             if (_logger.IsTrace) _logger.Trace($"Removed a peer from TX pool: {nodeId}");
         }
 
-        private object _hashCacheMarker = new object();
-
         public AddTxResult AddTransaction(Transaction tx, long blockNumber, TxHandlingOptions handlingOptions)
         {
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
@@ -237,7 +235,7 @@ namespace Nethermind.TxPool
             }
 
             // !!! do not change it to |=
-            bool isKnown = _hashCache.Get(tx.Hash) != null;
+            bool isKnown = _hashCache.Get(tx.Hash);
 
             /* We have encountered multiple transactions that do not resolve sender address properly.
              * We need to investigate what these txs are and why the sender address is resolved to null.
@@ -273,7 +271,7 @@ namespace Nethermind.TxPool
                 return AddTxResult.AlreadyKnown;
             }
 
-            _hashCache.Set(tx.Hash, _hashCacheMarker);
+            _hashCache.Set(tx.Hash);
 
             HandleOwnTransaction(tx, isPersistentBroadcast);
 

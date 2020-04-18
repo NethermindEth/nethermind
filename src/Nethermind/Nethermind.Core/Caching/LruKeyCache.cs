@@ -23,11 +23,11 @@ namespace Nethermind.Core.Caching
     /// <summary>
     /// https://stackoverflow.com/questions/754233/is-it-there-any-lru-implementation-of-idictionary
     /// </summary>
-    public class LruCache<TKey, TValue> : ICache<TKey, TValue>
+    public class LruKeyCache<TKey>
     {
         private readonly int _maxCapacity;
-        private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
-        private readonly LinkedList<LruCacheItem> _lruList;
+        private readonly Dictionary<TKey, LinkedListNode<TKey>> _cacheMap;
+        private readonly LinkedList<TKey> _lruList;
 
         public void Clear()
         {
@@ -35,45 +35,38 @@ namespace Nethermind.Core.Caching
             _lruList?.Clear();
         }
 
-        public LruCache(int maxCapacity, int startCapacity, string name)
+        public LruKeyCache(int maxCapacity, int startCapacity, string name)
         {
             _maxCapacity = maxCapacity;
             _cacheMap = typeof(TKey) == typeof(byte[])
-                ? new Dictionary<TKey, LinkedListNode<LruCacheItem>>((IEqualityComparer<TKey>) Bytes.EqualityComparer)
-                : new Dictionary<TKey, LinkedListNode<LruCacheItem>>(startCapacity); // do not initialize it at the full capacity
-            _lruList = new LinkedList<LruCacheItem>();
+                ? new Dictionary<TKey, LinkedListNode<TKey>>((IEqualityComparer<TKey>) Bytes.EqualityComparer)
+                : new Dictionary<TKey, LinkedListNode<TKey>>(startCapacity); // do not initialize it at the full capacity
+            _lruList = new LinkedList<TKey>();
         }
 
-        public LruCache(int maxCapacity, string name)
+        public LruKeyCache(int maxCapacity, string name)
             : this(maxCapacity, 0, name)
         {
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public TValue Get(TKey key)
+        public bool Get(TKey key)
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey> node))
             {
-                TValue value = node.Value.Value;
                 _lruList.Remove(node);
                 _lruList.AddLast(node);
-                return value;
+                return true;
             }
 
-            return default;
+            return false;
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public void Set(TKey key, TValue val)
+        public void Set(TKey key)
         {
-            if (val == null)
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey> node))
             {
-                Delete(key);
-            }
-
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))
-            {
-                node.Value.Value = val;
                 _lruList.Remove(node);
                 _lruList.AddLast(node);
             }
@@ -83,9 +76,8 @@ namespace Nethermind.Core.Caching
                 {
                     RemoveFirst();
                 }
-
-                LruCacheItem cacheItem = new LruCacheItem(key, val);
-                LinkedListNode<LruCacheItem> newNode = new LinkedListNode<LruCacheItem>(cacheItem);
+                
+                LinkedListNode<TKey> newNode = new LinkedListNode<TKey>(key);
                 _lruList.AddLast(newNode);
                 _cacheMap.Add(key, newNode);
             }
@@ -94,7 +86,7 @@ namespace Nethermind.Core.Caching
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Delete(TKey key)
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey> node))
             {
                 _lruList.Remove(node);
                 _cacheMap.Remove(key);
@@ -103,26 +95,15 @@ namespace Nethermind.Core.Caching
 
         private void RemoveFirst()
         {
-            LinkedListNode<LruCacheItem> node = _lruList.First;
+            LinkedListNode<TKey> node = _lruList.First;
             _lruList.RemoveFirst();
 
-            _cacheMap.Remove(node.Value.Key);
-        }
-
-        private class LruCacheItem
-        {
-            public LruCacheItem(TKey k, TValue v)
-            {
-                Key = k;
-                Value = v;
-            }
-
-            public readonly TKey Key;
-            public TValue Value;
+            _cacheMap.Remove(node.Value);
         }
 
         public int MemorySize => CalculateMemorySize(0, _cacheMap.Count);
 
+        // TODO: memory size on the KeyCache will be smaller because we do not create LruCacheItems
         public static int CalculateMemorySize(int keyPlusValueSize, int currentItemsCount)
         {
             // it may actually be different if the initial capacity not equal to max (depending on the dictionary growth path)
