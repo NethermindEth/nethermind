@@ -20,6 +20,6 @@ namespace Nethermind.Consensus.AuRa.Transactions
 {
     public interface IImmediateTransactionSource
     {
-        bool TryCreateTransaction(long blockNumber, long gasLimit, out Transaction tx);
+        bool TryCreateTransaction(BlockHeader parent, long gasLimit, out Transaction tx);
     }
 }

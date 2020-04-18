@@ -31,18 +31,18 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _immediateTransactionSources = immediateTransactionSources;
         }
 
-        public IEnumerable<Transaction> SelectTransactions(long blockNumber, Keccak stateRoot, long gasLimit)
+        public IEnumerable<Transaction> SelectTransactions(BlockHeader parent, long gasLimit)
         {
             for (int i = 0; i < _immediateTransactionSources.Length; i++)
             {
-                if (_immediateTransactionSources[i].TryCreateTransaction(blockNumber, gasLimit, out var tx))
+                if (_immediateTransactionSources[i].TryCreateTransaction(parent, gasLimit, out var tx))
                 {
                     gasLimit -= tx.GasLimit;
                     yield return tx;
                 }
             }
             
-            foreach (var tx in _innerPendingTxSelector.SelectTransactions(blockNumber, stateRoot, gasLimit)) yield return tx;
+            foreach (var tx in _innerPendingTxSelector.SelectTransactions(parent, gasLimit)) yield return tx;
         }
     }           
 }

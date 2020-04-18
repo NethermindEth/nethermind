@@ -30,8 +30,8 @@ namespace Nethermind.Consensus
             _innerPendingTxSelector = innerPendingTxSelector;
         }
         
-        public IEnumerable<Transaction> SelectTransactions(long blockNumber, Keccak stateRoot, long gasLimit) => 
-            _innerPendingTxSelector.SelectTransactions(blockNumber, stateRoot, gasLimit)
+        public IEnumerable<Transaction> SelectTransactions(BlockHeader parent, long gasLimit) => 
+            _innerPendingTxSelector.SelectTransactions(parent, gasLimit)
                 .OrderBy(t => t.Nonce)
                 .ThenByDescending(t => t.Timestamp)
                 .Take(1);

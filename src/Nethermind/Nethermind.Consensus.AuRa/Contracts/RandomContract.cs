@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Numerics;
 using Nethermind.Abi;
 using Nethermind.Core;
@@ -43,26 +44,55 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public long TransitionBlock { get; }
         
         public enum Phase {
+            /// <summary>
             /// Waiting for the next phase.
             ///
             /// This state indicates either the successful revelation in this round or having missed the
             /// window to make a commitment, i.e. having failed to commit during the commit phase.
+            /// </summary>
             Waiting,
+            
+            /// <summary>
             /// Indicates a commitment is possible, but still missing.
+            /// </summary>
             BeforeCommit,
+            
+            /// <summary>
             /// Indicates a successful commitment, waiting for the commit phase to end.
+            /// </summary>
             Committed,
+            
+            /// <summary>
             /// Indicates revealing is expected as the next step.
+            /// </summary>
             Reveal
     }
 
-        public Phase GetPhase(BlockHeader blockHeader)
+        public Phase GetPhase(BlockHeader blockHeader, Address nodeAddress)
         {
             UInt256 round = CurrentCollectRound(blockHeader);
+            bool isCommitPhase = IsCommitPhase(blockHeader);
+            bool isCommitted = IsCommitted(blockHeader, round, nodeAddress);
+            bool revealed = SentReveal(blockHeader, round, nodeAddress);
+
+            return isCommitPhase
+                ? revealed
+                    ? throw new InvalidOperationException("Revealed random number during commit phase.")
+                    : !isCommitted
+                        ? Phase.BeforeCommit
+                        : Phase.Committed
+                : !isCommitted // We apparently entered too late to make a commitment, wait until we get a chance again. 
+                  || revealed
+                    ? Phase.Waiting
+                    : Phase.Reveal;
         }
 
-        private UInt256 CurrentCollectRound(BlockHeader blockHeader) => CallConstant<UInt256>(blockHeader, Definition.Functions["currentCollectRound"]);
+        private bool SentReveal(BlockHeader blockHeader, UInt256 round, Address nodeAddress)  => CallConstant<bool>(blockHeader, Definition.GetFunction(nameof(IsCommitted)), round, nodeAddress);
+
+        private bool IsCommitted(BlockHeader blockHeader, UInt256 round, Address nodeAddress) => CallConstant<bool>(blockHeader, Definition.GetFunction(nameof(IsCommitted)), round, nodeAddress);
         
-        private UInt256 CurrentCollectRound(BlockHeader blockHeader) => CallConstant<UInt256>(blockHeader, Definition.Functions["currentCollectRound"]);
+        private UInt256 CurrentCollectRound(BlockHeader blockHeader) => CallConstant<UInt256>(blockHeader, Definition.GetFunction(nameof(CurrentCollectRound)));
+        
+        private bool IsCommitPhase(BlockHeader blockHeader) => CallConstant<bool>(blockHeader, Definition.GetFunction(nameof(IsCommitPhase)));
     }
 }

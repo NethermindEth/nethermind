@@ -36,7 +36,18 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private static readonly IEqualityComparer<LogEntry> LogEntryEqualityComparer = new LogEntryAddressAndTopicEqualityComparer();
         
         internal static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<ValidatorContract>();
-        
+
+        public ValidatorContract(
+            ITransactionProcessor transactionProcessor, 
+            IAbiEncoder abiEncoder, 
+            Address contractAddress, 
+            IStateProvider stateProvider,
+            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource) 
+            : base(transactionProcessor, abiEncoder, contractAddress, stateProvider, readOnlyReadOnlyTransactionProcessorSource)
+        {
+            _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
+        }
+
         /// <summary>
         /// Called when an initiated change reaches finality and is activated.
         /// Only valid when msg.sender == SUPER_USER (EIP96, 2**160 - 2)
@@ -45,8 +56,14 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// the "change" finalized is the activation of the initial set.
         /// function finalizeChange();
         /// </summary>
-        private const string FinalizeChangeFunction = "finalizeChange";
-        
+        public void FinalizeChange(BlockHeader blockHeader) => TryCall(blockHeader, Definition.GetFunction(nameof(FinalizeChange)), out _);
+
+        /// <summary>
+        /// Get current validator set (last enacted or initial if no changes ever made)
+        /// function getValidators() constant returns (address[] _validators);
+        /// </summary>
+        public Address[] GetValidators(BlockHeader blockHeader) => CallConstant<Address[]>(blockHeader, Definition.GetFunction(nameof(GetValidators)));
+
         /// <summary>
         /// Issue this log event to signal a desired change in validator set.
         /// This will not lead to a change in active validator set until
@@ -60,38 +77,13 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// signal will not be recognized.
         /// event InitiateChange(bytes32 indexed _parent_hash, address[] _new_set);
         /// </summary>
-        internal const string InitiateChangeEvent = "InitiateChange";
-        
-        /// <summary>
-        /// Get current validator set (last enacted or initial if no changes ever made)
-        /// function getValidators() constant returns (address[] _validators);
-        /// </summary>
-        internal  const string GetValidatorsFunction = "getValidators";
-
-        public ValidatorContract(
-            ITransactionProcessor transactionProcessor, 
-            IAbiEncoder abiEncoder, 
-            Address contractAddress, 
-            IStateProvider stateProvider,
-            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource) 
-            : base(transactionProcessor, abiEncoder, contractAddress, stateProvider, readOnlyReadOnlyTransactionProcessorSource)
+        public bool CheckInitiateChangeEvent(BlockHeader blockHeader, TxReceipt[] receipts, out Address[] addresses)
         {
-            _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
-        }
-
-        public void FinalizeChange(BlockHeader blockHeader) => TryCall(blockHeader, Definition.Functions[FinalizeChangeFunction], out _);
-
-        public Address[] GetValidators(BlockHeader blockHeader)
-        {
-            var result = CallConstant(blockHeader, Definition.Functions[GetValidatorsFunction]);
-            return (Address[]) result[0];
-        }
-
-        public bool CheckInitiateChangeEvent(Address contractAddress, BlockHeader blockHeader, TxReceipt[] receipts, out Address[] addresses)
-        {
-            var logEntry = new LogEntry(contractAddress, 
+            const string initiateChange = "InitiateChange";
+            
+            var logEntry = new LogEntry(ContractAddress, 
                 Array.Empty<byte>(),
-                new[] {Definition.Events[InitiateChangeEvent].GetHash(), blockHeader.ParentHash});
+                new[] {Definition.Events[initiateChange].GetHash(), blockHeader.ParentHash});
 
             if (blockHeader.TryFindLog(receipts, logEntry, LogEntryEqualityComparer, out var foundEntry))
             {
@@ -105,7 +97,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         private Address[] DecodeAddresses(byte[] data)
         {
-            var objects = _abiEncoder.Decode(Definition.Functions[GetValidatorsFunction].GetReturnInfo(), data);
+            var objects = _abiEncoder.Decode(Definition.GetFunction(nameof(GetValidators)).GetReturnInfo(), data);
             return (Address[]) objects[0];
         }
         
