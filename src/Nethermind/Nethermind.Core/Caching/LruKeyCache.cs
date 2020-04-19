@@ -74,12 +74,14 @@ namespace Nethermind.Core.Caching
             {
                 if (_cacheMap.Count >= _maxCapacity)
                 {
-                    RemoveFirst();
+                    Replace(key);
                 }
-                
-                LinkedListNode<TKey> newNode = new LinkedListNode<TKey>(key);
-                _lruList.AddLast(newNode);
-                _cacheMap.Add(key, newNode);
+                else
+                {
+                    LinkedListNode<TKey> newNode = new LinkedListNode<TKey>(key);
+                    _lruList.AddLast(newNode);
+                    _cacheMap.Add(key, newNode);    
+                }
             }
         }
 
@@ -93,12 +95,15 @@ namespace Nethermind.Core.Caching
             }
         }
 
-        private void RemoveFirst()
+        private void Replace(TKey key)
         {
             LinkedListNode<TKey> node = _lruList.First;
             _lruList.RemoveFirst();
-
             _cacheMap.Remove(node.Value);
+
+            node.Value = key;
+            _lruList.AddLast(node);
+            _cacheMap.Add(node.Value, node);
         }
 
         public int MemorySize => CalculateMemorySize(0, _cacheMap.Count);
