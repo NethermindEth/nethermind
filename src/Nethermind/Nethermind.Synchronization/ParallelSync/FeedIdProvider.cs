@@ -16,13 +16,13 @@
 
 using System.Threading;
 
-namespace Nethermind.Synchronization.BeamSync
+namespace Nethermind.Synchronization.ParallelSync
 {
-    public static class DataConsumerIdProvider
+    public static class FeedIdProvider
     {
         private static int _dataConsumerId;
 
-        public static int AssignConsumerId()
+        public static int AssignId()
         {
             return Interlocked.Increment(ref _dataConsumerId);
         }

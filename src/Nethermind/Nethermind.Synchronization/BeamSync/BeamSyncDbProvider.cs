@@ -16,18 +16,20 @@
 
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Synchronization.BeamSync
 {
     public class BeamSyncDbProvider : IDbProvider
     {
-        public INodeDataConsumer NodeDataConsumer { get; }
+        public ISyncFeed<StateSyncBatch> NodeDataConsumer { get; }
         
-        public BeamSyncDbProvider(IDbProvider otherProvider, string description, ILogManager logManager)
+        public BeamSyncDbProvider(IDbProvider otherProvider, ILogManager logManager)
         {
             BeamSyncDb codeDb = new BeamSyncDb(otherProvider.CodeDb.Innermost, logManager);
             BeamSyncDb stateDb = new BeamSyncDb(otherProvider.StateDb.Innermost, logManager);
-            NodeDataConsumer = new CompositeDataConsumer(logManager,codeDb, stateDb);
+            NodeDataConsumer = new CompositeFeed<StateSyncBatch>(logManager,codeDb, stateDb);
             BlocksDb = otherProvider.BlocksDb;
             HeadersDb = otherProvider.HeadersDb;
             BlockInfosDb = otherProvider.BlockInfosDb;

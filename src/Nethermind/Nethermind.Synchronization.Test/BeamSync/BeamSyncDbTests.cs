@@ -24,6 +24,8 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization.BeamSync;
+using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie;
 using NUnit.Framework;
 
@@ -105,82 +107,86 @@ namespace Nethermind.Synchronization.Test.BeamSync
             Setup(scenario);
 
             RunRounds(1);
-            _stateBeamLocal.PrepareRequests();
+            _stateBeamLocal.PrepareRequest();
             RunRounds(3);
 
             Assert.AreEqual(4, _needMoreDataInvocations);
         }
 
         [TestCase("leaf_read")]
-        public void Empty_response_brings_it_back_in_the_loop(string name)
+        public async Task Empty_response_brings_it_back_in_the_loop(string name)
         {
             (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
 
             RunRounds(1);
-            DataConsumerRequest[] request = _stateBeamLocal.PrepareRequests();
-            _stateBeamLocal.HandleResponse(request[0], new byte[request[0].Keys.Length][]);
+            StateSyncBatch request = await _stateBeamLocal.PrepareRequest();
+            request.Responses = new byte[request.RequestedNodes.Length][];
+            _stateBeamLocal.HandleResponse(request);
             RunRounds(3);
 
             Assert.AreEqual(4, _needMoreDataInvocations);
         }
 
         [TestCase("leaf_read")]
-        public void Can_prepare_empty_request(string name)
+        public async Task Can_prepare_empty_request(string name)
         {
             (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
 
-            DataConsumerRequest[] request = _stateBeamLocal.PrepareRequests();
-            Assert.AreEqual(0, request.Length);
+            StateSyncBatch request = await _stateBeamLocal.PrepareRequest();
+            Assert.AreEqual(0, request.RequestedNodes.Length);
         }
 
         [TestCase("leaf_read")]
-        public void Full_response_works(string name)
+        public async Task Full_response_works(string name)
         {
             (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
 
             RunRounds(1);
-            DataConsumerRequest[] request = _stateBeamLocal.PrepareRequests();
-            _stateBeamLocal.HandleResponse(request[0], new byte[][] {_remoteState.Get(request[0].Keys[0])});
+            StateSyncBatch request = await _stateBeamLocal.PrepareRequest();
+            request.Responses = new byte[][] {_remoteState.Get(request.RequestedNodes[0].Hash)};
+            _stateBeamLocal.HandleResponse(request);
             RunRounds(3);
 
             Assert.AreEqual(1, _needMoreDataInvocations);
         }
 
         [TestCase("leaf_read")]
-        public void Full_response_stops_it(string name)
+        public async Task Full_response_stops_it(string name)
         {
             (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
 
             Task.Run(() => RunRounds(100));
-            DataConsumerRequest[] request = new DataConsumerRequest[0];
+            StateSyncBatch request = new StateSyncBatch();
             for (int i = 0; i < 1000; i++)
             {
                 Thread.Sleep(1);
-                request = _stateBeamLocal.PrepareRequests();
-                if (request.Length > 0)
+                request = await _stateBeamLocal.PrepareRequest();
+                if (request.RequestedNodes.Length > 0)
                 {
                     break;
                 }
             }
 
-            _stateBeamLocal.HandleResponse(request[0], new byte[][] {_remoteState.Get(request[0].Keys[0])});
+            request.Responses = new byte[][] {_remoteState.Get(request.RequestedNodes[0].Hash)};
+            _stateBeamLocal.HandleResponse(request);
 
             Assert.Less(_needMoreDataInvocations, 1000);
         }
 
         [TestCase("leaf_read")]
-        public void Can_resolve_from_local(string name)
+        public async Task Can_resolve_from_local(string name)
         {
             (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
 
             RunRounds(1);
-            DataConsumerRequest[] request = _stateBeamLocal.PrepareRequests();
-            _stateBeamLocal.HandleResponse(request[0], new byte[][] {_remoteState.Get(request[0].Keys[0])});
+            StateSyncBatch request = await _stateBeamLocal.PrepareRequest();
+            request.Responses = new byte[][] {_remoteState.Get(request.RequestedNodes[0].Hash)};
+            _stateBeamLocal.HandleResponse(request);
             PatriciaTree.NodeCache.Clear();
             RunRounds(1);
 
@@ -199,14 +205,15 @@ namespace Nethermind.Synchronization.Test.BeamSync
         }
 
         [TestCase("leaf_read")]
-        public void Invalid_response_brings_it_back(string name)
+        public async Task Invalid_response_brings_it_back(string name)
         {
             (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
 
             RunRounds(1);
-            DataConsumerRequest[] request = _stateBeamLocal.PrepareRequests();
-            _stateBeamLocal.HandleResponse(request[0], new byte[][] {new byte[] {1, 2, 3}});
+            StateSyncBatch request = await _stateBeamLocal.PrepareRequest();
+            request.Responses = new [] {new byte[] {1, 2, 3}};
+            _stateBeamLocal.HandleResponse(request);
             RunRounds(3);
 
             Assert.AreEqual(4, _needMoreDataInvocations);
@@ -240,7 +247,13 @@ namespace Nethermind.Synchronization.Test.BeamSync
             _codeLocal = new StateDb(_codeBeamLocal);
 
             _stateReader = new StateReader(_stateLocal, _codeLocal, LimboLogs.Instance);
-            _stateBeamLocal.NeedMoreData += (sender, args) => { Interlocked.Increment(ref _needMoreDataInvocations); };
+            _stateBeamLocal.StateChanged += (sender, args) =>
+            {
+                if (_stateBeamLocal.CurrentState == SyncFeedState.Active)
+                {
+                    Interlocked.Increment(ref _needMoreDataInvocations);
+                }
+            };
             PatriciaTree.NodeCache.Clear();
         }
 

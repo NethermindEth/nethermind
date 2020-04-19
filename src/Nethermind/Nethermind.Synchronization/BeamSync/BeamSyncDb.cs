@@ -24,13 +24,14 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Synchronization.BeamSync
 {
-    public class BeamSyncDb : IDb, INodeDataConsumer
+    public class BeamSyncDb : SyncFeed<StateSyncBatch>, IDb
     {
-        private int _consumerId = DataConsumerIdProvider.AssignConsumerId();
+        private int _consumerId = FeedIdProvider.AssignId();
 
         public UInt256 RequiredPeerDifficulty { get; private set; } = UInt256.Zero;
 
@@ -125,6 +126,8 @@ namespace Nethermind.Synchronization.BeamSync
                     fromMem ??= _tempDb[key];
                     if (fromMem == null)
                     {
+                        Activate();
+                        
                         if (Bytes.AreEqual(key, Keccak.Zero.Bytes))
                         {
                             // we store sync progress data at Keccak.Zero;
@@ -156,8 +159,7 @@ namespace Nethermind.Synchronization.BeamSync
 
                         // _logger.Error($"Requested {key.ToHexString()}");
 
-                        NeedMoreData?.Invoke(this, EventArgs.Empty);
-
+                        Activate();
                         _autoReset.WaitOne(50);
                     }
                     else
@@ -170,6 +172,7 @@ namespace Nethermind.Synchronization.BeamSync
                         }
 
                         BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
+                        
                         return fromMem;
                     }
                 }
@@ -220,36 +223,36 @@ namespace Nethermind.Synchronization.BeamSync
             _tempDb.Clear();
         }
 
-        public event EventHandler NeedMoreData;
-
-        public DataConsumerRequest[] PrepareRequests()
+        public override Task<StateSyncBatch> PrepareRequest()
         {
-            DataConsumerRequest[] request;
+            StateSyncBatch request;
             lock (_requestedNodes)
             {
                 if (_requestedNodes.Count == 0)
                 {
-                    return Array.Empty<DataConsumerRequest>();
+                    return Task.FromResult((StateSyncBatch)null);
                 }
 
-                request = new DataConsumerRequest[1];
-                request[0] = new DataConsumerRequest(_consumerId, Array.Empty<Keccak>());
+                request = new StateSyncBatch();
+                request.ConsumerId = _consumerId;
 
                 if (_requestedNodes.Count < 256)
                 {
-                    request[0].Keys = _requestedNodes.ToArray();
+                    // do not make it state sync item :)
+                    request.RequestedNodes = _requestedNodes.Select(n => new StateSyncItem(n, NodeDataType.State, 0, 0)).ToArray();
                     _requestedNodes.Clear();
                 }
                 else
                 {
                     Keccak[] source = _requestedNodes.ToArray();
-                    request[0].Keys = new Keccak[256];
+                    request.RequestedNodes = new StateSyncItem[256];
                     _requestedNodes.Clear();
                     for (int i = 0; i < source.Length; i++)
                     {
                         if (i < 256)
                         {
-                            request[0].Keys[i] = source[i];
+                            // not state sync item
+                            request.RequestedNodes[i] = new StateSyncItem(source[i], NodeDataType.State, 0, 0);
                         }
                         else
                         {
@@ -259,22 +262,24 @@ namespace Nethermind.Synchronization.BeamSync
                 }
             }
 
-            return request;
+            return Task.FromResult(request);
         }
 
-        public SyncResponseHandlingResult HandleResponse(DataConsumerRequest request, byte[][] data)
+        public override SyncResponseHandlingResult HandleResponse(StateSyncBatch stateSyncBatch)
         {
-            if (request.ConsumerId != _consumerId)
+            if (stateSyncBatch.ConsumerId != _consumerId)
             {
-                return 0;
+                return SyncResponseHandlingResult.InvalidFormat;
             }
 
             int consumed = 0;
+
+            byte[][] data = stateSyncBatch.Responses;
             if (data != null)
             {
-                for (int i = 0; i < request.Keys.Length; i++)
+                for (int i = 0; i < data.Length; i++)
                 {
-                    Keccak key = request.Keys[i];
+                    Keccak key = stateSyncBatch.RequestedNodes[i].Hash;
                     if (data.Length > i && data[i] != null)
                     {
                         if (Keccak.Compute(data[i]) == key)
@@ -306,5 +311,7 @@ namespace Nethermind.Synchronization.BeamSync
         }
 
         private AutoResetEvent _autoReset = new AutoResetEvent(true);
+        
+        public override bool IsMultiFeed => false;
     }
 }
