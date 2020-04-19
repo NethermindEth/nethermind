@@ -27,7 +27,7 @@ using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks
 {
-    public abstract class DbOnTheRocks : IDb, IDbWithSpan
+    public abstract class DbOnTheRocks : IDbWithSpan
     {
         private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath = new ConcurrentDictionary<string, RocksDb>();
         internal readonly RocksDb Db;

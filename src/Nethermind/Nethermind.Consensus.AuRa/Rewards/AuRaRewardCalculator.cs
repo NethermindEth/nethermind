@@ -69,34 +69,10 @@ namespace Nethermind.Consensus.AuRa.Rewards
         }
 
         public BlockReward[] CalculateRewards(Block block)
-            => TryGetContract(block.Number, out var contract)
+            => _contracts.TryGetForBlock(block.Number, out var contract)
                 ? CalculateRewardsWithContract(block, contract)
                 : _blockRewardCalculator.CalculateRewards(block);
-
-        private bool TryGetContract(in long blockNumber, out RewardContract contract)
-        {
-            var index = _contracts.BinarySearch(blockNumber, (b, c) => b.CompareTo(c.TransitionBlock));
-            if (index >= 0)
-            {
-                contract = _contracts[index];
-                return true;
-            }
-            else
-            {
-                var largerIndex = ~index;
-                if (largerIndex != 0)
-                {
-                    contract = _contracts[largerIndex - 1];
-                    return true;
-                }
-                else
-                {
-                    contract = default;
-                    return false;
-                }
-            }
-        }
-
+        
         private BlockReward[] CalculateRewardsWithContract(Block block, RewardContract contract)
         {
             (Address[] beneficieries, ushort[] kinds) GetBeneficiaries()
@@ -106,12 +82,12 @@ namespace Nethermind.Consensus.AuRa.Rewards
                 Address[] beneficiariesList = new Address[length];
                 ushort[] kindsList = new ushort[length];
                 beneficiariesList[0] = block.Beneficiary;
-                kindsList[0] = RewardContract.Definition.BenefactorKind.Author;
+                kindsList[0] = RewardContract.BenefactorKind.Author;
                 
                 for (int i = 0; i < block.Ommers.Length; i++)
                 {
                     var uncle = block.Ommers[i];
-                    if (RewardContract.Definition.BenefactorKind.TryGetUncle(block.Number - uncle.Number, out var kind))
+                    if (RewardContract.BenefactorKind.TryGetUncle(block.Number - uncle.Number, out var kind))
                     {
                         beneficiariesList[i + 1] = uncle.Beneficiary;
                         kindsList[i + 1] = kind;
@@ -150,7 +126,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
             }
             
             bool indexInBounds = index < beneficiaries.Length;
-            ushort kind = RewardContract.Definition.BenefactorKind.External;
+            ushort kind = RewardContract.BenefactorKind.External;
             if (!indexInBounds || !TryGetKind(index, ref kind))
             {
                 for (int i = 0; i < beneficiaries.Length; i++)
@@ -162,7 +138,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
                 }
             }
 
-            return RewardContract.Definition.BenefactorKind.ToBlockRewardType(kind);
+            return RewardContract.BenefactorKind.ToBlockRewardType(kind);
         }
 
         public static IRewardCalculatorSource GetSource(AuRaParameters auRaParameters, IAbiEncoder abiEncoder) => new AuRaRewardCalculatorSource(auRaParameters, abiEncoder);

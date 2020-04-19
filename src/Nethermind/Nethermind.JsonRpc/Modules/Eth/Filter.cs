@@ -16,6 +16,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json.Linq;
 
@@ -28,12 +29,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public object Address { get; set; }
         public IEnumerable<object> Topics { get; set; }
 
-        private readonly IJsonSerializer _jsonSerializer;
-
-        public Filter()
-        {
-            _jsonSerializer = new EthereumJsonSerializer();
-        }
+        private readonly IJsonSerializer _jsonSerializer = new EthereumJsonSerializer();
 
         public void FromJson(string jsonValue)
         {

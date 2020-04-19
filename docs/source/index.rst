@@ -27,6 +27,7 @@ ToC
    private_networks
    configuration
    metrics
+   enterprise
    jsonrpc
    web3
    security

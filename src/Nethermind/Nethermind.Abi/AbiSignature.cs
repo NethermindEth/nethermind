@@ -21,6 +21,9 @@ namespace Nethermind.Abi
 {
     public class AbiSignature
     {
+        private string? _toString;
+        private Keccak? _hash;
+
         public AbiSignature(string name, params AbiType[] types)
         {
             Name = name;
@@ -29,10 +32,12 @@ namespace Nethermind.Abi
 
         public string Name { get; }
         public AbiType[] Types { get; }
+        public byte[] Address => Hash.Bytes.Slice(0, 4);
+        public Keccak Hash => _hash ??= Keccak.Compute(ToString());
 
-        public byte[] Address
+        public override string ToString()
         {
-            get
+            string ComputeString()
             {
                 string[] argTypeNames = new string[Types.Length];
                 for (int i = 0; i < Types.Length; i++)
@@ -42,9 +47,10 @@ namespace Nethermind.Abi
 
                 string typeList = string.Join(",", argTypeNames);
                 string signatureString = $"{Name}({typeList})";
-                Keccak signatureKeccak = Keccak.Compute(signatureString);
-                return signatureKeccak.Bytes.Slice(0, 4);
+                return signatureString;
             }
+
+            return _toString ??= ComputeString();
         }
     }
 }

@@ -18,6 +18,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
@@ -58,7 +59,6 @@ namespace Nethermind.Consensus.AuRa
             var timeToNextStep = _auRaStepCalculator.TimeToNextStep;
             if (Logger.IsDebug) Logger.Debug($"Waiting {timeToNextStep} for next AuRa step.");
             await TaskExt.DelayAtLeast(timeToNextStep, cancellationToken);
-
         }
         
         protected override Block PrepareBlock(BlockHeader parent)

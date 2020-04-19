@@ -16,12 +16,13 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.Consensus.Mining;
+using Nethermind.Consensus.Ethash;
 using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Mining.Test
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class HintBasedCacheTests
     {

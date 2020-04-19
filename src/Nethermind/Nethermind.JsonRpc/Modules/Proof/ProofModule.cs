@@ -127,7 +127,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             }
 
             Block block = searchResult.Object;
-            TxReceipt receipt = _receiptFinder.Get(block, txHash);
+            TxReceipt receipt = _receiptFinder.Get(block).ForTransaction(txHash);
             Transaction[] txs = block.Transactions;
             Transaction transaction = txs[receipt.Index];
 
@@ -157,7 +157,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             }
 
             Block block = searchResult.Object;
-            TxReceipt receipt = _receiptFinder.Get(block, txHash);
+            TxReceipt receipt = _receiptFinder.Get(block).ForTransaction(txHash);
             
             BlockReceiptsTracer receiptsTracer = new BlockReceiptsTracer();
             receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);

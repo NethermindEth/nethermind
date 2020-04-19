@@ -59,7 +59,7 @@ namespace Nethermind.Consensus.Clique
 
         public Snapshot GetSnapshot()
         {
-            BlockHeader head = _blockTree.Head;
+            Block head = _blockTree.Head;
             return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash);
         }
 
@@ -83,7 +83,7 @@ namespace Nethermind.Consensus.Clique
 
         public Address[] GetSigners()
         {
-            BlockHeader head = _blockTree.Head;
+            Block head = _blockTree.Head;
             return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash).Signers.Select(s => s.Key).ToArray();
         }
 
@@ -95,7 +95,7 @@ namespace Nethermind.Consensus.Clique
 
         public string[] GetSignersAnnotated()
         {
-            BlockHeader header = _blockTree.Head;
+            Block header = _blockTree.Head;
             return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers.Select(s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
         }
         

@@ -23,7 +23,7 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip1108Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainNetSpecProvider.IstanbulBlockNumber + _blockNumberAdjustment;
+        protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber + _blockNumberAdjustment;
 
         private int _blockNumberAdjustment;
 

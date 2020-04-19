@@ -60,7 +60,7 @@ If running locally::
 
     docker run -it --network host nethermind/nethermind:alpine --JsonRpc.Enabled true --Network.DiscoveryPort 30312 --Network.P2PPort 30312
 
-If running from a VM you may want to expose JSON RPC to the outer world via ``NETHERMIND_JSONRPCCONFIG_HOST={hostmachine_ip}`` or ``--JsonRpc.Host {hostmachine_ip}`` (``127.0.0.1`` is set by default)::
+If running from a VM you may want to expose JSON RPC to the outer world via ``NETHERMIND_JSONRPCCONFIG_HOST={hostmachine_ip}`` or ``--JsonRpc.Host {hostmachine_ip}`` (``127.0.0.1`` is set by default). You may try setting ``--JsonRpc.Host 0.0.0.0`` if you still can not connect with JSON RPC::
     
     docker run -it -e NETHERMIND_JSONRPCCONFIG_ENABLED=true -e NETHERMIND_JSONRPCCONFIG_HOST={hostmachine_ip} -e NETHERMIND_NETWORKCONFIG_P2PPORT=30312 -e NETHERMIND_NETWORKCONFIG_DISCOVERYPORT=30312 nethermind/nethermind:alpine
 

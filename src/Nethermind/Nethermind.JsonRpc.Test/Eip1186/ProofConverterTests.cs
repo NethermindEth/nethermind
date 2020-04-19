@@ -28,6 +28,8 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Eip1186
 {
+    [Parallelizable(ParallelScope.Self)]
+    [TestFixture]
     public class ProofConverterTests : SerializationTestBase
     {
         [Test]

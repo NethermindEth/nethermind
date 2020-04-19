@@ -120,17 +120,23 @@ namespace Nethermind.Serialization.Rlp
         {
             return Decode<T>(bytes.AsRlpStream(), rlpBehaviors);
         }
+        
+        public static T Decode<T>(Span<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            var valueContext = bytes.AsRlpValueContext();
+            return Decode<T>(ref valueContext, rlpBehaviors);
+        }
 
         public static T[] DecodeArray<T>(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (Decoders.ContainsKey(typeof(T)))
+            var rlpDecoder = GetDecoder<T>();
+            if (rlpDecoder != null)
             {
-                IRlpDecoder<T> decoder = (IRlpDecoder<T>) Decoders[typeof(T)];
                 int checkPosition = rlpStream.ReadSequenceLength() + rlpStream.Position;
                 T[] result = new T[rlpStream.ReadNumberOfItemsRemaining(checkPosition)];
                 for (int i = 0; i < result.Length; i++)
                 {
-                    result[i] = decoder.Decode(rlpStream, rlpBehaviors);
+                    result[i] = rlpDecoder.Decode(rlpStream, rlpBehaviors);
                 }
 
                 return result;
@@ -139,15 +145,19 @@ namespace Nethermind.Serialization.Rlp
             throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
         }
 
+        public static IRlpDecoder<T> GetDecoder<T>() => Decoders.ContainsKey(typeof(T)) ? (IRlpDecoder<T>) Decoders[typeof(T)] : null;
+
         public static T Decode<T>(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (Decoders.ContainsKey(typeof(T)))
-            {
-                return ((IRlpDecoder<T>) Decoders[typeof(T)]).Decode(rlpStream, rlpBehaviors);
-            }
-
-            throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
+            var rlpDecoder = GetDecoder<T>();
+            return rlpDecoder != null ? rlpDecoder.Decode(rlpStream, rlpBehaviors) : throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
         }
+        
+        public static T Decode<T>(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            return GetDecoder<T>() is IRlpValueDecoder<T> rlpDecoder ? rlpDecoder.Decode(ref decoderContext, rlpBehaviors) : throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
+        }
+
 
         public static Rlp Encode<T>(T item, RlpBehaviors behaviors = RlpBehaviors.None)
         {
@@ -156,12 +166,8 @@ namespace Nethermind.Serialization.Rlp
                 return Encode(new[] {rlp});
             }
             
-            if (Decoders.ContainsKey(typeof(T)))
-            {
-                return ((IRlpDecoder<T>) Decoders[typeof(T)]).Encode(item, behaviors);
-            }
-
-            throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
+            var rlpDecoder = GetDecoder<T>();
+            return rlpDecoder != null ? rlpDecoder.Encode(item, behaviors) : throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
         }
 
         public static Rlp Encode<T>(T[] items, RlpBehaviors behaviors = RlpBehaviors.None)
@@ -171,13 +177,13 @@ namespace Nethermind.Serialization.Rlp
                 return OfEmptySequence;
             }
             
-            if (Decoders.ContainsKey(typeof(T)))
+            var rlpDecoder = GetDecoder<T>();
+            if (rlpDecoder != null)
             {
-                IRlpDecoder<T> decoder = (IRlpDecoder<T>) Decoders[typeof(T)];
                 Rlp[] rlpSequence = new Rlp[items.Length];
                 for (int i = 0; i < items.Length; i++)
                 {
-                    rlpSequence[i] = items[i] == null ? OfEmptySequence : decoder.Encode(items[i], behaviors);
+                    rlpSequence[i] = items[i] == null ? OfEmptySequence : rlpDecoder.Encode(items[i], behaviors);
                 }
 
                 return Encode(rlpSequence);
@@ -900,6 +906,35 @@ namespace Nethermind.Serialization.Rlp
                     throw new RlpException($"Data checkpoint failed. Expected {nextCheck} and is {Position}");
                 }
             }
+            
+            // This class was introduce to reduce allocations when deserializing receipts. In order to deserialize receipts we first try to deserialize it in new format and then in old format.
+            // If someone didn't do migration this will result in excessive allocations and GC of the not needed strings. 
+            private class DecodeKeccakRlpException : RlpException
+            {
+                private readonly int _prefix;
+                private readonly int _position;
+                private readonly int _dataLength;
+                private string _message;
+
+                public DecodeKeccakRlpException(string message, Exception inner) : base(message, inner)
+                {
+                }
+
+                public DecodeKeccakRlpException(string message) : base(message)
+                {
+                }
+
+                public DecodeKeccakRlpException(in int prefix, in int position, in int dataLength) : this(String.Empty)
+                {
+                    _prefix = prefix;
+                    _position = position;
+                    _dataLength = dataLength;
+                }
+
+                public override string Message => _message ??= ConstructMessage();
+
+                private string ConstructMessage() => $"Unexpected prefix of {_prefix} when decoding {nameof(Keccak)} at position {_position} in the message of length {_dataLength}.";
+            }
 
             public Keccak DecodeKeccak()
             {
@@ -911,7 +946,7 @@ namespace Nethermind.Serialization.Rlp
 
                 if (prefix != 128 + 32)
                 {
-                    throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Keccak)} at position {Position} in the message of length {Data.Length} starting with {Data.Slice(0, Math.Min(DebugMessageContentLength, Data.Length)).ToHexString()}");
+                    throw new DecodeKeccakRlpException(prefix, Position, Data.Length);
                 }
 
                 Span<byte> keccakSpan = Read(32);
@@ -927,6 +962,34 @@ namespace Nethermind.Serialization.Rlp
 
                 return new Keccak(keccakSpan.ToArray());
             }
+            
+            public void DecodeKeccakStructRef(out KeccakStructRef keccak)
+            {
+                int prefix = ReadByte();
+                if (prefix == 128)
+                {
+                    keccak = new KeccakStructRef(Keccak.Zero.Bytes);
+                }
+                else if (prefix != 128 + 32)
+                {
+                    throw new DecodeKeccakRlpException(prefix, Position, Data.Length);
+                }
+                else
+                {
+                    Span<byte> keccakSpan = Read(32);
+                    if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
+                    {
+                        keccak = new KeccakStructRef(Keccak.OfAnEmptyString.Bytes);
+                    }
+                    else if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
+                    {
+                        keccak = new KeccakStructRef(Keccak.EmptyTreeHash.Bytes);
+                    }
+
+                    keccak = new KeccakStructRef(keccakSpan);
+                }
+            }
+            
 
             public Address DecodeAddress()
             {
@@ -943,6 +1006,23 @@ namespace Nethermind.Serialization.Rlp
 
                 byte[] buffer = Read(20).ToArray();
                 return new Address(buffer);
+            }
+            
+            public void DecodeAddressStructRef(out AddressStructRef address)
+            {
+                int prefix = ReadByte();
+                if (prefix == 128)
+                {
+                    address = new AddressStructRef(Address.Zero.Bytes);
+                }
+                else if (prefix != 128 + 20)
+                {
+                    throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Keccak)} at position {Position} in the message of length {Data.Length} starting with {Data.Slice(0, Math.Min(DebugMessageContentLength, Data.Length)).ToHexString()}");
+                }
+                else
+                {
+                    address = new AddressStructRef(Read(20));
+                }
             }
 
             public UInt256 DecodeUInt256()
@@ -989,6 +1069,35 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 return bloomBytes.SequenceEqual(Bloom.Empty.Bytes) ? Bloom.Empty : new Bloom(bloomBytes.ToArray());
+            }
+            
+            public void DecodeBloomStructRef(out BloomStructRef bloom)
+            {
+                Span<byte> bloomBytes;
+
+                // tks: not sure why but some nodes send us Blooms in a sequence form
+                // https://github.com/NethermindEth/nethermind/issues/113
+                if (Data[Position] == 249)
+                {
+                    Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes 
+                    bloomBytes = Read(256);
+                }
+                else
+                {
+                    bloomBytes = DecodeByteArraySpan();
+                    if (bloomBytes.Length == 0)
+                    {
+                        bloom = new BloomStructRef(Bloom.Empty.Bytes);
+                        return;
+                    }
+                }
+
+                if (bloomBytes.Length != 256)
+                {
+                    throw new InvalidOperationException("Incorrect bloom RLP");
+                }
+
+                bloom = bloomBytes.SequenceEqual(Bloom.Empty.Bytes) ? new BloomStructRef(Bloom.Empty.Bytes) : new BloomStructRef(bloomBytes);
             }
 
             public Span<byte> PeekNextItem()
@@ -1046,14 +1155,10 @@ namespace Nethermind.Serialization.Rlp
             public Span<byte> DecodeByteArraySpan()
             {
                 int prefix = ReadByte();
-                if (prefix == 0)
-                {
-                    return new byte[] {0};
-                }
 
                 if (prefix < 128)
                 {
-                    return new[] {(byte) prefix};
+                    return Data.Slice(Position - 1, 1);
                 }
 
                 if (prefix == 128)
@@ -1103,6 +1208,107 @@ namespace Nethermind.Serialization.Rlp
             public void Reset()
             {
                 Position = 0;
+            }
+
+            public bool DecodeBool()
+            {
+                int prefix = ReadByte();
+                if (prefix <= 128)
+                {
+                    return prefix == 1;
+                }
+
+                if (prefix <= 183)
+                {
+                    int length = prefix - 128;
+                    if (length == 1 && PeekByte() < 128)
+                    {
+                        throw new RlpException($"Unexpected byte value {PeekByte()}");
+                    }
+
+                    bool result = PeekByte() == 1;
+                    SkipBytes(length);
+                    return result;
+                }
+
+                if (prefix < 192)
+                {
+                    int lengthOfLength = prefix - 183;
+                    if (lengthOfLength > 4)
+                    {
+                        // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
+                        throw new RlpException("Expected length of length less or equal 4");
+                    }
+
+                    int length = DeserializeLength(lengthOfLength);
+                    if (length < 56)
+                    {
+                        throw new RlpException("Expected length greater or equal 56 and was {length}");
+                    }
+
+                    bool result = PeekByte() == 1;
+                    SkipBytes(length);
+                    return result;
+                }
+
+                throw new RlpException($"Unexpected prefix of {prefix} when decoding a byte array at position {Position} in the message of length {Length} starting with {Description}");
+            }
+            
+            private string Description => Data.Slice(0, Math.Min(Rlp.DebugMessageContentLength, Length)).ToHexString();
+            
+            public byte PeekByte()
+            {
+                return Data[Position];
+            }
+        
+            private byte PeekByte(int offset)
+            {
+                return Data[Position + offset];
+            }
+        
+            private void SkipBytes(int length)
+            {
+                Position += length;
+            }
+
+            public string DecodeString()
+            {
+                Span<byte> bytes = DecodeByteArraySpan();
+                return System.Text.Encoding.UTF8.GetString(bytes);
+            }
+
+            public long DecodeLong()
+            {
+                int prefix = ReadByte();
+                if (prefix < 128)
+                {
+                    return prefix;
+                }
+
+                if (prefix == 128)
+                {
+                    return 0;
+                }
+
+                int length = prefix - 128;
+                if (length > 8)
+                {
+                    throw new RlpException($"Unexpected length of long value: {length}");
+                }
+
+                long result = 0;
+                for (int i = 8; i > 0; i--)
+                {
+                    result = result << 8;
+                    if (i <= length)
+                    {
+                        result = result | PeekByte(length - i);
+                    }
+                }
+
+                SkipBytes(length);
+
+                return result;
             }
         }
 
@@ -1303,14 +1509,10 @@ namespace Nethermind.Serialization.Rlp
             return 1;
         }
         
-        public static int LengthOf(LogEntry item) 
+        public static int LengthOf(LogEntry item)
         {
-            if (Decoders.ContainsKey(typeof(LogEntry)))
-            {
-                return ((IRlpDecoder<LogEntry>) Decoders[typeof(LogEntry)]).GetLength(item, RlpBehaviors.None);
-            }
-
-            throw new RlpException($"{nameof(Rlp)} does not support length of {typeof(LogEntry).Name}");
+            var rlpDecoder = GetDecoder<LogEntry>();
+            return rlpDecoder?.GetLength(item, RlpBehaviors.None) ?? throw new RlpException($"{nameof(Rlp)} does not support length of {typeof(LogEntry).Name}");
         }
     }
 }

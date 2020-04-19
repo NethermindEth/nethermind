@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -40,6 +41,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IReceiptFinder _receiptFinder;
         private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
+        private readonly bool _isMining;
         private readonly ITxPool _txPool;
         private readonly IWallet _wallet;
         private readonly IFilterStore _filterStore;
@@ -57,7 +59,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ISpecProvider specProvider,
             IJsonRpcConfig config,
             IBloomStorage bloomStorage,
-            ILogManager logManager)
+            ILogManager logManager,
+            bool isMining)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
@@ -69,7 +72,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _rpcConfig = config ?? throw new ArgumentNullException(nameof(config));
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            
+            _isMining = isMining;
+
             _filterStore = new FilterStore();
             _filterManager = new FilterManager(_filterStore, blockProcessor, _txPool, _logManager);
         }
@@ -94,9 +98,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _ethereumEcdsa,
                 _bloomStorage,
                 _logManager,
+                _isMining,
                 _rpcConfig.FindLogBlockDepthLimit);
             
-            return new EthModule(_rpcConfig, _logManager, blockchainBridge);
+            return new EthModule(_rpcConfig, blockchainBridge, _logManager);
         }
 
         public static List<JsonConverter> Converters = new List<JsonConverter>

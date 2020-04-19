@@ -25,6 +25,7 @@ using Nethermind.Db;
 using Nethermind.Specs;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+#pragma warning disable 618
 
 namespace Nethermind.Blockchain.Receipts
 {
@@ -32,19 +33,21 @@ namespace Nethermind.Blockchain.Receipts
     {
         private readonly IColumnsDb<ReceiptsColumns> _database;
         private readonly ISpecProvider _specProvider;
+        private readonly IReceiptsRecovery _receiptsRecovery;
         private long? _lowestInsertedReceiptBlock;
-        private readonly IDb _blocksDb;
+        private readonly IDbWithSpan _blocksDb;
         private readonly IDb _transactionDb;
         private static readonly Keccak MigrationBlockNumberKey = Keccak.Compute(nameof(MigratedBlockNumber));
         private long _migratedBlockNumber;
-        private static readonly ReceiptStorageDecoder StorageDecoder = new ReceiptStorageDecoder();
+        private static readonly ReceiptStorageDecoder StorageDecoder = ReceiptStorageDecoder.Instance;
 
-        public PersistentReceiptStorage(IColumnsDb<ReceiptsColumns> receiptsDb, ISpecProvider specProvider)
+        public PersistentReceiptStorage(IColumnsDb<ReceiptsColumns> receiptsDb, ISpecProvider specProvider, IReceiptsRecovery receiptsRecovery)
         {
             long Get(Keccak key, long defaultValue) => _database.Get(key)?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
             
             _database = receiptsDb ?? throw new ArgumentNullException(nameof(receiptsDb));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
             _blocksDb = _database.GetColumnDb(ReceiptsColumns.Blocks);
             _transactionDb = _database.GetColumnDb(ReceiptsColumns.Transactions);
 
@@ -62,25 +65,32 @@ namespace Nethermind.Blockchain.Receipts
         // Find receipt stored with old - obsolete format.
         private TxReceipt FindReceiptObsolete(Keccak hash)
         {
-            var receiptData = _database.Get(hash);
-            return DeserializeReceiptObsolete(hash, receiptData);
+            var receiptData = _database.GetSpan(hash);
+            try
+            {
+                return DeserializeReceiptObsolete(hash, receiptData);
+            }
+            finally
+            {
+                _database.DangerousReleaseMemory(receiptData);
+            }
         }
 
-        private static TxReceipt DeserializeReceiptObsolete(Keccak hash, byte[] receiptData)
+        private static TxReceipt DeserializeReceiptObsolete(Keccak hash, Span<byte> receiptData)
         {
             if (receiptData != null)
             {
+                var context = new Rlp.ValueDecoderContext(receiptData);
                 try
                 {
-#pragma warning disable 618
-                    var receipt = StorageDecoder.Decode(new RlpStream(receiptData), RlpBehaviors.Storage);
-#pragma warning restore 618
+                    var receipt = StorageDecoder.Decode(ref context, RlpBehaviors.Storage);
                     receipt.TxHash = hash;
                     return receipt;
                 }
                 catch (RlpException)
                 {
-                    var receipt = StorageDecoder.Decode(new RlpStream(receiptData));
+                    context.Position = 0;
+                    var receipt = StorageDecoder.Decode(ref context);
                     receipt.TxHash = hash;
                     return receipt;
                 }
@@ -96,34 +106,69 @@ namespace Nethermind.Blockchain.Receipts
                 return Array.Empty<TxReceipt>();
             }
             
-            var receiptsData = _blocksDb.Get(block.Hash);
-            if (receiptsData != null)
+            var receiptsData = _blocksDb.GetSpan(block.Hash);
+            try
             {
-                return StorageDecoder.DecodeArray(new RlpStream(receiptsData));
-            }
-            else
-            {
-                // didn't bring performance uplift that was expected
-                // var data = _database.MultiGet(block.Transactions.Select(t => t.Hash));
-                // return data.Select(kvp => DeserializeObsolete(new Keccak(kvp.Key), kvp.Value)).ToArray();
-
-                TxReceipt[] result = new TxReceipt[block.Transactions.Length];
-                for (int i = 0; i < block.Transactions.Length; i++)
+                if (receiptsData != null)
                 {
-                    result[i] = FindReceiptObsolete(block.Transactions[i].Hash);
+                    return DecodeArray(receiptsData);
                 }
-                
-                return result;
+                else
+                {
+                    // didn't bring performance uplift that was expected
+                    // var data = _database.MultiGet(block.Transactions.Select(t => t.Hash));
+                    // return data.Select(kvp => DeserializeObsolete(new Keccak(kvp.Key), kvp.Value)).ToArray();
+
+                    TxReceipt[] result = new TxReceipt[block.Transactions.Length];
+                    for (int i = 0; i < block.Transactions.Length; i++)
+                    {
+                        result[i] = FindReceiptObsolete(block.Transactions[i].Hash);
+                    }
+
+                    return result;
+                }
+            }
+            finally
+            {
+                _blocksDb.DangerousReleaseMemory(receiptsData);
+            }
+        }
+
+        private static TxReceipt[] DecodeArray(Span<byte> receiptsData)
+        {
+            var decoderContext = new Rlp.ValueDecoderContext(receiptsData);
+            try
+            {
+                return StorageDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
+            }
+            catch (RlpException)
+            {
+                decoderContext.Position = 0;
+                return StorageDecoder.DecodeArray(ref decoderContext);
             }
         }
 
         public TxReceipt[] Get(Keccak blockHash)
         {
-            var receiptsData = _blocksDb.Get(blockHash);
-            return receiptsData != null ? StorageDecoder.DecodeArray(new RlpStream(receiptsData)) : Array.Empty<TxReceipt>();
+            var receiptsData = _blocksDb.GetSpan(blockHash);
+            try
+            {
+                return receiptsData != null ? DecodeArray(receiptsData) : Array.Empty<TxReceipt>();
+            }
+            finally
+            {
+                _blocksDb.DangerousReleaseMemory(receiptsData);
+            }
         }
 
         public bool CanGetReceiptsByHash(long blockNumber) => blockNumber >= MigratedBlockNumber;
+
+        public bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator)
+        {
+            var result = CanGetReceiptsByHash(blockNumber);
+            iterator = result ? new ReceiptsIterator(_blocksDb.GetSpan(blockHash), _blocksDb) : new ReceiptsIterator();
+            return result;
+        }
 
         public void Insert(Block block, params TxReceipt[] txReceipts)
         {
@@ -133,10 +178,12 @@ namespace Nethermind.Blockchain.Receipts
             {
                 throw new ArgumentException($"Block {block.ToString(Block.Format.FullHashAndNumber)} has different number of transactions than receipts.");
             }
+
+            _receiptsRecovery.TryRecover(block, txReceipts);
             
             var blockNumber = block.Number;
             var spec = _specProvider.GetSpec(blockNumber);
-            RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
+            RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
             _blocksDb.Set(block.Hash, StorageDecoder.Encode(txReceipts, behaviors).Bytes);
             
             for (int i = 0; i < txReceipts.Length; i++)

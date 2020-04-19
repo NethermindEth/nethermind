@@ -25,6 +25,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Clique.Test
 {
+    [Parallelizable(ParallelScope.Self)]
+    [TestFixture]
     public class WiggleRandomizerTests
     {
         [Test]

@@ -27,7 +27,7 @@ namespace Nethermind.State.Repositories
         private const int CacheSize = 64;
         
         private readonly object _writeLock = new object();
-        private readonly LruCache<long, ChainLevelInfo> _blockInfoCache = new LruCache<long, ChainLevelInfo>(CacheSize);
+        private readonly LruCache<long, ChainLevelInfo> _blockInfoCache = new LruCache<long, ChainLevelInfo>(CacheSize, CacheSize,  "chain level infos");
         
         private readonly IDb _blockInfoDb;
         
@@ -82,21 +82,6 @@ namespace Nethermind.State.Repositories
 
         public BatchWrite StartBatch() => new BatchWrite(_writeLock);
 
-        public ChainLevelInfo LoadLevel(long number)
-        {
-            ChainLevelInfo chainLevelInfo = _blockInfoCache.Get(number);
-            
-            if (chainLevelInfo == null)
-            {
-                byte[] levelBytes = _blockInfoDb.Get(number);
-                if (levelBytes != null)
-                {
-                    chainLevelInfo = Rlp.Decode<ChainLevelInfo>(new Rlp(levelBytes));
-                    _blockInfoCache.Set(number, chainLevelInfo);
-                }
-            }
-
-            return chainLevelInfo;
-        }
+        public ChainLevelInfo LoadLevel(long number) => _blockInfoDb.Get(number, Rlp.GetDecoder<ChainLevelInfo>(), _blockInfoCache);
     }
 }

@@ -23,6 +23,7 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class ParityAccountStateChangeSerializationTests : SerializationTestBase
     {
@@ -36,6 +37,24 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             result.Storage[1] = new ParityStateChange<byte[]>(new byte[] {1}, new byte[] {2});
 
             TestToJson(result, "{\"balance\":{\"*\":{\"from\":\"0x1\",\"to\":\"0x2\"}},\"code\":\"=\",\"nonce\":{\"*\":{\"from\":\"0x0\",\"to\":\"0x1\"}},\"storage\":{\"0x0000000000000000000000000000000000000000000000000000000000000001\":{\"*\":{\"from\":\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"to\":\"0x0000000000000000000000000000000000000000000000000000000000000002\"}}}}");
+        }
+
+        [Test]
+        public void Can_serialize_null_to_1_change()
+        {
+            ParityAccountStateChange result = new ParityAccountStateChange();
+            result.Balance = new ParityStateChange<UInt256?>(null, 1);
+
+            TestToJson(result, "{\"balance\":{\"+\":\"0x1\"},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}}");
+        }
+        
+        [Test]
+        public void Can_serialize_1_to_null()
+        {
+            ParityAccountStateChange result = new ParityAccountStateChange();
+            result.Balance = new ParityStateChange<UInt256?>(1, null);
+
+            TestToJson(result, "{\"balance\":{\"*\":{\"from\":\"0x1\",\"to\":null}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}}");
         }
         
         [Test]

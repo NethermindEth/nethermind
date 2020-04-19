@@ -14,7 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Receipts
@@ -23,17 +25,22 @@ namespace Nethermind.Blockchain.Receipts
     {
         public bool TryRecover(Block block, TxReceipt[] receipts)
         {
-            if (block.Transactions.Length == receipts.Length)
+            var canRecover = block.Transactions.Length == receipts?.Length;
+            if (canRecover)
             {
-                long gasUsedBefore = 0;
-                for (int receiptIndex = 0; receiptIndex < block.Transactions.Length; receiptIndex++)
+                var needRecover = NeedRecover(receipts);
+                if (needRecover)
                 {
-                    Transaction transaction = block.Transactions[receiptIndex];
-                    if (receipts.Length > receiptIndex)
+                    long gasUsedBefore = 0;
+                    for (int receiptIndex = 0; receiptIndex < block.Transactions.Length; receiptIndex++)
                     {
-                        TxReceipt receipt = receipts[receiptIndex];
-                        RecoverReceiptData(receipt, block, transaction, receiptIndex, gasUsedBefore);
-                        gasUsedBefore = receipt.GasUsedTotal;
+                        Transaction transaction = block.Transactions[receiptIndex];
+                        if (receipts.Length > receiptIndex)
+                        {
+                            TxReceipt receipt = receipts[receiptIndex];
+                            RecoverReceiptData(receipt, block, transaction, receiptIndex, gasUsedBefore);
+                            gasUsedBefore = receipt.GasUsedTotal;
+                        }
                     }
                 }
 
@@ -43,6 +50,8 @@ namespace Nethermind.Blockchain.Receipts
             return false;
         }
         
+        public bool NeedRecover(TxReceipt[] receipts) => receipts?.Length > 0 && receipts[0].BlockHash == null;
+
         private static void RecoverReceiptData(TxReceipt receipt, Block block, Transaction transaction, int transactionIndex, long gasUsedBefore)
         {
             receipt.BlockHash = block.Hash;

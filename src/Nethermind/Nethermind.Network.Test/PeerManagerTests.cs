@@ -41,6 +41,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     // [Explicit("Repeatedly fails on Travis")]
     public class PeerManagerTests

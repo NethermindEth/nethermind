@@ -33,7 +33,7 @@ using Timer = System.Timers.Timer;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(InitializeBlockchain), typeof(InitializeNetwork))]
+    [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(InitializeBlockchain), typeof(InitializeNetwork), typeof(ResetDatabaseMigrations))]
     public class DatabaseMigrations : IStep
     {
         private readonly EthereumRunnerContext _context;

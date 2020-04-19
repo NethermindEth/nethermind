@@ -29,6 +29,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Clique.Test
 {
+    [Parallelizable(ParallelScope.Self)]
+    [TestFixture]
     public class SnapshotDecoderTests
     {
         private readonly Address _signer1 = new Address("0x7ffc57839b00206d1ad20c69a1981b489f772031");

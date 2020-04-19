@@ -29,6 +29,8 @@ using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Steps.Migrations;
 using Nethermind.State.Repositories;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
@@ -51,12 +53,13 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 DbProvider = Substitute.For<IDbProvider>(),
                 BlockTree = blockTreeBuilder.TestObject,
                 Synchronizer = Substitute.For<ISynchronizer>(),
-                ChainLevelInfoRepository = blockTreeBuilder.ChainLevelInfoRepository
+                ChainLevelInfoRepository = blockTreeBuilder.ChainLevelInfoRepository,
+                SyncModeSelector = Substitute.For<ISyncModeSelector>()
             };
 
             configProvider.GetConfig<IInitConfig>().StoreReceipts.Returns(true);
             configProvider.GetConfig<IInitConfig>().ReceiptsMigration.Returns(true);
-            context.Synchronizer.SyncMode.Returns(SyncMode.Full);
+            context.SyncModeSelector.Current.Returns(SyncMode.Full);
 
             int txIndex = 0;
             for (int i = 1; i < chainLength; i++)
@@ -97,6 +100,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             public TxReceipt[] Get(Keccak blockHash) => _inStorage.Get(blockHash);
 
             public bool CanGetReceiptsByHash(long blockNumber) => _inStorage.CanGetReceiptsByHash(blockNumber);
+            public bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator) => _outStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
 
             public void Insert(Block block, params TxReceipt[] txReceipts)
             {

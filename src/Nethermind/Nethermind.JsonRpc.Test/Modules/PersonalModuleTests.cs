@@ -26,6 +26,7 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class PersonalModuleTests
     {
@@ -33,7 +34,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Initialize()
         {
             _wallet = new DevWallet(new WalletConfig(),  LimboLogs.Instance);
-            IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance);
+            IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(MainnetSpecProvider.Instance, LimboLogs.Instance);
             _bridge = new PersonalBridge(ethereumEcdsa, _wallet);
         }
 

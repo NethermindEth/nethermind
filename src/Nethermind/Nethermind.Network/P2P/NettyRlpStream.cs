@@ -66,7 +66,7 @@ namespace Nethermind.Network.P2P
              return span;
         }
 
-        protected override byte PeekByte()
+        public override byte PeekByte()
         {
             byte result = _byteBuffer.ReadByte();
             _byteBuffer.SetReaderIndex(_byteBuffer.ReaderIndex - 1);

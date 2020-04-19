@@ -18,6 +18,7 @@ using System;
 using System.Net;
 using System.Net.Sockets;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 
 namespace Nethermind.Network.IP
 {
@@ -41,9 +42,9 @@ namespace Nethermind.Network.IP
                 if (_logger.IsDebug) _logger.Debug($"Local ip: {ipAddress}");
                 return ipAddress != null;
             }
-            catch (SocketException e)
+            catch (SocketException)
             {
-                if(_logger.IsError) _logger.Error($"Error while getting local ip from socket.", e);
+                if(_logger.IsError) _logger.Error($"Error while getting local ip from socket. You can set a manual override via config {nameof(NetworkConfig)}.{nameof(NetworkConfig.LocalIp)}");
                 ipAddress = null;
                 return false;
             }

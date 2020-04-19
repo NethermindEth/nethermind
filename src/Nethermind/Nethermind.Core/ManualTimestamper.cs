@@ -20,17 +20,23 @@ namespace Nethermind.Core
 {
     public class ManualTimestamper : ITimestamper
     {
-        public ManualTimestamper() : this(DateTime.Now)
+        public ManualTimestamper() : this(DateTime.UtcNow)
         {
         }
 
         public ManualTimestamper(DateTime initialValue)
         {
+            UtcNow = initialValue;
         }
 
         public ulong EpochSeconds => (ulong)new DateTimeOffset(UtcNow).ToUnixTimeSeconds();
         public ulong EpochMilliseconds => (ulong)new DateTimeOffset(UtcNow).ToUnixTimeMilliseconds();
 
         public DateTime UtcNow { get; set; }
+
+        public void AddOneSecond()
+        {
+            UtcNow += TimeSpan.FromSeconds(1);
+        }
     }
 }

@@ -20,7 +20,7 @@ namespace Nethermind.Db
 {
     public class MemColumnsDb<TKey> : MemDb, IColumnsDb<TKey>
     {
-        private readonly IDictionary<TKey, IDb> _columnDbs = new Dictionary<TKey, IDb>();
+        private readonly IDictionary<TKey, IDbWithSpan> _columnDbs = new Dictionary<TKey, IDbWithSpan>();
 
         public MemColumnsDb(params TKey[] keys)
         {
@@ -30,7 +30,7 @@ namespace Nethermind.Db
             }
         }
         
-        public IDb GetColumnDb(TKey key) => !_columnDbs.TryGetValue(key, out var db) ? _columnDbs[key] = new MemDb() : db;
+        public IDbWithSpan GetColumnDb(TKey key) => !_columnDbs.TryGetValue(key, out var db) ? _columnDbs[key] = new MemDb() : db;
         public IEnumerable<TKey> ColumnKeys => _columnDbs.Keys;
     }
 }

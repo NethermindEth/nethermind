@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Serialization.Json;
@@ -37,9 +38,9 @@ namespace Nethermind.JsonRpc.WebSockets
             _jsonSerializer = jsonSerializer;
         }
 
-        public async Task ReceiveAsync(byte[] data)
+        public async Task ReceiveAsync(Memory<byte> data)
         {
-            JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync(Encoding.UTF8.GetString(data));
+            JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync(Encoding.UTF8.GetString(data.ToArray()));
             if (result.IsCollection)
             {
                 await SendRawAsync(_jsonSerializer.Serialize(result.Responses));

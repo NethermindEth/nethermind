@@ -29,11 +29,11 @@ namespace Nethermind.Network
     {
         private readonly ILogger _logger;
         private ConcurrentDictionary<PublicKey, Peer> _staticPeers = new ConcurrentDictionary<PublicKey, Peer>();
-        private ConcurrentDictionary<PublicKey, Peer> _allPeers = new ConcurrentDictionary<PublicKey, Peer>();
-        public IEnumerable<Peer> CandidatePeers => _allPeers.Values;
-        public List<Peer> NonStaticCandidatePeers => _allPeers.Values.Where(p => !p.Node.IsStatic).ToList();
+        public ConcurrentDictionary<PublicKey, Peer> AllPeers { get; } = new ConcurrentDictionary<PublicKey, Peer>();
+        public IEnumerable<Peer> CandidatePeers => AllPeers.Values;
+        public List<Peer> NonStaticCandidatePeers => AllPeers.Values.Where(p => !p.Node.IsStatic).ToList();
         public List<Peer> StaticPeers => _staticPeers.Values.ToList();
-        public int CandidatePeerCount => _allPeers.Count;
+        public int CandidatePeerCount => AllPeers.Count;
         public int StaticPeerCount => _staticPeers.Count;
 
         public LocalPeerPool(ILogger logger)
@@ -54,7 +54,7 @@ namespace Nethermind.Network
                 return peer;
             }
 
-            return _allPeers.GetOrAdd(node.NodeId, CreateNew, (node, isStatic, _staticPeers));
+            return AllPeers.GetOrAdd(node.NodeId, CreateNew, (node, isStatic, _staticPeers));
         }
 
         public Peer GetOrAdd(Node node)
@@ -75,12 +75,12 @@ namespace Nethermind.Network
                 return peer;
             }
 
-            return _allPeers.GetOrAdd(node.Id, CreateNew, (node, _staticPeers));
+            return AllPeers.GetOrAdd(node.Id, CreateNew, (node, _staticPeers));
         }
 
         public bool TryRemove(PublicKey id, out Peer peer)
         {
-            if (_allPeers.TryRemove(id, out peer))
+            if (AllPeers.TryRemove(id, out peer))
             {
                 _staticPeers.TryRemove(id, out _);
                 peer.InSession?.MarkDisconnected(DisconnectReason.DisconnectRequested, DisconnectType.Local, "admin_removePeer");
@@ -95,7 +95,7 @@ namespace Nethermind.Network
 
         public Peer Replace(ISession session)
         {
-            if (_allPeers.TryGetValue(session.ObsoleteRemoteNodeId, out Peer previousPeer))
+            if (AllPeers.TryGetValue(session.ObsoleteRemoteNodeId, out Peer previousPeer))
             {
                 // this should happen
                 if (previousPeer.InSession == session || previousPeer.OutSession == session)
@@ -108,7 +108,7 @@ namespace Nethermind.Network
                     // (what with the other session?)
 
                     _staticPeers.TryRemove(session.ObsoleteRemoteNodeId, out _);
-                    _allPeers.TryRemove(session.ObsoleteRemoteNodeId, out Peer oldPeer);
+                    AllPeers.TryRemove(session.ObsoleteRemoteNodeId, out Peer oldPeer);
                     oldPeer.InSession = null;
                     oldPeer.OutSession = null;
                 }

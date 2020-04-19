@@ -26,6 +26,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class ForkInfoTests
     {
@@ -49,7 +50,7 @@ namespace Nethermind.Network.Test
         [TestCase(9500000, "0xe029e991", 0, "Muir Glacier block")]
         public void Fork_id_and_hash_as_expected(long head, string forkHashHex, long next, string description)
         {
-            Test(head, KnownHashes.MainnetGenesis, forkHashHex, next, description, MainNetSpecProvider.Instance, "foundation.json");
+            Test(head, KnownHashes.MainnetGenesis, forkHashHex, next, description, MainnetSpecProvider.Instance, "foundation.json");
         }
 
         [TestCase(0, "0xa3f5ab08", 1561651, "Unsynced")]

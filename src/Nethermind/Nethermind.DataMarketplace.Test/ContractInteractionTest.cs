@@ -20,6 +20,7 @@ using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -188,7 +189,7 @@ namespace Nethermind.DataMarketplace.Test
                 _spec = spec;
                 _receiptsTracer = new BlockReceiptsTracer();
                 _processor = processor;
-                _tx = Build.A.Transaction.SignedAndResolved(new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance), TestItem.PrivateKeyA, 2).TestObject;
+                _tx = Build.A.Transaction.SignedAndResolved(new EthereumEcdsa(MainnetSpecProvider.Instance, LimboLogs.Instance), TestItem.PrivateKeyA, 2).TestObject;
                 _headBlock = Build.A.Block.WithNumber(1).WithTransactions(Enumerable.Repeat(_tx, 100).ToArray()).TestObject;
 
                 _receiptsTracer.SetOtherTracer(GethTracer);
@@ -198,9 +199,10 @@ namespace Nethermind.DataMarketplace.Test
             private Transaction _tx;
             private Block _headBlock;
 
-            public BlockHeader Head => _headBlock.Header;
+            public Block Head => _headBlock;
             public long BestKnown { get; }
             public bool IsSyncing { get; }
+            public bool IsMining { get; }
 
             public void RecoverTxSenders(Block block)
             {
@@ -228,11 +230,11 @@ namespace Nethermind.DataMarketplace.Test
 
             public bool IsMainChain(Keccak blockHash) => _headBlock.Hash == blockHash;
 
-            public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
+            public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak txHash)
             {
                 return (new TxReceipt(), new Transaction
                 {
-                    Hash = transactionHash
+                    Hash = txHash
                 });
             }
 
@@ -250,7 +252,7 @@ namespace Nethermind.DataMarketplace.Test
                 tx.Hash = tx.CalculateHash();
                 _headBlock.Transactions[_txIndex++] = tx;
                 _receiptsTracer.StartNewTxTrace(tx.Hash);
-                _processor.Execute(tx, Head, _receiptsTracer);
+                _processor.Execute(tx, Head?.Header, _receiptsTracer);
                 _receiptsTracer.EndTxTrace();
                 return tx.CalculateHash();
             }
@@ -262,7 +264,7 @@ namespace Nethermind.DataMarketplace.Test
             public Facade.BlockchainBridge.CallOutput Call(BlockHeader blockHeader, Transaction transaction)
             {
                 CallOutputTracer tracer = new CallOutputTracer();
-                _processor.Execute(transaction, Head, tracer);
+                _processor.Execute(transaction, Head?.Header, tracer);
                 return new Facade.BlockchainBridge.CallOutput(tracer.ReturnValue, tracer.GasSpent, tracer.Error);
             }
 

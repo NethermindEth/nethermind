@@ -7,7 +7,7 @@
         " ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "MainNet": {
+    "Mainnet": {
       "commandName": "Project",
       "commandLineArgs": "--config configs\\mainnet.cfg --Sync.FastSync true",
       "environmentVariables": {

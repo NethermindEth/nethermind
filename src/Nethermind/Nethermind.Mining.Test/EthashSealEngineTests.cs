@@ -18,7 +18,7 @@ using System;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Consensus.Mining;
+using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -29,6 +29,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Mining.Test
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class EthashSealEngineTests
     {

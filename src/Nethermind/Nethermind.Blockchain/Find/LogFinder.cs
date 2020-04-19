@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Store.Bloom;
 
 namespace Nethermind.Blockchain.Find
@@ -127,62 +128,114 @@ namespace Nethermind.Blockchain.Find
 
         private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Keccak blockHash, long blockNumber)
         {
-            TxReceipt[] GetReceipts(Keccak hash, long number, out bool needRecover)
+            if (blockHash != null)
             {
-                needRecover = _receiptFinder.CanGetReceiptsByHash(number);
-                if (needRecover)
+                return _receiptFinder.TryGetReceiptsIterator(blockNumber, blockHash, out var iterator) 
+                    ? FilterLogsInBlockLowMemoryAllocation(filter, ref iterator) 
+                    : FilterLogsInBlockHighMemoryAllocation(filter, blockHash, blockNumber);
+            }
+
+            return Array.Empty<FilterLog>();
+        }
+
+        private static IEnumerable<FilterLog> FilterLogsInBlockLowMemoryAllocation(LogFilter filter, ref ReceiptsIterator iterator)
+        {
+            List<FilterLog> logList = null;
+            using (iterator)
+            {
+                long logIndexInBlock = 0;
+                while (iterator.TryGetNext(out var receipt))
+                {
+                    LogEntriesIterator logsIterator = new LogEntriesIterator(receipt.Logs);
+                    if (filter.Matches(ref receipt.BloomStruct))
+                    {
+                        while (logsIterator.TryGetNext(out var log))
+                        {
+                            if (filter.Accepts(ref log))
+                            {
+                                logList ??= new List<FilterLog>();
+                                var topicsValueDecoderContext = new Rlp.ValueDecoderContext(log.Topics);
+                                logList.Add(new FilterLog(
+                                    logIndexInBlock,
+                                    logsIterator.Index,
+                                    receipt.BlockNumber,
+                                    receipt.BlockHash.ToKeccak(),
+                                    receipt.Index,
+                                    receipt.TxHash.ToKeccak(),
+                                    log.LoggersAddress.ToAddress(),
+                                    log.Data.ToArray(),
+                                    KeccakDecoder.Instance.DecodeArray(ref topicsValueDecoderContext)));
+                            }
+                            
+                            logIndexInBlock++;
+                        }
+                    }
+                    else
+                    {
+                        while (logsIterator.TrySkipNext())
+                        {
+                            logIndexInBlock++;
+                        }
+                    }
+                }
+            }
+
+            return logList ?? (IEnumerable<FilterLog>) Array.Empty<FilterLog>();
+        }
+
+        private IEnumerable<FilterLog> FilterLogsInBlockHighMemoryAllocation(LogFilter filter, Keccak blockHash, long blockNumber)
+        {
+            TxReceipt[] GetReceipts(Keccak hash, long number)
+            {
+                var canUseHash = _receiptFinder.CanGetReceiptsByHash(number);
+                if (canUseHash)
                 {
                     return _receiptFinder.Get(hash);
                 }
                 else
                 {
-                    var block = _blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.None);
+                    var block = _blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                     return block == null ? null : _receiptFinder.Get(block);
                 }
             }
-            
+
             void RecoverReceiptsData(Keccak hash, TxReceipt[] receipts)
             {
-                var block = _blockFinder.FindBlock(hash, BlockTreeLookupOptions.None);
-                if (block != null)
+                if (_receiptsRecovery.NeedRecover(receipts))
                 {
-                    _receiptsRecovery.TryRecover(block, receipts);
+                    var block = _blockFinder.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                    if (block != null)
+                    {
+                        _receiptsRecovery.TryRecover(block, receipts);
+                    }
                 }
             }
 
-            if (blockHash != null)
+            var receipts = GetReceipts(blockHash, blockNumber);
+            long logIndexInBlock = 0;
+            if (receipts != null)
             {
-                var receipts = GetReceipts(blockHash, blockNumber, out var needRecover);
-                long logIndexInBlock = 0;
-                if (receipts != null)
+                for (var i = 0; i < receipts.Length; i++)
                 {
-                    for (var i = 0; i < receipts.Length; i++)
-                    {
-                        var receipt = receipts[i];
-                        
-                        if (filter.Matches(receipt.Bloom))
-                        {
-                            for (var j = 0; j < receipt.Logs.Length; j++)
-                            {
-                                var log = receipt.Logs[j];
-                                if (filter.Accepts(log))
-                                {
-                                    if (needRecover)
-                                    {
-                                        RecoverReceiptsData(blockHash, receipts);
-                                        needRecover = false;
-                                    }
-                                    
-                                    yield return new FilterLog(logIndexInBlock, j, receipt, log);
-                                }
+                    var receipt = receipts[i];
 
-                                logIndexInBlock++;
-                            }
-                        }
-                        else
+                    if (filter.Matches(receipt.Bloom))
+                    {
+                        for (var j = 0; j < receipt.Logs.Length; j++)
                         {
-                            logIndexInBlock += receipt.Logs.Length;
+                            var log = receipt.Logs[j];
+                            if (filter.Accepts(log))
+                            {
+                                RecoverReceiptsData(blockHash, receipts);
+                                yield return new FilterLog(logIndexInBlock, j, receipt, log);
+                            }
+
+                            logIndexInBlock++;
                         }
+                    }
+                    else
+                    {
+                        logIndexInBlock += receipt.Logs.Length;
                     }
                 }
             }

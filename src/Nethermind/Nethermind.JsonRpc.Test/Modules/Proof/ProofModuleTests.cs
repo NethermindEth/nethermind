@@ -18,6 +18,8 @@ using System;
 using System.IO;
 using System.Linq;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -42,6 +44,7 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Proof
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture(true, true)]
     [TestFixture(true, false)]
     [TestFixture(false, false)]
@@ -70,7 +73,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             ProofModuleFactory moduleFactory = new ProofModuleFactory(
                 _dbProvider,
                 _blockTree,
-                new CompositeDataRecoveryStep(new TxSignaturesRecoveryStep(new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance), NullTxPool.Instance, LimboLogs.Instance)),
+                new CompositeDataRecoveryStep(new TxSignaturesRecoveryStep(new EthereumEcdsa(MainnetSpecProvider.Instance, LimboLogs.Instance), NullTxPool.Instance, LimboLogs.Instance)),
                 receiptStorage,
                 _specProvider,
                 LimboLogs.Instance);
@@ -217,7 +220,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         [Test]
         public void Can_call_by_hash_canonical()
         {
-            BlockHeader lastHead = _blockTree.Head;
+            Block lastHead = _blockTree.Head;
             Block block = Build.A.Block.WithParent(lastHead).TestObject;
             Block newBlockOnMain = Build.A.Block.WithParent(lastHead).WithDifficulty(block.Difficulty + 1).TestObject;
             BlockTreeBuilder.AddBlock(_blockTree, block);
@@ -743,7 +746,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             storageProvider.Commit();
             storageProvider.CommitTrees();
 
-            stateProvider.Commit(MainNetSpecProvider.Instance.GenesisSpec, null);
+            stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, null);
             stateProvider.CommitTree();
 
             _dbProvider.StateDb.Commit();
@@ -841,7 +844,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Keccak codeHash = stateProvider.UpdateCode(code);
             stateProvider.UpdateCodeHash(account, codeHash, MuirGlacier.Instance);
 
-            stateProvider.Commit(MainNetSpecProvider.Instance.GenesisSpec, null);
+            stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, null);
             stateProvider.CommitTree();
             _dbProvider.CodeDb.Commit();
             _dbProvider.StateDb.Commit();

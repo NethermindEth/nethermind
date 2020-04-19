@@ -20,11 +20,13 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.Logging;
 using Nethermind.Network;
+using Nethermind.Synchronization;
 using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class NetModuleTests
     {

@@ -43,7 +43,7 @@ namespace Nethermind.TxPool
 
         private readonly ConcurrentDictionary<Address, AddressNonces> _nonces = new ConcurrentDictionary<Address, AddressNonces>();
 
-        private LruCache<Keccak, object> _hashCache = new LruCache<Keccak, object>(MemoryAllowance.TxHashCacheSize);
+        private LruKeyCache<Keccak> _hashCache = new LruKeyCache<Keccak>(MemoryAllowance.TxHashCacheSize, MemoryAllowance.TxHashCacheSize, "tx hashes");
 
         /// <summary>
         /// Number of blocks after which own transaction will not be resurrected any more
@@ -146,7 +146,7 @@ namespace Nethermind.TxPool
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
-            ThisNodeInfo.AddInfo("Mem est tx   :", $"{(MemoryAllowance.TxHashCacheSize * 64 + MemoryAllowance.MemPoolSize * 4096) / 1024 / 1024}MB".PadLeft(8));
+            ThisNodeInfo.AddInfo("Mem est tx   :", $"{(LruCache<Keccak, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Keccak, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1024 / 1024}MB".PadLeft(8));
             _transactions = new DistinctValueSortedPool<Keccak, Transaction>(MemoryAllowance.MemPoolSize, (t1, t2) => t1.GasPrice.CompareTo(t2.GasPrice), PendingTransactionComparer.Default);
             _peerNotificationThreshold = txPoolConfig.PeerNotificationThreshold;
 
@@ -195,8 +195,6 @@ namespace Nethermind.TxPool
             if (_logger.IsTrace) _logger.Trace($"Removed a peer from TX pool: {nodeId}");
         }
 
-        private object _hashCacheMarker = new object();
-
         public AddTxResult AddTransaction(Transaction tx, long blockNumber, TxHandlingOptions handlingOptions)
         {
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
@@ -237,7 +235,7 @@ namespace Nethermind.TxPool
             }
 
             // !!! do not change it to |=
-            bool isKnown = _hashCache.Get(tx.Hash) != null;
+            bool isKnown = _hashCache.Get(tx.Hash);
 
             /* We have encountered multiple transactions that do not resolve sender address properly.
              * We need to investigate what these txs are and why the sender address is resolved to null.
@@ -273,7 +271,7 @@ namespace Nethermind.TxPool
                 return AddTxResult.AlreadyKnown;
             }
 
-            _hashCache.Set(tx.Hash, _hashCacheMarker);
+            _hashCache.Set(tx.Hash);
 
             HandleOwnTransaction(tx, isPersistentBroadcast);
 
@@ -384,7 +382,12 @@ namespace Nethermind.TxPool
         {
             if (!_transactions.TryGetValue(hash, out transaction))
             {
-                transaction = _txStorage.Get(hash);
+                // commented out as it puts too much pressure on the database
+                // and it not really required in any scenario
+                  // * tx recovery usually will fetch from pending
+                  // * get tx via RPC usually will fetch from block or from pending
+                  // * internal tx pool scenarios are handled directly elsewhere
+                // transaction = _txStorage.Get(hash);
             }
 
             return transaction != null;

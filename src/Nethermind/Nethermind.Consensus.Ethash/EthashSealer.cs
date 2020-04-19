@@ -25,7 +25,7 @@ using Nethermind.Logging;
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 
-namespace Nethermind.Consensus.Mining
+namespace Nethermind.Consensus.Ethash
 {
     public class EthashSealer : ISealer
     {

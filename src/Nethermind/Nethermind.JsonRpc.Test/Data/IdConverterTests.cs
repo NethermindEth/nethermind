@@ -20,6 +20,7 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Data
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class IdConverterTests : SerializationTestBase
     {

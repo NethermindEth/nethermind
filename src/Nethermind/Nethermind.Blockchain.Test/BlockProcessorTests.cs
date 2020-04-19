@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Test.Validators;
@@ -52,12 +54,12 @@ namespace Nethermind.Blockchain.Test
                 stateProvider,
                 new StorageProvider(stateDb, stateProvider, LimboLogs.Instance),
                 NullTxPool.Instance,
-                NullReceiptStorage.Instance, 
+                NullReceiptStorage.Instance,
                 LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
             Block block = Build.A.Block.WithHeader(header).TestObject;
-            Block[] processedBlocks = processor.Process(Keccak.EmptyTreeHash, new [] {block}, ProcessingOptions.None, NullBlockTracer.Instance);
+            Block[] processedBlocks = processor.Process(Keccak.EmptyTreeHash, new List<Block> {block}, ProcessingOptions.None, NullBlockTracer.Instance);
             Assert.AreEqual(1, processedBlocks.Length, "length");
             Assert.AreEqual(block.Author, processedBlocks[0].Author, "author");
         }

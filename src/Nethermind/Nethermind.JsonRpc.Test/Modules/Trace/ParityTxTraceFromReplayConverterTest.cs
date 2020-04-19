@@ -30,6 +30,8 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace
 {
+    [Parallelizable(ParallelScope.Self)]
+    [TestFixture]
     public class ParityTxTraceFromReplayConverterTest : ParityLikeTxTraceSerializationTestBase
     {
         [Test]

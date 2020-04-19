@@ -41,7 +41,7 @@ namespace Nethermind.Core
     public static class ChainId
     {
         public const int Olympic = 0;
-        public const int MainNet = 1;
+        public const int Mainnet = 1;
         public const int Morden = 2;
         public const int Ropsten = 3;
         public const int Rinkeby = 4;
@@ -60,8 +60,8 @@ namespace Nethermind.Core
             {
                 case Olympic:
                     return "Olympic";
-                case MainNet:
-                    return "MainNet";
+                case Mainnet:
+                    return "Mainnet";
                 case Morden:
                     return "Morden";
                 case Ropsten:

@@ -20,13 +20,13 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Synchronization.BeamSync;
 using Newtonsoft.Json;
 using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 
@@ -55,7 +55,7 @@ namespace Nethermind.JsonRpc
                 converterList.Add(converter);
             }
 
-            foreach (JsonConverter converter in EthereumJsonSerializer.BasicConverters)
+            foreach (JsonConverter converter in EthereumJsonSerializer.CommonConverters)
             {
                 if (_logger.IsDebug) _logger.Debug($"Registering {converter.GetType().Name} (default)");
                 _serializer.Converters.Add(converter);
@@ -118,7 +118,7 @@ namespace Nethermind.JsonRpc
         {
             var expectedParameters = method.Info.GetParameters();
             var providedParameters = request.Params;
-            if (_logger.IsInfo) _logger.Info($"Executing JSON RPC call {methodName} with params {(providedParameters == null ? string.Empty : string.Join(',', providedParameters))}");
+            if (_logger.IsInfo) _logger.Info($"Executing JSON RPC call {methodName}{(providedParameters == null ? string.Empty : $" with params {string.Join(',', providedParameters)}")}");
 
             int missingParamsCount = expectedParameters.Length - (providedParameters?.Length ?? 0) + providedParameters?.Count(string.IsNullOrWhiteSpace) ?? 0;
 

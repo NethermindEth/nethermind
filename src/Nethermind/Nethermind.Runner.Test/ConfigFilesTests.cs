@@ -30,6 +30,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Runner.Test
 {
+    [Parallelizable(ParallelScope.All)]
+    [TestFixture]
     public class ConfigFilesTests
     {
         [SetUp]
@@ -133,7 +135,7 @@ namespace Nethermind.Runner.Test
         [TestCase("rinkeby_archive.cfg", true)]
         [TestCase("rinkeby.cfg", true)]
         [TestCase("goerli_archive.cfg", true)]
-        [TestCase("goerli.cfg", false)]
+        [TestCase("goerli.cfg", true)]
         [TestCase("mainnet_archive.cfg", true)]
         [TestCase("mainnet.cfg", true)]
         [TestCase("sokol.cfg", false)]
@@ -457,7 +459,7 @@ namespace Nethermind.Runner.Test
         [TestCase("ropsten.cfg", true, true)]
         [TestCase("rinkeby.cfg", true, true)]
         [TestCase("goerli.cfg", true, true)]
-        [TestCase("mainnet.cfg", false, false)]
+        [TestCase("mainnet.cfg", true, true)]
         [TestCase("sokol.cfg", true, true)]
         [TestCase("sokol_validator.cfg", true, false)]
         [TestCase("sokol_fastsync.cfg", true, true)]
@@ -496,7 +498,7 @@ namespace Nethermind.Runner.Test
             }
             else
             {
-                syncConfig.FastSyncCatchUpHeightDelta.Should().Be(null);
+                syncConfig.FastSyncCatchUpHeightDelta.Should().Be(1024);
             }
         }
         
