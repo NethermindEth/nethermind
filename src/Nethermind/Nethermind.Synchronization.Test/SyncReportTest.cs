@@ -46,7 +46,6 @@ namespace Nethermind.Synchronization.Test
             _syncModes.Enqueue(SyncMode.Full);
             _syncModes.Enqueue(SyncMode.FastBlocks);
             _syncModes.Enqueue(SyncMode.StateNodes);
-            _syncModes.Enqueue(SyncMode.Beam);
 
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.FastBlocks = fastBlocks;

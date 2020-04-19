@@ -29,6 +29,7 @@ using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Synchronization.BeamSync;
+using Nethermind.Synchronization.StateSync;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -60,7 +61,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 BeamSyncDbProvider beamSyncProvider = new BeamSyncDbProvider(_context.DbProvider, _context.LogManager);
                 _context.DbProvider = beamSyncProvider;
-                _context.NodeDataConsumer = beamSyncProvider.NodeDataConsumer;
+                _context.BeamSyncFeed = beamSyncProvider.BeamSyncFeed;
+                
+                StateSyncDispatcher dispatcher = new StateSyncDispatcher(beamSyncProvider.BeamSyncFeed, _context.SyncPeerPool, new StateSyncAllocationStrategyFactory(), _context.LogManager);
             }
         }
 

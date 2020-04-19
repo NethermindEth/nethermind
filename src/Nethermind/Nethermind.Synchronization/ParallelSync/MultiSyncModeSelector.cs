@@ -122,9 +122,9 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool ShouldBeInFullSyncMode(Snapshot best)
         {
             // it can be still in fast blocks but not any other sync mode
-            return !ShouldBeInBeamSyncMode(best) &&
-                   !ShouldBeInFastSyncMode(best) &&
-                   !ShouldBeInStateNodesMode(best);
+            // if beam sync is enabled then we can start be syncing as soon as state nodes mode is enabled
+            return !ShouldBeInFastSyncMode(best) &&
+                   (!ShouldBeInStateNodesMode(best) || BeamSyncEnabled);
         }
 
         private bool ShouldBeInFastBlocksMode(Snapshot best)
@@ -147,12 +147,7 @@ namespace Nethermind.Synchronization.ParallelSync
                    && !IsWaitingForBlockProcessor(best)
                    && !IsInAStickyFullSyncMode(best);
         }
-
-        private bool ShouldBeInBeamSyncMode(Snapshot best)
-        {
-            return BeamSyncEnabled && !ShouldBeInFastBlocksMode(best);
-        }
-
+        
         private long? ReloadDataFromPeers()
         {
             long? maxPeerBlock = null;
@@ -182,7 +177,7 @@ namespace Nethermind.Synchronization.ParallelSync
             }
 
             // to avoid expensive checks we make this simple check at the beginning
-            if (!FastSyncEnabled && !BeamSyncEnabled)
+            if (!FastSyncEnabled)
             {
                 UpdateSyncModes(SyncMode.Full);
                 return;
@@ -191,10 +186,6 @@ namespace Nethermind.Synchronization.ParallelSync
             Snapshot best = TakeSnapshot(peerBlock ?? 0);
 
             SyncMode newModes = SyncMode.None;
-            if (ShouldBeInBeamSyncMode(best))
-            {
-                newModes |= SyncMode.Beam;
-            }
 
             if (ShouldBeInFastBlocksMode(best))
             {

@@ -23,13 +23,13 @@ namespace Nethermind.Synchronization.BeamSync
 {
     public class BeamSyncDbProvider : IDbProvider
     {
-        public ISyncFeed<StateSyncBatch> NodeDataConsumer { get; }
+        public ISyncFeed<StateSyncBatch> BeamSyncFeed { get; }
         
         public BeamSyncDbProvider(IDbProvider otherProvider, ILogManager logManager)
         {
             BeamSyncDb codeDb = new BeamSyncDb(otherProvider.CodeDb.Innermost, logManager);
             BeamSyncDb stateDb = new BeamSyncDb(otherProvider.StateDb.Innermost, logManager);
-            NodeDataConsumer = new CompositeFeed<StateSyncBatch>(logManager,codeDb, stateDb);
+            BeamSyncFeed = new CompositeFeed<StateSyncBatch>(logManager,codeDb, stateDb);
             BlocksDb = otherProvider.BlocksDb;
             HeadersDb = otherProvider.HeadersDb;
             BlockInfosDb = otherProvider.BlockInfosDb;

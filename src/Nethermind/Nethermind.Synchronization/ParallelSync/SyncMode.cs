@@ -39,13 +39,9 @@ namespace Nethermind.Synchronization.ParallelSync
         /// </summary>
         Full = 8,
         /// <summary>
-        /// Beam sync is not implemented yet.
-        /// </summary>
-        Beam = 16,
-        /// <summary>
         /// Loading previously downloaded blocks from the DB
         /// </summary>
-        DbLoad = 32,
-        All = 63
+        DbLoad = 16,
+        All = 31
     }
 }

@@ -125,14 +125,14 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             }
         }
 
-        [TestCase(1032, 999, 0, 0, SyncMode.Beam)]
-        [TestCase(1032, 1000, 0, 0, SyncMode.Beam)]
-        [TestCase(1032, 1000, 0, 0, SyncMode.Beam)]
-        [TestCase(1032, 1000, 0, 1000, SyncMode.Beam)]
+        [TestCase(1032, 999, 0, 0, SyncMode.Full)]
+        [TestCase(1032, 1000, 0, 0, SyncMode.Full)]
+        [TestCase(1032, 1000, 0, 0, SyncMode.Full)]
+        [TestCase(1032, 1000, 0, 1000, SyncMode.Full)]
         [TestCase(0, 1032, 0, 1032, SyncMode.None)]
-        [TestCase(1, 1032, 0, 1032, SyncMode.Beam)]
-        [TestCase(33, 1032, 0, 1032, SyncMode.Beam)]
-        [TestCase(4506571, 4506571, 4506571, 4506452, SyncMode.Beam)]
+        [TestCase(1, 1032, 0, 1032, SyncMode.Full)]
+        [TestCase(33, 1032, 0, 1032, SyncMode.Full)]
+        [TestCase(4506571, 4506571, 4506571, 4506452, SyncMode.Full)]
         public void Selects_correctly_in_beam_sync(long bestRemote, long bestHeader, long bestBlock, long bestLocalState, SyncMode expected)
         {
             bool changedInvoked = false;

@@ -22,7 +22,7 @@ using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Synchronization.BeamSync
 {
-    public class CompositeFeed<T> : SyncFeed<T>
+    public class CompositeFeed<T> : SyncFeed<T> where T : StateSyncBatch
     {
         private readonly ISyncFeed<T>[] _subFeeds;
         private ILogger _logger;
@@ -67,7 +67,10 @@ namespace Nethermind.Synchronization.BeamSync
         {
             foreach (ISyncFeed<T> subFeed in _subFeeds)
             {
-                
+                if (subFeed.FeedId == batch.ConsumerId)
+                {
+                    subFeed.HandleResponse(batch);
+                }
             }
             
             return SyncResponseHandlingResult.OK;
