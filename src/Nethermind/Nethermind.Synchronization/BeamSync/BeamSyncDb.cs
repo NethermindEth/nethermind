@@ -126,8 +126,6 @@ namespace Nethermind.Synchronization.BeamSync
                     fromMem ??= _tempDb[key];
                     if (fromMem == null)
                     {
-                        Activate();
-                        
                         if (Bytes.AreEqual(key, Keccak.Zero.Bytes))
                         {
                             // we store sync progress data at Keccak.Zero;

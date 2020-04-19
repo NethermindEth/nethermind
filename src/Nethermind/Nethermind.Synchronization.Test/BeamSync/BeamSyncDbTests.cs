@@ -67,7 +67,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         [Test]
         public void Beam_db_provider_smoke_test()
         {
-            BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(new MemDbProvider(), "description", LimboLogs.Instance);
+            BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(new MemDbProvider(), LimboLogs.Instance);
             // has to be state DB on the outside
             Assert.IsInstanceOf(typeof(StateDb), dbProvider.StateDb);
             Assert.IsInstanceOf(typeof(StateDb), dbProvider.CodeDb);
@@ -76,7 +76,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         [Test]
         public void Beam_db_provider_can_dispose()
         {
-            BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(new MemDbProvider(), "description", LimboLogs.Instance);
+            BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(new MemDbProvider(), LimboLogs.Instance);
             dbProvider.Dispose();
         }
 
@@ -135,7 +135,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
             Setup(scenario);
 
             StateSyncBatch request = await _stateBeamLocal.PrepareRequest();
-            Assert.AreEqual(0, request.RequestedNodes.Length);
+            request.Should().BeNull();
         }
 
         [TestCase("leaf_read")]
@@ -159,7 +159,9 @@ namespace Nethermind.Synchronization.Test.BeamSync
             (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
 
+#pragma warning disable 4014
             Task.Run(() => RunRounds(100));
+#pragma warning restore 4014
             StateSyncBatch request = new StateSyncBatch();
             for (int i = 0; i < 1000; i++)
             {
