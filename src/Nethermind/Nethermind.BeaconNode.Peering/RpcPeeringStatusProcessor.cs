@@ -42,7 +42,7 @@ namespace Nethermind.BeaconNode.Peering
 
         public void Enqueue(RpcMessage<PeeringStatus> statusRpcMessage)
         {
-            ChannelWriter.TryWrite(statusRpcMessage);
+            EnqueueItem(statusRpcMessage);
         }
 
         protected override async Task ProcessItemAsync(RpcMessage<PeeringStatus> rpcMessage)

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -182,6 +183,8 @@ namespace Nethermind.BeaconNode.Peering
 
         private void OnGossipReceived(ReadOnlySpan<byte> topicUtf8, ReadOnlySpan<byte> data)
         {
+            Activity activity = new Activity("gossip-received");
+            activity.Start();
             try
             {
                 // TODO: handle other topics
@@ -207,10 +210,16 @@ namespace Nethermind.BeaconNode.Peering
                 if (_logger.IsError())
                     Log.GossipReceivedError(_logger, Encoding.UTF8.GetString(topicUtf8), ex.Message, ex);
             }
+            finally
+            {
+                activity.Stop();
+            }
         }
 
         private void OnPeerDiscovered(ReadOnlySpan<byte> peerUtf8)
         {
+            Activity activity = new Activity("discovered-peer");
+            activity.Start();
             string peerId = Encoding.UTF8.GetString(peerUtf8);
             try
             {
@@ -222,11 +231,17 @@ namespace Nethermind.BeaconNode.Peering
                 if (_logger.IsError())
                     Log.PeerDiscoveredError(_logger, peerId, ex.Message, ex);
             }
+            finally
+            {
+                activity.Stop();
+            }
         }
 
         private void OnRpcReceived(ReadOnlySpan<byte> methodUtf8, int requestResponseFlag, ReadOnlySpan<byte> peerUtf8,
             ReadOnlySpan<byte> data)
         {
+            Activity activity = new Activity("rpc-received");
+            activity.Start();
             try
             {
                 string peerId = Encoding.UTF8.GetString(peerUtf8);
@@ -283,6 +298,10 @@ namespace Nethermind.BeaconNode.Peering
             {
                 if (_logger.IsError())
                     Log.RpcReceivedError(_logger, Encoding.UTF8.GetString(methodUtf8), ex.Message, ex);
+            }
+            finally
+            {
+                activity.Stop();
             }
         }
     }

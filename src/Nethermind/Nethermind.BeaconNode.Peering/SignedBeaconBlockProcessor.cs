@@ -72,12 +72,12 @@ namespace Nethermind.BeaconNode.Peering
 
         public void Enqueue(SignedBeaconBlock signedBeaconBlock, string peerId)
         {
-            ChannelWriter.TryWrite((signedBeaconBlock, peerId));
+            EnqueueItem((signedBeaconBlock, peerId));
         }
 
         public void EnqueueGossip(SignedBeaconBlock signedBeaconBlock)
         {
-            ChannelWriter.TryWrite((signedBeaconBlock, null));
+            EnqueueItem((signedBeaconBlock, null));
         }
 
         protected override async Task ProcessItemAsync((SignedBeaconBlock signedBeaconBlock, string? peerId) item)

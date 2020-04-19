@@ -41,7 +41,7 @@ namespace Nethermind.BeaconNode.Peering
 
         public void Enqueue(string peerId)
         {
-            ChannelWriter.TryWrite(peerId);
+            EnqueueItem(peerId);
         }
 
         protected override async Task ProcessItemAsync(string rpcMessage)

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -26,17 +27,21 @@ namespace Nethermind.BeaconNode.Peering
 {
     public abstract class QueueProcessorBase<T> : BackgroundService
     {
-        private readonly Channel<T> _channel;
+        private readonly Channel<(T item, string? activityId)> _channel;
         private readonly ILogger _logger;
 
         protected QueueProcessorBase(ILogger logger, int maximumQueue)
         {
             _logger = logger;
-            _channel = Channel.CreateBounded<T>(new BoundedChannelOptions(maximumQueue));
+            _channel = Channel.CreateBounded<(T item, string? activityId)>(new BoundedChannelOptions(maximumQueue));
         }
 
-        protected ChannelWriter<T> ChannelWriter => _channel.Writer;
-
+        protected bool EnqueueItem(T item)
+        {
+            string? activityId = Activity.Current?.Id;
+            return _channel.Writer.TryWrite((item, activityId));
+        }
+        
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             try
@@ -44,9 +49,24 @@ namespace Nethermind.BeaconNode.Peering
                 if (_logger.IsInfo())
                     Log.QueueProcessorExecuteStarting(_logger, GetType().Name, null);
 
-                await foreach (T item in _channel.Reader.ReadAllAsync(stoppingToken).ConfigureAwait(false))
+                await foreach ((T item, string? parentId) in _channel.Reader.ReadAllAsync(stoppingToken)
+                    .ConfigureAwait(false))
                 {
-                    await ProcessItemAsync(item).ConfigureAwait(false);
+                    Activity activity = new Activity("process-item");
+                    if (parentId != null)
+                    {
+                        activity.SetParentId(parentId);
+                    }
+
+                    activity.Start();
+                    try
+                    {
+                        await ProcessItemAsync(item).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        activity.Stop();
+                    }
                 }
             }
             catch (OperationCanceledException)
@@ -60,7 +80,7 @@ namespace Nethermind.BeaconNode.Peering
             }
         }
 
-        protected abstract Task ProcessItemAsync(T rpcMessage);
+        protected abstract Task ProcessItemAsync(T item);
 
         public override Task StopAsync(CancellationToken cancellationToken)
         {

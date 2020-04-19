@@ -48,7 +48,7 @@ namespace Nethermind.BeaconNode.Peering
 
         public void Enqueue(RpcMessage<BeaconBlocksByRange> rpcMessage)
         {
-            ChannelWriter.TryWrite(rpcMessage);
+            EnqueueItem(rpcMessage);
         }
 
         protected override async Task ProcessItemAsync(RpcMessage<BeaconBlocksByRange> rpcMessage)

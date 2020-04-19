@@ -117,6 +117,10 @@ namespace Nethermind.HonestValidator
             LoggerMessage.Define<string>(LogLevel.Error,
                 new EventId(5456, nameof(ErrorGettingSyncStatus)),
                 "Exception getting updated sync status from beacon node, error message: {ErrorMessage}");
+        public static readonly Action<ILogger, Slot, BlsPublicKey, string, Exception?> ExceptionProcessingProposalDuty =
+            LoggerMessage.Define<Slot, BlsPublicKey, string>(LogLevel.Error,
+                new EventId(5457, nameof(ExceptionProcessingProposalDuty)),
+                "Exception processing proposal duty for slot {Slot} for validator public key {ValidatorPublicKey}, error message: {ErrorMessage}");
 
         // 8bxx finalization
 
