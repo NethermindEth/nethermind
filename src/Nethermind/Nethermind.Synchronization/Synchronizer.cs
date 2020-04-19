@@ -26,6 +26,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.FastSync;
@@ -111,6 +112,7 @@ namespace Nethermind.Synchronization
         {
             FullSyncFeed fullSyncFeed = new FullSyncFeed(_syncMode);
             BlockDownloader fullSyncBlockDownloader = new BlockDownloader(fullSyncFeed, _syncPeerPool, _blockTree, _blockValidator, _sealValidator, _syncReport, _receiptStorage, _specProvider, _logManager);
+            fullSyncBlockDownloader.SyncEvent += DownloaderOnSyncEvent;
             fullSyncBlockDownloader.Start(_syncCancellation.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -192,6 +194,8 @@ namespace Nethermind.Synchronization
         {
             FastSyncFeed fastSyncFeed = new FastSyncFeed(_syncMode, _syncConfig);
             BlockDownloader downloader = new BlockDownloader(fastSyncFeed, _syncPeerPool, _blockTree, _blockValidator, _sealValidator, _syncReport, _receiptStorage, _specProvider, _logManager);
+            downloader.SyncEvent += DownloaderOnSyncEvent;
+            
             downloader.Start(_syncCancellation.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -203,6 +207,24 @@ namespace Nethermind.Synchronization
                     if (_logger.IsInfo) _logger.Info("Fast sync blocks downloader task completed.");
                 }
             });
+        }
+
+        private NodeStatsEventType Convert(SyncEvent syncEvent)
+        {
+            return syncEvent switch
+            {
+                Synchronization.SyncEvent.Started => NodeStatsEventType.SyncStarted,
+                Synchronization.SyncEvent.Failed => NodeStatsEventType.SyncFailed,
+                Synchronization.SyncEvent.Cancelled => NodeStatsEventType.SyncCancelled,
+                Synchronization.SyncEvent.Completed => NodeStatsEventType.SyncCompleted,
+                _ => throw new ArgumentOutOfRangeException(nameof(syncEvent))
+            };
+        }
+        
+        private void DownloaderOnSyncEvent(object sender, SyncEventArgs e)
+        {
+            _nodeStatsManager.ReportSyncEvent(e.Peer.Node, Convert(e.SyncEvent));
+            SyncEvent?.Invoke(this, e);
         }
 
         public void Dispose()

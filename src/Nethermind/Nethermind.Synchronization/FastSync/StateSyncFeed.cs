@@ -303,7 +303,7 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (dependentItem.IsAccount) Interlocked.Increment(ref _savedAccounts);
                 SaveNode(dependentItem.SyncItem, dependentItem.Value);
-                // _tempDb.Remove(dependentItem.SyncItem.Hash.Bytes);
+                _tempDb.Remove(dependentItem.SyncItem.Hash.Bytes);
             }
         }
 
@@ -817,7 +817,7 @@ namespace Nethermind.Synchronization.FastSync
                 }
 
                 _dependencies[dependency].Add(dependentItem);
-                // _tempDb[dependentItem.SyncItem.Hash.Bytes] = dependentItem.Value;
+                _tempDb[dependentItem.SyncItem.Hash.Bytes] = dependentItem.Value;
             }
         }
 
