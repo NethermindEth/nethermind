@@ -93,6 +93,9 @@ namespace Nethermind.Runner.Ethereum.Steps
                 }
             }
 
+            // we no longer need the allocations - 0.5MB RAM, 9000 objects for mainnet
+            _context.ChainSpec.Allocations = null;
+
             _context.StorageProvider.Commit();
             _context.StateProvider.Commit(_context.SpecProvider.GenesisSpec);
 

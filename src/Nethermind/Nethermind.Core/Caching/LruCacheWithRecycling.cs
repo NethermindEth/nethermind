@@ -23,7 +23,7 @@ namespace Nethermind.Core.Caching
     /// <summary>
     /// https://stackoverflow.com/questions/754233/is-it-there-any-lru-implementation-of-idictionary
     /// </summary>
-    public class LruCache<TKey, TValue> : ICache<TKey, TValue>
+    public class LruCacheWithRecycling<TKey, TValue> : ICache<TKey, TValue>
     {
         private readonly int _maxCapacity;
         private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
@@ -35,7 +35,7 @@ namespace Nethermind.Core.Caching
             _lruList?.Clear();
         }
 
-        public LruCache(int maxCapacity, int startCapacity, string name)
+        public LruCacheWithRecycling(int maxCapacity, int startCapacity, string name)
         {
             _maxCapacity = maxCapacity;
             _cacheMap = typeof(TKey) == typeof(byte[])
@@ -44,7 +44,7 @@ namespace Nethermind.Core.Caching
             _lruList = new LinkedList<LruCacheItem>();
         }
 
-        public LruCache(int maxCapacity, string name)
+        public LruCacheWithRecycling(int maxCapacity, string name)
             : this(maxCapacity, 0, name)
         {
         }
@@ -82,13 +82,15 @@ namespace Nethermind.Core.Caching
             {
                 if (_cacheMap.Count >= _maxCapacity)
                 {
-                    RemoveFirst();
+                    Replace(key, val);
                 }
-
-                LruCacheItem cacheItem = new LruCacheItem(key, val);
-                LinkedListNode<LruCacheItem> newNode = new LinkedListNode<LruCacheItem>(cacheItem);
-                _lruList.AddLast(newNode);
-                _cacheMap.Add(key, newNode);
+                else
+                {
+                    LruCacheItem cacheItem = new LruCacheItem(key, val);
+                    LinkedListNode<LruCacheItem> newNode = new LinkedListNode<LruCacheItem>(cacheItem);
+                    _lruList.AddLast(newNode);
+                    _cacheMap.Add(key, newNode);    
+                }
             }
         }
 
@@ -102,12 +104,16 @@ namespace Nethermind.Core.Caching
             }
         }
 
-        private void RemoveFirst()
+        private void Replace(TKey key, TValue value)
         {
             LinkedListNode<LruCacheItem> node = _lruList.First;
             _lruList.RemoveFirst();
-
             _cacheMap.Remove(node.Value.Key);
+            
+            node.Value.Value = value;
+            node.Value.Key = key;
+            _lruList.AddLast(node);
+            _cacheMap.Add(key, node);
         }
 
         private class LruCacheItem
@@ -118,7 +124,7 @@ namespace Nethermind.Core.Caching
                 Value = v;
             }
 
-            public readonly TKey Key;
+            public TKey Key;
             public TValue Value;
         }
 
