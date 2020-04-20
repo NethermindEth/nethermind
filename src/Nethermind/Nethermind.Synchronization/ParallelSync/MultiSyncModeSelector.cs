@@ -250,7 +250,7 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 string stateString = BuildStateString(best);
                 string message = $"Changing state to {newModes} at {stateString}";
-                if (_logger.IsWarn) _logger.Warn(message);
+                if (_logger.IsInfo) _logger.Info(message);
             }
 
             UpdateSyncModes(newModes);
@@ -297,11 +297,11 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private void UpdateSyncModes(SyncMode newModes)
         {
-            if (newModes != Current)
-            {
-                string message = $"Changing state to {newModes}";
-                if (_logger.IsWarn) _logger.Warn(message);
-            }
+            // if (newModes != Current)
+            // {
+            //     string message = $"Changing state to {newModes}";
+            //     if (_logger.IsInfo) _logger.Info(message);
+            // }
 
             SyncMode previous = Current;
             Current = newModes;
