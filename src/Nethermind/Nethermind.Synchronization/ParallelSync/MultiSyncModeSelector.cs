@@ -95,7 +95,8 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool IsWaitingForBlockProcessor(Snapshot best)
         {
-            return best.Block > best.State && best.State > PivotNumber;
+            return false;
+            // return best.Block > best.State && best.State > PivotNumber;
         }
 
         private bool ShouldBeInFastSyncMode(Snapshot best)
