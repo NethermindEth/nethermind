@@ -70,7 +70,7 @@ namespace Nethermind.AuRa.Test
             _auRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
             _nodeAddress = TestItem.AddressA;
             InitProducer();
-            _pendingTxSelector.SelectTransactions(Arg.Any<long>(), Arg.Any<Keccak>(), Arg.Any<long>()).Returns(Array.Empty<Transaction>());
+            _pendingTxSelector.SelectTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>()).Returns(Array.Empty<Transaction>());
             _sealer.CanSeal(Arg.Any<long>(), Arg.Any<Keccak>()).Returns(true);
             _sealer.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(c => Task.FromResult(c.Arg<Block>()));
             _blockProcessingQueue.IsEmpty.Returns(true);
@@ -158,7 +158,7 @@ namespace Nethermind.AuRa.Test
             AuRaConfig auRaConfig = new AuRaConfig();
             auRaConfig.ForceSealing = false;
             InitProducer(auRaConfig);
-            _pendingTxSelector.SelectTransactions(Arg.Any<long>(), Arg.Any<Keccak>(), Arg.Any<long>()).Returns(new[] {Build.A.Transaction.TestObject});
+            _pendingTxSelector.SelectTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>()).Returns(new[] {Build.A.Transaction.TestObject});
             (await StartStop()).ShouldProduceBlocks(Quantity.AtLeastOne());
         }
         

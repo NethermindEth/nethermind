@@ -53,8 +53,8 @@ namespace Nethermind.Abi
             _items.Add(@event);
         }
 
-        public AbiFunctionDescription GetFunction(string name, bool camelCase = true) => _functions[camelCase ? ToCamelCase(name) : name];
+        public AbiFunctionDescription GetFunction(string name, bool camelCase = true) => _functions[camelCase ? GetFunctionName(name) : name];
 
-        private string ToCamelCase(string name) => char.IsUpper(name[0]) ? Char.ToLowerInvariant(name[0]) + name.Substring(1) : name;
+        public string GetFunctionName(string name) => char.IsUpper(name[0]) ? Char.ToLowerInvariant(name[0]) + name.Substring(1) : name;
     }
 }

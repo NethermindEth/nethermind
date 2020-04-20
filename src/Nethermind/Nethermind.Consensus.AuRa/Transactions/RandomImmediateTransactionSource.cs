@@ -46,23 +46,28 @@ namespace Nethermind.Consensus.AuRa.Transactions
         
         public bool TryCreateTransaction(BlockHeader parent, long gasLimit, out Transaction tx)
         {
-            if (_contracts.TryGetForBlock(parent.Number + 1, out var contract))
+            tx = _contracts.TryGetForBlock(parent.Number + 1, out var contract)
+                ? GetTransaction(contract.GetPhase(parent, _nodeAddress))
+                : null;
+            
+            return tx != null;
+        }
+
+        private Transaction GetTransaction(RandomContract.Phase phase)
+        {
+            switch (phase)
             {
-                var phase = contract.GetPhase(parent, _nodeAddress);
-                switch (phase)
-                {
-                    case RandomContract.Phase.BeforeCommit:
-                        break;
-                    case RandomContract.Phase.Reveal:
-                        break;
-                    case RandomContract.Phase.Waiting:
-                    case RandomContract.Phase.Committed:
-                        break;
-                }
+                case RandomContract.Phase.BeforeCommit:
+                    break;
+                case RandomContract.Phase.Reveal:
+                    break;
+                case RandomContract.Phase.Waiting:
+                case RandomContract.Phase.Committed:
+                    return null;
             }
             
-            tx = null;
-            return false;
+            return null;
+
         }
     }
 }

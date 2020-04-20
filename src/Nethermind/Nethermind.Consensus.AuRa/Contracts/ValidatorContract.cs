@@ -58,12 +58,16 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// </summary>
         public void FinalizeChange(BlockHeader blockHeader) => TryCall(blockHeader, Definition.GetFunction(nameof(FinalizeChange)), out _);
 
+        internal static readonly string GetValidatorsFunction = Definition.GetFunctionName(nameof(GetValidators));
+
         /// <summary>
         /// Get current validator set (last enacted or initial if no changes ever made)
         /// function getValidators() constant returns (address[] _validators);
         /// </summary>
         public Address[] GetValidators(BlockHeader blockHeader) => CallConstant<Address[]>(blockHeader, Definition.GetFunction(nameof(GetValidators)));
 
+        internal const string InitiateChange = nameof(InitiateChange);
+        
         /// <summary>
         /// Issue this log event to signal a desired change in validator set.
         /// This will not lead to a change in active validator set until
@@ -79,11 +83,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// </summary>
         public bool CheckInitiateChangeEvent(BlockHeader blockHeader, TxReceipt[] receipts, out Address[] addresses)
         {
-            const string initiateChange = "InitiateChange";
-            
             var logEntry = new LogEntry(ContractAddress, 
                 Array.Empty<byte>(),
-                new[] {Definition.Events[initiateChange].GetHash(), blockHeader.ParentHash});
+                new[] {Definition.Events[InitiateChange].GetHash(), blockHeader.ParentHash});
 
             if (blockHeader.TryFindLog(receipts, logEntry, LogEntryEqualityComparer, out var foundEntry))
             {

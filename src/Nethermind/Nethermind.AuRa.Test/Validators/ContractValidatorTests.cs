@@ -577,7 +577,7 @@ namespace Nethermind.AuRa.Test.Validators
                         {
                             Build.A.LogEntry.WithAddress(_contractAddress)
                                 .WithData(new[] {(byte) (block.Number * 10 + i++)})
-                                .WithTopics(ValidatorContract.Definition.Events[ValidatorContract.InitiateChangeEvent].GetHash(), block.ParentHash)
+                                .WithTopics(ValidatorContract.Definition.Events[ValidatorContract.InitiateChange].GetHash(), block.ParentHash)
                                 .TestObject
                         };
                     })
@@ -702,7 +702,7 @@ namespace Nethermind.AuRa.Test.Validators
                     {
                         new LogEntry(contractAddress,
                             dataFunc(validators),
-                            new[] {ValidatorContract.Definition.Events[ValidatorContract.InitiateChangeEvent].GetHash(), block.ParentHash})
+                            new[] {ValidatorContract.Definition.Events[ValidatorContract.InitiateChange].GetHash(), block.ParentHash})
                     };
                     
                     return new TxReceipt[]
