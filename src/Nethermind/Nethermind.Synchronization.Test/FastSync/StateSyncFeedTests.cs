@@ -281,7 +281,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.FastSync = true;
-            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, NullReceiptStorage.Instance, dbContext.LocalStateDb, syncConfig, _logManager);
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, NullReceiptStorage.Instance, dbContext.LocalStateDb, new MemDb(), syncConfig, _logManager);
             _syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, _pool, syncConfig, _logManager);
             _feed = new StateSyncFeed(dbContext.LocalCodeDb, dbContext.LocalStateDb, new MemDb(), _syncModeSelector, blockTree, _logManager);
             _stateSyncDispatcher = new StateSyncDispatcher(_feed, _pool, new StateSyncAllocationStrategyFactory(), _logManager);
@@ -356,7 +356,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         }
 
         public static (string Name, Action<StateTree, StateDb, StateDb> Action)[] Scenarios => TrieScenarios.Scenarios;
-        
+
         [Test]
         [TestCaseSource(nameof(Scenarios))]
         [Retry(5)]
@@ -641,10 +641,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             _feed.SetNewStateRoot(1024, Keccak.Compute("the_peer_has_no_data"));
             _feed.Activate();
             await Task.WhenAny(_stateSyncDispatcher.Start(CancellationToken.None), Task.Delay(1000)).Unwrap()
-                .ContinueWith(t =>
-                {
-                    Assert.AreEqual(0, _pool.UsefulPeerCount);
-                });
+                .ContinueWith(t => { Assert.AreEqual(0, _pool.UsefulPeerCount); });
         }
 
         [Test]

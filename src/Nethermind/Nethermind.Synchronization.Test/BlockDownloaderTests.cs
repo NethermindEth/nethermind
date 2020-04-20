@@ -365,7 +365,7 @@ namespace Nethermind.Synchronization.Test
             _feed = Substitute.For<ISyncFeed<BlocksRequest>>();
 
             SyncConfig syncConfig = new SyncConfig();
-            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_blockTree, NullReceiptStorage.Instance, new MemDb(), syncConfig, LimboLogs.Instance);
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_blockTree, NullReceiptStorage.Instance, new MemDb(), new MemDb(), syncConfig, LimboLogs.Instance);
             _syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, _peerPool, syncConfig, LimboLogs.Instance);
             _feed = new FullSyncFeed(_syncModeSelector);
 

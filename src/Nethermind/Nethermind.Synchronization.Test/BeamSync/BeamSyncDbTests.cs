@@ -244,8 +244,8 @@ namespace Nethermind.Synchronization.Test.BeamSync
             _remoteStateTrie.UpdateRootHash();
 
             MemDb beamStateDb = new MemDb();
-            _stateBeamLocal = new BeamSyncDb(new MemDb(), beamStateDb, LimboLogs.Instance);
-            _codeBeamLocal = new BeamSyncDb(new MemDb(), beamStateDb, LimboLogs.Instance);
+            _stateBeamLocal = new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Beam, LimboLogs.Instance);
+            _codeBeamLocal = new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Beam, LimboLogs.Instance);
             _stateLocal = new StateDb(_stateBeamLocal);
             _codeLocal = new StateDb(_codeBeamLocal);
 
@@ -265,7 +265,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         {
             MemDb tempDb = new MemDb();
             MemDb stateDB = new MemDb();
-            BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, tempDb, LimboLogs.Instance);
+            BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, tempDb, StaticSelector.Beam, LimboLogs.Instance);
 
             byte[] bytes = new byte[] {1, 2, 3};
             beamSyncDb.Set(TestItem.KeccakA, bytes);
@@ -278,7 +278,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         {
             MemDb tempDb = new MemDb();
             MemDb stateDB = new MemDb();
-            BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, tempDb, LimboLogs.Instance);
+            BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, tempDb, StaticSelector.Beam, LimboLogs.Instance);
 
             byte[] bytes = new byte[] {1, 2, 3};
             beamSyncDb.Set(TestItem.KeccakA, bytes);
@@ -291,7 +291,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         {
             MemDb tempDb = new MemDb();
             MemDb stateDB = new MemDb();
-            BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, tempDb, LimboLogs.Instance);
+            BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, tempDb, StaticSelector.Beam, LimboLogs.Instance);
 
             byte[] bytes = new byte[] {1, 2, 3};
             tempDb.Set(TestItem.KeccakA, bytes);
@@ -305,7 +305,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         {
             MemDb tempDb = new MemDb();
             MemDb stateDB = new MemDb();
-            BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, tempDb, LimboLogs.Instance);
+            BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, tempDb, StaticSelector.Beam, LimboLogs.Instance);
 
             byte[] bytes = new byte[] {1, 2, 3};
             stateDB.Set(TestItem.KeccakA, bytes);
