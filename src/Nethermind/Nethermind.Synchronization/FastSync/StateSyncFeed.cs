@@ -298,7 +298,11 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (dependentItem.IsAccount) Interlocked.Increment(ref _savedAccounts);
                 SaveNode(dependentItem.SyncItem, dependentItem.Value);
-                _tempDb.Remove(dependentItem.SyncItem.Hash.Bytes);
+                _logger.Error($"Removing from temp: {dependentItem.SyncItem.Hash.ToString()}");
+                if (_tempDb.KeyExists(dependentItem.SyncItem.Hash.Bytes))
+                {
+                    _tempDb.Remove(dependentItem.SyncItem.Hash.Bytes);
+                }
             }
         }
 
