@@ -58,7 +58,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         {
             BeamSyncContext.LastFetchUtc.Value = DateTime.MaxValue;
         }
-        
+
         private void MakeRequestsImmediatelyExpire()
         {
             BeamSyncContext.LastFetchUtc.Value = DateTime.MinValue;
@@ -214,7 +214,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
 
             RunRounds(1);
             StateSyncBatch request = await _stateBeamLocal.PrepareRequest();
-            request.Responses = new [] {new byte[] {1, 2, 3}};
+            request.Responses = new[] {new byte[] {1, 2, 3}};
             _stateBeamLocal.HandleResponse(request);
             RunRounds(3);
 
@@ -243,8 +243,9 @@ namespace Nethermind.Synchronization.Test.BeamSync
             scenario.SetupTree(_remoteStateTrie, _remoteState, _remoteCode);
             _remoteStateTrie.UpdateRootHash();
 
-            _stateBeamLocal = new BeamSyncDb(new MemDb(), LimboLogs.Instance);
-            _codeBeamLocal = new BeamSyncDb(new MemDb(), LimboLogs.Instance);
+            MemDb beamStateDb = new MemDb();
+            _stateBeamLocal = new BeamSyncDb(new MemDb(), beamStateDb, LimboLogs.Instance);
+            _codeBeamLocal = new BeamSyncDb(new MemDb(), beamStateDb, LimboLogs.Instance);
             _stateLocal = new StateDb(_stateBeamLocal);
             _codeLocal = new StateDb(_codeBeamLocal);
 
@@ -271,7 +272,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
             byte[] retrievedFromTemp = tempDb.Get(TestItem.KeccakA);
             retrievedFromTemp.Should().BeEquivalentTo(bytes);
         }
-        
+
         [Test]
         public void Does_not_save_nodes_to_state_db()
         {
@@ -284,7 +285,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
             byte[] retrievedFromTemp = stateDB.Get(TestItem.KeccakA);
             retrievedFromTemp.Should().BeNull();
         }
-        
+
         [Test]
         public void Can_read_nodes_from_temp_when_missing_in_state()
         {
@@ -294,11 +295,11 @@ namespace Nethermind.Synchronization.Test.BeamSync
 
             byte[] bytes = new byte[] {1, 2, 3};
             tempDb.Set(TestItem.KeccakA, bytes);
-            
+
             byte[] retrievedFromTemp = beamSyncDb.Get(TestItem.KeccakA);
             retrievedFromTemp.Should().BeEquivalentTo(bytes);
         }
-        
+
         [Test]
         public void Can_read_nodes_from_state_when_missing_in_temp()
         {
@@ -308,7 +309,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
 
             byte[] bytes = new byte[] {1, 2, 3};
             stateDB.Set(TestItem.KeccakA, bytes);
-            
+
             byte[] retrievedFromTemp = beamSyncDb.Get(TestItem.KeccakA);
             retrievedFromTemp.Should().BeEquivalentTo(bytes);
         }

@@ -47,11 +47,6 @@ namespace Nethermind.Synchronization.BeamSync
 
         private ILogger _logger;
 
-        public BeamSyncDb(IDb db, ILogManager logManager)
-            : this(db, db, logManager)
-        {
-        }
-
         public BeamSyncDb(IDb stateDb, IDb tempDb, ILogManager logManager)
         {
             _logger = logManager.GetClassLogger<BeamSyncDb>();

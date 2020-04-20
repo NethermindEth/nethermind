@@ -153,7 +153,7 @@ namespace Nethermind.Synchronization
 
         private void StartStateSyncComponents()
         {
-            StateSyncFeed stateSyncFeed = new StateSyncFeed(_dbProvider.CodeDb, _dbProvider.StateDb, new MemDb(), _syncMode, _blockTree, _logManager);
+            StateSyncFeed stateSyncFeed = new StateSyncFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _dbProvider.BeamStateDb, _syncMode, _blockTree, _logManager);
             StateSyncDispatcher stateSyncDispatcher = new StateSyncDispatcher(stateSyncFeed, _syncPeerPool, new StateSyncAllocationStrategyFactory(), _logManager);
             Task syncDispatcherTask = stateSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
             {
@@ -220,7 +220,7 @@ namespace Nethermind.Synchronization
             FastSyncFeed fastSyncFeed = new FastSyncFeed(_syncMode, _syncConfig);
             BlockDownloader downloader = new BlockDownloader(fastSyncFeed, _syncPeerPool, _blockTree, _blockValidator, _sealValidator, _syncReport, _receiptStorage, _specProvider, _logManager);
             downloader.SyncEvent += DownloaderOnSyncEvent;
-            
+
             downloader.Start(_syncCancellation.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -245,7 +245,7 @@ namespace Nethermind.Synchronization
                 _ => throw new ArgumentOutOfRangeException(nameof(syncEvent))
             };
         }
-        
+
         private void DownloaderOnSyncEvent(object sender, SyncEventArgs e)
         {
             _nodeStatsManager.ReportSyncEvent(e.Peer.Node, Convert(e.SyncEvent));

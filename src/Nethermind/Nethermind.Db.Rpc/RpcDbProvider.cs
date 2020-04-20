@@ -50,6 +50,7 @@ namespace Nethermind.Db.Rpc
         public IDb ConfigsDb { get; }
         public IDb EthRequestsDb { get; }
         public IDb BloomDb { get; }
+        public IDb BeamStateDb { get; } = new MemDb();
 
         public void Dispose()
         {

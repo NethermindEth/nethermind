@@ -890,7 +890,7 @@ namespace Nethermind.Synchronization.FastSync
                 lock (_stateDbLock)
                 {
                     // if finished downloading
-                    if (_stateDb.KeyExists(_rootNode))
+                    if (_stateDb.Innermost.KeyExists(_rootNode))
                     {
                         VerifyPostSyncCleanUp();
                         FallAsleep();
