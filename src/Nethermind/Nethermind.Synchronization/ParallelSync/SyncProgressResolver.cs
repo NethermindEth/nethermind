@@ -53,6 +53,16 @@ namespace Nethermind.Synchronization.ParallelSync
 
             return _stateDb.Innermost.Get(stateRoot) != null;
         }
+        
+        private bool IsBeamSynced(Keccak stateRoot)
+        {
+            if (stateRoot == Keccak.EmptyTreeHash)
+            {
+                return true;
+            }
+
+            return _stateDb.Get(stateRoot) != null;
+        }
 
         public long FindBestFullState()
         {
@@ -65,8 +75,8 @@ namespace Nethermind.Synchronization.ParallelSync
 
             BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
             Block head = _blockTree.Head;
-            long bestFullState = head?.Number ?? 0;
-            long maxLookup = Math.Min(_maxLookup * 2, (bestSuggested?.Number ?? 0L) - bestFullState);
+            long bestFullState = 0;
+            long maxLookup = Math.Min(_maxLookup * 2, (bestSuggested?.Number ?? 0L) - head?.Number ?? 0);
 
             for (int i = 0; i < maxLookup; i++)
             {
@@ -76,6 +86,39 @@ namespace Nethermind.Synchronization.ParallelSync
                 }
 
                 if (IsFullySynced(bestSuggested.StateRoot))
+                {
+                    bestFullState = bestSuggested.Number;
+                    break;
+                }
+
+                bestSuggested = _blockTree.FindHeader(bestSuggested.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            }
+
+            return bestFullState;
+        }
+        
+        public long FindBestBeamState()
+        {
+            /* There is an interesting scenario (unlikely) here where we download more than 'full sync threshold'
+             blocks in full sync but they are not processed immediately so we switch to node sync
+             and the blocks that we downloaded are processed from their respective roots
+             and the next full sync will be after a leap.
+             This scenario is still correct. It may be worth to analyze what happens
+             when it causes a full sync vs node sync race at every block.*/
+
+            BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
+            Block head = _blockTree.Head;
+            long bestFullState = 0;
+            long maxLookup = Math.Min(_maxLookup * 2, (bestSuggested?.Number ?? 0L) - head?.Number ?? 0);
+
+            for (int i = 0; i < maxLookup; i++)
+            {
+                if (bestSuggested == null)
+                {
+                    break;
+                }
+
+                if (IsBeamSynced(bestSuggested.StateRoot))
                 {
                     bestFullState = bestSuggested.Number;
                     break;

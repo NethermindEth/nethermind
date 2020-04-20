@@ -298,11 +298,7 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (dependentItem.IsAccount) Interlocked.Increment(ref _savedAccounts);
                 SaveNode(dependentItem.SyncItem, dependentItem.Value);
-                _logger.Error($"Removing from temp: {dependentItem.SyncItem.Hash.ToString()}");
-                if (_tempDb.KeyExists(dependentItem.SyncItem.Hash.Bytes))
-                {
-                    _tempDb.Remove(dependentItem.SyncItem.Hash.Bytes);
-                }
+                _tempDb.Remove(dependentItem.SyncItem.Hash.Bytes);
             }
         }
 
@@ -870,6 +866,11 @@ namespace Nethermind.Synchronization.FastSync
 
         public override async Task<StateSyncBatch> PrepareRequest()
         {
+            if((_syncModeSelector.Current & SyncMode.StateNodes) != SyncMode.StateNodes)
+            {
+                return null;
+            }
+            
             try
             {
                 if (_rootNode == Keccak.EmptyTreeHash)

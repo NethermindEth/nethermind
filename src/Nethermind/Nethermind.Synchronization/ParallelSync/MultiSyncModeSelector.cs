@@ -127,6 +127,8 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             // it can be still in fast blocks but not any other sync mode
             return AnyPostPivotPeerKnown(best) &&
+                   // fast sync has started in the past
+                   best.Header >= PivotNumber &&
                    !ShouldBeInBeamSyncMode(best) &&
                    !ShouldBeInFastSyncMode(best) &&
                    !ShouldBeInStateNodesMode(best);
@@ -152,6 +154,8 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool ShouldBeInStateNodesMode(Snapshot best)
         {
             return FastSyncEnabled &&
+                   // fast sync has started in the past
+                   best.Header >= PivotNumber &&
                    AnyPostPivotPeerKnown(best) &&
                    // not downloading headers and bodies any more
                    !ShouldBeInFastSyncMode(best) && 
@@ -166,10 +170,12 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool ShouldBeInBeamSyncMode(Snapshot best)
         {
-            // we can run beam sync if we already downloaded all the headers after pivot
+            // we can run beam sync if we already downloaded all the headers after pivot (so not in fast sync)
+            // but we need to confirm that we ever started! (header > pivot)
             // and we are running state nodes sync now
             // and beam sync is enabled
             return BeamSyncEnabled &&
+                   best.Header >= PivotNumber &&
                    AnyPostPivotPeerKnown(best) &&
                    ShouldBeInStateNodesMode(best) &&
                    !ShouldBeInFastSyncMode(best);
@@ -210,7 +216,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 return;
             }
 
-            Snapshot best = TakeSnapshot(peerBlock ?? 0);
+            Snapshot best = TakeSnapshot(peerBlock.Value);
 
             SyncMode newModes = SyncMode.None;
             if (ShouldBeInBeamSyncMode(best))
@@ -242,7 +248,7 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 string stateString = BuildStateString(best);
                 string message = $"Changing state to {newModes} at {stateString}";
-                if (_logger.IsInfo) _logger.Info(message);
+                if (_logger.IsWarn) _logger.Warn(message);
             }
 
             UpdateSyncModes(newModes);
@@ -254,11 +260,12 @@ namespace Nethermind.Synchronization.ParallelSync
             // and think that we have an invalid snapshot
             long processed = _syncProgressResolver.FindBestProcessedBlock();
             long state = _syncProgressResolver.FindBestFullState();
+            long beamState = BeamSyncEnabled ? _syncProgressResolver.FindBestBeamState() : state;
             long block = _syncProgressResolver.FindBestFullBlock();
             long header = _syncProgressResolver.FindBestHeader();
             
 
-            Snapshot best = new Snapshot(processed, state, block, header, peerBlock);
+            Snapshot best = new Snapshot(processed, beamState, state, block, header, peerBlock);
             VerifySnapshot(best);
             return best;
         }
@@ -278,7 +285,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 // we can only process blocks for which we have full body
                 || best.Processed > best.Block
                 // for any processed block we should have its full state   
-                || best.Processed > best.State)
+                || (best.Processed > best.State && best.Processed > best.BeamState))
             {
                 string stateString = BuildStateString(best);
                 string errorMessage = $"Invalid best state calculation: {stateString}";
@@ -289,11 +296,12 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private void UpdateSyncModes(SyncMode newModes)
         {
-            // if (Current == newModes)
-            // {
-            //     return;
-            // }
-
+            if (newModes != Current)
+            {
+                string message = $"Changing state to {newModes}";
+                if (_logger.IsWarn) _logger.Warn(message);
+            }
+            
             SyncMode previous = Current;
             Current = newModes;
             Changed?.Invoke(this, new SyncModeChangedEventArgs(previous, Current));
@@ -311,13 +319,14 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private struct Snapshot
         {
-            public Snapshot(long processed, long state, long block, long header, long peerBlock)
+            public Snapshot(long processed, long beamState, long state, long block, long header, long peerBlock)
             {
                 Processed = processed;
                 State = state;
                 Block = block;
                 Header = header;
                 PeerBlock = peerBlock;
+                BeamState = beamState;
             }
 
             /// <summary>
@@ -329,6 +338,11 @@ namespace Nethermind.Synchronization.ParallelSync
             /// Best full block state in the state trie (may not be processed if we just finished state trie download)
             /// </summary>
             public long State { get; }
+            
+            /// <summary>
+            /// Best beam block state in the state trie (may not be processed if we just finished state trie download)
+            /// </summary>
+            public long BeamState { get; }
 
             /// <summary>
             /// Best block body
