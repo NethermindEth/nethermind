@@ -31,6 +31,7 @@ namespace Nethermind.Core2
         // TODO: Should have CancellationToken, but Mothra won't support it, so add if/when we do a managed implementation
         Task PublishBeaconBlockAsync(SignedBeaconBlock signedBlock);
         Task RequestBlocksAsync(string peerId, Root peerHeadRoot, Slot finalizedSlot, Slot peerHeadSlot);
+        Task SendBlockAsync(string peerId, SignedBeaconBlock signedBlock);
         Task SendStatusAsync(string peerId, RpcDirection rpcDirection, PeeringStatus peeringStatus);
     }
 }

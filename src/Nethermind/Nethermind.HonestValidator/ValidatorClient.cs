@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -195,7 +196,7 @@ namespace Nethermind.HonestValidator
                 return;
             }
 
-            await UpdateForkVersion(cancellationToken).ConfigureAwait(false);
+            await UpdateForkVersionActivityAsync(cancellationToken).ConfigureAwait(false);
             
             // TODO: For beacon nodes that don't report SyncingStatus (which is nullable/optional),
             // then need a different strategy to determine the current head known by the beacon node.
@@ -206,7 +207,7 @@ namespace Nethermind.HonestValidator
             // Alternative 2: try UpdateDuties, and if you get 406 DutiesNotAvailableForRequestedEpoch then use a
             // divide & conquer algorithm to determine block to check. (Could be a back off x1, x2, x4, x8, etc if 406)
             
-            await UpdateSyncStatus(cancellationToken).ConfigureAwait(false);
+            await UpdateSyncStatusActivityAsync(cancellationToken).ConfigureAwait(false);
 
             // Need to have an anchor block (will provide the genesis time) before can do anything
             // Absolutely no point in generating blocks < anchor slot
@@ -233,7 +234,7 @@ namespace Nethermind.HonestValidator
 
             // Note that UpdateDuties will continue even if there is an error/issue (i.e. assume no change and process what we have)
             Epoch epochToCheck = ComputeEpochAtSlot(slotToCheck);
-            await UpdateDutiesAsync(epochToCheck, cancellationToken).ConfigureAwait(false);
+            await UpdateDutiesActivityAsync(epochToCheck, cancellationToken).ConfigureAwait(false);
 
             await ProcessProposalDutiesAsync(slotToCheck, cancellationToken).ConfigureAwait(false);
 
@@ -251,47 +252,63 @@ namespace Nethermind.HonestValidator
             BlsPublicKey? blsPublicKey = _validatorState.GetProposalDutyForSlot(slot);
             if (!(blsPublicKey is null))
             {
-                if (_logger.IsInfo())
-                    Log.ProposalDutyFor(_logger, slot, _beaconChainInformation.Time, blsPublicKey, null);
-
-                BlsSignature randaoReveal = GetEpochSignature(slot, blsPublicKey);
-
-                if (_logger.IsDebug())
-                    LogDebug.RequestingBlock(_logger, slot, blsPublicKey.ToShortString(),
-                        randaoReveal.ToString().Substring(0, 10), null);
-
-                ApiResponse<BeaconBlock> newBlockResponse = await _beaconNodeApi
-                    .NewBlockAsync(slot, randaoReveal, cancellationToken).ConfigureAwait(false);
-                if (newBlockResponse.StatusCode == StatusCode.Success)
+                Activity activity = new Activity("process-proposal-duty");
+                activity.Start();
+                try
                 {
-                    BeaconBlock unsignedBlock = newBlockResponse.Content;
-                    BlsSignature blockSignature = GetBlockSignature(unsignedBlock, blsPublicKey);
-                    SignedBeaconBlock signedBlock = new SignedBeaconBlock(unsignedBlock, blockSignature);
+
+                    if (_logger.IsInfo())
+                        Log.ProposalDutyFor(_logger, slot, _beaconChainInformation.Time, blsPublicKey, null);
+
+                    BlsSignature randaoReveal = GetEpochSignature(slot, blsPublicKey);
 
                     if (_logger.IsDebug())
-                        LogDebug.PublishingSignedBlock(_logger, slot, blsPublicKey.ToShortString(),
-                            randaoReveal.ToString().Substring(0, 10), signedBlock.Message,
-                            signedBlock.Signature.ToString().Substring(0, 10), null);
+                        LogDebug.RequestingBlock(_logger, slot, blsPublicKey.ToShortString(),
+                            randaoReveal.ToString().Substring(0, 10), null);
 
-                    ApiResponse publishBlockResponse = await _beaconNodeApi
-                        .PublishBlockAsync(signedBlock, cancellationToken)
-                        .ConfigureAwait(false);
-                    if (publishBlockResponse.StatusCode != StatusCode.Success && publishBlockResponse.StatusCode !=
-                        StatusCode.BroadcastButFailedValidation)
+                    ApiResponse<BeaconBlock> newBlockResponse = await _beaconNodeApi
+                        .NewBlockAsync(slot, randaoReveal, cancellationToken).ConfigureAwait(false);
+                    if (newBlockResponse.StatusCode == StatusCode.Success)
                     {
-                        throw new Exception(
-                            $"Error response from publish: {(int) publishBlockResponse.StatusCode} {publishBlockResponse.StatusCode}.");
-                    }
+                        BeaconBlock unsignedBlock = newBlockResponse.Content;
+                        BlsSignature blockSignature = GetBlockSignature(unsignedBlock, blsPublicKey);
+                        SignedBeaconBlock signedBlock = new SignedBeaconBlock(unsignedBlock, blockSignature);
 
-                    bool nodeAccepted = publishBlockResponse.StatusCode == StatusCode.Success;
-                    // TODO: Log warning if not accepted? Not sure what else we could do.
-                    _validatorState.ClearProposalDutyForSlot(slot);
+                        if (_logger.IsDebug())
+                            LogDebug.PublishingSignedBlock(_logger, slot, blsPublicKey.ToShortString(),
+                                randaoReveal.ToString().Substring(0, 10), signedBlock.Message,
+                                signedBlock.Signature.ToString().Substring(0, 10), null);
+
+                        ApiResponse publishBlockResponse = await _beaconNodeApi
+                            .PublishBlockAsync(signedBlock, cancellationToken)
+                            .ConfigureAwait(false);
+                        if (publishBlockResponse.StatusCode != StatusCode.Success && publishBlockResponse.StatusCode !=
+                            StatusCode.BroadcastButFailedValidation)
+                        {
+                            throw new Exception(
+                                $"Error response from publish: {(int) publishBlockResponse.StatusCode} {publishBlockResponse.StatusCode}.");
+                        }
+
+                        bool nodeAccepted = publishBlockResponse.StatusCode == StatusCode.Success;
+                        // TODO: Log warning if not accepted? Not sure what else we could do.
+                        _validatorState.ClearProposalDutyForSlot(slot);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.ExceptionProcessingProposalDuty(_logger, slot, blsPublicKey, ex.Message, ex);
+                }
+                finally
+                {
+                    activity.Stop();
                 }
             }
         }
 
-        public async Task UpdateDutiesAsync(Epoch epoch, CancellationToken cancellationToken)
+        public async Task UpdateDutiesActivityAsync(Epoch epoch, CancellationToken cancellationToken)
         {
+            Activity activity = new Activity("update-duties");
+            activity.Start();
             try
             {
                 IList<BlsPublicKey> publicKeys = _validatorKeyProvider.GetPublicKeys();
@@ -343,14 +360,20 @@ namespace Nethermind.HonestValidator
             {
                 Log.ExceptionGettingValidatorDuties(_logger, ex.Message, ex);
             }
+            finally
+            {
+                activity.Stop();
+            }
         }
 
-        public async Task UpdateForkVersion(CancellationToken cancellationToken)
+        public async Task UpdateForkVersionActivityAsync(CancellationToken cancellationToken)
         {
             // TODO: Should we be validating this?  i.e. check against config that it is the chain ID we are expecting?
             // TODO: At least for prior to cutover epoch (allows operation when fork epoch has not yet been reached and only one side is updated)
             // TODO: Once version is different for the current epoch, should disconnect.
 
+            Activity activity = new Activity("update-fork-version");
+            activity.Start();
             try
             {
                 var forkResponse = await _beaconNodeApi.GetNodeForkAsync(cancellationToken).ConfigureAwait(false);
@@ -367,10 +390,16 @@ namespace Nethermind.HonestValidator
             {
                 Log.ExceptionGettingForkVersion(_logger, ex.Message, ex);
             }
+            finally
+            {
+                activity.Stop();
+            }
         }
 
-        public async Task UpdateSyncStatus(CancellationToken cancellationToken)
+        public async Task UpdateSyncStatusActivityAsync(CancellationToken cancellationToken)
         {
+            Activity activity = new Activity("update-sync-status");
+            activity.Start();
             try
             {
                 var syncingResponse = await _beaconNodeApi.GetSyncingAsync(cancellationToken).ConfigureAwait(false);
@@ -387,6 +416,10 @@ namespace Nethermind.HonestValidator
             catch (Exception ex)
             {
                 Log.ExceptionGettingSyncStatus(_logger, ex.Message, ex);
+            }
+            finally
+            {
+                activity.Stop();
             }
         }
     }

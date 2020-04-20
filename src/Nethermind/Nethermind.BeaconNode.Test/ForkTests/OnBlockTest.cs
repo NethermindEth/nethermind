@@ -88,7 +88,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
             await forkChoice.OnBlockAsync(store, signedBlock);
 
             Root blockRoot = cryptographyService.HashTreeRoot(signedBlock.Message);
-            BeaconBlock storedBlock = await store.GetBlockAsync(blockRoot);
+            BeaconBlock storedBlock = (await store.GetSignedBlockAsync(blockRoot)).Message;
             storedBlock.ShouldBe(signedBlock.Message);
         }
     }

@@ -18,6 +18,7 @@ using System;
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 using Nethermind.Core2.P2p;
 using Nethermind.Core2.Types;
 
@@ -46,12 +47,12 @@ namespace Nethermind.BeaconNode.Peering
         public static readonly Action<ILogger, string, int, Exception?> GossipReceived =
             LoggerMessage.Define<string, int>(LogLevel.Debug,
                 new EventId(6053, nameof(GossipReceived)),
-                "Gossip received, topic {Topic}, {ByteCount} bytes.");
+                "Gossip received, topic '{Topic}', {ByteCount} bytes.");
         
-        public static readonly Action<ILogger, RpcDirection, int, string, string, int, Exception?> RpcReceived =
-            LoggerMessage.Define<RpcDirection, int, string, string, int>(LogLevel.Debug,
+        public static readonly Action<ILogger, RpcDirection, int, string, string, int, string, Exception?> RpcReceived =
+            LoggerMessage.Define<RpcDirection, int, string, string, int, string>(LogLevel.Debug,
                 new EventId(6054, nameof(RpcReceived)),
-                "RPC {RpcDirection} ({RequestResponseFlag}) received, method {Method}, peer {Peer}, {ByteCount} bytes.");
+                "RPC {RpcDirection} ({RequestResponseFlag}) received, method '{Method}', peer {Peer}, {ByteCount} bytes, processed as {ProcessAsMethod}.");
         
         public static readonly Action<ILogger, string, int, Exception?> GossipSend =
             LoggerMessage.Define<string, int>(LogLevel.Debug,
@@ -103,14 +104,24 @@ namespace Nethermind.BeaconNode.Peering
                 new EventId(6064, nameof(CreatedPeerSession)),
                 "Disconnecting peer {Peer} session {Session} with direction {ConnectionDirection}.");
         
-        public static readonly Action<ILogger, BeaconBlock, Exception?> ProcessGossipSignedBeaconBlock =
-            LoggerMessage.Define<BeaconBlock>(LogLevel.Debug,
-                new EventId(6065, nameof(ProcessGossipSignedBeaconBlock)),
-                "Processing gossip signed beacon block, {BeaconBlock}");
+        public static readonly Action<ILogger, BeaconBlock, string, Exception?> ProcessSignedBeaconBlock =
+            LoggerMessage.Define<BeaconBlock, string>(LogLevel.Debug,
+                new EventId(6065, nameof(ProcessSignedBeaconBlock)),
+                "Processing signed beacon block, {BeaconBlock}, from {BlockSource}");
         
         public static readonly Action<ILogger, string, Exception?> ProcessPeerDiscovered =
             LoggerMessage.Define<string>(LogLevel.Debug,
                 new EventId(6066, nameof(ProcessPeerDiscovered)),
                 "Processing peer discovered, {PeerId}");
+
+        public static readonly Action<ILogger, BeaconBlocksByRange, Exception?> ProcessBeaconBlocksByRange =
+            LoggerMessage.Define<BeaconBlocksByRange>(LogLevel.Debug,
+                new EventId(6078, nameof(ProcessBeaconBlocksByRange)),
+                "Processing beacon blocks by range request {BlockRoot}.");
+
+        public static readonly Action<ILogger, BeaconBlock, Root, Exception?> SendingRequestBlocksByRangeResponse =
+            LoggerMessage.Define<BeaconBlock, Root>(LogLevel.Debug,
+                new EventId(6079, nameof(SendingRequestBlocksByRangeResponse)),
+                "Sending (signed) beacon block {BeaconBlock} with root {BlockRoot}.");
     }
 }

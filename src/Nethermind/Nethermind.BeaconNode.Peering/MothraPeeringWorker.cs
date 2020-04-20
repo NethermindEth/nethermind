@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -24,8 +25,10 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2;
 using Nethermind.Core2.Configuration;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.P2p;
+using Nethermind.Core2.Types;
 using Nethermind.Logging.Microsoft;
 using Nethermind.Peering.Mothra;
 
@@ -36,16 +39,18 @@ namespace Nethermind.BeaconNode.Peering
         private readonly IClientVersion _clientVersion;
         private readonly DataDirectory _dataDirectory;
         private readonly IHostEnvironment _environment;
-        private readonly GossipSignedBeaconBlockProcessor _gossipSignedBeaconBlockProcessor;
         private readonly ILogger _logger;
         private readonly IOptionsMonitor<MothraConfiguration> _mothraConfigurationOptions;
         private readonly IMothraLibp2p _mothraLibp2P;
         private readonly PeerDiscoveredProcessor _peerDiscoveredProcessor;
-        private readonly RpcPeeringStatusProcessor _rpcPeeringStatusProcessor;
         private readonly PeerManager _peerManager;
+        private readonly RpcBeaconBlocksByRangeProcessor _rpcBeaconBlocksByRangeProcessor;
+        private readonly RpcPeeringStatusProcessor _rpcPeeringStatusProcessor;
+        private readonly SignedBeaconBlockProcessor _signedBeaconBlockProcessor;
         private readonly IStore _store;
         internal const string MothraDirectory = "mothra";
-
+        private int _minimumSignedBeaconBlockLength;
+        
         public MothraPeeringWorker(ILogger<MothraPeeringWorker> logger,
             IOptionsMonitor<MothraConfiguration> mothraConfigurationOptions,
             IHostEnvironment environment,
@@ -56,7 +61,8 @@ namespace Nethermind.BeaconNode.Peering
             PeerManager peerManager,
             PeerDiscoveredProcessor peerDiscoveredProcessor,
             RpcPeeringStatusProcessor rpcPeeringStatusProcessor,
-            GossipSignedBeaconBlockProcessor gossipSignedBeaconBlockProcessor)
+            RpcBeaconBlocksByRangeProcessor rpcBeaconBlocksByRangeProcessor,
+            SignedBeaconBlockProcessor signedBeaconBlockProcessor)
         {
             _logger = logger;
             _environment = environment;
@@ -67,8 +73,15 @@ namespace Nethermind.BeaconNode.Peering
             _peerManager = peerManager;
             _peerDiscoveredProcessor = peerDiscoveredProcessor;
             _rpcPeeringStatusProcessor = rpcPeeringStatusProcessor;
-            _gossipSignedBeaconBlockProcessor = gossipSignedBeaconBlockProcessor;
+            _rpcBeaconBlocksByRangeProcessor = rpcBeaconBlocksByRangeProcessor;
+            _signedBeaconBlockProcessor = signedBeaconBlockProcessor;
             _store = store;
+            
+            // 396 bytes
+            _minimumSignedBeaconBlockLength = Ssz.Ssz.SignedBeaconBlockLength(
+                new SignedBeaconBlock(new BeaconBlock(Slot.Zero, Root.Zero, Root.Zero, BeaconBlockBody.Zero),
+                    BlsSignature.Zero));
+            
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -80,10 +93,11 @@ namespace Nethermind.BeaconNode.Peering
                 await EnsureInitializedWithAnchorState(stoppingToken).ConfigureAwait(false);
 
                 if (_logger.IsDebug()) LogDebug.StoreInitializedStartingPeering(_logger, null);
-                
+
                 await _peerDiscoveredProcessor.StartAsync(stoppingToken).ConfigureAwait(false);
                 await _rpcPeeringStatusProcessor.StartAsync(stoppingToken).ConfigureAwait(false);
-                await _gossipSignedBeaconBlockProcessor.StartAsync(stoppingToken).ConfigureAwait(false);
+                await _rpcBeaconBlocksByRangeProcessor.StartAsync(stoppingToken).ConfigureAwait(false);
+                await _signedBeaconBlockProcessor.StartAsync(stoppingToken).ConfigureAwait(false);
 
                 _mothraLibp2P.PeerDiscovered += OnPeerDiscovered;
                 _mothraLibp2P.GossipReceived += OnGossipReceived;
@@ -135,10 +149,11 @@ namespace Nethermind.BeaconNode.Peering
 
         public override async Task StopAsync(CancellationToken cancellationToken)
         {
-            await _peerDiscoveredProcessor.StopAsync(cancellationToken);
-            await _rpcPeeringStatusProcessor.StopAsync(cancellationToken);
-            await _gossipSignedBeaconBlockProcessor.StopAsync(cancellationToken);
-            
+            await _peerDiscoveredProcessor.StopAsync(cancellationToken).ConfigureAwait(false);
+            await _rpcPeeringStatusProcessor.StopAsync(cancellationToken).ConfigureAwait(false);
+            await _rpcBeaconBlocksByRangeProcessor.StopAsync(cancellationToken).ConfigureAwait(false);
+            await _signedBeaconBlockProcessor.StopAsync(cancellationToken).ConfigureAwait(false);
+
             if (_logger.IsDebug()) LogDebug.PeeringWorkerStopping(_logger, null);
             await base.StopAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -165,19 +180,24 @@ namespace Nethermind.BeaconNode.Peering
                 await Task.Delay(TimeSpan.FromMilliseconds(500), stoppingToken).ConfigureAwait(false);
             }
         }
-        
+
         private void OnGossipReceived(ReadOnlySpan<byte> topicUtf8, ReadOnlySpan<byte> data)
         {
+            Activity activity = new Activity("gossip-received");
+            activity.Start();
             try
             {
                 // TODO: handle other topics
                 if (topicUtf8.SequenceEqual(TopicUtf8.BeaconBlock))
                 {
                     if (_logger.IsDebug())
-                        LogDebug.GossipReceived(_logger, nameof(TopicUtf8.BeaconBlock), data.Length, null);
+                        LogDebug.GossipReceived(_logger, Encoding.UTF8.GetString(topicUtf8), data.Length, null);
                     // Need to deserialize in synchronous context (can't pass Span async)
                     SignedBeaconBlock signedBeaconBlock = Ssz.Ssz.DecodeSignedBeaconBlock(data);
-                    _gossipSignedBeaconBlockProcessor.Enqueue(signedBeaconBlock);
+                    _signedBeaconBlockProcessor.EnqueueGossip(signedBeaconBlock);
+
+                    // TODO: After receiving a gossip, should we re-gossip it, i.e. to our peers?
+                    // NOTE: Need to apply validations, from spec, before forwarding; also, avoid loops (i.e. don't gossip twice)
                 }
                 else
                 {
@@ -190,10 +210,16 @@ namespace Nethermind.BeaconNode.Peering
                 if (_logger.IsError())
                     Log.GossipReceivedError(_logger, Encoding.UTF8.GetString(topicUtf8), ex.Message, ex);
             }
+            finally
+            {
+                activity.Stop();
+            }
         }
 
         private void OnPeerDiscovered(ReadOnlySpan<byte> peerUtf8)
         {
+            Activity activity = new Activity("discovered-peer");
+            activity.Start();
             string peerId = Encoding.UTF8.GetString(peerUtf8);
             try
             {
@@ -205,28 +231,59 @@ namespace Nethermind.BeaconNode.Peering
                 if (_logger.IsError())
                     Log.PeerDiscoveredError(_logger, peerId, ex.Message, ex);
             }
+            finally
+            {
+                activity.Stop();
+            }
         }
 
         private void OnRpcReceived(ReadOnlySpan<byte> methodUtf8, int requestResponseFlag, ReadOnlySpan<byte> peerUtf8,
             ReadOnlySpan<byte> data)
         {
+            Activity activity = new Activity("rpc-received");
+            activity.Start();
             try
             {
                 string peerId = Encoding.UTF8.GetString(peerUtf8);
                 RpcDirection rpcDirection = requestResponseFlag == 0 ? RpcDirection.Request : RpcDirection.Response;
 
                 // Even though the value '/eth2/beacon_chain/req/status/1/' is sent, when Mothra calls the received event it is 'HELLO'
-                if (methodUtf8.SequenceEqual(MethodUtf8.Status)
-                    || methodUtf8.SequenceEqual(MethodUtf8.StatusMothraAlternative))
+                // if (methodUtf8.SequenceEqual(MethodUtf8.Status)
+                //     || methodUtf8.SequenceEqual(MethodUtf8.StatusMothraAlternative))
+                if (data.Length == Ssz.Ssz.PeeringStatusLength)
                 {
                     if (_logger.IsDebug())
-                        LogDebug.RpcReceived(_logger, rpcDirection, requestResponseFlag, nameof(MethodUtf8.Status),
-                            peerId, data.Length, null);
+                        LogDebug.RpcReceived(_logger, rpcDirection, requestResponseFlag,
+                            Encoding.UTF8.GetString(methodUtf8),
+                            peerId, data.Length, nameof(MethodUtf8.Status), null);
 
                     PeeringStatus peeringStatus = Ssz.Ssz.DecodePeeringStatus(data);
                     RpcMessage<PeeringStatus> statusRpcMessage =
                         new RpcMessage<PeeringStatus>(peerId, rpcDirection, peeringStatus);
                     _rpcPeeringStatusProcessor.Enqueue(statusRpcMessage);
+                }
+                //else if (methodUtf8.SequenceEqual(MethodUtf8.BeaconBlocksByRange))
+                else if (data.Length == Ssz.Ssz.BeaconBlocksByRangeLength ||
+                         data.Length >= _minimumSignedBeaconBlockLength)
+                {
+                    if (_logger.IsDebug())
+                        LogDebug.RpcReceived(_logger, rpcDirection, requestResponseFlag,
+                            Encoding.UTF8.GetString(methodUtf8),
+                            peerId, data.Length, nameof(MethodUtf8.BeaconBlocksByRange), null);
+
+                    //if (rpcDirection == RpcDirection.Request)
+                    if (data.Length == Ssz.Ssz.BeaconBlocksByRangeLength)
+                    {
+                        BeaconBlocksByRange beaconBlocksByRange = Ssz.Ssz.DecodeBeaconBlocksByRange(data);
+                        RpcMessage<BeaconBlocksByRange> rpcMessage =
+                            new RpcMessage<BeaconBlocksByRange>(peerId, rpcDirection, beaconBlocksByRange);
+                        _rpcBeaconBlocksByRangeProcessor.Enqueue(rpcMessage);
+                    }
+                    else
+                    {
+                        SignedBeaconBlock signedBeaconBlock = Ssz.Ssz.DecodeSignedBeaconBlock(data);
+                        _signedBeaconBlockProcessor.Enqueue(signedBeaconBlock, peerId);
+                    }
                 }
                 else
                 {
@@ -241,6 +298,10 @@ namespace Nethermind.BeaconNode.Peering
             {
                 if (_logger.IsError())
                     Log.RpcReceivedError(_logger, Encoding.UTF8.GetString(methodUtf8), ex.Message, ex);
+            }
+            finally
+            {
+                activity.Stop();
             }
         }
     }

@@ -25,32 +25,32 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
-        public const int PeeringStatusLength = ForkVersionLength + RootLength + EpochLength + RootLength + SlotLength;
+        public const int BeaconBlocksByRangeLength = RootLength + SlotLength + sizeof(ulong) + sizeof(ulong);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static PeeringStatus DecodePeeringStatus(ReadOnlySpan<byte> span)
+        public static BeaconBlocksByRange DecodeBeaconBlocksByRange(ReadOnlySpan<byte> span)
         {
-            if (span.Length != PeeringStatusLength) ThrowSourceLength<PeeringStatus>(span.Length, PeeringStatusLength);
+            if (span.Length != BeaconBlocksByRangeLength)
+                ThrowSourceLength<BeaconBlocksByRange>(span.Length, BeaconBlocksByRangeLength);
             int offset = 0;
-            ForkVersion headForkVersion = DecodeForkVersion(span, ref offset);
-            Root finalizedRoot = DecodeRoot(span, ref offset);
-            Epoch finalizedEpoch = DecodeEpoch(span, ref offset);
-            Root headRoot = DecodeRoot(span, ref offset);
-            Slot headSlot = DecodeSlot(span, ref offset);
+            Root headBlockRoot = DecodeRoot(span, ref offset);
+            Slot startSlot = DecodeSlot(span, ref offset);
+            ulong count = DecodeULong(span, ref offset);
+            ulong step = DecodeULong(span, ref offset);
 
-            return new PeeringStatus(headForkVersion, finalizedRoot, finalizedEpoch, headRoot, headSlot);
+            return new BeaconBlocksByRange(headBlockRoot, startSlot, count, step);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Encode(Span<byte> span, PeeringStatus container)
+        public static void Encode(Span<byte> span, BeaconBlocksByRange container)
         {
-            if (span.Length != PeeringStatusLength) ThrowTargetLength<PeeringStatus>(span.Length, PeeringStatusLength);
+            if (span.Length != BeaconBlocksByRangeLength)
+                ThrowTargetLength<BeaconBlocksByRange>(span.Length, BeaconBlocksByRangeLength);
             int offset = 0;
-            Encode(span, container.HeadForkVersion, ref offset);
-            Encode(span, container.FinalizedRoot, ref offset);
-            Encode(span, container.FinalizedEpoch, ref offset);
-            Encode(span, container.HeadRoot, ref offset);
-            Encode(span, container.HeadSlot, ref offset);
+            Encode(span, container.HeadBlockRoot, ref offset);
+            Encode(span, container.StartSlot, ref offset);
+            Encode(span, container.Count, ref offset);
+            Encode(span, container.Step, ref offset);
         }
     }
 }

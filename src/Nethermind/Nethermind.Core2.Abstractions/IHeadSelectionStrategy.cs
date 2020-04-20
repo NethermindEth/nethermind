@@ -14,36 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
+using System.Threading.Tasks;
+using Nethermind.Core2.Crypto;
 
-namespace Nethermind.BeaconNode.Peering
+namespace Nethermind.Core2
 {
-    public class Session
+    public interface IHeadSelectionStrategy
     {
-        public Session(ConnectionDirection direction, PeerInfo peer)
-        {
-            Direction = direction;
-            Peer = peer;
-            State = SessionState.New;
-            Id = Guid.NewGuid();
-        }
-
-        public ConnectionDirection Direction { get; }
-
-        public Guid Id { get; }
-
-        public PeerInfo Peer { get; }
-
-        public SessionState State { get; private set; }
-
-        public void Disconnect()
-        {
-            State = SessionState.Disconnecting;
-        }
-
-        public void Open()
-        {
-            State = SessionState.Open;
-        }
+        Task<Root> GetHeadAsync(IStore store);
     }
 }

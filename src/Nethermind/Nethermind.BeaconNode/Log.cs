@@ -66,6 +66,7 @@ namespace Nethermind.BeaconNode
             LoggerMessage.Define<ulong, ulong, long, int>(LogLevel.Information,
                 new EventId(2000, nameof(WorkerStoreAvailableTickStarted)),
                 "Store available with genesis time {GenesisTime}, at clock time {Time} (slot {SlotValue}), starting clock tick [{ThreadId}].");
+
         public static readonly Action<ILogger, string, Slot, Root, Slot, Exception?> RequestingBlocksFromAheadPeer =
             LoggerMessage.Define<string, Slot, Root, Slot>(LogLevel.Information,
                 new EventId(2001, nameof(RequestingBlocksFromAheadPeer)),

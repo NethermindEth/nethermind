@@ -72,6 +72,10 @@ namespace Nethermind.BeaconNode
             LoggerMessage.Define<RpcDirection, PeeringStatus, string>(LogLevel.Debug,
                 new EventId(6004, nameof(SendingStatusToPeer)),
                 "Sending status {RpcDirection} {Status} to peer {PeerId}.");
+        public static readonly Action<ILogger, string, Epoch, Root, Slot, Exception?> PeerBehind =
+            LoggerMessage.Define<string, Epoch, Root, Slot>(LogLevel.Debug,
+                new EventId(6004, nameof(PeerBehind)),
+                "Peer {PeerId} is behind, no need to sync (peer finalized epoch {FinalizedSlot}, head {PeerHeadRoot}, slot {PeerHeadSlot}).");
         
         // 61xx debug - state transition
         public static readonly Action<ILogger, Deposit, BeaconState, Exception?> ProcessDeposit =

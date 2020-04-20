@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -77,71 +76,9 @@ namespace Nethermind.BeaconNode
             return slot - startSlot;
         }
 
-        public async Task<bool> FilterBlockTreeAsync(IStore store, Root blockRoot,
-            IDictionary<Root, BeaconBlock> blocks)
-        {
-            BeaconBlock beaconBlock = await store.GetBlockAsync(blockRoot).ConfigureAwait(false);
-
-            // If any children branches contain expected finalized/justified checkpoints,
-            // add to filtered block-tree and signal viability to parent.
-            bool hasChildren = false;
-            bool anyChildResult = false;
-            await foreach (Root childKey in store.GetChildKeysAsync(blockRoot)
-                .ConfigureAwait(false))
-            {
-                hasChildren = true;
-                bool childResult = await FilterBlockTreeAsync(store, childKey, blocks).ConfigureAwait(false);
-                anyChildResult = anyChildResult | childResult;
-            }
-
-            if (hasChildren)
-            {
-                if (anyChildResult)
-                {
-                    blocks[blockRoot] = beaconBlock;
-                }
-
-                return anyChildResult;
-            }
-
-            // If leaf block, check finalized/justified checkpoints as matching latest.
-            BeaconState headState = await store.GetBlockStateAsync(blockRoot).ConfigureAwait(false);
-
-            bool correctJustified = store.JustifiedCheckpoint.Epoch == _chainConstants.GenesisEpoch
-                                    || headState.CurrentJustifiedCheckpoint == store.JustifiedCheckpoint;
-            bool correctFinalized = store.FinalizedCheckpoint.Epoch == _chainConstants.GenesisEpoch
-                                    || headState.FinalizedCheckpoint == store.FinalizedCheckpoint;
-
-            // If expected finalized/justified, add to viable block-tree and signal viability to parent.
-            if (correctJustified && correctFinalized)
-            {
-                blocks[blockRoot] = beaconBlock;
-                return true;
-            }
-
-            // Otherwise, branch not viable
-            return false;
-        }
-
         public async Task<Root> GetAncestorAsync(IStore store, Root root, Slot slot)
         {
-            // NOTE: This method should probably live in IStore, for various efficient implementations.
-
-            BeaconBlock block = await store.GetBlockAsync(root).ConfigureAwait(false);
-
-            if (block.Slot > slot)
-            {
-                return await GetAncestorAsync(store, block.ParentRoot, slot).ConfigureAwait(false);
-            }
-            else if (block.Slot == slot)
-            {
-                return root;
-            }
-            else
-            {
-                // root is older than queried slot, thus a skip slot. Return earliest root prior to slot
-                return root;
-            }
+            return await store.GetAncestorAsync(root, slot).ConfigureAwait(false);
         }
 
         public Slot GetCurrentSlot(IStore store)
@@ -151,83 +88,9 @@ namespace Nethermind.BeaconNode
             return slot;
         }
 
-        /// <summary>
-        /// Retrieve a filtered block tree from ``store``, only returning branches
-        /// whose leaf state's justified/finalized info agrees with that in ``store``. 
-        /// </summary>
-        public async Task<IDictionary<Root, BeaconBlock>> GetFilteredBlockTreeAsync(IStore store)
-        {
-            Root baseRoot = store.JustifiedCheckpoint.Root;
-            IDictionary<Root, BeaconBlock> blocks = new Dictionary<Root, BeaconBlock>();
-            _ = await FilterBlockTreeAsync(store, baseRoot, blocks);
-            return blocks;
-        }
-
         public async Task<Root> GetHeadAsync(IStore store)
         {
-            // NOTE: This method should probably live in a separate object, for different implementations, possibly part of Store (for efficiency).
-
-            // TODO: Also, should cache, i.e. will only change if store is updated (so should be easy to cache if in store)
-
-            // Get filtered block tree that only includes viable branches
-            IDictionary<Root, BeaconBlock> blocks = await GetFilteredBlockTreeAsync(store).ConfigureAwait(false);
-
-            // Execute the LMD-GHOST fork choice
-            Root head = store.JustifiedCheckpoint.Root;
-            Slot justifiedSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(store.JustifiedCheckpoint.Epoch);
-            while (true)
-            {
-                List<Tuple<Root, Gwei>> childKeysWithBalances = new List<Tuple<Root, Gwei>>();
-                foreach (KeyValuePair<Root, BeaconBlock> kvp in blocks)
-                {
-                    if (kvp.Value.ParentRoot.Equals(head) && kvp.Value.Slot > justifiedSlot)
-                    {
-                        Gwei balance = await GetLatestAttestingBalanceAsync(store, kvp.Key).ConfigureAwait(false);
-                        childKeysWithBalances.Add(Tuple.Create(kvp.Key, balance));
-                    }
-                }
-
-                if (childKeysWithBalances.Count == 0)
-                {
-                    return head;
-                }
-
-                // Sort by latest attesting balance with ties broken lexicographically
-                head = childKeysWithBalances
-                    .OrderByDescending(x => x.Item2)
-                    .ThenByDescending(x => x.Item1)
-                    .Select(x => x.Item1)
-                    .First();
-            }
-        }
-
-        public async Task<Gwei> GetLatestAttestingBalanceAsync(IStore store, Root root)
-        {
-            // NOTE: This method should probably live in IStore, for various efficient implementations.
-
-            Checkpoint justifiedCheckpoint = store.JustifiedCheckpoint;
-            BeaconState state = (await store.GetCheckpointStateAsync(justifiedCheckpoint, true).ConfigureAwait(false))!;
-            Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
-            IList<ValidatorIndex> activeIndexes = _beaconStateAccessor.GetActiveValidatorIndices(state, currentEpoch);
-            BeaconBlock rootBlock = await store.GetBlockAsync(root).ConfigureAwait(false);
-
-            Slot rootSlot = rootBlock!.Slot;
-            Gwei balance = Gwei.Zero;
-            foreach (ValidatorIndex index in activeIndexes)
-            {
-                LatestMessage? latestMessage = await store.GetLatestMessageAsync(index, false);
-                if (latestMessage != null)
-                {
-                    Root ancestor = await GetAncestorAsync(store, latestMessage.Root, rootSlot);
-                    if (ancestor == root)
-                    {
-                        Validator validator = state.Validators[(int) index];
-                        balance += validator.EffectiveBalance;
-                    }
-                }
-            }
-
-            return balance;
+            return await store.GetHeadAsync().ConfigureAwait(false);
         }
 
         public Slot GetSlotsSinceGenesis(IStore store)
@@ -247,6 +110,7 @@ namespace Nethermind.BeaconNode
 
             BeaconBlock anchorBlock = new BeaconBlock(anchorState.Slot, anchorState.LatestBlockHeader.ParentRoot,
                 stateRoot, BeaconBlockBody.Zero);
+            SignedBeaconBlock signedAnchorBlock = new SignedBeaconBlock(anchorBlock, BlsSignature.Zero);
 
             Root anchorRoot = _cryptographyService.HashTreeRoot(anchorBlock);
             Epoch anchorEpoch = _beaconStateAccessor.GetCurrentEpoch(anchorState);
@@ -257,9 +121,9 @@ namespace Nethermind.BeaconNode
                 Log.CreateGenesisStore(_logger, anchorState.Fork, anchorRoot, anchorState.GenesisTime, anchorState,
                     anchorBlock, justifiedCheckpoint, null);
 
-            Dictionary<Root, BeaconBlock> blocks = new Dictionary<Root, BeaconBlock>
+            Dictionary<Root, SignedBeaconBlock> signedBlocks = new Dictionary<Root, SignedBeaconBlock>
             {
-                [anchorRoot] = anchorBlock
+                [anchorRoot] = signedAnchorBlock
             };
             Dictionary<Root, BeaconState> blockStates = new Dictionary<Root, BeaconState>
             {
@@ -276,7 +140,7 @@ namespace Nethermind.BeaconNode
                 justifiedCheckpoint,
                 finalizedCheckpoint,
                 justifiedCheckpoint,
-                blocks,
+                signedBlocks,
                 blockStates,
                 checkpointStates);
         }
@@ -316,7 +180,7 @@ namespace Nethermind.BeaconNode
             }
 
             // Attestations target be for a known block. If target block is unknown, delay consideration until the block is found
-            BeaconBlock targetBlock = await store.GetBlockAsync(target.Root).ConfigureAwait(false);
+            BeaconBlock targetBlock = (await store.GetSignedBlockAsync(target.Root).ConfigureAwait(false)).Message;
 
             // Attestations cannot be from future epochs. If they are, delay consideration until the epoch arrives
             BeaconState targetStoredState = await store.GetBlockStateAsync(target.Root).ConfigureAwait(false);
@@ -330,7 +194,7 @@ namespace Nethermind.BeaconNode
 
             // Attestations must be for a known block. If block is unknown, delay consideration until the block is found
             BeaconBlock attestationBlock =
-                await store.GetBlockAsync(attestation.Data.BeaconBlockRoot).ConfigureAwait(false);
+                (await store.GetSignedBlockAsync(attestation.Data.BeaconBlockRoot).ConfigureAwait(false)).Message;
 
             // Attestations must not be for blocks in the future. If not, the attestation should not be considered
             if (attestationBlock.Slot > attestation.Data.Slot)
@@ -406,7 +270,7 @@ namespace Nethermind.BeaconNode
             }
 
             // Add new block to the store
-            await store.SetBlockAsync(blockRoot, block).ConfigureAwait(false);
+            await store.SetSignedBlockAsync(blockRoot, signedBlock).ConfigureAwait(false);
 
             // Check that block is later than the finalized epoch slot (optimization to reduce calls to get_ancestor)
             Slot finalizedSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(store.FinalizedCheckpoint.Epoch);

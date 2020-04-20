@@ -14,36 +14,29 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
+using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Peering
+namespace Nethermind.Core2.P2p
 {
-    public class Session
+    public class BeaconBlocksByRange
     {
-        public Session(ConnectionDirection direction, PeerInfo peer)
+        public BeaconBlocksByRange(Root headBlockRoot, Slot startSlot, ulong count, ulong step)
         {
-            Direction = direction;
-            Peer = peer;
-            State = SessionState.New;
-            Id = Guid.NewGuid();
+            HeadBlockRoot = headBlockRoot;
+            StartSlot = startSlot;
+            Count = count;
+            Step = step;
         }
 
-        public ConnectionDirection Direction { get; }
+        public ulong Count { get; }
+        public Root HeadBlockRoot { get; }
+        public Slot StartSlot { get; }
+        public ulong Step { get; }
 
-        public Guid Id { get; }
-
-        public PeerInfo Peer { get; }
-
-        public SessionState State { get; private set; }
-
-        public void Disconnect()
+        public override string ToString()
         {
-            State = SessionState.Disconnecting;
-        }
-
-        public void Open()
-        {
-            State = SessionState.Open;
+            return $"hr={HeadBlockRoot.ToString().Substring(0, 10)}_ss={StartSlot}";
         }
     }
 }
