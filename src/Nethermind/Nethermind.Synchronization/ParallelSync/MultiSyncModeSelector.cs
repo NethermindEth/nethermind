@@ -88,14 +88,14 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool IsInAStickyFullSyncMode(Snapshot best)
         {
-            bool hasEverBeenInFullSync = best.Processed > 0;
+            bool hasEverBeenInFullSync = best.Processed > PivotNumber && best.State > PivotNumber;
             long heightDelta = best.PeerBlock - best.Header;
             return hasEverBeenInFullSync && heightDelta < FastSyncCatchUpHeightDelta;
         }
 
         private bool IsWaitingForBlockProcessor(Snapshot best)
         {
-            return best.Block > best.State && best.State > 0;
+            return best.Block > best.State && best.State > PivotNumber;
         }
 
         private bool ShouldBeInFastSyncMode(Snapshot best)
@@ -263,6 +263,11 @@ namespace Nethermind.Synchronization.ParallelSync
             long beamState = BeamSyncEnabled ? _syncProgressResolver.FindBestBeamState() : state;
             long block = _syncProgressResolver.FindBestFullBlock();
             long header = _syncProgressResolver.FindBestHeader();
+
+            if (processed > state && processed > beamState)
+            {
+                
+            }
             
 
             Snapshot best = new Snapshot(processed, beamState, state, block, header, peerBlock);

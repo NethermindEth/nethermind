@@ -110,7 +110,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
             BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
             Block head = _blockTree.Head;
-            long bestFullState = 0;
+            long bestFullState = head?.Number ?? 0;
             long maxLookup = Math.Min(_maxLookup * 2, (bestSuggested?.Number ?? 0L) - head?.Number ?? 0);
 
             for (int i = 0; i < maxLookup + 1; i++)
