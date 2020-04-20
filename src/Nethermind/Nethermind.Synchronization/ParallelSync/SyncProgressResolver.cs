@@ -113,7 +113,7 @@ namespace Nethermind.Synchronization.ParallelSync
             long bestFullState = 0;
             long maxLookup = Math.Min(_maxLookup * 2, (bestSuggested?.Number ?? 0L) - head?.Number ?? 0);
 
-            for (int i = 0; i < maxLookup; i++)
+            for (int i = 0; i < maxLookup + 1; i++)
             {
                 if (bestSuggested == null)
                 {
