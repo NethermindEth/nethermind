@@ -67,7 +67,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         [Test]
         public void Beam_db_provider_smoke_test()
         {
-            BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(new MemDbProvider(), LimboLogs.Instance);
+            BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(StaticSelector.Beam, new MemDbProvider(), LimboLogs.Instance);
             // has to be state DB on the outside
             Assert.IsInstanceOf(typeof(StateDb), dbProvider.StateDb);
             Assert.IsInstanceOf(typeof(StateDb), dbProvider.CodeDb);
@@ -76,7 +76,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         [Test]
         public void Beam_db_provider_can_dispose()
         {
-            BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(new MemDbProvider(), LimboLogs.Instance);
+            BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(StaticSelector.Beam, new MemDbProvider(), LimboLogs.Instance);
             dbProvider.Dispose();
         }
 

@@ -27,11 +27,11 @@ namespace Nethermind.Synchronization.BeamSync
         private readonly IDbProvider _otherProvider;
         public ISyncFeed<StateSyncBatch> BeamSyncFeed { get; }
         
-        public BeamSyncDbProvider(IDbProvider otherProvider, ILogManager logManager)
+        public BeamSyncDbProvider(ISyncModeSelector syncModeSelector, IDbProvider otherProvider, ILogManager logManager)
         {
             _otherProvider = otherProvider ?? throw new ArgumentNullException(nameof(otherProvider));
-            BeamSyncDb codeDb = new BeamSyncDb(otherProvider.CodeDb.Innermost, otherProvider.BeamStateDb, logManager);
-            BeamSyncDb stateDb = new BeamSyncDb(otherProvider.StateDb.Innermost, otherProvider.BeamStateDb, logManager);
+            BeamSyncDb codeDb = new BeamSyncDb(otherProvider.CodeDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager);
+            BeamSyncDb stateDb = new BeamSyncDb(otherProvider.StateDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager);
             BeamSyncFeed = new CompositeFeed<StateSyncBatch>(logManager,codeDb, stateDb);
             StateDb = new StateDb(stateDb);
             CodeDb = new StateDb(codeDb);

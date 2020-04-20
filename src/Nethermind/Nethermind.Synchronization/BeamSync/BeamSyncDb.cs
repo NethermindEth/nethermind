@@ -45,13 +45,20 @@ namespace Nethermind.Synchronization.BeamSync
         /// </summary>
         private IDb _tempDb;
 
+        private readonly ISyncModeSelector _syncModeSelector;
+
+        private readonly Func<bool> _writeThrough;
+
         private ILogger _logger;
 
-        public BeamSyncDb(IDb stateDb, IDb tempDb, ILogManager logManager)
+        public BeamSyncDb(IDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, ILogManager logManager)
         {
             _logger = logManager.GetClassLogger<BeamSyncDb>();
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _tempDb = tempDb ?? throw new ArgumentNullException(nameof(tempDb));
+            _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
+
+            _writeThrough = () => (_syncModeSelector.Current & SyncMode.Full) == SyncMode.Full;
         }
 
         private bool _isDisposed = false;
@@ -169,7 +176,17 @@ namespace Nethermind.Synchronization.BeamSync
                 }
             }
 
-            set => _tempDb[key] = value;
+            set
+            {
+                if (_writeThrough())
+                {
+                    _stateDb[key] = value;
+                }
+                else
+                {
+                    _tempDb[key] = value;    
+                }
+            }
         }
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, this[k])).ToArray();

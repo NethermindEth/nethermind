@@ -197,7 +197,6 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (syncConfig.BeamSync)
             {
-                _context.SyncModeSelector = new PendingSyncModeSelector();
                 _ = new BeamBlockchainProcessor(
                     new ReadOnlyDbProvider(_context.DbProvider, false),
                     _context.BlockTree,
