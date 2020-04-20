@@ -24,6 +24,8 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization.BeamSync;
+using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie;
 using NUnit.Framework;
 
@@ -56,7 +58,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         {
             BeamSyncContext.LastFetchUtc.Value = DateTime.MaxValue;
         }
-        
+
         private void MakeRequestsImmediatelyExpire()
         {
             BeamSyncContext.LastFetchUtc.Value = DateTime.MinValue;
@@ -65,7 +67,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         [Test]
         public void Beam_db_provider_smoke_test()
         {
-            BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(new MemDbProvider(), "description", LimboLogs.Instance);
+            BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(StaticSelector.Beam, new MemDbProvider(), LimboLogs.Instance);
             // has to be state DB on the outside
             Assert.IsInstanceOf(typeof(StateDb), dbProvider.StateDb);
             Assert.IsInstanceOf(typeof(StateDb), dbProvider.CodeDb);
@@ -74,7 +76,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         [Test]
         public void Beam_db_provider_can_dispose()
         {
-            BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(new MemDbProvider(), "description", LimboLogs.Instance);
+            BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(StaticSelector.Beam, new MemDbProvider(), LimboLogs.Instance);
             dbProvider.Dispose();
         }
 
@@ -105,82 +107,88 @@ namespace Nethermind.Synchronization.Test.BeamSync
             Setup(scenario);
 
             RunRounds(1);
-            _stateBeamLocal.PrepareRequests();
+            _stateBeamLocal.PrepareRequest();
             RunRounds(3);
 
             Assert.AreEqual(4, _needMoreDataInvocations);
         }
 
         [TestCase("leaf_read")]
-        public void Empty_response_brings_it_back_in_the_loop(string name)
+        public async Task Empty_response_brings_it_back_in_the_loop(string name)
         {
             (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
 
             RunRounds(1);
-            DataConsumerRequest[] request = _stateBeamLocal.PrepareRequests();
-            _stateBeamLocal.HandleResponse(request[0], new byte[request[0].Keys.Length][]);
+            StateSyncBatch request = await _stateBeamLocal.PrepareRequest();
+            request.Responses = new byte[request.RequestedNodes.Length][];
+            _stateBeamLocal.HandleResponse(request);
             RunRounds(3);
 
             Assert.AreEqual(4, _needMoreDataInvocations);
         }
 
         [TestCase("leaf_read")]
-        public void Can_prepare_empty_request(string name)
+        public async Task Can_prepare_empty_request(string name)
         {
             (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
 
-            DataConsumerRequest[] request = _stateBeamLocal.PrepareRequests();
-            Assert.AreEqual(0, request.Length);
+            StateSyncBatch request = await _stateBeamLocal.PrepareRequest();
+            request.Should().BeNull();
         }
 
         [TestCase("leaf_read")]
-        public void Full_response_works(string name)
+        public async Task Full_response_works(string name)
         {
             (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
 
             RunRounds(1);
-            DataConsumerRequest[] request = _stateBeamLocal.PrepareRequests();
-            _stateBeamLocal.HandleResponse(request[0], new byte[][] {_remoteState.Get(request[0].Keys[0])});
+            StateSyncBatch request = await _stateBeamLocal.PrepareRequest();
+            request.Responses = new byte[][] {_remoteState.Get(request.RequestedNodes[0].Hash)};
+            _stateBeamLocal.HandleResponse(request);
             RunRounds(3);
 
             Assert.AreEqual(1, _needMoreDataInvocations);
         }
 
         [TestCase("leaf_read")]
-        public void Full_response_stops_it(string name)
+        public async Task Full_response_stops_it(string name)
         {
             (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
 
+#pragma warning disable 4014
             Task.Run(() => RunRounds(100));
-            DataConsumerRequest[] request = new DataConsumerRequest[0];
+#pragma warning restore 4014
+            StateSyncBatch request = new StateSyncBatch();
             for (int i = 0; i < 1000; i++)
             {
                 Thread.Sleep(1);
-                request = _stateBeamLocal.PrepareRequests();
-                if (request.Length > 0)
+                request = await _stateBeamLocal.PrepareRequest();
+                if (request.RequestedNodes.Length > 0)
                 {
                     break;
                 }
             }
 
-            _stateBeamLocal.HandleResponse(request[0], new byte[][] {_remoteState.Get(request[0].Keys[0])});
+            request.Responses = new byte[][] {_remoteState.Get(request.RequestedNodes[0].Hash)};
+            _stateBeamLocal.HandleResponse(request);
 
             Assert.Less(_needMoreDataInvocations, 1000);
         }
 
         [TestCase("leaf_read")]
-        public void Can_resolve_from_local(string name)
+        public async Task Can_resolve_from_local(string name)
         {
             (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
 
             RunRounds(1);
-            DataConsumerRequest[] request = _stateBeamLocal.PrepareRequests();
-            _stateBeamLocal.HandleResponse(request[0], new byte[][] {_remoteState.Get(request[0].Keys[0])});
+            StateSyncBatch request = await _stateBeamLocal.PrepareRequest();
+            request.Responses = new byte[][] {_remoteState.Get(request.RequestedNodes[0].Hash)};
+            _stateBeamLocal.HandleResponse(request);
             PatriciaTree.NodeCache.Clear();
             RunRounds(1);
 
@@ -199,14 +207,15 @@ namespace Nethermind.Synchronization.Test.BeamSync
         }
 
         [TestCase("leaf_read")]
-        public void Invalid_response_brings_it_back(string name)
+        public async Task Invalid_response_brings_it_back(string name)
         {
             (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
 
             RunRounds(1);
-            DataConsumerRequest[] request = _stateBeamLocal.PrepareRequests();
-            _stateBeamLocal.HandleResponse(request[0], new byte[][] {new byte[] {1, 2, 3}});
+            StateSyncBatch request = await _stateBeamLocal.PrepareRequest();
+            request.Responses = new[] {new byte[] {1, 2, 3}};
+            _stateBeamLocal.HandleResponse(request);
             RunRounds(3);
 
             Assert.AreEqual(4, _needMoreDataInvocations);
@@ -234,13 +243,20 @@ namespace Nethermind.Synchronization.Test.BeamSync
             scenario.SetupTree(_remoteStateTrie, _remoteState, _remoteCode);
             _remoteStateTrie.UpdateRootHash();
 
-            _stateBeamLocal = new BeamSyncDb(new MemDb(), LimboLogs.Instance);
-            _codeBeamLocal = new BeamSyncDb(new MemDb(), LimboLogs.Instance);
+            MemDb beamStateDb = new MemDb();
+            _stateBeamLocal = new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Beam, LimboLogs.Instance);
+            _codeBeamLocal = new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Beam, LimboLogs.Instance);
             _stateLocal = new StateDb(_stateBeamLocal);
             _codeLocal = new StateDb(_codeBeamLocal);
 
             _stateReader = new StateReader(_stateLocal, _codeLocal, LimboLogs.Instance);
-            _stateBeamLocal.NeedMoreData += (sender, args) => { Interlocked.Increment(ref _needMoreDataInvocations); };
+            _stateBeamLocal.StateChanged += (sender, args) =>
+            {
+                if (_stateBeamLocal.CurrentState == SyncFeedState.Active)
+                {
+                    Interlocked.Increment(ref _needMoreDataInvocations);
+                }
+            };
             PatriciaTree.NodeCache.Clear();
         }
 
@@ -249,51 +265,51 @@ namespace Nethermind.Synchronization.Test.BeamSync
         {
             MemDb tempDb = new MemDb();
             MemDb stateDB = new MemDb();
-            BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, tempDb, LimboLogs.Instance);
+            BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, tempDb, StaticSelector.Beam, LimboLogs.Instance);
 
             byte[] bytes = new byte[] {1, 2, 3};
             beamSyncDb.Set(TestItem.KeccakA, bytes);
             byte[] retrievedFromTemp = tempDb.Get(TestItem.KeccakA);
             retrievedFromTemp.Should().BeEquivalentTo(bytes);
         }
-        
+
         [Test]
         public void Does_not_save_nodes_to_state_db()
         {
             MemDb tempDb = new MemDb();
             MemDb stateDB = new MemDb();
-            BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, tempDb, LimboLogs.Instance);
+            BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, tempDb, StaticSelector.Beam, LimboLogs.Instance);
 
             byte[] bytes = new byte[] {1, 2, 3};
             beamSyncDb.Set(TestItem.KeccakA, bytes);
             byte[] retrievedFromTemp = stateDB.Get(TestItem.KeccakA);
             retrievedFromTemp.Should().BeNull();
         }
-        
+
         [Test]
         public void Can_read_nodes_from_temp_when_missing_in_state()
         {
             MemDb tempDb = new MemDb();
             MemDb stateDB = new MemDb();
-            BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, tempDb, LimboLogs.Instance);
+            BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, tempDb, StaticSelector.Beam, LimboLogs.Instance);
 
             byte[] bytes = new byte[] {1, 2, 3};
             tempDb.Set(TestItem.KeccakA, bytes);
-            
+
             byte[] retrievedFromTemp = beamSyncDb.Get(TestItem.KeccakA);
             retrievedFromTemp.Should().BeEquivalentTo(bytes);
         }
-        
+
         [Test]
         public void Can_read_nodes_from_state_when_missing_in_temp()
         {
             MemDb tempDb = new MemDb();
             MemDb stateDB = new MemDb();
-            BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, tempDb, LimboLogs.Instance);
+            BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, tempDb, StaticSelector.Beam, LimboLogs.Instance);
 
             byte[] bytes = new byte[] {1, 2, 3};
             stateDB.Set(TestItem.KeccakA, bytes);
-            
+
             byte[] retrievedFromTemp = beamSyncDb.Get(TestItem.KeccakA);
             retrievedFromTemp.Should().BeEquivalentTo(bytes);
         }

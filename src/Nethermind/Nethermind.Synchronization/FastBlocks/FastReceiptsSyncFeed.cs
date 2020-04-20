@@ -110,12 +110,9 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             bool shouldDownloadReceipts = _syncConfig.DownloadReceiptsInFastSync;
             bool allReceiptsDownloaded = _receiptStorage.LowestInsertedReceiptBlock == 1;
-            bool isBeamSync = _syncConfig.BeamSync;
-            bool anyHeaderDownloaded = _blockTree.LowestInsertedHeader != null;
 
             bool noBatchesLeft = !shouldDownloadReceipts
-                                  || allReceiptsDownloaded
-                                  || isBeamSync && anyHeaderDownloaded;
+                                 || allReceiptsDownloaded;
 
             if (noBatchesLeft)
             {

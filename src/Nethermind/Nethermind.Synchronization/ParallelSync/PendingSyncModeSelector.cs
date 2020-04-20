@@ -13,18 +13,28 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Threading;
+using System;
 
-namespace Nethermind.Synchronization.BeamSync
+namespace Nethermind.Synchronization.ParallelSync
 {
-    public static class DataConsumerIdProvider
+    public class PendingSyncModeSelector : ISyncModeSelector
     {
-        private static int _dataConsumerId;
+        private ISyncModeSelector _syncModeSelector;
 
-        public static int AssignConsumerId()
+        public void SetActual(ISyncModeSelector syncModeSelector)
         {
-            return Interlocked.Increment(ref _dataConsumerId);
+            _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
+            _syncModeSelector.Changed += SyncModeSelectorOnChanged;
         }
+
+        private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
+        {
+            Changed?.Invoke(this, e);
+        }
+
+        public SyncMode Current => _syncModeSelector?.Current ?? SyncMode.None;
+        public event EventHandler<SyncModeChangedEventArgs> Changed;
     }
 }

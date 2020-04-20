@@ -114,7 +114,7 @@ namespace Nethermind.Network.Test.Discovery
             //Assert.AreEqual(NodeLifecycleState.Unreachable, manager.State);
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void EvictCandidateStateWonEvictionTest()
         {
             //adding 3 active nodes

@@ -23,6 +23,8 @@ namespace Nethermind.Synchronization.ParallelSync
     {
         long FindBestFullState();
         
+        long FindBestBeamState();
+        
         long FindBestHeader();
         
         long FindBestFullBlock();

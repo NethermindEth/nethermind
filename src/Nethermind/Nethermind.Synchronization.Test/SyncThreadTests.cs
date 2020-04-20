@@ -295,7 +295,7 @@ namespace Nethermind.Synchronization.Test
             var transactionSelector = new PendingTxSelector(txPool, stateReader, logManager);
             var producer = new DevBlockProducer(transactionSelector, devChainProcessor, stateProvider, tree, processor, txPool, new Timestamper(), logManager);
             
-            SyncProgressResolver resolver = new SyncProgressResolver(tree, receiptStorage, stateDb, syncConfig, logManager);
+            SyncProgressResolver resolver = new SyncProgressResolver(tree, receiptStorage, stateDb, new MemDb(), syncConfig, logManager);
             MultiSyncModeSelector selector = new MultiSyncModeSelector(resolver, syncPeerPool, syncConfig, logManager);
             Synchronizer synchronizer = new Synchronizer(
                 dbProvider,

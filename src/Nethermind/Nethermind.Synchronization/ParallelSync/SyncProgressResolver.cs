@@ -32,15 +32,17 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
         private readonly IDb _stateDb;
+        private readonly IDb _beamStateDb;
         private readonly ISyncConfig _syncConfig;
         private ILogger _logger;
 
-        public SyncProgressResolver(IBlockTree blockTree, IReceiptStorage receiptStorage, IDb stateDb, ISyncConfig syncConfig, ILogManager logManager)
+        public SyncProgressResolver(IBlockTree blockTree, IReceiptStorage receiptStorage, IDb stateDb, IDb beamStateDb, ISyncConfig syncConfig, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
+            _beamStateDb = beamStateDb ?? throw new ArgumentNullException(nameof(beamStateDb));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
         }
 
@@ -51,7 +53,17 @@ namespace Nethermind.Synchronization.ParallelSync
                 return true;
             }
 
-            return _stateDb.Get(stateRoot) != null;
+            return _stateDb.Innermost.Get(stateRoot) != null;
+        }
+        
+        private bool IsBeamSynced(Keccak stateRoot)
+        {
+            if (stateRoot == Keccak.EmptyTreeHash)
+            {
+                return true;
+            }
+            
+            return _beamStateDb.Innermost.Get(stateRoot) != null;
         }
 
         public long FindBestFullState()
@@ -63,25 +75,63 @@ namespace Nethermind.Synchronization.ParallelSync
              This scenario is still correct. It may be worth to analyze what happens
              when it causes a full sync vs node sync race at every block.*/
 
-            BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
             Block head = _blockTree.Head;
-            long bestFullState = head?.Number ?? 0;
-            long maxLookup = Math.Min(_maxLookup * 2, (bestSuggested?.Number ?? 0L) - bestFullState);
+            BlockHeader initialBestSuggested = _blockTree.BestSuggestedHeader;
+            BlockHeader bestSuggested = initialBestSuggested;
+            long bestFullState = 0;
+            long maxLookup = Math.Min(_maxLookup * 2, (initialBestSuggested?.Number ?? 0L) - head?.Number ?? 0);
 
-            for (int i = 0; i < maxLookup; i++)
+            if (maxLookup <= 1)
+            {
+                
+            }
+            
+            for (int i = 0; i < maxLookup + 1; i++)
             {
                 if (bestSuggested == null)
                 {
                     break;
                 }
 
-                if (_syncConfig.BeamSync)
+                if (IsFullySynced(bestSuggested.StateRoot))
                 {
                     bestFullState = bestSuggested.Number;
                     break;
                 }
 
-                if (IsFullySynced(bestSuggested.StateRoot))
+                bestSuggested = _blockTree.FindHeader(bestSuggested.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            }
+
+            if (bestFullState == 0)
+            {
+                
+            }
+            
+            return bestFullState;
+        }
+        
+        public long FindBestBeamState()
+        {
+            /* There is an interesting scenario (unlikely) here where we download more than 'full sync threshold'
+             blocks in full sync but they are not processed immediately so we switch to node sync
+             and the blocks that we downloaded are processed from their respective roots
+             and the next full sync will be after a leap.
+             This scenario is still correct. It may be worth to analyze what happens
+             when it causes a full sync vs node sync race at every block.*/
+
+            BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
+            Block head = _blockTree.Head;
+            long bestFullState = head?.Number ?? 0;
+            long maxLookup = Math.Min(_maxLookup * 2, (bestSuggested?.Number ?? 0L) - head?.Number ?? 0);
+
+            for (int i = 0; i < maxLookup + 1; i++)
+            {
+                if (bestSuggested == null)
+                {
+                    break;
+                }
+                
+                if (IsBeamSynced(bestSuggested.StateRoot))
                 {
                     bestFullState = bestSuggested.Number;
                     break;
@@ -103,11 +153,10 @@ namespace Nethermind.Synchronization.ParallelSync
         }
 
         public long FindBestProcessedBlock() => _blockTree.Head?.Number ?? -1;
-        
+
         public bool IsFastBlocksFinished()
         {
             bool isFastBlocks = _syncConfig.FastBlocks;
-            bool isBeamSync = _syncConfig.BeamSync;
 
             // if pivot number is 0 then it is equivalent to fast blocks disabled
             if (!isFastBlocks || _syncConfig.PivotNumberParsed == 0L)
@@ -115,13 +164,11 @@ namespace Nethermind.Synchronization.ParallelSync
                 return true;
             }
 
-            bool anyHeaderDownloaded = (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= _syncConfig.PivotNumberParsed;
             bool allHeadersDownloaded = (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1;
             bool allReceiptsDownloaded = !_syncConfig.DownloadReceiptsInFastSync || (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) <= 1;
             bool allBodiesDownloaded = !_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1;
 
-            return allBodiesDownloaded && allHeadersDownloaded && allReceiptsDownloaded
-                   || isBeamSync && anyHeaderDownloaded;
+            return allBodiesDownloaded && allHeadersDownloaded && allReceiptsDownloaded;
         }
     }
 }

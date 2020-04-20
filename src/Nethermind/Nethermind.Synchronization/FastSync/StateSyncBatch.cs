@@ -22,15 +22,9 @@ namespace Nethermind.Synchronization.FastSync
     [DebuggerDisplay("Requested Nodes: {RequestedNodes?.Length ?? 0}, Responses: {Responses?.Length ?? 0}, Assigned: {AssignedPeer?.Current}")]
     public class StateSyncBatch
     {
-        public int Type { get; set; }
-        
         public StateSyncItem[] RequestedNodes { get; set; }
         
         public byte[][] Responses { get; set; }
-
-        public bool IsAdditionalDataConsumer { get; set; }
-        
-        public UInt256 RequiredPeerDifficulty { get; set; }
 
         public int ConsumerId { get; set; }
     }

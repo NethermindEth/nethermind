@@ -25,6 +25,7 @@ namespace Nethermind.Synchronization.ParallelSync
         public abstract SyncResponseHandlingResult HandleResponse(T response);
 
         public abstract bool IsMultiFeed { get; }
+        public int FeedId { get; } = FeedIdProvider.AssignId();
         public SyncFeedState CurrentState { get; private set; }
         public event EventHandler<SyncFeedStateEventArgs> StateChanged;
 

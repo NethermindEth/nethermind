@@ -304,7 +304,7 @@ namespace Nethermind.Synchronization.Test
                 NodeStatsManager stats = new NodeStatsManager(new StatsConfig(), _logManager);
                 SyncPeerPool = new SyncPeerPool(BlockTree, stats, 25, _logManager);
 
-                SyncProgressResolver syncProgressResolver = new SyncProgressResolver(BlockTree, NullReceiptStorage.Instance, stateDb, syncConfig, _logManager);
+                SyncProgressResolver syncProgressResolver = new SyncProgressResolver(BlockTree, NullReceiptStorage.Instance, stateDb, new MemDb(), syncConfig, _logManager);
                 MultiSyncModeSelector syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, SyncPeerPool, syncConfig, _logManager);
                 Synchronizer = new Synchronizer(
                     dbProvider,

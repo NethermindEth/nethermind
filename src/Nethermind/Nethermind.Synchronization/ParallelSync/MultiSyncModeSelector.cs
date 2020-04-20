@@ -34,7 +34,8 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
         private readonly ILogger _logger;
-        
+
+        private long PivotNumber;
         private bool BeamSyncEnabled => _syncConfig.BeamSync;
         private bool FastSyncEnabled => _syncConfig.FastSync;
         private bool FastBlocksEnabled => _syncConfig.FastSync && _syncConfig.FastBlocks;
@@ -54,6 +55,8 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 if (_logger.IsWarn) _logger.Warn($"'FastSyncCatchUpHeightDelta' parameter is less or equal to {FullSyncThreshold}, which is a threshold of blocks always downloaded in full sync. 'FastSyncCatchUpHeightDelta' will have no effect.");
             }
+
+            PivotNumber = _syncConfig.PivotNumberParsed;
 
             StartUpdateTimer();
         }
@@ -85,14 +88,9 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool IsInAStickyFullSyncMode(Snapshot best)
         {
-            bool hasEverBeenInFullSync = best.Processed > 0;
+            bool hasEverBeenInFullSync = best.Processed > PivotNumber && best.State > PivotNumber;
             long heightDelta = best.PeerBlock - best.Header;
             return hasEverBeenInFullSync && heightDelta < FastSyncCatchUpHeightDelta;
-        }
-
-        private bool IsWaitingForBlockProcessor(Snapshot best)
-        {
-            return best.Block > best.State && best.State > 0;
         }
 
         private bool ShouldBeInFastSyncMode(Snapshot best)
@@ -111,20 +109,36 @@ namespace Nethermind.Synchronization.ParallelSync
 
             long heightDelta = best.PeerBlock - best.Header;
             return
+                AnyPostPivotPeerKnown(best) &&
                 // (catch up after node is off for a while
                 // OR standard fast sync)
-                !IsInAStickyFullSyncMode(best)
-                && heightDelta > FullSyncThreshold
-                // AND not waiting for processor
-                && !IsWaitingForBlockProcessor(best);
+                !IsInAStickyFullSyncMode(best) &&
+                heightDelta > FullSyncThreshold;
         }
 
         private bool ShouldBeInFullSyncMode(Snapshot best)
         {
-            // it can be still in fast blocks but not any other sync mode
-            return !ShouldBeInBeamSyncMode(best) &&
-                   !ShouldBeInFastSyncMode(best) &&
-                   !ShouldBeInStateNodesMode(best);
+            bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best);
+            bool hasFastSyncBeenActive = best.Header >= PivotNumber;
+            bool notInBeamSync = !ShouldBeInBeamSyncMode(best);
+            bool notInFastSync = !ShouldBeInFastSyncMode(best);
+            bool notInStateSync = !ShouldBeInStateNodesMode(best);
+
+            return postPivotPeerAvailable &&
+                   hasFastSyncBeenActive &&
+                   notInBeamSync &&
+                   notInFastSync &&
+                   notInStateSync;
+        }
+
+        private bool AnyPostPivotPeerKnown(Snapshot best)
+        {
+            if (best.PeerBlock <= _syncConfig.PivotNumberParsed)
+            {
+                return false;
+            }
+
+            return true;
         }
 
         private bool ShouldBeInFastBlocksMode(Snapshot best)
@@ -136,21 +150,37 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool ShouldBeInStateNodesMode(Snapshot best)
         {
-            return FastSyncEnabled
-                   // not downloading headers and bodies any more
-                   && !ShouldBeInFastSyncMode(best)
-                   // state is not yet downloaded
-                   && (best.PeerBlock - best.State > FullSyncThreshold
-                       // headers went too far
-                       || best.Header > best.State)
-                   // full sync is not in progress
-                   && !IsWaitingForBlockProcessor(best)
-                   && !IsInAStickyFullSyncMode(best);
+            bool fastSyncEnabled = FastSyncEnabled;
+            bool fastFastSyncBeenActive = best.Header >= PivotNumber;
+            bool hasAnyPostPivotPeer = AnyPostPivotPeerKnown(best);
+            bool notInFastSync = !ShouldBeInFastSyncMode(best);
+            bool stateNotDownloadedYet = (best.PeerBlock - best.State > FullSyncThreshold ||
+                                          best.Header > best.State);
+            bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
+
+            return fastSyncEnabled &&
+                   fastFastSyncBeenActive &&
+                   hasAnyPostPivotPeer &&
+                   notInFastSync &&
+                   stateNotDownloadedYet &&
+                   notInAStickyFullSync;
         }
 
         private bool ShouldBeInBeamSyncMode(Snapshot best)
         {
-            return BeamSyncEnabled && !ShouldBeInFastBlocksMode(best);
+            bool beamSyncEnabled = BeamSyncEnabled; 
+            bool fastSyncHasBeenActive = best.Header >= PivotNumber;
+            bool hasAnyPostPivotPeer = AnyPostPivotPeerKnown(best);
+            bool inStateNodesSync = ShouldBeInStateNodesMode(best);
+            bool notInFastSync = !ShouldBeInFastSyncMode(best);
+            bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
+            
+            return beamSyncEnabled &&
+                   fastSyncHasBeenActive &&
+                   hasAnyPostPivotPeer &&
+                   inStateNodesSync &&
+                   notInAStickyFullSync &&
+                   notInFastSync;
         }
 
         private long? ReloadDataFromPeers()
@@ -163,7 +193,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
             return maxPeerBlock;
         }
-        
+
         public void Update()
         {
             if (_syncProgressResolver.IsLoadingBlocksFromDb())
@@ -171,9 +201,9 @@ namespace Nethermind.Synchronization.ParallelSync
                 UpdateSyncModes(SyncMode.DbLoad);
                 return;
             }
-            
+
             long? peerBlock = ReloadDataFromPeers();
-            
+
             // if there are no peers that we could use then we cannot sync
             if ((peerBlock ?? 0) == 0)
             {
@@ -182,13 +212,13 @@ namespace Nethermind.Synchronization.ParallelSync
             }
 
             // to avoid expensive checks we make this simple check at the beginning
-            if (!FastSyncEnabled && !BeamSyncEnabled)
+            if (!FastSyncEnabled)
             {
                 UpdateSyncModes(SyncMode.Full);
                 return;
             }
 
-            Snapshot best = TakeSnapshot(peerBlock ?? 0);
+            Snapshot best = TakeSnapshot(peerBlock.Value);
 
             SyncMode newModes = SyncMode.None;
             if (ShouldBeInBeamSyncMode(best))
@@ -232,11 +262,11 @@ namespace Nethermind.Synchronization.ParallelSync
             // and think that we have an invalid snapshot
             long processed = _syncProgressResolver.FindBestProcessedBlock();
             long state = _syncProgressResolver.FindBestFullState();
+            long beamState = BeamSyncEnabled ? _syncProgressResolver.FindBestBeamState() : state;
             long block = _syncProgressResolver.FindBestFullBlock();
             long header = _syncProgressResolver.FindBestHeader();
-            
 
-            Snapshot best = new Snapshot(processed, state, block, header, peerBlock);
+            Snapshot best = new Snapshot(processed, beamState, state, block, header, peerBlock);
             VerifySnapshot(best);
             return best;
         }
@@ -256,7 +286,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 // we can only process blocks for which we have full body
                 || best.Processed > best.Block
                 // for any processed block we should have its full state   
-                || best.Processed > best.State)
+                || (best.Processed > best.State && best.Processed > best.BeamState))
             {
                 string stateString = BuildStateString(best);
                 string errorMessage = $"Invalid best state calculation: {stateString}";
@@ -267,9 +297,10 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private void UpdateSyncModes(SyncMode newModes)
         {
-            // if (Current == newModes)
+            // if (newModes != Current)
             // {
-            //     return;
+            //     string message = $"Changing state to {newModes}";
+            //     if (_logger.IsInfo) _logger.Info(message);
             // }
 
             SyncMode previous = Current;
@@ -283,19 +314,20 @@ namespace Nethermind.Synchronization.ParallelSync
         /// <param name="best">Snapshot of the best known states</param>
         /// <returns>A string describing the state of sync</returns>
         private static string BuildStateString(Snapshot best) =>
-            $"processed:{best.Processed}|state:{best.State}|block:{best.Block}|header:{best.Header}|peer block:{best.PeerBlock}";
+            $"processed:{best.Processed}|beam state:{best.BeamState}|state:{best.State}|block:{best.Block}|header:{best.Header}|peer block:{best.PeerBlock}";
 
         public event EventHandler<SyncModeChangedEventArgs> Changed;
 
         private struct Snapshot
         {
-            public Snapshot(long processed, long state, long block, long header, long peerBlock)
+            public Snapshot(long processed, long beamState, long state, long block, long header, long peerBlock)
             {
                 Processed = processed;
                 State = state;
                 Block = block;
                 Header = header;
                 PeerBlock = peerBlock;
+                BeamState = beamState;
             }
 
             /// <summary>
@@ -307,6 +339,11 @@ namespace Nethermind.Synchronization.ParallelSync
             /// Best full block state in the state trie (may not be processed if we just finished state trie download)
             /// </summary>
             public long State { get; }
+
+            /// <summary>
+            /// Best beam block state in the state trie (may not be processed if we just finished state trie download)
+            /// </summary>
+            public long BeamState { get; }
 
             /// <summary>
             /// Best block body

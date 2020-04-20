@@ -36,6 +36,7 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Store.Bloom;
 using Nethermind.Synchronization.BeamSync;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 
@@ -204,7 +205,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.BlockValidator,
                     _context.RecoveryStep,
                     _context.RewardCalculatorSource,
-                    _context.BlockProcessingQueue);
+                    _context.BlockProcessingQueue,
+                    _context.SyncModeSelector);
             }
 
             ThisNodeInfo.AddInfo("Mem est trie :", $"{LruCache<Keccak, byte[]>.CalculateMemorySize(52 + 320, Trie.MemoryAllowance.TrieNodeCacheSize) / 1024 / 1024}MB".PadLeft(8));
