@@ -559,8 +559,6 @@ namespace Nethermind.Synchronization.FastSync
                         lock (_codeDbLock)
                         {
                             _codeDb[_fastSyncProgressKey.Bytes] = rlp.Bytes;
-                            // _codeDb.Commit();
-                            // _stateDb.Commit();
                         }
                     }
 
