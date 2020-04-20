@@ -283,7 +283,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             syncConfig.FastSync = true;
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, NullReceiptStorage.Instance, dbContext.LocalStateDb, syncConfig, _logManager);
             _syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, _pool, syncConfig, _logManager);
-            _feed = new StateSyncFeed(dbContext.LocalCodeDb, dbContext.LocalStateDb, _syncModeSelector, blockTree, _logManager);
+            _feed = new StateSyncFeed(dbContext.LocalCodeDb, dbContext.LocalStateDb, new MemDb(), _syncModeSelector, blockTree, _logManager);
             _stateSyncDispatcher = new StateSyncDispatcher(_feed, _pool, new StateSyncAllocationStrategyFactory(), _logManager);
         }
 

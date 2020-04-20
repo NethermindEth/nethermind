@@ -163,7 +163,7 @@ namespace Nethermind.Synchronization.BeamSync
                         }
 
                         BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
-                        
+
                         return fromMem;
                     }
                 }
@@ -202,7 +202,7 @@ namespace Nethermind.Synchronization.BeamSync
             return _tempDb.KeyExists(key);
         }
 
-        public IDb Innermost => _tempDb.Innermost;
+        public IDb Innermost => _stateDb.Innermost;
 
         public void Flush()
         {
@@ -221,7 +221,7 @@ namespace Nethermind.Synchronization.BeamSync
             {
                 if (_requestedNodes.Count == 0)
                 {
-                    return Task.FromResult((StateSyncBatch)null);
+                    return Task.FromResult((StateSyncBatch) null);
                 }
 
                 request = new StateSyncBatch();
@@ -302,7 +302,7 @@ namespace Nethermind.Synchronization.BeamSync
         }
 
         private AutoResetEvent _autoReset = new AutoResetEvent(true);
-        
+
         public override bool IsMultiFeed => false;
     }
 }

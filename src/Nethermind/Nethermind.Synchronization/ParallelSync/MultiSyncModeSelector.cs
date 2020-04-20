@@ -35,6 +35,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly ISyncConfig _syncConfig;
         private readonly ILogger _logger;
         
+        private long PivotNumber;
         private bool BeamSyncEnabled => _syncConfig.BeamSync;
         private bool FastSyncEnabled => _syncConfig.FastSync;
         private bool FastBlocksEnabled => _syncConfig.FastSync && _syncConfig.FastBlocks;
@@ -55,6 +56,8 @@ namespace Nethermind.Synchronization.ParallelSync
                 if (_logger.IsWarn) _logger.Warn($"'FastSyncCatchUpHeightDelta' parameter is less or equal to {FullSyncThreshold}, which is a threshold of blocks always downloaded in full sync. 'FastSyncCatchUpHeightDelta' will have no effect.");
             }
 
+            PivotNumber = _syncConfig.PivotNumberParsed;
+            
             StartUpdateTimer();
         }
 
@@ -111,20 +114,32 @@ namespace Nethermind.Synchronization.ParallelSync
 
             long heightDelta = best.PeerBlock - best.Header;
             return
+                AnyPostPivotPeerKnown(best) &&
                 // (catch up after node is off for a while
                 // OR standard fast sync)
-                !IsInAStickyFullSyncMode(best)
-                && heightDelta > FullSyncThreshold
+                !IsInAStickyFullSyncMode(best) &&
+                heightDelta > FullSyncThreshold &&
                 // AND not waiting for processor
-                && !IsWaitingForBlockProcessor(best);
+                !IsWaitingForBlockProcessor(best);
         }
 
         private bool ShouldBeInFullSyncMode(Snapshot best)
         {
             // it can be still in fast blocks but not any other sync mode
-            return !ShouldBeInBeamSyncMode(best) &&
+            return AnyPostPivotPeerKnown(best) &&
+                   !ShouldBeInBeamSyncMode(best) &&
                    !ShouldBeInFastSyncMode(best) &&
                    !ShouldBeInStateNodesMode(best);
+        }
+
+        private bool AnyPostPivotPeerKnown(Snapshot best)
+        {
+            if (best.PeerBlock <= _syncConfig.PivotNumberParsed)
+            {
+                return false;
+            }
+
+            return true;
         }
 
         private bool ShouldBeInFastBlocksMode(Snapshot best)
@@ -136,16 +151,17 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool ShouldBeInStateNodesMode(Snapshot best)
         {
-            return FastSyncEnabled
+            return FastSyncEnabled &&
+                   AnyPostPivotPeerKnown(best) &&
                    // not downloading headers and bodies any more
-                   && !ShouldBeInFastSyncMode(best)
+                   !ShouldBeInFastSyncMode(best) && 
                    // state is not yet downloaded
-                   && (best.PeerBlock - best.State > FullSyncThreshold
-                       // headers went too far
-                       || best.Header > best.State)
+                   (best.PeerBlock - best.State > FullSyncThreshold || 
+                    // headers went too far
+                    best.Header > best.State) && 
                    // full sync is not in progress
-                   && !IsWaitingForBlockProcessor(best)
-                   && !IsInAStickyFullSyncMode(best);
+                   !IsWaitingForBlockProcessor(best) && 
+                   !IsInAStickyFullSyncMode(best);
         }
 
         private bool ShouldBeInBeamSyncMode(Snapshot best)
@@ -153,9 +169,10 @@ namespace Nethermind.Synchronization.ParallelSync
             // we can run beam sync if we already downloaded all the headers after pivot
             // and we are running state nodes sync now
             // and beam sync is enabled
-            return BeamSyncEnabled
-                   && ShouldBeInStateNodesMode(best)
-                   && !ShouldBeInFastSyncMode(best);
+            return BeamSyncEnabled &&
+                   AnyPostPivotPeerKnown(best) &&
+                   ShouldBeInStateNodesMode(best) &&
+                   !ShouldBeInFastSyncMode(best);
         }
 
         private long? ReloadDataFromPeers()

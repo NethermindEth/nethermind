@@ -168,11 +168,6 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        public StateSyncFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, ISyncModeSelector syncModeSelector, IBlockTree blockTree, ILogManager logManager)
-            : this(codeDb, stateDb, new MemDb(), syncModeSelector, blockTree, logManager)
-        {
-        }
-
         private AddNodeResult AddNode(StateSyncItem syncItem, DependentItem dependentItem, string reason, bool missing = false)
         {
             if (!missing)
