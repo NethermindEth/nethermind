@@ -125,7 +125,6 @@ namespace Nethermind.Synchronization.BeamSync
 
         private void BeamProcess(Block block)
         {
-            _logger.Warn($"Beam processing {block.ToString(Block.Format.Short)}");
             CancellationTokenSource cancellationToken = _tokens.GetOrAdd(block.Number, t => new CancellationTokenSource());
 
             if (block.IsGenesis)
@@ -200,7 +199,7 @@ namespace Nethermind.Synchronization.BeamSync
                 stateReader.GetAccount(stateRoot, miner);
                 BeamSyncContext.Cancelled.Value = cancellationToken.Token;
                 return BeamSyncContext.ResolvedInContext.Value;
-            }).ContinueWith(t => { _logger.Info(t.IsFaulted ? $"{description} prefetch failed {t.Exception.Message}" : $"{description} prefetch complete - resolved {t.Result}"); });
+            }).ContinueWith(t => { if(_logger.IsDebug) _logger.Debug(t.IsFaulted ? $"{description} prefetch failed {t.Exception.Message}" : $"{description} prefetch complete - resolved {t.Result}"); });
 
             Task senderTask = Task<int>.Run(() =>
             {
@@ -216,7 +215,7 @@ namespace Nethermind.Synchronization.BeamSync
                 }
 
                 return BeamSyncContext.ResolvedInContext.Value;
-            }).ContinueWith(t => { _logger.Info(t.IsFaulted ? $"tx prefetch failed {t.Exception.Message}" : $"tx prefetch complete - resolved {t.Result}"); });
+            }).ContinueWith(t => { if(_logger.IsDebug) _logger.Debug(t.IsFaulted ? $"tx prefetch failed {t.Exception.Message}" : $"tx prefetch complete - resolved {t.Result}"); });
 
             Task storageTask = Task<int>.Run(() =>
             {
@@ -235,7 +234,7 @@ namespace Nethermind.Synchronization.BeamSync
                 }
 
                 return BeamSyncContext.ResolvedInContext.Value;
-            }).ContinueWith(t => { _logger.Info(t.IsFaulted ? $"storage prefetch failed {t.Exception.Message}" : $"storage prefetch complete - resolved {t.Result}"); });
+            }).ContinueWith(t => { if(_logger.IsDebug) _logger.Debug(t.IsFaulted ? $"storage prefetch failed {t.Exception.Message}" : $"storage prefetch complete - resolved {t.Result}"); });
 
 
             Task codeTask = Task<int>.Run(() =>
@@ -256,7 +255,7 @@ namespace Nethermind.Synchronization.BeamSync
                 }
 
                 return BeamSyncContext.ResolvedInContext.Value;
-            }).ContinueWith(t => { _logger.Info(t.IsFaulted ? $"code prefetch failed {t.Exception.Message}" : $"code prefetch complete - resolved {t.Result}"); });
+            }).ContinueWith(t => { if(_logger.IsDebug) _logger.Debug(t.IsFaulted ? $"code prefetch failed {t.Exception.Message}" : $"code prefetch complete - resolved {t.Result}"); });
         }
 
         public void Dispose()
