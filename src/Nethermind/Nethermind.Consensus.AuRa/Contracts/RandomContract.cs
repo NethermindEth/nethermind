@@ -26,19 +26,22 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class RandomContract : ConstantContract, IBlockTransitionable
+    public class RandomContract : Contract, IBlockTransitionable
     {
         private static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<RandomContract>();
-        
+        private ConstantContract Constant { get; }
+
         public RandomContract(
             ITransactionProcessor transactionProcessor,
             IAbiEncoder abiEncoder,
             Address contractAddress,
             IStateProvider stateProvider, 
             IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource,
-            long transitionBlock) : base(transactionProcessor, abiEncoder, contractAddress, stateProvider, readOnlyReadOnlyTransactionProcessorSource)
+            long transitionBlock) 
+            : base(transactionProcessor, abiEncoder, contractAddress)
         {
             TransitionBlock = transitionBlock;
+            Constant = GetConstant(stateProvider, readOnlyReadOnlyTransactionProcessorSource);
         }
 
         public long TransitionBlock { get; }
@@ -87,12 +90,12 @@ namespace Nethermind.Consensus.AuRa.Contracts
                     : Phase.Reveal;
         }
 
-        private bool SentReveal(BlockHeader blockHeader, UInt256 round, Address nodeAddress)  => CallConstant<bool>(blockHeader, Definition.GetFunction(nameof(IsCommitted)), round, nodeAddress);
+        private bool SentReveal(BlockHeader blockHeader, UInt256 round, Address nodeAddress)  => Constant.Call<bool>(blockHeader, Definition.GetFunction(nameof(IsCommitted)), ContractAddress, round, nodeAddress);
 
-        private bool IsCommitted(BlockHeader blockHeader, UInt256 round, Address nodeAddress) => CallConstant<bool>(blockHeader, Definition.GetFunction(nameof(IsCommitted)), round, nodeAddress);
+        private bool IsCommitted(BlockHeader blockHeader, UInt256 round, Address nodeAddress) => Constant.Call<bool>(blockHeader, Definition.GetFunction(nameof(IsCommitted)), ContractAddress, round, nodeAddress);
         
-        private UInt256 CurrentCollectRound(BlockHeader blockHeader) => CallConstant<UInt256>(blockHeader, Definition.GetFunction(nameof(CurrentCollectRound)));
+        private UInt256 CurrentCollectRound(BlockHeader blockHeader) => Constant.Call<UInt256>(blockHeader, Definition.GetFunction(nameof(CurrentCollectRound)), ContractAddress);
         
-        private bool IsCommitPhase(BlockHeader blockHeader) => CallConstant<bool>(blockHeader, Definition.GetFunction(nameof(IsCommitPhase)));
+        private bool IsCommitPhase(BlockHeader blockHeader) => Constant.Call<bool>(blockHeader, Definition.GetFunction(nameof(IsCommitPhase)), ContractAddress);
     }
 }

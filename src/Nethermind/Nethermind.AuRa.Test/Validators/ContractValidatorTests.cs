@@ -53,7 +53,7 @@ namespace Nethermind.AuRa.Test.Validators
         private ITransactionProcessor _transactionProcessor;
         private IBlockFinalizationManager _blockFinalizationManager;
         private static Address _contractAddress = Address.FromNumber(1000);
-        private (Address Sender, byte[] TransactionData) _getValidatorsData = (_contractAddress, new byte[] {0, 1, 2});
+        private (Address Sender, byte[] TransactionData) _getValidatorsData = (Address.Zero, new byte[] {0, 1, 2});
         private (Address Sender, byte[] TransactionData) _finalizeChangeData = (Address.SystemUser, new byte[] {3, 4, 5});
         private Address[] _initialValidators;
         private IBlockTree _blockTree;

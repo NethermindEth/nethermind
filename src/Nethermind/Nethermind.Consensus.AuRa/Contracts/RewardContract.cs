@@ -54,7 +54,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// </param>
         public (Address[] Addresses, BigInteger[] Rewards) Reward(BlockHeader blockHeader, Address[] benefactors, ushort[] kind)
         {
-            var result = Call(blockHeader, Definition.Functions["reward"], benefactors, kind);
+            var result = Call(blockHeader, Definition.GetFunction(nameof(Reward)), Address.SystemUser, benefactors, kind);
             return ((Address[]) result[0], (BigInteger[]) result[1]);
         }
     }

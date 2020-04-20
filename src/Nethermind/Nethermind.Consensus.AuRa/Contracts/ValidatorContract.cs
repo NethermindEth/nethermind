@@ -29,13 +29,15 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class ValidatorContract : ConstantContract
+    public class ValidatorContract : Contract
     {
         private readonly IAbiEncoder _abiEncoder;
         
         private static readonly IEqualityComparer<LogEntry> LogEntryEqualityComparer = new LogEntryAddressAndTopicEqualityComparer();
         
         internal static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<ValidatorContract>();
+        
+        private ConstantContract Constant { get; }
 
         public ValidatorContract(
             ITransactionProcessor transactionProcessor, 
@@ -43,9 +45,10 @@ namespace Nethermind.Consensus.AuRa.Contracts
             Address contractAddress, 
             IStateProvider stateProvider,
             IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource) 
-            : base(transactionProcessor, abiEncoder, contractAddress, stateProvider, readOnlyReadOnlyTransactionProcessorSource)
+            : base(transactionProcessor, abiEncoder, contractAddress)
         {
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
+            Constant = GetConstant(stateProvider, readOnlyReadOnlyTransactionProcessorSource);
         }
 
         /// <summary>
@@ -56,7 +59,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// the "change" finalized is the activation of the initial set.
         /// function finalizeChange();
         /// </summary>
-        public void FinalizeChange(BlockHeader blockHeader) => TryCall(blockHeader, Definition.GetFunction(nameof(FinalizeChange)), out _);
+        public void FinalizeChange(BlockHeader blockHeader) => TryCall(blockHeader, Definition.GetFunction(nameof(FinalizeChange)), Address.SystemUser, out _);
 
         internal static readonly string GetValidatorsFunction = Definition.GetFunctionName(nameof(GetValidators));
 
@@ -64,7 +67,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// Get current validator set (last enacted or initial if no changes ever made)
         /// function getValidators() constant returns (address[] _validators);
         /// </summary>
-        public Address[] GetValidators(BlockHeader blockHeader) => CallConstant<Address[]>(blockHeader, Definition.GetFunction(nameof(GetValidators)));
+        public Address[] GetValidators(BlockHeader blockHeader) => Constant.Call<Address[]>(blockHeader, Definition.GetFunction(nameof(GetValidators)), Address.Zero);
 
         internal const string InitiateChange = nameof(InitiateChange);
         
@@ -100,12 +103,17 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private Address[] DecodeAddresses(byte[] data)
         {
             var objects = _abiEncoder.Decode(Definition.GetFunction(nameof(GetValidators)).GetReturnInfo(), data);
+            return GetAddresses(objects);
+        }
+
+        private static Address[] GetAddresses(object[] objects)
+        {
             return (Address[]) objects[0];
         }
-        
+
         public void EnsureSystemAccount()
         {
-            EnsureSystemAccount(StateProvider);
+            EnsureSystemAccount(Constant.StateProvider);
         }
     }
 }
