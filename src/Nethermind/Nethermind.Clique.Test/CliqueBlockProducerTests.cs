@@ -49,6 +49,7 @@ using NUnit.Framework;
 namespace Nethermind.Clique.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class CliqueBlockProducerTests
     {
         private class On

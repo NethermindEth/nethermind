@@ -18,6 +18,7 @@ namespace Nethermind.Core.Caching
 {
     public interface ICache<in TKey, TValue>
     {
+        void Clear();
         TValue Get(TKey key);
         void Set(TKey key, TValue val);
         void Delete(TKey key);

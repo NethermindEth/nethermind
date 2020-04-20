@@ -36,6 +36,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Discovery
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class DiscoveryManagerTests
     {

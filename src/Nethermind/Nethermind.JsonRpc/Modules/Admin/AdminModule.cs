@@ -20,6 +20,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 
@@ -52,7 +53,8 @@ namespace Nethermind.JsonRpc.Modules.Admin
             _nodeInfo = new NodeInfo();
             _nodeInfo.Name = ClientVersion.Description;
             _nodeInfo.Enode = _enode.Info;
-            _nodeInfo.Id = _enode?.PublicKey?.ToString(false);
+            byte[] publicKeyBytes = _enode?.PublicKey?.Bytes;
+            _nodeInfo.Id = (publicKeyBytes == null ? Keccak.Zero : Keccak.Compute(publicKeyBytes)).ToString(false);
             _nodeInfo.Ip = _enode?.HostIp?.ToString();
             _nodeInfo.ListenAddress = $"{_enode.HostIp}:{_enode.Port}";
             _nodeInfo.Ports.Discovery = _networkConfig.DiscoveryPort;

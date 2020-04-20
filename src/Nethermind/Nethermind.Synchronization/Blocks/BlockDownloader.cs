@@ -48,7 +48,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly ILogger _logger;
 
         private bool _cancelDueToBetterPeer;
-        private CancellationTokenSource _allocationCancellation;
+        private AllocationWithCancellation _allocationWithCancellation;
 
         private SyncBatchSize _syncBatchSize;
         private int _sinceLastTimeout;
@@ -87,22 +87,28 @@ namespace Nethermind.Synchronization.Blocks
         protected override async Task Dispatch(PeerInfo bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
         {
             if (!_blockTree.CanAcceptNewBlocks) return;
+            CancellationTokenSource linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _allocationWithCancellation.Cancellation.Token);
 
-            _allocationCancellation = new CancellationTokenSource();
-            CancellationTokenSource linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _allocationCancellation.Token);
-
-            SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, Synchronization.SyncEvent.Started));
-            if ((blocksRequest.Options & DownloaderOptions.WithBodies) == DownloaderOptions.WithBodies)
+            try
             {
-                if(Logger.IsDebug) Logger.Debug("Downloading bodies");
-                await DownloadBlocks(bestPeer, blocksRequest, linkedCancellation.Token).ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
-                if(Logger.IsDebug) Logger.Debug("Finished downloading bodies");
+                SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, Synchronization.SyncEvent.Started));
+                if ((blocksRequest.Options & DownloaderOptions.WithBodies) == DownloaderOptions.WithBodies)
+                {
+                    if (Logger.IsDebug) Logger.Debug("Downloading bodies");
+                    await DownloadBlocks(bestPeer, blocksRequest, linkedCancellation.Token).ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
+                    if (Logger.IsDebug) Logger.Debug("Finished downloading bodies");
+                }
+                else
+                {
+                    if (Logger.IsDebug) Logger.Debug("Downloading headers");
+                    await DownloadHeaders(bestPeer, blocksRequest, linkedCancellation.Token).ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
+                    if (Logger.IsDebug) Logger.Debug("Finished downloading headers");
+                }
             }
-            else
+            finally
             {
-                if(Logger.IsDebug) Logger.Debug("Downloading headers");
-                await DownloadHeaders(bestPeer, blocksRequest, linkedCancellation.Token).ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
-                if(Logger.IsDebug) Logger.Debug("Finished downloading headers");
+                _allocationWithCancellation.Dispose();
+                linkedCancellation.Dispose();
             }
         }
 
@@ -130,7 +136,8 @@ namespace Nethermind.Synchronization.Blocks
                 {
                     break;
                 }
-                if (_logger.IsWarn) _logger.Warn($"Headers request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
+
+                if (_logger.IsDebug) _logger.Debug($"Headers request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
                 BlockHeader[] headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
 
                 BlockHeader startingPoint = headers[0] == null ? null : _blockTree.FindHeader(headers[0].Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
@@ -598,6 +605,9 @@ namespace Nethermind.Synchronization.Blocks
         protected override async Task<SyncPeerAllocation> Allocate(BlocksRequest request)
         {
             SyncPeerAllocation allocation = await base.Allocate(request);
+            CancellationTokenSource cancellation = new CancellationTokenSource();
+            _allocationWithCancellation = new AllocationWithCancellation(allocation, cancellation);
+            
             allocation.Cancelled += AllocationOnCancelled;
             allocation.Replaced += AllocationOnReplaced;
             allocation.Refreshed += AllocationOnRefreshed;
@@ -606,7 +616,7 @@ namespace Nethermind.Synchronization.Blocks
 
         protected override void Free(SyncPeerAllocation allocation)
         {
-            allocation.Cancelled -= AllocationOnReplaced;
+            allocation.Cancelled -= AllocationOnCancelled;
             allocation.Replaced -= AllocationOnReplaced;
             allocation.Refreshed -= AllocationOnRefreshed;
             base.Free(allocation);
@@ -614,7 +624,13 @@ namespace Nethermind.Synchronization.Blocks
 
         private void AllocationOnCancelled(object sender, AllocationChangeEventArgs e)
         {
-            _allocationCancellation.Cancel();
+            AllocationWithCancellation allocationWithCancellation = _allocationWithCancellation;
+            if (allocationWithCancellation.Allocation != sender)
+            {
+                return;
+            }
+            
+            allocationWithCancellation.Cancel();
         }
 
         private void AllocationOnRefreshed(object sender, EventArgs e)
@@ -636,7 +652,7 @@ namespace Nethermind.Synchronization.Blocks
             if (e.Previous != null)
             {
                 _cancelDueToBetterPeer = true;
-                _allocationCancellation.Cancel();
+                _allocationWithCancellation.Cancel();
             }
 
             PeerInfo newPeer = e.Current;
@@ -644,6 +660,38 @@ namespace Nethermind.Synchronization.Blocks
             if (newPeer.TotalDifficulty > bestSuggested.TotalDifficulty)
             {
                 Feed.Activate();
+            }
+        }
+
+        private struct AllocationWithCancellation : IDisposable
+        {
+            public AllocationWithCancellation(SyncPeerAllocation allocation, CancellationTokenSource cancellation)
+            {
+                Allocation = allocation;
+                Cancellation = cancellation;
+                _isDisposed = false;
+            }
+            
+            public CancellationTokenSource Cancellation { get; }
+            public SyncPeerAllocation Allocation { get; }
+
+            public void Cancel()
+            {
+                if (!_isDisposed)
+                {
+                    Cancellation.Cancel();
+                }
+            }
+
+            private bool _isDisposed;
+            
+            public void Dispose()
+            {
+                if (!_isDisposed)
+                {
+                    _isDisposed = true;
+                    Cancellation?.Dispose();
+                }
             }
         }
     }

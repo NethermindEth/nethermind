@@ -35,6 +35,7 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class ParityModuleTests
     {

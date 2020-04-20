@@ -37,6 +37,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastBlocks
 {
+    [Parallelizable(ParallelScope.Self)]
+    [TestFixture]
     public class FastHeadersSyncTests
     {
         [Test]

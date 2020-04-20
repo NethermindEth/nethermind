@@ -26,6 +26,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Rlpx.Handshake
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class AuthMessageSerializerTests
     {

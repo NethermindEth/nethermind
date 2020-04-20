@@ -20,6 +20,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastSync
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class StateSyncProgressTests
     {

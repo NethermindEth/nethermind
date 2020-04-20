@@ -50,6 +50,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture(SynchronizerType.Fast)]
     [TestFixture(SynchronizerType.Full)]
     public class SyncThreadsTests

@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
@@ -70,6 +69,7 @@ namespace Nethermind.Core.Caching
             if (val == null)
             {
                 Delete(key);
+                return;
             }
 
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))

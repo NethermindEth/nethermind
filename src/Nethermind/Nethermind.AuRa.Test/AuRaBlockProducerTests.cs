@@ -40,199 +40,206 @@ using NUnit.Framework.Internal;
 
 namespace Nethermind.AuRa.Test
 {
+    [Parallelizable(ParallelScope.All)]
     public class AuRaBlockProducerTests
     {
-        private IPendingTxSelector _pendingTxSelector;
-        private IBlockchainProcessor _blockchainProcessor;
-        private ISealer _sealer;
-        private IBlockTree _blockTree;
-        private IBlockProcessingQueue _blockProcessingQueue;
-        private IStateProvider _stateProvider;
-        private ITimestamper _timestamper;
-        private IAuRaStepCalculator _auRaStepCalculator;
-        private IAuraConfig _auraConfig;
-        private Address _nodeAddress;
-        private AuRaBlockProducer _auRaBlockProducer;
-        private TimeSpan _stepDelay;
-
-        [SetUp]
-        public void SetUp()
+        private class Context
         {
-            _stepDelay = TimeSpan.FromMilliseconds(20);
+            public IPendingTxSelector PendingTxSelector { get; }
+            public IBlockchainProcessor BlockchainProcessor { get; }
+            public ISealer Sealer { get; }
+            public IBlockTree BlockTree { get; }
+            public IBlockProcessingQueue BlockProcessingQueue { get; }
+            public IStateProvider StateProvider { get; }
+            public ITimestamper Timestamper { get; }
+            public IAuRaStepCalculator AuRaStepCalculator { get; }
+            public Address NodeAddress { get; }
+            public AuRaBlockProducer AuRaBlockProducer { get; private set; }
+            public TimeSpan StepDelay { get; }
+
+            public Context()
+            {
+                StepDelay = TimeSpan.FromMilliseconds(20);
+                PendingTxSelector = Substitute.For<IPendingTxSelector>();
+                BlockchainProcessor = Substitute.For<IBlockchainProcessor>();
+                Sealer = Substitute.For<ISealer>();
+                BlockTree = Substitute.For<IBlockTree>();
+                BlockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
+                StateProvider = Substitute.For<IStateProvider>();
+                Timestamper = Substitute.For<ITimestamper>();
+                AuRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
+                NodeAddress = TestItem.AddressA;
+            	PendingTxSelector.SelectTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>()).Returns(Array.Empty<Transaction>());
+                Sealer.CanSeal(Arg.Any<long>(), Arg.Any<Keccak>()).Returns(true);
+                Sealer.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(c => Task.FromResult(c.Arg<Block>()));
+                BlockProcessingQueue.IsEmpty.Returns(true);
+                AuRaStepCalculator.TimeToNextStep.Returns(StepDelay);
+                BlockTree.BestKnownNumber.Returns(1);
+                BlockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithAura(10, Bytes.Empty).TestObject).TestObject);
+                BlockchainProcessor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>()).Returns(c => c.Arg<Block>());
+                InitProducer();
+            }
             
-            _pendingTxSelector = Substitute.For<IPendingTxSelector>();
-            _blockchainProcessor = Substitute.For<IBlockchainProcessor>();
-            _sealer = Substitute.For<ISealer>();
-            _blockTree = Substitute.For<IBlockTree>();
-            _blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
-            _stateProvider = Substitute.For<IStateProvider>();
-            _timestamper = Substitute.For<ITimestamper>();
-            _auRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
-            _nodeAddress = TestItem.AddressA;
-            InitProducer();
-            _pendingTxSelector.SelectTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>()).Returns(Array.Empty<Transaction>());
-            _sealer.CanSeal(Arg.Any<long>(), Arg.Any<Keccak>()).Returns(true);
-            _sealer.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(c => Task.FromResult(c.Arg<Block>()));
-            _blockProcessingQueue.IsEmpty.Returns(true);
-            _auRaStepCalculator.TimeToNextStep.Returns(_stepDelay);
-            _blockTree.BestKnownNumber.Returns(1);
-            _blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithAura(10, Bytes.Empty).TestObject).TestObject);
-            _blockchainProcessor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>()).Returns(c => c.Arg<Block>());
-        }
-
-        private void InitProducer()
-        {
-            AuRaConfig auRaConfig = new AuRaConfig();
-            auRaConfig.ForceSealing = true;
-            InitProducer(auRaConfig);
-        }
-        
-        private void InitProducer(IAuraConfig auraConfig)
-        {
-            _auraConfig = auraConfig;
-            _auRaBlockProducer = new AuRaBlockProducer(
-                _pendingTxSelector,
-                _blockchainProcessor,
-                _stateProvider,
-                _sealer,
-                _blockTree,
-                _blockProcessingQueue,
-                _timestamper,
-                LimboLogs.Instance,
-                _auRaStepCalculator,
-                auraConfig,
-                _nodeAddress);
+                    private void InitProducer()
+                    {
+                        AuRaConfig auRaConfig = new AuRaConfig();
+                        auRaConfig.ForceSealing = true;
+                        InitProducer(auRaConfig);
+                    }
+                    
+                    public void InitProducer(IAuraConfig auraConfig)
+                    {
+                        AuRaBlockProducer = new AuRaBlockProducer(
+                            PendingTxSelector,
+                            BlockchainProcessor,
+                            StateProvider,
+                            Sealer,
+                            BlockTree,
+                            BlockProcessingQueue,
+                            Timestamper,
+                            LimboLogs.Instance,
+                            AuRaStepCalculator,
+                            auraConfig,
+                            NodeAddress);
+                    }
         }
 
         [Test, Retry(3)]
         public async Task Produces_block()
         {
-            (await StartStop()).ShouldProduceBlocks(Quantity.AtLeastOne());
+            (await StartStop(new Context())).ShouldProduceBlocks(Quantity.AtLeastOne());
         }
         
         [Test]
         public async Task Can_produce_first_block_when_private_chains_allowed()
         {
-            InitProducer(new AuRaConfig{AllowAuRaPrivateChains = true, ForceSealing = true});
-            (await StartStop(false)).ShouldProduceBlocks(Quantity.AtLeastOne());
+            var context = new Context();
+            context.InitProducer(new AuRaConfig{AllowAuRaPrivateChains = true, ForceSealing = true});
+            (await StartStop(context,false)).ShouldProduceBlocks(Quantity.AtLeastOne());
         }
         
         [Test]
         public async Task Cannot_produce_first_block_when_private_chains_not_allowed()
         {
-            (await StartStop(false)).ShouldProduceBlocks(Quantity.None());
+            (await StartStop(new Context(), false)).ShouldProduceBlocks(Quantity.None());
         }
         
         [Test]
         public async Task Does_not_produce_block_when_ProcessingQueueEmpty_not_raised()
         {
-            (await StartStop(false, true)).ShouldProduceBlocks(Quantity.None());
+            (await StartStop(new Context(), false, true)).ShouldProduceBlocks(Quantity.None());
         }
 
         [Test]
         public async Task Does_not_produce_block_when_QueueNotEmpty()
         {
-            _blockProcessingQueue.IsEmpty.Returns(false);
-            (await StartStop()).ShouldProduceBlocks(Quantity.None());
+            Context context = new Context();
+            context.BlockProcessingQueue.IsEmpty.Returns(false);
+            (await StartStop(context)).ShouldProduceBlocks(Quantity.None());
         }
         
         [Test]
         public async Task Does_not_produce_block_when_cannot_seal()
         {
-            _sealer.CanSeal(Arg.Any<long>(), Arg.Any<Keccak>()).Returns(false);
-            (await StartStop()).ShouldProduceBlocks(Quantity.None());
+            Context context = new Context();
+            context.Sealer.CanSeal(Arg.Any<long>(), Arg.Any<Keccak>()).Returns(false);
+            (await StartStop(context)).ShouldProduceBlocks(Quantity.None());
         }
         
         [Test]
         public async Task Does_not_produce_block_when_ForceSealing_is_false_and_no_transactions()
         {
-            AuRaConfig auRaConfig = new AuRaConfig();
-            auRaConfig.ForceSealing = false;
-            InitProducer(auRaConfig);
-            (await StartStop()).ShouldProduceBlocks(Quantity.None());
+            var context = new Context();
+            AuRaConfig auRaConfig = new AuRaConfig {ForceSealing = false};
+            context.InitProducer(auRaConfig);
+            (await StartStop(context)).ShouldProduceBlocks(Quantity.None());
         }
         
         [Test]
         public async Task Produces_block_when_ForceSealing_is_false_and_there_are_transactions()
         {
-            AuRaConfig auRaConfig = new AuRaConfig();
-            auRaConfig.ForceSealing = false;
-            InitProducer(auRaConfig);
-            _pendingTxSelector.SelectTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>()).Returns(new[] {Build.A.Transaction.TestObject});
-            (await StartStop()).ShouldProduceBlocks(Quantity.AtLeastOne());
+            var context = new Context();
+            AuRaConfig auRaConfig = new AuRaConfig {ForceSealing = false};
+            context.InitProducer(auRaConfig);
+            context.PendingTxSelector.SelectTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>()).Returns(new[] {Build.A.Transaction.TestObject});
+            (await StartStop(context)).ShouldProduceBlocks(Quantity.AtLeastOne());
         }
         
         [Test]
         public async Task Does_not_produce_block_when_sealing_fails()
         {
-            _sealer.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(c => Task.FromException(new Exception()));
-            (await StartStop()).ShouldProduceBlocks(Quantity.None());
+            var context = new Context();
+            context.Sealer.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(c => Task.FromException(new Exception()));
+            (await StartStop(context)).ShouldProduceBlocks(Quantity.None());
         }
         
         [Test]
         public async Task Does_not_produce_block_when_sealing_cancels()
         {
-            _sealer.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(c => Task.FromCanceled(new CancellationToken(true)));
-            (await StartStop()).ShouldProduceBlocks(Quantity.None());
+            var context = new Context();
+            context.Sealer.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(c => Task.FromCanceled(new CancellationToken(true)));
+            (await StartStop(context)).ShouldProduceBlocks(Quantity.None());
         }
         
         [Test]
         public async Task Does_not_produce_block_when_head_is_null()
         {
-            _blockTree.Head.Returns((Block) null);
-            (await StartStop()).ShouldProduceBlocks(Quantity.None());
+            var context = new Context();
+            context.BlockTree.Head.Returns((Block) null);
+            (await StartStop(context)).ShouldProduceBlocks(Quantity.None());
         }
         
         [Test]
         public async Task Does_not_produce_block_when_processing_fails()
         {
-            _blockchainProcessor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>()).Returns((Block) null);
-            (await StartStop()).ShouldProduceBlocks(Quantity.None());
+            var context = new Context();
+            context.BlockchainProcessor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>()).Returns((Block) null);
+            (await StartStop(context)).ShouldProduceBlocks(Quantity.None());
         }
         
         [Test]
         public async Task Does_not_produce_block_when_there_is_new_best_suggested_block_not_yet_processed()
         {
-            (await StartStop(true, true)).ShouldProduceBlocks(Quantity.None());
+            (await StartStop(new Context(), true, true)).ShouldProduceBlocks(Quantity.None());
         }
         
-        private async Task<TestResult> StartStop(bool processingQueueEmpty = true, bool newBestSuggestedBlock = false, int stepDelayMultiplier = 100)
+        private async Task<TestResult> StartStop(Context context, bool processingQueueEmpty = true, bool newBestSuggestedBlock = false, int stepDelayMultiplier = 100)
         {
             AutoResetEvent processedEvent = new AutoResetEvent(false);
-            _blockTree.SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>())
+            context.BlockTree.SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>())
                 .Returns(AddBlockResult.Added)
                 .AndDoes(c =>
                 {
                     processedEvent.Set();
                 });
 
-            _auRaBlockProducer.Start();
-            await processedEvent.WaitOneAsync(_stepDelay * stepDelayMultiplier, CancellationToken.None);
-            _blockTree.ClearReceivedCalls();
+            context.AuRaBlockProducer.Start();
+            await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier, CancellationToken.None);
+            context.BlockTree.ClearReceivedCalls();
             
             try
             {
-                await Task.Delay(_stepDelay);
+                await Task.Delay(context.StepDelay);
                 if (processingQueueEmpty)
                 {
-                    _blockProcessingQueue.ProcessingQueueEmpty += Raise.Event();
+                    context.BlockProcessingQueue.ProcessingQueueEmpty += Raise.Event();
                 }
 
                 if (newBestSuggestedBlock)
                 {
-                    _blockTree.NewBestSuggestedBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.TestObject));
-                    _blockTree.ClearReceivedCalls();
+                    context.BlockTree.NewBestSuggestedBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.TestObject));
+                    context.BlockTree.ClearReceivedCalls();
                 }
                 
-                await processedEvent.WaitOneAsync(_stepDelay * stepDelayMultiplier, CancellationToken.None);
+                await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier, CancellationToken.None);
 
             }
             finally
             {
-                await _auRaBlockProducer.StopAsync();
+                await context.AuRaBlockProducer.StopAsync();
             }
 
-            return new TestResult(q => _blockTree.Received(q).SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>()));
+            return new TestResult(q => context.BlockTree.Received(q).SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>()));
         }
         
         private class TestResult

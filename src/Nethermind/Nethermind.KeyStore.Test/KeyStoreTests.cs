@@ -30,6 +30,7 @@ using NUnit.Framework;
 
 namespace Nethermind.KeyStore.Test
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class KeyStoreTests
     {

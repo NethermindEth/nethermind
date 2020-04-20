@@ -13,7 +13,6 @@ ToC
    :maxdepth: 2
    
    start
-   enterprise
    cloud
    platforms
    hardware_requirements
@@ -28,6 +27,7 @@ ToC
    private_networks
    configuration
    metrics
+   enterprise
    jsonrpc
    web3
    security

@@ -30,6 +30,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Runner.Test
 {
+    [Parallelizable(ParallelScope.All)]
+    [TestFixture]
     public class ConfigFilesTests
     {
         [SetUp]

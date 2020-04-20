@@ -250,7 +250,7 @@ namespace Nethermind.Store.Bloom
             
             private readonly IFileStore _fileStore;
             private readonly bool _migrationStatistics;
-            private readonly LruCache<long, Core.Bloom> _cache;
+            private readonly ICache<long, Core.Bloom> _cache;
             private readonly byte[] _bytes = new byte[Core.Bloom.ByteLength];
             private int _needsFlush = 0;
 
@@ -261,7 +261,7 @@ namespace Nethermind.Store.Bloom
                 LevelElementSize = levelElementSize;
                 LevelMultiplier = levelMultiplier;
                 _migrationStatistics = migrationStatistics;
-                _cache = new LruCache<long, Core.Bloom>(levelMultiplier, levelMultiplier, "blooms");
+                _cache = new LruCacheWithRecycling<long, Core.Bloom>(levelMultiplier, levelMultiplier, "blooms");
             }
 
             public void Store(long blockNumber, Core.Bloom bloom)
