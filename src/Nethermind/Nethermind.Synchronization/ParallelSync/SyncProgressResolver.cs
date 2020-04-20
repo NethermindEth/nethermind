@@ -32,15 +32,17 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
         private readonly IDb _stateDb;
+        private readonly IDb _beamStateDb;
         private readonly ISyncConfig _syncConfig;
         private ILogger _logger;
 
-        public SyncProgressResolver(IBlockTree blockTree, IReceiptStorage receiptStorage, IDb stateDb, ISyncConfig syncConfig, ILogManager logManager)
+        public SyncProgressResolver(IBlockTree blockTree, IReceiptStorage receiptStorage, IDb stateDb, IDb beamStateDb, ISyncConfig syncConfig, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
+            _beamStateDb = beamStateDb ?? throw new ArgumentNullException(nameof(beamStateDb));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
         }
 
@@ -60,8 +62,8 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 return true;
             }
-
-            return _stateDb.Get(stateRoot) != null;
+            
+            return _beamStateDb.Innermost.Get(stateRoot) != null;
         }
 
         public long FindBestFullState()
@@ -117,7 +119,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 {
                     break;
                 }
-
+                
                 if (IsBeamSynced(bestSuggested.StateRoot))
                 {
                     bestFullState = bestSuggested.Number;

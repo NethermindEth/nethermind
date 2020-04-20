@@ -100,7 +100,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _ctx.SyncPeerPool = new SyncPeerPool(_ctx.BlockTree, _ctx.NodeStatsManager, maxPeersCount, _ctx.LogManager);
             _ctx.DisposeStack.Push(_ctx.SyncPeerPool);
             
-            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_ctx.BlockTree, _ctx.ReceiptStorage, _ctx.DbProvider.StateDb, _syncConfig, _ctx.LogManager);
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_ctx.BlockTree, _ctx.ReceiptStorage, _ctx.DbProvider.StateDb, _ctx.DbProvider.BeamStateDb, _syncConfig, _ctx.LogManager);
             MultiSyncModeSelector syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, _ctx.SyncPeerPool, _syncConfig, _ctx.LogManager);
             if (_ctx.SyncModeSelector != null)
             {
