@@ -76,8 +76,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 (1048, 1016, 0, 1000, SyncMode.StateNodes, "catch up headers"),
                 (1048, 1032, 0, 1016, SyncMode.StateNodes, "headers went too far, catch up with the nodes"),
                 (1048, 1032, 0, 1032, SyncMode.Full, "ready to full sync"),
-                (1068, 1048, 1048, 1036, SyncMode.Full, "full sync - blocks ahead of processing"),
-                (1093, 1060, 1060, 1056, SyncMode.Full, "found better peer, need to catch up"),
+                (1068, 1048, 1048, 1036, SyncMode.StateNodes, "full sync - blocks ahead of processing"),
+                (1093, 1060, 1060, 1056, SyncMode.FastSync, "found better peer, need to catch up"),
                 (1093, 1060, 1060, 1060, SyncMode.FastSync, "first take headers"),
                 (1093, 1092, 1060, 1060, SyncMode.StateNodes, "then nodes again"),
                 (2096, 1092, 1060, 1092, SyncMode.FastSync, "found even better peer - get all headers"),
@@ -107,7 +107,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         [TestCase(true, 1, 1032, 0, 1032, SyncMode.Full)]
         [TestCase(true, 33, 1032, 0, 1032, SyncMode.Full)]
         [TestCase(false, 0, 1032, 0, 1032, SyncMode.None)]
-        [TestCase(true, 4506571, 4506571, 4506571, 4506452, SyncMode.Full)]
+        [TestCase(true, 4506571, 4506571, 4506571, 4506452, SyncMode.StateNodes)]
         public void Selects_correctly(bool useFastSync, long bestRemote, long bestHeader, long bestBlock, long bestLocalState, SyncMode expected)
         {
             bool changedInvoked = false;

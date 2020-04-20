@@ -20,7 +20,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -281,8 +280,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.FastSync = true;
-            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, NullReceiptStorage.Instance, dbContext.LocalStateDb, new MemDb(), syncConfig, _logManager);
-            _syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, _pool, syncConfig, _logManager);
+            _syncModeSelector = StaticSelector.StateNodesWithFastBlocks;
             _feed = new StateSyncFeed(dbContext.LocalCodeDb, dbContext.LocalStateDb, new MemDb(), _syncModeSelector, blockTree, _logManager);
             _stateSyncDispatcher = new StateSyncDispatcher(_feed, _pool, new StateSyncAllocationStrategyFactory(), _logManager);
         }

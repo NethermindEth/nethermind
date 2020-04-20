@@ -34,7 +34,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
         private readonly ILogger _logger;
-        
+
         private long PivotNumber;
         private bool BeamSyncEnabled => _syncConfig.BeamSync;
         private bool FastSyncEnabled => _syncConfig.FastSync;
@@ -57,7 +57,7 @@ namespace Nethermind.Synchronization.ParallelSync
             }
 
             PivotNumber = _syncConfig.PivotNumberParsed;
-            
+
             StartUpdateTimer();
         }
 
@@ -93,12 +93,6 @@ namespace Nethermind.Synchronization.ParallelSync
             return hasEverBeenInFullSync && heightDelta < FastSyncCatchUpHeightDelta;
         }
 
-        private bool IsWaitingForBlockProcessor(Snapshot best)
-        {
-            return false;
-            // return best.Block > best.State && best.State > PivotNumber;
-        }
-
         private bool ShouldBeInFastSyncMode(Snapshot best)
         {
             if (!FastSyncEnabled)
@@ -119,20 +113,22 @@ namespace Nethermind.Synchronization.ParallelSync
                 // (catch up after node is off for a while
                 // OR standard fast sync)
                 !IsInAStickyFullSyncMode(best) &&
-                heightDelta > FullSyncThreshold &&
-                // AND not waiting for processor
-                !IsWaitingForBlockProcessor(best);
+                heightDelta > FullSyncThreshold;
         }
 
         private bool ShouldBeInFullSyncMode(Snapshot best)
         {
-            // it can be still in fast blocks but not any other sync mode
-            return AnyPostPivotPeerKnown(best) &&
-                   // fast sync has started in the past
-                   best.Header >= PivotNumber &&
-                   !ShouldBeInBeamSyncMode(best) &&
-                   !ShouldBeInFastSyncMode(best) &&
-                   !ShouldBeInStateNodesMode(best);
+            bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best);
+            bool hasFastSyncBeenActive = best.Header >= PivotNumber;
+            bool notInBeamSync = !ShouldBeInBeamSyncMode(best);
+            bool notInFastSync = !ShouldBeInFastSyncMode(best);
+            bool notInStateSync = !ShouldBeInStateNodesMode(best);
+
+            return postPivotPeerAvailable &&
+                   hasFastSyncBeenActive &&
+                   notInBeamSync &&
+                   notInFastSync &&
+                   notInStateSync;
         }
 
         private bool AnyPostPivotPeerKnown(Snapshot best)
@@ -154,34 +150,37 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool ShouldBeInStateNodesMode(Snapshot best)
         {
-            return FastSyncEnabled &&
-                   // fast sync has started in the past
-                   best.Header >= PivotNumber &&
-                   AnyPostPivotPeerKnown(best) &&
-                   // not downloading headers and bodies any more
-                   !ShouldBeInFastSyncMode(best) && 
-                   // state is not yet downloaded
-                   (best.PeerBlock - best.State > FullSyncThreshold || 
-                    // headers went too far
-                    best.Header > best.State) && 
-                   // full sync is not in progress
-                   !IsInAStickyFullSyncMode(best) &&
-                   !IsWaitingForBlockProcessor(best) && 
-                   !IsInAStickyFullSyncMode(best);
+            bool fastSyncEnabled = FastSyncEnabled;
+            bool fastFastSyncBeenActive = best.Header >= PivotNumber;
+            bool hasAnyPostPivotPeer = AnyPostPivotPeerKnown(best);
+            bool notInFastSync = !ShouldBeInFastSyncMode(best);
+            bool stateNotDownloadedYet = (best.PeerBlock - best.State > FullSyncThreshold ||
+                                          best.Header > best.State);
+            bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
+
+            return fastSyncEnabled &&
+                   fastFastSyncBeenActive &&
+                   hasAnyPostPivotPeer &&
+                   notInFastSync &&
+                   stateNotDownloadedYet &&
+                   notInAStickyFullSync;
         }
 
         private bool ShouldBeInBeamSyncMode(Snapshot best)
         {
-            // we can run beam sync if we already downloaded all the headers after pivot (so not in fast sync)
-            // but we need to confirm that we ever started! (header > pivot)
-            // and we are running state nodes sync now
-            // and beam sync is enabled
-            return BeamSyncEnabled &&
-                   best.Header >= PivotNumber &&
-                   AnyPostPivotPeerKnown(best) &&
-                   ShouldBeInStateNodesMode(best) &&
-                   !IsInAStickyFullSyncMode(best) &&
-                   !ShouldBeInFastSyncMode(best);
+            bool beamSyncEnabled = BeamSyncEnabled; 
+            bool fastSyncHasBeenActive = best.Header >= PivotNumber;
+            bool hasAnyPostPivotPeer = AnyPostPivotPeerKnown(best);
+            bool inStateNodesSync = ShouldBeInStateNodesMode(best);
+            bool notInFastSync = !ShouldBeInFastSyncMode(best);
+            bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
+            
+            return beamSyncEnabled &&
+                   fastSyncHasBeenActive &&
+                   hasAnyPostPivotPeer &&
+                   inStateNodesSync &&
+                   notInAStickyFullSync &&
+                   notInFastSync;
         }
 
         private long? ReloadDataFromPeers()
@@ -194,7 +193,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
             return maxPeerBlock;
         }
-        
+
         public void Update()
         {
             if (_syncProgressResolver.IsLoadingBlocksFromDb())
@@ -202,9 +201,9 @@ namespace Nethermind.Synchronization.ParallelSync
                 UpdateSyncModes(SyncMode.DbLoad);
                 return;
             }
-            
+
             long? peerBlock = ReloadDataFromPeers();
-            
+
             // if there are no peers that we could use then we cannot sync
             if ((peerBlock ?? 0) == 0)
             {
@@ -267,12 +266,6 @@ namespace Nethermind.Synchronization.ParallelSync
             long block = _syncProgressResolver.FindBestFullBlock();
             long header = _syncProgressResolver.FindBestHeader();
 
-            if (processed > state && processed > beamState)
-            {
-                
-            }
-            
-
             Snapshot best = new Snapshot(processed, beamState, state, block, header, peerBlock);
             VerifySnapshot(best);
             return best;
@@ -309,7 +302,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 string message = $"Changing state to {newModes}";
                 if (_logger.IsWarn) _logger.Warn(message);
             }
-            
+
             SyncMode previous = Current;
             Current = newModes;
             Changed?.Invoke(this, new SyncModeChangedEventArgs(previous, Current));
@@ -346,7 +339,7 @@ namespace Nethermind.Synchronization.ParallelSync
             /// Best full block state in the state trie (may not be processed if we just finished state trie download)
             /// </summary>
             public long State { get; }
-            
+
             /// <summary>
             /// Best beam block state in the state trie (may not be processed if we just finished state trie download)
             /// </summary>
