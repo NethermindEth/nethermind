@@ -165,6 +165,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     // headers went too far
                     best.Header > best.State) && 
                    // full sync is not in progress
+                   !IsInAStickyFullSyncMode(best) &&
                    !IsWaitingForBlockProcessor(best) && 
                    !IsInAStickyFullSyncMode(best);
         }
@@ -179,6 +180,7 @@ namespace Nethermind.Synchronization.ParallelSync
                    best.Header >= PivotNumber &&
                    AnyPostPivotPeerKnown(best) &&
                    ShouldBeInStateNodesMode(best) &&
+                   !IsInAStickyFullSyncMode(best) &&
                    !ShouldBeInFastSyncMode(best);
         }
 
