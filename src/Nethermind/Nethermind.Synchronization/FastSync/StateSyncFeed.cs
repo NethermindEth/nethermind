@@ -89,9 +89,9 @@ namespace Nethermind.Synchronization.FastSync
 
         private Keccak _rootNode = Keccak.EmptyTreeHash;
 
-        private ISnapshotableDb _codeDb;
+        private IDb _codeDb;
         private ILogger _logger;
-        private ISnapshotableDb _stateDb;
+        private IDb _stateDb;
         private readonly IDb _tempDb;
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly IBlockTree _blockTree;
@@ -116,8 +116,8 @@ namespace Nethermind.Synchronization.FastSync
 
         public StateSyncFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, IBlockTree blockTree, ILogManager logManager)
         {
-            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
+            _codeDb = codeDb?.Innermost ?? throw new ArgumentNullException(nameof(codeDb));
+            _stateDb = stateDb?.Innermost ?? throw new ArgumentNullException(nameof(stateDb));
             _tempDb = tempDb ?? throw new ArgumentNullException(nameof(tempDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
@@ -192,7 +192,7 @@ namespace Nethermind.Synchronization.FastSync
                 object lockToTake = syncItem.NodeDataType == NodeDataType.Code ? _codeDbLock : _stateDbLock;
                 lock (lockToTake)
                 {
-                    ISnapshotableDb dbToCheck = syncItem.NodeDataType == NodeDataType.Code ? _codeDb : _stateDb;
+                    IDb dbToCheck = syncItem.NodeDataType == NodeDataType.Code ? _codeDb : _stateDb;
                     Interlocked.Increment(ref _dbChecks);
                     bool keyExists = dbToCheck.KeyExists(syncItem.Hash);
                     if (keyExists)
@@ -564,8 +564,8 @@ namespace Nethermind.Synchronization.FastSync
                         lock (_codeDbLock)
                         {
                             _codeDb[_fastSyncProgressKey.Bytes] = rlp.Bytes;
-                            _codeDb.Commit();
-                            _stateDb.Commit();
+                            // _codeDb.Commit();
+                            // _stateDb.Commit();
                         }
                     }
 
@@ -890,7 +890,7 @@ namespace Nethermind.Synchronization.FastSync
                 lock (_stateDbLock)
                 {
                     // if finished downloading
-                    if (_stateDb.Innermost.KeyExists(_rootNode))
+                    if (_stateDb.KeyExists(_rootNode))
                     {
                         VerifyPostSyncCleanUp();
                         FallAsleep();

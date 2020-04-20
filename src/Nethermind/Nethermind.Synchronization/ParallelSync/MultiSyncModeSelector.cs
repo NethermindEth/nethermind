@@ -155,7 +155,7 @@ namespace Nethermind.Synchronization.ParallelSync
             // and beam sync is enabled
             return BeamSyncEnabled
                    && ShouldBeInStateNodesMode(best)
-                   && !ShouldBeInFastBlocksMode(best);
+                   && !ShouldBeInFastSyncMode(best);
         }
 
         private long? ReloadDataFromPeers()

@@ -102,7 +102,7 @@ namespace Nethermind.Synchronization.BeamSync
         private void OnNewBlock(object sender, BlockEventArgs e)
         {
             Block block = e.Block;
-            if ((_syncModeSelector.Current & SyncMode.Full) == SyncMode.Full)
+            if (block.IsGenesis || (_syncModeSelector.Current & SyncMode.Full) == SyncMode.Full)
             {
                 // TODO: what if we do not want to store receipts?
                 _blockchainProcessor.Enqueue(block, ProcessingOptions.StoreReceipts);

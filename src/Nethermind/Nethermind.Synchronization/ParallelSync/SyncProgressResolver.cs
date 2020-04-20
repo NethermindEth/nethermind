@@ -98,10 +98,29 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public long FindBestProcessedBlock() => _blockTree.Head?.Number ?? -1;
         
+        // public bool IsFastBlocksFinished()
+        // {
+        //     bool isFastBlocks = _syncConfig.FastBlocks;
+        //     bool isBeamSync = _syncConfig.BeamSync;
+        //
+        //     // if pivot number is 0 then it is equivalent to fast blocks disabled
+        //     if (!isFastBlocks || _syncConfig.PivotNumberParsed == 0L)
+        //     {
+        //         return true;
+        //     }
+        //
+        //     bool anyHeaderDownloaded = (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= _syncConfig.PivotNumberParsed;
+        //     bool allHeadersDownloaded = (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1;
+        //     bool allReceiptsDownloaded = !_syncConfig.DownloadReceiptsInFastSync || (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) <= 1;
+        //     bool allBodiesDownloaded = !_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1;
+        //
+        //     return allBodiesDownloaded && allHeadersDownloaded && allReceiptsDownloaded
+        //            || isBeamSync && anyHeaderDownloaded;
+        // }
+        
         public bool IsFastBlocksFinished()
         {
             bool isFastBlocks = _syncConfig.FastBlocks;
-            bool isBeamSync = _syncConfig.BeamSync;
 
             // if pivot number is 0 then it is equivalent to fast blocks disabled
             if (!isFastBlocks || _syncConfig.PivotNumberParsed == 0L)
@@ -109,13 +128,11 @@ namespace Nethermind.Synchronization.ParallelSync
                 return true;
             }
 
-            bool anyHeaderDownloaded = (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= _syncConfig.PivotNumberParsed;
             bool allHeadersDownloaded = (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1;
             bool allReceiptsDownloaded = !_syncConfig.DownloadReceiptsInFastSync || (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) <= 1;
             bool allBodiesDownloaded = !_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1;
 
-            return allBodiesDownloaded && allHeadersDownloaded && allReceiptsDownloaded
-                   || isBeamSync && anyHeaderDownloaded;
+            return allBodiesDownloaded && allHeadersDownloaded && allReceiptsDownloaded;
         }
     }
 }

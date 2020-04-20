@@ -106,11 +106,9 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private bool AnyBatchesLeftToBeBuilt()
         {
-            bool anyHandlerDownloaded = _blockTree.LowestInsertedHeader != null;
-            bool beamSyncFinished = _syncConfig.BeamSync && anyHandlerDownloaded;
             bool genesisHeaderRequested = _lowestRequestedHeaderNumber == 0;
 
-            bool noBatchesLeft = AllHeadersDownloaded || beamSyncFinished || genesisHeaderRequested;
+            bool noBatchesLeft = AllHeadersDownloaded || genesisHeaderRequested;
             if (noBatchesLeft)
             {
                 if (AllHeadersDownloaded)

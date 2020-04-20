@@ -93,14 +93,11 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool AnyBatchesLeftToPrepare()
         {
             bool shouldDownloadBodies = _syncConfig.DownloadBodiesInFastSync;
-            bool isBeamSync = _syncConfig.BeamSync;
-            bool anyHeaderSynced = _blockTree.LowestInsertedHeader != null;
             bool allBodiesDownloaded = (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
             bool requestedGenesis = _lowestRequestedBodyHash == _blockTree.Genesis.Hash;
 
             bool noBatchesLeft = !shouldDownloadBodies
                                  || allBodiesDownloaded
-                                 || isBeamSync && anyHeaderSynced
                                  || requestedGenesis;
 
             if (noBatchesLeft)
