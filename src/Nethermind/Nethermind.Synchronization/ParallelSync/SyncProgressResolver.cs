@@ -75,11 +75,17 @@ namespace Nethermind.Synchronization.ParallelSync
              This scenario is still correct. It may be worth to analyze what happens
              when it causes a full sync vs node sync race at every block.*/
 
-            BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
             Block head = _blockTree.Head;
+            BlockHeader initialBestSuggested = _blockTree.BestSuggestedHeader;
+            BlockHeader bestSuggested = initialBestSuggested;
             long bestFullState = 0;
-            long maxLookup = Math.Min(_maxLookup * 2, (bestSuggested?.Number ?? 0L) - head?.Number ?? 0);
+            long maxLookup = Math.Min(_maxLookup * 2, (initialBestSuggested?.Number ?? 0L) - head?.Number ?? 0);
 
+            if (maxLookup <= 1)
+            {
+                
+            }
+            
             for (int i = 0; i < maxLookup + 1; i++)
             {
                 if (bestSuggested == null)
@@ -96,6 +102,11 @@ namespace Nethermind.Synchronization.ParallelSync
                 bestSuggested = _blockTree.FindHeader(bestSuggested.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             }
 
+            if (bestFullState == 0)
+            {
+                
+            }
+            
             return bestFullState;
         }
         
