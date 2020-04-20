@@ -27,6 +27,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.BeamSync;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.FastSync;
@@ -101,6 +102,30 @@ namespace Nethermind.Synchronization
                 StartFastSyncComponents();
                 StartStateSyncComponents();
             }
+
+            if (_syncConfig.FastSync && _syncConfig.BeamSync)
+            {
+                StartBeamSyncComponents();
+            }
+        }
+
+        private void StartBeamSyncComponents()
+        {
+            // so bad
+            BeamSyncDbProvider beamSyncDbProvider = _dbProvider as BeamSyncDbProvider;
+            ISyncFeed<StateSyncBatch> beamSyncFeed = beamSyncDbProvider.BeamSyncFeed;
+            StateSyncDispatcher dispatcher = new StateSyncDispatcher(beamSyncFeed, _syncPeerPool, new StateSyncAllocationStrategyFactory(), _logManager);
+            dispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    if (_logger.IsError) _logger.Error("Beam sync failed", t.Exception);
+                }
+                else
+                {
+                    if (_logger.IsInfo) _logger.Info("Beam sync completed.");
+                }
+            });
         }
 
         public async Task StopAsync()

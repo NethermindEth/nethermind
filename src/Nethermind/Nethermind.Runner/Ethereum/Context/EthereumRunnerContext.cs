@@ -81,7 +81,6 @@ namespace Nethermind.Runner.Ethereum.Context
         public DisposableStack DisposeStack { get; } = new DisposableStack();
         public List<IProducer> Producers { get; }= new List<IProducer>();
         public IGrpcServer? GrpcServer { get; set; }
-        public ISyncFeed<StateSyncBatch>? BeamSyncFeed { get; set; }
         public IRpcModuleProvider? RpcModuleProvider { get; set; }
         public IIPResolver? IpResolver { get; set; }
         public PrivateKey? NodeKey { get; set; }

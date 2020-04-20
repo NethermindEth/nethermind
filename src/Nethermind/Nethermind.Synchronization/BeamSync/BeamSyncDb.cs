@@ -31,8 +31,6 @@ namespace Nethermind.Synchronization.BeamSync
 {
     public class BeamSyncDb : SyncFeed<StateSyncBatch>, IDb
     {
-        private int _consumerId = FeedIdProvider.AssignId();
-
         public UInt256 RequiredPeerDifficulty { get; private set; } = UInt256.Zero;
 
         /// <summary>
@@ -123,7 +121,7 @@ namespace Nethermind.Synchronization.BeamSync
                         }
                     }
 
-                    fromMem ??= _tempDb[key];
+                    fromMem ??= _tempDb[key] ?? _stateDb[key];
                     if (fromMem == null)
                     {
                         if (Bytes.AreEqual(key, Keccak.Zero.Bytes))
@@ -232,7 +230,7 @@ namespace Nethermind.Synchronization.BeamSync
                 }
 
                 request = new StateSyncBatch();
-                request.ConsumerId = _consumerId;
+                request.ConsumerId = FeedId;
 
                 if (_requestedNodes.Count < 256)
                 {
@@ -265,7 +263,7 @@ namespace Nethermind.Synchronization.BeamSync
 
         public override SyncResponseHandlingResult HandleResponse(StateSyncBatch stateSyncBatch)
         {
-            if (stateSyncBatch.ConsumerId != _consumerId)
+            if (stateSyncBatch.ConsumerId != FeedId)
             {
                 return SyncResponseHandlingResult.InvalidFormat;
             }

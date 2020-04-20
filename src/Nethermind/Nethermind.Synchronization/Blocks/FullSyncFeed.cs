@@ -36,9 +36,15 @@ namespace Nethermind.Synchronization.Blocks
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;
         }
 
+private static bool ShouldBeActive(SyncMode syncMode)
+{
+return (syncMode & (SyncMode.Full | SyncMode.Beam)) != SyncMode.None;
+}
+
         private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
         {
-            if ((e.Current & SyncMode.Full) == SyncMode.Full)
+            // we will download blocks for processing both in beam sync and full sync mode
+            if (ShouldBeActive(e.SyncMode))
             {
                 Activate();
             }
@@ -51,7 +57,7 @@ namespace Nethermind.Synchronization.Blocks
 
         public override Task<BlocksRequest> PrepareRequest()
         {
-            if ((_syncModeSelector.Current & SyncMode.Full) == SyncMode.Full)
+            if (ShouldBeActive(e.SyncMode))
             {
                 return Task.FromResult(_blocksRequest);
             }

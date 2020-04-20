@@ -13,15 +13,28 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
-    public interface ISyncModeSelector
+    public class PendingSyncModeSelector : ISyncModeSelector
     {
-        SyncMode Current { get; }
+        private ISyncModeSelector _syncModeSelector;
 
-        event EventHandler<SyncModeChangedEventArgs> Changed;
+        public void SetActual(ISyncModeSelector syncModeSelector)
+        {
+            _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
+            _syncModeSelector.Changed += SyncModeSelectorOnChanged;
+        }
+
+        private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
+        {
+            Changed?.Invoke(this, e);
+        }
+
+        public SyncMode Current => _syncModeSelector?.Current ?? SyncMode.None;
+        public event EventHandler<SyncModeChangedEventArgs> Changed;
     }
 }

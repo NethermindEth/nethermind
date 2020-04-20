@@ -17,6 +17,7 @@
 using System;
 using System.IO;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -61,9 +62,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 BeamSyncDbProvider beamSyncProvider = new BeamSyncDbProvider(_context.DbProvider, _context.LogManager);
                 _context.DbProvider = beamSyncProvider;
-                _context.BeamSyncFeed = beamSyncProvider.BeamSyncFeed;
-                
-                StateSyncDispatcher dispatcher = new StateSyncDispatcher(beamSyncProvider.BeamSyncFeed, _context.SyncPeerPool, new StateSyncAllocationStrategyFactory(), _context.LogManager);
             }
         }
 

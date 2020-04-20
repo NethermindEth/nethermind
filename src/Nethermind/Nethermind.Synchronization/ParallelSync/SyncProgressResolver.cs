@@ -51,7 +51,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 return true;
             }
 
-            return _stateDb.Get(stateRoot) != null;
+            return _stateDb.Innermost.Get(stateRoot) != null;
         }
 
         public long FindBestFullState()
@@ -72,12 +72,6 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 if (bestSuggested == null)
                 {
-                    break;
-                }
-
-                if (_syncConfig.BeamSync)
-                {
-                    bestFullState = bestSuggested.Number;
                     break;
                 }
 

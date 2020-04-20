@@ -122,9 +122,9 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool ShouldBeInFullSyncMode(Snapshot best)
         {
             // it can be still in fast blocks but not any other sync mode
-            // if beam sync is enabled then we can start be syncing as soon as state nodes mode is enabled
-            return !ShouldBeInFastSyncMode(best) &&
-                   (!ShouldBeInStateNodesMode(best) || BeamSyncEnabled);
+            return !ShouldBeInBeamSyncMode(best) &&
+                   !ShouldBeInFastSyncMode(best) &&
+                   !ShouldBeInStateNodesMode(best);
         }
 
         private bool ShouldBeInFastBlocksMode(Snapshot best)
@@ -147,7 +147,17 @@ namespace Nethermind.Synchronization.ParallelSync
                    && !IsWaitingForBlockProcessor(best)
                    && !IsInAStickyFullSyncMode(best);
         }
-        
+
+        private bool ShouldBeInBeamSyncMode(Snapshot best)
+        {
+            // we can run beam sync if we already downloaded all the headers after pivot
+            // and we are running state nodes sync now
+            // and beam sync is enabled
+            return BeamSyncEnabled
+                   && ShouldBeInStateNodesMode(best)
+                   && !ShouldBeInFastBlocksMode(best);
+        }
+
         private long? ReloadDataFromPeers()
         {
             long? maxPeerBlock = null;
@@ -186,6 +196,10 @@ namespace Nethermind.Synchronization.ParallelSync
             Snapshot best = TakeSnapshot(peerBlock ?? 0);
 
             SyncMode newModes = SyncMode.None;
+            if (ShouldBeInBeamSyncMode(best))
+            {
+                newModes |= SyncMode.Beam;
+            }
 
             if (ShouldBeInFastBlocksMode(best))
             {

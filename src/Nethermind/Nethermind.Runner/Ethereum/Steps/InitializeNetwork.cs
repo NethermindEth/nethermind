@@ -102,6 +102,13 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_ctx.BlockTree, _ctx.ReceiptStorage, _ctx.DbProvider.StateDb, _syncConfig, _ctx.LogManager);
             MultiSyncModeSelector syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, _ctx.SyncPeerPool, _syncConfig, _ctx.LogManager);
+            if (_ctx.SyncModeSelector != null)
+            {
+                // this is really bad and is a result of lack of proper dependency management
+                PendingSyncModeSelector pendingOne = (PendingSyncModeSelector) _ctx.SyncModeSelector;
+                pendingOne.SetActual(syncModeSelector);
+            }
+            
             _ctx.SyncModeSelector = syncModeSelector;
             _ctx.DisposeStack.Push(syncModeSelector);
             
