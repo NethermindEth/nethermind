@@ -70,11 +70,23 @@ namespace Nethermind.Synchronization.ParallelSync
             _timer.Enabled = true;
         }
 
+        public void DisableTimer()
+        {
+            // for testing
+            _timer.Stop();
+        }
+
         public void Update()
         {
             if (_syncProgressResolver.IsLoadingBlocksFromDb())
             {
                 UpdateSyncModes(SyncMode.DbLoad);
+                return;
+            }
+            
+            if (!_syncConfig.SynchronizationEnabled)
+            {
+                UpdateSyncModes(SyncMode.None);
                 return;
             }
 
