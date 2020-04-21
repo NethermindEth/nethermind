@@ -419,7 +419,6 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 if (_receiptStorage.LowestInsertedReceiptBlock != null)
                 {
-                    _syncReport.FastBlocksPivotNumber = _pivotNumber;
                     _syncReport.FastBlocksReceipts.Update(_pivotNumber - (_receiptStorage.LowestInsertedReceiptBlock ?? _pivotNumber) + 1);
                 }
 

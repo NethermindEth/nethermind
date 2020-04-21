@@ -446,7 +446,6 @@ namespace Nethermind.Synchronization.FastBlocks
 
             if (_blockTree.LowestInsertedHeader != null)
             {
-                _syncReport.FastBlocksPivotNumber = _pivotNumber;
                 _syncReport.FastBlocksHeaders.Update(_pivotNumber - _blockTree.LowestInsertedHeader.Number + 1);
             }
 

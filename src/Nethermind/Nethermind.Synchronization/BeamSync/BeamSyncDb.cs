@@ -105,7 +105,7 @@ namespace Nethermind.Synchronization.BeamSync
                 {
                     if (BeamSyncContext.Cancelled.Value.IsCancellationRequested)
                     {
-                        throw new TaskCanceledException("Beam Sync task cancelled by a new block.");
+                        throw new TaskCanceledException("Found a better block.");
                     }
 
                     if (_isDisposed)

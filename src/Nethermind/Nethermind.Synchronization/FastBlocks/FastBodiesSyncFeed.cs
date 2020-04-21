@@ -360,7 +360,6 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 if (_blockTree.LowestInsertedBody != null)
                 {
-                    _syncReport.FastBlocksPivotNumber = _pivotNumber;
                     _syncReport.FastBlocksBodies.Update(_pivotNumber - _blockTree.LowestInsertedBody.Number + 1);
                 }
             }

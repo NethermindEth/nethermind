@@ -159,13 +159,13 @@ namespace Nethermind.Synchronization.BeamSync
                     processedBlock = processor.Process(block, ProcessingOptions.ReadOnlyChain | ProcessingOptions.IgnoreParentNotOnMainChain, NullBlockTracer.Instance);
                     if (processedBlock == null)
                     {
-                        if (_logger.IsInfo) _logger.Info($"Block {block.ToString(Block.Format.Short)} skipped in beam sync");
+                        if (_logger.IsDebug) _logger.Debug($"Block {block.ToString(Block.Format.Short)} skipped in beam sync");
                     }
                 }).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
-                        if (_logger.IsInfo) _logger.Info($"Stopped processing block {block} | {t.Exception?.Flatten().Message}");
+                        if (_logger.IsInfo) _logger.Info($"Stopped processing block {block} | {t.Exception?.Flatten().InnerException?.Message}");
                         if (_logger.IsDebug) _logger.Debug($"Details of beam sync failure {block} | {t.Exception}");
 
                         return;
@@ -173,7 +173,7 @@ namespace Nethermind.Synchronization.BeamSync
 
                     if (processedBlock != null)
                     {
-                        if (_logger.IsInfo) _logger.Info($"Enqueuing for standard processing {block}");
+                        if (_logger.IsDebug) _logger.Debug($"Enqueuing for standard processing {block}");
                         // at this stage we are sure to have all the state available
                         _blockchainProcessor.Enqueue(block, ProcessingOptions.IgnoreParentNotOnMainChain);
                     }
