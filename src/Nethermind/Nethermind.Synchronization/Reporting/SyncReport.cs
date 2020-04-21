@@ -39,7 +39,7 @@ namespace Nethermind.Synchronization.Reporting
         private int _reportId;
         private const int SyncReportFrequency = 5;
         private const int NoProgressStateSyncReportFrequency = 30;
-        private const int SyncShortPeersReportFrequency = 60;
+        private const int SyncShortPeersReportFrequency = SyncReportFrequency;
         private const int SyncFullPeersReportFrequency = 120;
 
         public double TickTime
@@ -161,6 +161,10 @@ namespace Nethermind.Synchronization.Reporting
             if ((currentSyncMode & SyncMode.Full) != SyncMode.Full)
             {
                 _logger.Info($"Peers {_syncPeerPool.UsefulPeerCountWhateverDiff} / {_syncPeerPool.PeerCount}");
+            }
+            else
+            {
+                _logger.Error($"Full");
             }
 
             if (currentSyncMode == SyncMode.None)

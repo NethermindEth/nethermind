@@ -266,12 +266,6 @@ namespace Nethermind.Synchronization.ParallelSync
             long block = _syncProgressResolver.FindBestFullBlock();
             long header = _syncProgressResolver.FindBestHeader();
 
-            if (state < processed)
-            {
-                // assuming no corrupted state here
-                state = processed;
-            }
-
             if (beamState < processed)
             {
                 // assuming no corrupted state here

@@ -375,7 +375,7 @@ namespace Nethermind.Network.P2P
             {
                 // TooManyPeers is a benign disconnect that we should not be worried about - many peers are running at their limit
                 // also any disconnects before the handshake and init do not have to be logged as they are most likely just rejecting any connections
-                if (_logger.IsDebug) _logger.Debug($"{this} invoking 'Disconnecting' event {disconnectReason} {disconnectType} {details}");
+                if (_logger.IsTrace) _logger.Trace($"{this} invoking 'Disconnecting' event {disconnectReason} {disconnectType} {details}");
             }
             else
             {

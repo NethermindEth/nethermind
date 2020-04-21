@@ -128,7 +128,7 @@ namespace Nethermind.Synchronization.ParallelSync
                                 // Logger.Warn($"Freeing allocation of {allocatedPeer}");
                                 Free(allocation);
                                 SyncResponseHandlingResult result = Feed.HandleResponse(request);
-                                ReactToHandlingResult(result, allocatedPeer);
+                                ReactToHandlingResult(request, result, allocatedPeer);
                             }
                             catch (Exception e)
                             {
@@ -141,7 +141,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     else
                     {
                         SyncResponseHandlingResult result = Feed.HandleResponse(request);
-                        ReactToHandlingResult(result, null);
+                        ReactToHandlingResult(request, result, null);
                     }
                 }
                 else if (currentStateLocal == SyncFeedState.Finished)
@@ -163,7 +163,7 @@ namespace Nethermind.Synchronization.ParallelSync
             return allocation;
         }
 
-        protected virtual void ReactToHandlingResult(SyncResponseHandlingResult result, PeerInfo peer)
+        protected virtual void ReactToHandlingResult(T request, SyncResponseHandlingResult result, PeerInfo peer)
         {
             if (peer == null)
             {
@@ -171,7 +171,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 return;
             }
 
-            Logger.Warn($"Result on {peer} is {result}");
+            Logger.Warn($"Result of processing {request} by {peer} is {result}");
             
             switch (result)
             {
