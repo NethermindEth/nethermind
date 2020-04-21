@@ -37,5 +37,12 @@ namespace Nethermind.Blockchain.Synchronization
         public string PivotTotalDifficulty { get; set; }
         public string PivotNumber { get; set; }
         public string PivotHash { get; set; }
+        public bool Verify()
+        {
+            bool beamRequirementsAreSatisfied = !BeamSync || (FastSync && FastBlocks);
+            bool receiptsRequirementsAreSatisfied = !DownloadReceiptsInFastSync || DownloadBodiesInFastSync;
+            return beamRequirementsAreSatisfied
+                   && receiptsRequirementsAreSatisfied;
+        }
     }
 }

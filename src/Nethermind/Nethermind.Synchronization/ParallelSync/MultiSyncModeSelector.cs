@@ -81,7 +81,7 @@ namespace Nethermind.Synchronization.ParallelSync
             (UInt256? peerDifficulty, long? peerBlock) = ReloadDataFromPeers();
 
             // if there are no peers that we could use then we cannot sync
-            if (peerDifficulty == null || peerBlock == null)
+            if (peerDifficulty == null || peerBlock == null || peerBlock == 0)
             {
                 UpdateSyncModes(SyncMode.None);
                 return;
@@ -90,7 +90,7 @@ namespace Nethermind.Synchronization.ParallelSync
             // to avoid expensive checks we make this simple check at the beginning
             if (!FastSyncEnabled)
             {
-                bool anyPeers = AnyPostPivotPeerKnown(peerBlock.Value) || AnyPeerWithHigherDifficultyKnown(peerDifficulty.Value);
+                bool anyPeers = peerBlock.Value > 0 && peerDifficulty.Value > _syncProgressResolver.ChainDifficulty;
                 UpdateSyncModes(anyPeers ? SyncMode.Full : SyncMode.None);
                 return;
             }

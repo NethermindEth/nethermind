@@ -32,5 +32,9 @@ namespace Nethermind.KeyStore.Config
         public int SymmetricEncrypterKeySize { get; set; } = 128;
         public int IVSize { get; set; } = 16;
         public string TestNodeKey { get; set; }
+        public bool Verify()
+        {
+            throw new System.NotImplementedException();
+        }
     }
 }

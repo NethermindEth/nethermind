@@ -21,5 +21,9 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo
         public string? ConnectionString { get; set; }
         public string Database { get; set; } = "ndm";
         public bool LogQueries { get; set; } = false;
+        public bool Verify()
+        {
+            throw new System.NotImplementedException();
+        }
     }
 }
