@@ -28,7 +28,7 @@ namespace Nethermind.Synchronization.ParallelSync
         /// <summary>
         /// Number of blocks before the best peer's head when we switch from fast sync to full sync
         /// </summary>
-        private const int FullSyncThreshold = 32;
+        public const int FastSyncLag = 32;
 
         private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly ISyncPeerPool _syncPeerPool;
@@ -40,7 +40,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool FastSyncEnabled => _syncConfig.FastSync;
         private bool FastBlocksEnabled => _syncConfig.FastSync && _syncConfig.FastBlocks;
         private bool FastBlocksFinished => !FastBlocksEnabled || _syncProgressResolver.IsFastBlocksFinished();
-        private long FastSyncCatchUpHeightDelta => _syncConfig.FastSyncCatchUpHeightDelta ?? FullSyncThreshold;
+        private long FastSyncCatchUpHeightDelta => _syncConfig.FastSyncCatchUpHeightDelta ?? FastSyncLag;
 
         private System.Timers.Timer _timer;
 
@@ -51,9 +51,9 @@ namespace Nethermind.Synchronization.ParallelSync
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
 
-            if (syncConfig.FastSyncCatchUpHeightDelta <= FullSyncThreshold)
+            if (syncConfig.FastSyncCatchUpHeightDelta <= FastSyncLag)
             {
-                if (_logger.IsWarn) _logger.Warn($"'FastSyncCatchUpHeightDelta' parameter is less or equal to {FullSyncThreshold}, which is a threshold of blocks always downloaded in full sync. 'FastSyncCatchUpHeightDelta' will have no effect.");
+                if (_logger.IsWarn) _logger.Warn($"'FastSyncCatchUpHeightDelta' parameter is less or equal to {FastSyncLag}, which is a threshold of blocks always downloaded in full sync. 'FastSyncCatchUpHeightDelta' will have no effect.");
             }
 
             PivotNumber = _syncConfig.PivotNumberParsed;
@@ -209,7 +209,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 // (catch up after node is off for a while
                 // OR standard fast sync)
                 !IsInAStickyFullSyncMode(best) &&
-                heightDelta > FullSyncThreshold;
+                heightDelta > FastSyncLag;
         }
 
         private bool ShouldBeInFullSyncMode(Snapshot best)
@@ -256,7 +256,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool fastFastSyncBeenActive = best.Header >= PivotNumber;
             bool hasAnyPostPivotPeer = AnyPostPivotPeerKnown(best.PeerBlock);
             bool notInFastSync = !ShouldBeInFastSyncMode(best);
-            bool stateNotDownloadedYet = (best.PeerBlock - best.State > FullSyncThreshold ||
+            bool stateNotDownloadedYet = (best.PeerBlock - best.State > FastSyncLag ||
                                           best.Header > best.State);
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
 

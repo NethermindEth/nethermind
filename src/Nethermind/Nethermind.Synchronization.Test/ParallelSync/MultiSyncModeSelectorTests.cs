@@ -37,11 +37,13 @@ namespace Nethermind.Synchronization.Test.ParallelSync
     {
         public static class Scenario
         {
-            public const long Pivot = 1024;
-
             public const long FastSyncCatchUpHeightDelta = 64;
 
-            public static BlockHeader ChainHead { get; set; } = Build.A.Block.WithTotalDifficulty(Pivot * 10).WithNumber(Pivot * 10).TestObject.Header;
+            public static BlockHeader Pivot { get; set; } = Build.A.Block.WithTotalDifficulty((UInt256)1024).WithNumber(1024).TestObject.Header;
+            
+            public static BlockHeader MidWayToPivot { get; set; } = Build.A.Block.WithTotalDifficulty((UInt256)512).WithNumber(512).TestObject.Header;
+            
+            public static BlockHeader ChainHead { get; set; } = Build.A.Block.WithTotalDifficulty(Pivot.TotalDifficulty + 2048).WithNumber(Pivot.Number + 2048).TestObject.Header;
 
             public static BlockHeader ValidGenesis { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(UInt256.One).Genesis.TestObject.Header;
 
@@ -88,7 +90,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     SyncConfig.FastSync = false;
                     SyncConfig.FastBlocks = false;
                     SyncConfig.BeamSync = false;
-                    SyncConfig.PivotNumber = Pivot.ToString();
+                    SyncConfig.PivotNumber = Pivot.Number.ToString();
                     SyncConfig.PivotHash = Keccak.Zero.ToString();
                     SyncConfig.SynchronizationEnabled = true;
                     SyncConfig.DownloadBodiesInFastSync = true;
@@ -145,6 +147,60 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     );
                     return this;
                 }
+                
+                public ScenarioBuilder ThisNodeIsInTheMiddleOfFastSyncAndFastBlocks()
+                {
+                    _syncProgressSetups.Add(
+                        () =>
+                        {
+                            SyncProgressResolver.FindBestHeader().Returns(Pivot.Number + 16);
+                            SyncProgressResolver.FindBestFullBlock().Returns(0);
+                            SyncProgressResolver.FindBestBeamState().Returns(0);
+                            SyncProgressResolver.FindBestFullState().Returns(0);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(0);
+                            SyncProgressResolver.IsFastBlocksFinished().Returns(false);
+                            SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
+                            return "fully synced node";
+                        }
+                    );
+                    return this;
+                }
+                
+                public ScenarioBuilder ThisNodeFinishedFastBlocksButNotFastSync()
+                {
+                    _syncProgressSetups.Add(
+                        () =>
+                        {
+                            SyncProgressResolver.FindBestHeader().Returns(Pivot.Number + 16);
+                            SyncProgressResolver.FindBestFullBlock().Returns(0);
+                            SyncProgressResolver.FindBestBeamState().Returns(0);
+                            SyncProgressResolver.FindBestFullState().Returns(0);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(0);
+                            SyncProgressResolver.IsFastBlocksFinished().Returns(true);
+                            SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
+                            return "fully synced node";
+                        }
+                    );
+                    return this;
+                }
+                
+                public ScenarioBuilder ThisNodeJustFinishedFastBlocksAndFastSync()
+                {
+                    _syncProgressSetups.Add(
+                        () =>
+                        {
+                            SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number - MultiSyncModeSelector.FastSyncLag);
+                            SyncProgressResolver.FindBestFullBlock().Returns(0);
+                            SyncProgressResolver.FindBestBeamState().Returns(0);
+                            SyncProgressResolver.FindBestFullState().Returns(0);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(0);
+                            SyncProgressResolver.IsFastBlocksFinished().Returns(true);
+                            SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
+                            return "fully synced node";
+                        }
+                    );
+                    return this;
+                }
 
                 public ScenarioBuilder AndAPeerWithGenesisOnlyIsKnown()
                 {
@@ -161,6 +217,12 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 public ScenarioBuilder GoodPeersAreKnown()
                 {
                     AddPeeringSetup("good network", AddPeer(ChainHead));
+                    return this;
+                }
+                
+                public ScenarioBuilder AndPeersOnlyUsefulForFastBlocksAreKnown()
+                {
+                    AddPeeringSetup("good network", AddPeer(MidWayToPivot));
                     return this;
                 }
 
@@ -197,6 +259,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     GoodPeersAreKnown();
                     AndAPeerWithHighDiffGenesisOnlyIsKnown();
                     AndAPeerWithGenesisOnlyIsKnown();
+                    AndPeersOnlyUsefulForFastBlocksAreKnown();
                     return this;
                 }
                 
@@ -204,6 +267,9 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 {
                     IfThisNodeHasNeverSyncedBefore();
                     ThisNodeIsFullySynced();
+                    ThisNodeIsInTheMiddleOfFastSyncAndFastBlocks();
+                    ThisNodeFinishedFastBlocksButNotFastSync();
+                    ThisNodeJustFinishedFastBlocksAndFastSync();
                     return this;
                 }
 
@@ -397,6 +463,46 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .GoodPeersAreKnown()
                 .BeamSyncIsConfigured()
                 .TheSyncModeShouldBe(SyncMode.FastBlocks);
+        }
+        
+        [Test]
+        public void In_the_middle_of_fast_sync_with_fast_blocks()
+        {
+            Scenario.GoesLikeThis()
+                .ThisNodeIsInTheMiddleOfFastSyncAndFastBlocks()
+                .GoodPeersAreKnown()
+                .FastSyncWithFastBlocksIsConfigured()
+                .TheSyncModeShouldBe(SyncMode.FastBlocks | SyncMode.FastSync);
+        }
+        
+        [Test]
+        public void In_the_middle_of_fast_sync_with_fast_blocks_with_lesser_peers()
+        {
+            Scenario.GoesLikeThis()
+                .ThisNodeIsInTheMiddleOfFastSyncAndFastBlocks()
+                .AndPeersOnlyUsefulForFastBlocksAreKnown()
+                .FastSyncWithFastBlocksIsConfigured()
+                .TheSyncModeShouldBe(SyncMode.FastBlocks);
+        }
+        
+        [Test]
+        public void In_the_middle_of_fast_sync()
+        {
+            Scenario.GoesLikeThis()
+                .ThisNodeIsInTheMiddleOfFastSyncAndFastBlocks()
+                .GoodPeersAreKnown()
+                .FastSyncWithoutFastBlocksIsConfigured()
+                .TheSyncModeShouldBe(SyncMode.FastSync);
+        }
+        
+        [Test]
+        public void In_the_middle_of_fast_sync_and_lesser_peers_are_known()
+        {
+            Scenario.GoesLikeThis()
+                .ThisNodeIsInTheMiddleOfFastSyncAndFastBlocks()
+                .AndPeersOnlyUsefulForFastBlocksAreKnown()
+                .FastSyncWithoutFastBlocksIsConfigured()
+                .TheSyncModeShouldBe(SyncMode.None);
         }
 
         // [Test]
