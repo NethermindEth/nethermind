@@ -280,6 +280,7 @@ namespace Nethermind.Synchronization.BeamSync
                 return SyncResponseHandlingResult.InvalidFormat;
             }
 
+            bool wasDataInvalid = false;
             int consumed = 0;
 
             byte[][] data = stateSyncBatch.Responses;
@@ -298,7 +299,8 @@ namespace Nethermind.Synchronization.BeamSync
                         }
                         else
                         {
-                            if (_logger.IsWarn) _logger.Warn("Received a node data which does not match hash.");
+                            wasDataInvalid = true;
+                            if (_logger.IsDebug) _logger.Debug("Received node data which does not match hash.");
                         }
                     }
                     else
@@ -315,6 +317,11 @@ namespace Nethermind.Synchronization.BeamSync
             }
 
             _autoReset.Set();
+            if (wasDataInvalid)
+            {
+                return SyncResponseHandlingResult.InvalidFormat;
+            }
+            
             return consumed == 0 ? SyncResponseHandlingResult.NoData : SyncResponseHandlingResult.OK;
         }
 
