@@ -169,7 +169,7 @@ namespace Nethermind.Synchronization
             }
 
             ValidateSeal(block, peerInfo);
-            if (_syncModeSelector.Current == SyncMode.Full)
+            if ((_syncModeSelector.Current & (SyncMode.Beam | SyncMode.Full)) != SyncMode.None)
             {
                 LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
                 SyncBlock(block, peerInfo);
