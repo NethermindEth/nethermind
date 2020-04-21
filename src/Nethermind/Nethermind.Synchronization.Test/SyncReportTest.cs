@@ -38,7 +38,7 @@ namespace Nethermind.Synchronization.Test
         {
             ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
             ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
-            pool.UsefulPeerCount.Returns(1);
+            pool.UsefulPeerCountWhateverDiff.Returns(1);
             
             Queue<SyncMode> _syncModes = new Queue<SyncMode>();
             _syncModes.Enqueue(SyncMode.None);

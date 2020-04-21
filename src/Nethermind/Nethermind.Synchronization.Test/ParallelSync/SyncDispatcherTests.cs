@@ -86,7 +86,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             public IEnumerable<PeerInfo> UsefulPeers { get; }
             public IEnumerable<PeerInfo> UsefulPeersWhateverDiff { get; }
             public int PeerCount { get; }
-            public int UsefulPeerCount { get; }
+            public int UsefulPeerCountWhateverDiff { get; }
             public int PeerMaxCount { get; }
 
             public void AddPeer(ISyncPeer syncPeer)

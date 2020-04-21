@@ -67,7 +67,7 @@ namespace Nethermind.Synchronization.Peers
         /// <summary>
         /// Number of peers that are not sleeping
         /// </summary>
-        int UsefulPeerCount { get; }
+        int UsefulPeerCountWhateverDiff { get; }
 
         /// <summary>
         /// Max number of peers

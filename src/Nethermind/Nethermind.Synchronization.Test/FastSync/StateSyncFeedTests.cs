@@ -639,7 +639,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             _feed.SetNewStateRoot(1024, Keccak.Compute("the_peer_has_no_data"));
             _feed.Activate();
             await Task.WhenAny(_stateSyncDispatcher.Start(CancellationToken.None), Task.Delay(1000)).Unwrap()
-                .ContinueWith(t => { Assert.AreEqual(0, _pool.UsefulPeerCount); });
+                .ContinueWith(t => { Assert.AreEqual(0, _pool.UsefulPeerCountWhateverDiff); });
         }
 
         [Test]
@@ -652,7 +652,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             _feed.SetNewStateRoot(1024, Keccak.Compute("the_peer_has_no_data"));
             _feed.Activate();
             await Task.WhenAny(_stateSyncDispatcher.Start(CancellationToken.None), Task.Delay(1000)).Unwrap()
-                .ContinueWith(t => { Assert.AreEqual(0, _pool.UsefulPeerCount); });
+                .ContinueWith(t => { Assert.AreEqual(0, _pool.UsefulPeerCountWhateverDiff); });
         }
     }
 }

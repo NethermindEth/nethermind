@@ -257,7 +257,7 @@ namespace Nethermind.Synchronization.Peers
         }
 
         public int PeerCount => _peers.Count;
-        public int UsefulPeerCount => UsefulPeers.Count();
+        public int UsefulPeerCountWhateverDiff => UsefulPeersWhateverDiff.Count();
         public int PeerMaxCount { get; }
 
         public void RefreshTotalDifficulty(PeerInfo peerInfo, Keccak blockHash)
