@@ -101,7 +101,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             TxPoolModule txPoolModule = new TxPoolModule(_context.BlockTree, _context.TxPoolInfoProvider, _context.LogManager);
             _context.RpcModuleProvider.Register(new SingletonModulePool<ITxPoolModule>(txPoolModule, true));
 
-            NetModule netModule = new NetModule(_context.LogManager, new NetBridge(_context.Enode, _context.SyncServer, _context.PeerManager));
+            NetModule netModule = new NetModule(_context.LogManager, new NetBridge(_context.Enode, _context.SyncServer));
             _context.RpcModuleProvider.Register(new SingletonModulePool<INetModule>(netModule, true));
 
             ParityModule parityModule = new ParityModule(_context.EthereumEcdsa, _context.TxPool, _context.BlockTree, _context.ReceiptFinder, _context.LogManager);

@@ -61,6 +61,7 @@ namespace Nethermind.Synchronization.Test
             SyncConfig syncConfig = new SyncConfig();
             SyncProgressResolver resolver = new SyncProgressResolver(_blockTree, _receiptStorage, _stateDb, dbProvider.BeamStateDb, syncConfig, LimboLogs.Instance);
             MultiSyncModeSelector syncModeSelector = new MultiSyncModeSelector(resolver, _pool, syncConfig, LimboLogs.Instance);
+            _synchronizer = new Synchronizer(dbProvider, MainnetSpecProvider.Instance, _blockTree, _receiptStorage, Always.Valid,Always.Valid, _pool, stats, syncModeSelector, syncConfig, LimboLogs.Instance);
             _syncServer = new SyncServer(_stateDb, _codeDb, _blockTree, _receiptStorage, Always.Valid, Always.Valid, _pool, syncModeSelector, quickConfig, LimboLogs.Instance);
         }
 
@@ -148,7 +149,7 @@ namespace Nethermind.Synchronization.Test
             _pool.AddPeer(peer);
 
             BlockTreeBuilder.ExtendTree(_remoteBlockTree, SyncBatchSize.Max * 2);
-            _syncServer.AddNewBlock(_remoteBlockTree.RetrieveHeadBlock(), peer.Node);
+            _syncServer.AddNewBlock(_remoteBlockTree.RetrieveHeadBlock(), peer);
             
             semaphore.Wait(_standardTimeoutUnit);
             semaphore.Wait(_standardTimeoutUnit);
@@ -173,7 +174,7 @@ namespace Nethermind.Synchronization.Test
             _pool.AddPeer(peer);
 
             Block block = Build.A.Block.WithParent(_remoteBlockTree.Head).WithTotalDifficulty((_remoteBlockTree.Head.TotalDifficulty ?? 0) + 1).TestObject;
-            _syncServer.AddNewBlock(block, peer.Node);
+            _syncServer.AddNewBlock(block, peer);
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 
@@ -212,7 +213,7 @@ namespace Nethermind.Synchronization.Test
 
             resetEvent.Reset();
 
-            _syncServer.AddNewBlock(splitBlockChild, miner1.Node);
+            _syncServer.AddNewBlock(splitBlockChild, miner1);
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 
@@ -245,7 +246,7 @@ namespace Nethermind.Synchronization.Test
 
             resetEvent.Reset();
 
-            _syncServer.AddNewBlock(miner1Tree.RetrieveHeadBlock(), miner1.Node);
+            _syncServer.AddNewBlock(miner1Tree.RetrieveHeadBlock(), miner1);
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 

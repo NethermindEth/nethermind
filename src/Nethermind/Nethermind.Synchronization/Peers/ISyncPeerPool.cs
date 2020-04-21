@@ -25,8 +25,6 @@ namespace Nethermind.Synchronization.Peers
 {
     public interface ISyncPeerPool : IDisposable
     {
-        bool TryFind(PublicKey nodeId, out PeerInfo peerInfo);
-
         Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, int timeoutMilliseconds = 0);
 
         void Free(SyncPeerAllocation syncPeerAllocation);
@@ -45,7 +43,7 @@ namespace Nethermind.Synchronization.Peers
         /// <summary>
         /// All peers maintained by the pool
         /// </summary>
-        IEnumerable<PeerInfo> AllPeers { get; }
+        IEnumerable<ISyncPeer> AllPeers { get; }
 
         /// <summary>
         /// All the useful peers available for allocation.
@@ -90,9 +88,9 @@ namespace Nethermind.Synchronization.Peers
         /// It is hard to track total difficulty so occasionally we send a total difficulty request to update node information.
         /// Specifically when nodes send HintBlock message they do not attach total difficulty information.
         /// </summary>
-        /// <param name="peerInfo"></param>
+        /// <param name="syncPeer"></param>
         /// <param name="hash">Hash of a block that we know might be the head block of the peer</param>
-        void RefreshTotalDifficulty(PeerInfo peerInfo, Keccak hash);
+        void RefreshTotalDifficulty(ISyncPeer syncPeer, Keccak hash);
 
         /// <summary>
         /// Starts the pool loops.

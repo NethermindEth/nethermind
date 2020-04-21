@@ -51,7 +51,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             {
                 ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
                 syncPeer.ClientId.Returns("Nethermind");
-                syncPeer.TotalDifficultyOnSessionStart.Returns(UInt256.One);
+                syncPeer.TotalDifficulty.Returns(UInt256.One);
                 SyncPeerAllocation allocation = new SyncPeerAllocation(new PeerInfo(syncPeer));
                 allocation.AllocateBestPeer(null, null, null);
                 return Task.FromResult(allocation);
@@ -72,17 +72,13 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             public void ReportWeakPeer(PeerInfo peerInfo)
             {
             }
-
-            public void ReportWeakPeer(SyncPeerAllocation allocation)
-            {
-            }
-
+            
             public void WakeUpAll()
             {
                 throw new NotImplementedException();
             }
 
-            public IEnumerable<PeerInfo> AllPeers { get; }
+            public IEnumerable<ISyncPeer> AllPeers { get; }
             public IEnumerable<PeerInfo> UsefulPeers { get; }
             public IEnumerable<PeerInfo> UsefulPeersWhateverDiff { get; }
             public int PeerCount { get; }
@@ -97,10 +93,10 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             {
             }
 
-            public void RefreshTotalDifficulty(PeerInfo peerInfo, Keccak hash)
+            public void RefreshTotalDifficulty(ISyncPeer syncPeer, Keccak hash)
             {
             }
-
+            
             public void Start()
             {
             }
@@ -108,18 +104,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             public Task StopAsync()
             {
                 return Task.CompletedTask;
-            }
-
-            public event EventHandler PeerAdded
-            {
-                add { }
-                remove { }
-            }
-
-            public event EventHandler PeerRemoved
-            {
-                add { }
-                remove { }
             }
         }
 

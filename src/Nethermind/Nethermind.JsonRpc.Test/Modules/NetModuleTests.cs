@@ -42,7 +42,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void NetPeerCountSuccessTest()
         {
             Enode enode = new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303);
-            NetBridge netBridge = new NetBridge(enode, Substitute.For<ISyncServer>(), Substitute.For<IPeerManager>());
+            NetBridge netBridge = new NetBridge(enode, Substitute.For<ISyncServer>());
             NetModule module = new NetModule(LimboLogs.Instance, netBridge);
             string response = RpcTest.TestSerializedRequest<INetModule>(module, "net_peerCount");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x0\",\"id\":67}", response);
@@ -52,7 +52,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void NetVersionSuccessTest()
         {
             Enode enode = new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303);
-            NetBridge netBridge = new NetBridge(enode, Substitute.For<ISyncServer>(), Substitute.For<IPeerManager>());
+            NetBridge netBridge = new NetBridge(enode, Substitute.For<ISyncServer>());
             NetModule module = new NetModule(LimboLogs.Instance, netBridge);
             string response = RpcTest.TestSerializedRequest<INetModule>(module, "net_version");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0\",\"id\":67}", response);
@@ -62,7 +62,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void NetListeningSuccessTest()
         {
             Enode enode = new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303);
-            NetBridge netBridge = new NetBridge(enode, Substitute.For<ISyncServer>(), Substitute.For<IPeerManager>());
+            NetBridge netBridge = new NetBridge(enode, Substitute.For<ISyncServer>());
             NetModule module = new NetModule(LimboLogs.Instance, netBridge);
             string response = RpcTest.TestSerializedRequest<INetModule>(module, "net_listening");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}", response);

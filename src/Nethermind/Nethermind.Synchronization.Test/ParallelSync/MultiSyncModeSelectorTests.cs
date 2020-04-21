@@ -48,11 +48,13 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         {
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-            syncPeer.TotalDifficultyOnSessionStart.Returns((UInt256) (1024 * 1024));
+            syncPeer.IsInitialized.Returns(true);
+            syncPeer.TotalDifficulty.Returns((UInt256) (1024 * 1024));
+            syncPeer.HeadNumber.Returns(0);
 
-            PeerInfo peerInfo1 = new PeerInfo(syncPeer) {HeadNumber = 0, IsInitialized = true};
-            syncPeerPool.AllPeers.Returns(new[] {peerInfo1});
-            syncPeerPool.UsefulPeers.Returns(new[] {peerInfo1});
+            PeerInfo peerInfo1 = new PeerInfo(syncPeer);
+            syncPeerPool.AllPeers.Returns(new[] {syncPeer});
+            syncPeerPool.UsefulPeersWhateverDiff.Returns(new[] {peerInfo1});
             syncPeerPool.PeerCount.Returns(1);
 
             SyncConfig syncConfig = new SyncConfig();
@@ -61,7 +63,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             syncConfig.PivotHash = null;
 
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            syncProgressResolver.ChainDifficulty.Returns(UInt256.One);
 
             MultiSyncModeSelector selector = new MultiSyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
             Assert.AreEqual(SyncMode.None, selector.Current);
@@ -93,7 +95,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                 Assert.GreaterOrEqual(testCase.BestLocalHeader, testCase.BestLocalState, "checking if the test case is correct - local state always less then local header");
                 Assert.GreaterOrEqual(testCase.BestLocalHeader, testCase.BestLocalFullBlock, "checking if the test case is correct - local full block always less then local header");
-                peerInfo1.HeadNumber = testCase.BestRemote;
+                peerInfo1.HeadNumber.Returns(testCase.BestRemote);
                 selector.Update();
                 Assert.AreEqual(testCase.ExpectedState, selector.Current, testCase.Description);
             }
@@ -188,15 +190,12 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         private static MultiSyncModeSelector BuildSelector(SyncConfig syncConfig, long bestRemote = 0L, long bestHeader = 0L, long bestBlock = 0L, long bestLocalState = 0L, long bestProcessed = 0L)
         {
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-            ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-            syncPeer.TotalDifficultyOnSessionStart.Returns((UInt256) (1024 * 1024));
-
-            PeerInfo peerInfo1 = new PeerInfo(syncPeer) {HeadNumber = bestRemote, IsInitialized = true};
-            PeerInfo peerInfo2 = new PeerInfo(syncPeer) {HeadNumber = bestRemote, IsInitialized = true};
-            PeerInfo peerInfo3 = new PeerInfo(syncPeer) {HeadNumber = 0, IsInitialized = true};
-            PeerInfo peerInfo4 = new PeerInfo(syncPeer) {HeadNumber = bestRemote * 2, IsInitialized = false};
-            syncPeerPool.AllPeers.Returns(new[] {peerInfo1, peerInfo2, peerInfo3, peerInfo4});
-            syncPeerPool.UsefulPeers.Returns(new[] {peerInfo1, peerInfo2});
+            PeerInfo peerInfo1 = BuildPeerInfo(bestRemote, true);
+            PeerInfo peerInfo2 = BuildPeerInfo(bestRemote, true);
+            PeerInfo peerInfo3 = BuildPeerInfo(0, true);
+            PeerInfo peerInfo4 = BuildPeerInfo(bestRemote * 2, false);
+            syncPeerPool.AllPeers.Returns(new ISyncPeer[] { });
+            syncPeerPool.UsefulPeersWhateverDiff.Returns(new[] {peerInfo1, peerInfo2});
             syncPeerPool.PeerCount.Returns(3);
 
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
@@ -205,15 +204,26 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             syncProgressResolver.FindBestFullState().Returns(bestLocalState);
             syncProgressResolver.IsFastBlocksFinished().Returns(true);
             syncProgressResolver.FindBestProcessedBlock().Returns(bestProcessed);
+            syncProgressResolver.ChainDifficulty.Returns(UInt256.MaxValue);
 
             MultiSyncModeSelector selector = new MultiSyncModeSelector(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
             return selector;
         }
 
+        private static PeerInfo BuildPeerInfo(long bestRemote, bool isInitialized)
+        {
+            ISyncPeer syncPeer1 = Substitute.For<ISyncPeer>();
+            syncPeer1.TotalDifficulty.Returns((UInt256) (1024 * 1024));
+            syncPeer1.HeadNumber.Returns(bestRemote);
+            syncPeer1.IsInitialized.Returns(isInitialized);
+            PeerInfo peerInfo1 = new PeerInfo(syncPeer1);
+            return peerInfo1;
+        }
+
         private static MultiSyncModeSelector BuildSelectorNoPeers(bool useFastSync, long bestRemote = 0L, long bestHeader = 0L, long bestBlock = 0L, long bestLocalState = 0L)
         {
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-            syncPeerPool.AllPeers.Returns(new PeerInfo[] { });
+            syncPeerPool.AllPeers.Returns(new ISyncPeer[] { });
             syncPeerPool.PeerCount.Returns(0);
 
             SyncConfig syncConfig = new SyncConfig();

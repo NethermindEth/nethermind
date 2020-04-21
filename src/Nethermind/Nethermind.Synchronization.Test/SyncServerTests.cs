@@ -41,19 +41,14 @@ namespace Nethermind.Synchronization.Test
         private ISyncPeerPool _peerPool;
         private ISynchronizer _synchronizer;
         private SyncServer _syncServer;
-        private Node _nodeWhoSentTheBlock;
+        private ISyncPeer _nodeWhoSentTheBlock;
 
         [SetUp]
         public void Setup()
         {
-            _nodeWhoSentTheBlock = new Node(TestItem.PublicKeyA, "127.0.0.1", 30303);
+            _nodeWhoSentTheBlock = Substitute.For<ISyncPeer>();
+            _nodeWhoSentTheBlock.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
             _peerPool = Substitute.For<ISyncPeerPool>();
-            _peerPool.TryFind(_nodeWhoSentTheBlock.Id, out PeerInfo peerInfo).Returns(x =>
-            {
-                ISyncPeer peer = Substitute.For<ISyncPeer>();
-                x[1] = new PeerInfo(peer);
-                return true;
-            });
 
             _blockTree = Substitute.For<IBlockTree>();
             _synchronizer = Substitute.For<ISynchronizer>();

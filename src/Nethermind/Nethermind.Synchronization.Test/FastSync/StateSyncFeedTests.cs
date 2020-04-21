@@ -186,8 +186,10 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             public Node Node { get; }
             public string ClientId => "executorMock";
-            public string EthDetails => "eth.64";
-            public UInt256 TotalDifficultyOnSessionStart => UInt256.Zero;
+            public Keccak HeadHash { get; set; }
+            public long HeadNumber { get; set; }
+            public UInt256 TotalDifficulty { get; set; }
+            public bool IsInitialized { get; set; }
 
             public void Disconnect(DisconnectReason reason, string details)
             {

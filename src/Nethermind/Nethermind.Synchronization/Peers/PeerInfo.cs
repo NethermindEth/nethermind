@@ -17,9 +17,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
 [assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
@@ -33,7 +31,6 @@ namespace Nethermind.Synchronization.Peers
         public PeerInfo(ISyncPeer syncPeer)
         {
             SyncPeer = syncPeer;
-            TotalDifficulty = syncPeer.TotalDifficultyOnSessionStart;
             RecognizeClientType(syncPeer);
         }
 
@@ -63,14 +60,16 @@ namespace Nethermind.Synchronization.Peers
 
         public PeerClientType PeerClientType { get; private set; }
         public bool IsAllocated { get; set; }
-        public bool IsInitialized { get; set; }
+        public bool IsInitialized => SyncPeer.IsInitialized;
+        
         public DateTime? SleepingSince { get; set; }
         public bool IsSleepingDeeply { get; set; }
         public bool IsAsleep => SleepingSince != null;
         public ISyncPeer SyncPeer { get; }
-        public UInt256 TotalDifficulty { get; set; }
-        public long HeadNumber { get; set; }
-        public Keccak HeadHash { get; set; }
+
+        public UInt256 TotalDifficulty => SyncPeer.TotalDifficulty;
+        public long HeadNumber => SyncPeer.HeadNumber;
+
         public bool HasBeenDisconnected { get; private set; }
 
         public void MarkDisconnected()
@@ -83,6 +82,6 @@ namespace Nethermind.Synchronization.Peers
             return Interlocked.Increment(ref _weakness);
         }
 
-        public override string ToString() => $"[Peer|{SyncPeer?.Node:s}|{HeadNumber}|{SyncPeer?.ClientId}|{SyncPeer?.EthDetails}]";
+        public override string ToString() => $"[{SyncPeer}|type|lastaction|currentstate]";
     }
 }

@@ -76,14 +76,6 @@ namespace Nethermind.Synchronization.Peers
             Replaced?.Invoke(this, args);
         }
 
-        public void Refresh()
-        {
-            if (Current != null)
-            {
-                Refreshed?.Invoke(this, EventArgs.Empty);
-            }
-        }
-
         public void Cancel()
         {
             PeerInfo current = Current;
@@ -105,8 +97,6 @@ namespace Nethermind.Synchronization.Peers
         public event EventHandler<AllocationChangeEventArgs> Replaced;
 
         public event EventHandler<AllocationChangeEventArgs> Cancelled;
-
-        public event EventHandler Refreshed;
 
         public override string ToString()
         {

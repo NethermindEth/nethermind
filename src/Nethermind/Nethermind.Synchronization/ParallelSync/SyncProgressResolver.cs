@@ -21,6 +21,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 
 namespace Nethermind.Synchronization.ParallelSync
@@ -143,6 +144,8 @@ namespace Nethermind.Synchronization.ParallelSync
         }
 
         public long FindBestProcessedBlock() => _blockTree.Head?.Number ?? -1;
+
+        public UInt256 ChainDifficulty => _blockTree.BestSuggestedBody?.TotalDifficulty ?? UInt256.Zero;
 
         public bool IsFastBlocksFinished()
         {

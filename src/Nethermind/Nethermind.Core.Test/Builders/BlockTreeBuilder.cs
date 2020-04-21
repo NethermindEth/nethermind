@@ -204,11 +204,11 @@ namespace Nethermind.Core.Test.Builders
             blockTree.UpdateMainChain(new[] {block}, true);
         }
 
-        public static void ExtendTree(IBlockTree blockTree, int newChainLength)
+        public static void ExtendTree(IBlockTree blockTree, long newChainLength)
         {
             Block previous = blockTree.RetrieveHeadBlock();
-            int initialLength = (int) previous.Number + 1;
-            for (int i = initialLength; i < newChainLength; i++)
+            long initialLength = previous.Number + 1;
+            for (long i = initialLength; i < newChainLength; i++)
             {
                 previous = Build.A.Block.WithNumber(i).WithParent(previous).TestObject;
                 blockTree.SuggestBlock(previous);
