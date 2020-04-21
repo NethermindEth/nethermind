@@ -121,6 +121,11 @@ namespace Nethermind.Synchronization.ParallelSync
                 {
                     break;
                 }
+
+                if (bestSuggested.Number < _syncConfig.PivotNumberParsed)
+                {
+                    break;
+                }
                 
                 if (IsBeamSynced(bestSuggested.StateRoot))
                 {

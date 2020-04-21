@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.ComponentModel;
 using System.Timers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Dirichlet.Numerics;
@@ -107,7 +108,16 @@ namespace Nethermind.Synchronization.ParallelSync
                 return;
             }
 
-            Snapshot best = TakeSnapshot(peerDifficulty.Value, peerBlock.Value);
+            Snapshot best;
+            try
+            {
+                best = TakeSnapshot(peerDifficulty.Value, peerBlock.Value);
+            }
+            catch (InvalidAsynchronousStateException e)
+            {
+                UpdateSyncModes(SyncMode.None);
+                return;
+            }
 
             SyncMode newModes = SyncMode.None;
             if (ShouldBeInBeamSyncMode(best))
@@ -221,7 +231,8 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notInFastSync = !ShouldBeInFastSyncMode(best);
             bool notInStateSync = !ShouldBeInStateNodesMode(best);
 
-            return postPivotPeerAvailable &&
+            return higherDiffPeerKnown &&
+                   postPivotPeerAvailable &&
                    hasFastSyncBeenActive &&
                    notInBeamSync &&
                    notInFastSync &&
@@ -316,12 +327,6 @@ namespace Nethermind.Synchronization.ParallelSync
             long block = _syncProgressResolver.FindBestFullBlock();
             long header = _syncProgressResolver.FindBestHeader();
 
-            if (beamState < processed)
-            {
-                // assuming no corrupted state here
-                beamState = processed;
-            }
-
             Snapshot best = new Snapshot(processed, beamState, state, block, header, peerBlock, peerDifficulty);
             VerifySnapshot(best);
             return best;
@@ -342,12 +347,14 @@ namespace Nethermind.Synchronization.ParallelSync
                 // we can only process blocks for which we have full body
                 || best.Processed > best.Block
                 // for any processed block we should have its full state   
-                || (best.Processed > best.State && best.Processed > best.BeamState))
+                // || (best.Processed > best.State && best.Processed > best.BeamState))
+                // but we only do limited lookups for state so we need to instead fast sync to now
+                )
             {
                 string stateString = BuildStateString(best);
                 string errorMessage = $"Invalid best state calculation: {stateString}";
                 if (_logger.IsError) _logger.Error(errorMessage);
-                throw new InvalidOperationException(errorMessage);
+                throw new InvalidAsynchronousStateException(errorMessage);
             }
         }
         
