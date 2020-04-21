@@ -158,8 +158,11 @@ namespace Nethermind.Synchronization.Reporting
                 WriteFastBlocksReport();
             }
 
-            _logger.Info($"Peers {_syncPeerPool.UsefulPeerCount} / {_syncPeerPool.PeerCount}");
-            
+            if ((currentSyncMode & SyncMode.Full) != SyncMode.Full)
+            {
+                _logger.Info($"Peers {_syncPeerPool.UsefulPeerCount} / {_syncPeerPool.PeerCount}");
+            }
+
             if (currentSyncMode == SyncMode.None)
             {
                 WriteNotStartedReport();
@@ -264,13 +267,9 @@ namespace Nethermind.Synchronization.Reporting
             _logger.Info($"Fast sync from   {_paddedPivot} | {Pad(FullSyncBlocksDownloaded.CurrentValue,_blockPaddingLength)} / {Pad(FullSyncBlocksKnown,_blockPaddingLength)} | current {Pad(FullSyncBlocksDownloaded.CurrentPerSecond, speedPaddingLength)}bps | total {Pad(FullSyncBlocksDownloaded.TotalPerSecond, speedPaddingLength)}bps");
             FullSyncBlocksDownloaded.SetMeasuringPoint();
         }
-
-    
     
         private void WriteFastBlocksReport()
         {
-            
-            
             _logger.Info($"Old Headers  {Pad(FastBlocksHeaders.CurrentValue, _blockPaddingLength)} / {_paddedPivot} | queue {Pad(HeadersInQueue.CurrentValue, speedPaddingLength)} | current {Pad(FastBlocksHeaders.CurrentPerSecond, speedPaddingLength)}bps | total {Pad(FastBlocksHeaders.TotalPerSecond, speedPaddingLength)}bps");
 
             if (_syncConfig.DownloadBodiesInFastSync)
