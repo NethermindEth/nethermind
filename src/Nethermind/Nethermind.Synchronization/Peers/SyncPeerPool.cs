@@ -45,8 +45,9 @@ namespace Nethermind.Synchronization.Peers
     /// </summary>
     public class SyncPeerPool : ISyncPeerPool
     {
-        private const int MaxPeerWeakness = 10;
-        private const int InitTimeout = 10000; // the Eth.Timeout should hit us earlier
+        private const int PeerWeaknessBeforeSleep = 2;
+        private const int PeerWeaknessBeforeDisconnect = 8;
+        private const int InitTimeout = 10000; // the Eth.Timeout hits us at 5000
 
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
@@ -91,16 +92,12 @@ namespace Nethermind.Synchronization.Peers
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public void ReportNoSyncProgress(PeerInfo peerInfo, bool isSevere = true)
+        public void ReportNoSyncProgress(PeerInfo peerInfo)
         {
-            if (peerInfo == null) return;
-
-            if (_logger.IsDebug) _logger.Debug($"No sync progress reported with {peerInfo}");
-            peerInfo.SleepingSince = DateTime.UtcNow;
-            peerInfo.IsSleepingDeeply = isSevere;
+            ReportWeakPeer(peerInfo);
         }
 
-        public void ReportInvalid(PeerInfo peerInfo, string details)
+        public void ReportBreachOfProtocol(PeerInfo peerInfo, string details)
         {
             /* since the allocations can have the peers dynamically changed
              * it may be hard for the external classes to ensure that the peerInfo is not null at the time when they report
@@ -123,11 +120,20 @@ namespace Nethermind.Synchronization.Peers
                 return;
             }
 
-            if (weakPeer.IncreaseWeakness() > MaxPeerWeakness)
+            if (weakPeer.IncreaseWeakness() > PeerWeaknessBeforeDisconnect)
             {
                 /* fast Geth nodes send invalid nodes quite often :/
                  * so we let them deliver fast and only disconnect them when they really misbehave
                  */
+                _logger.Warn("Disconnecting a weak peer");
+                weakPeer.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "peer is too weak");
+            }
+            else if (weakPeer.IncreaseWeakness() > PeerWeaknessBeforeSleep)
+            {
+                weakPeer.SleepingSince = DateTime.UtcNow;
+                weakPeer.IsSleepingDeeply = false; // not used at the moment
+                
+                _logger.Warn("Disconnecting a weak peer");
                 weakPeer.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "peer is too weak");
             }
         }
@@ -330,7 +336,7 @@ namespace Nethermind.Synchronization.Peers
 
         private object _isAllocatedChecks = new object();
 
-        public async Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, string description = "", int timeoutMilliseconds = 0)
+        public async Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, int timeoutMilliseconds = 0)
         {
             int tryCount = 1;
             DateTime startTime = DateTime.UtcNow;

@@ -490,19 +490,9 @@ namespace Nethermind.Synchronization.Test
         public async Task Report_invalid_invokes_disconnection()
         {
             var peers = await SetupPeers(3);
-            _pool.ReportInvalid(_pool.AllPeers.First(), "issue details");
+            _pool.ReportBreachOfProtocol(_pool.AllPeers.First(), "issue details");
 
             Assert.True(peers[0].DisconnectRequested);
-        }
-
-        [Test]
-        public async Task Report_invalid_via_allocation_invokes_disconnection()
-        {
-            SimpleSyncPeerMock[] peers = await SetupPeers(3);
-            SyncPeerAllocation allocation = await _pool.Allocate(BySpeedStrategy.Fastest);
-            _pool.ReportInvalid(allocation, "issue details");
-
-            Assert.True(peers.Count(p => p.DisconnectRequested) == 1);
         }
 
         [Test]
@@ -595,16 +585,7 @@ namespace Nethermind.Synchronization.Test
             var allocation = await _pool.Allocate(BySpeedStrategy.Fastest);
             _pool.Free(allocation);
         }
-
-        [Test]
-        public async Task Report_no_sync_progress_on_null_does_not_crash()
-        {
-            await SetupPeers(1);
-
-            _pool.ReportNoSyncProgress((SyncPeerAllocation) null);
-            _pool.ReportNoSyncProgress((PeerInfo) null);
-        }
-
+        
         [Test]
         public async Task Does_not_fail_when_receiving_a_new_block_and_allocation_has_no_peer()
         {
@@ -624,7 +605,7 @@ namespace Nethermind.Synchronization.Test
             var allocationTasks = new Task<SyncPeerAllocation>[3];
             for (int i = 0; i < allocationTasks.Length; i++)
             {
-                allocationTasks[i] = _pool.Allocate(BySpeedStrategy.Fastest, null, 50);
+                allocationTasks[i] = _pool.Allocate(BySpeedStrategy.Fastest, 50);
             }
 
             await Task.WhenAll(allocationTasks);
@@ -677,7 +658,7 @@ namespace Nethermind.Synchronization.Test
             {
                 if (iterations > 0)
                 {
-                    SyncPeerAllocation allocation = await _pool.Allocate(BySpeedStrategy.Fastest, null, 10);
+                    SyncPeerAllocation allocation = await _pool.Allocate(BySpeedStrategy.Fastest, 10);
                     if (!allocation.HasPeer)
                     {
                         failures++;

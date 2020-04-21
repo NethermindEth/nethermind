@@ -159,7 +159,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         protected virtual async Task<SyncPeerAllocation> Allocate(T request)
         {
-            SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerAllocationStrategy.Create(request), string.Empty, 1000);
+            SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerAllocationStrategy.Create(request), 1000);
             return allocation;
         }
 
@@ -171,17 +171,16 @@ namespace Nethermind.Synchronization.ParallelSync
                 return;
             }
 
+            Logger.Warn($"Result on {peer} is {result}");
+            
             switch (result)
             {
                 case SyncResponseHandlingResult.Emptish:
                     break;
-                case SyncResponseHandlingResult.BadQuality:
+                case SyncResponseHandlingResult.LesserQuality:
                     SyncPeerPool.ReportWeakPeer(peer);
                     break;
-                case SyncResponseHandlingResult.InvalidFormat:
-                    SyncPeerPool.ReportWeakPeer(peer);
-                    break;
-                case SyncResponseHandlingResult.NoData:
+                case SyncResponseHandlingResult.NoProgress:
                     SyncPeerPool.ReportNoSyncProgress(peer);
                     break;
                 case SyncResponseHandlingResult.NotAssigned:
@@ -195,11 +194,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private void SyncFeedOnStateChanged(object sender, SyncFeedStateEventArgs e)
         {
-            if (!Feed.IsMultiFeed)
-            {
-                if(Logger.IsDebug) Logger.Debug($"{Feed.GetType().Name} state changed to {e.NewState}");
-            }
-
             SyncFeedState state = e.NewState;
             UpdateState(state);
         }
@@ -208,15 +202,23 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             lock (_feedStateManipulation)
             {
-                _currentFeedState = state;
-                TaskCompletionSource<object> newDormantStateTask = null;
-                if (state == SyncFeedState.Dormant)
+                if (_currentFeedState != state)
                 {
-                    newDormantStateTask = new TaskCompletionSource<object>();
-                }
+                    if (!Feed.IsMultiFeed)
+                    {
+                        if(Logger.IsDebug) Logger.Debug($"{Feed.GetType().Name} state changed to {state}");
+                    }
+                    
+                    _currentFeedState = state;
+                    TaskCompletionSource<object> newDormantStateTask = null;
+                    if (state == SyncFeedState.Dormant)
+                    {
+                        newDormantStateTask = new TaskCompletionSource<object>();
+                    }
 
-                var previous = Interlocked.Exchange(ref _dormantStateTask, newDormantStateTask);
-                previous?.TrySetResult(null);
+                    var previous = Interlocked.Exchange(ref _dormantStateTask, newDormantStateTask);
+                    previous?.TrySetResult(null);
+                }
             }
         }
     }

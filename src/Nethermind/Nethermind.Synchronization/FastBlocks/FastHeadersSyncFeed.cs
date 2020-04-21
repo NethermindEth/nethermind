@@ -225,7 +225,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
                 _pending.Enqueue(batch);
                 batch.MarkHandlingEnd();
-                return SyncResponseHandlingResult.NoData;
+                return SyncResponseHandlingResult.NoProgress;
             }
 
             try
@@ -285,7 +285,7 @@ namespace Nethermind.Synchronization.FastBlocks
             if (batch.Response.Length > batch.RequestSize)
             {
                 if (_logger.IsDebug) _logger.Debug($"Peer sent too long response ({batch.Response.Length}) to {batch}");
-                _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, $"response too long ({batch.Response.Length})");
+                _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, $"response too long ({batch.Response.Length})");
                 _pending.Enqueue(batch);
                 return 0;
             }
@@ -304,7 +304,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 if (header.Number != batch.StartNumber + i)
                 {
-                    _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, "inconsistent headers batch");
+                    _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "inconsistent headers batch");
                     break;
                 }
 
@@ -318,7 +318,7 @@ namespace Nethermind.Synchronization.FastBlocks
                         if (batch.ResponseSourcePeer != null)
                         {
                             if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID hash");
-                            _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, "first hash inconsistent with request");
+                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "first hash inconsistent with request");
                         }
 
                         break;
@@ -330,14 +330,14 @@ namespace Nethermind.Synchronization.FastBlocks
                         if (header.Number == (_blockTree.LowestInsertedHeader?.Number ?? _pivotNumber + 1) - 1)
                         {
                             if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch - number {header.Number} was {header.Hash} while expected {_nextHeaderHash}");
-                            _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, "headers - different branch");
+                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "headers - different branch");
                             break;
                         }
 
                         if (header.Number == _blockTree.LowestInsertedHeader?.Number)
                         {
                             if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch");
-                            _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, "headers - different branch");
+                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "headers - different branch");
                             break;
                         }
 
@@ -376,7 +376,7 @@ namespace Nethermind.Synchronization.FastBlocks
                         if (batch.ResponseSourcePeer != null)
                         {
                             if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID inconsistent");
-                            _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, "headers - response not matching request");
+                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "headers - response not matching request");
                         }
 
                         break;
@@ -390,7 +390,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     if (batch.ResponseSourcePeer != null)
                     {
                         if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID bad block");
-                        _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, $"invalid header {header.ToString(BlockHeader.Format.Short)}");
+                        _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, $"invalid header {header.ToString(BlockHeader.Format.Short)}");
                     }
 
                     break;

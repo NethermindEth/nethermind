@@ -47,7 +47,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 throw new NotImplementedException();
             }
 
-            public Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, string description = "", int timeoutMilliseconds = 0)
+            public Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, int timeoutMilliseconds = 0)
             {
                 ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
                 syncPeer.ClientId.Returns("Nethermind");
@@ -61,11 +61,11 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             {
             }
 
-            public void ReportNoSyncProgress(PeerInfo peerInfo, bool isSevere = true)
+            public void ReportNoSyncProgress(PeerInfo peerInfo)
             {
             }
 
-            public void ReportInvalid(PeerInfo peerInfo, string details)
+            public void ReportBreachOfProtocol(PeerInfo peerInfo, string details)
             {
             }
 

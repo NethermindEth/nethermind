@@ -959,7 +959,7 @@ namespace Nethermind.Network
 
             if (nodesToRemove.Length > 0)
             {
-                _logger.Info($"Removing {nodesToRemove.Length} out of {candidates.Count} peers (cleanup).");
+                _logger.Info($"Removing {nodesToRemove.Length} out of {candidates.Count} peer candidates (candidates cleanup).");
                 foreach (Peer peer in nodesToRemove)
                 {
                     _peerPool.TryRemove(peer.Node.Id, out _);

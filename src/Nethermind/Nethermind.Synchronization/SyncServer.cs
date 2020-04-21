@@ -49,7 +49,6 @@ namespace Nethermind.Synchronization
         private readonly ISealValidator _sealValidator;
         private readonly ISnapshotableDb _stateDb;
         private readonly ISnapshotableDb _codeDb;
-        private readonly ISynchronizer _synchronizer;
         private readonly ISyncConfig _syncConfig;
         private object _dummyValue = new object();
         private ICache<Keccak, object> _recentlySuggested = new LruCacheWithRecycling<Keccak, object>(128, 128, "recently suggested blocks");
@@ -64,11 +63,9 @@ namespace Nethermind.Synchronization
             ISealValidator sealValidator,
             ISyncPeerPool pool,
             ISyncModeSelector syncModeSelector,
-            ISynchronizer synchronizer,
             ISyncConfig syncConfig,
             ILogManager logManager)
         {
-            _synchronizer = synchronizer ?? throw new ArgumentNullException(nameof(synchronizer));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));

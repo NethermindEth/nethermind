@@ -490,7 +490,7 @@ namespace Nethermind.Synchronization.FastSync
                         AddAgainAllItems();
                         if (_logger.IsWarn) _logger.Warn($"Batch response had invalid format");
                         Interlocked.Increment(ref _invalidFormatCount);
-                        return SyncResponseHandlingResult.InvalidFormat;
+                        return isMissingRequestData ? SyncResponseHandlingResult.InternalError : SyncResponseHandlingResult.NotAssigned;
                     }
                     else
                     {
@@ -576,7 +576,7 @@ namespace Nethermind.Synchronization.FastSync
                     if (isEmpty)
                     {
                         if (_logger.IsDebug) _logger.Debug($"Peer sent no data in response to a request of length {batch.RequestedNodes.Length}");
-                        return SyncResponseHandlingResult.NoData;
+                        return SyncResponseHandlingResult.NoProgress;
                     }
 
                     if (!isEmptish && !isBadQuality)
@@ -587,7 +587,7 @@ namespace Nethermind.Synchronization.FastSync
                     SyncResponseHandlingResult result = isEmptish
                         ? SyncResponseHandlingResult.Emptish
                         : isBadQuality
-                            ? SyncResponseHandlingResult.BadQuality
+                            ? SyncResponseHandlingResult.LesserQuality
                             : SyncResponseHandlingResult.OK;
 
                     TimeSpan sinceLastReport = DateTime.UtcNow - _lastReportTime.small;
@@ -640,7 +640,7 @@ namespace Nethermind.Synchronization.FastSync
             catch (Exception e)
             {
                 _logger.Error("Error when handling state sync response", e);
-                return SyncResponseHandlingResult.InvalidFormat;
+                return SyncResponseHandlingResult.InternalError;
             }
             finally
             {

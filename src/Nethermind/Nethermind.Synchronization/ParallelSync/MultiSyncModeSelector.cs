@@ -186,7 +186,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private long? ReloadDataFromPeers()
         {
             long? maxPeerBlock = null;
-            foreach (PeerInfo usefulPeer in _syncPeerPool.UsefulPeers)
+            foreach (PeerInfo usefulPeer in _syncPeerPool.UsefulPeersWhateverDiff)
             {
                 maxPeerBlock = Math.Max(maxPeerBlock ?? 0L, usefulPeer.HeadNumber);
             }

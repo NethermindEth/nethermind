@@ -19,10 +19,10 @@ namespace Nethermind.Synchronization.ParallelSync
     public enum SyncResponseHandlingResult
     {
         OK,
-        NoData,
-        InvalidFormat,
+        NoProgress,
+        InternalError,
         NotAssigned,
-        BadQuality,
+        LesserQuality,
         Emptish
     }
 }

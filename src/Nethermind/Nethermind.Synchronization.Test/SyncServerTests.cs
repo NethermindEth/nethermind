@@ -58,7 +58,7 @@ namespace Nethermind.Synchronization.Test
             _blockTree = Substitute.For<IBlockTree>();
             _synchronizer = Substitute.For<ISynchronizer>();
             var selector = StaticSelector.Full;
-            _syncServer = new SyncServer(new StateDb(), new StateDb(), _blockTree, NullReceiptStorage.Instance, Always.Valid, Always.Valid, _peerPool,  selector, _synchronizer, new SyncConfig(), LimboLogs.Instance);
+            _syncServer = new SyncServer(new StateDb(), new StateDb(), _blockTree, NullReceiptStorage.Instance, Always.Valid, Always.Valid, _peerPool,  selector, new SyncConfig(), LimboLogs.Instance);
         }
 
         [Test]
@@ -106,7 +106,7 @@ namespace Nethermind.Synchronization.Test
 
             ISealValidator sealValidator = sealOk ? Always.Valid : Always.Invalid;
             IBlockValidator blockValidator = validationOk ? Always.Valid : Always.Invalid;
-            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, blockValidator, sealValidator, _peerPool, StaticSelector.Full, _synchronizer, new SyncConfig(), LimboLogs.Instance);
+            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, blockValidator, sealValidator, _peerPool, StaticSelector.Full, new SyncConfig(), LimboLogs.Instance);
 
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
 
@@ -135,7 +135,7 @@ namespace Nethermind.Synchronization.Test
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
 
-            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, Always.Valid, Always.Valid, _peerPool, StaticSelector.Full, _synchronizer, new SyncConfig(), LimboLogs.Instance);
+            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, Always.Valid, Always.Valid, _peerPool, StaticSelector.Full, new SyncConfig(), LimboLogs.Instance);
 
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
             
@@ -150,7 +150,7 @@ namespace Nethermind.Synchronization.Test
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
 
-            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, new BlockValidator(Always.Valid, new HeaderValidator(localBlockTree, Always.Valid, MainnetSpecProvider.Instance, LimboLogs.Instance), Always.Valid, MainnetSpecProvider.Instance, LimboLogs.Instance), Always.Valid, _peerPool, StaticSelector.Full, _synchronizer, new SyncConfig(), LimboLogs.Instance);
+            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, new BlockValidator(Always.Valid, new HeaderValidator(localBlockTree, Always.Valid, MainnetSpecProvider.Instance, LimboLogs.Instance), Always.Valid, MainnetSpecProvider.Instance, LimboLogs.Instance), Always.Valid, _peerPool, StaticSelector.Full, new SyncConfig(), LimboLogs.Instance);
 
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
             block.Header.TotalDifficulty *= 2;
@@ -169,7 +169,7 @@ namespace Nethermind.Synchronization.Test
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(600).TestObject;
 
             ISealValidator sealValidator = Substitute.For<ISealValidator>();
-            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, Always.Valid, sealValidator, _peerPool, StaticSelector.Full, _synchronizer, new SyncConfig(), LimboLogs.Instance);
+            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, Always.Valid, sealValidator, _peerPool, StaticSelector.Full, new SyncConfig(), LimboLogs.Instance);
 
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
             

@@ -17,7 +17,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -28,18 +27,16 @@ namespace Nethermind.Synchronization.Peers
     {
         bool TryFind(PublicKey nodeId, out PeerInfo peerInfo);
 
-        Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, string description = "", int timeoutMilliseconds = 0);
+        Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, int timeoutMilliseconds = 0);
 
         void Free(SyncPeerAllocation syncPeerAllocation);
 
-        void ReportNoSyncProgress(PeerInfo peerInfo, bool isSevere = true);
+        void ReportNoSyncProgress(PeerInfo peerInfo);
 
-        void ReportInvalid(PeerInfo peerInfo, string details);
+        void ReportBreachOfProtocol(PeerInfo peerInfo, string details);
         
         void ReportWeakPeer(PeerInfo peerInfo);
-        
-        void ReportWeakPeer(SyncPeerAllocation allocation);
-        
+
         /// <summary>
         /// Wakes up all the sleeping peers.
         /// </summary>
@@ -107,15 +104,5 @@ namespace Nethermind.Synchronization.Peers
         /// </summary>
         /// <returns></returns>
         Task StopAsync();
-
-        /// <summary>
-        /// Whenever a new sync peer is added
-        /// </summary>
-        event EventHandler PeerAdded;
-        
-        /// <summary>
-        /// Whenever a peer is removed
-        /// </summary>
-        event EventHandler PeerRemoved;
     }
 }

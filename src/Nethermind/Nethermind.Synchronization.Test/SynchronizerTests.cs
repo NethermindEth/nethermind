@@ -319,7 +319,7 @@ namespace Nethermind.Synchronization.Test
                     syncConfig,
                     _logManager);
 
-                SyncServer = new SyncServer(stateDb, codeDb, BlockTree, NullReceiptStorage.Instance, Always.Valid, Always.Valid, SyncPeerPool, syncModeSelector, Synchronizer, syncConfig, _logManager);
+                SyncServer = new SyncServer(stateDb, codeDb, BlockTree, NullReceiptStorage.Instance, Always.Valid, Always.Valid, SyncPeerPool, syncModeSelector, syncConfig, _logManager);
                 SyncPeerPool.Start();
 
                 Synchronizer.Start();
