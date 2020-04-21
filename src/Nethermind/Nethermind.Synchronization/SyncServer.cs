@@ -327,18 +327,18 @@ namespace Nethermind.Synchronization
             double broadcastRatio = Math.Sqrt(peerCount) / peerCount;
 
             int counter = 0;
-            foreach (PeerInfo peerInfo in _pool.AllPeers)
+            foreach (ISyncPeer peerInfo in _pool.AllPeers)
             {
                 if (peerInfo.TotalDifficulty < (block.TotalDifficulty ?? UInt256.Zero))
                 {
                     if (_broadcastRandomizer.NextDouble() < broadcastRatio)
                     {
-                        peerInfo.SyncPeer.SendNewBlock(block);
+                        peerInfo.SendNewBlock(block);
                         counter++;
                     }
                     else
                     {
-                        peerInfo.SyncPeer.HintNewBlock(block.Hash, block.Number);
+                        peerInfo.HintNewBlock(block.Hash, block.Number);
                     }
                 }
             }
