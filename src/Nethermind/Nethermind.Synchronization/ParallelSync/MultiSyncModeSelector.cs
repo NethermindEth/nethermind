@@ -266,6 +266,18 @@ namespace Nethermind.Synchronization.ParallelSync
             long block = _syncProgressResolver.FindBestFullBlock();
             long header = _syncProgressResolver.FindBestHeader();
 
+            if (state < processed)
+            {
+                // assuming no corrupted state here
+                state = processed;
+            }
+
+            if (beamState < processed)
+            {
+                // assuming no corrupted state here
+                beamState = processed;
+            }
+            
             Snapshot best = new Snapshot(processed, beamState, state, block, header, peerBlock);
             VerifySnapshot(best);
             return best;

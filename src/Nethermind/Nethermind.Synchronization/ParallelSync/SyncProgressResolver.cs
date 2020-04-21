@@ -81,11 +81,6 @@ namespace Nethermind.Synchronization.ParallelSync
             long bestFullState = 0;
             long maxLookup = Math.Min(_maxLookup * 2, (initialBestSuggested?.Number ?? 0L) - head?.Number ?? 0);
 
-            if (maxLookup <= 1)
-            {
-                
-            }
-            
             for (int i = 0; i < maxLookup + 1; i++)
             {
                 if (bestSuggested == null)
@@ -102,11 +97,6 @@ namespace Nethermind.Synchronization.ParallelSync
                 bestSuggested = _blockTree.FindHeader(bestSuggested.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             }
 
-            if (bestFullState == 0)
-            {
-                
-            }
-            
             return bestFullState;
         }
         
