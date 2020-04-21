@@ -20,6 +20,9 @@ using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.State;
 
@@ -29,6 +32,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
     {
         private readonly Address _nodeAddress;
         private readonly IList<RandomContract> _contracts;
+        private readonly Random _random = new Random();
 
         public RandomImmediateTransactionSource(
             IDictionary<long, Address> randomnessContractAddress, 
@@ -47,27 +51,52 @@ namespace Nethermind.Consensus.AuRa.Transactions
         public bool TryCreateTransaction(BlockHeader parent, long gasLimit, out Transaction tx)
         {
             tx = _contracts.TryGetForBlock(parent.Number + 1, out var contract)
-                ? GetTransaction(contract.GetPhase(parent, _nodeAddress))
+                ? GetTransaction(contract, parent)
                 : null;
             
             return tx != null;
         }
 
-        private Transaction GetTransaction(RandomContract.Phase phase)
+        private Transaction GetTransaction(in RandomContract contract, in BlockHeader parent)
         {
+            var (phase, round) = contract.GetPhase(parent, _nodeAddress);
             switch (phase)
             {
                 case RandomContract.Phase.BeforeCommit:
-                    break;
+                {
+                    Span<byte> bytes = stackalloc byte[32];
+                    _random.NextBytes(bytes);
+                    // UInt256.CreateFromBigEndian(out var number, bytes);
+                    var hash = Keccak.Compute(bytes);
+                    byte[] cipher = bytes.ToArray(); // TODO: ENCRYPT!
+                    return contract.CommitHash(hash, cipher);
+                }
                 case RandomContract.Phase.Reveal:
-                    break;
+                {
+                    var (hash, cipher) = contract.GetCommitAndCipher(parent, round, _nodeAddress);
+                    byte[] bytes = cipher;// TODO: decrypt cipher!
+                    if (bytes.Length != 32)
+                    {
+                        // This can only happen if there is a bug in the smart contract, or if the entire network goes awry.
+                        throw new AuRaException("Decrypted random number has the wrong length.");
+                    }
+                    
+                    var computedHash = ValueKeccak.Compute(bytes);
+                    if (!Bytes.AreEqual(hash.Bytes, computedHash.BytesAsSpan))
+                    {
+                        throw new AuRaException("Decrypted random number doesn't agree with the hash.");
+                    }
+                    
+                    UInt256.CreateFromBigEndian(out var number, bytes);
+                    
+                    return contract.RevealNumber(number);
+                }
                 case RandomContract.Phase.Waiting:
                 case RandomContract.Phase.Committed:
                     return null;
             }
             
             return null;
-
         }
     }
 }

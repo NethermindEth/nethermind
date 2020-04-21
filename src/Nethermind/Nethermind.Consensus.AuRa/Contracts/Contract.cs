@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             ContractAddress = contractAddress ?? throw new ArgumentNullException(nameof(contractAddress));
         }
         
-        protected Transaction GenerateTransaction(byte[] transactionData, Address sender, long gasLimit = DefaultContractGasLimit, UInt256? nonce = null)
+        protected Transaction GenerateTransaction(byte[] transactionData, Address sender, UInt256? nonce = null, long gasLimit = DefaultContractGasLimit)
         {
             var transaction = new Transaction(true)
             {
@@ -59,6 +59,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
             return transaction;
         }
+        
+        protected Transaction GenerateTransaction(AbiFunctionDescription function, Address sender, params object[] arguments) 
+            => GenerateTransaction(AbiEncoder.Encode(function.GetCallInfo(), arguments), sender);
 
         protected byte[] Call(BlockHeader header, Transaction transaction)
         {
@@ -67,12 +70,12 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         protected object[] Call(BlockHeader header, AbiFunctionDescription function, Address sender, params object[] arguments)
         {
-            var transaction = GenerateTransaction(AbiEncoder.Encode(function.GetCallInfo(), arguments), sender);
+            var transaction = GenerateTransaction(function, sender, arguments);
             var result = Call(header, transaction);
             var objects = AbiEncoder.Decode(function.GetReturnInfo(), result);
             return objects;
         }
-        
+
         protected byte[] CallCore(ITransactionProcessor transactionProcessor, BlockHeader header, Transaction transaction)
         {
             bool failure;
@@ -118,7 +121,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         protected bool TryCall(BlockHeader header, AbiFunctionDescription function, Address sender, out object[] result, params object[] arguments)
         {
-            var transaction = GenerateTransaction(AbiEncoder.Encode(function.GetCallInfo(), arguments), sender);
+            var transaction = GenerateTransaction(function, sender, arguments);
             if (TryCall(header, transaction, out var bytes))
             {
                 result = AbiEncoder.Decode(function.GetReturnInfo(), bytes);
@@ -138,7 +141,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             }
         }
 
-        protected internal ConstantContract GetConstant(IStateProvider stateProvider, IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource) => 
+        protected ConstantContract GetConstant(IStateProvider stateProvider, IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource) => 
             new ConstantContract(this, stateProvider, readOnlyReadOnlyTransactionProcessorSource);
 
         protected internal class ConstantContract
@@ -166,7 +169,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
             public object[] Call(BlockHeader header, AbiFunctionDescription function, Address sender, params object[] arguments)
             {
-                var transaction = _contract.GenerateTransaction(_contract.AbiEncoder.Encode(function.GetCallInfo(), arguments), sender);
+                var transaction = _contract.GenerateTransaction(function, sender, arguments);
                 var result = Call(header, transaction);
                 var objects = _contract.AbiEncoder.Decode(function.GetReturnInfo(), result);
                 return objects;
@@ -175,6 +178,12 @@ namespace Nethermind.Consensus.AuRa.Contracts
             public T Call<T>(BlockHeader header, AbiFunctionDescription function, Address sender,params object[] arguments)
             {
                 return (T) Call(header, function, sender, arguments)[0];
+            }
+            
+            public (T1, T2) Call<T1, T2>(BlockHeader header, AbiFunctionDescription function, Address sender,params object[] arguments)
+            {
+                var objects = Call(header, function, sender, arguments);
+                return ((T1) objects[0], (T2) objects[1]);
             }
         }
     }

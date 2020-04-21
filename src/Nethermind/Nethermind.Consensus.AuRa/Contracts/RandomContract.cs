@@ -18,6 +18,7 @@ using System;
 using System.Numerics;
 using Nethermind.Abi;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -71,14 +72,14 @@ namespace Nethermind.Consensus.AuRa.Contracts
             Reveal
     }
 
-        public Phase GetPhase(BlockHeader blockHeader, Address nodeAddress)
+        public (Phase Phase, UInt256 Round) GetPhase(BlockHeader blockHeader, Address nodeAddress)
         {
             UInt256 round = CurrentCollectRound(blockHeader);
             bool isCommitPhase = IsCommitPhase(blockHeader);
             bool isCommitted = IsCommitted(blockHeader, round, nodeAddress);
             bool revealed = SentReveal(blockHeader, round, nodeAddress);
 
-            return isCommitPhase
+            var phase = isCommitPhase
                 ? revealed
                     ? throw new InvalidOperationException("Revealed random number during commit phase.")
                     : !isCommitted
@@ -88,6 +89,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
                   || revealed
                     ? Phase.Waiting
                     : Phase.Reveal;
+            
+            return (phase, round);
         }
 
         private bool SentReveal(BlockHeader blockHeader, UInt256 round, Address nodeAddress)  => Constant.Call<bool>(blockHeader, Definition.GetFunction(nameof(IsCommitted)), ContractAddress, round, nodeAddress);
@@ -97,5 +100,23 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private UInt256 CurrentCollectRound(BlockHeader blockHeader) => Constant.Call<UInt256>(blockHeader, Definition.GetFunction(nameof(CurrentCollectRound)), ContractAddress);
         
         private bool IsCommitPhase(BlockHeader blockHeader) => Constant.Call<bool>(blockHeader, Definition.GetFunction(nameof(IsCommitPhase)), ContractAddress);
+        
+        public (Keccak hash, byte[] cipher) GetCommitAndCipher(BlockHeader blockHeader, UInt256 round, Address nodeAddress)
+        {
+            var (hash, cipher) = Constant.Call<byte[], byte[]>(blockHeader, Definition.GetFunction(nameof(GetCommitAndCipher)), ContractAddress);
+            return (new Keccak(hash), cipher);
+        }
+
+        public Transaction CommitHash(in Keccak hash, byte[] cipher) => GenerateTransaction(Definition.GetFunction(nameof(CommitHash)), ContractAddress, hash.Bytes, cipher);
+
+        public Transaction RevealNumber(UInt256 number) => GenerateTransaction(Definition.GetFunction(nameof(CommitHash)), ContractAddress, number);
+    }
+
+    internal static class ContractTransactionExtensions
+    {
+        public static Transaction WithNonce(this Transaction tx, IStateProvider stateProvider)
+        {
+            return tx;
+        }
     }
 }
