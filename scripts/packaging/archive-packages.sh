@@ -14,10 +14,6 @@ echo =======================================================
 cd $RELEASE_DIRECTORY
 GIT_SHORT_TAG="$(tail git-tag.txt)"
 GIT_HASH="$(tail git-hash.txt)"
-# cd ~/repo_ndm/ndm/src/nethermind/src/Nethermind/Nethermind.Runner/Data
-# cp static-nodes-ndm-goerli.json ~/repo_ndm/$RELEASE_DIRECTORY/$LIN_RELEASE
-# cp static-nodes-ndm-goerli.json ~/repo_ndm/$RELEASE_DIRECTORY/$OSX_RELEASE
-# cp static-nodes-ndm-goerli.json ~/repo_ndm/$RELEASE_DIRECTORY/$WIN_RELEASE
 
 cd ~/repo_pub/$RELEASE_DIRECTORY
 cd $LIN_RELEASE && zip -r $LIN-$GIT_SHORT_TAG-$GIT_HASH.zip . && cd ..
