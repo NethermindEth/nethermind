@@ -1,10 +1,9 @@
 name: Update DAppNode package
 
 on:
-  push:
-    tags:
-    - '*'
-
+  repository_dispatch:
+    types: dappnode
+    
 jobs:
   dappnode-update-netethermind:
     name: Trigger the beacon-chain DAppNodePackage update

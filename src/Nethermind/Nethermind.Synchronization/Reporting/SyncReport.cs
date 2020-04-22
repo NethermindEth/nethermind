@@ -163,7 +163,7 @@ namespace Nethermind.Synchronization.Reporting
                 _reportedFastBlocksSummary = true;
                 WriteFastBlocksReport();
             }
-            
+
             if ((currentSyncMode | SyncMode.Full) != SyncMode.Full)
             {
                 _logger.Info($"Peers {_syncPeerPool.InitializedPeersCount} / {_syncPeerPool.PeerCount}");
