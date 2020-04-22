@@ -113,7 +113,7 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 best = TakeSnapshot(peerDifficulty.Value, peerBlock.Value);
             }
-            catch (InvalidAsynchronousStateException e)
+            catch (InvalidAsynchronousStateException)
             {
                 UpdateSyncModes(SyncMode.None);
                 return;

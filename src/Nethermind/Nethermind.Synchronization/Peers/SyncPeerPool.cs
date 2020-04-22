@@ -180,23 +180,15 @@ namespace Nethermind.Synchronization.Peers
         {
             get
             {
-                int sleepingCount = 0;
-                int uninitializedCount = 0;
-                int okCount = 0;
-
                 foreach ((_, PeerInfo peerInfo) in _peers)
                 {
                     if (!peerInfo.SyncPeer.IsInitialized)
                     {
-                        uninitializedCount++;
                         continue;
                     }
 
-                    okCount++;
                     yield return peerInfo;
                 }
-
-                // _logger.Warn($"Sleeping: {sleepingCount}, Uninitialized: {uninitializedCount}, Low Diff: {lowTotalDiff}, OK: {okCount}");
             }
         }
 
