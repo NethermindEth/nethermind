@@ -90,8 +90,6 @@ else
     send_message_to_slack "8" "Release build process has been finished"
 fi
 
-END=`date +%s`
-
 echo "====================================="
 echo "Release Process has been finished"
 echo "====================================="
