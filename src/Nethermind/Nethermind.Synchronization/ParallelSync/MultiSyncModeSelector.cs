@@ -150,19 +150,23 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 newModes |= SyncMode.StateNodes;
             }
-
-            if (newModes != Current)
+            
+            if (IsTheModeSwitchWorthMentioning(newModes))
             {
-                if ((newModes != SyncMode.None || Current != SyncMode.Full) &&
-                    (newModes != SyncMode.Full || Current != SyncMode.None))
-                {
-                    string stateString = BuildStateString(best);
-                    string message = $"Changing state to {newModes} at {stateString}";
-                    if (_logger.IsInfo) _logger.Info(message);
-                }
+                string stateString = BuildStateString(best);
+                string message = $"Changing state to {newModes} at {stateString}";
+                if (_logger.IsInfo) _logger.Info(message);
             }
 
             UpdateSyncModes(newModes);
+        }
+
+        private bool IsTheModeSwitchWorthMentioning(SyncMode newModes)
+        {
+            return _logger.IsTrace ||
+                   newModes != Current &&
+                   (newModes != SyncMode.None || Current != SyncMode.Full) &&
+                   (newModes != SyncMode.Full || Current != SyncMode.None);
         }
 
         private void UpdateSyncModes(SyncMode newModes)
@@ -338,10 +342,10 @@ namespace Nethermind.Synchronization.ParallelSync
                    notInAStickyFullSync &&
                    notInFastSync;
         }
-        
+
         private bool AnyPeerWithHigherDifficultyKnown(UInt256 bestPeerDiff)
         {
-            if(_logger.IsTrace) _logger.Trace($"{bestPeerDiff} > {_syncProgressResolver.ChainDifficulty}");
+            if (_logger.IsTrace) _logger.Trace($"Is best peer diff {bestPeerDiff} > local total diff {_syncProgressResolver.ChainDifficulty}");
             return bestPeerDiff > _syncProgressResolver.ChainDifficulty;
         }
 
