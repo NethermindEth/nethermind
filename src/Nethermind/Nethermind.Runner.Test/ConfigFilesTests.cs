@@ -376,7 +376,7 @@ namespace Nethermind.Runner.Test
         [TestCase("goerli_archive.cfg")]
         [TestCase("goerli.cfg")]
         [TestCase("mainnet_archive.cfg")]
-        [TestCase("mainnet.cfg")]
+        [TestCase("mainnet.cfg", 100)]
         [TestCase("sokol.cfg")]
         [TestCase("sokol_archive.cfg")]
         [TestCase("sokol_validator.cfg")]
@@ -389,7 +389,7 @@ namespace Nethermind.Runner.Test
         [TestCase("xdai_validator.cfg")]
         [TestCase("volta.cfg")]
         [TestCase("volta_archive.cfg")]
-        public void Network_defaults_are_correct(string configFile)
+        public void Network_defaults_are_correct(string configFile, int activePeers = 50)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
             INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
@@ -397,7 +397,7 @@ namespace Nethermind.Runner.Test
             Assert.AreEqual(30303, networkConfig.P2PPort, nameof(networkConfig.P2PPort));
             Assert.Null(networkConfig.ExternalIp, nameof(networkConfig.ExternalIp));
             Assert.Null(networkConfig.LocalIp, nameof(networkConfig.LocalIp));
-            Assert.AreEqual(50, networkConfig.ActivePeersMaxCount, 50);
+            Assert.AreEqual(activePeers, networkConfig.ActivePeersMaxCount);
         }
         
         [TestCase("ropsten_archive.cfg")]
