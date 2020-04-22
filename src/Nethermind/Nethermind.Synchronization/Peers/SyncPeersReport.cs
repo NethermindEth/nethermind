@@ -17,9 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
 using Nethermind.Stats;
 
@@ -49,7 +47,7 @@ namespace Nethermind.Synchronization.Peers
 
         private object _writeLock = new object();
 
-        private IEnumerable<PeerInfo> OrderedPeers => _peerPool.InitializedPeers.OrderBy(p => p.SyncPeer.Node?.Host);
+        private IEnumerable<PeerInfo> OrderedPeers => _peerPool.InitializedPeers.OrderBy(p => p.SyncPeer?.Node?.Host);
 
         public void WriteFullReport()
         {
@@ -102,7 +100,7 @@ namespace Nethermind.Synchronization.Peers
 
         private void AddPeerInfo(PeerInfo peerInfo)
         {
-            _stringBuilder.Append($"{peerInfo}[{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed() ?? 0}]");
+            _stringBuilder.Append($"   {peerInfo}[{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed() ?? 0}]");
         }
 
         private void RememberState(out bool initializedCountChanged)
