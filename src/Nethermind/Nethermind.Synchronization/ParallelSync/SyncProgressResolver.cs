@@ -28,7 +28,7 @@ namespace Nethermind.Synchronization.ParallelSync
 {
     public class SyncProgressResolver : ISyncProgressResolver
     {
-        private const int _maxLookup = 64;
+        private const int _maxLookupBack = 128; // not that we will be doing that every second or so
 
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
@@ -69,53 +69,65 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public long FindBestFullState()
         {
-            /* There is an interesting scenario (unlikely) here where we download more than 'full sync threshold'
-             blocks in full sync but they are not processed immediately so we switch to node sync
-             and the blocks that we downloaded are processed from their respective roots
-             and the next full sync will be after a leap.
-             This scenario is still correct. It may be worth to analyze what happens
-             when it causes a full sync vs node sync race at every block.*/
-
+            // so the full state can be in a few places but there are some best guesses
+            // if we are state syncing then the full state may be one of the recent blocks (maybe one of the last 128 blocks)
+            // if we full syncing then the state should be at head
+            // if we are beam syncing then the state should be in a different DB and should not cause much trouble here
+            // it also may seem tricky if best suggested is part of a reorg while we are already full syncing so
+            // ideally we would like to check it siblings too (but this may be a bit expensive and less likely
+            // to be important
+            // we want to avoid a scenario where state is not found even as it is just near head or best suggested
+            
             Block head = _blockTree.Head;
-            BlockHeader initialBestSuggested = _blockTree.BestSuggestedHeader;
+            BlockHeader initialBestSuggested = _blockTree.BestSuggestedHeader; // just storing here for debugging sake
             BlockHeader bestSuggested = initialBestSuggested;
+            
             long bestFullState = 0;
-            long maxLookup = Math.Min(_maxLookup * 2, (initialBestSuggested?.Number ?? 0L) - head?.Number ?? 0);
-
-            for (int i = 0; i < maxLookup + 1; i++)
+            if (head != null)
             {
-                if (bestSuggested == null)
-                {
-                    break;
-                }
+                // head search should be very inexpensive as we generally expect the state to be there
+                bestFullState = SearchForFullState(head.Header);
+            }
 
-                if (IsFullySynced(bestSuggested.StateRoot))
+            if (bestSuggested != null)
+            {
+                if (bestFullState < bestSuggested?.Number)
                 {
-                    bestFullState = bestSuggested.Number;
-                    break;
+                    bestFullState = Math.Max(bestFullState, SearchForFullState(bestSuggested));
                 }
-
-                bestSuggested = _blockTree.FindHeader(bestSuggested.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             }
 
             return bestFullState;
         }
-        
+
+        private long SearchForFullState(BlockHeader startHeader)
+        {
+            long bestFullState = 0;
+            for (int i = 0; i < _maxLookupBack; i++)
+            {
+                if (startHeader == null)
+                {
+                    break;
+                }
+
+                if (IsFullySynced(startHeader.StateRoot))
+                {
+                    bestFullState = startHeader.Number;
+                    break;
+                }
+
+                startHeader = _blockTree.FindHeader(startHeader.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            }
+
+            return bestFullState;
+        }
+
         public long FindBestBeamState()
         {
-            /* There is an interesting scenario (unlikely) here where we download more than 'full sync threshold'
-             blocks in full sync but they are not processed immediately so we switch to node sync
-             and the blocks that we downloaded are processed from their respective roots
-             and the next full sync will be after a leap.
-             This scenario is still correct. It may be worth to analyze what happens
-             when it causes a full sync vs node sync race at every block.*/
-
             BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
             Block head = _blockTree.Head;
             long bestFullState = head?.Number ?? 0;
-            long maxLookup = Math.Min(_maxLookup * 2, (bestSuggested?.Number ?? 0L) - head?.Number ?? 0);
-
-            for (int i = 0; i < maxLookup + 1; i++)
+            for (int i = 0; i < _maxLookupBack; i++)
             {
                 if (bestSuggested == null)
                 {
