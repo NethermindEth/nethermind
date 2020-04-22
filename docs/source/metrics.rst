@@ -1,98 +1,8 @@
 Metrics
 ********
 
-Nethermind metrics can be consumed by Prometheus/Grafana if configured in Metrics configuration category (check configuration documentation for details). Metrics then can be used to monitor running nodes.
+Nethermind metrics can be consumed by Prometheus/Grafana if configured in Metrics configuration categoru (check configuration documentation for details). Metrics then can be used to monitor running nodes.
 
-
-Metrics infrastracture
-^^^^^^^^^^^^^^^^^^^^^^
-
-Metrics can be enabled by simply passing ``--Metrics.Enabled true`` argument to the ``Nethermind.Runner`` or ``Nethermind.Launcher`` e.g. ``./Nethermind.Runner --Metrics.Enabled true``. ``Metrics.PushGatewayUrl`` will need to be amended if pushgateway endpoint is not default.
-
-Setting up Prometheus and Pushgateway
--------------------------------------
-
-Prometheus GitHub `<https://github.com/prometheus/prometheus>`_.
-
-Pushgateway GitHub `<https://github.com/prometheus/pushgateway>`_.
-
-1. Basic configuration for Prometheus:
-
-Create ``prometheus`` directory and save below file 
-
-``prometheus.yml``::
-
- global:
-   scrape_interval:     5s
-   evaluation_interval: 5s
-
- scrape_configs:
-   - job_name: 'pushgateway'
-     honor_labels: true
-     static_configs:
-     - targets: ['localhost:9091']
-
-2. Create ``docker-compose`` file outside ``prometheus`` directory
-
-Example of ``docker-compose`` file running both Prometheus and Pushgateway:
-
-``docker-compose.yml``::
-
- version: "3.5"
-
- services:
-
-     prometheus:
-         image: prom/prometheus
-         container_name: prometheus
-         volumes:
-             - ./prometheus/:/etc/prometheus/
-             - prometheus_data:/prometheus
-         command:
-             - '--config.file=/etc/prometheus/prometheus.yml'
-             - '--storage.tsdb.path=/prometheus'
-             - '--web.console.libraries=/etc/prometheus/console_libraries'
-             - '--web.console.templates=/etc/prometheus/consoles'
-             - '--storage.tsdb.retention=200h'
-             - '--web.enable-lifecycle'
-         restart: unless-stopped
-         expose:
-             - 9090
-         ports: 
-             - "127.0.0.1:9090:9090"
-         networks:
-             - metrics
-
-
-     pushgateway:
-         image: prom/pushgateway
-         container_name: pushgateway
-         restart: unless-stopped
-         expose:
-             - 9091
-         ports:
-             - "9091:9091"
-         networks:
-             - metrics
-
- networks:
-     metrics:
-         driver: bridge
-
- volumes:
-     prometheus_data: {}
-
-3. Run ``docker-compose up``
-
-Prometheus instance should be now running on ``http://localhost:9090/``.
-
-Pushgateway on ``http://localhost:9091/``.
-
-4. Run the ``Nethermind`` node with ``Metrics`` enabled and you should see metrics inflowing
-
-.. image:: metrics/pushgateway.png
-
-5. You can now use this data and create some awesome dashboards in your favourite data visualization tool e.g. Grafana, Splunk etc.
 
 Blockchain
 ^^^^^^^^^^
@@ -104,22 +14,6 @@ Blockchain
 
  nethermind_mgas
   Total MGas processed
-
-
- nethermind_pending_transactions_discarded
-  Number of pending transactions received that were ignored.
-
-
- nethermind_pending_transactions_known
-  Number of known pending transactions.
-
-
- nethermind_pending_transactions_received
-  Number of pending transactions received from peers.
-
-
- nethermind_pending_transactions_sent
-  Number of pending transactions broadcasted to peers.
 
 
  nethermind_processing_queue_size
@@ -290,6 +184,14 @@ Network
   Number of eth.63 Receipts messages received
 
 
+ nethermind_eth65get_pooled_transactions_received
+  Number of eth.65 GetPooledTransactions messages received
+
+
+ nethermind_eth65new_pooled_transaction_hashes_received
+  Number of eth.65 NewPooledTransactionHashes messages received
+
+
  nethermind_handshakes
   Number of devp2p handshakes
 
@@ -312,6 +214,14 @@ Network
 
  nethermind_incompatible_p2pdisconnects
   Number of received disconnects due to incompatible devp2p version
+
+
+ nethermind_les_statuses_received
+  Number of les status messages received
+
+
+ nethermind_les_statuses_sent
+  Number of les status messages sent
 
 
  nethermind_local_already_connected_disconnects
@@ -408,108 +318,4 @@ Network
 
  nethermind_useless_peer_disconnects
   Number of received disconnects due to useless peer
-
-
-Store
-^^^^^
-
-
- nethermind_block_infos_db_reads
-  Number of Block Infos DB reads.
-
-
- nethermind_block_infos_db_writes
-  Number of Block Infos DB writes.
-
-
- nethermind_blocks_db_reads
-  Number of Blocks DB reads.
-
-
- nethermind_blocks_db_writes
-  Number of Blocks DB writes.
-
-
- nethermind_code_db_reads
-  Number of Code DB reads.
-
-
- nethermind_code_db_writes
-  Number of Code DB writes.
-
-
- nethermind_eth_requests_db_reads
-  Number of Eth Request (faucet) DB reads.
-
-
- nethermind_eth_requests_db_writes
-  Number of Eth Request (faucet) DB writes.
-
-
- nethermind_header_db_reads
-  Number of Headers DB reads.
-
-
- nethermind_header_db_writes
-  Number of Headers DB writes.
-
-
- nethermind_other_db_reads
-  Number of other DB reads.
-
-
- nethermind_other_db_writes
-  Number of other DB writes.
-
-
- nethermind_pending_txs_db_reads
-  Number of Pending Tx DB reads.
-
-
- nethermind_pending_txs_db_writes
-  Number of Pending Tx DB writes.
-
-
- nethermind_receipts_db_reads
-  Number of Receipts DB reads.
-
-
- nethermind_receipts_db_writes
-  Number of Receipts DB writes.
-
-
- nethermind_state_db_reads
-  Number of State DB reads.
-
-
- nethermind_state_db_writes
-  Number of State DB writes.
-
-
- nethermind_state_tree_reads
-  Number of State Trie reads.
-
-
- nethermind_state_tree_writes
-  Number of Blocks Trie writes.
-
-
- nethermind_storage_tree_reads
-  Number of storge trie reads.
-
-
- nethermind_storage_tree_writes
-  Number of storage trie writes.
-
-
- nethermind_tree_node_hash_calculations
-  Number of trie node hash calculations.
-
-
- nethermind_tree_node_rlp_decodings
-  Number of trie node RLP decodings.
-
-
- nethermind_tree_node_rlp_encodings
-  Number of trie node RLP encodings.
 
