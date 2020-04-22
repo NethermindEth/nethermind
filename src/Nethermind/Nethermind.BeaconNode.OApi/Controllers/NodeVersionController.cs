@@ -28,7 +28,7 @@ namespace Nethermind.BeaconNode.OApi.Controllers
     [Route("node/version")]
     public class NodeVersionController : ControllerBase
     {
-        private readonly ILogger<NodeVersionController> _logger;
+        private readonly ILogger _logger;
         private readonly IBeaconNodeApi _beaconNode;
 
         public NodeVersionController(ILogger<NodeVersionController> logger, IBeaconNodeApi beaconNode)
@@ -43,7 +43,6 @@ namespace Nethermind.BeaconNode.OApi.Controllers
         /// Requests that the beacon node identify information about its implementation in a format similar to a  [HTTP User-Agent](https://tools.ietf.org/html/rfc7231#section-5.5.3) field.
         /// </para>
         /// </remarks>
-        /// <returns>Request successful</returns>
         [HttpGet]
         public async Task<IActionResult> GetAsync(CancellationToken cancellationToken)
         {

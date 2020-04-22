@@ -25,28 +25,28 @@ using Nethermind.Core2.Api;
 namespace Nethermind.BeaconNode.OApi.Controllers
 {
     [ApiController]
-    [Route("node/genesis_time")]
-    public class NodeGenesisTimeController : ControllerBase
+    [Route("node/syncing")]
+    public class NodeSyncingController : ControllerBase
     {
         private readonly ILogger _logger;
         private readonly IBeaconNodeApi _beaconNode;
 
-        public NodeGenesisTimeController(ILogger<NodeGenesisTimeController> logger, IBeaconNodeApi beaconNode)
+        public NodeSyncingController(ILogger<NodeSyncingController> logger, IBeaconNodeApi beaconNode)
         {
             _logger = logger;
             _beaconNode = beaconNode;
         }
         
-        /// <summary>Get the genesis_time parameter from beacon node configuration.</summary>
+        /// <summary>Poll to see if the the beacon node is syncing.</summary>
         /// <remarks>
         /// <para>
-        /// Requests the genesis_time parameter from the beacon node, which should be consistent across all beacon nodes that follow the same beacon chain.
+        /// Requests the beacon node to describe if it's currently syncing or not, and if it is, what block it is up to. This is modelled after the Eth1.0 JSON-RPC eth_syncing call.
         /// </para>
         /// </remarks>
         [HttpGet]
         public async Task<IActionResult> GetAsync(CancellationToken cancellationToken)
         {
-            ApiResponse<ulong> apiResponse = await _beaconNode.GetGenesisTimeAsync(cancellationToken).ConfigureAwait(false);
+            ApiResponse<Syncing> apiResponse = await _beaconNode.GetSyncingAsync(cancellationToken).ConfigureAwait(false);
             if (apiResponse.StatusCode == Core2.Api.StatusCode.Success)
             {
                 return Ok(apiResponse.Content);

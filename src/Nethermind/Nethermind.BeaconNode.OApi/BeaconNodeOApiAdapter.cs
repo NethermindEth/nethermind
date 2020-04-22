@@ -228,24 +228,6 @@
 //         //     return response2;
 //         // }
 //         //
-//         // /// <summary>Poll to see if the the beacon node is syncing.</summary>
-//         // /// <returns>Request successful</returns>
-//         // public async Task<Response> SyncingAsync()
-//         // {
-//         //     Response response = new Response();
-//         //     //response.Is_syncing = await _beaconNode.GetSyncingAsync(CancellationToken.None);
-//         //     response.Sync_status = new SyncingStatus();
-//         //     //response.Sync_status.Current_slot =
-//         //     return response;
-//         // }
-//         //
-//         // /// <summary>Get the genesis_time parameter from beacon node configuration.</summary>
-//         // /// <returns>Request successful</returns>
-//         // public async Task<ulong> TimeAsync()
-//         // {
-//         //     return await _beaconNode.GetGenesisTimeAsync(CancellationToken.None);
-//         // }
-//         //
 
 //         // private static Core2.Containers.IndexedAttestation MapIndexedAttestation(BeaconNode.OApi.IndexedAttestation indexedAttestation)
 //         // {
@@ -320,16 +302,6 @@
 //         //     };
 //         // }
 //         
-//         public Task<string> VersionAsync()
-//         {
-//             throw new NotImplementedException();
-//         }
-//
-//         public Task<Response> SyncingAsync()
-//         {
-//             throw new NotImplementedException();
-//         }
-//
 //         public Task<Response2> ForkAsync()
 //         {
 //             throw new NotImplementedException();

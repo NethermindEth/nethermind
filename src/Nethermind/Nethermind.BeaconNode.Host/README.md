@@ -40,6 +40,7 @@ Run, as above, then open a browser to ```https://localhost:8230/node/version``` 
 Other GET queries:
 
 * genesis time: ```https://localhost:8230/node/genesis_time```
+* syncing: ```https://localhost:8230/node/syncing```
 * fork: ```https://localhost:8230/node/fork```
 * validator duties: ```https://localhost:8230/validator/duties?validator_pubkeys=0xa1c76af1545d7901214bb6be06be5d9e458f8e989c19373a920f0018327c83982f6a2ac138260b8def732cb366411ddc&validator_pubkeys=0x94f0c8535601596eb2165adb28ebe495891a3e4ea77ef501e7790cccb281827d377a5a8d4c200e3595d3f38f8633b480&validator_pubkeys=0x81283b7a20e1ca460ebd9bbd77005d557370cabb1f9a44f530c4c4c66230f675f8df8b4c2818851aa7d77a80ca5a4a5e&epoch=0```
 * get an unsigned block: ```https://localhost:8230/validator/block?slot=1&randao_reveal=0xa3426b6391a29c88f2280428d5fdae9e20f4c75a8d38d0714e3aa5b9e55594dbd555c4bc685191e83d39158c3be9744d06adc34b21d2885998a206e3b3fd435eab424cf1c01b8fd562deb411348a601e83d7332d8774d1fd3bf8b88d7a33c67c```
