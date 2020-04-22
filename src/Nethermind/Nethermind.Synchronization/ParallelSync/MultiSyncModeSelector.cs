@@ -84,7 +84,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 UpdateSyncModes(SyncMode.DbLoad);
                 return;
             }
-            
+
             if (!_syncConfig.SynchronizationEnabled)
             {
                 UpdateSyncModes(SyncMode.None);
@@ -124,7 +124,7 @@ namespace Nethermind.Synchronization.ParallelSync
             best.IsInStateSync = ShouldBeInStateNodesMode(best);
             best.IsInBeamSync = ShouldBeInBeamSyncMode(best);
             best.IsInFullSync = ShouldBeInFullSyncMode(best);
-            
+
             SyncMode newModes = SyncMode.None;
             if (best.IsInBeamSync)
             {
@@ -153,9 +153,13 @@ namespace Nethermind.Synchronization.ParallelSync
 
             if (newModes != Current)
             {
-                string stateString = BuildStateString(best);
-                string message = $"Changing state to {newModes} at {stateString}";
-                if (_logger.IsInfo) _logger.Info(message);
+                if ((newModes != SyncMode.None || Current != SyncMode.Full) &&
+                    (newModes != SyncMode.Full || Current != SyncMode.None))
+                {
+                    string stateString = BuildStateString(best);
+                    string message = $"Changing state to {newModes} at {stateString}";
+                    if (_logger.IsInfo) _logger.Info(message);
+                }
             }
 
             UpdateSyncModes(newModes);
@@ -223,17 +227,17 @@ namespace Nethermind.Synchronization.ParallelSync
             bool heightDeltaGreaterThanLag = heightDelta > FastSyncLag;
             bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best.PeerBlock);
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
-            
+
             // _logger.Warn("======================== FAST");
             // _logger.Warn("postPivotPeerAvailable " + postPivotPeerAvailable);
             // _logger.Warn("heightDeltaGreaterThanLag " + heightDeltaGreaterThanLag);
             // _logger.Warn("notInAStickyFullSync " + notInAStickyFullSync);
-            
+
             return
                 postPivotPeerAvailable &&
                 // (catch up after node is off for a while
                 // OR standard fast sync)
-                !IsInAStickyFullSyncMode(best) &&
+                notInAStickyFullSync &&
                 heightDeltaGreaterThanLag;
         }
 
@@ -246,6 +250,14 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notInFastSync = !best.IsInFastSync;
             bool notInStateSync = !best.IsInStateSync;
 
+            // _logger.Warn("======================== FULL");
+            // _logger.Warn("higherDiffPeerKnown " + higherDiffPeerKnown);
+            // _logger.Warn("postPivotPeerAvailable " + postPivotPeerAvailable);
+            // _logger.Warn("hasFastSyncBeenActive " + hasFastSyncBeenActive);
+            // _logger.Warn("notInBeamSync " + notInBeamSync);
+            // _logger.Warn("notInFastSync " + notInFastSync);
+            // _logger.Warn("notInStateSync " + notInStateSync);
+
             return higherDiffPeerKnown &&
                    postPivotPeerAvailable &&
                    hasFastSyncBeenActive &&
@@ -256,6 +268,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool AnyPeerWithHigherDifficultyKnown(UInt256 bestPeerDiff)
         {
+            // _logger.Warn($"{bestPeerDiff} > {_syncProgressResolver.ChainDifficulty}");
             return bestPeerDiff > _syncProgressResolver.ChainDifficulty;
         }
 
@@ -293,7 +306,7 @@ namespace Nethermind.Synchronization.ParallelSync
             // _logger.Warn("notInFastSync " + notInFastSync);
             // _logger.Warn("stateNotDownloadedYet " + stateNotDownloadedYet);
             // _logger.Warn("notInAStickyFullSync " + notInAStickyFullSync);
-            
+
             return fastSyncEnabled &&
                    fastFastSyncBeenActive &&
                    hasAnyPostPivotPeer &&
@@ -347,8 +360,8 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             _timer?.Dispose();
         }
-        
-          private Snapshot TakeSnapshot(UInt256 peerDifficulty, long peerBlock)
+
+        private Snapshot TakeSnapshot(UInt256 peerDifficulty, long peerBlock)
         {
             // need to find them in the reversed order otherwise we may fall behind the processing
             // and think that we have an invalid snapshot
@@ -380,7 +393,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 // for any processed block we should have its full state   
                 // || (best.Processed > best.State && best.Processed > best.BeamState))
                 // but we only do limited lookups for state so we need to instead fast sync to now
-                )
+            )
             {
                 string stateString = BuildStateString(best);
                 string errorMessage = $"Invalid best state calculation: {stateString}";
@@ -388,7 +401,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 throw new InvalidAsynchronousStateException(errorMessage);
             }
         }
-        
+
         public event EventHandler<SyncModeChangedEventArgs> Changed;
 
         private struct Snapshot

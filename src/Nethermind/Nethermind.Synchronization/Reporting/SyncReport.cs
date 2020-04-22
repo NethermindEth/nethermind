@@ -77,6 +77,12 @@ namespace Nethermind.Synchronization.Reporting
 
         private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
         {
+            if (e.Previous == SyncMode.None && e.Current == SyncMode.Full ||
+                e.Previous == SyncMode.Full && e.Current == SyncMode.None)
+            {
+                return;
+            }
+            
             if (e.Previous != e.Current)
             {
                 if (_logger.IsInfo) _logger.Info($"Sync mode changed from {e.Previous} to {e.Current}");
@@ -158,16 +164,12 @@ namespace Nethermind.Synchronization.Reporting
                 WriteFastBlocksReport();
             }
 
-            if ((currentSyncMode & SyncMode.Full) != SyncMode.Full)
+            if ((currentSyncMode | SyncMode.Full) != SyncMode.Full)
             {
                 _logger.Info($"Peers {_syncPeerPool.InitializedPeersCount} / {_syncPeerPool.PeerCount}");
             }
-            else
-            {
-                _logger.Error($"Full");
-            }
 
-            if (currentSyncMode == SyncMode.None)
+            if (currentSyncMode == SyncMode.None && _syncPeerPool.InitializedPeersCount == 0)
             {
                 WriteNotStartedReport();
             }
