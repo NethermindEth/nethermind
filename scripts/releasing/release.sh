@@ -4,7 +4,14 @@ echo "Launching Release Process"
 echo "====================================="
 START=`date +%s`
 DOCKER_IMAGE="nethermind/nethermind"
-WEBHOOK_URL="{{ Place for slack webhook }}"
+WEBHOOK_URL="{{ Place for Slack WebHook}}"
+
+function send_message_to_slack () {
+    END=`date +%s`
+    RUNTIME=`date -d@$((END-START)) -u +%H:%M:%S`
+    STAGE=$(printf '{"blocks": [{"type": "section","text": {"type": "mrkdwn", "text": ":heavy_check_mark: `Stage %s/8. %s.`"}},{"type": "context","elements": [{"type": "mrkdwn","text": "Total time: %s"}]}]}' $1 "$2" $RUNTIME)
+    curl --data "$STAGE" $WEBHOOK_URL
+}
 
 if [ "$1" != "" ]; then
     echo "Running build from $1 branch..."
@@ -24,7 +31,7 @@ if [ "$1" != "" ]; then
     # STAGE 4
     # Building & pushing docker images
     cd ~
-    ./dockers.sh
+    ./dockers.sh $1
     send_message_to_slack "4" "Docker builds have been initiated on GitHub Actions"
 
     # STAGE 5
@@ -72,13 +79,10 @@ else
     # STAGE 5
     # Finishing Nethermind repo part
     send_message_to_slack "5" "Nethermind build process has been finished. Moving to NDM part"
-
-    # Trigger dappnode build
-    curl -v -X POST -u "{{ Place for GitHub Token }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" --data '{"event_type":"dappnode"}' https://api.github.com/repos/nethermindeth/nethermind/dispatches
     
     cd ~/repo_ndm/
     # STAGE 6
-    ./build-packages.sh $1
+    ./build-packages.sh
     send_message_to_slack "6" "NDM packages have been built"
 
     # STAGE 7
@@ -93,10 +97,3 @@ fi
 echo "====================================="
 echo "Release Process has been finished"
 echo "====================================="
-
-function send_message_to_slack () {
-    END=`date +%s`
-    RUNTIME=`date -d@$((END-START)) -u +%H:%M:%S`
-    STAGE=$(printf '{"blocks": [{"type": "section","text": {"type": "mrkdwn", "text": ":heavy_check_mark: `Stage '$1'/8. '$2'.`"}},{"type": "context","elements": [{"type": "mrkdwn","text": "Total time: %s"}]}]}' $RUNTIME)
-    curl --data "$STAGE" $WEBHOOK_URL
-}
