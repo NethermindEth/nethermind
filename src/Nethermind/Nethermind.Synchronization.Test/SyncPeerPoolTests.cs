@@ -68,9 +68,10 @@ namespace Nethermind.Synchronization.Test
 
             public Node Node { get; }
             public string ClientId { get; }
-            public string EthDetails { get; }
-
-            public UInt256 TotalDifficultyOnSessionStart => 1;
+            public Keccak HeadHash { get; set; }
+            public long HeadNumber { get; set; }
+            public UInt256 TotalDifficulty { get; set; } = 1;
+            public bool IsInitialized { get; set; }
 
             public bool DisconnectRequested { get; set; }
 
@@ -111,6 +112,7 @@ namespace Nethermind.Synchronization.Test
                     await Task.Delay(_headerResponseTime.Value);
                 }
 
+                IsInitialized = true;
                 return await Task.FromResult(Build.A.BlockHeader.TestObject);
             }
 
@@ -247,24 +249,6 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
-        public void Can_find_sync_peers()
-        {
-            _pool.Start();
-            ISyncPeer[] syncPeers = new ISyncPeer[3];
-            for (int i = 0; i < 3; i++)
-            {
-                syncPeers[i] = new SimpleSyncPeerMock(TestItem.PublicKeys[i]);
-                _pool.AddPeer(syncPeers[i]);
-            }
-
-            for (int i = 3; i > 0; i--)
-            {
-                Assert.True(_pool.TryFind(syncPeers[i - 1].Node.Id, out PeerInfo peerInfo));
-                Assert.NotNull(peerInfo);
-            }
-        }
-
-        [Test]
         public void Can_start()
         {
             _pool.Start();
@@ -284,17 +268,17 @@ namespace Nethermind.Synchronization.Test
             var syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
             _pool.AddPeer(syncPeer);
-            _pool.RefreshTotalDifficulty(new PeerInfo(syncPeer), null);
+            _pool.RefreshTotalDifficulty(syncPeer, null);
             await Task.Delay(100);
 
             await syncPeer.Received(2).GetHeadBlockHeader(Arg.Any<Keccak>(), Arg.Any<CancellationToken>());
         }
 
-        private void SetupSpeedStats(PublicKey publicKey, int milliseconds)
+        private void SetupSpeedStats(PublicKey publicKey, int transferSpeed)
         {
             Node node = new Node(publicKey, "127.0.0.1", 30303);
             NodeStatsLight stats = new NodeStatsLight(node, new StatsConfig());
-            stats.AddTransferSpeedCaptureEvent(milliseconds);
+            stats.AddTransferSpeedCaptureEvent(transferSpeed);
 
             _stats.GetOrAdd(Arg.Is<Node>(n => n.Id == publicKey)).Returns(stats);
         }
@@ -447,7 +431,10 @@ namespace Nethermind.Synchronization.Test
         public async Task Does_not_allocate_sleeping_peers()
         {
             var peers = await SetupPeers(3);
-            _pool.ReportNoSyncProgress(_pool.AllPeers.First());
+            for (int i = 0; i < PeerInfo.SleepThreshold + 1; i++)
+            {
+                _pool.ReportNoSyncProgress(_pool.InitializedPeers.First(), AllocationContexts.All);
+            }
 
             SyncPeerAllocation allocation1 = await _pool.Allocate(BySpeedStrategy.Fastest);
             SyncPeerAllocation allocation2 = await _pool.Allocate(BySpeedStrategy.Fastest);
@@ -462,8 +449,8 @@ namespace Nethermind.Synchronization.Test
         public async Task Can_wake_up_all_sleeping_peers()
         {
             var peers = await SetupPeers(3);
-            _pool.ReportNoSyncProgress(_pool.AllPeers.First());
-            _pool.ReportNoSyncProgress(_pool.AllPeers.Last());
+            _pool.ReportNoSyncProgress(_pool.InitializedPeers.First(), AllocationContexts.All);
+            _pool.ReportNoSyncProgress(_pool.InitializedPeers.Last(), AllocationContexts.All);
 
             _pool.WakeUpAll();
 
@@ -477,48 +464,19 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
-        public async Task Useful_peers_does_not_return_sleeping_peers()
+        public async Task Initialized_peers()
         {
             var peers = await SetupPeers(3);
-            _pool.ReportNoSyncProgress(_pool.AllPeers.First());
-            _pool.ReportNoSyncProgress(_pool.AllPeers.Last());
-
-            Assert.AreEqual(1, _pool.UsefulPeers.Count());
+            Assert.AreEqual(3, _pool.InitializedPeers.Count());
         }
 
         [Test]
         public async Task Report_invalid_invokes_disconnection()
         {
             var peers = await SetupPeers(3);
-            _pool.ReportInvalid(_pool.AllPeers.First(), "issue details");
+            _pool.ReportBreachOfProtocol(_pool.InitializedPeers.First(), "issue details");
 
             Assert.True(peers[0].DisconnectRequested);
-        }
-
-        [Test]
-        public async Task Report_invalid_via_allocation_invokes_disconnection()
-        {
-            SimpleSyncPeerMock[] peers = await SetupPeers(3);
-            SyncPeerAllocation allocation = await _pool.Allocate(BySpeedStrategy.Fastest);
-            _pool.ReportInvalid(allocation, "issue details");
-
-            Assert.True(peers.Count(p => p.DisconnectRequested) == 1);
-        }
-
-        [Test]
-        public async Task Report_bad_peer_only_disconnects_after_11_times()
-        {
-            SimpleSyncPeerMock[] peers = await SetupPeers(1);
-            SyncPeerAllocation allocation = await _pool.Allocate(BySpeedStrategy.Fastest);
-
-            for (int i = 0; i < 10; i++)
-            {
-                _pool.ReportWeakPeer(allocation);
-                Assert.AreEqual(0, peers.Count(p => p.DisconnectRequested));
-            }
-
-            _pool.ReportWeakPeer(allocation);
-            Assert.AreEqual(1, peers.Count(p => p.DisconnectRequested));
         }
 
         [Test]
@@ -595,16 +553,7 @@ namespace Nethermind.Synchronization.Test
             var allocation = await _pool.Allocate(BySpeedStrategy.Fastest);
             _pool.Free(allocation);
         }
-
-        [Test]
-        public async Task Report_no_sync_progress_on_null_does_not_crash()
-        {
-            await SetupPeers(1);
-
-            _pool.ReportNoSyncProgress((SyncPeerAllocation) null);
-            _pool.ReportNoSyncProgress((PeerInfo) null);
-        }
-
+        
         [Test]
         public async Task Does_not_fail_when_receiving_a_new_block_and_allocation_has_no_peer()
         {
@@ -624,7 +573,7 @@ namespace Nethermind.Synchronization.Test
             var allocationTasks = new Task<SyncPeerAllocation>[3];
             for (int i = 0; i < allocationTasks.Length; i++)
             {
-                allocationTasks[i] = _pool.Allocate(BySpeedStrategy.Fastest, null, 50);
+                allocationTasks[i] = _pool.Allocate(BySpeedStrategy.Fastest, AllocationContexts.All, 50);
             }
 
             await Task.WhenAll(allocationTasks);
@@ -677,7 +626,7 @@ namespace Nethermind.Synchronization.Test
             {
                 if (iterations > 0)
                 {
-                    SyncPeerAllocation allocation = await _pool.Allocate(BySpeedStrategy.Fastest, null, 10);
+                    SyncPeerAllocation allocation = await _pool.Allocate(BySpeedStrategy.Fastest, AllocationContexts.All, 10);
                     if (!allocation.HasPeer)
                     {
                         failures++;

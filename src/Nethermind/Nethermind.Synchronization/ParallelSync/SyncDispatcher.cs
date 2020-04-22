@@ -128,7 +128,7 @@ namespace Nethermind.Synchronization.ParallelSync
                                 // Logger.Warn($"Freeing allocation of {allocatedPeer}");
                                 Free(allocation);
                                 SyncResponseHandlingResult result = Feed.HandleResponse(request);
-                                ReactToHandlingResult(result, allocatedPeer);
+                                ReactToHandlingResult(request, result, allocatedPeer);
                             }
                             catch (Exception e)
                             {
@@ -141,7 +141,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     else
                     {
                         SyncResponseHandlingResult result = Feed.HandleResponse(request);
-                        ReactToHandlingResult(result, null);
+                        ReactToHandlingResult(request, result, null);
                     }
                 }
                 else if (currentStateLocal == SyncFeedState.Finished)
@@ -159,11 +159,11 @@ namespace Nethermind.Synchronization.ParallelSync
 
         protected virtual async Task<SyncPeerAllocation> Allocate(T request)
         {
-            SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerAllocationStrategy.Create(request), string.Empty, 1000);
+            SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerAllocationStrategy.Create(request), Feed.Contexts,1000);
             return allocation;
         }
 
-        protected virtual void ReactToHandlingResult(SyncResponseHandlingResult result, PeerInfo peer)
+        protected virtual void ReactToHandlingResult(T request, SyncResponseHandlingResult result, PeerInfo peer)
         {
             if (peer == null)
             {
@@ -171,18 +171,20 @@ namespace Nethermind.Synchronization.ParallelSync
                 return;
             }
 
+            // if (result != SyncResponseHandlingResult.OK)
+            // {
+            //     Logger.Warn($"Result of processing {request} by {peer} is {result}");
+            // }
+
             switch (result)
             {
                 case SyncResponseHandlingResult.Emptish:
                     break;
-                case SyncResponseHandlingResult.BadQuality:
-                    SyncPeerPool.ReportWeakPeer(peer);
+                case SyncResponseHandlingResult.LesserQuality:
+                    SyncPeerPool.ReportWeakPeer(peer, Feed.Contexts);
                     break;
-                case SyncResponseHandlingResult.InvalidFormat:
-                    SyncPeerPool.ReportWeakPeer(peer);
-                    break;
-                case SyncResponseHandlingResult.NoData:
-                    SyncPeerPool.ReportNoSyncProgress(peer);
+                case SyncResponseHandlingResult.NoProgress:
+                    SyncPeerPool.ReportNoSyncProgress(peer, Feed.Contexts);
                     break;
                 case SyncResponseHandlingResult.NotAssigned:
                     break;
@@ -195,11 +197,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private void SyncFeedOnStateChanged(object sender, SyncFeedStateEventArgs e)
         {
-            if (!Feed.IsMultiFeed)
-            {
-                if(Logger.IsDebug) Logger.Debug($"{Feed.GetType().Name} state changed to {e.NewState}");
-            }
-
             SyncFeedState state = e.NewState;
             UpdateState(state);
         }
@@ -208,15 +205,23 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             lock (_feedStateManipulation)
             {
-                _currentFeedState = state;
-                TaskCompletionSource<object> newDormantStateTask = null;
-                if (state == SyncFeedState.Dormant)
+                if (_currentFeedState != state)
                 {
-                    newDormantStateTask = new TaskCompletionSource<object>();
-                }
+                    if (!Feed.IsMultiFeed)
+                    {
+                        if(Logger.IsDebug) Logger.Debug($"{Feed.GetType().Name} state changed to {state}");
+                    }
+                    
+                    _currentFeedState = state;
+                    TaskCompletionSource<object> newDormantStateTask = null;
+                    if (state == SyncFeedState.Dormant)
+                    {
+                        newDormantStateTask = new TaskCompletionSource<object>();
+                    }
 
-                var previous = Interlocked.Exchange(ref _dormantStateTask, newDormantStateTask);
-                previous?.TrySetResult(null);
+                    var previous = Interlocked.Exchange(ref _dormantStateTask, newDormantStateTask);
+                    previous?.TrySetResult(null);
+                }
             }
         }
     }

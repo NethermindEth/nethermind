@@ -26,6 +26,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.BeamSync
 {
@@ -277,7 +278,7 @@ namespace Nethermind.Synchronization.BeamSync
         {
             if (stateSyncBatch.ConsumerId != FeedId)
             {
-                return SyncResponseHandlingResult.InvalidFormat;
+                return SyncResponseHandlingResult.InternalError;
             }
 
             bool wasDataInvalid = false;
@@ -319,14 +320,15 @@ namespace Nethermind.Synchronization.BeamSync
             _autoReset.Set();
             if (wasDataInvalid)
             {
-                return SyncResponseHandlingResult.InvalidFormat;
+                return SyncResponseHandlingResult.LesserQuality;
             }
             
-            return consumed == 0 ? SyncResponseHandlingResult.NoData : SyncResponseHandlingResult.OK;
+            return consumed == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
         }
 
         private AutoResetEvent _autoReset = new AutoResetEvent(true);
 
         public override bool IsMultiFeed => false;
+        public override AllocationContexts Contexts => AllocationContexts.State;
     }
 }

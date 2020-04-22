@@ -409,7 +409,7 @@ namespace Nethermind.Network
         private void RemoveActivePeer(PublicKey nodeId, string reason)
         {
             bool removed = _activePeers.TryRemove(nodeId, out Peer removedPeer);
-            if (removed && _logger.IsDebug) _logger.Debug($"{removedPeer.Node:s} removed from active peers - {reason}");
+            // if (removed && _logger.IsDebug) _logger.Debug($"{removedPeer.Node:s} removed from active peers - {reason}");
         }
 
         private void DeactivatePeerIfDisconnected(Peer peer, string reason)
@@ -959,7 +959,7 @@ namespace Nethermind.Network
 
             if (nodesToRemove.Length > 0)
             {
-                _logger.Info($"Removing {nodesToRemove.Length} out of {candidates.Count} peers (cleanup).");
+                _logger.Info($"Removing {nodesToRemove.Length} out of {candidates.Count} peer candidates (candidates cleanup).");
                 foreach (Peer peer in nodesToRemove)
                 {
                     _peerPool.TryRemove(peer.Node.Id, out _);

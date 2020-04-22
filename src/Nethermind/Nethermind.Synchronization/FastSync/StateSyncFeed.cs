@@ -30,6 +30,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.FastSync
@@ -490,7 +491,7 @@ namespace Nethermind.Synchronization.FastSync
                         AddAgainAllItems();
                         if (_logger.IsWarn) _logger.Warn($"Batch response had invalid format");
                         Interlocked.Increment(ref _invalidFormatCount);
-                        return SyncResponseHandlingResult.InvalidFormat;
+                        return isMissingRequestData ? SyncResponseHandlingResult.InternalError : SyncResponseHandlingResult.NotAssigned;
                     }
                     else
                     {
@@ -576,7 +577,7 @@ namespace Nethermind.Synchronization.FastSync
                     if (isEmpty)
                     {
                         if (_logger.IsDebug) _logger.Debug($"Peer sent no data in response to a request of length {batch.RequestedNodes.Length}");
-                        return SyncResponseHandlingResult.NoData;
+                        return SyncResponseHandlingResult.NoProgress;
                     }
 
                     if (!isEmptish && !isBadQuality)
@@ -587,7 +588,7 @@ namespace Nethermind.Synchronization.FastSync
                     SyncResponseHandlingResult result = isEmptish
                         ? SyncResponseHandlingResult.Emptish
                         : isBadQuality
-                            ? SyncResponseHandlingResult.BadQuality
+                            ? SyncResponseHandlingResult.LesserQuality
                             : SyncResponseHandlingResult.OK;
 
                     TimeSpan sinceLastReport = DateTime.UtcNow - _lastReportTime.small;
@@ -603,13 +604,13 @@ namespace Nethermind.Synchronization.FastSync
                         _lastHandledNodesCount = _handledNodesCount;
                         // if (_logger.IsInfo) _logger.Info($"Time {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | {(decimal) _dataSize / 1000 / 1000,6:F2}MB | kBps: {savedKBytesPerSecond,5:F0} | P: {_pendingRequests.Count} | acc {_savedAccounts} | queues {StreamsDescription} | db {_averageTimeInHandler:f2}ms");
                         if (_logger.IsInfo) _logger.Info($"State Sync {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | {(decimal) _dataSize / 1000 / 1000,6:F2}MB | kB/s: {savedKBytesPerSecond,5:F0} | P: {_pendingRequests.Count} | acc {_savedAccounts} | nodes {_savedNodesCount} | db_delay {_averageTimeInHandler:f2}ms");
-                        if (DateTime.UtcNow - _lastReportTime.full > TimeSpan.FromSeconds(10))
+                        if (_logger.IsDebug && DateTime.UtcNow - _lastReportTime.full > TimeSpan.FromSeconds(10))
                         {
                             long allChecks = _checkWasInDependencies + _checkWasCached + _stateWasThere + _stateWasNotThere;
-                            if (_logger.IsInfo) _logger.Info($"OK {(decimal) _okCount / TotalRequestsCount:p2} | Emptish: {(decimal) _emptishCount / TotalRequestsCount:p2} | BadQuality: {(decimal) _badQualityCount / TotalRequestsCount:p2} | InvalidFormat: {(decimal) _invalidFormatCount / TotalRequestsCount:p2} | NotAssigned {(decimal) _notAssignedCount / TotalRequestsCount:p2}");
+                            if (_logger.IsDebug) _logger.Debug($"OK {(decimal) _okCount / TotalRequestsCount:p2} | Emptish: {(decimal) _emptishCount / TotalRequestsCount:p2} | BadQuality: {(decimal) _badQualityCount / TotalRequestsCount:p2} | InvalidFormat: {(decimal) _invalidFormatCount / TotalRequestsCount:p2} | NotAssigned {(decimal) _notAssignedCount / TotalRequestsCount:p2}");
                             if (_requestedNodesCount > 0)
                             {
-                                if (_logger.IsInfo) _logger.Info($"Consumed {(decimal) _consumedNodesCount / _requestedNodesCount:p2} | Saved {(decimal) _savedNodesCount / _requestedNodesCount:p2} | DB Reads : {(decimal) _dbChecks / _requestedNodesCount:p2} | DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} | Cached {(decimal) _checkWasCached / allChecks:P2} + {(decimal) _checkWasInDependencies / allChecks:P2}");
+                                if (_logger.IsDebug) _logger.Debug($"Consumed {(decimal) _consumedNodesCount / _requestedNodesCount:p2} | Saved {(decimal) _savedNodesCount / _requestedNodesCount:p2} | DB Reads : {(decimal) _dbChecks / _requestedNodesCount:p2} | DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} | Cached {(decimal) _checkWasCached / allChecks:P2} + {(decimal) _checkWasInDependencies / allChecks:P2}");
                             }
 
                             _lastReportTime.full = DateTime.UtcNow;
@@ -640,7 +641,7 @@ namespace Nethermind.Synchronization.FastSync
             catch (Exception e)
             {
                 _logger.Error("Error when handling state sync response", e);
-                return SyncResponseHandlingResult.InvalidFormat;
+                return SyncResponseHandlingResult.InternalError;
             }
             finally
             {
@@ -657,6 +658,8 @@ namespace Nethermind.Synchronization.FastSync
         }
 
         public override bool IsMultiFeed => true;
+        
+        public override AllocationContexts Contexts => AllocationContexts.State;
 
         private void HandleTrieNode(StateSyncItem currentStateSyncItem, byte[] currentResponseItem, ref int invalidNodes)
         {

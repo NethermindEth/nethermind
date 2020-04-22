@@ -25,7 +25,7 @@ namespace Nethermind.Synchronization.Peers
 {
     public class SyncPeerAllocation
     {
-        public static SyncPeerAllocation FailedAllocation = new SyncPeerAllocation(NullStrategy.Instance);
+        public static SyncPeerAllocation FailedAllocation = new SyncPeerAllocation(NullStrategy.Instance, AllocationContexts.None);
 
         /// <summary>
         /// this should be used whenever we change IsAllocated property on PeerInfo-
@@ -33,18 +33,20 @@ namespace Nethermind.Synchronization.Peers
         private static object _allocationLock = new object();
 
         private IPeerAllocationStrategy _peerAllocationStrategy;
+        public AllocationContexts Contexts { get; }
         public PeerInfo Current { get; private set; }
 
         public bool HasPeer => Current != null;
 
-        public SyncPeerAllocation(PeerInfo peerInfo)
-            : this(new StaticStrategy(peerInfo))
+        public SyncPeerAllocation(PeerInfo peerInfo, AllocationContexts contexts)
+            : this(new StaticStrategy(peerInfo), contexts)
         {
         }
 
-        public SyncPeerAllocation(IPeerAllocationStrategy peerAllocationStrategy)
+        public SyncPeerAllocation(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts contexts)
         {
             _peerAllocationStrategy = peerAllocationStrategy;
+            Contexts = contexts;
         }
 
         public void AllocateBestPeer(IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
@@ -59,28 +61,13 @@ namespace Nethermind.Synchronization.Peers
             AllocationChangeEventArgs args;
             lock (_allocationLock)
             {
-                if (selected.IsAllocated)
+                if (selected != null && selected.TryAllocate(Contexts))
                 {
-                    throw new InvalidAsynchronousStateException("Selected an already allocated peer");
+                    Current = selected;
+                    args = new AllocationChangeEventArgs(current, selected);
+                    current?.Free(Contexts);
+                    Replaced?.Invoke(this, args);
                 }
-
-                selected.IsAllocated = true;
-                Current = selected;
-                args = new AllocationChangeEventArgs(current, selected);
-                if (current != null)
-                {
-                    current.IsAllocated = false;
-                }
-            }
-
-            Replaced?.Invoke(this, args);
-        }
-
-        public void Refresh()
-        {
-            if (Current != null)
-            {
-                Refreshed?.Invoke(this, EventArgs.Empty);
             }
         }
 
@@ -94,7 +81,7 @@ namespace Nethermind.Synchronization.Peers
 
             lock (_allocationLock)
             {
-                current.IsAllocated = false;
+                current.Free(Contexts);
                 Current = null;
             }
 
@@ -105,8 +92,6 @@ namespace Nethermind.Synchronization.Peers
         public event EventHandler<AllocationChangeEventArgs> Replaced;
 
         public event EventHandler<AllocationChangeEventArgs> Cancelled;
-
-        public event EventHandler Refreshed;
 
         public override string ToString()
         {

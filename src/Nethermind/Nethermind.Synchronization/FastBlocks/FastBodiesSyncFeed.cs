@@ -89,6 +89,8 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool ShouldFinish => !_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
 
         public override bool IsMultiFeed => true;
+        
+        public override AllocationContexts Contexts => AllocationContexts.Bodies;
 
         private bool AnyBatchesLeftToPrepare()
         {
@@ -282,7 +284,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
                 _pending.Enqueue(batch);
                 batch.MarkHandlingEnd();
-                return SyncResponseHandlingResult.NoData; //(BlocksDataHandlerResult.OK, 0);
+                return batch.ResponseSourcePeer == null ? SyncResponseHandlingResult.NotAssigned : SyncResponseHandlingResult.NoProgress; //(BlocksDataHandlerResult.OK, 0);
             }
 
             try
@@ -318,7 +320,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     OmmersHash.Calculate(block) != block.OmmersHash)
                 {
                     if (_logger.IsWarn) _logger.Warn($"{batch} - reporting INVALID - tx or ommers");
-                    _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, $"invalid tx or ommers root");
+                    _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, $"invalid tx or ommers root");
                     break;
                 }
 

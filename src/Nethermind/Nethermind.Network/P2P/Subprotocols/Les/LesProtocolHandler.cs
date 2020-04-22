@@ -191,7 +191,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
                 InitiateDisconnect(DisconnectReason.UselessPeer, "One of the Rinkeby nodes stuck at Constantinople transition");
             }
 
-            TotalDifficultyOnSessionStart = status.TotalDifficulty;
+            TotalDifficulty = status.TotalDifficulty;
             RequestedAnnounceType = status.AnnounceType.Value;
 
             ProtocolInitialized?.Invoke(this, eventArgs);

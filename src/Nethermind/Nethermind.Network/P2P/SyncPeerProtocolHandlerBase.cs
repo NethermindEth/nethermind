@@ -43,12 +43,17 @@ namespace Nethermind.Network.P2P
     {
         public Node Node => Session?.Node;
         public string ClientId => Session?.Node?.ClientId;
-        public string EthDetails => Session?.Node?.EthDetails;
-        public UInt256 TotalDifficultyOnSessionStart { get; protected set; }
+        public UInt256 TotalDifficulty { get; set; }
         public PublicKey Id => Node.Id;
         protected ISyncServer SyncServer { get; }
-
-        public override string ToString() => $"[Peer|{Node:s}|{ClientId}|{EthDetails}]";
+        
+        public long HeadNumber { get; set; }
+        public Keccak HeadHash { get; set; }
+        
+        // this mean that we know what the number, hash, and total diff of the head block is
+        public bool IsInitialized { get; set; }
+        
+        public override string ToString() => $"[Peer|{Node:s}|{HeadNumber}|{ClientId}|{Name}]";
 
         protected Keccak _remoteHeadBlockHash;
         protected ITxPool _txPool;

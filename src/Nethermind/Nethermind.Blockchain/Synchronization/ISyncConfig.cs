@@ -52,10 +52,10 @@ namespace Nethermind.Blockchain.Synchronization
         string PivotTotalDifficulty { get; }
         
         [ConfigItem(Description = "Number of the pivot block for the Fast Blocks sync.", DefaultValue = "null")]
-        string PivotNumber { get; }
+        string PivotNumber { get; set; }
         
         [ConfigItem(Description = "Hash of the pivot block for the Fast Blocks sync.", DefaultValue = "null")]
-        string PivotHash { get; }
+        string PivotHash { get; set; }
 
         long PivotNumberParsed => LongConverter.FromString(PivotNumber ?? "0");
 

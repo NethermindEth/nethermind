@@ -35,5 +35,9 @@ namespace Nethermind.Network.Config
         public int NettyArenaOrder { get; set; } = 11;
         public int DiscoveryPort { get; set; } = 30303;
         public int P2PPort { get; set; } = 30303;
+        public bool Verify()
+        {
+            throw new System.NotImplementedException();
+        }
     }
 }

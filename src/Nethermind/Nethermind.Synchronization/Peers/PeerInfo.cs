@@ -15,11 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
 [assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
@@ -28,14 +28,163 @@ namespace Nethermind.Synchronization.Peers
 {
     public class PeerInfo
     {
-        private int _weakness;
-
         public PeerInfo(ISyncPeer syncPeer)
         {
             SyncPeer = syncPeer;
-            TotalDifficulty = syncPeer.TotalDifficultyOnSessionStart;
             RecognizeClientType(syncPeer);
         }
+
+        public PeerClientType PeerClientType { get; private set; }
+
+        public AllocationContexts AllocatedContexts { get; private set; }
+
+        public AllocationContexts SleepingContexts { get; private set; }
+
+        private ConcurrentDictionary<AllocationContexts, DateTime?> SleepingSince { get; } = new ConcurrentDictionary<AllocationContexts, DateTime?>();
+
+        public ISyncPeer SyncPeer { get; }
+
+        public bool IsInitialized => SyncPeer.IsInitialized;
+
+        public UInt256 TotalDifficulty => SyncPeer.TotalDifficulty;
+
+        public long HeadNumber => SyncPeer.HeadNumber;
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public bool CanBeAllocated(AllocationContexts contexts)
+        {
+            return !IsAsleep(contexts) &&
+                   !IsAllocated(contexts);
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public bool IsAsleep(AllocationContexts contexts)
+        {
+            return (contexts & SleepingContexts) != AllocationContexts.None;
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public bool IsAllocated(AllocationContexts contexts)
+        {
+            return (contexts & AllocatedContexts) != AllocationContexts.None;
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public bool TryAllocate(AllocationContexts contexts)
+        {
+            if (CanBeAllocated(contexts))
+            {
+                AllocatedContexts |= contexts;
+                return true;
+            }
+
+            return false;
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public void Free(AllocationContexts contexts)
+        {
+            AllocatedContexts ^= contexts;
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public void PutToSleep(AllocationContexts contexts, DateTime dateTime)
+        {
+            SleepingContexts |= contexts;
+            SleepingSince[contexts] = dateTime;
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public void TryToWakeUp(DateTime dateTime, TimeSpan wakeUpIfSleepsMoreThanThis)
+        {
+            foreach (KeyValuePair<AllocationContexts, DateTime?> keyValuePair in SleepingSince)
+            {
+                if (IsAsleep(keyValuePair.Key))
+                {
+                    if (dateTime - keyValuePair.Value >= wakeUpIfSleepsMoreThanThis)
+                    {
+                        WakeUp(keyValuePair.Key);
+                    }
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        private void WakeUp(AllocationContexts allocationContexts)
+        {
+            SleepingContexts ^= allocationContexts;
+
+            if ((allocationContexts & AllocationContexts.Headers) == AllocationContexts.Headers)
+            {
+                _headersWeakness = 0;
+            }
+
+            if ((allocationContexts & AllocationContexts.Bodies) == AllocationContexts.Bodies)
+            {
+                _bodiesWeakness = 0;
+            }
+
+            if ((allocationContexts & AllocationContexts.Receipts) == AllocationContexts.Receipts)
+            {
+                _receiptsWeakness = 0;
+            }
+
+            if ((allocationContexts & AllocationContexts.State) == AllocationContexts.State)
+            {
+                _stateWeakness = 0;
+            }
+
+            SleepingSince.TryRemove(allocationContexts, out _);
+        }
+
+        private int _receiptsWeakness;
+        private int _bodiesWeakness;
+        private int _headersWeakness;
+        private int _stateWeakness;
+
+        public const int SleepThreshold = 2;
+
+        public AllocationContexts IncreaseWeakness(AllocationContexts allocationContexts)
+        {
+            AllocationContexts sleeps = AllocationContexts.None;
+            if ((allocationContexts & AllocationContexts.Headers) == AllocationContexts.Headers)
+            {
+                ResolveWeaknessChecks(ref _headersWeakness, AllocationContexts.Headers, ref sleeps);
+            }
+
+            if ((allocationContexts & AllocationContexts.Bodies) == AllocationContexts.Bodies)
+            {
+                ResolveWeaknessChecks(ref _bodiesWeakness, AllocationContexts.Bodies, ref sleeps);
+            }
+
+            if ((allocationContexts & AllocationContexts.Receipts) == AllocationContexts.Receipts)
+            {
+                ResolveWeaknessChecks(ref _receiptsWeakness, AllocationContexts.Receipts, ref sleeps);
+            }
+
+            if ((allocationContexts & AllocationContexts.State) == AllocationContexts.State)
+            {
+                ResolveWeaknessChecks(ref _stateWeakness, AllocationContexts.State, ref sleeps);
+            }
+
+            return sleeps;
+        }
+
+        private void ResolveWeaknessChecks(ref int weakness, AllocationContexts singleContext, ref AllocationContexts sleeps)
+        {
+            int level = Interlocked.Increment(ref weakness);
+            if (level >= SleepThreshold)
+            {
+                sleeps |= singleContext;
+            }
+        }
+
+        private static string BuildContextString(AllocationContexts contexts)
+        {
+            return $"{((contexts & AllocationContexts.Headers) == AllocationContexts.Headers ? "H" : "")}{((contexts & AllocationContexts.Bodies) == AllocationContexts.Bodies ? "B" : "")}{((contexts & AllocationContexts.Receipts) == AllocationContexts.Receipts ? "R" : "")}{((contexts & AllocationContexts.State) == AllocationContexts.State ? "S" : "")}";
+        }
+        
+        public override string ToString() => $"{SyncPeer}[{BuildContextString(AllocatedContexts)}][{BuildContextString(SleepingContexts)}]";
 
         private void RecognizeClientType(ISyncPeer syncPeer)
         {
@@ -60,29 +209,5 @@ namespace Nethermind.Synchronization.Peers
                 PeerClientType = PeerClientType.Unknown;
             }
         }
-
-        public PeerClientType PeerClientType { get; private set; }
-        public bool IsAllocated { get; set; }
-        public bool IsInitialized { get; set; }
-        public DateTime? SleepingSince { get; set; }
-        public bool IsSleepingDeeply { get; set; }
-        public bool IsAsleep => SleepingSince != null;
-        public ISyncPeer SyncPeer { get; }
-        public UInt256 TotalDifficulty { get; set; }
-        public long HeadNumber { get; set; }
-        public Keccak HeadHash { get; set; }
-        public bool HasBeenDisconnected { get; private set; }
-
-        public void MarkDisconnected()
-        {
-            HasBeenDisconnected = true;
-        }
-
-        public int IncreaseWeakness()
-        {
-            return Interlocked.Increment(ref _weakness);
-        }
-
-        public override string ToString() => $"[Peer|{SyncPeer?.Node:s}|{HeadNumber}|{SyncPeer?.ClientId}|{SyncPeer?.EthDetails}]";
     }
 }

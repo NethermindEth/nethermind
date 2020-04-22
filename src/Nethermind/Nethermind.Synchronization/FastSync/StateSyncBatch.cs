@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Diagnostics;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Synchronization.FastSync
 {
@@ -27,5 +26,10 @@ namespace Nethermind.Synchronization.FastSync
         public byte[][] Responses { get; set; }
 
         public int ConsumerId { get; set; }
+
+        public override string ToString()
+        {
+            return $"{RequestedNodes?.Length ?? 0} state sync requests with {Responses?.Length ?? 0} responses";
+        }
     }
 }

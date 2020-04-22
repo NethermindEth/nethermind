@@ -16,6 +16,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
@@ -31,6 +32,8 @@ namespace Nethermind.Synchronization.ParallelSync
         /// Multifeed can prepare and handle multiple requests concurrently.
         /// </summary>
         bool IsMultiFeed { get; }
+
+        AllocationContexts Contexts { get; }
         void Activate();
     }
 }

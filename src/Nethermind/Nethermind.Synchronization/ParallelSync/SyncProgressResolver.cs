@@ -21,6 +21,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 
 namespace Nethermind.Synchronization.ParallelSync
@@ -81,11 +82,6 @@ namespace Nethermind.Synchronization.ParallelSync
             long bestFullState = 0;
             long maxLookup = Math.Min(_maxLookup * 2, (initialBestSuggested?.Number ?? 0L) - head?.Number ?? 0);
 
-            if (maxLookup <= 1)
-            {
-                
-            }
-            
             for (int i = 0; i < maxLookup + 1; i++)
             {
                 if (bestSuggested == null)
@@ -102,11 +98,6 @@ namespace Nethermind.Synchronization.ParallelSync
                 bestSuggested = _blockTree.FindHeader(bestSuggested.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             }
 
-            if (bestFullState == 0)
-            {
-                
-            }
-            
             return bestFullState;
         }
         
@@ -127,6 +118,11 @@ namespace Nethermind.Synchronization.ParallelSync
             for (int i = 0; i < maxLookup + 1; i++)
             {
                 if (bestSuggested == null)
+                {
+                    break;
+                }
+
+                if (bestSuggested.Number < _syncConfig.PivotNumberParsed)
                 {
                     break;
                 }
@@ -153,6 +149,8 @@ namespace Nethermind.Synchronization.ParallelSync
         }
 
         public long FindBestProcessedBlock() => _blockTree.Head?.Number ?? -1;
+
+        public UInt256 ChainDifficulty => _blockTree.BestSuggestedBody?.TotalDifficulty ?? UInt256.Zero;
 
         public bool IsFastBlocksFinished()
         {

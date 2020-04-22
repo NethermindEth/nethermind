@@ -28,9 +28,13 @@ namespace Nethermind.Blockchain.Synchronization
     public interface ISyncPeer : ITxPoolPeer
     {
         Node Node { get; }
+        
         string ClientId { get; }
-        string EthDetails { get; }
-        UInt256 TotalDifficultyOnSessionStart { get; }
+        Keccak HeadHash { get; set; }
+        long HeadNumber { get; set; }
+        UInt256 TotalDifficulty { get; set; }
+        bool IsInitialized { get; set; }
+        
         void Disconnect(DisconnectReason reason, string details);
         Task<BlockBody[]> GetBlockBodies(IList<Keccak> blockHashes, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token);

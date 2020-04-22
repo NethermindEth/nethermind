@@ -18,6 +18,7 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.Blocks
 {
@@ -80,5 +81,7 @@ namespace Nethermind.Synchronization.Blocks
         }
 
         public override bool IsMultiFeed => false;
+        
+        public override AllocationContexts Contexts => AllocationContexts.Blocks;
     }
 }

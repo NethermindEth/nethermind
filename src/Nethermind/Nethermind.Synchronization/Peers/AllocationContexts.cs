@@ -13,19 +13,21 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
+
+using System;
 
 namespace Nethermind.Synchronization.Peers
 {
-    public static class SyncPeerPoolExtensions
+    [Flags]
+    public enum AllocationContexts
     {
-        public static void ReportInvalid(this ISyncPeerPool syncPeerPool, SyncPeerAllocation allocation, string details)
-        {
-            syncPeerPool.ReportInvalid(allocation?.Current, details);
-        }
-
-        public static void ReportNoSyncProgress(this ISyncPeerPool syncPeerPool, SyncPeerAllocation allocation, bool isSevere = true)
-        {
-            syncPeerPool.ReportNoSyncProgress(allocation?.Current, isSevere);
-        }
+        None = 0,
+        Headers = 1,
+        Bodies = 2,
+        Receipts = 4,
+        Blocks = 7,
+        State = 8,
+        All =15
     }
 }

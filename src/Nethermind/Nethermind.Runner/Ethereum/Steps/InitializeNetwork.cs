@@ -136,7 +136,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _ctx.SealValidator,
                 _ctx.SyncPeerPool,
                 _ctx.SyncModeSelector,
-                _ctx.Synchronizer,
                 _ctx.Config<ISyncConfig>(),
                 _ctx.LogManager);
 
