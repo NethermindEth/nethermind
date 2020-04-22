@@ -40,11 +40,11 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("ropsten_archive.cfg", false, false)]
-        [TestCase("ropsten.cfg", true, false)]
+        [TestCase("ropsten.cfg", true, false, true)]
         [TestCase("rinkeby_archive.cfg", false, false)]
-        [TestCase("rinkeby.cfg", true, true)]
+        [TestCase("rinkeby.cfg", true, true, true)]
         [TestCase("goerli_archive.cfg", false, false)]
-        [TestCase("goerli.cfg", true, true)]
+        [TestCase("goerli.cfg", true, true, true)]
         [TestCase("mainnet_archive.cfg", false, false)]
         [TestCase("mainnet.cfg", true, true)]
         [TestCase("sokol.cfg", true, true)]
@@ -60,13 +60,13 @@ namespace Nethermind.Runner.Test
         [TestCase("spaceneth.cfg", false, false)]
         [TestCase("volta.cfg", true, false)]
         [TestCase("volta_archive.cfg", false, false)]
-        public void Sync_defaults_are_correct(string configFile, bool fastSyncEnabled, bool fastBlocksEnabled)
+        public void Sync_defaults_are_correct(string configFile, bool fastSyncEnabled, bool fastBlocksEnabled, bool beamSyncEnabled = false)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
             ISyncConfig config = configProvider.GetConfig<ISyncConfig>();
             Assert.AreEqual(fastSyncEnabled, config.FastSync, "fast sync");
             Assert.AreEqual(fastBlocksEnabled, config.FastBlocks, "fast blocks");
-            Assert.AreEqual(false, config.BeamSync);
+            Assert.AreEqual(beamSyncEnabled, config.BeamSync);
         }
         
         [TestCase("ropsten_archive.cfg", true)]

@@ -102,10 +102,7 @@ namespace Nethermind.Synchronization.Peers
 
         private void AddPeerInfo(PeerInfo peerInfo)
         {
-            // string prefix = peerInfo.IsAllocated ? " * " : peerInfo.IsAsleep ? " _ " : peerInfo.IsInitialized ? "   " : " ? ";
-            // TODO:
-            string prefix = "BUILD";
-            _stringBuilder.Append($"{prefix}{peerInfo}[{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed() ?? 0}]");
+            _stringBuilder.Append($"{peerInfo}[{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed() ?? 0}]");
         }
 
         private void RememberState(out bool initializedCountChanged)

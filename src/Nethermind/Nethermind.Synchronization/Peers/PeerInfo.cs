@@ -179,7 +179,12 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        public override string ToString() => $"[{SyncPeer}|type|lastaction|currentstate]";
+        private static string BuildContextString(AllocationContexts contexts)
+        {
+            return $"{((contexts & AllocationContexts.Headers) == AllocationContexts.Headers ? "H" : "")}{((contexts & AllocationContexts.Bodies) == AllocationContexts.Bodies ? "B" : "")}{((contexts & AllocationContexts.Receipts) == AllocationContexts.Receipts ? "R" : "")}{((contexts & AllocationContexts.State) == AllocationContexts.State ? "S" : "")}";
+        }
+        
+        public override string ToString() => $"[{SyncPeer}|{BuildContextString(AllocatedContexts)}|{BuildContextString(AllocatedContexts)}]";
 
         private void RecognizeClientType(ISyncPeer syncPeer)
         {
