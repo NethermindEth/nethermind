@@ -40,7 +40,7 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("ropsten_archive.cfg", false, false)]
-        [TestCase("ropsten.cfg", true, false, true)]
+        [TestCase("ropsten.cfg", true, true, true)]
         [TestCase("rinkeby_archive.cfg", false, false)]
         [TestCase("rinkeby.cfg", true, true, true)]
         [TestCase("goerli_archive.cfg", false, false)]
