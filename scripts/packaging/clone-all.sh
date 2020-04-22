@@ -1,9 +1,15 @@
 echo =======================================================
-echo Pulling Nethermind sources
+echo Cloning Nethermind sources
 echo =======================================================
 
-./pull-runner.sh && ./pull-launcher.sh
+if [ "$1" != "" ]; then
+    ./clone-runner.sh $1
+    ./clone-launcher.sh
+else
+    ./clone-runner.sh
+    ./clone-launcher.sh
+fi
 
 echo =======================================================
-echo Pulling Nethermind sources completed
+echo Cloning Nethermind sources completed
 echo =======================================================
