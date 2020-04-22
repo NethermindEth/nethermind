@@ -28,15 +28,15 @@ namespace Nethermind.BeaconNode.OApi.Controllers
     [Route("node/genesis_time")]
     public class NodeGenesisTimeController : ControllerBase
     {
-        private readonly ILogger _logger;
         private readonly IBeaconNodeApi _beaconNode;
+        private readonly ILogger _logger;
 
         public NodeGenesisTimeController(ILogger<NodeGenesisTimeController> logger, IBeaconNodeApi beaconNode)
         {
             _logger = logger;
             _beaconNode = beaconNode;
         }
-        
+
         /// <summary>Get the genesis_time parameter from beacon node configuration.</summary>
         /// <remarks>
         /// <para>
@@ -46,7 +46,8 @@ namespace Nethermind.BeaconNode.OApi.Controllers
         [HttpGet]
         public async Task<IActionResult> GetAsync(CancellationToken cancellationToken)
         {
-            ApiResponse<ulong> apiResponse = await _beaconNode.GetGenesisTimeAsync(cancellationToken).ConfigureAwait(false);
+            ApiResponse<ulong> apiResponse =
+                await _beaconNode.GetGenesisTimeAsync(cancellationToken).ConfigureAwait(false);
             if (apiResponse.StatusCode == Core2.Api.StatusCode.Success)
             {
                 return Ok(apiResponse.Content);

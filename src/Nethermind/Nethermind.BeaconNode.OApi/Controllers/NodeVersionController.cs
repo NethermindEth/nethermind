@@ -28,15 +28,15 @@ namespace Nethermind.BeaconNode.OApi.Controllers
     [Route("node/version")]
     public class NodeVersionController : ControllerBase
     {
-        private readonly ILogger _logger;
         private readonly IBeaconNodeApi _beaconNode;
+        private readonly ILogger _logger;
 
         public NodeVersionController(ILogger<NodeVersionController> logger, IBeaconNodeApi beaconNode)
         {
             _logger = logger;
             _beaconNode = beaconNode;
         }
-        
+
         /// <summary>Get version string of the running beacon node.</summary>
         /// <remarks>
         /// <para>
@@ -46,7 +46,8 @@ namespace Nethermind.BeaconNode.OApi.Controllers
         [HttpGet]
         public async Task<IActionResult> GetAsync(CancellationToken cancellationToken)
         {
-            ApiResponse<string> apiResponse = await _beaconNode.GetNodeVersionAsync(cancellationToken).ConfigureAwait(false);
+            ApiResponse<string> apiResponse =
+                await _beaconNode.GetNodeVersionAsync(cancellationToken).ConfigureAwait(false);
             if (apiResponse.StatusCode == Core2.Api.StatusCode.Success)
             {
                 return Ok(apiResponse.Content);

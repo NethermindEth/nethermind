@@ -213,21 +213,6 @@
 //         //     return result;
 //         // }
 //         //
-//         // /// <summary>Get fork information from running beacon node.</summary>
-//         // /// <returns>Request successful</returns>
-//         // public async Task<Response2> ForkAsync()
-//         // {
-//         //     Core2.Containers.Fork fork = await _beaconNode.GetNodeForkAsync(CancellationToken.None);
-//         //     Response2 response2 = new Response2();
-//         //     // TODO: Not sure what chain ID should be.
-//         //     response2.Chain_id = 0;
-//         //     response2.Fork = new Fork();
-//         //     response2.Fork.Epoch = fork.Epoch;
-//         //     response2.Fork.Current_version = fork.CurrentVersion.AsSpan().ToArray();
-//         //     response2.Fork.Previous_version = fork.PreviousVersion.AsSpan().ToArray();
-//         //     return response2;
-//         // }
-//         //
 
 //         // private static Core2.Containers.IndexedAttestation MapIndexedAttestation(BeaconNode.OApi.IndexedAttestation indexedAttestation)
 //         // {
@@ -343,3 +328,4 @@
 //         }
 //     }
 // }
+
