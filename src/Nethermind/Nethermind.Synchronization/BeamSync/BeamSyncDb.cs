@@ -185,7 +185,7 @@ namespace Nethermind.Synchronization.BeamSync
                 }
                 else
                 {
-                    _tempDb[key] = value;    
+                    _tempDb[key] = value;
                 }
             }
         }
@@ -287,10 +287,10 @@ namespace Nethermind.Synchronization.BeamSync
             byte[][] data = stateSyncBatch.Responses;
             if (data != null)
             {
-                for (int i = 0; i < data.Length; i++)
+                for (int i = 0; i < Math.Min(data.Length, stateSyncBatch.RequestedNodes.Length); i++)
                 {
                     Keccak key = stateSyncBatch.RequestedNodes[i].Hash;
-                    if (data.Length > i && data[i] != null)
+                    if (data[i] != null)
                     {
                         if (Keccak.Compute(data[i]) == key)
                         {
@@ -322,7 +322,7 @@ namespace Nethermind.Synchronization.BeamSync
             {
                 return SyncResponseHandlingResult.LesserQuality;
             }
-            
+
             return consumed == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
         }
 
