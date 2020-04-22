@@ -246,13 +246,7 @@
 //         //     return await _beaconNode.GetGenesisTimeAsync(CancellationToken.None);
 //         // }
 //         //
-//         // /// <summary>Get version string of the running beacon node.</summary>
-//         // /// <returns>Request successful</returns>
-//         // public async Task<string> VersionAsync()
-//         // {
-//         //     return await _beaconNode.GetNodeVersionAsync(CancellationToken.None);
-//         // }
-//         //
+
 //         // private static Core2.Containers.IndexedAttestation MapIndexedAttestation(BeaconNode.OApi.IndexedAttestation indexedAttestation)
 //         // {
 //         //     return new Core2.Containers.IndexedAttestation(

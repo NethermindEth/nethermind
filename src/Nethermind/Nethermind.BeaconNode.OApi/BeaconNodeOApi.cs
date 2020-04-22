@@ -17,10 +17,6 @@
 //     [System.CodeDom.Compiler.GeneratedCode("NSwag", "13.1.6.0 (NJsonSchema v10.0.28.0 (Newtonsoft.Json v11.0.0.0))")]
 //     public interface IBeaconNodeOApiController
 //     {
-//         /// <summary>Get version string of the running beacon node.</summary>
-//         /// <returns>Request successful</returns>
-//         System.Threading.Tasks.Task<string> VersionAsync();
-//     
 //         /// <summary>Poll to see if the the beacon node is syncing.</summary>
 //         /// <returns>Request successful</returns>
 //         System.Threading.Tasks.Task<Response> SyncingAsync();
