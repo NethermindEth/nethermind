@@ -246,6 +246,14 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notInFastSync = !best.IsInFastSync;
             bool notInStateSync = !best.IsInStateSync;
 
+            // _logger.Warn("======================== FULL");
+            // _logger.Warn("higherDiffPeerKnown " + higherDiffPeerKnown);
+            // _logger.Warn("postPivotPeerAvailable " + postPivotPeerAvailable);
+            // _logger.Warn("hasFastSyncBeenActive " + hasFastSyncBeenActive);
+            // _logger.Warn("notInBeamSync " + notInBeamSync);
+            // _logger.Warn("notInFastSync " + notInFastSync);
+            // _logger.Warn("notInStateSync " + notInStateSync);
+            
             return higherDiffPeerKnown &&
                    postPivotPeerAvailable &&
                    hasFastSyncBeenActive &&
@@ -256,6 +264,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool AnyPeerWithHigherDifficultyKnown(UInt256 bestPeerDiff)
         {
+            // _logger.Warn($"{bestPeerDiff} > {_syncProgressResolver.ChainDifficulty}");
             return bestPeerDiff > _syncProgressResolver.ChainDifficulty;
         }
 

@@ -456,10 +456,10 @@ namespace Nethermind.Runner.Test
             Assert.AreEqual(false, kafkaConfig.Enabled, nameof(kafkaConfig.Enabled));
         }
         
-        [TestCase("ropsten.cfg", true, true)]
-        [TestCase("rinkeby.cfg", true, true)]
+        [TestCase("ropsten.cfg", false, false)]
+        [TestCase("rinkeby.cfg", false, false)]
         [TestCase("goerli.cfg", true, true)]
-        [TestCase("mainnet.cfg", true, true)]
+        [TestCase("mainnet.cfg", false, false)]
         [TestCase("sokol.cfg", true, true)]
         [TestCase("sokol_validator.cfg", true, false)]
         [TestCase("sokol_fastsync.cfg", true, true)]
