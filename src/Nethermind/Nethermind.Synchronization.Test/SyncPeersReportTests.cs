@@ -41,9 +41,9 @@ namespace Nethermind.Synchronization.Test
         {
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
 
-            ISyncPeer syncPeer = BuildPeer(false);
+            var syncPeer = BuildPeer(false);
 
-            ISyncPeer[] peers = new ISyncPeer[] {syncPeer};
+            var peers = new[] {syncPeer};
             syncPeerPool.PeerCount.Returns(peers.Length);
 
             SyncPeersReport report = new SyncPeersReport(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
@@ -55,10 +55,11 @@ namespace Nethermind.Synchronization.Test
         public void Can_write_one_uninitialized_one_initialized()
         {
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-            ISyncPeer syncPeer = BuildPeer(false);
-            ISyncPeer syncPeer2 = BuildPeer(true);
+            var syncPeer = BuildPeer(false);
+            var syncPeer2 = BuildPeer(true);
 
-            ISyncPeer[] peers = {syncPeer, syncPeer2};
+            var peers = new[] {syncPeer, syncPeer2};
+            
             syncPeerPool.PeerCount.Returns(peers.Length);
 
             SyncPeersReport report = new SyncPeersReport(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
@@ -71,10 +72,11 @@ namespace Nethermind.Synchronization.Test
         {
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
 
-            ISyncPeer syncPeer = BuildPeer(false);
-            ISyncPeer syncPeer2 = BuildPeer(true);
+            var syncPeer = BuildPeer(false);
+            var syncPeer2 = BuildPeer(true);
 
-            ISyncPeer[] peers = new ISyncPeer[] {syncPeer, syncPeer2};
+            var peers = new[] {syncPeer, syncPeer2};
+            
             syncPeerPool.PeerCount.Returns(peers.Length);
 
             syncPeerPool.AllPeers.Returns(peers);
@@ -88,22 +90,22 @@ namespace Nethermind.Synchronization.Test
             report.WriteFullReport();
         }
 
-        private static ISyncPeer BuildPeer(bool initialized)
+        private static PeerInfo BuildPeer(bool initialized)
         {
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-            PeerInfo peer1 = new PeerInfo(syncPeer);
+            PeerInfo peer = new PeerInfo(syncPeer);
             syncPeer.IsInitialized.Returns(initialized);
-            return syncPeer;
+            return peer;
         }
 
         [Test]
         public void Can_write_report_update_with_allocations()
         {
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-            ISyncPeer syncPeer = BuildPeer(false);
-            ISyncPeer syncPeer2 = BuildPeer(true);
+            var syncPeer = BuildPeer(false);
+            var syncPeer2 = BuildPeer(true);
 
-            ISyncPeer[] peers = {syncPeer, syncPeer2};
+            var peers = new[] {syncPeer, syncPeer2};
             syncPeerPool.PeerCount.Returns(peers.Length);
 
             syncPeerPool.AllPeers.Returns(peers);

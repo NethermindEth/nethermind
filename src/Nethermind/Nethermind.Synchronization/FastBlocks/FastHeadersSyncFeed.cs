@@ -103,6 +103,7 @@ namespace Nethermind.Synchronization.FastBlocks
         }
 
         public override bool IsMultiFeed => true;
+        public override AllocationContexts Contexts => AllocationContexts.Headers;
 
         private bool AnyBatchesLeftToBeBuilt()
         {
@@ -440,7 +441,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (batch.ResponseSourcePeer != null)
                 {
                     if (_logger.IsDebug) _logger.Debug($"{batch} - reporting no progress");
-                    _syncPeerPool.ReportNoSyncProgress(batch.ResponseSourcePeer);
+                    _syncPeerPool.ReportNoSyncProgress(batch.ResponseSourcePeer, AllocationContexts.Headers);
                 }
             }
 

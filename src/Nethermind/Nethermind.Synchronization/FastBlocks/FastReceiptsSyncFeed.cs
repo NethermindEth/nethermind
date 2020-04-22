@@ -105,6 +105,8 @@ namespace Nethermind.Synchronization.FastBlocks
         }
 
         public override bool IsMultiFeed => true;
+        
+        public override AllocationContexts Contexts => AllocationContexts.Receipts;
 
         private bool AnyBatchesLeftToPrepare()
         {

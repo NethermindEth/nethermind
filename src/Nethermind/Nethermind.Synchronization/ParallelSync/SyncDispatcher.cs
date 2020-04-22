@@ -159,7 +159,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         protected virtual async Task<SyncPeerAllocation> Allocate(T request)
         {
-            SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerAllocationStrategy.Create(request), 1000);
+            SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerAllocationStrategy.Create(request), Feed.Contexts,1000);
             return allocation;
         }
 
@@ -171,17 +171,20 @@ namespace Nethermind.Synchronization.ParallelSync
                 return;
             }
 
-            Logger.Warn($"Result of processing {request} by {peer} is {result}");
-            
+            // if (result != SyncResponseHandlingResult.OK)
+            // {
+            //     Logger.Warn($"Result of processing {request} by {peer} is {result}");
+            // }
+
             switch (result)
             {
                 case SyncResponseHandlingResult.Emptish:
                     break;
                 case SyncResponseHandlingResult.LesserQuality:
-                    SyncPeerPool.ReportWeakPeer(peer);
+                    SyncPeerPool.ReportWeakPeer(peer, Feed.Contexts);
                     break;
                 case SyncResponseHandlingResult.NoProgress:
-                    SyncPeerPool.ReportNoSyncProgress(peer);
+                    SyncPeerPool.ReportNoSyncProgress(peer, Feed.Contexts);
                     break;
                 case SyncResponseHandlingResult.NotAssigned:
                     break;

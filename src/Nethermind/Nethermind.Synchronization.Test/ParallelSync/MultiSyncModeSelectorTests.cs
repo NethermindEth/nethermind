@@ -78,9 +78,9 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 private void SetDefaults()
                 {
                     SyncPeerPool = Substitute.For<ISyncPeerPool>();
-                    SyncPeerPool.UsefulPeersWhateverDiff.Returns(_peers.Select(p => new PeerInfo(p)));
-                    SyncPeerPool.UsefulPeers.Returns(_peers.Select(p => new PeerInfo(p)));
-                    SyncPeerPool.AllPeers.Returns(_peers);
+                    var peerInfos = _peers.Select(p => new PeerInfo(p));
+                    SyncPeerPool.InitializedPeers.Returns(peerInfos);
+                    SyncPeerPool.AllPeers.Returns(peerInfos);
 
                     SyncProgressResolver = Substitute.For<ISyncProgressResolver>();
                     SyncProgressResolver.ChainDifficulty.Returns(ValidGenesis.TotalDifficulty ?? 0);

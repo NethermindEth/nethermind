@@ -30,6 +30,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.FastSync
@@ -657,6 +658,8 @@ namespace Nethermind.Synchronization.FastSync
         }
 
         public override bool IsMultiFeed => true;
+        
+        public override AllocationContexts Contexts => AllocationContexts.State;
 
         private void HandleTrieNode(StateSyncItem currentStateSyncItem, byte[] currentResponseItem, ref int invalidNodes)
         {

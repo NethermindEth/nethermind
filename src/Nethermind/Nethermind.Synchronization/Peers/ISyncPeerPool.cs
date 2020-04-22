@@ -25,15 +25,15 @@ namespace Nethermind.Synchronization.Peers
 {
     public interface ISyncPeerPool : IDisposable
     {
-        Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, int timeoutMilliseconds = 0);
+        Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts allocationContexts, int timeoutMilliseconds = 0);
 
         void Free(SyncPeerAllocation syncPeerAllocation);
 
-        void ReportNoSyncProgress(PeerInfo peerInfo);
+        void ReportNoSyncProgress(PeerInfo peerInfo, AllocationContexts allocationContexts);
 
         void ReportBreachOfProtocol(PeerInfo peerInfo, string details);
         
-        void ReportWeakPeer(PeerInfo peerInfo);
+        void ReportWeakPeer(PeerInfo peerInfo, AllocationContexts allocationContexts);
 
         /// <summary>
         /// Wakes up all the sleeping peers.
@@ -43,19 +43,12 @@ namespace Nethermind.Synchronization.Peers
         /// <summary>
         /// All peers maintained by the pool
         /// </summary>
-        IEnumerable<ISyncPeer> AllPeers { get; }
+        IEnumerable<PeerInfo> AllPeers { get; }
 
         /// <summary>
         /// All the useful peers available for allocation.
-        /// These peers may not be useful for everyone but they are not asleep.
         /// </summary>
-        IEnumerable<PeerInfo> UsefulPeers { get; }
-        
-        /// <summary>
-        /// All the useful peers available for allocation.
-        /// These peers may not be useful for everyone but they are not asleep.
-        /// </summary>
-        IEnumerable<PeerInfo> UsefulPeersWhateverDiff { get; }
+        IEnumerable<PeerInfo> InitializedPeers { get; }
 
         /// <summary>
         /// Number of all sync peers
@@ -65,7 +58,7 @@ namespace Nethermind.Synchronization.Peers
         /// <summary>
         /// Number of peers that are not sleeping
         /// </summary>
-        int UsefulPeerCountWhateverDiff { get; }
+        int InitializedPeersCount { get; }
 
         /// <summary>
         /// Max number of peers

@@ -160,7 +160,7 @@ namespace Nethermind.Synchronization.Reporting
 
             if ((currentSyncMode & SyncMode.Full) != SyncMode.Full)
             {
-                _logger.Info($"Peers {_syncPeerPool.UsefulPeerCountWhateverDiff} / {_syncPeerPool.PeerCount}");
+                _logger.Info($"Peers {_syncPeerPool.InitializedPeersCount} / {_syncPeerPool.PeerCount}");
             }
             else
             {

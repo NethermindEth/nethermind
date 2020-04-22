@@ -60,7 +60,7 @@ namespace Nethermind.Synchronization.Test
             _synchronizerType = synchronizerType;
         }
 
-        private static Block _genesisBlock = Build.A.Block.Genesis.TestObject;
+        private static Block _genesisBlock = Build.A.Block.Genesis.WithDifficulty(100000).WithTotalDifficulty((UInt256)100000).TestObject;
 
         private class SyncPeerMock : ISyncPeer
         {

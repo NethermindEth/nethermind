@@ -300,12 +300,12 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             UInt256? maxPeerDifficulty = null;
             long? number = 0;
-            foreach (PeerInfo usefulPeer in _syncPeerPool.UsefulPeersWhateverDiff)
+            foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
             {
-                if (usefulPeer.TotalDifficulty > (maxPeerDifficulty ?? UInt256.Zero))
+                if (peer.TotalDifficulty > (maxPeerDifficulty ?? UInt256.Zero))
                 {
-                    maxPeerDifficulty = usefulPeer.TotalDifficulty;
-                    number = usefulPeer.HeadNumber;
+                    maxPeerDifficulty = peer.TotalDifficulty;
+                    number = peer.HeadNumber;
                 }
             }
 

@@ -19,15 +19,16 @@ using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.BeamSync
 {
-    public class CompositeFeed<T> : SyncFeed<T> where T : StateSyncBatch
+    public class CompositeStateSyncFeed<T> : SyncFeed<T> where T : StateSyncBatch
     {
         private readonly ISyncFeed<T>[] _subFeeds;
         private ILogger _logger;
 
-        public CompositeFeed(ILogManager logManager, params ISyncFeed<T>[] subFeeds)
+        public CompositeStateSyncFeed(ILogManager logManager, params ISyncFeed<T>[] subFeeds)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _subFeeds = subFeeds;
@@ -78,5 +79,7 @@ namespace Nethermind.Synchronization.BeamSync
 
         // false for now but probably true
         public override bool IsMultiFeed => false;
+        
+        public override AllocationContexts Contexts => AllocationContexts.State;
     }
 }

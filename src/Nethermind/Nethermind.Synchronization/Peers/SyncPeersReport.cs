@@ -49,7 +49,7 @@ namespace Nethermind.Synchronization.Peers
 
         private object _writeLock = new object();
 
-        private IEnumerable<PeerInfo> OrderedPeers => _peerPool.UsefulPeersWhateverDiff.OrderBy(p => p.SyncPeer.Node?.Host);
+        private IEnumerable<PeerInfo> OrderedPeers => _peerPool.InitializedPeers.OrderBy(p => p.SyncPeer.Node?.Host);
 
         public void WriteFullReport()
         {
@@ -102,13 +102,15 @@ namespace Nethermind.Synchronization.Peers
 
         private void AddPeerInfo(PeerInfo peerInfo)
         {
-            string prefix = peerInfo.IsAllocated ? " * " : peerInfo.IsAsleep ? " _ " : peerInfo.IsInitialized ? "   " : " ? ";
+            // string prefix = peerInfo.IsAllocated ? " * " : peerInfo.IsAsleep ? " _ " : peerInfo.IsInitialized ? "   " : " ? ";
+            // TODO:
+            string prefix = "BUILD";
             _stringBuilder.Append($"{prefix}{peerInfo}[{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed() ?? 0}]");
         }
 
         private void RememberState(out bool initializedCountChanged)
         {
-            int initializedPeerCount = _peerPool.AllPeers.Count(p => p.IsInitialized);
+            int initializedPeerCount = _peerPool.InitializedPeersCount;
             initializedCountChanged = initializedPeerCount != _currentInitializedPeerCount;
             _currentInitializedPeerCount = initializedPeerCount;
         }

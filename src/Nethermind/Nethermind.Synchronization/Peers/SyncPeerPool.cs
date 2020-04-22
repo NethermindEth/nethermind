@@ -45,17 +45,14 @@ namespace Nethermind.Synchronization.Peers
     /// </summary>
     public class SyncPeerPool : ISyncPeerPool
     {
-        public const int PeerWeaknessBeforeSleep = 2;
-        public const int PeerWeaknessBeforeDisconnect = 8;
         private const int InitTimeout = 10000; // the Eth.Timeout hits us at 5000
 
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
         private readonly BlockingCollection<RefreshTotalDiffTask> _peerRefreshQueue = new BlockingCollection<RefreshTotalDiffTask>();
 
-        private readonly ConcurrentDictionary<PublicKey, ISyncPeer> _peers = new ConcurrentDictionary<PublicKey, ISyncPeer>();
-        private readonly ConcurrentDictionary<ISyncPeer, PeerInfo> _tempMapping = new ConcurrentDictionary<ISyncPeer, PeerInfo>();
-        
+        private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new ConcurrentDictionary<PublicKey, PeerInfo>();
+
         private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens = new ConcurrentDictionary<PublicKey, CancellationTokenSource>();
         private readonly ConcurrentDictionary<SyncPeerAllocation, object> _replaceableAllocations = new ConcurrentDictionary<SyncPeerAllocation, object>();
         private readonly INodeStatsManager _stats;
@@ -69,8 +66,7 @@ namespace Nethermind.Synchronization.Peers
         private Task _refreshLoopTask;
 
         private ManualResetEvent _signals = new ManualResetEvent(true);
-        private TimeSpan _timeBeforeWakingDeepSleepingPeerUp = TimeSpan.FromSeconds(3);
-        private TimeSpan _timeBeforeWakingShallowSleepingPeerUp = TimeSpan.FromMilliseconds(500);
+        private TimeSpan _timeBeforeWakingShallowSleepingPeerUp = TimeSpan.FromMilliseconds(1000);
         private Timer _upgradeTimer;
 
         public SyncPeerPool(IBlockTree blockTree,
@@ -94,9 +90,9 @@ namespace Nethermind.Synchronization.Peers
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public void ReportNoSyncProgress(PeerInfo peerInfo)
+        public void ReportNoSyncProgress(PeerInfo peerInfo, AllocationContexts allocationContexts)
         {
-            ReportWeakPeer(peerInfo);
+            ReportWeakPeer(peerInfo, allocationContexts);
         }
 
         public void ReportBreachOfProtocol(PeerInfo peerInfo, string details)
@@ -112,7 +108,7 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        public void ReportWeakPeer(PeerInfo weakPeer)
+        public void ReportWeakPeer(PeerInfo weakPeer, AllocationContexts allocationContexts)
         {
             if (weakPeer == null)
             {
@@ -122,25 +118,11 @@ namespace Nethermind.Synchronization.Peers
                 return;
             }
 
-            int currentWeakness = weakPeer.IncreaseWeakness();
-            if (currentWeakness > PeerWeaknessBeforeDisconnect)
+            AllocationContexts sleeps = weakPeer.IncreaseWeakness(allocationContexts);
+            if (sleeps != AllocationContexts.None)
             {
-                /* fast Geth nodes send invalid nodes quite often :/
-                 * so we let them deliver fast and only disconnect them when they really misbehave
-                 */
-                _logger.Warn("Disconnecting a weak peer");
-                weakPeer.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "peer is too weak");
+                weakPeer.PutToSleep(sleeps, DateTime.UtcNow);
             }
-            else if (currentWeakness > PeerWeaknessBeforeSleep)
-            {
-                weakPeer.SleepingSince = DateTime.UtcNow;
-                weakPeer.IsSleepingDeeply = false; // not used at the moment
-            }
-        }
-
-        public void ReportWeakPeer(SyncPeerAllocation allocation)
-        {
-            ReportWeakPeer(allocation.Current);
         }
 
         public void Start()
@@ -175,47 +157,26 @@ namespace Nethermind.Synchronization.Peers
             _isStarted = false;
             _refreshLoopCancellation.Cancel();
             await (_refreshLoopTask ?? Task.CompletedTask);
-            Parallel.ForEach(_peers, p => { p.Value.Disconnect(DisconnectReason.ClientQuitting, "App Close"); });
+            Parallel.ForEach(_peers, p => { p.Value.SyncPeer.Disconnect(DisconnectReason.ClientQuitting, "App Close"); });
         }
 
         public void WakeUpAll()
         {
-            foreach (var peer in _peers) WakeUpPeer(_tempMapping[peer.Value]);
-        }
-
-        public IEnumerable<ISyncPeer> AllPeers
-        {
-            get
+            foreach (var peer in _peers)
             {
-                foreach ((_, ISyncPeer peerInfo) in _peers) yield return peerInfo;
+                peer.Value.TryToWakeUp(DateTime.Now, TimeSpan.Zero);
             }
         }
 
-        public IEnumerable<PeerInfo> UsefulPeers
+        public IEnumerable<PeerInfo> AllPeers
         {
             get
             {
-                foreach (PeerInfo peerInfo in UsefulPeersWhateverDiff)
-                {
-                    /* This condition is critical when trying to recognize the chain head for sync mode selections
-                     */
-                    if (peerInfo.TotalDifficulty < (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0))
-                    {
-                        continue;
-                    }
-
-
-                    if (peerInfo.TotalDifficulty < (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0))
-                    {
-                        continue;
-                    }
-
-                    yield return peerInfo;
-                }
+                foreach ((_, PeerInfo peerInfo) in _peers) yield return peerInfo;
             }
         }
 
-        public IEnumerable<PeerInfo> UsefulPeersWhateverDiff
+        public IEnumerable<PeerInfo> InitializedPeers
         {
             get
             {
@@ -223,15 +184,8 @@ namespace Nethermind.Synchronization.Peers
                 int uninitializedCount = 0;
                 int okCount = 0;
 
-                foreach ((_, ISyncPeer syncPeer) in _peers)
+                foreach ((_, PeerInfo peerInfo) in _peers)
                 {
-                    PeerInfo peerInfo = _tempMapping[syncPeer];
-                    if (peerInfo.IsAsleep)
-                    {
-                        sleepingCount++;
-                        continue;
-                    }
-
                     if (!peerInfo.SyncPeer.IsInitialized)
                     {
                         uninitializedCount++;
@@ -255,7 +209,7 @@ namespace Nethermind.Synchronization.Peers
         }
 
         public int PeerCount => _peers.Count;
-        public int UsefulPeerCountWhateverDiff => UsefulPeersWhateverDiff.Count();
+        public int InitializedPeersCount => InitializedPeers.Count();
         public int PeerMaxCount { get; }
 
         public void RefreshTotalDifficulty(ISyncPeer syncPeer, Keccak blockHash)
@@ -278,8 +232,8 @@ namespace Nethermind.Synchronization.Peers
                 return;
             }
             
-            _peers.TryAdd(syncPeer.Node.Id, syncPeer);
-            _tempMapping.TryAdd(syncPeer, new PeerInfo(syncPeer));
+            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            _peers.TryAdd(syncPeer.Node.Id, peerInfo);
             Metrics.SyncPeers = _peers.Count;
 
             if (_logger.IsDebug) _logger.Debug($"Adding {syncPeer.Node:c} to refresh queue");
@@ -304,14 +258,10 @@ namespace Nethermind.Synchronization.Peers
                 return;
             }
 
-            if (!_peers.TryRemove(id, out ISyncPeer removedPeer))
+            if (!_peers.TryRemove(id, out _))
             {
                 // possible if sync failed - we remove peer and eventually initiate disconnect, which calls remove peer again
                 return;
-            }
-            else
-            {
-                _tempMapping.TryRemove(removedPeer, out _);    
             }
 
             Metrics.SyncPeers = _peers.Count;
@@ -320,10 +270,8 @@ namespace Nethermind.Synchronization.Peers
             {
                 if (allocation.Current?.SyncPeer.Node.Id == id)
                 {
-                    PeerInfo peerInfo = allocation.Current;
                     if (_logger.IsTrace) _logger.Trace($"Requesting peer cancel with {syncPeer.Node:c} on {allocation}");
                     allocation.Cancel();
-                    peerInfo.MarkDisconnected();
                 }
             }
 
@@ -332,17 +280,17 @@ namespace Nethermind.Synchronization.Peers
 
         private object _isAllocatedChecks = new object();
 
-        public async Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, int timeoutMilliseconds = 0)
+        public async Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts allocationContexts = AllocationContexts.All, int timeoutMilliseconds = 0)
         {
             int tryCount = 1;
             DateTime startTime = DateTime.UtcNow;
 
-            SyncPeerAllocation allocation = new SyncPeerAllocation(peerAllocationStrategy);
+            SyncPeerAllocation allocation = new SyncPeerAllocation(peerAllocationStrategy, allocationContexts);
             while (true)
             {
                 lock (_isAllocatedChecks)
                 {
-                    allocation.AllocateBestPeer(UsefulPeersWhateverDiff.Where(p => !p.IsAllocated), _stats, _blockTree);
+                    allocation.AllocateBestPeer(InitializedPeers.Where(p => p.CanBeAllocated(allocationContexts)), _stats, _blockTree);
                     if (allocation.HasPeer)
                     {
                         if (peerAllocationStrategy.CanBeReplaced)
@@ -488,45 +436,44 @@ namespace Nethermind.Synchronization.Peers
 
             long ourNumber = _blockTree.BestSuggestedHeader?.Number ?? 0L;
             UInt256 ourDifficulty = _blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero;
-            foreach (ISyncPeer syncPeer in AllPeers)
+            foreach (PeerInfo peerInfo in AllPeers)
             {
-                PeerInfo peerInfo = _tempMapping[syncPeer];
-                if (syncPeer.HeadNumber == 0
-                    && syncPeer.IsInitialized
+                if (peerInfo.HeadNumber == 0
+                    && peerInfo.IsInitialized
                     && ourNumber != 0
                     && peerInfo.PeerClientType != PeerClientType.Nethermind)
                     // we know that Nethermind reports 0 HeadNumber when it is in sync (and it can still serve a lot of data to other nodes)
                 {
-                    if (!CanBeUsefulForFastBlocks(syncPeer.HeadNumber))
+                    if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
                     {
                         peersDropped++;
-                        syncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / HEAD 0");
+                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / HEAD 0");
                     }
                 }
-                else if (syncPeer.HeadNumber == 1920000 && _blockTree.ChainId == ChainId.Mainnet) // mainnet, stuck Geth nodes
+                else if (peerInfo.HeadNumber == 1920000 && _blockTree.ChainId == ChainId.Mainnet) // mainnet, stuck Geth nodes
                 {
-                    if (!CanBeUsefulForFastBlocks(syncPeer.HeadNumber))
+                    if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
                     {
                         peersDropped++;
-                        syncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 1920000");
+                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 1920000");
                     }
                 }
-                else if (syncPeer.HeadNumber == 7280022 && _blockTree.ChainId == ChainId.Mainnet) // mainnet, stuck Geth nodes
+                else if (peerInfo.HeadNumber == 7280022 && _blockTree.ChainId == ChainId.Mainnet) // mainnet, stuck Geth nodes
                 {
-                    if (!CanBeUsefulForFastBlocks(syncPeer.HeadNumber))
+                    if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
                     {
                         peersDropped++;
-                        syncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 7280022");
+                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 7280022");
                     }
                 }
-                else if (syncPeer.HeadNumber > ourNumber + 1024L && syncPeer.TotalDifficulty < ourDifficulty)
+                else if (peerInfo.HeadNumber > ourNumber + 1024L && peerInfo.TotalDifficulty < ourDifficulty)
                 {
                     if (!CanBeUsefulForFastBlocks(MainnetSpecProvider.Instance.DaoBlockNumber ?? 0))
                     {
                         // probably Ethereum Classic nodes tht remain connected after we went pass the DAO
                         // worth to find a better way to discard them at the right time
                         peersDropped++;
-                        syncPeer.Disconnect(DisconnectReason.UselessPeer, "STRAY PEER");
+                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "STRAY PEER");
                     }
                 }
             }
@@ -535,10 +482,9 @@ namespace Nethermind.Synchronization.Peers
             {
                 long worstSpeed = long.MaxValue;
                 PeerInfo worstPeer = null;
-                foreach (ISyncPeer syncPeer in AllPeers)
+                foreach (PeerInfo peerInfo in AllPeers)
                 {
-                    PeerInfo peerInfo = _tempMapping[syncPeer];
-                    long transferSpeed = _stats.GetOrAdd(syncPeer.Node).GetAverageTransferSpeed() ?? 0;
+                    long transferSpeed = _stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed() ?? 0;
                     if (transferSpeed < worstSpeed) worstPeer = peerInfo;
                 }
 
@@ -547,13 +493,6 @@ namespace Nethermind.Synchronization.Peers
             }
 
             if (_logger.IsDebug) _logger.Debug($"Dropped {peersDropped} useless peers");
-        }
-
-        private void WakeUpPeer(PeerInfo info)
-        {
-            info.SleepingSince = null;
-            info.IsSleepingDeeply = false;
-            SignalPeersChanged();
         }
 
         private void SignalPeersChanged()
@@ -646,40 +585,26 @@ namespace Nethermind.Synchronization.Peers
         ///     Consider that there are some external changes (e.g. node stats values change based on the sync transfer rates)
         ///     which may not be controlled from inside here, hence we decide to monitor the potential upgrades in a loop.
         /// </summary>
-        /// <param name="reason">Reason for the method invocation for the diagnostics</param>
         /// <exception cref="InvalidOperationException">Thrown if an irreplaceable allocation is being replaced by this method (internal implementation error).</exception>
         private void UpgradeAllocations(string reason)
         {
             DropUselessPeers();
-            WakeUpPeerThatSleptEnough(reason);
+            WakeUpPeerThatSleptEnough();
             foreach ((SyncPeerAllocation allocation, _) in _replaceableAllocations)
             {
                 lock (_isAllocatedChecks)
                 {
-                    var unallocatedPeers = UsefulPeersWhateverDiff.Where(p => !p.IsAllocated);
+                    var unallocatedPeers = InitializedPeers.Where(p => p.CanBeAllocated(allocation.Contexts));
                     allocation.AllocateBestPeer(unallocatedPeers, _stats, _blockTree);
                 }
             }
         }
 
-        private void WakeUpPeerThatSleptEnough(string reason)
+        private void WakeUpPeerThatSleptEnough()
         {
-            foreach (ISyncPeer syncPeer in AllPeers)
+            foreach (PeerInfo info in AllPeers)
             {
-                PeerInfo info = _tempMapping[syncPeer];
-                if (info.IsAsleep)
-                {
-                    if (DateTime.UtcNow - info.SleepingSince <
-                        (info.IsSleepingDeeply
-                            ? _timeBeforeWakingDeepSleepingPeerUp
-                            : _timeBeforeWakingShallowSleepingPeerUp))
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"[{reason}] {(info.IsSleepingDeeply ? "deeply" : "lightly")} asleep");
-                        continue;
-                    }
-
-                    WakeUpPeer(info);
-                }
+                info.TryToWakeUp(DateTime.UtcNow, _timeBeforeWakingShallowSleepingPeerUp);
             }
         }
 

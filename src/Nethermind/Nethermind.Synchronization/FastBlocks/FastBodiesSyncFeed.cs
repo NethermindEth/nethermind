@@ -89,6 +89,8 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool ShouldFinish => !_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
 
         public override bool IsMultiFeed => true;
+        
+        public override AllocationContexts Contexts => AllocationContexts.Bodies;
 
         private bool AnyBatchesLeftToPrepare()
         {

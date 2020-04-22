@@ -178,7 +178,7 @@ namespace Nethermind.Synchronization.Blocks
                             break;
                         }
 
-                        SyncPeerPool.ReportNoSyncProgress(bestPeer);
+                        SyncPeerPool.ReportNoSyncProgress(bestPeer, AllocationContexts.Blocks);
                         return 0;
                     }
 

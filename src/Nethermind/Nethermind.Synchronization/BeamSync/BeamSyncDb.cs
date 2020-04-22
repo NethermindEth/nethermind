@@ -26,6 +26,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.BeamSync
 {
@@ -328,5 +329,6 @@ namespace Nethermind.Synchronization.BeamSync
         private AutoResetEvent _autoReset = new AutoResetEvent(true);
 
         public override bool IsMultiFeed => false;
+        public override AllocationContexts Contexts => AllocationContexts.State;
     }
 }
