@@ -42,7 +42,7 @@ namespace Nethermind.Synchronization.FastSync
         private const StateSyncBatch _emptyBatch = null;
 
         private static AccountDecoder _accountDecoder = new AccountDecoder();
-        
+
         private DetailedProgress _data;
         private PendingSyncItems _pendingItems;
 
@@ -683,6 +683,12 @@ namespace Nethermind.Synchronization.FastSync
                     if (_logger.IsTrace) _logger.Trace($"Adding pending request {result}");
                     _pendingRequests.TryAdd(result, null);
                     return await Task.FromResult(result);
+                }
+
+                if (_pendingRequests.Count == 0)
+                {
+                    // trying to reproduce past behaviour where we can recognize the transition time this way
+                    FallAsleep();
                 }
 
                 return await Task.FromResult(_emptyBatch);
