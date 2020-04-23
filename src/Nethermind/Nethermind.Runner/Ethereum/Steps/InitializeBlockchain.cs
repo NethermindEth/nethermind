@@ -72,12 +72,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
                 syncConfig.DownloadBodiesInFastSync = true;
             }
-
-            if (syncConfig.BeamSync)
-            {
-                logger.Warn("Welcome to the alpha version of the Nethermind Goerli Beam Sync. I will start by downloading the pivot block header and then will continue to download all the headers from the pivot upwards. After that I will be beam synchronizing the new blocks. Many things can fail - appreciated if you report issues via GitHub or Gitter.");
-            }
-
+            
             Account.AccountStartNonce = _context.ChainSpec.Parameters.AccountStartNonce;
 
             _context.StateProvider = new StateProvider(
