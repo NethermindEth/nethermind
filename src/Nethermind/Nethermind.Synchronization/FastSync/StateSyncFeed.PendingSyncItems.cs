@@ -54,12 +54,12 @@ namespace Nethermind.Synchronization.FastSync
                 var selectedCollection = stateSyncItem.NodeDataType switch
                 {
                     NodeDataType.Code => CodeItems,
-                    NodeDataType.State when priority <= 0.5f => StorageItemsPriority0,
-                    NodeDataType.State when priority <= 1.5f => StorageItemsPriority1,
-                    NodeDataType.State => StorageItemsPriority2,
-                    NodeDataType.Storage when priority <= 0.5f => StateItemsPriority0,
-                    NodeDataType.Storage when priority <= 1.5f => StateItemsPriority1,
-                    NodeDataType.Storage => StateItemsPriority2,
+                    NodeDataType.State when priority <= 0.5f => StateItemsPriority0,
+                    NodeDataType.State when priority <= 1.5f => StateItemsPriority1,
+                    NodeDataType.State => StateItemsPriority2,
+                    NodeDataType.Storage when priority <= 0.5f => StorageItemsPriority0,
+                    NodeDataType.Storage when priority <= 1.5f => StorageItemsPriority1,
+                    NodeDataType.Storage => StorageItemsPriority2,
                     _ => throw new ArgumentOutOfRangeException()
                 };
 
