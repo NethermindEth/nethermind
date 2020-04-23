@@ -35,7 +35,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    public class StateSyncFeed : SyncFeed<StateSyncBatch>
+    public partial class StateSyncFeed : SyncFeed<StateSyncBatch>
     {
         private const int AlreadySavedCapacity = 1024 * 64;
         private const int MaxRequestSize = 384;
@@ -43,7 +43,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private static AccountDecoder _accountDecoder = new AccountDecoder();
 
-        private DetailedStateSyncProgressData _data;
+        private DetailedProgress _data;
         private PendingSyncItems _pendingItems;
 
         private Keccak _fastSyncProgressKey = Keccak.Zero;
@@ -87,7 +87,7 @@ namespace Nethermind.Synchronization.FastSync
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             byte[] progress = _codeDb.Get(_fastSyncProgressKey);
-            _data = new DetailedStateSyncProgressData(_blockTree.ChainId, progress);
+            _data = new DetailedProgress(_blockTree.ChainId, progress);
             _pendingItems = new PendingSyncItems();
         }
 
@@ -110,7 +110,7 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        private AddNodeResult AddNode(StateSyncItem syncItem, DependentItem dependentItem, string reason, bool missing = false)
+        private AddNodeResult AddNodeToPending(StateSyncItem syncItem, DependentItem dependentItem, string reason, bool missing = false)
         {
             if (!missing)
             {
@@ -309,7 +309,7 @@ namespace Nethermind.Synchronization.FastSync
             {
                 for (int i = 0; i < requestLength; i++)
                 {
-                    AddNode(batch.RequestedNodes[i], null, "missing", true);
+                    AddNodeToPending(batch.RequestedNodes[i], null, "missing", true);
                 }
             }
 
@@ -364,7 +364,7 @@ namespace Nethermind.Synchronization.FastSync
                            shorter than the request */
                         if (batch.Responses.Length < i + 1)
                         {
-                            AddNode(currentStateSyncItem, null, "missing", true);
+                            AddNodeToPending(currentStateSyncItem, null, "missing", true);
                             continue;
                         }
 
@@ -372,14 +372,14 @@ namespace Nethermind.Synchronization.FastSync
                         byte[] currentResponseItem = batch.Responses[i];
                         if (currentResponseItem == null)
                         {
-                            AddNode(batch.RequestedNodes[i], null, "missing", true);
+                            AddNodeToPending(batch.RequestedNodes[i], null, "missing", true);
                             continue;
                         }
 
                         /* node sent data that is not consistent with its hash - it happens surprisingly often */
                         if (!ValueKeccak.Compute(currentResponseItem).BytesAsSpan.SequenceEqual(currentStateSyncItem.Hash.Bytes))
                         {
-                            AddNode(currentStateSyncItem, null, "missing", true);
+                            AddNodeToPending(currentStateSyncItem, null, "missing", true);
                             if (_logger.IsTrace) _logger.Trace($"Peer sent invalid data (batch {requestLength}->{responseLength}) of length {batch.Responses[i]?.Length} of type {batch.RequestedNodes[i].NodeDataType} at level {batch.RequestedNodes[i].Level} of type {batch.RequestedNodes[i].NodeDataType} Keccak({batch.Responses[i].ToHexString()}) != {batch.RequestedNodes[i].Hash}");
                             invalidNodes++;
                             continue;
@@ -515,7 +515,7 @@ namespace Nethermind.Synchronization.FastSync
 
                         if (childHash != null)
                         {
-                            AddNodeResult addChildResult = AddNode(new StateSyncItem(childHash, nodeDataType, currentStateSyncItem.Level + 1, CalculateRightness(trieNode.NodeType, currentStateSyncItem, childIndex)) {BranchChildIndex = (short) childIndex, ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex}, dependentBranch, "branch child");
+                            AddNodeResult addChildResult = AddNodeToPending(new StateSyncItem(childHash, nodeDataType, currentStateSyncItem.Level + 1, CalculateRightness(trieNode.NodeType, currentStateSyncItem, childIndex)) {BranchChildIndex = (short) childIndex, ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex}, dependentBranch, "branch child");
                             if (addChildResult != AddNodeResult.AlreadySaved)
                             {
                                 dependentBranch.Counter++;
@@ -542,7 +542,7 @@ namespace Nethermind.Synchronization.FastSync
                     if (next != null)
                     {
                         DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 1);
-                        AddNodeResult addResult = AddNode(new StateSyncItem(next, nodeDataType, currentStateSyncItem.Level + trieNode.Path.Length, CalculateRightness(trieNode.NodeType, currentStateSyncItem, 0)) {ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex}, dependentItem, "extension child");
+                        AddNodeResult addResult = AddNodeToPending(new StateSyncItem(next, nodeDataType, currentStateSyncItem.Level + trieNode.Path.Length, CalculateRightness(trieNode.NodeType, currentStateSyncItem, 0)) {ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex}, dependentItem, "extension child");
                         if (addResult == AddNodeResult.AlreadySaved)
                         {
                             SaveNode(currentStateSyncItem, currentResponseItem);
@@ -575,14 +575,14 @@ namespace Nethermind.Synchronization.FastSync
                             }
                             else
                             {
-                                AddNodeResult addCodeResult = AddNode(new StateSyncItem(codeHash, NodeDataType.Code, 0, currentStateSyncItem.Rightness), dependentItem, "code");
+                                AddNodeResult addCodeResult = AddNodeToPending(new StateSyncItem(codeHash, NodeDataType.Code, 0, currentStateSyncItem.Rightness), dependentItem, "code");
                                 if (addCodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
                             }
                         }
 
                         if (storageRoot != Keccak.EmptyTreeHash)
                         {
-                            AddNodeResult addStorageNodeResult = AddNode(new StateSyncItem(storageRoot, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
+                            AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
                             if (addStorageNodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
                         }
 
@@ -739,7 +739,7 @@ namespace Nethermind.Synchronization.FastSync
                     // re-add the pending request
                     for (int i = 0; i < pendingRequest.RequestedNodes.Length; i++)
                     {
-                        AddNode(pendingRequest.RequestedNodes[i], null, "pending request", true);
+                        AddNodeToPending(pendingRequest.RequestedNodes[i], null, "pending request", true);
                     }
                 }
             }
@@ -764,7 +764,7 @@ namespace Nethermind.Synchronization.FastSync
 
                 if (!hasOnlyRootNode)
                 {
-                    AddNode(new StateSyncItem(_rootNode, NodeDataType.State, 0, 0), null, "initial");
+                    AddNodeToPending(new StateSyncItem(_rootNode, NodeDataType.State, 0, 0), null, "initial");
                 }
             }
         }
