@@ -220,7 +220,6 @@ namespace Nethermind.Synchronization.FastSync
                     Interlocked.Increment(ref _data.SavedStateCount);
                     lock (_stateDbLock)
                     {
-                        _logger.Warn("Saving node in the database (state)");
                         Interlocked.Add(ref _data.DataSize, data.Length);
                         _stateDb.Set(syncItem.Hash, data);
                     }
@@ -236,7 +235,6 @@ namespace Nethermind.Synchronization.FastSync
                             lock (_codeDbLock)
                             {
                                 Interlocked.Add(ref _data.DataSize, data.Length);
-                                _logger.Warn("Saving node in the database (code)");
                                 _codeDb.Set(syncItem.Hash, data);
                             }
 
@@ -247,7 +245,6 @@ namespace Nethermind.Synchronization.FastSync
                     Interlocked.Increment(ref _data.SavedStorageCount);
                     lock (_stateDbLock)
                     {
-                        _logger.Warn("Saving node in the database (storage)");
                         Interlocked.Add(ref _data.DataSize, data.Length);
                         _stateDb.Set(syncItem.Hash, data);
                     }
@@ -259,7 +256,6 @@ namespace Nethermind.Synchronization.FastSync
                     Interlocked.Increment(ref _data.SavedCode);
                     lock (_codeDbLock)
                     {
-                        _logger.Warn("Saving node in the database (code)");
                         Interlocked.Add(ref _data.DataSize, data.Length);
                         _codeDb.Set(syncItem.Hash, data);
                     }
@@ -504,11 +500,6 @@ namespace Nethermind.Synchronization.FastSync
                     HashSet<Keccak> alreadyProcessedChildHashes = new HashSet<Keccak>();
                     for (int childIndex = 0; childIndex < 16; childIndex++)
                     {
-//                        if (currentStateSyncItem.Level <= 1)
-//                        {
-//                            _logger.Warn($"Testing {currentStateSyncItem.Level} {currentStateSyncItem.BranchChildIndex}.{childIndex}");
-//                        }
-
                         Keccak childHash = trieNode.GetChildHash(childIndex);
                         if (alreadyProcessedChildHashes.Contains(childHash))
                         {
@@ -683,7 +674,7 @@ namespace Nethermind.Synchronization.FastSync
                     Interlocked.Add(ref _data.RequestedNodesCount, result.RequestedNodes.Length);
                     Interlocked.Exchange(ref _data.SecondsInSync, _currentSyncStartSecondsInSync + (long) (DateTime.UtcNow - _currentSyncStart).TotalSeconds);
 
-                    if (_logger.IsWarn) _logger.Warn($"After preparing a request of {requestHashes.Count} from ({_pendingItems.Description}) nodes | {_dependencies.Count}");
+                    if (_logger.IsTrace) _logger.Trace($"After preparing a request of {requestHashes.Count} from ({_pendingItems.Description}) nodes | {_dependencies.Count}");
                     if (_logger.IsTrace) _logger.Trace($"Adding pending request {result}");
                     _pendingRequests.TryAdd(result, null);
                     return await Task.FromResult(result);
@@ -691,7 +682,6 @@ namespace Nethermind.Synchronization.FastSync
 
                 if (_pendingRequests.Count == 0)
                 {
-                    _logger.Warn("Falling asleep");
                     // trying to reproduce past behaviour where we can recognize the transition time this way
                     FallAsleep();
                 }
