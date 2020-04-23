@@ -26,34 +26,11 @@ namespace Nethermind.Synchronization.FastSync
 {
     public partial class StateSyncFeed
     {
-        internal interface IPendingSyncItems
+        internal class PendingSyncItems2 : IPendingSyncItems
         {
-            StateSyncItem PeekState();
-            string RecalculatePriorities();
-            List<StateSyncItem> TakeBatch(int maxSize);
-            void Clear();
-            byte MaxStateLevel { get; set; }
-            byte MaxStorageLevel { get; set; }
-            int Count { get; }
-            string Description { get; }
-            void PushToSelectedStream(StateSyncItem item, decimal progress);
-        }
-        
-        internal class PendingSyncItems : IPendingSyncItems
-        {
-            private FastPriorityQueue<StateSyncItem> queue = new FastPriorityQueue<StateSyncItem>(1024 * 1024);
+            private FastPriorityQueue<StateSyncItem> _queue = new FastPriorityQueue<StateSyncItem>(1024 * 1024);
             
             private ConcurrentStack<StateSyncItem>[] _allStacks = new ConcurrentStack<StateSyncItem>[7];
-
-            private ConcurrentStack<StateSyncItem> CodeItems => _allStacks[0];
-
-            private ConcurrentStack<StateSyncItem> StorageItemsPriority0 => _allStacks[1];
-            private ConcurrentStack<StateSyncItem> StorageItemsPriority1 => _allStacks[2];
-            private ConcurrentStack<StateSyncItem> StorageItemsPriority2 => _allStacks[3];
-
-            private ConcurrentStack<StateSyncItem> StateItemsPriority0 => _allStacks[4];
-            private ConcurrentStack<StateSyncItem> StateItemsPriority1 => _allStacks[5];
-            private ConcurrentStack<StateSyncItem> StateItemsPriority2 => _allStacks[6];
 
             private decimal _lastSyncProgress;
             private uint _maxStorageRightness; // for priority calculation (prefer left)
@@ -62,7 +39,7 @@ namespace Nethermind.Synchronization.FastSync
             public byte MaxStorageLevel { get; set; }
             public byte MaxStateLevel { get; set; }
 
-            public PendingSyncItems()
+            public PendingSyncItems2()
             {
                 for (int i = 0; i < _allStacks.Length; i++)
                 {
@@ -73,49 +50,30 @@ namespace Nethermind.Synchronization.FastSync
             public void PushToSelectedStream(StateSyncItem stateSyncItem, decimal progress)
             {
                 _lastSyncProgress = progress;
-                double priority = CalculatePriority(stateSyncItem.NodeDataType, stateSyncItem.Level, stateSyncItem.Rightness);
-
-                var selectedCollection = stateSyncItem.NodeDataType switch
+                float priority = CalculatePriority(stateSyncItem.NodeDataType, stateSyncItem.Level, stateSyncItem.Rightness);
+                lock (_queue)
                 {
-                    NodeDataType.Code => CodeItems,
-                    NodeDataType.State when priority <= 0.5f => StateItemsPriority0,
-                    NodeDataType.State when priority <= 1.5f => StateItemsPriority1,
-                    NodeDataType.State => StateItemsPriority2,
-                    NodeDataType.Storage when priority <= 0.5f => StorageItemsPriority0,
-                    NodeDataType.Storage when priority <= 1.5f => StorageItemsPriority1,
-                    NodeDataType.Storage => StorageItemsPriority2,
-                    _ => throw new ArgumentOutOfRangeException()
-                };
-
-                selectedCollection.Push(stateSyncItem);
+                    _queue.Enqueue(stateSyncItem, priority);
+                }
             }
 
             private string LevelsDescription => $"{MaxStorageLevel:D2} {_maxStorageRightness:D8} | {MaxStateLevel:D2} {_maxRightness:D8}";
-            public string Description => $"{CodeItems?.Count ?? 0:D4} + {StorageItemsPriority0?.Count ?? 0:D6} {StorageItemsPriority1?.Count ?? 0:D6} {StorageItemsPriority2?.Count ?? 0:D6} + {StateItemsPriority0?.Count ?? 0:D6} {StateItemsPriority1?.Count ?? 0:D6} {StateItemsPriority2?.Count ?? 0:D6}";
+            public string Description => $"{_queue.Count}";
             public int Count => _allStacks.Sum(n => n?.Count ?? 0);
 
             public StateSyncItem PeekState()
             {
-                StateItemsPriority0.TryPeek(out StateSyncItem node);
-
-                if (node == null)
+                lock (_queue)
                 {
-                    StateItemsPriority1.TryPeek(out node);
+                    return _queue.Count == 0 ? null : _queue.First;
                 }
-
-                if (node == null)
-                {
-                    StateItemsPriority2.TryPeek(out node);
-                }
-
-                return node;
             }
 
             private float CalculatePriority(NodeDataType nodeDataType, byte level, uint rightness)
             {
                 if (nodeDataType == NodeDataType.Code)
                 {
-                    return 0f;
+                    return 1000f;
                 }
                 
                 switch (nodeDataType)
@@ -131,6 +89,13 @@ namespace Nethermind.Synchronization.FastSync
                 }
                 
                 float priority = CalculatePriority(level, rightness);
+                switch (nodeDataType)
+                {
+                    case NodeDataType.Storage:
+                        return 2000f + priority;
+                    case NodeDataType.State:
+                        return 3000f + priority;
+                }
 
                 return priority;
             }
@@ -147,18 +112,19 @@ namespace Nethermind.Synchronization.FastSync
             
             public void Clear()
             {
-                for (int i = 0; i < _allStacks.Length; i++)
+                lock (_queue)
                 {
-                    _allStacks[i]?.Clear();
+                    _queue.Clear();
                 }
             }
 
             private bool TryTake(out StateSyncItem node)
             {
-                for (int i = 0; i < _allStacks.Length; i++)
+                lock (_queue)
                 {
-                    if (_allStacks[i].TryPop(out node))
+                    if (_queue.Count > 0)
                     {
+                        node = _queue.Dequeue();
                         return true;
                     }
                 }
@@ -198,20 +164,12 @@ namespace Nethermind.Synchronization.FastSync
                 string reviewMessage = $"Node sync queues review ({LevelsDescription}):" + Environment.NewLine;
                 reviewMessage += $"  before {Description}" + Environment.NewLine;
 
-                List<StateSyncItem> temp = new List<StateSyncItem>();
-                while (StateItemsPriority2.TryPop(out StateSyncItem poppedSyncItem))
+                lock (_queue)
                 {
-                    temp.Add(poppedSyncItem);
-                }
-
-                while (StorageItemsPriority2.TryPop(out StateSyncItem poppedSyncItem))
-                {
-                    temp.Add(poppedSyncItem);
-                }
-
-                foreach (StateSyncItem syncItem in temp)
-                {
-                    PushToSelectedStream(syncItem, _lastSyncProgress);
+                    foreach (StateSyncItem stateSyncItem in _queue)
+                    {
+                        _queue.UpdatePriority(stateSyncItem, CalculatePriority(stateSyncItem.NodeDataType, stateSyncItem.Level, stateSyncItem.Rightness));
+                    }
                 }
 
                 reviewMessage += $"  after {Description}" + Environment.NewLine;

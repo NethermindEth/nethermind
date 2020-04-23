@@ -44,7 +44,7 @@ namespace Nethermind.Synchronization.FastSync
         private static AccountDecoder _accountDecoder = new AccountDecoder();
 
         private DetailedProgress _data;
-        private PendingSyncItems _pendingItems;
+        private IPendingSyncItems _pendingItems;
 
         private Keccak _fastSyncProgressKey = Keccak.Zero;
 
@@ -88,7 +88,7 @@ namespace Nethermind.Synchronization.FastSync
 
             byte[] progress = _codeDb.Get(_fastSyncProgressKey);
             _data = new DetailedProgress(_blockTree.ChainId, progress);
-            _pendingItems = new PendingSyncItems();
+            _pendingItems = new PendingSyncItems2();
         }
 
         private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
@@ -321,7 +321,7 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         _lastReview = DateTime.UtcNow;
                         string reviewMessage = _pendingItems.RecalculatePriorities();
-                        if (_logger.IsDebug) _logger.Debug(reviewMessage);
+                        if (_logger.IsInfo) _logger.Info(reviewMessage);
                     }
 
                     _handleWatch.Restart();
@@ -498,7 +498,7 @@ namespace Nethermind.Synchronization.FastSync
 
                     // children may have the same hashes (e.g. a set of accounts with the same code at different addresses)
                     HashSet<Keccak> alreadyProcessedChildHashes = new HashSet<Keccak>();
-                    for (int childIndex = 0; childIndex < 16; childIndex++)
+                    for (int childIndex = 15; childIndex >= 0; childIndex--)
                     {
                         Keccak childHash = trieNode.GetChildHash(childIndex);
                         if (alreadyProcessedChildHashes.Contains(childHash))
@@ -674,7 +674,7 @@ namespace Nethermind.Synchronization.FastSync
                     Interlocked.Add(ref _data.RequestedNodesCount, result.RequestedNodes.Length);
                     Interlocked.Exchange(ref _data.SecondsInSync, _currentSyncStartSecondsInSync + (long) (DateTime.UtcNow - _currentSyncStart).TotalSeconds);
 
-                    if (_logger.IsTrace) _logger.Trace($"After preparing a request of {requestHashes.Count} from ({_pendingItems.Description}) nodes | {_dependencies.Count}");
+                    if (_logger.IsWarn) _logger.Warn($"After preparing a request of {requestHashes.Count} from ({_pendingItems.Description}) nodes | {_dependencies.Count}");
                     if (_logger.IsTrace) _logger.Trace($"Adding pending request {result}");
                     _pendingRequests.TryAdd(result, null);
                     return await Task.FromResult(result);
@@ -748,8 +748,6 @@ namespace Nethermind.Synchronization.FastSync
             _pendingRequests.Clear();
 
             bool hasOnlyRootNode = false;
-
-            _pendingItems.EnsureInitialized();
 
             if (_rootNode != Keccak.EmptyTreeHash)
             {
