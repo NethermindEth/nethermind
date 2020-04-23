@@ -163,7 +163,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool IsTheModeSwitchWorthMentioning(SyncMode newModes)
         {
-            return _logger.IsTrace ||
+            return _logger.IsDebug ||
                    newModes != Current &&
                    (newModes != SyncMode.None || Current != SyncMode.Full) &&
                    (newModes != SyncMode.Full || Current != SyncMode.None);
