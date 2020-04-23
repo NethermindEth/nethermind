@@ -14,15 +14,21 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Network.Crypto;
 using Nethermind.Runner.Ethereum.Context;
+using Nethermind.State;
 using Nethermind.Store;
+using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -69,7 +75,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             var validator = new AuRaValidatorProcessorFactory(
                     readOnlyTxProcessingEnv.StateProvider,
-                    new AbiEncoder(),
+                    _context.AbiEncoder,
                     readOnlyTxProcessingEnv.TransactionProcessor,
                     new ReadOnlyTransactionProcessorSource(readOnlyTxProcessingEnv),
                     readOnlyTxProcessingEnv.BlockTree,
@@ -95,6 +101,28 @@ namespace Nethermind.Runner.Ethereum.Steps
             validator.SetFinalizationManager(_context.FinalizationManager, true);
 
             return blockProducer;
+        }
+
+        protected override IPendingTxSelector CreatePendingTxSelector(ReadOnlyTxProcessingEnv environment)
+        {
+            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
+            if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
+            
+            if (_context.ChainSpec.AuRa.RandomnessContractAddress.Any())
+            {
+                return new InjectionPendingTxSelector(base.CreatePendingTxSelector(environment),
+                    new TransactionFiller(new BasicWallet(_context.NodeKey), _context.Timestamper, environment.StateReader, _context.BlockTree.ChainId),
+                    new RandomImmediateTransactionSource(
+                        _context.ChainSpec.AuRa.RandomnessContractAddress,
+                        environment.TransactionProcessor,
+                        _context.AbiEncoder,
+                        environment.StateProvider,
+                        new ReadOnlyTransactionProcessorSource(environment),
+                        new EciesCipher(_context.CryptoRandom),
+                        _context.NodeKey));
+            }
+            
+            return base.CreatePendingTxSelector(environment);
         }
     }
 }

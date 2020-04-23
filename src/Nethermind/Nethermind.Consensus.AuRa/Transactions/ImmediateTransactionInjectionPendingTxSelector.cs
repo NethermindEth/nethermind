@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -23,11 +24,13 @@ namespace Nethermind.Consensus.AuRa.Transactions
     public class InjectionPendingTxSelector : IPendingTxSelector
     {
         private readonly IPendingTxSelector _innerPendingTxSelector;
+        private readonly ITransactionFiller _transactionFiller;
         private readonly IImmediateTransactionSource[] _immediateTransactionSources;
 
-        public InjectionPendingTxSelector(IPendingTxSelector innerPendingTxSelector, params IImmediateTransactionSource[] immediateTransactionSources)
+        public InjectionPendingTxSelector(IPendingTxSelector innerPendingTxSelector, ITransactionFiller transactionFiller, params IImmediateTransactionSource[] immediateTransactionSources)
         {
-            _innerPendingTxSelector = innerPendingTxSelector;
+            _innerPendingTxSelector = innerPendingTxSelector ?? throw new ArgumentNullException(nameof(innerPendingTxSelector));
+            _transactionFiller = transactionFiller ?? throw new ArgumentNullException(nameof(_transactionFiller));
             _immediateTransactionSources = immediateTransactionSources;
         }
 
@@ -38,11 +41,12 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 if (_immediateTransactionSources[i].TryCreateTransaction(parent, gasLimit, out var tx))
                 {
                     gasLimit -= tx.GasLimit;
+                    _transactionFiller.Fill(parent, tx);
                     yield return tx;
                 }
             }
             
             foreach (var tx in _innerPendingTxSelector.SelectTransactions(parent, gasLimit)) yield return tx;
         }
-    }           
+    }
 }

@@ -16,6 +16,7 @@
 
 using System.IO;
 using System.Threading.Tasks;
+using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
@@ -63,6 +64,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_context.DbProvider == null) throw new StepDependencyException(nameof(_context.DbProvider));
             if (_context.SpecProvider == null) throw new StepDependencyException(nameof(_context.SpecProvider));
 
+            _context.AbiEncoder = new AbiEncoder();
+            
             ILogger logger = _context.LogManager.GetClassLogger();
             IInitConfig initConfig = _context.Config<IInitConfig>();
             ISyncConfig syncConfig = _context.Config<ISyncConfig>();

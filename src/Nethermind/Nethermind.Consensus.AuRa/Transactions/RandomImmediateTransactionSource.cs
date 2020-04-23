@@ -22,8 +22,10 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
+using Nethermind.Network.Crypto;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Transactions
@@ -31,6 +33,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
     public class RandomImmediateTransactionSource : IImmediateTransactionSource
     {
         private readonly Address _nodeAddress;
+        private readonly IEciesCipher _eciesCipher;
+        private readonly PrivateKey _privateKey;
         private readonly IList<RandomContract> _contracts;
         private readonly Random _random = new Random();
 
@@ -40,9 +44,12 @@ namespace Nethermind.Consensus.AuRa.Transactions
             IAbiEncoder abiEncoder, 
             IStateProvider stateProvider, 
             IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource,
-            Address nodeAddress)
+            IEciesCipher eciesCipher,
+            PrivateKey privateKey)
         {
-            _nodeAddress = nodeAddress ?? throw new ArgumentNullException(nameof(nodeAddress));
+            _eciesCipher = eciesCipher ?? throw new ArgumentNullException(nameof(eciesCipher));
+            _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));
+            _nodeAddress = privateKey.Address;
             _contracts = randomnessContractAddress
                 .Select(kvp => new RandomContract(transactionProcessor, abiEncoder, kvp.Value, stateProvider, readOnlyTransactionProcessorSource, kvp.Key))
                 .ToList();
@@ -64,18 +71,17 @@ namespace Nethermind.Consensus.AuRa.Transactions
             {
                 case RandomContract.Phase.BeforeCommit:
                 {
-                    Span<byte> bytes = stackalloc byte[32];
+                    byte[] bytes = new byte[32];
                     _random.NextBytes(bytes);
-                    // UInt256.CreateFromBigEndian(out var number, bytes);
                     var hash = Keccak.Compute(bytes);
-                    byte[] cipher = bytes.ToArray(); // TODO: ENCRYPT!
+                    var cipher = _eciesCipher.Encrypt(_privateKey.PublicKey, bytes, null);
                     return contract.CommitHash(hash, cipher);
                 }
                 case RandomContract.Phase.Reveal:
                 {
                     var (hash, cipher) = contract.GetCommitAndCipher(parent, round, _nodeAddress);
-                    byte[] bytes = cipher;// TODO: decrypt cipher!
-                    if (bytes.Length != 32)
+                    byte[] bytes = _eciesCipher.Decrypt(_privateKey, cipher).Item2;
+                    if (bytes?.Length != 32)
                     {
                         // This can only happen if there is a bug in the smart contract, or if the entire network goes awry.
                         throw new AuRaException("Decrypted random number has the wrong length.");

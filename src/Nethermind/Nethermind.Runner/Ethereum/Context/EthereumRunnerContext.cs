@@ -17,6 +17,7 @@
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Threading;
+using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
@@ -136,5 +137,6 @@ namespace Nethermind.Runner.Ethereum.Context
         public INdmDataPublisher? NdmDataPublisher { get; set; }
         public INdmInitializer? NdmInitializer { get; set; }
         public IBloomStorage? BloomStorage { get; set; }
+        public AbiEncoder AbiEncoder { get; set; }
     }
 }

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
 using Nethermind.Logging;
@@ -47,6 +48,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.LogManager);
         }
 
-        protected override IPendingTxSelector CreatePendingTxSelector() => new SinglePendingTxSelector(base.CreatePendingTxSelector());
+        protected override IPendingTxSelector CreatePendingTxSelector(ReadOnlyTxProcessingEnv environment) => new SinglePendingTxSelector(base.CreatePendingTxSelector(environment));
     }
 }
