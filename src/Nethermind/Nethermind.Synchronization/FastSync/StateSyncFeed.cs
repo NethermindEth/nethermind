@@ -42,7 +42,7 @@ namespace Nethermind.Synchronization.FastSync
         private const StateSyncBatch _emptyBatch = null;
 
         private static AccountDecoder _accountDecoder = new AccountDecoder();
-
+        
         private DetailedProgress _data;
         private PendingSyncItems _pendingItems;
 
