@@ -35,7 +35,7 @@ jobs:
           docker buildx build --platform=linux/amd64 -t "${{ steps.settings.outputs.docker_image }}:alpine" -t "${{ steps.settings.outputs.docker_image }}:${{ steps.settings.outputs.TAG }}-alpine" -f Dockerfile_alpine . --push
       - name: Trigger DAppNode Build
         run: |
-            curl -v -X POST -u "${{ secrets.PAT_GITHUB }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" --data '{"event_type":"dappnode"}' https://api.github.com/repos/nethermindeth/nethermind/dispatches
+            curl -v -X POST -u "${{ secrets.PAT_GITHUB }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" --data '{"event_type":"dappnode"}, "client_payload": { "tag":"${{ steps.settings.outputs.TAG }}"}}' https://api.github.com/repos/nethermindeth/nethermind/dispatches
       - name: Clear
         if: always()
         run: |
