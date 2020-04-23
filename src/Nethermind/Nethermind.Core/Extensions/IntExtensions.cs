@@ -24,15 +24,30 @@ namespace Nethermind.Core.Extensions
     {   
         public static ulong GB(this int @this)
         {
-            return (ulong)@this * 1024UL * 1024UL * 1024UL;
+            return (ulong)@this * 1_000_000_000UL;
         }
         
         public static ulong MB(this int @this)
         {
-            return (ulong)@this * 1024UL * 1024UL;
+            return (ulong)@this * 1_000_000UL;
         }
         
         public static ulong KB(this int @this)
+        {
+            return (ulong)@this * 1_000UL;
+        }
+        
+        public static ulong GiB(this int @this)
+        {
+            return (ulong)@this * 1024UL * 1024UL * 1024UL;
+        }
+        
+        public static ulong MiB(this int @this)
+        {
+            return (ulong)@this * 1024UL * 1024UL;
+        }
+        
+        public static ulong KiB(this int @this)
         {
             return (ulong)@this * 1024UL;
         }

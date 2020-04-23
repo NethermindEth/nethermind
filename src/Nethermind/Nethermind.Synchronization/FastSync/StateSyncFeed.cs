@@ -37,83 +37,43 @@ namespace Nethermind.Synchronization.FastSync
 {
     public class StateSyncFeed : SyncFeed<StateSyncBatch>
     {
-        private const int _alreadySavedCapacity = 1024 * 64;
+        private const int AlreadySavedCapacity = 1024 * 64;
         private const int MaxRequestSize = 384;
+        private const StateSyncBatch _emptyBatch = null;
 
         private static AccountDecoder _accountDecoder = new AccountDecoder();
-        private StateSyncBatch _emptyBatch = null;
+
+        private DetailedStateSyncProgressData _data;
+        private PendingSyncItems _pendingItems;
 
         private Keccak _fastSyncProgressKey = Keccak.Zero;
-        private (DateTime small, DateTime full) _lastReportTime = (DateTime.MinValue, DateTime.MinValue);
-        private long _lastRequestedNodesCount;
-        private long _lastSavedNodesCount;
-        private long _lastDataSize;
-        private long _lastHandledNodesCount;
-        private long _consumedNodesCount;
-        private long _savedStorageCount;
-        private long _savedStateCount;
-        private long _savedNodesCount;
-        private long _savedAccounts;
-        private long _savedCode;
-        private long _requestedNodesCount;
-        private long _handledNodesCount;
-        private long _secondsInSync;
-        private long _dbChecks;
-        private long _checkWasCached;
-        private long _checkWasInDependencies;
-        private long _stateWasThere;
-        private long _stateWasNotThere;
-        private long _emptishCount;
-        private long _invalidFormatCount;
-        private long _okCount;
-        private long _badQualityCount;
-        private long _notAssignedCount;
-        private long _dataSize;
 
         private DateTime _lastReview = DateTime.UtcNow;
         private DateTime _currentSyncStart;
         private long _currentSyncStartSecondsInSync;
-        public long TotalRequestsCount => _emptishCount + _invalidFormatCount + _badQualityCount + _okCount + _notAssignedCount;
-        public long ProcessedRequestsCount => _emptishCount + _badQualityCount + _okCount;
-
-        private byte _maxStorageLevel; // for priority calculation (prefer depth)
-        private uint _maxStorageRightness; // for priority calculation (prefer left)
-        private byte _maxStateLevel; // for priority calculation (prefer depth)
-        private uint _maxRightness; // for priority calculation (prefer left)
 
         private object _stateDbLock = new object();
         private object _codeDbLock = new object();
-        private static object _nullObject = new object();
 
         private Stopwatch _networkWatch = new Stopwatch();
         private Stopwatch _handleWatch = new Stopwatch();
 
         private Keccak _rootNode = Keccak.EmptyTreeHash;
 
-        private IDb _codeDb;
         private ILogger _logger;
+        private IDb _codeDb;
         private IDb _stateDb;
         private readonly IDb _tempDb;
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly IBlockTree _blockTree;
 
-        private ConcurrentStack<StateSyncItem>[] _nodes = new ConcurrentStack<StateSyncItem>[7];
-
-        private ConcurrentStack<StateSyncItem> CodeStream => _nodes[0];
-
-        private ConcurrentStack<StateSyncItem> StorageStream0 => _nodes[1];
-        private ConcurrentStack<StateSyncItem> StorageStream1 => _nodes[2];
-        private ConcurrentStack<StateSyncItem> StorageStream2 => _nodes[3];
-
-        private ConcurrentStack<StateSyncItem> Stream0 => _nodes[4];
-        private ConcurrentStack<StateSyncItem> Stream1 => _nodes[5];
-        private ConcurrentStack<StateSyncItem> Stream2 => _nodes[6];
-
-        public int TotalNodesPending => _nodes.Sum(n => n?.Count ?? 0);
-        
         private ConcurrentDictionary<StateSyncBatch, object> _pendingRequests = new ConcurrentDictionary<StateSyncBatch, object>();
         private Dictionary<Keccak, HashSet<DependentItem>> _dependencies = new Dictionary<Keccak, HashSet<DependentItem>>();
-        private LruKeyCache<Keccak> _alreadySaved = new LruKeyCache<Keccak>(_alreadySavedCapacity, "saved nodes");
+        private LruKeyCache<Keccak> _alreadySaved = new LruKeyCache<Keccak>(AlreadySavedCapacity, "saved nodes");
+        private HashSet<Keccak> _codesSameAsNodes = new HashSet<Keccak>();
+
+        private StateSyncProgress _syncProgress;
+        private int _noResponsesInARow;
 
         public StateSyncFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, IBlockTree blockTree, ILogManager logManager)
         {
@@ -127,27 +87,8 @@ namespace Nethermind.Synchronization.FastSync
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             byte[] progress = _codeDb.Get(_fastSyncProgressKey);
-            if (progress != null)
-            {
-                RlpStream rlpStream = new RlpStream(progress);
-                rlpStream.ReadSequenceLength();
-                _consumedNodesCount = rlpStream.DecodeLong();
-                _savedStorageCount = rlpStream.DecodeLong();
-                _savedStateCount = rlpStream.DecodeLong();
-                _savedNodesCount = rlpStream.DecodeLong();
-                _savedAccounts = rlpStream.DecodeLong();
-                _savedCode = rlpStream.DecodeLong();
-                _requestedNodesCount = rlpStream.DecodeLong();
-                _dbChecks = rlpStream.DecodeLong();
-                _stateWasThere = rlpStream.DecodeLong();
-                _stateWasNotThere = rlpStream.DecodeLong();
-                _dataSize = rlpStream.DecodeLong();
-
-                if (rlpStream.Position != rlpStream.Length)
-                {
-                    _secondsInSync = rlpStream.DecodeLong();
-                }
-            }
+            _data = new DetailedStateSyncProgressData(_blockTree.ChainId, progress);
+            _pendingItems = new PendingSyncItems();
         }
 
         private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
@@ -163,7 +104,7 @@ namespace Nethermind.Synchronization.FastSync
                     }
 
                     if (_logger.IsInfo) _logger.Info($"Starting the node data sync from the {bestSuggested.ToString(BlockHeader.Format.Short)} {bestSuggested.StateRoot} root");
-                    SetNewStateRoot(bestSuggested.Number, bestSuggested.StateRoot);
+                    ResetStateRoot(bestSuggested.Number, bestSuggested.StateRoot);
                     Activate();
                 }
             }
@@ -180,7 +121,7 @@ namespace Nethermind.Synchronization.FastSync
 
                 if (_alreadySaved.Get(syncItem.Hash))
                 {
-                    Interlocked.Increment(ref _checkWasCached);
+                    Interlocked.Increment(ref _data.CheckWasCached);
                     if (_logger.IsTrace) _logger.Trace($"Node already in the DB - skipping {syncItem.Hash}");
                     return AddNodeResult.AlreadySaved;
                 }
@@ -189,17 +130,17 @@ namespace Nethermind.Synchronization.FastSync
                 lock (lockToTake)
                 {
                     IDb dbToCheck = syncItem.NodeDataType == NodeDataType.Code ? _codeDb : _stateDb;
-                    Interlocked.Increment(ref _dbChecks);
+                    Interlocked.Increment(ref _data.DbChecks);
                     bool keyExists = dbToCheck.KeyExists(syncItem.Hash);
                     if (keyExists)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Node already in the DB - skipping {syncItem.Hash}");
                         _alreadySaved.Set(syncItem.Hash);
-                        Interlocked.Increment(ref _stateWasThere);
+                        Interlocked.Increment(ref _data.StateWasThere);
                         return AddNodeResult.AlreadySaved;
                     }
 
-                    Interlocked.Increment(ref _stateWasNotThere);
+                    Interlocked.Increment(ref _data.StateWasNotThere);
                 }
 
                 bool isAlreadyRequested;
@@ -218,53 +159,18 @@ namespace Nethermind.Synchronization.FastSync
                  * and we never request it again because it was already on the dependencies list */
                 if (isAlreadyRequested)
                 {
-                    Interlocked.Increment(ref _checkWasInDependencies);
+                    Interlocked.Increment(ref _data.CheckWasInDependencies);
                     if (_logger.IsTrace) _logger.Trace($"Node already requested - skipping {syncItem.Hash}");
                     return AddNodeResult.AlreadyRequested;
                 }
             }
 
-            PushToSelectedStream(syncItem);
+            _pendingItems.PushToSelectedStream(syncItem, _syncProgress.LastProgress);
             if (_logger.IsTrace) _logger.Trace($"Added a node {syncItem.Hash} - {reason}");
             return AddNodeResult.Added;
         }
 
-        private void PushToSelectedStream(StateSyncItem stateSyncItem)
-        {
-            ConcurrentStack<StateSyncItem> selectedStream;
-            (int super, double priority) = CalculatePriority(stateSyncItem.NodeDataType, stateSyncItem.Level, stateSyncItem.Rightness);
-
-            switch (super)
-            {
-                case 0:
-                    selectedStream = CodeStream;
-                    break;
-                case 1 when priority <= 0.5f:
-                    selectedStream = StorageStream0;
-                    break;
-                case 1 when priority <= 1.5f:
-                    selectedStream = StorageStream1;
-                    break;
-                case 1:
-                    selectedStream = StorageStream2;
-                    break;
-                case 2 when priority <= 0.5f:
-                    selectedStream = Stream0;
-                    break;
-                case 2 when priority <= 1.5f:
-                    selectedStream = Stream1;
-                    break;
-                case 2:
-                    selectedStream = Stream2;
-                    break;
-                default:
-                    throw new InvalidOperationException($"Invalid super priority at {super}");
-            }
-
-            selectedStream.Push(stateSyncItem);
-        }
-
-        private void RunChainReaction(Keccak hash)
+        private void PossiblySaveDependentNodes(Keccak hash)
         {
             List<DependentItem> nodesToSave = new List<DependentItem>();
             lock (_dependencies)
@@ -278,7 +184,7 @@ namespace Nethermind.Synchronization.FastSync
                         string nodeNodes = dependentItems.Count == 1 ? "node" : "nodes";
                         _logger.Trace($"{dependentItems.Count} {nodeNodes} dependent on {hash}");
                     }
-                    
+
                     foreach (DependentItem dependentItem in dependentItems)
                     {
                         dependentItem.Counter--;
@@ -297,7 +203,7 @@ namespace Nethermind.Synchronization.FastSync
 
             foreach (DependentItem dependentItem in nodesToSave)
             {
-                if (dependentItem.IsAccount) Interlocked.Increment(ref _savedAccounts);
+                if (dependentItem.IsAccount) Interlocked.Increment(ref _data.SavedAccounts);
                 SaveNode(dependentItem.SyncItem, dependentItem.Value);
                 _tempDb.Remove(dependentItem.SyncItem.Hash.Bytes);
             }
@@ -306,15 +212,15 @@ namespace Nethermind.Synchronization.FastSync
         private void SaveNode(StateSyncItem syncItem, byte[] data)
         {
             if (_logger.IsTrace) _logger.Trace($"SAVE {new string('+', syncItem.Level * 2)}{syncItem.NodeDataType.ToString().ToUpperInvariant()} {syncItem.Hash}");
-            Interlocked.Increment(ref _savedNodesCount);
+            Interlocked.Increment(ref _data.SavedNodesCount);
             switch (syncItem.NodeDataType)
             {
                 case NodeDataType.State:
                 {
-                    Interlocked.Increment(ref _savedStateCount);
+                    Interlocked.Increment(ref _data.SavedStateCount);
                     lock (_stateDbLock)
                     {
-                        Interlocked.Add(ref _dataSize, data.Length);
+                        Interlocked.Add(ref _data.DataSize, data.Length);
                         _stateDb.Set(syncItem.Hash, data);
                     }
 
@@ -328,7 +234,7 @@ namespace Nethermind.Synchronization.FastSync
                         {
                             lock (_codeDbLock)
                             {
-                                Interlocked.Add(ref _dataSize, data.Length);
+                                Interlocked.Add(ref _data.DataSize, data.Length);
                                 _codeDb.Set(syncItem.Hash, data);
                             }
 
@@ -336,10 +242,10 @@ namespace Nethermind.Synchronization.FastSync
                         }
                     }
 
-                    Interlocked.Increment(ref _savedStorageCount);
+                    Interlocked.Increment(ref _data.SavedStorageCount);
                     lock (_stateDbLock)
                     {
-                        Interlocked.Add(ref _dataSize, data.Length);
+                        Interlocked.Add(ref _data.DataSize, data.Length);
                         _stateDb.Set(syncItem.Hash, data);
                     }
 
@@ -347,10 +253,10 @@ namespace Nethermind.Synchronization.FastSync
                 }
                 case NodeDataType.Code:
                 {
-                    Interlocked.Increment(ref _savedCode);
+                    Interlocked.Increment(ref _data.SavedCode);
                     lock (_codeDbLock)
                     {
-                        Interlocked.Add(ref _dataSize, data.Length);
+                        Interlocked.Add(ref _data.DataSize, data.Length);
                         _codeDb.Set(syncItem.Hash, data);
                     }
 
@@ -367,7 +273,7 @@ namespace Nethermind.Synchronization.FastSync
             }
 
             _syncProgress.ReportSynced(syncItem.Level, syncItem.ParentBranchChildIndex, syncItem.BranchChildIndex, syncItem.NodeDataType, NodeProgressState.Saved);
-            RunChainReaction(syncItem.Hash);
+            PossiblySaveDependentNodes(syncItem.Hash);
         }
 
         private void VerifyPostSyncCleanUp()
@@ -378,69 +284,17 @@ namespace Nethermind.Synchronization.FastSync
                 {
                     if (_logger.IsError) _logger.Error($"POSSIBLE FAST SYNC CORRUPTION | Dependencies hanging after the root node saved - count: {_dependencies.Count}, first: {_dependencies.Keys.First()}");
                 }
-                
+
                 _dependencies = new Dictionary<Keccak, HashSet<DependentItem>>();
-                _alreadySaved = new LruKeyCache<Keccak>(_alreadySavedCapacity, "saved nodes");
+                _alreadySaved = new LruKeyCache<Keccak>(AlreadySavedCapacity, "saved nodes");
             }
 
-            if (TotalNodesPending != 0)
+            if (_pendingItems.Count != 0)
             {
-                if (_logger.IsError) _logger.Error($"POSSIBLE FAST SYNC CORRUPTION | Nodes left after the root node saved - count: {TotalNodesPending}");
+                if (_logger.IsError) _logger.Error($"POSSIBLE FAST SYNC CORRUPTION | Nodes left after the root node saved - count: {_pendingItems.Count}");
             }
         }
 
-        private (int, float) CalculatePriority(NodeDataType nodeDataType, byte level, uint rightness)
-        {
-            if (nodeDataType == NodeDataType.Code)
-            {
-                return (0, 0f);
-            }
-
-            float priority = CalculatePriority(level, rightness);
-            if (nodeDataType == NodeDataType.Storage)
-            {
-                if (level > _maxStorageLevel)
-                {
-                    _maxStorageLevel = level;
-                }
-
-                if (rightness > _maxStorageRightness)
-                {
-                    _maxStorageRightness = rightness;
-                }
-
-                return (1, priority);
-            }
-            else
-            {
-                if (level > _maxStateLevel)
-                {
-                    _maxStateLevel = level;
-                }
-
-                if (rightness > _maxRightness)
-                {
-                    _maxRightness = rightness;
-                }
-
-                return (2, priority);
-            }
-        }
-
-        private float CalculatePriority(byte level, uint rightness)
-        {
-            // the more synced we are the more to the right we want to go - hence the sync progress modifier at the end
-            // we want to keep more or less to the same side (left or right - we chose left) so we punish
-            // the high child indices
-            // we want to go deep first so we add bonus for the depth
-            float priority = 1.00f - (float) level / Math.Max(_maxStateLevel, (byte) 1) + (float) rightness / Math.Max(_maxRightness, 1) - (float) _syncProgress.LastProgress / 2;
-            return priority;
-        }
-
-        private HashSet<Keccak> _codesSameAsNodes = new HashSet<Keccak>();
-
-        private int _noResponsesInARow;
-        
         public override SyncResponseHandlingResult HandleResponse(StateSyncBatch batch)
         {
             if (batch == _emptyBatch)
@@ -466,7 +320,8 @@ namespace Nethermind.Synchronization.FastSync
                     if (DateTime.UtcNow - _lastReview > TimeSpan.FromSeconds(60))
                     {
                         _lastReview = DateTime.UtcNow;
-                        RunReview();
+                        string reviewMessage = _pendingItems.RecalculatePriorities();
+                        if (_logger.IsDebug) _logger.Debug(reviewMessage);
                     }
 
                     _handleWatch.Restart();
@@ -476,21 +331,21 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         AddAgainAllItems();
                         if (_logger.IsTrace) _logger.Trace($"Batch was not assigned to any peer.");
-                        Interlocked.Increment(ref _notAssignedCount);
+                        Interlocked.Increment(ref _data.NotAssignedCount);
                         return SyncResponseHandlingResult.NotAssigned;
                     }
 
                     bool isMissingRequestData = batch.RequestedNodes == null;
                     bool isMissingResponseData = batch.Responses == null;
                     bool hasValidFormat = !isMissingRequestData && !isMissingResponseData;
-                    
+
                     if (!hasValidFormat)
                     {
                         _noResponsesInARow++;
-                        
+
                         AddAgainAllItems();
                         if (_logger.IsWarn) _logger.Warn($"Batch response had invalid format");
-                        Interlocked.Increment(ref _invalidFormatCount);
+                        Interlocked.Increment(ref _data.InvalidFormatCount);
                         return isMissingRequestData ? SyncResponseHandlingResult.InternalError : SyncResponseHandlingResult.NotAssigned;
                     }
                     else
@@ -541,37 +396,18 @@ namespace Nethermind.Synchronization.FastSync
                         HandleTrieNode(currentStateSyncItem, currentResponseItem, ref invalidNodes);
                     }
 
-                    Interlocked.Add(ref _consumedNodesCount, nonEmptyResponses);
-                    lock (_stateDbLock)
-                    {
-                        Rlp rlp = Rlp.Encode(
-                            Rlp.Encode(_consumedNodesCount),
-                            Rlp.Encode(_savedStorageCount),
-                            Rlp.Encode(_savedStateCount),
-                            Rlp.Encode(_savedNodesCount),
-                            Rlp.Encode(_savedAccounts),
-                            Rlp.Encode(_savedCode),
-                            Rlp.Encode(_requestedNodesCount),
-                            Rlp.Encode(_dbChecks),
-                            Rlp.Encode(_stateWasThere),
-                            Rlp.Encode(_stateWasNotThere),
-                            Rlp.Encode(_dataSize),
-                            Rlp.Encode(_secondsInSync));
-                        lock (_codeDbLock)
-                        {
-                            _codeDb[_fastSyncProgressKey.Bytes] = rlp.Bytes;
-                        }
-                    }
+                    Interlocked.Add(ref _data.ConsumedNodesCount, nonEmptyResponses);
+                    StoreProgressInDb();
 
-                    if (_logger.IsTrace) _logger.Trace($"After handling response (non-empty responses {nonEmptyResponses}) of {batch.RequestedNodes.Length} from ({StreamsDescription}) nodes");
+                    if (_logger.IsTrace) _logger.Trace($"After handling response (non-empty responses {nonEmptyResponses}) of {batch.RequestedNodes.Length} from ({_pendingItems.Description}) nodes");
 
                     /* magic formula is ratio of our desired batch size - 1024 to Geth max batch size 384 times some missing nodes ratio */
                     bool isEmptish = (decimal) nonEmptyResponses / Math.Max(requestLength, 1) < 384m / 1024m * 0.75m;
-                    if (isEmptish) Interlocked.Increment(ref _emptishCount);
+                    if (isEmptish) Interlocked.Increment(ref _data.EmptishCount);
 
                     /* here we are very forgiving for Geth nodes that send bad data fast */
                     bool isBadQuality = nonEmptyResponses > 64 && (decimal) invalidNodes / Math.Max(requestLength, 1) > 0.50m;
-                    if (isBadQuality) Interlocked.Increment(ref _badQualityCount);
+                    if (isBadQuality) Interlocked.Increment(ref _data.BadQualityCount);
 
                     bool isEmpty = nonEmptyResponses == 0 && !isBadQuality;
                     if (isEmpty)
@@ -582,7 +418,7 @@ namespace Nethermind.Synchronization.FastSync
 
                     if (!isEmptish && !isBadQuality)
                     {
-                        Interlocked.Increment(ref _okCount);
+                        Interlocked.Increment(ref _data.OkCount);
                     }
 
                     SyncResponseHandlingResult result = isEmptish
@@ -591,33 +427,7 @@ namespace Nethermind.Synchronization.FastSync
                             ? SyncResponseHandlingResult.LesserQuality
                             : SyncResponseHandlingResult.OK;
 
-                    TimeSpan sinceLastReport = DateTime.UtcNow - _lastReportTime.small;
-                    if (sinceLastReport > TimeSpan.FromSeconds(1))
-                    {
-                        decimal savedNodesPerSecond = 1000m * (_savedNodesCount - _lastSavedNodesCount) / (decimal) sinceLastReport.TotalMilliseconds;
-                        decimal savedKBytesPerSecond = 1000m * ((_dataSize - _lastDataSize) / 1000m) / (decimal) sinceLastReport.TotalMilliseconds;
-                        decimal requestedNodesPerSecond = 1000m * (_requestedNodesCount - _lastRequestedNodesCount) / (decimal) sinceLastReport.TotalMilliseconds;
-                        decimal handledNodesPerSecond = 1000m * (_handledNodesCount - _lastHandledNodesCount) / (decimal) sinceLastReport.TotalMilliseconds;
-                        _lastDataSize = _dataSize;
-                        _lastSavedNodesCount = _savedNodesCount;
-                        _lastRequestedNodesCount = _requestedNodesCount;
-                        _lastHandledNodesCount = _handledNodesCount;
-                        // if (_logger.IsInfo) _logger.Info($"Time {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | {(decimal) _dataSize / 1000 / 1000,6:F2}MB | kBps: {savedKBytesPerSecond,5:F0} | P: {_pendingRequests.Count} | acc {_savedAccounts} | queues {StreamsDescription} | db {_averageTimeInHandler:f2}ms");
-                        if (_logger.IsInfo) _logger.Info($"State Sync {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | {(decimal) _dataSize / 1000 / 1000,6:F2}MB | kB/s: {savedKBytesPerSecond,5:F0} | P: {_pendingRequests.Count} | acc {_savedAccounts} | nodes {_savedNodesCount} | db_delay {_averageTimeInHandler:f2}ms");
-                        if (_logger.IsDebug && DateTime.UtcNow - _lastReportTime.full > TimeSpan.FromSeconds(10))
-                        {
-                            long allChecks = _checkWasInDependencies + _checkWasCached + _stateWasThere + _stateWasNotThere;
-                            if (_logger.IsDebug) _logger.Debug($"OK {(decimal) _okCount / TotalRequestsCount:p2} | Emptish: {(decimal) _emptishCount / TotalRequestsCount:p2} | BadQuality: {(decimal) _badQualityCount / TotalRequestsCount:p2} | InvalidFormat: {(decimal) _invalidFormatCount / TotalRequestsCount:p2} | NotAssigned {(decimal) _notAssignedCount / TotalRequestsCount:p2}");
-                            if (_requestedNodesCount > 0)
-                            {
-                                if (_logger.IsDebug) _logger.Debug($"Consumed {(decimal) _consumedNodesCount / _requestedNodesCount:p2} | Saved {(decimal) _savedNodesCount / _requestedNodesCount:p2} | DB Reads : {(decimal) _dbChecks / _requestedNodesCount:p2} | DB checks {_stateWasThere}/{_stateWasNotThere + _stateWasThere} | Cached {(decimal) _checkWasCached / allChecks:P2} + {(decimal) _checkWasInDependencies / allChecks:P2}");
-                            }
-
-                            _lastReportTime.full = DateTime.UtcNow;
-                        }
-
-                        _lastReportTime.small = DateTime.UtcNow;
-                    }
+                    _data.DisplayProgressReport(_pendingRequests.Count, _logger);
 
                     long total = _handleWatch.ElapsedMilliseconds + _networkWatch.ElapsedMilliseconds;
                     if (total != 0)
@@ -626,15 +436,14 @@ namespace Nethermind.Synchronization.FastSync
                         if (_logger.IsTrace) _logger.Trace($"Prepare batch {_networkWatch.ElapsedMilliseconds}ms ({(decimal) _networkWatch.ElapsedMilliseconds / total:P0}) - Handle {_handleWatch.ElapsedMilliseconds}ms ({(decimal) _handleWatch.ElapsedMilliseconds / total:P0})");
                     }
 
-
                     if (_handleWatch.ElapsedMilliseconds > 250)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Handle watch {_handleWatch.ElapsedMilliseconds}, DB reads {_dbChecks - _lastDbReads}, ratio {(decimal) _handleWatch.ElapsedMilliseconds / Math.Max(1, _dbChecks - _lastDbReads)}");
+                        if (_logger.IsDebug) _logger.Debug($"Handle watch {_handleWatch.ElapsedMilliseconds}, DB reads {_data.DbChecks - _data.LastDbReads}, ratio {(decimal) _handleWatch.ElapsedMilliseconds / Math.Max(1, _data.DbChecks - _data.LastDbReads)}");
                     }
 
-                    _lastDbReads = _dbChecks;
-                    _averageTimeInHandler = (_averageTimeInHandler * (ProcessedRequestsCount - 1) + _handleWatch.ElapsedMilliseconds) / ProcessedRequestsCount;
-                    Interlocked.Add(ref _handledNodesCount, nonEmptyResponses);
+                    _data.LastDbReads = _data.DbChecks;
+                    _data.AverageTimeInHandler = (_data.AverageTimeInHandler * (_data.ProcessedRequestsCount - 1) + _handleWatch.ElapsedMilliseconds) / _data.ProcessedRequestsCount;
+                    Interlocked.Add(ref _data.HandledNodesCount, nonEmptyResponses);
                     return result;
                 }
             }
@@ -652,13 +461,25 @@ namespace Nethermind.Synchronization.FastSync
                 }
                 else
                 {
-                    // _logger.Warn($"Removing pending request {batch}");
+                    if (_logger.IsTrace) _logger.Trace($"Removing pending request {batch}");
+                }
+            }
+        }
+
+        private void StoreProgressInDb()
+        {
+            byte[] serializedData = _data.Serialize();
+            lock (_stateDbLock)
+            {
+                lock (_codeDbLock)
+                {
+                    _codeDb[_fastSyncProgressKey.Bytes] = serializedData;
                 }
             }
         }
 
         public override bool IsMultiFeed => true;
-        
+
         public override AllocationContexts Contexts => AllocationContexts.State;
 
         private void HandleTrieNode(StateSyncItem currentStateSyncItem, byte[] currentResponseItem, ref int invalidNodes)
@@ -738,7 +559,7 @@ namespace Nethermind.Synchronization.FastSync
                 case NodeType.Leaf:
                     if (nodeDataType == NodeDataType.State)
                     {
-                        _maxStateLevel = 64;
+                        _pendingItems.MaxStateLevel = 64;
                         DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 0, true);
                         (Keccak codeHash, Keccak storageRoot) = _accountDecoder.DecodeHashesOnly(new RlpStream(trieNode.Value));
                         if (codeHash != Keccak.OfAnEmptyString)
@@ -767,13 +588,13 @@ namespace Nethermind.Synchronization.FastSync
 
                         if (dependentItem.Counter == 0)
                         {
-                            Interlocked.Increment(ref _savedAccounts);
+                            Interlocked.Increment(ref _data.SavedAccounts);
                             SaveNode(currentStateSyncItem, currentResponseItem);
                         }
                     }
                     else
                     {
-                        _maxStorageLevel = 64;
+                        _pendingItems.MaxStorageLevel = 64;
                         SaveNode(currentStateSyncItem, currentResponseItem);
                     }
 
@@ -800,9 +621,6 @@ namespace Nethermind.Synchronization.FastSync
             throw new InvalidOperationException($"Not designed for {nodeType}");
         }
 
-        private long _lastDbReads;
-        private decimal _averageTimeInHandler;
-
         private void AddDependency(Keccak dependency, DependentItem dependentItem)
         {
             lock (_dependencies)
@@ -817,61 +635,13 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        private bool TryTake(out StateSyncItem node)
-        {
-            for (int i = 0; i < _nodes.Length; i++)
-            {
-                if (_nodes[i].TryPop(out node))
-                {
-                    return true;
-                }
-            }
-
-            node = null;
-            return false;
-        }
-
-        private string StreamsDescription => $"{CodeStream?.Count ?? 0:D4} + {StorageStream0?.Count ?? 0:D6} {StorageStream1?.Count ?? 0:D6} {StorageStream2?.Count ?? 0:D6} + {Stream0?.Count ?? 0:D6} {Stream1?.Count ?? 0:D6} {Stream2?.Count ?? 0:D6}";
-        private string LevelsDescription => $"{_maxStorageLevel:D2} {_maxStorageRightness:D8} | {_maxStateLevel:D2} {_maxRightness:D8}";
-
-        private void RunReview()
-        {
-            Stopwatch stopwatch = new Stopwatch();
-            stopwatch.Start();
-
-            string reviewMessage = $"Node sync queues review ({LevelsDescription}):" + Environment.NewLine;
-            reviewMessage += $"  before {StreamsDescription}" + Environment.NewLine;
-
-            List<StateSyncItem> temp = new List<StateSyncItem>();
-            while (Stream2.TryPop(out StateSyncItem poppedSyncItem))
-            {
-                temp.Add(poppedSyncItem);
-            }
-
-            while (StorageStream2.TryPop(out StateSyncItem poppedSyncItem))
-            {
-                temp.Add(poppedSyncItem);
-            }
-
-            foreach (StateSyncItem syncItem in temp)
-            {
-                PushToSelectedStream(syncItem);
-            }
-
-            reviewMessage += $"  after {StreamsDescription}" + Environment.NewLine;
-
-            stopwatch.Stop();
-            reviewMessage += $"  time spent in review: {stopwatch.ElapsedMilliseconds}ms";
-            if (_logger.IsDebug) _logger.Debug(reviewMessage);
-        }
-
         public override async Task<StateSyncBatch> PrepareRequest()
         {
-            if((_syncModeSelector.Current & SyncMode.StateNodes) != SyncMode.StateNodes)
+            if ((_syncModeSelector.Current & SyncMode.StateNodes) != SyncMode.StateNodes)
             {
                 return null;
             }
-            
+
             try
             {
                 if (_rootNode == Keccak.EmptyTreeHash)
@@ -880,7 +650,7 @@ namespace Nethermind.Synchronization.FastSync
                     FallAsleep();
                     return _emptyBatch;
                 }
-                
+
                 if (_noResponsesInARow >= 20)
                 {
                     _logger.Error("Falling asleep - many missing responses");
@@ -899,42 +669,19 @@ namespace Nethermind.Synchronization.FastSync
                     }
                 }
 
-                // the limitation is to prevent an early explosion of request sizes with low level nodes
-                // the moment we find the first leaf we will know something more about the tree structure and hence
-                // prevent lot of Stream2 entries to stay in memory for a long time 
-                int length = _maxStateLevel == 64 ? MaxRequestSize : Math.Max(1, (int) (MaxRequestSize * ((decimal) _maxStateLevel / 64) * ((decimal) _maxStateLevel / 64)));
-                if (length < MaxRequestSize)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Sending limited size request {length} at level {_maxStateLevel}");
-                }
-
-                if (_logger.IsTrace) _logger.Trace($"Preparing a request of length {length} from ({StreamsDescription}) nodes");
-
-                List<StateSyncItem> requestHashes = new List<StateSyncItem>();
-                for (int i = 0; i < length; i++)
-                {
-                    if (TryTake(out StateSyncItem requestItem))
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Requesting {requestItem.Hash}");
-                        requestHashes.Add(requestItem);
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
+                List<StateSyncItem> requestHashes = _pendingItems.TakeBatch(MaxRequestSize);
+                LogRequestInfo(requestHashes);
 
                 if (requestHashes.Count > 0)
                 {
                     StateSyncBatch result = new StateSyncBatch();
                     result.RequestedNodes = requestHashes.ToArray();
-                    Interlocked.Add(ref _requestedNodesCount, result.RequestedNodes.Length);
-                    Interlocked.Exchange(ref _secondsInSync, _currentSyncStartSecondsInSync + (long) (DateTime.UtcNow - _currentSyncStart).TotalSeconds);
+                    Interlocked.Add(ref _data.RequestedNodesCount, result.RequestedNodes.Length);
+                    Interlocked.Exchange(ref _data.SecondsInSync, _currentSyncStartSecondsInSync + (long) (DateTime.UtcNow - _currentSyncStart).TotalSeconds);
 
-                    if (_logger.IsTrace) _logger.Trace($"After preparing a request of {length} from ({StreamsDescription}) nodes");
-
-                    // _logger.Warn($"Adding pending request {result}");
-                    _pendingRequests.TryAdd(result, _nullObject);
+                    if (_logger.IsTrace) _logger.Trace($"After preparing a request of {requestHashes.Count} from ({_pendingItems.Description}) nodes");
+                    if (_logger.IsTrace) _logger.Trace($"Adding pending request {result}");
+                    _pendingRequests.TryAdd(result, null);
                     return await Task.FromResult(result);
                 }
 
@@ -947,30 +694,43 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        private StateSyncProgress _syncProgress;
-
-        public void SetNewStateRoot(long number, Keccak stateRoot)
+        private void LogRequestInfo(List<StateSyncItem> requestHashes)
         {
-            if(_logger.IsInfo) _logger.Info($"Setting state sync state root to {number} {stateRoot}");
-            _currentSyncStart = DateTime.UtcNow;
-            _currentSyncStartSecondsInSync = _secondsInSync;
+            int requestSize = requestHashes.Count;
+            if (requestSize < MaxRequestSize)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Sending limited size request {requestSize} at level {_pendingItems.MaxStateLevel}");
+            }
 
-            _lastReportTime = (DateTime.UtcNow, DateTime.UtcNow);
-            _lastSavedNodesCount = _savedNodesCount;
-            _lastRequestedNodesCount = _requestedNodesCount;
+            if (_logger.IsTrace) _logger.Trace($"Preparing a request of length {requestSize} from ({_pendingItems.Description}) nodes");
+            if (_logger.IsTrace)
+            {
+                foreach (StateSyncItem stateSyncItem in requestHashes)
+                {
+                    _logger.Trace($"Requesting {stateSyncItem.Hash}");
+                }
+            }
+        }
+
+        public void ResetStateRoot(long blockNumber, Keccak stateRoot)
+        {
+            if (_logger.IsInfo) _logger.Info($"Setting state sync state root to {blockNumber} {stateRoot}");
+            _currentSyncStart = DateTime.UtcNow;
+            _currentSyncStartSecondsInSync = _data.SecondsInSync;
+
+            _data.LastReportTime = (DateTime.UtcNow, DateTime.UtcNow);
+            _data.LastSavedNodesCount = _data.SavedNodesCount;
+            _data.LastRequestedNodesCount = _data.RequestedNodesCount;
             if (_rootNode != stateRoot)
             {
-                _syncProgress = new StateSyncProgress(number, _logger);
+                _syncProgress = new StateSyncProgress(blockNumber, _logger);
                 _rootNode = stateRoot;
                 lock (_dependencies) _dependencies.Clear();
                 lock (_codesSameAsNodes) _codesSameAsNodes.Clear();
 
-                for (int i = 0; i < _nodes.Length; i++)
-                {
-                    _nodes[i]?.Clear();
-                }
+                _pendingItems.Clear();
 
-                if (_logger.IsDebug) _logger.Debug($"Clearing node stacks ({StreamsDescription})");
+                if (_logger.IsDebug) _logger.Debug($"Clearing node stacks ({_pendingItems.Description})");
             }
             else
             {
@@ -986,43 +746,26 @@ namespace Nethermind.Synchronization.FastSync
 
             _pendingRequests.Clear();
 
-            if (_nodes[0] == null)
-            {
-                for (int i = 0; i < _nodes.Length; i++)
-                {
-                    _nodes[i] = new ConcurrentStack<StateSyncItem>();
-                }
-            }
-
             bool hasOnlyRootNode = false;
-            if (TotalNodesPending == 1)
+
+            _pendingItems.EnsureInitialized();
+
+            if (_rootNode != Keccak.EmptyTreeHash)
             {
-                // state root can only be located on state stream
-                Stream0.TryPeek(out StateSyncItem node0);
-                Stream1.TryPeek(out StateSyncItem node1);
-                Stream2.TryPeek(out StateSyncItem node2);
-                if ((node0 ?? node1 ?? node2)?.Hash == stateRoot)
+                if (_pendingItems.Count == 1)
                 {
-                    hasOnlyRootNode = true;
+                    // state root can only be located on state stream
+                    StateSyncItem potentialRoot = _pendingItems.PeekState();
+                    if (potentialRoot?.Hash == _rootNode)
+                    {
+                        hasOnlyRootNode = true;
+                    }
                 }
-            }
 
-            if (!hasOnlyRootNode && _rootNode != Keccak.EmptyTreeHash)
-            {
-                AddNode(new StateSyncItem(stateRoot, NodeDataType.State, 0, 0), null, "initial");
-            }
-        }
-
-        public bool IsFullySynced(Keccak stateRoot)
-        {
-            if (stateRoot == Keccak.EmptyTreeHash)
-            {
-                return true;
-            }
-
-            lock (_stateDbLock)
-            {
-                return _stateDb.Get(stateRoot) != null;
+                if (!hasOnlyRootNode)
+                {
+                    AddNode(new StateSyncItem(_rootNode, NodeDataType.State, 0, 0), null, "initial");
+                }
             }
         }
 
@@ -1031,56 +774,6 @@ namespace Nethermind.Synchronization.FastSync
             AlreadySaved,
             AlreadyRequested,
             Added
-        }
-
-        [DebuggerDisplay("{SyncItem.Hash} {Counter}")]
-        private class DependentItem
-        {
-            public StateSyncItem SyncItem { get; }
-            public byte[] Value { get; }
-            public int Counter { get; set; }
-
-            public bool IsAccount { get; }
-
-            public DependentItem(StateSyncItem syncItem, byte[] value, int counter, bool isAccount = false)
-            {
-                SyncItem = syncItem;
-                Value = value;
-                Counter = counter;
-                IsAccount = isAccount;
-            }
-        }
-
-        private class DependentItemComparer : IEqualityComparer<DependentItem>
-        {
-            private DependentItemComparer()
-            {
-            }
-
-            private static DependentItemComparer _instance;
-
-            public static DependentItemComparer Instance
-            {
-                get
-                {
-                    if (_instance == null)
-                    {
-                        LazyInitializer.EnsureInitialized(ref _instance, () => new DependentItemComparer());
-                    }
-
-                    return _instance;
-                }
-            }
-
-            public bool Equals(DependentItem x, DependentItem y)
-            {
-                return x?.SyncItem.Hash == y?.SyncItem.Hash;
-            }
-
-            public int GetHashCode(DependentItem obj)
-            {
-                return obj?.SyncItem.Hash.GetHashCode() ?? 0;
-            }
         }
     }
 }
