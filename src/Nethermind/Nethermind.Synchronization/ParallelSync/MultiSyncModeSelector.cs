@@ -30,6 +30,11 @@ namespace Nethermind.Synchronization.ParallelSync
         /// Number of blocks before the best peer's head when we switch from fast sync to full sync
         /// </summary>
         public const int FastSyncLag = 32;
+        
+        /// <summary>
+        /// How many blocks can fast sync stay behind while state nodes is still syncing
+        /// </summary>
+        public const int StickyStateNodesDelta = 32;
 
         private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly ISyncPeerPool _syncPeerPool;
@@ -197,7 +202,7 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             try
             {
-                Update();
+                // Update();
             }
             catch (Exception exception)
             {
@@ -234,6 +239,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool heightDeltaGreaterThanLag = heightDelta > FastSyncLag;
             bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best.PeerBlock);
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
+            bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
 
             if (_logger.IsTrace)
             {
@@ -248,7 +254,8 @@ namespace Nethermind.Synchronization.ParallelSync
                 // (catch up after node is off for a while
                 // OR standard fast sync)
                 notInAStickyFullSync &&
-                heightDeltaGreaterThanLag;
+                heightDeltaGreaterThanLag &&
+                notHasJustStartedFullSync;
         }
 
         private bool ShouldBeInFullSyncMode(Snapshot best)
@@ -292,9 +299,11 @@ namespace Nethermind.Synchronization.ParallelSync
             bool fastFastSyncBeenActive = best.Header >= PivotNumber;
             bool hasAnyPostPivotPeer = AnyPostPivotPeerKnown(best.PeerBlock);
             bool notInFastSync = !best.IsInFastSync;
+            bool stickyStateNodes = best.PeerBlock - best.Header < (FastSyncLag + StickyStateNodesDelta);
             bool stateNotDownloadedYet = (best.PeerBlock - best.State > FastSyncLag ||
                                           best.Header > best.State);
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
+            bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
 
             if (_logger.IsTrace)
             {
@@ -305,13 +314,15 @@ namespace Nethermind.Synchronization.ParallelSync
                 _logger.Trace("notInFastSync " + notInFastSync);
                 _logger.Trace("stateNotDownloadedYet " + stateNotDownloadedYet);
                 _logger.Trace("notInAStickyFullSync " + notInAStickyFullSync);
+                _logger.Trace("notHasJustStartedFullSync " + notHasJustStartedFullSync);
             }
 
             return fastSyncEnabled &&
                    fastFastSyncBeenActive &&
                    hasAnyPostPivotPeer &&
-                   notInFastSync &&
+                   (notInFastSync || stickyStateNodes) &&
                    stateNotDownloadedYet &&
+                   notHasJustStartedFullSync &&
                    notInAStickyFullSync;
         }
 
@@ -323,6 +334,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool inStateNodesSync = best.IsInStateSync;
             bool notInFastSync = !best.IsInFastSync;
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
+            bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
 
             if (_logger.IsTrace)
             {
@@ -333,6 +345,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 _logger.Trace("inStateNodesSync " + inStateNodesSync);
                 _logger.Trace("notInFastSync " + beamSyncEnabled);
                 _logger.Trace("notInAStickyFullSync " + notInAStickyFullSync);
+                _logger.Trace("notHasJustStartedFullSync " + notHasJustStartedFullSync);
             }
 
             return beamSyncEnabled &&
@@ -340,7 +353,13 @@ namespace Nethermind.Synchronization.ParallelSync
                    hasAnyPostPivotPeer &&
                    inStateNodesSync &&
                    notInAStickyFullSync &&
+                   notHasJustStartedFullSync &&
                    notInFastSync;
+        }
+
+        private bool HasJustStartedFullSync(Snapshot best)
+        {
+            return best.State > PivotNumber && best.Processed < best.State;
         }
 
         private bool AnyPeerWithHigherDifficultyKnown(UInt256 bestPeerDiff)
