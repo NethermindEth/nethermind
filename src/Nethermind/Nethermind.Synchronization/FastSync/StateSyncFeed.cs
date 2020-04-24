@@ -674,7 +674,7 @@ namespace Nethermind.Synchronization.FastSync
                     Interlocked.Add(ref _data.RequestedNodesCount, result.RequestedNodes.Length);
                     Interlocked.Exchange(ref _data.SecondsInSync, _currentSyncStartSecondsInSync + (long) (DateTime.UtcNow - _currentSyncStart).TotalSeconds);
 
-                    if (_logger.IsWarn) _logger.Warn($"After preparing a request of {requestHashes.Count} from ({_pendingItems.Description}) nodes | {_dependencies.Count}");
+                    if (_logger.IsTrace) _logger.Trace($"After preparing a request of {requestHashes.Count} from ({_pendingItems.Description}) nodes | {_dependencies.Count}");
                     if (_logger.IsTrace) _logger.Trace($"Adding pending request {result}");
                     _pendingRequests.TryAdd(result, null);
                     return await Task.FromResult(result);
