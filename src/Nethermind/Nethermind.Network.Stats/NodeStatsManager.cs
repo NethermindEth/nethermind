@@ -162,10 +162,10 @@ namespace Nethermind.Stats
             return stats.FailedCompatibilityValidation != null;
         }
 
-        public void ReportTransferSpeedEvent(Node node, long value)
+        public void ReportTransferSpeedEvent(Node node, TransferSpeedType type, long value)
         {
             INodeStats stats = GetOrAdd(node);
-            stats.AddTransferSpeedCaptureEvent(value);
+            stats.AddTransferSpeedCaptureEvent(type, value);
         }
     }
 }
