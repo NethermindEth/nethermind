@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 
@@ -23,7 +24,21 @@ namespace Nethermind.Synchronization.FastBlocks
     {
         public IPeerAllocationStrategy Create(FastBlocksBatch request)
         {
-            return new FastBlocksAllocationStrategy(request.MinNumber, request.Prioritized);
+            TransferSpeedType speedType = TransferSpeedType.Latency;
+            if (request is HeadersSyncBatch)
+            {
+                speedType = TransferSpeedType.Headers;
+            }
+            else if (request is BodiesSyncBatch)
+            {
+                speedType = TransferSpeedType.Bodies;
+            }
+            else if (request is ReceiptsSyncBatch)
+            {
+                speedType = TransferSpeedType.Receipts;
+            }
+            
+            return new FastBlocksAllocationStrategy(speedType, request.MinNumber, request.Prioritized);
         }
     }
 }

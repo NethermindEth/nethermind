@@ -472,16 +472,19 @@ namespace Nethermind.Synchronization.Peers
 
             if (PeerCount == PeerMaxCount)
             {
-                long worstSpeed = long.MaxValue;
+                long lowestBlockNumber = long.MaxValue;
                 PeerInfo worstPeer = null;
                 foreach (PeerInfo peerInfo in AllPeers)
                 {
-                    long transferSpeed = _stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed() ?? 0;
-                    if (transferSpeed < worstSpeed) worstPeer = peerInfo;
+                    if (peerInfo.HeadNumber < lowestBlockNumber)
+                    {
+                        lowestBlockNumber = peerInfo.HeadNumber;
+                        worstPeer = peerInfo;
+                    }
                 }
 
                 peersDropped++;
-                worstPeer?.SyncPeer.Disconnect(DisconnectReason.TooManyPeers, "PEER REVIEW / LATENCY");
+                worstPeer?.SyncPeer.Disconnect(DisconnectReason.TooManyPeers, "PEER REVIEW / LOWEST NUMBER");
             }
 
             if (_logger.IsDebug) _logger.Debug($"Dropped {peersDropped} useless peers");

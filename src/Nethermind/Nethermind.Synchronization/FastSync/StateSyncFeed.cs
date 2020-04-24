@@ -22,6 +22,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -44,7 +45,7 @@ namespace Nethermind.Synchronization.FastSync
         private static AccountDecoder _accountDecoder = new AccountDecoder();
 
         private DetailedProgress _data;
-        private PendingSyncItems _pendingItems;
+        private IPendingSyncItems _pendingItems;
 
         private Keccak _fastSyncProgressKey = Keccak.Zero;
 
@@ -75,7 +76,7 @@ namespace Nethermind.Synchronization.FastSync
         private StateSyncProgress _syncProgress;
         private int _noResponsesInARow;
 
-        public StateSyncFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, IBlockTree blockTree, ILogManager logManager)
+        public StateSyncFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, IBlockTree blockTree, ISyncConfig syncConfig, ILogManager logManager)
         {
             _codeDb = codeDb?.Innermost ?? throw new ArgumentNullException(nameof(codeDb));
             _stateDb = stateDb?.Innermost ?? throw new ArgumentNullException(nameof(stateDb));
@@ -88,7 +89,7 @@ namespace Nethermind.Synchronization.FastSync
 
             byte[] progress = _codeDb.Get(_fastSyncProgressKey);
             _data = new DetailedProgress(_blockTree.ChainId, progress);
-            _pendingItems = new PendingSyncItems();
+            _pendingItems = syncConfig.UsePriorityQueue ? (IPendingSyncItems)new PendingSyncItems2() : new PendingSyncItems();
         }
 
         private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
@@ -321,7 +322,7 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         _lastReview = DateTime.UtcNow;
                         string reviewMessage = _pendingItems.RecalculatePriorities();
-                        if (_logger.IsDebug) _logger.Debug(reviewMessage);
+                        if (_logger.IsInfo) _logger.Info(reviewMessage);
                     }
 
                     _handleWatch.Restart();
@@ -498,7 +499,7 @@ namespace Nethermind.Synchronization.FastSync
 
                     // children may have the same hashes (e.g. a set of accounts with the same code at different addresses)
                     HashSet<Keccak> alreadyProcessedChildHashes = new HashSet<Keccak>();
-                    for (int childIndex = 0; childIndex < 16; childIndex++)
+                    for (int childIndex = 15; childIndex >= 0; childIndex--)
                     {
                         Keccak childHash = trieNode.GetChildHash(childIndex);
                         if (alreadyProcessedChildHashes.Contains(childHash))
@@ -748,8 +749,6 @@ namespace Nethermind.Synchronization.FastSync
             _pendingRequests.Clear();
 
             bool hasOnlyRootNode = false;
-
-            _pendingItems.EnsureInitialized();
 
             if (_rootNode != Keccak.EmptyTreeHash)
             {

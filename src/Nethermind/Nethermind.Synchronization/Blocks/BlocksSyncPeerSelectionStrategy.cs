@@ -38,6 +38,18 @@ namespace Nethermind.Synchronization.Blocks
 
         public bool CanBeReplaced => true;
 
+        private long? GetSpeed(INodeStatsManager nodeStatsManager, PeerInfo peerInfo)
+        {
+            long? headersSpeed = nodeStatsManager.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Headers);
+            long? bodiesSpeed = nodeStatsManager.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Bodies);
+            if (headersSpeed == null && bodiesSpeed == null)
+            {
+                return null;
+            }
+            
+            return (headersSpeed ?? 0) + (bodiesSpeed ?? 0);
+        }
+
         public PeerInfo Allocate(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
             int nullSpeed = -1;
@@ -45,13 +57,13 @@ namespace Nethermind.Synchronization.Blocks
             int peersCount = 0;
 
             bool wasNull = currentPeer == null;
-            
-            long currentSpeed = wasNull ? nullSpeed : nodeStatsManager.GetOrAdd(currentPeer.SyncPeer.Node).GetAverageTransferSpeed() ?? nullSpeed;
+
+            long currentSpeed = wasNull ? nullSpeed : GetSpeed(nodeStatsManager, currentPeer) ?? nullSpeed;
             (PeerInfo Info, long TransferSpeed) fastestPeer = (currentPeer, currentSpeed);
             (PeerInfo Info, long TransferSpeed) bestDiffPeer = (currentPeer, currentSpeed);
 
             UInt256 localTotalDiff = blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero;
-            
+
             foreach (PeerInfo info in peers)
             {
                 (this as IPeerAllocationStrategy).CheckAsyncState(info);
@@ -80,7 +92,8 @@ namespace Nethermind.Synchronization.Blocks
                     continue;
                 }
 
-                long averageTransferSpeed = nodeStatsManager.GetOrAdd(info.SyncPeer.Node).GetAverageTransferSpeed() ?? 0;
+                long averageTransferSpeed = GetSpeed(nodeStatsManager, info) ?? 0;
+
                 averageSpeed += averageTransferSpeed;
 
                 if (averageTransferSpeed > fastestPeer.TransferSpeed)
@@ -103,10 +116,10 @@ namespace Nethermind.Synchronization.Blocks
             {
                 return fastestPeer.Info;
             }
-            
+
             averageSpeed /= peersCount;
-            UInt256 difficultyDifference = bestDiffPeer.Info.TotalDifficulty - localTotalDiff; 
-            
+            UInt256 difficultyDifference = bestDiffPeer.Info.TotalDifficulty - localTotalDiff;
+
             // at least 1 diff times 16 blocks of diff
             if (difficultyDifference > 0
                 && difficultyDifference < ((blockTree.Head?.Difficulty ?? 0) + 1) * 16
@@ -114,12 +127,12 @@ namespace Nethermind.Synchronization.Blocks
             {
                 return bestDiffPeer.Info;
             }
-            
+
             decimal speedRatio = fastestPeer.TransferSpeed / (decimal) Math.Max(1L, currentSpeed);
             if (speedRatio > 1m + MinDiffPercentageForSpeedSwitch
                 && fastestPeer.TransferSpeed - currentSpeed > MinDiffForSpeedSwitch)
             {
-                return fastestPeer.Info;    
+                return fastestPeer.Info;
             }
 
             return currentPeer ?? fastestPeer.Info;

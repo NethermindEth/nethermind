@@ -153,6 +153,10 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 batch.MarkRetry();
             }
+            else if (_dependencies.Count > 256000)
+            {
+                batch = BuildBatchToClearTheQueue();
+            }
             else if (AnyBatchesLeftToBeBuilt())
             {
                 batch = BuildNewBatch();
@@ -179,6 +183,15 @@ namespace Nethermind.Synchronization.FastBlocks
             batch.StartNumber = Math.Max(0, _lowestRequestedHeaderNumber - _headersRequestSize);
             batch.RequestSize = (int) Math.Min(_lowestRequestedHeaderNumber, _headersRequestSize);
             _lowestRequestedHeaderNumber = batch.StartNumber;
+            return batch;
+        }
+        
+        private HeadersSyncBatch BuildBatchToClearTheQueue()
+        {
+            HeadersSyncBatch batch = new HeadersSyncBatch();
+            batch.MinNumber = _blockTree.LowestInsertedHeader.Number;
+            batch.StartNumber = _blockTree.LowestInsertedHeader.Number;
+            batch.RequestSize = (int) Math.Min(_blockTree.LowestInsertedHeader.Number, _headersRequestSize);
             return batch;
         }
 

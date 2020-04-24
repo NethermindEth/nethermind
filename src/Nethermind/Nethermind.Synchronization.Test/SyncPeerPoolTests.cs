@@ -278,7 +278,7 @@ namespace Nethermind.Synchronization.Test
         {
             Node node = new Node(publicKey, "127.0.0.1", 30303);
             NodeStatsLight stats = new NodeStatsLight(node, new StatsConfig());
-            stats.AddTransferSpeedCaptureEvent(transferSpeed);
+            stats.AddTransferSpeedCaptureEvent(TransferSpeedType.Headers, transferSpeed);
 
             _stats.GetOrAdd(Arg.Is<Node>(n => n.Id == publicKey)).Returns(stats);
         }
@@ -310,7 +310,7 @@ namespace Nethermind.Synchronization.Test
             _pool.Start();
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA));
             await WaitForPeersInitialization();
-            SyncPeerAllocation allocation = await _pool.Allocate(BySpeedStrategy.Fastest);
+            SyncPeerAllocation allocation = await _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
             bool replaced = false;
             allocation.Replaced += (sender, args) => replaced = true;
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyB));
@@ -328,7 +328,7 @@ namespace Nethermind.Synchronization.Test
             _pool.Start();
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA));
             await WaitForPeersInitialization();
-            SyncPeerAllocation allocation = await _pool.Allocate(BySpeedStrategy.Fastest);
+            SyncPeerAllocation allocation = await _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
             bool replaced = false;
             allocation.Replaced += (sender, args) => replaced = true;
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyB));
@@ -346,7 +346,7 @@ namespace Nethermind.Synchronization.Test
             _pool.Start();
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA));
             await WaitForPeersInitialization();
-            SyncPeerAllocation allocation = await _pool.Allocate(BySpeedStrategy.Fastest);
+            SyncPeerAllocation allocation = await _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
             bool replaced = false;
             allocation.Replaced += (sender, args) => replaced = true;
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyB));
@@ -364,7 +364,7 @@ namespace Nethermind.Synchronization.Test
             _pool.Start();
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA));
             await WaitForPeersInitialization();
-            SyncPeerAllocation allocation = await _pool.Allocate(BySpeedStrategy.Fastest);
+            SyncPeerAllocation allocation = await _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
             bool replaced = false;
             allocation.Replaced += (sender, args) => replaced = true;
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyB));
@@ -385,7 +385,7 @@ namespace Nethermind.Synchronization.Test
         {
             var peers = await SetupPeers(1);
 
-            var allocation = await _pool.Allocate(BySpeedStrategy.Fastest);
+            var allocation = await _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
 
             Assert.AreSame(peers[0], allocation.Current?.SyncPeer);
         }
@@ -395,11 +395,11 @@ namespace Nethermind.Synchronization.Test
         {
             var peers = await SetupPeers(1);
 
-            var allocation = await _pool.Allocate(BySpeedStrategy.Fastest);
+            var allocation = await _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
             _pool.Free(allocation);
-            allocation = await _pool.Allocate(BySpeedStrategy.Fastest);
+            allocation = await _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
             _pool.Free(allocation);
-            allocation = await _pool.Allocate(BySpeedStrategy.Fastest);
+            allocation = await _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
 
             Assert.AreSame(peers[0], allocation.Current?.SyncPeer);
         }
@@ -409,8 +409,8 @@ namespace Nethermind.Synchronization.Test
         {
             await SetupPeers(2);
 
-            SyncPeerAllocation allocation1 = await _pool.Allocate(BySpeedStrategy.Fastest);
-            SyncPeerAllocation allocation2 = await _pool.Allocate(BySpeedStrategy.Fastest);
+            SyncPeerAllocation allocation1 = await _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+            SyncPeerAllocation allocation2 = await _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
             Assert.AreNotSame(allocation1.Current, allocation2.Current, "first");
             Assert.NotNull(allocation1.Current, "first A");
             Assert.NotNull(allocation2.Current, "first B");
@@ -420,8 +420,8 @@ namespace Nethermind.Synchronization.Test
             Assert.Null(allocation1.Current, "null A");
             Assert.Null(allocation2.Current, "null B");
 
-            allocation1 = await _pool.Allocate(BySpeedStrategy.Fastest);
-            allocation2 = await _pool.Allocate(BySpeedStrategy.Fastest);
+            allocation1 = await _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+            allocation2 = await _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
             Assert.AreNotSame(allocation1.Current, allocation2.Current);
             Assert.NotNull(allocation1.Current, "second A");
             Assert.NotNull(allocation2.Current, "second B");
@@ -436,9 +436,9 @@ namespace Nethermind.Synchronization.Test
                 _pool.ReportNoSyncProgress(_pool.InitializedPeers.First(), AllocationContexts.All);
             }
 
-            SyncPeerAllocation allocation1 = await _pool.Allocate(BySpeedStrategy.Fastest);
-            SyncPeerAllocation allocation2 = await _pool.Allocate(BySpeedStrategy.Fastest);
-            SyncPeerAllocation allocation3 = await _pool.Allocate(BySpeedStrategy.Fastest);
+            SyncPeerAllocation allocation1 = await _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+            SyncPeerAllocation allocation2 = await _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+            SyncPeerAllocation allocation3 = await _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
 
             Assert.True(allocation1.HasPeer);
             Assert.True(allocation2.HasPeer);
@@ -454,9 +454,9 @@ namespace Nethermind.Synchronization.Test
 
             _pool.WakeUpAll();
 
-            SyncPeerAllocation allocation1 = await _pool.Allocate(BySpeedStrategy.Fastest);
-            SyncPeerAllocation allocation2 = await _pool.Allocate(BySpeedStrategy.Fastest);
-            SyncPeerAllocation allocation3 = await _pool.Allocate(BySpeedStrategy.Fastest);
+            SyncPeerAllocation allocation1 = await _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+            SyncPeerAllocation allocation2 = await _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+            SyncPeerAllocation allocation3 = await _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
 
             Assert.True(allocation1.HasPeer);
             Assert.True(allocation2.HasPeer);
@@ -484,8 +484,8 @@ namespace Nethermind.Synchronization.Test
         {
             var peers = await SetupPeers(1);
 
-            var allocation1 = await _pool.Allocate(BySpeedStrategy.Fastest);
-            var allocation2 = await _pool.Allocate(BySpeedStrategy.Fastest);
+            var allocation1 = await _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+            var allocation2 = await _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
 
             Assert.AreSame(peers[0], allocation1.Current?.SyncPeer);
             Assert.Null(allocation2.Current);
@@ -522,7 +522,7 @@ namespace Nethermind.Synchronization.Test
             _pool.Start();
             _pool.AddPeer(peer);
 
-            var allocation = await _pool.Allocate(BySpeedStrategy.Fastest);
+            var allocation = await _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
             _pool.RemovePeer(peer);
 
             Assert.AreEqual(null, allocation.Current);
@@ -538,7 +538,7 @@ namespace Nethermind.Synchronization.Test
             _pool.AddPeer(peer);
             await WaitForPeersInitialization();
 
-            var allocation = await _pool.Allocate(BySpeedStrategy.Fastest);
+            var allocation = await _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
             _pool.RemovePeer(peer);
 
             Assert.AreEqual(null, allocation.Current);
@@ -550,7 +550,7 @@ namespace Nethermind.Synchronization.Test
         {
             await SetupPeers(1);
 
-            var allocation = await _pool.Allocate(BySpeedStrategy.Fastest);
+            var allocation = await _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
             _pool.Free(allocation);
         }
         
@@ -559,7 +559,7 @@ namespace Nethermind.Synchronization.Test
         {
             await SetupPeers(1);
 
-            var allocation = await _pool.Allocate(BySpeedStrategy.Fastest);
+            var allocation = await _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
             allocation.Cancel();
 
             _blockTree.NewHeadBlock += Raise.EventWith(new object(), new BlockEventArgs(Build.A.Block.WithTotalDifficulty(1L).TestObject));
@@ -573,7 +573,7 @@ namespace Nethermind.Synchronization.Test
             var allocationTasks = new Task<SyncPeerAllocation>[3];
             for (int i = 0; i < allocationTasks.Length; i++)
             {
-                allocationTasks[i] = _pool.Allocate(BySpeedStrategy.Fastest, AllocationContexts.All, 50);
+                allocationTasks[i] = _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 50);
             }
 
             await Task.WhenAll(allocationTasks);
@@ -626,7 +626,7 @@ namespace Nethermind.Synchronization.Test
             {
                 if (iterations > 0)
                 {
-                    SyncPeerAllocation allocation = await _pool.Allocate(BySpeedStrategy.Fastest, AllocationContexts.All, 10);
+                    SyncPeerAllocation allocation = await _pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 10);
                     if (!allocation.HasPeer)
                     {
                         failures++;
