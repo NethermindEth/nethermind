@@ -858,7 +858,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .TheSyncModeShouldBe(SyncMode.Full);
         }
         
-        [Test]
+        [Test, Description("Fixes this scenario: // 2020-04-23 19:46:46.0143|INFO|180|Changing state to Full at processed:0|beam state:9930654|state:9930654|block:0|header:9930654|peer block:9930686 // 2020-04-23 19:46:47.0361|INFO|68|Changing state to StateNodes at processed:0|beam state:9930654|state:9930654|block:9930686|header:9930686|peer block:9930686")]
         public void When_just_started_full_sync_and_peers_moved_slightly_forward()
         {
             Scenario.GoesLikeThis()
@@ -956,14 +956,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .AndPeersMovedSlightlyForward()
                 .WhenBeamSyncIsConfigured()
                 .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.FastSync);
-        }
-        
-        // 2020-04-23 19:46:46.0143|INFO|180|Changing state to Full at processed:0|beam state:9930654|state:9930654|block:0|header:9930654|peer block:9930686
-        // 2020-04-23 19:46:47.0361|INFO|68|Changing state to StateNodes at processed:0|beam state:9930654|state:9930654|block:9930686|header:9930686|peer block:9930686
-        [Test]
-        public void Test()
-        {
-            
         }
     }
 }
