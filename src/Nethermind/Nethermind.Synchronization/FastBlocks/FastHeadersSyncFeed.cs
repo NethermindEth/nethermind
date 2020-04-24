@@ -67,7 +67,9 @@ namespace Nethermind.Synchronization.FastBlocks
         /// </summary>
         private ConcurrentDictionary<long, HeadersSyncBatch> _dependencies = new ConcurrentDictionary<long, HeadersSyncBatch>();
 
-        public bool AllHeadersDownloaded => (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) == 1;
+        private bool AllHeadersDownloaded => (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) == 1;
+        
+        private long HeadersInQueue  => _dependencies.Sum(hd => hd.Value.Response.Length);
 
         public FastHeadersSyncFeed(IBlockTree blockTree, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
         {
@@ -153,7 +155,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 batch.MarkRetry();
             }
-            else if (_dependencies.Count > 256000)
+            else if (HeadersInQueue > 256000)
             {
                 batch = BuildBatchToClearTheQueue();
             }
@@ -465,7 +467,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number} | HANDLED {batch}");
 
-            _syncReport.HeadersInQueue.Update(_dependencies.Sum(hd => hd.Value.Response.Length));
+            _syncReport.HeadersInQueue.Update(HeadersInQueue);
             return added;
         }
 
