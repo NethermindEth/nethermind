@@ -29,18 +29,20 @@ namespace Nethermind.Consensus.AuRa.Contracts
 {
     public class RandomContract : Contract, IBlockTransitionable
     {
+        private readonly Address _nodeAddress;
         private static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<RandomContract>();
         private ConstantContract Constant { get; }
 
-        public RandomContract(
-            ITransactionProcessor transactionProcessor,
+        public RandomContract(ITransactionProcessor transactionProcessor,
             IAbiEncoder abiEncoder,
             Address contractAddress,
-            IStateProvider stateProvider, 
+            IStateProvider stateProvider,
             IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource,
-            long transitionBlock) 
+            long transitionBlock, 
+            Address nodeAddress) 
             : base(transactionProcessor, abiEncoder, contractAddress)
         {
+            _nodeAddress = nodeAddress;
             TransitionBlock = transitionBlock;
             Constant = GetConstant(stateProvider, readOnlyReadOnlyTransactionProcessorSource);
         }
@@ -72,12 +74,12 @@ namespace Nethermind.Consensus.AuRa.Contracts
             Reveal
     }
 
-        public (Phase Phase, UInt256 Round) GetPhase(BlockHeader blockHeader, Address nodeAddress)
+        public (Phase Phase, UInt256 Round) GetPhase(BlockHeader blockHeader)
         {
             UInt256 round = CurrentCollectRound(blockHeader);
             bool isCommitPhase = IsCommitPhase(blockHeader);
-            bool isCommitted = IsCommitted(blockHeader, round, nodeAddress);
-            bool revealed = SentReveal(blockHeader, round, nodeAddress);
+            bool isCommitted = IsCommitted(blockHeader, round);
+            bool revealed = SentReveal(blockHeader, round);
 
             var phase = isCommitPhase
                 ? revealed
@@ -93,23 +95,23 @@ namespace Nethermind.Consensus.AuRa.Contracts
             return (phase, round);
         }
 
-        private bool SentReveal(BlockHeader blockHeader, UInt256 round, Address nodeAddress)  => Constant.Call<bool>(blockHeader, Definition.GetFunction(nameof(IsCommitted)), ContractAddress, round, nodeAddress);
+        private bool SentReveal(BlockHeader blockHeader, UInt256 round)  => Constant.Call<bool>(blockHeader, Definition.GetFunction(nameof(SentReveal)), _nodeAddress, round, _nodeAddress);
 
-        private bool IsCommitted(BlockHeader blockHeader, UInt256 round, Address nodeAddress) => Constant.Call<bool>(blockHeader, Definition.GetFunction(nameof(IsCommitted)), ContractAddress, round, nodeAddress);
+        private bool IsCommitted(BlockHeader blockHeader, UInt256 round) => Constant.Call<bool>(blockHeader, Definition.GetFunction(nameof(IsCommitted)), _nodeAddress, round, _nodeAddress);
         
-        private UInt256 CurrentCollectRound(BlockHeader blockHeader) => Constant.Call<UInt256>(blockHeader, Definition.GetFunction(nameof(CurrentCollectRound)), ContractAddress);
+        private UInt256 CurrentCollectRound(BlockHeader blockHeader) => Constant.Call<UInt256>(blockHeader, Definition.GetFunction(nameof(CurrentCollectRound)), _nodeAddress);
         
-        private bool IsCommitPhase(BlockHeader blockHeader) => Constant.Call<bool>(blockHeader, Definition.GetFunction(nameof(IsCommitPhase)), ContractAddress);
+        private bool IsCommitPhase(BlockHeader blockHeader) => Constant.Call<bool>(blockHeader, Definition.GetFunction(nameof(IsCommitPhase)), _nodeAddress);
         
-        public (Keccak hash, byte[] cipher) GetCommitAndCipher(BlockHeader blockHeader, UInt256 round, Address nodeAddress)
+        public (Keccak hash, byte[] cipher) GetCommitAndCipher(BlockHeader blockHeader, UInt256 round)
         {
-            var (hash, cipher) = Constant.Call<byte[], byte[]>(blockHeader, Definition.GetFunction(nameof(GetCommitAndCipher)), ContractAddress);
+            var (hash, cipher) = Constant.Call<byte[], byte[]>(blockHeader, Definition.GetFunction(nameof(GetCommitAndCipher)), _nodeAddress, round, _nodeAddress);
             return (new Keccak(hash), cipher);
         }
 
-        public Transaction CommitHash(in Keccak hash, byte[] cipher) => GenerateTransaction(Definition.GetFunction(nameof(CommitHash)), ContractAddress, hash.Bytes, cipher);
+        public Transaction CommitHash(in Keccak hash, byte[] cipher) => GenerateTransaction(Definition.GetFunction(nameof(CommitHash)), _nodeAddress, hash.Bytes, cipher);
 
-        public Transaction RevealNumber(UInt256 number) => GenerateTransaction(Definition.GetFunction(nameof(CommitHash)), ContractAddress, number);
+        public Transaction RevealNumber(UInt256 number) => GenerateTransaction(Definition.GetFunction(nameof(RevealNumber)), _nodeAddress, number);
     }
 
     internal static class ContractTransactionExtensions

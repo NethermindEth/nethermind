@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             {
                 if (_immediateTransactionSources[i].TryCreateTransaction(parent, gasLimit, out var tx))
                 {
-                    gasLimit -= tx.GasLimit;
+                    gasLimit -= (long) tx.GasPrice;
                     _transactionFiller.Fill(parent, tx);
                     yield return tx;
                 }

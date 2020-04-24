@@ -30,9 +30,58 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
+    
+    /// <summary>
+    /// On-chain randomness generation for authority round
+    ///
+    /// This contains the support code for the on-chain randomness generation used by AuRa. Its
+    /// core is the finite state machine `RandomnessPhase`, which can be loaded from the blockchain
+    /// state, then asked to perform potentially necessary transaction afterwards using the `advance()`
+    /// method.
+    ///
+    /// No additional state is kept inside the `RandomnessPhase`, it must be passed in each time.
+    ///
+    /// The process of generating random numbers is a simple finite state machine:
+    ///
+    ///                                                       +
+    ///                                                       |
+    ///                                                       |
+    ///                                                       |
+    /// +--------------+                              +-------v-------+
+    /// |              |                              |               |
+    /// | BeforeCommit <------------------------------+    Waiting    |
+    /// |              |          enter commit phase  |               |
+    /// +------+-------+                              +-------^-------+
+    ///        |                                              |
+    ///        |  call                                        |
+    ///        |  `commitHash()`                              |  call
+    ///        |                                              |  `revealNumber()`
+    ///        |                                              |
+    /// +------v-------+                              +-------+-------+
+    /// |              |                              |               |
+    /// |  Committed   +------------------------------>    Reveal     |
+    /// |              |  enter reveal phase          |               |
+    /// +--------------+                              +---------------+
+    ///
+    /// Phase transitions are performed by the smart contract and simply queried by the engine.
+    ///
+    /// Randomness generation works as follows:
+    /// * During the commit phase, all validators locally generate a random number, and commit that number's hash to the
+    ///   contract.
+    /// * During the reveal phase, all validators reveal their local random number to the contract. The contract should
+    ///   verify that it matches the committed hash.
+    /// * Finally, the XOR of all revealed numbers is used as an on-chain random number.
+    ///
+    /// An adversary can only influence that number by either controlling _all_ validators who committed, or, to a lesser
+    /// extent, by not revealing committed numbers.
+    /// The length of the commit and reveal phases, as well as any penalties for failure to reveal, are defined by the
+    /// contract.
+    ///
+    /// A production implementation of a randomness contract can be found here:
+    /// https://github.com/poanetwork/posdao-contracts/blob/4fddb108993d4962951717b49222327f3d94275b/contracts/RandomAuRa.sol
+    /// </summary>
     public class RandomImmediateTransactionSource : IImmediateTransactionSource
     {
-        private readonly Address _nodeAddress;
         private readonly IEciesCipher _eciesCipher;
         private readonly PrivateKey _privateKey;
         private readonly IList<RandomContract> _contracts;
@@ -49,9 +98,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
         {
             _eciesCipher = eciesCipher ?? throw new ArgumentNullException(nameof(eciesCipher));
             _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));
-            _nodeAddress = privateKey.Address;
             _contracts = randomnessContractAddress
-                .Select(kvp => new RandomContract(transactionProcessor, abiEncoder, kvp.Value, stateProvider, readOnlyTransactionProcessorSource, kvp.Key))
+                .Select(kvp => new RandomContract(transactionProcessor, abiEncoder, kvp.Value, stateProvider, readOnlyTransactionProcessorSource, kvp.Key, _privateKey.Address))
                 .ToList();
         }
         
@@ -66,7 +114,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         private Transaction GetTransaction(in RandomContract contract, in BlockHeader parent)
         {
-            var (phase, round) = contract.GetPhase(parent, _nodeAddress);
+            var (phase, round) = contract.GetPhase(parent);
             switch (phase)
             {
                 case RandomContract.Phase.BeforeCommit:
@@ -79,7 +127,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 }
                 case RandomContract.Phase.Reveal:
                 {
-                    var (hash, cipher) = contract.GetCommitAndCipher(parent, round, _nodeAddress);
+                    var (hash, cipher) = contract.GetCommitAndCipher(parent, round);
                     byte[] bytes = _eciesCipher.Decrypt(_privateKey, cipher).Item2;
                     if (bytes?.Length != 32)
                     {

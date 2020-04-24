@@ -107,10 +107,12 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
+
+            var txSelector = base.CreatePendingTxSelector(environment);
             
-            if (_context.ChainSpec.AuRa.RandomnessContractAddress.Any())
+            if (_context.ChainSpec.AuRa.RandomnessContractAddress?.Any() == true)
             {
-                return new InjectionPendingTxSelector(base.CreatePendingTxSelector(environment),
+                return new InjectionPendingTxSelector(txSelector,
                     new TransactionFiller(new BasicWallet(_context.NodeKey), _context.Timestamper, environment.StateReader, _context.BlockTree.ChainId),
                     new RandomImmediateTransactionSource(
                         _context.ChainSpec.AuRa.RandomnessContractAddress,
@@ -121,8 +123,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                         new EciesCipher(_context.CryptoRandom),
                         _context.NodeKey));
             }
-            
-            return base.CreatePendingTxSelector(environment);
+            else
+            {
+                return txSelector;
+            }
         }
     }
 }
