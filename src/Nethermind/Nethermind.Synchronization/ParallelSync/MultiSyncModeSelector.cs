@@ -202,7 +202,7 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             try
             {
-                // Update();
+                Update();
             }
             catch (Exception exception)
             {
