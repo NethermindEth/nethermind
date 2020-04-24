@@ -89,7 +89,7 @@ namespace Nethermind.Synchronization.FastSync
 
             byte[] progress = _codeDb.Get(_fastSyncProgressKey);
             _data = new DetailedProgress(_blockTree.ChainId, progress);
-            _pendingItems = syncConfig.UsePriorityQueue ? (IPendingSyncItems)new PendingSyncItems2() : new PendingSyncItems();
+            _pendingItems = new PendingSyncItems();
         }
 
         private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)

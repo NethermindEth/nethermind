@@ -28,7 +28,7 @@ namespace Nethermind.Synchronization.Test.FastSync
     {
         private StateSyncFeed.IPendingSyncItems Init()
         {
-            return new StateSyncFeed.PendingSyncItems2();
+            return new StateSyncFeed.PendingSyncItems();
         }
         
         [Test]
