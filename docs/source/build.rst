@@ -70,6 +70,8 @@ you may need to install https://support.microsoft.com/en-us/help/2977003/the-lat
 All Platforms
 ^^^^^^^^^^^^^
 
+If dotnet command is not found then probably you forgot to install SDK (see instructions above)
+
 ::
 
     git clone https://github.com/NethermindEth/nethermind.git --recursive
