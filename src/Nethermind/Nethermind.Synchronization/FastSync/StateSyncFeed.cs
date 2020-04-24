@@ -22,6 +22,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -75,7 +76,7 @@ namespace Nethermind.Synchronization.FastSync
         private StateSyncProgress _syncProgress;
         private int _noResponsesInARow;
 
-        public StateSyncFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, IBlockTree blockTree, ILogManager logManager)
+        public StateSyncFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, IBlockTree blockTree, ISyncConfig syncConfig, ILogManager logManager)
         {
             _codeDb = codeDb?.Innermost ?? throw new ArgumentNullException(nameof(codeDb));
             _stateDb = stateDb?.Innermost ?? throw new ArgumentNullException(nameof(stateDb));
@@ -88,7 +89,7 @@ namespace Nethermind.Synchronization.FastSync
 
             byte[] progress = _codeDb.Get(_fastSyncProgressKey);
             _data = new DetailedProgress(_blockTree.ChainId, progress);
-            _pendingItems = new PendingSyncItems2();
+            _pendingItems = syncConfig.UsePriorityQueue ? (IPendingSyncItems)new PendingSyncItems2() : new PendingSyncItems();
         }
 
         private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
