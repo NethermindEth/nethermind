@@ -30,7 +30,6 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    
     /// <summary>
     /// On-chain randomness generation for authority round
     ///
@@ -87,6 +86,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly IList<RandomContract> _contracts;
         private readonly Random _random = new Random();
 
+        // TODO: pass contracts here instead of creating them in tx source
+        // TODO: move IEciesCypher to Nethermind.Crypto
         public RandomImmediateTransactionSource(
             IDictionary<long, Address> randomnessContractAddress, 
             ITransactionProcessor transactionProcessor, 

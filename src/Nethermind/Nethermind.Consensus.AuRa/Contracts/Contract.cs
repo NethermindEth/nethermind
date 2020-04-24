@@ -17,18 +17,16 @@
 using System;
 using Nethermind.Abi;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.Store;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class Contract
+    public abstract class Contract
     {
         public const long DefaultContractGasLimit = 50000000L;
         private readonly ITransactionProcessor _transactionProcessor;

@@ -38,8 +38,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
             Address contractAddress,
             IStateProvider stateProvider,
             IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource,
-            long transitionBlock, 
-            Address nodeAddress) 
+            long transitionBlock,
+            Address nodeAddress)
             : base(transactionProcessor, abiEncoder, contractAddress)
         {
             _nodeAddress = nodeAddress;
@@ -48,8 +48,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
         }
 
         public long TransitionBlock { get; }
-        
-        public enum Phase {
+
+        public enum Phase
+        {
             /// <summary>
             /// Waiting for the next phase.
             ///
@@ -57,22 +58,22 @@ namespace Nethermind.Consensus.AuRa.Contracts
             /// window to make a commitment, i.e. having failed to commit during the commit phase.
             /// </summary>
             Waiting,
-            
+
             /// <summary>
             /// Indicates a commitment is possible, but still missing.
             /// </summary>
             BeforeCommit,
-            
+
             /// <summary>
             /// Indicates a successful commitment, waiting for the commit phase to end.
             /// </summary>
             Committed,
-            
+
             /// <summary>
             /// Indicates revealing is expected as the next step.
             /// </summary>
             Reveal
-    }
+        }
 
         public (Phase Phase, UInt256 Round) GetPhase(BlockHeader blockHeader)
         {
@@ -91,18 +92,18 @@ namespace Nethermind.Consensus.AuRa.Contracts
                   || revealed
                     ? Phase.Waiting
                     : Phase.Reveal;
-            
+
             return (phase, round);
         }
 
-        private bool SentReveal(BlockHeader blockHeader, UInt256 round)  => Constant.Call<bool>(blockHeader, Definition.GetFunction(nameof(SentReveal)), _nodeAddress, round, _nodeAddress);
+        private bool SentReveal(BlockHeader blockHeader, UInt256 round) => Constant.Call<bool>(blockHeader, Definition.GetFunction(nameof(SentReveal)), _nodeAddress, round, _nodeAddress);
 
         private bool IsCommitted(BlockHeader blockHeader, UInt256 round) => Constant.Call<bool>(blockHeader, Definition.GetFunction(nameof(IsCommitted)), _nodeAddress, round, _nodeAddress);
-        
+
         private UInt256 CurrentCollectRound(BlockHeader blockHeader) => Constant.Call<UInt256>(blockHeader, Definition.GetFunction(nameof(CurrentCollectRound)), _nodeAddress);
-        
+
         private bool IsCommitPhase(BlockHeader blockHeader) => Constant.Call<bool>(blockHeader, Definition.GetFunction(nameof(IsCommitPhase)), _nodeAddress);
-        
+
         public (Keccak hash, byte[] cipher) GetCommitAndCipher(BlockHeader blockHeader, UInt256 round)
         {
             var (hash, cipher) = Constant.Call<byte[], byte[]>(blockHeader, Definition.GetFunction(nameof(GetCommitAndCipher)), _nodeAddress, round, _nodeAddress);
@@ -112,13 +113,5 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public Transaction CommitHash(in Keccak hash, byte[] cipher) => GenerateTransaction(Definition.GetFunction(nameof(CommitHash)), _nodeAddress, hash.Bytes, cipher);
 
         public Transaction RevealNumber(UInt256 number) => GenerateTransaction(Definition.GetFunction(nameof(RevealNumber)), _nodeAddress, number);
-    }
-
-    internal static class ContractTransactionExtensions
-    {
-        public static Transaction WithNonce(this Transaction tx, IStateProvider stateProvider)
-        {
-            return tx;
-        }
     }
 }
