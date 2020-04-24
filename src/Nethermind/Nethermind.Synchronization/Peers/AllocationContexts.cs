@@ -13,18 +13,21 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Threading;
+using System;
 
-namespace Nethermind.Synchronization.BeamSync
+namespace Nethermind.Synchronization.Peers
 {
-    public static class DataConsumerIdProvider
+    [Flags]
+    public enum AllocationContexts
     {
-        private static int _dataConsumerId;
-
-        public static int AssignConsumerId()
-        {
-            return Interlocked.Increment(ref _dataConsumerId);
-        }
+        None = 0,
+        Headers = 1,
+        Bodies = 2,
+        Receipts = 4,
+        Blocks = 7,
+        State = 8,
+        All =15
     }
 }

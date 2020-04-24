@@ -13,19 +13,28 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.Synchronization.Peers
+using System;
+
+namespace Nethermind.Synchronization.ParallelSync
 {
-    public static class SyncPeerPoolExtensions
+    public class PendingSyncModeSelector : ISyncModeSelector
     {
-        public static void ReportInvalid(this ISyncPeerPool syncPeerPool, SyncPeerAllocation allocation, string details)
+        private ISyncModeSelector _syncModeSelector;
+
+        public void SetActual(ISyncModeSelector syncModeSelector)
         {
-            syncPeerPool.ReportInvalid(allocation?.Current, details);
+            _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
+            _syncModeSelector.Changed += SyncModeSelectorOnChanged;
         }
 
-        public static void ReportNoSyncProgress(this ISyncPeerPool syncPeerPool, SyncPeerAllocation allocation, bool isSevere = true)
+        private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
         {
-            syncPeerPool.ReportNoSyncProgress(allocation?.Current, isSevere);
+            Changed?.Invoke(this, e);
         }
+
+        public SyncMode Current => _syncModeSelector?.Current ?? SyncMode.None;
+        public event EventHandler<SyncModeChangedEventArgs> Changed;
     }
 }

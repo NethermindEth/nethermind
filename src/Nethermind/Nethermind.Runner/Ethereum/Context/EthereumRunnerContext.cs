@@ -54,6 +54,7 @@ using Nethermind.Store;
 using Nethermind.Store.Bloom;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.BeamSync;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
@@ -81,7 +82,6 @@ namespace Nethermind.Runner.Ethereum.Context
         public DisposableStack DisposeStack { get; } = new DisposableStack();
         public List<IProducer> Producers { get; }= new List<IProducer>();
         public IGrpcServer? GrpcServer { get; set; }
-        public INodeDataConsumer NodeDataConsumer { get; set; } = NullDataConsumer.Instance;
         public IRpcModuleProvider? RpcModuleProvider { get; set; }
         public IIPResolver? IpResolver { get; set; }
         public PrivateKey? NodeKey { get; set; }

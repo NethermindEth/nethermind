@@ -14,19 +14,17 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Crypto;
+using System.Threading;
 
-namespace Nethermind.Synchronization.BeamSync
+namespace Nethermind.Synchronization.ParallelSync
 {
-    public class DataConsumerRequest
+    public static class FeedIdProvider
     {
-        public DataConsumerRequest(int consumerId, Keccak[] keys)
+        private static int _dataConsumerId;
+
+        public static int AssignId()
         {
-            ConsumerId = consumerId;
-            Keys = keys;
+            return Interlocked.Increment(ref _dataConsumerId);
         }
-        
-        public int ConsumerId { get; set; }
-        public Keccak[] Keys { get; set; }
     }
 }

@@ -29,6 +29,7 @@ using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization.BeamSync;
+using Nethermind.Synchronization.ParallelSync;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -66,8 +67,9 @@ namespace Nethermind.Evm.Test
         {
             ILogManager logger = LimboLogs.Instance;
 
-            ISnapshotableDb beamSyncDb = new StateDb(new BeamSyncDb(new MemDb(), LimboLogs.Instance));
-            IDb beamSyncCodeDb = new BeamSyncDb(new MemDb(), LimboLogs.Instance);
+            MemDb beamStateDb = new MemDb();
+            ISnapshotableDb beamSyncDb = new StateDb(new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Full, LimboLogs.Instance));
+            IDb beamSyncCodeDb = new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Full, LimboLogs.Instance);
             IDb codeDb = UseBeamSync ? beamSyncCodeDb : new StateDb();
             _stateDb = UseBeamSync ? beamSyncDb : new StateDb();
             TestState = new StateProvider(_stateDb, codeDb, logger);

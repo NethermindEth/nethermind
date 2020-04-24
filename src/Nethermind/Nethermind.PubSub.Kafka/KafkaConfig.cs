@@ -32,5 +32,9 @@ namespace Nethermind.PubSub.Kafka
         public bool ProduceAvro { get; set; } = true;
         public bool ProduceJson { get; set; } = true;
         public bool ProduceUtf8Json { get; set; } = true;
+        public bool Verify()
+        {
+            throw new System.NotImplementedException();
+        }
     }
 }

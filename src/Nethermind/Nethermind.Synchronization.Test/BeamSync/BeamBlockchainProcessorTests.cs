@@ -29,6 +29,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Synchronization.BeamSync;
+using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -82,7 +83,8 @@ namespace Nethermind.Synchronization.Test.BeamSync
                 _validator,
                 NullRecoveryStep.Instance,
                 new InstanceRewardCalculatorSource(NoBlockRewards.Instance),
-                _blockchainProcessor
+                _blockchainProcessor,
+                new StaticSelector(SyncMode.Beam)
             );
         }
 

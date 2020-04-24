@@ -392,7 +392,7 @@ namespace Nethermind.TxPool
 
             return transaction != null;
         }
-
+        
         // TODO: Ensure that nonce is always valid in case of sending own transactions from different nodes.
         public UInt256 ReserveOwnTransactionNonce(Address address)
         {

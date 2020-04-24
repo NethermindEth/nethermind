@@ -228,16 +228,14 @@ namespace Nethermind.Network.P2P
             _pongCompletionSource = null;
             if (firstTask != pongTask)
             {
-                _nodeStatsManager.ReportTransferSpeedEvent(Session.Node, 0);
+                _nodeStatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Latency,0);
                 return false;
             }
 
             delayCancellation.Cancel();
             long latency = stopwatch.ElapsedMilliseconds;
             
-            // TODO: this used to be latency - now, not so cool
-            // maybe should request some standard headers to compare speed?
-            _nodeStatsManager.ReportTransferSpeedEvent(Session.Node, 100000 / (latency == 0 ? 1 : latency));
+            _nodeStatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Latency, latency);
             return true;
         }
 
@@ -257,7 +255,6 @@ namespace Nethermind.Network.P2P
             new Capability(Protocol.Eth, 63),
             new Capability(Protocol.Eth, 64),
             new Capability(Protocol.Eth, 65),
-            new Capability(Protocol.Ndm, 1),
             // new Capability(Protocol.Les, 1),
             // new Capability(Protocol.Les, 2),
             // new Capability(Protocol.Les, 3)

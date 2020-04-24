@@ -25,19 +25,28 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class FastBlocksAllocationStrategy : IPeerAllocationStrategy
     {
+        private readonly TransferSpeedType _speedType;
         private readonly long? _minNumber;
         private readonly bool _priority;
 
-        public FastBlocksAllocationStrategy(long? minNumber, bool priority)
+        public FastBlocksAllocationStrategy(TransferSpeedType speedType, long? minNumber, bool priority)
         {
+            _speedType = speedType;
             _minNumber = minNumber;
             _priority = priority;
+
+            _slowest = new BySpeedStrategy(_speedType, false);
+            _fastest = new BySpeedStrategy(_speedType, true);
         }
-        
+
+        private IPeerAllocationStrategy _slowest;
+        private IPeerAllocationStrategy _fastest;
+
         public bool CanBeReplaced => false;
+
         public PeerInfo Allocate(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
-            IPeerAllocationStrategy strategy = _priority ? BySpeedStrategy.Fastest : BySpeedStrategy.Slowest;
+            IPeerAllocationStrategy strategy = _priority ? _fastest : _slowest;
             peers = _minNumber == null ? peers : peers.Where(p => p.HeadNumber > _minNumber);
             return strategy.Allocate(currentPeer, peers, nodeStatsManager, blockTree);
         }

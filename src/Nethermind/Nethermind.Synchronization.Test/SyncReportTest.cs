@@ -38,7 +38,7 @@ namespace Nethermind.Synchronization.Test
         {
             ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
             ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
-            pool.UsefulPeerCount.Returns(1);
+            pool.InitializedPeersCount.Returns(1);
             
             Queue<SyncMode> _syncModes = new Queue<SyncMode>();
             _syncModes.Enqueue(SyncMode.None);
@@ -46,7 +46,6 @@ namespace Nethermind.Synchronization.Test
             _syncModes.Enqueue(SyncMode.Full);
             _syncModes.Enqueue(SyncMode.FastBlocks);
             _syncModes.Enqueue(SyncMode.StateNodes);
-            _syncModes.Enqueue(SyncMode.Beam);
 
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.FastBlocks = fastBlocks;

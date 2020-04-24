@@ -44,8 +44,8 @@ namespace Nethermind.Db.Rocks
             allInitializers.Add(Task.Run(() => CodeDb = new StateDb(new CodeRocksDb(basePath, dbConfig, _logManager))));
             allInitializers.Add(Task.Run(() => PendingTxsDb = new PendingTxsRocksDb(basePath, dbConfig, _logManager)));
             allInitializers.Add(Task.Run(() => BloomDb = new BloomRocksDb(basePath, dbConfig, _logManager)));
-            allInitializers.Add(Task.Run(() => ConfigsDb = _addNdmDbs ? new ConfigsRocksDb(basePath, dbConfig, _logManager) : (IDb)new MemDb()));
-            allInitializers.Add(Task.Run(() => EthRequestsDb = _addNdmDbs ? new EthRequestsRocksDb(basePath, dbConfig, _logManager) : (IDb)new MemDb()));
+            allInitializers.Add(Task.Run(() => ConfigsDb = _addNdmDbs ? new ConfigsRocksDb(basePath, dbConfig, _logManager) : (IDb) new MemDb()));
+            allInitializers.Add(Task.Run(() => EthRequestsDb = _addNdmDbs ? new EthRequestsRocksDb(basePath, dbConfig, _logManager) : (IDb) new MemDb()));
 
             allInitializers.Add(Task.Run(() =>
             {
@@ -72,6 +72,7 @@ namespace Nethermind.Db.Rocks
         public IDb ConfigsDb { get; private set; }
         public IDb EthRequestsDb { get; private set; }
         public IDb BloomDb { get; private set; }
+        public IDb BeamStateDb { get; } = new MemDb();
 
         public void Dispose()
         {

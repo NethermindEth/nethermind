@@ -40,11 +40,11 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("ropsten_archive.cfg", false, false)]
-        [TestCase("ropsten.cfg", true, false)]
+        [TestCase("ropsten.cfg", true, true, true)]
         [TestCase("rinkeby_archive.cfg", false, false)]
-        [TestCase("rinkeby.cfg", true, true)]
+        [TestCase("rinkeby.cfg", true, true, true)]
         [TestCase("goerli_archive.cfg", false, false)]
-        [TestCase("goerli.cfg", true, true)]
+        [TestCase("goerli.cfg", true, true, true)]
         [TestCase("mainnet_archive.cfg", false, false)]
         [TestCase("mainnet.cfg", true, true)]
         [TestCase("sokol.cfg", true, true)]
@@ -60,13 +60,13 @@ namespace Nethermind.Runner.Test
         [TestCase("spaceneth.cfg", false, false)]
         [TestCase("volta.cfg", true, false)]
         [TestCase("volta_archive.cfg", false, false)]
-        public void Sync_defaults_are_correct(string configFile, bool fastSyncEnabled, bool fastBlocksEnabled)
+        public void Sync_defaults_are_correct(string configFile, bool fastSyncEnabled, bool fastBlocksEnabled, bool beamSyncEnabled = false)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
             ISyncConfig config = configProvider.GetConfig<ISyncConfig>();
             Assert.AreEqual(fastSyncEnabled, config.FastSync, "fast sync");
             Assert.AreEqual(fastBlocksEnabled, config.FastBlocks, "fast blocks");
-            Assert.AreEqual(false, config.BeamSync);
+            Assert.AreEqual(beamSyncEnabled, config.BeamSync);
         }
         
         [TestCase("ropsten_archive.cfg", true)]
@@ -376,7 +376,7 @@ namespace Nethermind.Runner.Test
         [TestCase("goerli_archive.cfg")]
         [TestCase("goerli.cfg")]
         [TestCase("mainnet_archive.cfg")]
-        [TestCase("mainnet.cfg")]
+        [TestCase("mainnet.cfg", 100)]
         [TestCase("sokol.cfg")]
         [TestCase("sokol_archive.cfg")]
         [TestCase("sokol_validator.cfg")]
@@ -389,7 +389,7 @@ namespace Nethermind.Runner.Test
         [TestCase("xdai_validator.cfg")]
         [TestCase("volta.cfg")]
         [TestCase("volta_archive.cfg")]
-        public void Network_defaults_are_correct(string configFile)
+        public void Network_defaults_are_correct(string configFile, int activePeers = 50)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
             INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
@@ -397,7 +397,7 @@ namespace Nethermind.Runner.Test
             Assert.AreEqual(30303, networkConfig.P2PPort, nameof(networkConfig.P2PPort));
             Assert.Null(networkConfig.ExternalIp, nameof(networkConfig.ExternalIp));
             Assert.Null(networkConfig.LocalIp, nameof(networkConfig.LocalIp));
-            Assert.AreEqual(50, networkConfig.ActivePeersMaxCount, 50);
+            Assert.AreEqual(activePeers, networkConfig.ActivePeersMaxCount);
         }
         
         [TestCase("ropsten_archive.cfg")]
@@ -456,10 +456,10 @@ namespace Nethermind.Runner.Test
             Assert.AreEqual(false, kafkaConfig.Enabled, nameof(kafkaConfig.Enabled));
         }
         
-        [TestCase("ropsten.cfg", true, true)]
-        [TestCase("rinkeby.cfg", true, true)]
+        [TestCase("ropsten.cfg", false, false)]
+        [TestCase("rinkeby.cfg", false, false)]
         [TestCase("goerli.cfg", true, true)]
-        [TestCase("mainnet.cfg", true, true)]
+        [TestCase("mainnet.cfg", false, false)]
         [TestCase("sokol.cfg", true, true)]
         [TestCase("sokol_validator.cfg", true, false)]
         [TestCase("sokol_fastsync.cfg", true, true)]

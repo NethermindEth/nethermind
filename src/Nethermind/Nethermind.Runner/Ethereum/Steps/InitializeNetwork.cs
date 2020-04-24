@@ -100,8 +100,15 @@ namespace Nethermind.Runner.Ethereum.Steps
             _ctx.SyncPeerPool = new SyncPeerPool(_ctx.BlockTree, _ctx.NodeStatsManager, maxPeersCount, _ctx.LogManager);
             _ctx.DisposeStack.Push(_ctx.SyncPeerPool);
             
-            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_ctx.BlockTree, _ctx.ReceiptStorage, _ctx.DbProvider.StateDb, _syncConfig, _ctx.LogManager);
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_ctx.BlockTree, _ctx.ReceiptStorage, _ctx.DbProvider.StateDb, _ctx.DbProvider.BeamStateDb, _syncConfig, _ctx.LogManager);
             MultiSyncModeSelector syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, _ctx.SyncPeerPool, _syncConfig, _ctx.LogManager);
+            if (_ctx.SyncModeSelector != null)
+            {
+                // this is really bad and is a result of lack of proper dependency management
+                PendingSyncModeSelector pendingOne = (PendingSyncModeSelector) _ctx.SyncModeSelector;
+                pendingOne.SetActual(syncModeSelector);
+            }
+            
             _ctx.SyncModeSelector = syncModeSelector;
             _ctx.DisposeStack.Push(syncModeSelector);
             
@@ -129,7 +136,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _ctx.SealValidator,
                 _ctx.SyncPeerPool,
                 _ctx.SyncModeSelector,
-                _ctx.Synchronizer,
                 _ctx.Config<ISyncConfig>(),
                 _ctx.LogManager);
 

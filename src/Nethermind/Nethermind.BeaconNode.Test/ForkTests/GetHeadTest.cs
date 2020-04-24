@@ -194,7 +194,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
             IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
 
-            BeaconBlock parentBlock = await store.GetBlockAsync(attestation.Data.BeaconBlockRoot);
+            BeaconBlock parentBlock = (await store.GetSignedBlockAsync(attestation.Data.BeaconBlockRoot)).Message;
 
             Root parentRoot = cryptographyService.HashTreeRoot(parentBlock);
             BeaconState preState = await store.GetBlockStateAsync(parentRoot);

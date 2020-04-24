@@ -178,7 +178,7 @@ namespace Nethermind.Synchronization.Blocks
                             break;
                         }
 
-                        SyncPeerPool.ReportNoSyncProgress(bestPeer);
+                        SyncPeerPool.ReportNoSyncProgress(bestPeer, AllocationContexts.Blocks);
                         return 0;
                     }
 
@@ -502,9 +502,9 @@ namespace Nethermind.Synchronization.Blocks
             {
                 if (header.TotalDifficulty != null && header.TotalDifficulty > peerInfo.TotalDifficulty)
                 {
-                    peerInfo.TotalDifficulty = header.TotalDifficulty.Value;
-                    peerInfo.TotalDifficulty = header.TotalDifficulty.Value;
-                    peerInfo.TotalDifficulty = header.TotalDifficulty.Value;
+                    peerInfo.SyncPeer.TotalDifficulty = header.TotalDifficulty.Value;
+                    peerInfo.SyncPeer.HeadNumber = header.Number;
+                    peerInfo.SyncPeer.HeadHash = header.Hash;
                 }
             }
 
@@ -610,7 +610,6 @@ namespace Nethermind.Synchronization.Blocks
             
             allocation.Cancelled += AllocationOnCancelled;
             allocation.Replaced += AllocationOnReplaced;
-            allocation.Refreshed += AllocationOnRefreshed;
             return allocation;
         }
 
@@ -618,7 +617,6 @@ namespace Nethermind.Synchronization.Blocks
         {
             allocation.Cancelled -= AllocationOnCancelled;
             allocation.Replaced -= AllocationOnReplaced;
-            allocation.Refreshed -= AllocationOnRefreshed;
             base.Free(allocation);
         }
 

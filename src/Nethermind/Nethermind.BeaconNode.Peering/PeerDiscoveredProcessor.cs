@@ -41,27 +41,27 @@ namespace Nethermind.BeaconNode.Peering
 
         public void Enqueue(string peerId)
         {
-            ChannelWriter.TryWrite(peerId);
+            EnqueueItem(peerId);
         }
 
-        protected override async Task ProcessItemAsync(string peerId)
+        protected override async Task ProcessItemAsync(string rpcMessage)
         {
             try
             {
                 if (_logger.IsDebug())
-                    LogDebug.ProcessPeerDiscovered(_logger, peerId, null);
+                    LogDebug.ProcessPeerDiscovered(_logger, rpcMessage, null);
 
-                Session session = _peerManager.AddPeerSession(peerId);
+                Session session = _peerManager.AddPeerSession(rpcMessage);
 
                 if (session.Direction == ConnectionDirection.Out)
                 {
-                    await _synchronizationManager.OnPeerDialOutConnected(peerId).ConfigureAwait(false);
+                    await _synchronizationManager.OnPeerDialOutConnected(rpcMessage).ConfigureAwait(false);
                 }
             }
             catch (Exception ex)
             {
                 if (_logger.IsError())
-                    Log.HandlePeerDiscoveredError(_logger, peerId, ex.Message, ex);
+                    Log.HandlePeerDiscoveredError(_logger, rpcMessage, ex.Message, ex);
             }
         }
     }

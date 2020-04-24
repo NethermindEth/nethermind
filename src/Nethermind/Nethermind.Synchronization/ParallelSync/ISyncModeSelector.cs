@@ -21,7 +21,7 @@ namespace Nethermind.Synchronization.ParallelSync
     public interface ISyncModeSelector
     {
         SyncMode Current { get; }
-        
+
         event EventHandler<SyncModeChangedEventArgs> Changed;
     }
 }

@@ -77,7 +77,7 @@ namespace Nethermind.BeaconNode
 
             Slot previousSlot = slot - Slot.One;
             Root head = await _forkChoice.GetHeadAsync(_store).ConfigureAwait(false);
-            BeaconBlock headBeaconBlock = await _store.GetBlockAsync(head).ConfigureAwait(false);
+            BeaconBlock headBeaconBlock = (await _store.GetSignedBlockAsync(head).ConfigureAwait(false)).Message;
 
             BeaconState parentState;
             Root parentRoot;

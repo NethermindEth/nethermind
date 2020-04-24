@@ -37,6 +37,7 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Store.Bloom;
 using Nethermind.Synchronization.BeamSync;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 
@@ -74,12 +75,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
                 syncConfig.DownloadBodiesInFastSync = true;
             }
-
-            if (syncConfig.BeamSync)
-            {
-                logger.Warn("Welcome to the alpha version of the Nethermind Goerli Beam Sync. I will start by downloading the pivot block header and then will continue to download all the headers from the pivot upwards. After that I will be beam synchronizing the new blocks. Many things can fail - appreciated if you report issues via GitHub or Gitter.");
-            }
-
+            
             Account.AccountStartNonce = _context.ChainSpec.Parameters.AccountStartNonce;
 
             _context.StateProvider = new StateProvider(
@@ -207,7 +203,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.BlockValidator,
                     _context.RecoveryStep,
                     _context.RewardCalculatorSource,
-                    _context.BlockProcessingQueue);
+                    _context.BlockProcessingQueue,
+                    _context.SyncModeSelector);
             }
 
             ThisNodeInfo.AddInfo("Mem est trie :", $"{LruCache<Keccak, byte[]>.CalculateMemorySize(52 + 320, Trie.MemoryAllowance.TrieNodeCacheSize) / 1024 / 1024}MB".PadLeft(8));

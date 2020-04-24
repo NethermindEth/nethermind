@@ -92,6 +92,10 @@ namespace Nethermind.Synchronization.Test
 
                 builder = builder.OfChainLength((int) chainLength);
                 BlockTree = builder.TestObject;
+
+                HeadNumber = BlockTree.Head.Number;
+                HeadHash = BlockTree.HeadHash;
+                TotalDifficulty = BlockTree.Head.TotalDifficulty ?? 0;
             }
 
             public void ExtendTree(long newLength)
@@ -101,8 +105,10 @@ namespace Nethermind.Synchronization.Test
 
             public Node Node { get; }
             public string ClientId { get; }
-            public string EthDetails { get; }
-            public UInt256 TotalDifficultyOnSessionStart { get; }
+            public Keccak HeadHash { get; set; }
+            public long HeadNumber { get; set; }
+            public UInt256 TotalDifficulty { get; set; }
+            public bool IsInitialized { get; set; }
 
             public void Disconnect(DisconnectReason reason, string details)
             {
@@ -365,7 +371,7 @@ namespace Nethermind.Synchronization.Test
             _feed = Substitute.For<ISyncFeed<BlocksRequest>>();
 
             SyncConfig syncConfig = new SyncConfig();
-            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_blockTree, NullReceiptStorage.Instance, new MemDb(), syncConfig, LimboLogs.Instance);
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_blockTree, NullReceiptStorage.Instance, new MemDb(), new MemDb(), syncConfig, LimboLogs.Instance);
             _syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, _peerPool, syncConfig, LimboLogs.Instance);
             _feed = new FullSyncFeed(_syncModeSelector);
 
@@ -405,24 +411,21 @@ namespace Nethermind.Synchronization.Test
 
             // normally chain length should be head number + 1 so here we setup a slightly shorter chain which
             // will only be fixed slightly later
-            long chainLength = headNumber;
+            long chainLength = headNumber + 1;
             SyncPeerMock syncPeer = new SyncPeerMock(chainLength, withReceipts, responseOptions);
 
             PeerInfo peerInfo = new PeerInfo(syncPeer);
-            peerInfo.TotalDifficulty = UInt256.MaxValue;
-            peerInfo.HeadNumber = headNumber;
 
             await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.None, threshold), CancellationToken.None);
-            _blockTree.BestSuggestedHeader.Number.Should().Be(Math.Max(0, Math.Min(headNumber - 1, headNumber - threshold)));
+            _blockTree.BestSuggestedHeader.Number.Should().Be(Math.Max(0, Math.Min(headNumber, headNumber - threshold)));
 
-            peerInfo.HeadNumber *= 2;
-            syncPeer.ExtendTree(peerInfo.HeadNumber + 1);
+            syncPeer.ExtendTree(chainLength * 2);
             await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
             _blockTree.BestSuggestedHeader.Number.Should().Be(Math.Max(0, peerInfo.HeadNumber));
             _blockTree.IsMainChain(_blockTree.BestSuggestedHeader.Hash).Should().Be(downloaderOptions != DownloaderOptions.Process);
 
             int receiptCount = 0;
-            for (int i = (int) Math.Max(0, headNumber - 1 - threshold); i < peerInfo.HeadNumber; i++)
+            for (int i = (int) Math.Max(0, headNumber - threshold); i < peerInfo.HeadNumber; i++)
             {
                 if (i % 3 == 0)
                 {
@@ -446,8 +449,6 @@ namespace Nethermind.Synchronization.Test
             SyncPeerMock syncPeer = new SyncPeerMock(2048 + 1, false, blockResponseOptions);
 
             PeerInfo peerInfo = new PeerInfo(syncPeer);
-            peerInfo.TotalDifficulty = UInt256.MaxValue;
-            peerInfo.HeadNumber = 2048;
 
             var block1024 = Build.A.Block.WithParent(_blockTree.Head).WithDifficulty(_blockTree.Head.Difficulty + 1).TestObject;
             var block1025 = Build.A.Block.WithParent(block1024).WithDifficulty(block1024.Difficulty + 1).TestObject;
@@ -476,10 +477,7 @@ namespace Nethermind.Synchronization.Test
 
             Response responseOptions = Response.AllCorrect;
             SyncPeerMock syncPeer = new SyncPeerMock(2048 + 1, false, responseOptions);
-
             PeerInfo peerInfo = new PeerInfo(syncPeer);
-            peerInfo.TotalDifficulty = UInt256.MaxValue;
-            peerInfo.HeadNumber = 2048;
 
             var block1024 = Build.A.Block.WithParent(_blockTree.Head).WithDifficulty(_blockTree.Head.Difficulty + 1).TestObject;
             var block1025 = Build.A.Block.WithParent(block1024).WithDifficulty(block1024.Difficulty + 1).TestObject;
@@ -509,8 +507,6 @@ namespace Nethermind.Synchronization.Test
             SyncPeerMock syncPeer = new SyncPeerMock(2072 + 1, true, blockResponseOptions);
 
             PeerInfo peerInfo = new PeerInfo(syncPeer);
-            peerInfo.TotalDifficulty = UInt256.MaxValue;
-            peerInfo.HeadNumber = 2048;
 
             Assert.ThrowsAsync<EthSyncException>(() => downloader.DownloadHeaders(peerInfo, new BlocksRequest(), CancellationToken.None));
             _blockTree.BestSuggestedHeader.Number.Should().Be(2048);
@@ -528,8 +524,6 @@ namespace Nethermind.Synchronization.Test
             SyncPeerMock syncPeer = new SyncPeerMock(2072 + 1, true, responseOptions);
 
             PeerInfo peerInfo = new PeerInfo(syncPeer);
-            peerInfo.TotalDifficulty = UInt256.MaxValue;
-            peerInfo.HeadNumber = 2048;
 
             Assert.ThrowsAsync<EthSyncException>(() => downloader.DownloadBlocks(peerInfo, new BlocksRequest(), CancellationToken.None));
             _blockTree.BestSuggestedHeader.Number.Should().Be(2048);
@@ -549,15 +543,17 @@ namespace Nethermind.Synchronization.Test
             syncPeer.GetBlockBodies(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => _responseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.TimeoutOnFullBatch));
 
+            syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+            syncPeer.HeadNumber.Returns(SyncBatchSize.Max * 2 + threshold);
+
             PeerInfo peerInfo = new PeerInfo(syncPeer);
-            peerInfo.TotalDifficulty = UInt256.MaxValue;
-            peerInfo.HeadNumber = SyncBatchSize.Max * 2 + threshold;
 
             await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, threshold), CancellationToken.None).ContinueWith(t => { });
             await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, threshold), CancellationToken.None);
             Assert.AreEqual(Math.Max(0, peerInfo.HeadNumber - threshold), _blockTree.BestSuggestedHeader.Number);
 
-            peerInfo.HeadNumber *= 2;
+            syncPeer.HeadNumber.Returns(2 * (SyncBatchSize.Max * 2 + threshold));
+            // peerInfo.HeadNumber *= 2;
             await downloader.DownloadBlocks(peerInfo, new BlocksRequest(), CancellationToken.None).ContinueWith(t => { });
             await downloader.DownloadBlocks(peerInfo, new BlocksRequest(), CancellationToken.None);
             Assert.AreEqual(Math.Max(0, peerInfo.HeadNumber), _blockTree.BestSuggestedHeader.Number);
@@ -576,13 +572,12 @@ namespace Nethermind.Synchronization.Test
                 .Returns(ci => _responseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.AllKnown));
 
             PeerInfo peerInfo = new PeerInfo(syncPeer);
-            peerInfo.TotalDifficulty = UInt256.MaxValue;
-            peerInfo.HeadNumber = 64;
+            syncPeer.HeadNumber.Returns(64);
 
             await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), CancellationToken.None)
                 .ContinueWith(t => Assert.True(t.IsCompletedSuccessfully));
 
-            peerInfo.HeadNumber = 128;
+            syncPeer.HeadNumber.Returns(128);
             await downloader.DownloadBlocks(peerInfo, new BlocksRequest(), CancellationToken.None)
                 .ContinueWith(t => Assert.True(t.IsCompletedSuccessfully));
         }
@@ -601,8 +596,8 @@ namespace Nethermind.Synchronization.Test
                 .Returns(ci => _responseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.JustFirst));
 
             PeerInfo peerInfo = new PeerInfo(syncPeer);
-            peerInfo.TotalDifficulty = UInt256.MaxValue;
-            peerInfo.HeadNumber = headNumber;
+            syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+            syncPeer.HeadNumber.Returns(headNumber);
 
             Task task = downloader.DownloadBlocks(peerInfo, new BlocksRequest(), CancellationToken.None);
             await task.ContinueWith(t => Assert.True(t.IsFaulted));
@@ -624,8 +619,8 @@ namespace Nethermind.Synchronization.Test
                 .Returns(ci => _responseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.JustFirst));
 
             PeerInfo peerInfo = new PeerInfo(syncPeer);
-            peerInfo.TotalDifficulty = UInt256.MaxValue;
-            peerInfo.HeadNumber = headNumber;
+            syncPeer.HeadNumber.Returns(headNumber);
+            syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
 
             Task task = downloader.DownloadBlocks(peerInfo, new BlocksRequest(), CancellationToken.None);
             await task.ContinueWith(t => Assert.False(t.IsFaulted));
@@ -652,8 +647,8 @@ namespace Nethermind.Synchronization.Test
                 .Returns(ci => _responseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect ^ Response.Consistent));
 
             PeerInfo peerInfo = new PeerInfo(syncPeer);
-            peerInfo.TotalDifficulty = UInt256.MaxValue;
-            peerInfo.HeadNumber = 1024;
+            syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+            syncPeer.HeadNumber.Returns(1024);
 
             BlockDownloader downloader = new BlockDownloader(_feed, _peerPool, _blockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
             Task task = downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), CancellationToken.None);
@@ -666,12 +661,12 @@ namespace Nethermind.Synchronization.Test
             BlockDownloader downloader = new BlockDownloader(_feed, _peerPool, _blockTree, Always.Valid, Always.Invalid, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+            syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => _responseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
 
             PeerInfo peerInfo = new PeerInfo(syncPeer);
-            peerInfo.TotalDifficulty = UInt256.MaxValue;
-            peerInfo.HeadNumber = 1000;
+            syncPeer.HeadNumber.Returns(1000);
 
             Task task = downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), CancellationToken.None);
             await task.ContinueWith(t => Assert.True(t.IsFaulted));
@@ -683,12 +678,12 @@ namespace Nethermind.Synchronization.Test
             BlockDownloader downloader = new BlockDownloader(_feed, _peerPool, _blockTree, Always.Invalid, Always.Valid, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+            syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => _responseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
 
             PeerInfo peerInfo = new PeerInfo(syncPeer);
-            peerInfo.TotalDifficulty = UInt256.MaxValue;
-            peerInfo.HeadNumber = 1000;
+            syncPeer.HeadNumber.Returns(1000);
 
             Task task = downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), CancellationToken.None);
             await task.ContinueWith(t => Assert.True(t.IsFaulted));
@@ -760,15 +755,16 @@ namespace Nethermind.Synchronization.Test
                 .Returns(ci => _responseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect));
 
             PeerInfo peerInfo = new PeerInfo(syncPeer);
-            peerInfo.TotalDifficulty = UInt256.MaxValue;
-            peerInfo.HeadNumber = 1000;
+            syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+            syncPeer.HeadNumber.Returns(1000);
 
             CancellationTokenSource cancellation = new CancellationTokenSource();
             cancellation.CancelAfter(1000);
             Task task = downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), cancellation.Token);
             await task.ContinueWith(t => Assert.True(t.IsCanceled, $"headers {t.Status}"));
 
-            peerInfo.HeadNumber = 2000;
+            // peerInfo.HeadNumber = 2000;
+            syncPeer.HeadNumber.Returns(2000);
             cancellation = new CancellationTokenSource();
             cancellation.CancelAfter(1000);
             task = downloader.DownloadBlocks(peerInfo, new BlocksRequest(), cancellation.Token);
@@ -787,16 +783,18 @@ namespace Nethermind.Synchronization.Test
             syncPeer.GetBlockBodies(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => _responseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect));
 
+            syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+            syncPeer.HeadNumber.Returns(1000);
+
             PeerInfo peerInfo = new PeerInfo(syncPeer);
-            peerInfo.TotalDifficulty = UInt256.MaxValue;
-            peerInfo.HeadNumber = 1000;
 
             CancellationTokenSource cancellation = new CancellationTokenSource();
             cancellation.CancelAfter(1000);
             Task task = downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), cancellation.Token);
             await task.ContinueWith(t => Assert.True(t.IsCanceled, "headers"));
 
-            peerInfo.HeadNumber *= 2;
+            syncPeer.HeadNumber.Returns(2000);
+            // peerInfo.HeadNumber *= 2;
             cancellation = new CancellationTokenSource();
             cancellation.CancelAfter(1000);
             task = downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), cancellation.Token);
@@ -805,10 +803,19 @@ namespace Nethermind.Synchronization.Test
 
         private class ThrowingPeer : ISyncPeer
         {
+            public ThrowingPeer(long number, UInt256 totalDiff, Keccak headHash = null)
+            {
+                HeadNumber = number;
+                TotalDifficulty = totalDiff;
+                HeadHash = headHash ?? Keccak.Zero;
+            }
+
             public Node Node { get; }
             public string ClientId => "EX peer";
-            public string EthDetails => "eth.64";
-            public UInt256 TotalDifficultyOnSessionStart => UInt256.MaxValue;
+            public Keccak HeadHash { get; set; }
+            public long HeadNumber { get; set; }
+            public UInt256 TotalDifficulty { get; set; } = UInt256.MaxValue;
+            public bool IsInitialized { get; set; }
 
             public void Disconnect(DisconnectReason reason, string details)
             {
@@ -868,10 +875,8 @@ namespace Nethermind.Synchronization.Test
         {
             BlockDownloader downloader = new BlockDownloader(_feed, _peerPool, _blockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
 
-            ISyncPeer syncPeer = new ThrowingPeer();
+            ISyncPeer syncPeer = new ThrowingPeer(1000, UInt256.MaxValue);
             PeerInfo peerInfo = new PeerInfo(syncPeer);
-            peerInfo.TotalDifficulty = UInt256.MaxValue;
-            peerInfo.HeadNumber = 1000;
 
             await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), CancellationToken.None)
                 .ContinueWith(t => Assert.True(t.IsFaulted));
@@ -884,6 +889,7 @@ namespace Nethermind.Synchronization.Test
             BlockDownloader downloader = new BlockDownloader(_feed, _peerPool, _blockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+            syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
             Task<BlockHeader[]> buildHeadersResponse = null;
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => buildHeadersResponse = _responseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
@@ -894,10 +900,11 @@ namespace Nethermind.Synchronization.Test
             syncPeer.GetReceipts(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => _responseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions));
 
-            PeerInfo peerInfo = new PeerInfo(syncPeer) {TotalDifficulty = UInt256.MaxValue, HeadNumber = 1};
+            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            syncPeer.HeadNumber.Returns(1);
             await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), CancellationToken.None);
 
-            peerInfo.HeadNumber *= 2;
+            syncPeer.HeadNumber.Returns(2);
 
             Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(), CancellationToken.None);
             action.Should().Throw<EthSyncException>().WithInnerException<AggregateException>().WithInnerException<TimeoutException>();
@@ -913,6 +920,8 @@ namespace Nethermind.Synchronization.Test
             BlockDownloader downloader = new BlockDownloader(_feed, _peerPool, _blockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+            syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+            
             Task<BlockHeader[]> buildHeadersResponse = null;
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => buildHeadersResponse = _responseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
@@ -924,10 +933,12 @@ namespace Nethermind.Synchronization.Test
             syncPeer.GetReceipts(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(Task.FromException<TxReceipt[][]>(new TimeoutException()));
 
-            PeerInfo peerInfo = new PeerInfo(syncPeer) {TotalDifficulty = UInt256.MaxValue, HeadNumber = 1};
+            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            syncPeer.HeadNumber.Returns(1);
             await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), CancellationToken.None);
 
-            peerInfo.HeadNumber *= 2;
+            syncPeer.HeadNumber.Returns(2);
+            // peerInfo.HeadNumber *= 2;
 
             Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
             if (shouldThrow)
@@ -949,6 +960,8 @@ namespace Nethermind.Synchronization.Test
             BlockDownloader downloader = new BlockDownloader(_feed, _peerPool, _blockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+            syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+            
             Task<BlockHeader[]> buildHeadersResponse = null;
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => buildHeadersResponse = _responseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
@@ -960,10 +973,11 @@ namespace Nethermind.Synchronization.Test
             syncPeer.GetReceipts(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => _responseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions).Result.Skip(1).ToArray());
 
-            PeerInfo peerInfo = new PeerInfo(syncPeer) {TotalDifficulty = UInt256.MaxValue, HeadNumber = 1};
+            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            syncPeer.HeadNumber.Returns(1);
             await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, threshold), CancellationToken.None);
 
-            peerInfo.HeadNumber *= 2;
+            syncPeer.HeadNumber.Returns(2);
 
             Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies | DownloaderOptions.WithReceipts), CancellationToken.None);
             action.Should().Throw<EthSyncException>();
@@ -977,6 +991,7 @@ namespace Nethermind.Synchronization.Test
             BlockDownloader downloader = new BlockDownloader(_feed, _peerPool, _blockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+            syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
             Task<BlockHeader[]> buildHeadersResponse = null;
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => buildHeadersResponse = _responseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
@@ -989,10 +1004,11 @@ namespace Nethermind.Synchronization.Test
                 .Returns(ci => _responseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions)
                     .Result.Select(r => r == null || r.Length == 0 ? r : r.Skip(1).ToArray()).ToArray());
 
-            PeerInfo peerInfo = new PeerInfo(syncPeer) {TotalDifficulty = UInt256.MaxValue, HeadNumber = 1};
+            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            syncPeer.HeadNumber.Returns(1);
             await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.None, threshold), CancellationToken.None);
 
-            peerInfo.HeadNumber *= 2;
+            syncPeer.HeadNumber.Returns(2);
 
             Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(DownloaderOptions.WithReceipts), CancellationToken.None);
             action.Should().Throw<EthSyncException>();
@@ -1006,6 +1022,8 @@ namespace Nethermind.Synchronization.Test
             BlockDownloader downloader = new BlockDownloader(_feed, _peerPool, _blockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+            syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+            
             Task<BlockHeader[]> buildHeadersResponse = null;
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => buildHeadersResponse = _responseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.IncorrectReceiptRoot));
@@ -1017,10 +1035,11 @@ namespace Nethermind.Synchronization.Test
             syncPeer.GetReceipts(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => _responseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions).Result);
 
-            PeerInfo peerInfo = new PeerInfo(syncPeer) {TotalDifficulty = UInt256.MaxValue, HeadNumber = 1};
+            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            syncPeer.HeadNumber.Returns(1);
             await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, threshold), CancellationToken.None);
 
-            peerInfo.HeadNumber *= 2;
+            syncPeer.HeadNumber.Returns(2);
 
             Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(DownloaderOptions.WithReceipts), CancellationToken.None);
             action.Should().Throw<EthSyncException>();

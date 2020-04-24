@@ -17,7 +17,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -26,20 +25,16 @@ namespace Nethermind.Synchronization.Peers
 {
     public interface ISyncPeerPool : IDisposable
     {
-        bool TryFind(PublicKey nodeId, out PeerInfo peerInfo);
-
-        Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, string description = "", int timeoutMilliseconds = 0);
+        Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts allocationContexts, int timeoutMilliseconds = 0);
 
         void Free(SyncPeerAllocation syncPeerAllocation);
 
-        void ReportNoSyncProgress(PeerInfo peerInfo, bool isSevere = true);
+        void ReportNoSyncProgress(PeerInfo peerInfo, AllocationContexts allocationContexts);
 
-        void ReportInvalid(PeerInfo peerInfo, string details);
+        void ReportBreachOfProtocol(PeerInfo peerInfo, string details);
         
-        void ReportWeakPeer(PeerInfo peerInfo);
-        
-        void ReportWeakPeer(SyncPeerAllocation allocation);
-        
+        void ReportWeakPeer(PeerInfo peerInfo, AllocationContexts allocationContexts);
+
         /// <summary>
         /// Wakes up all the sleeping peers.
         /// </summary>
@@ -52,15 +47,8 @@ namespace Nethermind.Synchronization.Peers
 
         /// <summary>
         /// All the useful peers available for allocation.
-        /// These peers may not be useful for everyone but they are not asleep.
         /// </summary>
-        IEnumerable<PeerInfo> UsefulPeers { get; }
-        
-        /// <summary>
-        /// All the useful peers available for allocation.
-        /// These peers may not be useful for everyone but they are not asleep.
-        /// </summary>
-        IEnumerable<PeerInfo> UsefulPeersWhateverDiff { get; }
+        IEnumerable<PeerInfo> InitializedPeers { get; }
 
         /// <summary>
         /// Number of all sync peers
@@ -70,7 +58,7 @@ namespace Nethermind.Synchronization.Peers
         /// <summary>
         /// Number of peers that are not sleeping
         /// </summary>
-        int UsefulPeerCount { get; }
+        int InitializedPeersCount { get; }
 
         /// <summary>
         /// Max number of peers
@@ -93,9 +81,9 @@ namespace Nethermind.Synchronization.Peers
         /// It is hard to track total difficulty so occasionally we send a total difficulty request to update node information.
         /// Specifically when nodes send HintBlock message they do not attach total difficulty information.
         /// </summary>
-        /// <param name="peerInfo"></param>
+        /// <param name="syncPeer"></param>
         /// <param name="hash">Hash of a block that we know might be the head block of the peer</param>
-        void RefreshTotalDifficulty(PeerInfo peerInfo, Keccak hash);
+        void RefreshTotalDifficulty(ISyncPeer syncPeer, Keccak hash);
 
         /// <summary>
         /// Starts the pool loops.
@@ -107,15 +95,5 @@ namespace Nethermind.Synchronization.Peers
         /// </summary>
         /// <returns></returns>
         Task StopAsync();
-
-        /// <summary>
-        /// Whenever a new sync peer is added
-        /// </summary>
-        event EventHandler PeerAdded;
-        
-        /// <summary>
-        /// Whenever a peer is removed
-        /// </summary>
-        event EventHandler PeerRemoved;
     }
 }

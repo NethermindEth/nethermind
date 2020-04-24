@@ -13,21 +13,30 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.Synchronization.ParallelSync;
+using System.Diagnostics;
 
-namespace Nethermind.Synchronization.BeamSync
+namespace Nethermind.Synchronization.FastSync
 {
-    public interface INodeDataConsumer
+    public partial class StateSyncFeed
     {
-        UInt256 RequiredPeerDifficulty { get; }
-        
-        event EventHandler NeedMoreData;
+        [DebuggerDisplay("{SyncItem.Hash} {Counter}")]
+        private class DependentItem
+        {
+            public StateSyncItem SyncItem { get; }
+            public byte[] Value { get; }
+            public int Counter { get; set; }
 
-        DataConsumerRequest[] PrepareRequests();
-        
-        SyncResponseHandlingResult HandleResponse(DataConsumerRequest request, byte[][] data);
+            public bool IsAccount { get; }
+
+            public DependentItem(StateSyncItem syncItem, byte[] value, int counter, bool isAccount = false)
+            {
+                SyncItem = syncItem;
+                Value = value;
+                Counter = counter;
+                IsAccount = isAccount;
+            }
+        }
     }
 }

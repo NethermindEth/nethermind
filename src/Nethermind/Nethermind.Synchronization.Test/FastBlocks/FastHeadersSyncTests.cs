@@ -74,17 +74,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             var result = await feed.PrepareRequest();
             result.Should().BeNull();
         }
-        
-        [Test]
-        public async Task Does_not_prepare_more_batches_in_beam_sync()
-        {
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1000).TestObject);
-            FastHeadersSyncFeed feed = new FastHeadersSyncFeed(blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig{BeamSync = true, FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000"}, Substitute.For<ISyncReport>(), LimboLogs.Instance);
-            var result = await feed.PrepareRequest();
-            result.Should().BeNull();
-        }
-        
+
         [Test]
         public async Task Finishes_when_all_downloaded()
         {

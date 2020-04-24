@@ -54,9 +54,9 @@ namespace Nethermind.Synchronization.Test.FastSync
             IBlockTree blockTree = Substitute.For<IBlockTree>(); 
             ISyncPeerPool pool = Substitute.For<ISyncPeerPool>(); 
             
-            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, NullReceiptStorage.Instance, stateDB, syncConfig, LimboLogs.Instance);
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, NullReceiptStorage.Instance, stateDB, new MemDb(), syncConfig, LimboLogs.Instance);
             ISyncModeSelector syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, pool, syncConfig, LimboLogs.Instance);
-            StateSyncFeed stateSyncFeed = new StateSyncFeed(codeDb, stateDB, tempDb, syncModeSelector, blockTree, LimboLogs.Instance);
+            StateSyncFeed stateSyncFeed = new StateSyncFeed(codeDb, stateDB, tempDb, syncModeSelector, blockTree, SyncConfig.Default, LimboLogs.Instance);
 
             // so we want to setup a trie in a structure of -> branch into two leaves
             // so we can respond with the branch node and with leaves missing
@@ -73,7 +73,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             // tree = new PatriciaTree();
             // tree.Set(branch.Keccak.Bytes, branch.Value);
 
-            stateSyncFeed.SetNewStateRoot(0, branch.Keccak);
+            stateSyncFeed.ResetStateRoot(0, branch.Keccak);
             
             var request = await stateSyncFeed.PrepareRequest();
             BuildRequestAndHandleResponse(branch, request, stateSyncFeed);

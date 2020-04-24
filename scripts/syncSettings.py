@@ -9,9 +9,10 @@ key = sys.argv[1]
 
 print(emoji.emojize("Fast Sync configuration settings initialization     :white_check_mark: ", use_aliases=True))
 
-def fastBlocksSettings(configuration, apiUrl, blockReduced):
+def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequirement):
     latestBlock = int(json.loads(subprocess.getoutput(f'curl --silent "https://{apiUrl}/api?module=proxy&action=eth_blockNumber&apikey={key}"'))['result'],16)
-    baseBlock = round(latestBlock - blockReduced, -4)
+    baseBlock = latestBlock - blockReduced
+    baseBlock = baseBlock - baseBlock % multiplierRequirement
     pivot = subprocess.getoutput(f'curl --silent "https://{apiUrl}/api?module=proxy&action=eth_getBlockByNumber&tag={hex(baseBlock)}&boolean=true&apikey={key}"')
     pivotHash = json.loads(pivot)['result']['hash']
     pivotTotalDifficulty = int(json.loads(pivot)['result']['totalDifficulty'],16)
@@ -34,27 +35,27 @@ print(emoji.emojize("Mainnet section                                     :white_
 mainnetApiUrl = 'api.etherscan.io'
 mainnetBlockReduced = 8192
 
-fastBlocksSettings('mainnet', mainnetApiUrl, mainnetBlockReduced)
+fastBlocksSettings('mainnet', mainnetApiUrl, mainnetBlockReduced, 10000)
 
 # Goerli
 print(emoji.emojize("Goerli section                                      :white_check_mark: ", use_aliases=True))
 goerliApiUrl = 'api-goerli.etherscan.io'
-goerliBlockReduced = 30000
+goerliBlockReduced = 8192
 
-fastBlocksSettings('goerli', goerliApiUrl, goerliBlockReduced)
+fastBlocksSettings('goerli', goerliApiUrl, goerliBlockReduced, 30000)
 
 # Ropsten
 print(emoji.emojize("Ropsten section                                     :white_check_mark: ", use_aliases=True))
 ropstenApiUrl = 'api-ropsten.etherscan.io'
 ropstenBlockReduced = 8192
 
-fastBlocksSettings('ropsten', ropstenApiUrl, ropstenBlockReduced)
+fastBlocksSettings('ropsten', ropstenApiUrl, ropstenBlockReduced, 10000)
 
 # Rinkeby
 print(emoji.emojize("Rinkeby section                                     :white_check_mark: ", use_aliases=True))
 rinkebyApiUrl = 'api-rinkeby.etherscan.io'
-rinkebyBlockReduced = 30000
+rinkebyBlockReduced = 8192
 
-fastBlocksSettings('rinkeby', rinkebyApiUrl, rinkebyBlockReduced)
+fastBlocksSettings('rinkeby', rinkebyApiUrl, rinkebyBlockReduced, 30000)
 
 print(emoji.emojize("Fast Sync configuration settings finished           :ok_hand: ", use_aliases=True))

@@ -13,42 +13,42 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
+using System.Collections.Generic;
 using System.Threading;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.Synchronization.ParallelSync;
 
-namespace Nethermind.Synchronization.BeamSync
+namespace Nethermind.Synchronization.FastSync
 {
-    public class NullDataConsumer : INodeDataConsumer
+    internal class DependentItemComparer : IEqualityComparer<DependentItem>
     {
-        private static NullDataConsumer _instance = new NullDataConsumer();
-
-        private NullDataConsumer()
+        private DependentItemComparer()
         {
         }
 
-        public static NullDataConsumer Instance => LazyInitializer.EnsureInitialized(ref _instance);
+        private static DependentItemComparer _instance;
 
-        public UInt256 RequiredPeerDifficulty => UInt256.Zero;
-
-        public event EventHandler NeedMoreData
+        public static DependentItemComparer Instance
         {
-            add { }
-            remove { }
+            get
+            {
+                if (_instance == null)
+                {
+                    LazyInitializer.EnsureInitialized(ref _instance, () => new DependentItemComparer());
+                }
+
+                return _instance;
+            }
         }
 
-        public DataConsumerRequest[] PrepareRequests()
+        public bool Equals(DependentItem x, DependentItem y)
         {
-            return Array.Empty<DataConsumerRequest>();
+            return x?.SyncItem.Hash == y?.SyncItem.Hash;
         }
 
-        public SyncResponseHandlingResult HandleResponse(DataConsumerRequest request, byte[][] data)
+        public int GetHashCode(DependentItem obj)
         {
-            throw new InvalidOperationException("Should never receive response here");
+            return obj?.SyncItem.Hash.GetHashCode() ?? 0;
         }
-
-        public bool NeedsData => false;
     }
 }
