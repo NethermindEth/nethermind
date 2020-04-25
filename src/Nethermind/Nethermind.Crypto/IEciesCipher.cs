@@ -14,10 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Consensus.AuRa
+using Nethermind.Core.Crypto;
+
+namespace Nethermind.Crypto
 {
-    public interface IBlockTransitionable
+    public interface IEciesCipher
     {
-        long TransitionBlock { get; }
+        (bool Success, byte[] PlainText) Decrypt(PrivateKey privateKey, byte[] cipherText, byte[] macData = null);
+        byte[] Encrypt(PublicKey recipientPublicKey, byte[] plainText, byte[] macData);
     }
 }

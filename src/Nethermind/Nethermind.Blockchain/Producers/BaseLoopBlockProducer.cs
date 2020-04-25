@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain.Producers
         protected bool CanProduce { get; set; }
 
         protected BaseLoopBlockProducer(
-            IPendingTxSelector pendingTxSelector,
+            ITxSource txSource,
             IBlockchainProcessor processor,
             ISealer sealer,
             IBlockTree blockTree,
@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Producers
             ITimestamper timestamper,
             ILogManager logManager,
             string name) 
-            : base(pendingTxSelector, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager)
+            : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager)
         {
             _name = name;
         }

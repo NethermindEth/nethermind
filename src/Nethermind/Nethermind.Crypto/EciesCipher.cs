@@ -16,7 +16,6 @@
 
 using System.IO;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using Nethermind.Secp256k1;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Digests;
@@ -25,7 +24,7 @@ using Org.BouncyCastle.Crypto.Macs;
 using Org.BouncyCastle.Crypto.Modes;
 using Org.BouncyCastle.Crypto.Parameters;
 
-namespace Nethermind.Network.Crypto
+namespace Nethermind.Crypto
 {
     /// <summary>
     ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
@@ -42,9 +41,9 @@ namespace Nethermind.Network.Crypto
             _keyGenerator = new PrivateKeyGenerator(cryptoRandom);
         }
 
-        public (bool, byte[]) Decrypt(PrivateKey privateKey, byte[] ciphertextBody, byte[] macData = null)
+        public (bool, byte[]) Decrypt(PrivateKey privateKey, byte[] cipherText, byte[] macData = null)
         {
-            MemoryStream inputStream = new MemoryStream(ciphertextBody);
+            MemoryStream inputStream = new MemoryStream(cipherText);
             int ephemBytesLength = 2 * ((BouncyCrypto.DomainParameters.Curve.FieldSize + 7) / 8) + 1;
 
             byte[] ephemBytes = new byte[ephemBytesLength];
@@ -62,7 +61,7 @@ namespace Nethermind.Network.Crypto
             return (true, plaintext);
         }
 
-        public byte[] Encrypt(PublicKey recipientPublicKey, byte[] plaintext, byte[] macData)
+        public byte[] Encrypt(PublicKey recipientPublicKey, byte[] plainText, byte[] macData)
         {
             byte[] iv = _cryptoRandom.GenerateRandomBytes(KeySize / 8);
             PrivateKey ephemeralPrivateKey = _keyGenerator.Generate();
@@ -71,7 +70,7 @@ namespace Nethermind.Network.Crypto
 
             try
             {
-                byte[] cipher = iesEngine.ProcessBlock(plaintext, 0, plaintext.Length, macData);
+                byte[] cipher = iesEngine.ProcessBlock(plainText, 0, plainText.Length, macData);
                 MemoryStream memoryStream = new MemoryStream();
                 memoryStream.Write(ephemeralPrivateKey.PublicKey.PrefixedBytes, 0, ephemeralPrivateKey.PublicKey.PrefixedBytes.Length);
                 memoryStream.Write(iv, 0, iv.Length);

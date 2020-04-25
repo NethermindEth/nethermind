@@ -21,7 +21,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Specs;
 using Nethermind.Logging;
-using Nethermind.Network.Crypto;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using NUnit.Framework;

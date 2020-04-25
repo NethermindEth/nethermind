@@ -225,11 +225,6 @@ namespace Nethermind.AuRa.Test.Reward
 
         private byte[] SetupAbiAddresses(params BlockReward[] rewards)
         {
-            bool IsArray<T>(AbiType abiType)
-            {
-                return abiType is AbiArray && ((AbiArray)abiType).ElementType is T;
-            }
-
             byte[] data = rewards.Select(r => r.Address).SelectMany(a => a.Bytes).ToArray();
 
             _abiEncoder.Decode(

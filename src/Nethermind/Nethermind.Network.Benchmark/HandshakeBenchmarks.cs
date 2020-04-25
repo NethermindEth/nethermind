@@ -20,7 +20,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Specs;
 using Nethermind.Logging;
-using Nethermind.Network.Crypto;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.Test;

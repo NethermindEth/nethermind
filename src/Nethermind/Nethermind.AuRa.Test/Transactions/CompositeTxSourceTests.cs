@@ -15,11 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Transactions;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
@@ -28,26 +30,25 @@ using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Transactions
 {
-    public class InjectionPendingTxSelectorTests
+    public class CompositeTxSourceTests
     {
         [Test]
         public void selectTransactions_injects_transactions_from_ImmediateTransactionSources_in_front_of_block_transactions()
         {
-            IImmediateTransactionSource CreateImmediateTransactionSource(BlockHeader header, int limit, Address address, List<Transaction> txs, bool createsTransaction)
+            ITxSource CreateImmediateTransactionSource(BlockHeader header, int limit, Address address, List<Transaction> txs, bool createsTransaction)
             {
-                var immediateTransactionSource = Substitute.For<IImmediateTransactionSource>();
-                immediateTransactionSource.TryCreateTransaction(header, limit, out Arg.Any<Transaction>()).Returns(x =>
+                var immediateTransactionSource = Substitute.For<ITxSource>();
+                immediateTransactionSource.GetTransactions(header, limit).Returns(x =>
                 {
                     if (createsTransaction)
                     {
-                        var transaction = Build.A.Transaction.To(address).WithGasPrice(UInt256.Zero).TestObject;
+                        var transaction = Build.A.SystemTransaction.To(address).WithGasPrice(UInt256.Zero).TestObject;
                         txs.Add(transaction);
-                        x[2] = transaction;
-                        return true;
+                        return new[] {transaction};
                     }
                     else
                     {
-                        return false;
+                        return Array.Empty<Transaction>();
                     }
                 });
                 return immediateTransactionSource;
@@ -57,25 +58,21 @@ namespace Nethermind.AuRa.Test.Transactions
             var gasLimit = 1000;
             List<Transaction> expected = new List<Transaction>();
             
-            var innerPendingTxSelector = Substitute.For<IPendingTxSelector>();
+            var innerPendingTxSelector = Substitute.For<ITxSource>();
             
-            var transactionFiller = Substitute.For<ITransactionFiller>();
-
             var immediateTransactionSource1 = CreateImmediateTransactionSource(parentHeader, gasLimit, TestItem.AddressB, expected, true);
             var immediateTransactionSource2 = CreateImmediateTransactionSource(parentHeader, gasLimit, TestItem.AddressC, expected, false);
             var immediateTransactionSource3 = CreateImmediateTransactionSource(parentHeader, gasLimit, TestItem.AddressD, expected, true);
             
             var originalTxs = Build.A.Transaction.TestObjectNTimes(5);
-            innerPendingTxSelector.SelectTransactions(parentHeader, gasLimit).Returns(originalTxs);
+            innerPendingTxSelector.GetTransactions(parentHeader, gasLimit).Returns(originalTxs);
 
-            var injectionPendingTxSelector = new InjectionPendingTxSelector(
-                innerPendingTxSelector, transactionFiller, immediateTransactionSource1, immediateTransactionSource2, immediateTransactionSource3);
+            var compositeTxSource = new CompositeTxSource(
+                immediateTransactionSource1, immediateTransactionSource2, immediateTransactionSource3, innerPendingTxSelector);
             
-            var transactions = injectionPendingTxSelector.SelectTransactions(parentHeader, gasLimit).ToArray();
+            var transactions = compositeTxSource.GetTransactions(parentHeader, gasLimit).ToArray();
             expected.AddRange(originalTxs);
             
-            transactionFiller.Received().Fill(parentHeader, transactions[0]);
-            transactionFiller.Received().Fill(parentHeader, transactions[1]);
             transactions.Should().BeEquivalentTo(expected);
         }
     }

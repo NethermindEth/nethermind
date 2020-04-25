@@ -137,6 +137,6 @@ namespace Nethermind.Runner.Ethereum.Context
         public INdmDataPublisher? NdmDataPublisher { get; set; }
         public INdmInitializer? NdmInitializer { get; set; }
         public IBloomStorage? BloomStorage { get; set; }
-        public AbiEncoder AbiEncoder { get; set; }
+        public AbiEncoder AbiEncoder { get; } = new AbiEncoder();
     }
 }

@@ -19,7 +19,7 @@ using System.Security.Cryptography;
 using System.Threading;
 using Nethermind.Core.Extensions;
 
-namespace Nethermind.Network.Crypto
+namespace Nethermind.Crypto
 {
     public class OptimizedKdf
     {

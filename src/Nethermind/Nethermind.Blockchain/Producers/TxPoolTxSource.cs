@@ -29,22 +29,22 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Producers
 {
-    public class PendingTxSelector : IPendingTxSelector
+    public class TxPoolTxSource : ITxSource
     {
         private readonly ITxPool _transactionPool;
         private readonly IStateReader _stateReader;
         private readonly ILogger _logger;
         private readonly long _minGasPriceForMining;
 
-        public PendingTxSelector(ITxPool transactionPool, IStateReader stateReader, ILogManager logManager, long minGasPriceForMining = 0)
+        public TxPoolTxSource(ITxPool transactionPool, IStateReader stateReader, ILogManager logManager, long minGasPriceForMining = 0)
         {
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-            _logger = logManager?.GetClassLogger<PendingTxSelector>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
             _minGasPriceForMining = minGasPriceForMining;
         }
 
-        public IEnumerable<Transaction> SelectTransactions(BlockHeader parent, long gasLimit)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
             T GetFromState<T>(Func<Keccak, Address, T> stateGetter, Address address, T defaultValue)
             {

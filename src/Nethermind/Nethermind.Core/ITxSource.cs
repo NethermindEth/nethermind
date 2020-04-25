@@ -15,25 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
-namespace Nethermind.Consensus
+namespace Nethermind.Core
 {
-    public class SinglePendingTxSelector : IPendingTxSelector
+    public interface ITxSource
     {
-        private readonly IPendingTxSelector _innerPendingTxSelector;
-
-        public SinglePendingTxSelector(IPendingTxSelector innerPendingTxSelector)
-        {
-            _innerPendingTxSelector = innerPendingTxSelector;
-        }
-        
-        public IEnumerable<Transaction> SelectTransactions(BlockHeader parent, long gasLimit) => 
-            _innerPendingTxSelector.SelectTransactions(parent, gasLimit)
-                .OrderBy(t => t.Nonce)
-                .ThenByDescending(t => t.Timestamp)
-                .Take(1);
+        IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit);
     }
 }

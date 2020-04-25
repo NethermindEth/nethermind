@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
+using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
@@ -40,7 +41,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     public abstract class StartBlockProducer : IStep, ISubsystemStateAware
     {
         private readonly EthereumRunnerContext _context;
-        private BlockProducerContext _blockProducerContext;
+        private BlockProducerContext? _blockProducerContext;
         
 
         public StartBlockProducer(EthereumRunnerContext context)
@@ -84,14 +85,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     ChainProcessor = chainProcessor,
                     ReadOnlyStateProvider = readOnlyTxProcessingEnv.StateProvider,
-                    PendingTxSelector = CreatePendingTxSelector(readOnlyTxProcessingEnv)
+                    TxSource = CreateTxSourceForProducer(readOnlyTxProcessingEnv)
                 };
             }
 
             return _blockProducerContext ??= Create();
         }
 
-        protected virtual IPendingTxSelector CreatePendingTxSelector(ReadOnlyTxProcessingEnv environment) => new PendingTxSelector(_context.TxPool, environment.StateReader, _context.LogManager);
+        protected virtual ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv environment) => new TxPoolTxSource(_context.TxPool, environment.StateReader, _context.LogManager);
 
         protected virtual BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, IReadOnlyDbProvider readOnlyDbProvider)
         {

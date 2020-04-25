@@ -42,7 +42,7 @@ namespace Nethermind.Clique.Test
             CliqueConfig cliqueConfig = new CliqueConfig();
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             CliqueBlockProducer producer = new CliqueBlockProducer(
-                Substitute.For<IPendingTxSelector>(),
+                Substitute.For<ITxSource>(),
                 Substitute.For<IBlockchainProcessor>(),
                 Substitute.For<IStateProvider>(),
                 blockTree,

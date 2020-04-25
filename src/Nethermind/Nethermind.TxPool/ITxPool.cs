@@ -15,13 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.TxPool
 {
-    public interface ITxPool
+    public interface ITxPool : ITxSource
     {
         Transaction[] GetPendingTransactions();
         Transaction[] GetOwnPendingTransactions();
@@ -34,5 +35,6 @@ namespace Nethermind.TxPool
         UInt256 ReserveOwnTransactionNonce(Address address);
         event EventHandler<TxEventArgs> NewPending;
         event EventHandler<TxEventArgs> RemovedPending;
+        IEnumerable<Transaction> ITxSource.GetTransactions(BlockHeader parent, long gasLimit) => GetPendingTransactions();
     }
 }

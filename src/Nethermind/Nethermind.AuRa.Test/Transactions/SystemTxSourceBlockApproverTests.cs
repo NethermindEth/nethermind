@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Core;
@@ -28,14 +29,14 @@ using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Transactions
 {
-    public class TransactionFillerTests
+    public class SystemTxSourceBlockApproverTests
     {
         [Test]
         public void transaction_is_addable_to_block_after_fill()
         {
             int chainId = 5;
             var blockHeader = Build.A.BlockHeader.TestObject;
-            var tx = Build.A.Transaction.TestObject;
+            var tx = Build.A.SystemTransaction.TestObject;
             var timestamper = Substitute.For<ITimestamper>();
             var stateReader = Substitute.For<IStateReader>();
             
@@ -44,16 +45,19 @@ namespace Nethermind.AuRa.Test.Transactions
             
             ulong expectedTimeStamp = 100;
             timestamper.EpochSeconds.Returns(expectedTimeStamp);
-            
-            var transactionFiller = new TransactionFiller(new BasicWallet(Build.A.PrivateKey.TestObject), timestamper, stateReader, chainId);
-            
-            transactionFiller.Fill(blockHeader, tx);
 
-            tx.IsSigned.Should().BeTrue();
-            tx.Nonce.Should().Be(expectedNonce);
-            tx.Hash.Should().Be(tx.CalculateHash());
-            tx.Timestamp.Should().Be(expectedTimeStamp);
+            var gasLimit = 200;
+            var innerTxSource = Substitute.For<ITxSource>();
+            innerTxSource.GetTransactions(blockHeader, gasLimit).Returns(new[] {tx});
+            
+            var transactionFiller = new SystemTxSourceBlockApprover(innerTxSource, new BasicWallet(Build.A.PrivateKey.TestObject), timestamper, stateReader, chainId);
+            
+            var txResult= transactionFiller.GetTransactions(blockHeader, gasLimit).First();
 
+            txResult.IsSigned.Should().BeTrue();
+            txResult.Nonce.Should().Be(expectedNonce);
+            txResult.Hash.Should().Be(tx.CalculateHash());
+            txResult.Timestamp.Should().Be(expectedTimeStamp);
         }
     }
 }

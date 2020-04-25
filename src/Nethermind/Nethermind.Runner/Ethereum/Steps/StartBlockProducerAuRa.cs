@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
@@ -21,10 +22,14 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
+using Nethermind.Consensus.Transactions;
+using Nethermind.Core;
+using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Logging;
-using Nethermind.Network.Crypto;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.State;
 using Nethermind.Store;
@@ -54,7 +59,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             BlockProducerContext producerContext = GetProducerChain();
             var auraConfig = _context.Config<IAuraConfig>();
             _context.BlockProducer = new AuRaBlockProducer(
-                producerContext.PendingTxSelector,
+                producerContext.TxSource,
                 producerContext.ChainProcessor,
                 producerContext.ReadOnlyStateProvider,
                 _context.Sealer,
@@ -103,29 +108,50 @@ namespace Nethermind.Runner.Ethereum.Steps
             return blockProducer;
         }
 
-        protected override IPendingTxSelector CreatePendingTxSelector(ReadOnlyTxProcessingEnv environment)
+        protected override ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv environment)
         {
+            IList<RandomContract> GetRandomContracts(
+                IDictionary<long, Address> randomnessContractAddress, 
+                ITransactionProcessor transactionProcessor, 
+                IAbiEncoder abiEncoder, 
+                IStateProvider stateProvider,
+                IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource, 
+                Address nodeAddress) =>
+                randomnessContractAddress
+                    .Select(kvp => new RandomContract(transactionProcessor, 
+                        abiEncoder, 
+                        kvp.Value, 
+                        stateProvider, 
+                        readOnlyTransactionProcessorSource, 
+                        kvp.Key, 
+                        nodeAddress))
+                    .ToArray();
+
+
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
+            if (_context.NodeKey == null) throw new StepDependencyException(nameof(_context.NodeKey));
 
-            var txSelector = base.CreatePendingTxSelector(environment);
+            var txSource = base.CreateTxSourceForProducer(environment);
             
             if (_context.ChainSpec.AuRa.RandomnessContractAddress?.Any() == true)
             {
-                return new InjectionPendingTxSelector(txSelector,
-                    new TransactionFiller(new BasicWallet(_context.NodeKey), _context.Timestamper, environment.StateReader, _context.BlockTree.ChainId),
-                    new RandomImmediateTransactionSource(
-                        _context.ChainSpec.AuRa.RandomnessContractAddress,
-                        environment.TransactionProcessor,
-                        _context.AbiEncoder,
-                        environment.StateProvider,
-                        new ReadOnlyTransactionProcessorSource(environment),
-                        new EciesCipher(_context.CryptoRandom),
-                        _context.NodeKey));
+                var randomContractTxSource = new RandomContractTxSource(
+                    GetRandomContracts(_context.ChainSpec.AuRa.RandomnessContractAddress, 
+                        environment.TransactionProcessor, _context.AbiEncoder, 
+                        environment.StateProvider, 
+                        new ReadOnlyTransactionProcessorSource(environment), 
+                        _context.NodeKey.Address),
+                    new EciesCipher(_context.CryptoRandom),
+                    _context.NodeKey);
+                
+                var systemTxSourceSigner = new SystemTxSourceBlockApprover(randomContractTxSource, new BasicWallet(_context.NodeKey), _context.Timestamper, environment.StateReader, _context.BlockTree.ChainId);
+                
+                return new CompositeTxSource(systemTxSourceSigner, txSource);
             }
             else
             {
-                return txSelector;
+                return txSource;
             }
         }
     }

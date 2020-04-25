@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.State;
@@ -23,27 +24,43 @@ using Nethermind.Wallet;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class TransactionFiller : ITransactionFiller
+    public class SystemTxSourceBlockApprover : ITxSource
     {
+        private readonly ITxSource _innerSource;
         private readonly IBasicWallet _wallet;
         private readonly ITimestamper _timestamper;
         private readonly IStateReader _stateReader;
         private readonly int _chainId;
 
-        public TransactionFiller(IBasicWallet wallet, ITimestamper timestamper, IStateReader stateReader, int chainId)
+        public SystemTxSourceBlockApprover(ITxSource innerSource, IBasicWallet wallet, ITimestamper timestamper, IStateReader stateReader, int chainId)
         {
+            _innerSource = innerSource ??  throw new ArgumentNullException(nameof(innerSource));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _chainId = chainId;
         }
         
-        public void Fill(BlockHeader parent, Transaction tx)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        {
+            foreach (var tx in _innerSource.GetTransactions(parent, gasLimit))
+            {
+                if (tx.IsSystem())
+                {
+                    ApproveTx(parent, tx);
+                }
+
+                yield return tx;
+            }
+        }
+        
+        private void ApproveTx(BlockHeader parent, Transaction tx)
         {
             tx.Nonce = _stateReader.GetNonce(parent.StateRoot, tx.SenderAddress);
             _wallet.Sign(tx, _chainId);
             tx.Hash = tx.CalculateHash();
             tx.Timestamp = _timestamper.EpochSeconds;
         }
+
     }
 }

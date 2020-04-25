@@ -26,15 +26,15 @@ using Nethermind.Serialization.Json.Abi;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class RewardContract : Contract, IBlockTransitionable
+    public class RewardContract : Contract, IActivatedAtBlock
     {
-        public long TransitionBlock { get; }
+        public long ActivationBlock { get; }
         
         private static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<RewardContract>();
         
         public RewardContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, long transitionBlock) : base(transactionProcessor, abiEncoder, contractAddress)
         {
-            TransitionBlock = transitionBlock;
+            ActivationBlock = transitionBlock;
         }
 
         /// <summary>

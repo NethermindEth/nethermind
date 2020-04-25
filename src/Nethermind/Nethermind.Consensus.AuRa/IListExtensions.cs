@@ -90,16 +90,16 @@ namespace Nethermind.Consensus.AuRa
         
         
         /// <summary>
-        /// Tries to get a <see cref="IBlockTransitionable"/> item for block <see cref="blockNumber"/>.
+        /// Tries to get a <see cref="IActivatedAtBlock"/> item for block <see cref="blockNumber"/>.
         /// </summary>
         /// <param name="list"></param>
         /// <param name="blockNumber"></param>
         /// <param name="item"></param>
         /// <typeparam name="T"></typeparam>
         /// <returns></returns>
-        public static bool TryGetForBlock<T>(this IList<T> list, in long blockNumber, out T item) where T : IBlockTransitionable
+        public static bool TryGetForBlock<T>(this IList<T> list, in long blockNumber, out T item) where T : IActivatedAtBlock
         {
-            var index = list.BinarySearch(blockNumber, (b, c) => b.CompareTo(c.TransitionBlock));
+            var index = list.BinarySearch(blockNumber, (b, c) => b.CompareTo(c.ActivationBlock));
             if (index >= 0)
             {
                 item = list[index];
