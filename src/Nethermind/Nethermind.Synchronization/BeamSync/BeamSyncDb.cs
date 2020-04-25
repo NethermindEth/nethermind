@@ -60,7 +60,7 @@ namespace Nethermind.Synchronization.BeamSync
             _tempDb = tempDb ?? throw new ArgumentNullException(nameof(tempDb));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
 
-            _writeThrough = () => (_syncModeSelector.Current & SyncMode.Full) == SyncMode.Full;
+            _writeThrough = () => (_syncModeSelector.Current & SyncMode.Beam) == SyncMode.None;
         }
 
         private bool _isDisposed = false;
@@ -128,6 +128,8 @@ namespace Nethermind.Synchronization.BeamSync
                     fromMem ??= _tempDb[key] ?? _stateDb[key];
                     if (fromMem == null)
                     {
+                        if(_logger.IsTrace) _logger.Trace($"Beam sync miss - {key.ToHexString()} - retrieving");
+                        
                         if (Bytes.AreEqual(key, Keccak.Zero.Bytes))
                         {
                             // we store sync progress data at Keccak.Zero;
@@ -142,7 +144,7 @@ namespace Nethermind.Synchronization.BeamSync
 
                         if (DateTime.UtcNow - (BeamSyncContext.LastFetchUtc.Value ?? DateTime.UtcNow) > expiry)
                         {
-                            string message = $"Beam sync request {BeamSyncContext.Description.Value} with last update on {BeamSyncContext.LastFetchUtc.Value:hh:mm:ss.fff} has expired";
+                            string message = $"Beam sync request {BeamSyncContext.Description.Value} for key {key.ToHexString()} with last update on {BeamSyncContext.LastFetchUtc.Value:hh:mm:ss.fff} has expired";
                             if (_logger.IsDebug) _logger.Debug(message);
                             throw new BeamSyncException(message);
                         }
@@ -150,11 +152,9 @@ namespace Nethermind.Synchronization.BeamSync
                         wasInDb = false;
                         // _logger.Info($"BEAM SYNC Asking for {key.ToHexString()} - resolved keys so far {_resolvedKeysCount}");
 
-                        int count;
                         lock (_requestedNodes)
                         {
                             _requestedNodes.Add(new Keccak(key));
-                            count = _requestedNodes.Count;
                         }
 
                         // _logger.Error($"Requested {key.ToHexString()}");
@@ -168,7 +168,7 @@ namespace Nethermind.Synchronization.BeamSync
                         {
                             BeamSyncContext.ResolvedInContext.Value++;
                             Interlocked.Increment(ref _resolvedKeysCount);
-                            // if (_logger.IsInfo) _logger.Info($"{_description} Resolved key {key.ToHexString()} of context {BeamSyncContext.Description.Value} - resolved ctx {BeamSyncContext.ResolvedInContext.Value} | total {_resolvedKeysCount}");
+                            if (_logger.IsTrace) _logger.Trace($"Resolved key {key.ToHexString()} of context {BeamSyncContext.Description.Value} - resolved ctx {BeamSyncContext.ResolvedInContext.Value} | total {_resolvedKeysCount}");
                         }
 
                         BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
@@ -182,10 +182,12 @@ namespace Nethermind.Synchronization.BeamSync
             {
                 if (_writeThrough())
                 {
+                    if(_logger.IsTrace) _logger.Trace($"Write through beam - {key.ToHexString()}");
                     _stateDb[key] = value;
                 }
                 else
                 {
+                    if(_logger.IsTrace) _logger.Trace($"Saving to temp - {key.ToHexString()}");
                     _tempDb[key] = value;
                 }
             }

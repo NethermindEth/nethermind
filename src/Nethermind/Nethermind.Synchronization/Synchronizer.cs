@@ -133,9 +133,10 @@ namespace Nethermind.Synchronization
             });
         }
 
-        public async Task StopAsync()
+        public Task StopAsync()
         {
             _syncCancellation?.Cancel();
+            return Task.CompletedTask;
         }
 
         private void StartFullSyncComponents()
