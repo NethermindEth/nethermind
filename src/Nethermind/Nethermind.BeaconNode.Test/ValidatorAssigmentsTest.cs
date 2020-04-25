@@ -161,7 +161,7 @@ namespace Nethermind.BeaconNode.Test
         // time = slot 0 * 6 + 5 = 5
         [DataRow(5uL, "0x8345dd80ffef0eaec8920e39ebb7f5e9ae9c1d6179e9129b705923df7830c67f3690cbc48649d4079eadf5397339580c", 0uL, 4uL, 1uL, 0uL)]
         // time = slot 1 * 6 = 6
-        [DataRow(6uL, "0x8345dd80ffef0eaec8920e39ebb7f5e9ae9c1d6179e9129b705923df7830c67f3690cbc48649d4079eadf5397339580c", 0uL, 4uL, 1uL, 7uL)]
+        [DataRow(6uL, "0x8345dd80ffef0eaec8920e39ebb7f5e9ae9c1d6179e9129b705923df7830c67f3690cbc48649d4079eadf5397339580c", 0uL, 4uL, 1uL, 0uL)]
         // [DataRow(42uL, "0xab48aa2cc6f4a0bb63b5d67be54ac3aed10326dda304c5aeb9e942b40d6e7610478377680ab90e092ef1895e62786008", 0uL, 5uL, 1uL, null)]
         // [DataRow(42uL, "0x8aea7d8eb22063bcfe882e2b7efc0b3713e1a48dd8343bed523b1ab4546114be84d00f896d33c605d1f67456e8e2ed93", 0uL, 5uL, 1uL, null)]
         // [DataRow(42uL, "0x89db41a6183c2fe47cf54d1e00c3cfaae53df634a32cccd5cf0c0a73e95ee0450fc3d060bb6878780fbf5f30d9e29aac", 0uL, 5uL, 1uL, null)]
@@ -170,10 +170,13 @@ namespace Nethermind.BeaconNode.Test
         // [DataRow(42uL, "0x95906ec0660892c205634e21ad540cbe0b6f7729d101d5c4639b864dea09be7f42a4252c675d46dd90a2661b3a94e8ca", 0uL, 5uL, 1uL, null)]
         public async Task ValidatorDutyAtSpecificTimeDuplicateProposal(ulong targetTime, string publicKey, ulong epoch, ulong attestationSlot, ulong attestationShard, ulong? blockProposalSlot)
         {
-            // NOTE: Current algorithm for GetBeaconProposerIndex() someimtes allocates multiple proposal slots in an epoch, e.g. above index 23 gets slot 2 and 6
+            // NOTE: Current algorithm for GetBeaconProposerIndex() sometimes allocates multiple proposal slots in an epoch, e.g. above index 23 gets slot 2 and 6
             // It could be an error in the algorithm (need to check; domain type could be wrong), or due to the pre-shard algorithm.
             // The algorithm before shards were removed was different, so maybe ignore for now, implement phase 1 (with shards), and worry about it then.
             // This test for now will simply detect if things unintentionally change.
+            
+            // The implementation of GetValidatorDuties will always return the first assigned slot in an epoch.
+            // This means it is consistent whether run before or after the first slot.
             
             // Arrange
             IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
@@ -343,7 +346,7 @@ namespace Nethermind.BeaconNode.Test
             yield return new object?[]
             {
                 "0x8345dd80ffef0eaec8920e39ebb7f5e9ae9c1d6179e9129b705923df7830c67f3690cbc48649d4079eadf5397339580c",
-                0uL, true, 4uL, 1uL, 7uL
+                0uL, true, 4uL, 1uL, 0uL
             };
             // looking backwards, should find 6uL proposal slot
             yield return new object?[]

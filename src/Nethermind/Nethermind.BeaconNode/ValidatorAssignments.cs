@@ -112,6 +112,10 @@ namespace Nethermind.BeaconNode
 
         public async Task<ValidatorDuty> GetValidatorDutyAsync(BlsPublicKey validatorPublicKey, Epoch epoch)
         {
+            // NOTE: A validator may have two proposal slots in an epoch (in small test networks),
+            // however this routine will always only return the first one, i.e. always the same
+            // return value for a given epoch with a given starting state.
+            
             Root head = await _forkChoice.GetHeadAsync(_store).ConfigureAwait(false);
             BeaconState headState = await _store.GetBlockStateAsync(head).ConfigureAwait(false);
 
@@ -130,8 +134,20 @@ namespace Nethermind.BeaconNode
 
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
 
-            Slot startSlotInclusive = _beaconChainUtility.ComputeStartSlotOfEpoch(epoch);
-            Slot endSlotExclusive = startSlotInclusive + new Slot(timeParameters.SlotsPerEpoch);
+            Slot slotToCheck = _beaconChainUtility.ComputeStartSlotOfEpoch(epoch);
+            Slot endSlotExclusive = slotToCheck + new Slot(timeParameters.SlotsPerEpoch);
+
+            Root rootForStart = await _store.GetAncestorAsync(head, slotToCheck);
+            BeaconState storedState = await _store.GetBlockStateAsync(rootForStart);
+
+            // Clone, so that it can be safely mutated (transitioned forward)
+            BeaconState state = BeaconState.Clone(storedState);
+
+            // Transition to start slot, of target epoch (may have been a skip slot, i.e. stored state may have been older)
+            _beaconStateTransition.ProcessSlots(state, slotToCheck);
+
+            // Check validator is valid.
+            ValidatorIndex validatorIndex = CheckValidatorIndex(state, validatorPublicKey);
 
             Duty duty = new Duty()
             {
@@ -140,57 +156,16 @@ namespace Nethermind.BeaconNode
                 BlockProposalSlot = Slot.None
             };
 
-            if (epoch == nextEpoch)
+            // Check starting state
+            duty = CheckStateDuty(state, validatorIndex, duty);
+            slotToCheck += Slot.One;
+
+            // Check other slots in epoch, if needed
+            while (slotToCheck < endSlotExclusive && (!duty.AttestationSlot.HasValue || !duty.BlockProposalSlot.HasValue))
             {
-                // Clone for next or current, so that it can be safely mutated (transitioned forward)
-                BeaconState state = BeaconState.Clone(headState);
-                _beaconStateTransition.ProcessSlots(state, startSlotInclusive);
-
-                // Check base state
-                ValidatorIndex validatorIndex = CheckValidatorIndex(state, validatorPublicKey);
+                _beaconStateTransition.ProcessSlots(state, slotToCheck);
                 duty = CheckStateDuty(state, validatorIndex, duty);
-
-                // Check future states
-                duty = CheckFutureSlots(state, endSlotExclusive, validatorIndex, duty);
-            }
-            else if (epoch == currentEpoch)
-            {
-                // Take block slot and roots before cloning (for historical checks)
-                IReadOnlyList<Root> historicalBlockRoots = headState.BlockRoots;
-                Slot fromSlot = headState.Slot;
-                BeaconState state = BeaconState.Clone(headState);
-
-                // Check base state
-                ValidatorIndex validatorIndex = CheckValidatorIndex(state, validatorPublicKey);
-                duty = CheckStateDuty(state, validatorIndex, duty);
-
-                // Check future states
-                duty = CheckFutureSlots(state, endSlotExclusive, validatorIndex, duty);
-
-                // Check historical states
-                if (startSlotInclusive < fromSlot && (!duty.AttestationSlot.HasValue || !duty.BlockProposalSlot.HasValue))
-                {
-                    duty = await CheckHistoricalSlotsAsync(_store, historicalBlockRoots, fromSlot, startSlotInclusive,
-                        validatorIndex, duty).ConfigureAwait(false);
-                }
-            }
-            else
-            {
-                Root endRoot = await _forkChoice.GetAncestorAsync(_store, head, endSlotExclusive - Slot.One);
-                BeaconState state = await _store.GetBlockStateAsync(endRoot).ConfigureAwait(false);
-
-                // Check base state
-                ValidatorIndex validatorIndex = CheckValidatorIndex(state, validatorPublicKey);
-                duty = CheckStateDuty(state, validatorIndex, duty);
-
-                // Check historical states
-                IReadOnlyList<Root> historicalBlockRoots = state.BlockRoots;
-                if (duty.AttestationSlot == Slot.None || duty.BlockProposalSlot == Slot.None)
-                {
-                    Slot fromSlot = state.Slot;
-                    duty = await CheckHistoricalSlotsAsync(_store, historicalBlockRoots, fromSlot, startSlotInclusive,
-                        validatorIndex, duty).ConfigureAwait(false);
-                }
+                slotToCheck += Slot.One;
             }
 
             if (!duty.AttestationSlot.HasValue)
