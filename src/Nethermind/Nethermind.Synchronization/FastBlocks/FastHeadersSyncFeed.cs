@@ -108,11 +108,14 @@ namespace Nethermind.Synchronization.FastBlocks
         public override bool IsMultiFeed => true;
         public override AllocationContexts Contexts => AllocationContexts.Headers;
 
-        private bool AnyBatchesLeftToBeBuilt()
+        private bool ShouldBuildANewBatch()
         {
             bool genesisHeaderRequested = _lowestRequestedHeaderNumber == 0;
 
-            bool noBatchesLeft = AllHeadersDownloaded || genesisHeaderRequested;
+            bool noBatchesLeft = AllHeadersDownloaded
+                                 || genesisHeaderRequested
+                                 || HeadersInQueue >= FastBlocksQueueLimits.ForHeaders;
+            
             if (noBatchesLeft)
             {
                 if (AllHeadersDownloaded)
@@ -156,7 +159,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 batch.MarkRetry();
             }
-            else if (AnyBatchesLeftToBeBuilt())
+            else if (ShouldBuildANewBatch())
             {
                 batch = BuildNewBatch();
             }

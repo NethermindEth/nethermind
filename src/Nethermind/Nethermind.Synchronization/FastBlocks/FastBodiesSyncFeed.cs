@@ -88,12 +88,14 @@ namespace Nethermind.Synchronization.FastBlocks
         }
 
         private bool ShouldFinish => !_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
+        
+        private long BodiesInQueue => _dependencies.Sum(d => d.Value.Count);
 
         public override bool IsMultiFeed => true;
 
         public override AllocationContexts Contexts => AllocationContexts.Bodies;
 
-        private bool AnyBatchesLeftToPrepare()
+        private bool ShouldBuildANewBatch()
         {
             bool shouldDownloadBodies = _syncConfig.DownloadBodiesInFastSync;
             bool allBodiesDownloaded = (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
@@ -101,7 +103,8 @@ namespace Nethermind.Synchronization.FastBlocks
 
             bool noBatchesLeft = !shouldDownloadBodies
                                  || allBodiesDownloaded
-                                 || requestedGenesis;
+                                 || requestedGenesis 
+                                 || BodiesInQueue >= FastBlocksQueueLimits.ForBodies;
 
             if (noBatchesLeft)
             {
@@ -172,7 +175,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 batch.MarkRetry();
             }
-            else if (AnyBatchesLeftToPrepare())
+            else if (ShouldBuildANewBatch())
             {
                 long? lowestInsertedHeader = _blockTree.LowestInsertedHeader?.Number;
                 long? lowestInsertedBody = _blockTree.LowestInsertedBody?.Number;
@@ -369,7 +372,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedBody?.Number} | HANDLED {batch}");
 
-            _syncReport.BodiesInQueue.Update(_dependencies.Sum(d => d.Value.Count));
+            _syncReport.BodiesInQueue.Update(BodiesInQueue);
             return validResponsesCount;
         }
     }
