@@ -27,7 +27,7 @@ namespace Nethermind.Synchronization.FastBlocks
         /// <summary>
         /// Batches that are so close to the lowest inserted body will be prioritized
         /// </summary>
-        public const long ForBodies = 8 * 1024;
+        public const long ForBodies = 2 * 1024;
         
         /// <summary>
         /// Batches that are so close to the lowest inserted receipt will be prioritized
