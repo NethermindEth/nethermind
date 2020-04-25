@@ -58,6 +58,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private Keccak _pivotHash;
 
         public FastBodiesSyncFeed(IBlockTree blockTree, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
+            : base(logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -82,14 +83,14 @@ namespace Nethermind.Synchronization.FastBlocks
             Keccak startBodyHash = lowestInsertedBody?.Hash ?? _pivotHash;
 
             _lowestRequestedBodyHash = startBodyHash;
-            
+
             Activate();
         }
 
         private bool ShouldFinish => !_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
 
         public override bool IsMultiFeed => true;
-        
+
         public override AllocationContexts Contexts => AllocationContexts.Bodies;
 
         private bool AnyBatchesLeftToPrepare()

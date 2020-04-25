@@ -56,7 +56,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, NullReceiptStorage.Instance, stateDB, new MemDb(), syncConfig, LimboLogs.Instance);
             ISyncModeSelector syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, pool, syncConfig, LimboLogs.Instance);
-            StateSyncFeed stateSyncFeed = new StateSyncFeed(codeDb, stateDB, tempDb, syncModeSelector, blockTree, SyncConfig.Default, LimboLogs.Instance);
+            StateSyncFeed stateSyncFeed = new StateSyncFeed(codeDb, stateDB, tempDb, syncModeSelector, blockTree, LimboLogs.Instance);
 
             // so we want to setup a trie in a structure of -> branch into two leaves
             // so we can respond with the branch node and with leaves missing

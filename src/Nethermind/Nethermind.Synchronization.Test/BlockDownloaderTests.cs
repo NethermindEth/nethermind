@@ -373,7 +373,7 @@ namespace Nethermind.Synchronization.Test
             SyncConfig syncConfig = new SyncConfig();
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_blockTree, NullReceiptStorage.Instance, new MemDb(), new MemDb(), syncConfig, LimboLogs.Instance);
             _syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, _peerPool, syncConfig, LimboLogs.Instance);
-            _feed = new FullSyncFeed(_syncModeSelector);
+            _feed = new FullSyncFeed(_syncModeSelector, LimboLogs.Instance);
 
             _responseBuilder = new ResponseBuilder(_blockTree, _testHeaderMapping);
         }

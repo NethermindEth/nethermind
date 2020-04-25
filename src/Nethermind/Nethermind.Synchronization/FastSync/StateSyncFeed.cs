@@ -76,7 +76,8 @@ namespace Nethermind.Synchronization.FastSync
         private StateSyncProgress _syncProgress;
         private int _noResponsesInARow;
 
-        public StateSyncFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, IBlockTree blockTree, ISyncConfig syncConfig, ILogManager logManager)
+        public StateSyncFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, IBlockTree blockTree, ILogManager logManager)
+            : base(logManager)
         {
             _codeDb = codeDb?.Innermost ?? throw new ArgumentNullException(nameof(codeDb));
             _stateDb = stateDb?.Innermost ?? throw new ArgumentNullException(nameof(stateDb));
