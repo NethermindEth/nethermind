@@ -30,6 +30,7 @@ namespace Nethermind.Db.Rocks
     public abstract class DbOnTheRocks : IDbWithSpan
     {
         private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath = new ConcurrentDictionary<string, RocksDb>();
+        private bool _isDisposed;
         internal readonly RocksDb Db;
         internal WriteBatch CurrentBatch { get; private set; }
         internal WriteOptions WriteOptions { get; private set; }
@@ -170,11 +171,21 @@ namespace Nethermind.Db.Rocks
         {
             get
             {
+                if (_isDisposed)
+                {
+                    throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
+                }
+                
                 UpdateReadMetrics();
                 return Db.Get(key);
             }
             set
             {
+                if (_isDisposed)
+                {
+                    throw new ObjectDisposedException($"Attempted to write to a disposed database {Name}");
+                }
+                
                 UpdateWriteMetrics();
                 if (CurrentBatch != null)
                 {
@@ -205,6 +216,11 @@ namespace Nethermind.Db.Rocks
 
         public Span<byte> GetSpan(byte[] key)
         {
+            if (_isDisposed)
+            {
+                throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
+            }
+            
             UpdateReadMetrics();
             return Db.GetSpan(key);
         }
@@ -216,11 +232,21 @@ namespace Nethermind.Db.Rocks
 
         public void Remove(byte[] key)
         {
+            if (_isDisposed)
+            {
+                throw new ObjectDisposedException($"Attempted to delete form a disposed database {Name}");
+            }
+            
             Db.Remove(key, null, WriteOptions);
         }
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
         {
+            if (_isDisposed)
+            {
+                throw new ObjectDisposedException($"Attempted to create an iterator on a disposed database {Name}");
+            }
+            
             Iterator iterator = CreateIterator(ordered);
             return GetAllCore(iterator);
         }
@@ -234,6 +260,11 @@ namespace Nethermind.Db.Rocks
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false)
         {
+            if (_isDisposed)
+            {
+                throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
+            }
+            
             Iterator iterator = CreateIterator(ordered);
             return GetAllValuesCore(iterator);
         }
@@ -252,6 +283,11 @@ namespace Nethermind.Db.Rocks
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAllCore(Iterator iterator)
         {
+            if (_isDisposed)
+            {
+                throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
+            }
+            
             iterator.SeekToFirst();
             while (iterator.Valid())
             {
@@ -268,6 +304,11 @@ namespace Nethermind.Db.Rocks
 
         public bool KeyExists(byte[] key)
         {
+            if (_isDisposed)
+            {
+                throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
+            }
+            
             // seems it has no performance impact
             return Db.Get(key) != null;
 //            return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
@@ -277,30 +318,43 @@ namespace Nethermind.Db.Rocks
 
         public void StartBatch()
         {
+            if (_isDisposed)
+            {
+                throw new ObjectDisposedException($"Attempted to create a batch on a disposed database {Name}");
+            }
+            
             CurrentBatch = new WriteBatch();
         }
 
         public void CommitBatch()
         {
+            if (_isDisposed)
+            {
+                throw new ObjectDisposedException($"Attempted to commit a batch on a disposed database {Name}");
+            }
+            
             Db.Write(CurrentBatch, WriteOptions);
             CurrentBatch.Dispose();
             CurrentBatch = null;
         }
 
-        public void Dispose()
-        {
-            DbsByPath.Remove(_fullPath, out _);
-            Db?.Dispose();
-            CurrentBatch?.Dispose();
-        }
-
         public void Flush()
         {
+            if (_isDisposed)
+            {
+                throw new ObjectDisposedException($"Attempted to flush a disposed database {Name}");
+            }
+            
             Native.Instance.rocksdb_flush(Db.Handle, FlushOptions.DefaultFlushOptions.Handle);
         }
 
         public void Clear()
         {
+            if (_isDisposed)
+            {
+                throw new ObjectDisposedException($"Attempted to clear a disposed database {Name}");
+            }
+            
             try
             {
                 Directory.Delete(_fullPath, true);
@@ -330,6 +384,35 @@ namespace Nethermind.Db.Rocks
                     Handle = IntPtr.Zero;
                 }
             }
+        }
+
+        private void ReleaseUnmanagedResources()
+        {
+            Db?.Dispose();
+            CurrentBatch?.Dispose();
+        }
+
+        private void Dispose(bool disposing)
+        {
+            Flush();
+            _isDisposed = true;
+            
+            ReleaseUnmanagedResources();
+            if (disposing)
+            {
+                DbsByPath.Remove(_fullPath, out _);
+            }
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        ~DbOnTheRocks()
+        {
+            Dispose(false);
         }
     }
 }
