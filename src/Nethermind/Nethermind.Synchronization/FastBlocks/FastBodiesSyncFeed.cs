@@ -250,7 +250,7 @@ namespace Nethermind.Synchronization.FastBlocks
             if (batch != null)
             {
                 _sent.TryAdd(batch, _dummyObject);
-                if ((_blockTree.LowestInsertedBody?.Number ?? 0) - batch.Headers[0].Number < 1024)
+                if ((_blockTree.LowestInsertedBody?.Number ?? 0) - batch.Headers[0].Number < FastBlocksPriorities.ForBodies)
                 {
                     batch.Prioritized = true;
                 }

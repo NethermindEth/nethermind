@@ -276,7 +276,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 throw new InvalidOperationException("Batch needs to have the min number set to determine priority");
             }
             
-            if (_receiptStorage.LowestInsertedReceiptBlock - batch.MinNumber < 2 * 1024)
+            if (_receiptStorage.LowestInsertedReceiptBlock - batch.MinNumber < FastBlocksPriorities.ForReceipts)
             {
                 batch.Prioritized = true;
             }

@@ -164,7 +164,7 @@ namespace Nethermind.Synchronization.FastBlocks
             if (batch != null)
             {
                 _sent.TryAdd(batch, _dummyObject);
-                if (batch.StartNumber >= (_blockTree.LowestInsertedHeader?.Number ?? 0) - 2048)
+                if (batch.StartNumber >= (_blockTree.LowestInsertedHeader?.Number ?? 0) - FastBlocksPriorities.ForHeaders)
                 {
                     batch.Prioritized = true;
                 }
