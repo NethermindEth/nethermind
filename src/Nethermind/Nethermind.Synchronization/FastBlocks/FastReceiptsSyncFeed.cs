@@ -69,6 +69,11 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || _receiptStorage.LowestInsertedReceiptBlock == 1;
 
+        /// <summary>
+        /// Not it is meant to be counting blocks and not receipts
+        /// </summary>
+        private long ReceiptsInQueue => _dependencies.Sum(d => d.Value.Count);
+
         public FastReceiptsSyncFeed(ISpecProvider specProvider, IBlockTree blockTree, IReceiptStorage receiptStorage, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
             : base(logManager)
         {
@@ -109,13 +114,14 @@ namespace Nethermind.Synchronization.FastBlocks
         
         public override AllocationContexts Contexts => AllocationContexts.Receipts;
 
-        private bool AnyBatchesLeftToPrepare()
+        private bool ShouldBuildANewBatch()
         {
             bool shouldDownloadReceipts = _syncConfig.DownloadReceiptsInFastSync;
             bool allReceiptsDownloaded = _receiptStorage.LowestInsertedReceiptBlock == 1;
 
             bool noBatchesLeft = !shouldDownloadReceipts
-                                 || allReceiptsDownloaded;
+                                 || allReceiptsDownloaded 
+                                 || ReceiptsInQueue >= FastBlocksQueueLimits.ForReceipts;
 
             if (noBatchesLeft)
             {
@@ -243,7 +249,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 batch.MarkRetry();
             }
-            else if (AnyBatchesLeftToPrepare())
+            else if (ShouldBuildANewBatch())
             {
                 bool moreBodiesWaiting = (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue)
                                          < (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue);
