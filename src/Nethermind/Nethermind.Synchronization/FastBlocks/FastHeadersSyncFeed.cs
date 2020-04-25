@@ -67,7 +67,9 @@ namespace Nethermind.Synchronization.FastBlocks
         /// </summary>
         private ConcurrentDictionary<long, HeadersSyncBatch> _dependencies = new ConcurrentDictionary<long, HeadersSyncBatch>();
 
-        public bool AllHeadersDownloaded => (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) == 1;
+        private bool AllHeadersDownloaded => (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) == 1;
+        
+        private long HeadersInQueue  => _dependencies.Sum(hd => hd.Value.Response.Length);
 
         public FastHeadersSyncFeed(IBlockTree blockTree, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
         {
@@ -153,10 +155,6 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 batch.MarkRetry();
             }
-            else if (_dependencies.Count > 256000)
-            {
-                batch = BuildBatchToClearTheQueue();
-            }
             else if (AnyBatchesLeftToBeBuilt())
             {
                 batch = BuildNewBatch();
@@ -183,15 +181,6 @@ namespace Nethermind.Synchronization.FastBlocks
             batch.StartNumber = Math.Max(0, _lowestRequestedHeaderNumber - _headersRequestSize);
             batch.RequestSize = (int) Math.Min(_lowestRequestedHeaderNumber, _headersRequestSize);
             _lowestRequestedHeaderNumber = batch.StartNumber;
-            return batch;
-        }
-        
-        private HeadersSyncBatch BuildBatchToClearTheQueue()
-        {
-            HeadersSyncBatch batch = new HeadersSyncBatch();
-            batch.MinNumber = _blockTree.LowestInsertedHeader.Number;
-            batch.StartNumber = _blockTree.LowestInsertedHeader.Number;
-            batch.RequestSize = (int) Math.Min(_blockTree.LowestInsertedHeader.Number, _headersRequestSize);
             return batch;
         }
 
@@ -465,7 +454,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number} | HANDLED {batch}");
 
-            _syncReport.HeadersInQueue.Update(_dependencies.Sum(hd => hd.Value.Response.Length));
+            _syncReport.HeadersInQueue.Update(HeadersInQueue);
             return added;
         }
 
