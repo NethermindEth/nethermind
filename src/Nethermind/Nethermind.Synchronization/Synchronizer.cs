@@ -135,7 +135,7 @@ namespace Nethermind.Synchronization
 
         public async Task StopAsync()
         {
-            await Task.CompletedTask;
+            _syncCancellation?.Cancel();
         }
 
         private void StartFullSyncComponents()

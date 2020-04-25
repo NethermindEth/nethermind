@@ -508,6 +508,14 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     WhenFastSyncWithoutFastBlocksIsConfigured();
                     return this;
                 }
+                
+                public ScenarioBuilder ThenInAnyFastSyncConfiguration()
+                {
+                    WhenBeamSyncIsConfigured();
+                    WhenFastSyncWithFastBlocksIsConfigured();
+                    WhenFastSyncWithoutFastBlocksIsConfigured();
+                    return this;
+                }
 
                 public ScenarioBuilder WhateverThePeerPoolLooks()
                 {
@@ -872,7 +880,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             Scenario.GoesLikeThis()
                 .IfThisNodeFinishedFastBlocksButNotFastSync()
                 .AndDesirablePrePivotPeerIsKnown()
-                .WhenBeamSyncIsConfigured()
+                .ThenInAnyFastSyncConfiguration()
                 .TheSyncModeShouldBe(SyncMode.None);
         }
 
@@ -882,7 +890,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             Scenario.GoesLikeThis()
                 .IfThisNodeJustStartedFullSyncProcessing()
                 .AndGoodPeersAreKnown()
-                .WhenBeamSyncIsConfigured()
+                .ThenInAnyFastSyncConfiguration()
                 .TheSyncModeShouldBe(SyncMode.Full);
         }
         
@@ -892,7 +900,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             Scenario.GoesLikeThis()
                 .IfThisNodeJustStartedFullSyncProcessing()
                 .AndPeersMovedForward()
-                .WhenBeamSyncIsConfigured()
+                .ThenInAnyFastSyncConfiguration()
                 .TheSyncModeShouldBe(SyncMode.Full);
         }
         
@@ -902,7 +910,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             Scenario.GoesLikeThis()
                 .IfThisNodeJustStartedFullSyncProcessing()
                 .AndPeersMovedSlightlyForward()
-                .WhenBeamSyncIsConfigured()
+                .ThenInAnyFastSyncConfiguration()
                 .TheSyncModeShouldBe(SyncMode.Full);
         }
 
@@ -912,7 +920,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             Scenario.GoesLikeThis()
                 .IfThisNodeRecentlyStartedFullSyncProcessing()
                 .AndGoodPeersAreKnown()
-                .WhenBeamSyncIsConfigured()
+                .ThenInAnyFastSyncConfiguration()
                 .TheSyncModeShouldBe(SyncMode.Full);
         }
 
@@ -952,7 +960,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             Scenario.GoesLikeThis()
                 .IfThisNodeIsFullySynced()
                 .PeersFromDesirableBranchAreKnown()
-                .WhenBeamSyncIsConfigured()
+                .ThenInAnyFastSyncConfiguration()
                 .TheSyncModeShouldBe(SyncMode.Full);
         }
 
@@ -962,7 +970,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             Scenario.GoesLikeThis()
                 .IfThisNodeNeedsAFastSyncCatchUp()
                 .AndGoodPeersAreKnown()
-                .WhenBeamSyncIsConfigured()
+                .ThenInAnyFastSyncConfiguration()
                 .TheSyncModeShouldBe(SyncMode.FastSync);
         }
 
@@ -972,7 +980,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             Scenario.GoesLikeThis()
                 .IfThisNodeNearlyNeedsAFastSyncCatchUp()
                 .AndGoodPeersAreKnown()
-                .WhenBeamSyncIsConfigured()
+                .ThenInAnyFastSyncConfiguration()
                 .TheSyncModeShouldBe(SyncMode.Full);
         }
         
@@ -1018,7 +1026,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             Scenario.GoesLikeThis()
                 .IfThisNodeJustFinishedStateSyncCatchUp()
                 .AndGoodPeersAreKnown()
-                .WhenFastSyncWithFastBlocksIsConfigured()
+                .ThenInAnyFastSyncConfiguration()
                 .TheSyncModeShouldBe(SyncMode.Full);
         }
     }
