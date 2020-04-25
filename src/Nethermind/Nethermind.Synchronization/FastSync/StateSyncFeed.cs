@@ -682,7 +682,7 @@ namespace Nethermind.Synchronization.FastSync
                     return await Task.FromResult(result);
                 }
 
-                if (_pendingRequests.Count == 0)
+                if (requestHashes.Count == 0)
                 {
                     // trying to reproduce past behaviour where we can recognize the transition time this way
                     FallAsleep();
