@@ -174,9 +174,9 @@ namespace Nethermind.Synchronization.ParallelSync
                 return true;
             }
             
-            bool isImmediateBeamSync = _syncConfig.ImmediateBeamSync;
+            bool immediateBeamSync = !_syncConfig.DownloadOldHeaders;
             bool anyHeaderDownloaded = _blockTree.LowestInsertedHeader != null;
-            if (isImmediateBeamSync && anyHeaderDownloaded)
+            if (immediateBeamSync && anyHeaderDownloaded)
             {
                 return true;
             }

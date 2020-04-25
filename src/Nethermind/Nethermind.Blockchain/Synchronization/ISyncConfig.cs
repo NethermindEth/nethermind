@@ -43,7 +43,7 @@ namespace Nethermind.Blockchain.Synchronization
         public bool UseGethLimitsInFastBlocks { get; set; }
         
         [ConfigItem(Description = "If set to 'false' then beam sync will only download recent blockas.", DefaultValue = "true")]
-        bool DownloadOldHeadersInBeamSync { get; set; }
+        bool DownloadOldHeaders { get; set; }
         
         [ConfigItem(Description = "If set to 'true' then the block bodies will be downloaded in the Fast Sync mode.", DefaultValue = "true")]
         bool DownloadBodiesInFastSync { get; set; }
@@ -60,8 +60,6 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "Hash of the pivot block for the Fast Blocks sync.", DefaultValue = "null")]
         string PivotHash { get; set; }
 
-        bool ImmediateBeamSync => BeamSync && !DownloadOldHeadersInBeamSync;
-        
         long PivotNumberParsed => LongConverter.FromString(PivotNumber ?? "0");
 
         UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0x0");
