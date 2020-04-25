@@ -53,6 +53,7 @@ namespace Nethermind.Synchronization.BeamSync
         private ILogger _logger;
 
         public BeamSyncDb(IDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, ILogManager logManager)
+            : base(logManager)
         {
             _logger = logManager.GetClassLogger<BeamSyncDb>();
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));

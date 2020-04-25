@@ -263,6 +263,24 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     );
                     return this;
                 }
+                
+                public ScenarioBuilder IfThisNodeJustFinishedStateSyncButNeedsToCatchUpToHeaders()
+                {
+                    _syncProgressSetups.Add(
+                        () =>
+                        {
+                            SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number - MultiSyncModeSelector.FastSyncLag);
+                            SyncProgressResolver.FindBestFullBlock().Returns(0);
+                            SyncProgressResolver.FindBestBeamState().Returns(0);
+                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - MultiSyncModeSelector.FastSyncLag - 7);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(0);
+                            SyncProgressResolver.IsFastBlocksFinished().Returns(true);
+                            SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
+                            return "just finished state sync and needs to catch up";
+                        }
+                    );
+                    return this;
+                }
 
                 public ScenarioBuilder IfThisNodeJustFinishedFastBlocksAndFastSync()
                 {
@@ -496,6 +514,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     IfThisNodeFinishedFastBlocksButNotFastSync();
                     IfThisNodeJustFinishedFastBlocksAndFastSync();
                     IfThisNodeFinishedStateSyncButNotFastBlocks();
+                    IfThisNodeJustFinishedStateSyncButNeedsToCatchUpToHeaders();
                     IfThisNodeJustFinishedStateSyncAndFastBlocks();
                     IfThisNodeJustStartedFullSyncProcessing();
                     IfThisNodeRecentlyStartedFullSyncProcessing();
@@ -956,6 +975,16 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .AndPeersMovedSlightlyForward()
                 .WhenBeamSyncIsConfigured()
                 .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.FastSync);
+        }
+        
+        [Test]
+        public void When_state_sync_finished_but_needs_to_catch_up()
+        {
+            Scenario.GoesLikeThis()
+                .IfThisNodeJustFinishedStateSyncButNeedsToCatchUpToHeaders()
+                .AndGoodPeersAreKnown()
+                .WhenBeamSyncIsConfigured()
+                .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.Beam);
         }
     }
 }

@@ -17,6 +17,7 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
@@ -27,7 +28,8 @@ namespace Nethermind.Synchronization.Blocks
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly ISyncConfig _syncConfig;
 
-        public FastSyncFeed(ISyncModeSelector syncModeSelector, ISyncConfig syncConfig)
+        public FastSyncFeed(ISyncModeSelector syncModeSelector, ISyncConfig syncConfig, ILogManager logManager)
+            : base(logManager)
         {
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));

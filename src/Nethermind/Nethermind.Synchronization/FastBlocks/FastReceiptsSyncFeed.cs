@@ -70,6 +70,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || _receiptStorage.LowestInsertedReceiptBlock == 1;
 
         public FastReceiptsSyncFeed(ISpecProvider specProvider, IBlockTree blockTree, IReceiptStorage receiptStorage, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
+            : base(logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
@@ -275,7 +276,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 throw new InvalidOperationException("Batch needs to have the min number set to determine priority");
             }
             
-            if (_receiptStorage.LowestInsertedReceiptBlock - batch.MinNumber < 2 * 1024)
+            if (_receiptStorage.LowestInsertedReceiptBlock - batch.MinNumber < FastBlocksPriorities.ForReceipts)
             {
                 batch.Prioritized = true;
             }

@@ -135,7 +135,7 @@ namespace Nethermind.Synchronization
 
         private void StartFullSyncComponents()
         {
-            FullSyncFeed fullSyncFeed = new FullSyncFeed(_syncMode);
+            FullSyncFeed fullSyncFeed = new FullSyncFeed(_syncMode, LimboLogs.Instance);
             BlockDownloader fullSyncBlockDownloader = new BlockDownloader(fullSyncFeed, _syncPeerPool, _blockTree, _blockValidator, _sealValidator, _syncReport, _receiptStorage, _specProvider, _logManager);
             fullSyncBlockDownloader.SyncEvent += DownloaderOnSyncEvent;
             fullSyncBlockDownloader.Start(_syncCancellation.Token).ContinueWith(t =>
@@ -153,7 +153,7 @@ namespace Nethermind.Synchronization
 
         private void StartStateSyncComponents()
         {
-            StateSyncFeed stateSyncFeed = new StateSyncFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _dbProvider.BeamStateDb, _syncMode, _blockTree, _syncConfig, _logManager);
+            StateSyncFeed stateSyncFeed = new StateSyncFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _dbProvider.BeamStateDb, _syncMode, _blockTree, _logManager);
             StateSyncDispatcher stateSyncDispatcher = new StateSyncDispatcher(stateSyncFeed, _syncPeerPool, new StateSyncAllocationStrategyFactory(), _logManager);
             Task syncDispatcherTask = stateSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
             {
@@ -217,7 +217,7 @@ namespace Nethermind.Synchronization
 
         private void StartFastSyncComponents()
         {
-            FastSyncFeed fastSyncFeed = new FastSyncFeed(_syncMode, _syncConfig);
+            FastSyncFeed fastSyncFeed = new FastSyncFeed(_syncMode, _syncConfig, _logManager);
             BlockDownloader downloader = new BlockDownloader(fastSyncFeed, _syncPeerPool, _blockTree, _blockValidator, _sealValidator, _syncReport, _receiptStorage, _specProvider, _logManager);
             downloader.SyncEvent += DownloaderOnSyncEvent;
 

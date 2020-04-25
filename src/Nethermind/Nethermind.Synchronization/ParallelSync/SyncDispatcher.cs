@@ -85,7 +85,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     if(Logger.IsDebug) Logger.Debug($"{GetType().Name} is going to sleep.");
                     await Task.Delay(50);
                     await dormantTaskLocal.Task;
-                    if(Logger.IsDebug) Logger.Debug($"{GetType().Name} got activated.");
+                    if(Logger.IsWarn) Logger.Warn($"{GetType().Name} got activated.");
                 }
                 else if (currentStateLocal == SyncFeedState.Active)
                 {
@@ -207,11 +207,8 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 if (_currentFeedState != state)
                 {
-                    if (!Feed.IsMultiFeed)
-                    {
-                        if(Logger.IsDebug) Logger.Debug($"{Feed.GetType().Name} state changed to {state}");
-                    }
-                    
+                    if(Logger.IsDebug) Logger.Debug($"{Feed.GetType().Name} state changed to {state}");
+
                     _currentFeedState = state;
                     TaskCompletionSource<object> newDormantStateTask = null;
                     if (state == SyncFeedState.Dormant)

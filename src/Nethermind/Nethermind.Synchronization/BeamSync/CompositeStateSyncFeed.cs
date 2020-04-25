@@ -29,6 +29,7 @@ namespace Nethermind.Synchronization.BeamSync
         private ILogger _logger;
 
         public CompositeStateSyncFeed(ILogManager logManager, params ISyncFeed<T>[] subFeeds)
+            : base(logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _subFeeds = subFeeds;
