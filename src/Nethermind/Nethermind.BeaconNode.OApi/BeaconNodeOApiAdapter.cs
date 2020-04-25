@@ -192,27 +192,6 @@
 //         //     throw new NotImplementedException();
 //         // }
 //         //
-//         // /// <summary>Get validator duties for the requested validators.</summary>
-//         // /// <param name="validator_pubkeys">An array of hex-encoded BLS public keys</param>
-//         // /// <returns>Success response</returns>
-//         // public async Task<ICollection<ValidatorDuty>> DutiesAsync(System.Collections.Generic.IEnumerable<byte[]> validator_pubkeys, ulong? epoch)
-//         // {
-//         //     IEnumerable<BlsPublicKey> publicKeys = validator_pubkeys.Select(x => new BlsPublicKey(x));
-//         //     Epoch targetEpoch = epoch.HasValue ? new Epoch((ulong)epoch) : Epoch.None;
-//         //     var duties = _beaconNode.ValidatorDutiesAsync(publicKeys, targetEpoch, CancellationToken.None);
-//         //     List<ValidatorDuty> result = new List<ValidatorDuty>();
-//         //     await foreach(var duty in duties)
-//         //     {
-//         //         ValidatorDuty validatorDuty = new ValidatorDuty();
-//         //         validatorDuty.Validator_pubkey = duty.ValidatorPublicKey.Bytes;
-//         //         validatorDuty.Attestation_slot = duty.AttestationSlot;
-//         //         validatorDuty.Attestation_shard = (ulong)duty.AttestationShard;
-//         //         validatorDuty.Block_proposal_slot = duty.BlockProposalSlot == Slot.None ? null : (ulong?)duty.BlockProposalSlot;
-//         //         result.Add(validatorDuty);
-//         //     }
-//         //     return result;
-//         // }
-//         //
 
 //         // private static Core2.Containers.IndexedAttestation MapIndexedAttestation(BeaconNode.OApi.IndexedAttestation indexedAttestation)
 //         // {

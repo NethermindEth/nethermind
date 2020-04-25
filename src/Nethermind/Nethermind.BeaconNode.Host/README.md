@@ -42,7 +42,7 @@ Other GET queries:
 * genesis time: ```https://localhost:8230/node/genesis_time```
 * syncing: ```https://localhost:8230/node/syncing```
 * fork: ```https://localhost:8230/node/fork```
-* validator duties: ```https://localhost:8230/validator/duties?validator_pubkeys=0xa1c76af1545d7901214bb6be06be5d9e458f8e989c19373a920f0018327c83982f6a2ac138260b8def732cb366411ddc&validator_pubkeys=0x94f0c8535601596eb2165adb28ebe495891a3e4ea77ef501e7790cccb281827d377a5a8d4c200e3595d3f38f8633b480&validator_pubkeys=0x81283b7a20e1ca460ebd9bbd77005d557370cabb1f9a44f530c4c4c66230f675f8df8b4c2818851aa7d77a80ca5a4a5e&epoch=0```
+* validator duties: ```https://localhost:8230/validator/duties?validator_pubkeys=0xab8d3a9bcc160e518fac0756d3e192c74789588ed4a2b1debf0c78f78479ca8edb05b12ce21103076df6af4eb8756ff9&validator_pubkeys=0xa3a32b0f8b4ddb83f1a0a853d81dd725dfe577d4f4c3db8ece52ce2b026eca84815c1a7e8e92a4de3d755733bf7e4a9b&epoch=0```
 * get an unsigned block: ```https://localhost:8230/validator/block?slot=1&randao_reveal=0xa3426b6391a29c88f2280428d5fdae9e20f4c75a8d38d0714e3aa5b9e55594dbd555c4bc685191e83d39158c3be9744d06adc34b21d2885998a206e3b3fd435eab424cf1c01b8fd562deb411348a601e83d7332d8774d1fd3bf8b88d7a33c67c```
 
 Note: With QuickStart validator count 64, validators index 20, with public key 0xa1c76af1..., is the validator for slot 1. The corresponding randao signature for fork 0x00000000, at epoch 0, that must be used is 0xa3426b63... (other values will fail validation).
