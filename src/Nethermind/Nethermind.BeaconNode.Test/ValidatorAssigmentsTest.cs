@@ -84,6 +84,9 @@ namespace Nethermind.BeaconNode.Test
             // Assert
             Console.WriteLine("Validator [{0}] {1} in slot {2} committee {3}", 
                 validatorIndex, state.Validators[(int)validatorIndex].PublicKey, committeeAssignment.Slot, committeeAssignment.CommitteeIndex);
+
+            committeeAssignment.ShouldNotBe(CommitteeAssignment.None);
+            committeeAssignment.Committee.Count.ShouldBeGreaterThan(0);
             
             Slot expectedSlot = new Slot(slot);
             CommitteeIndex expectedCommitteeIndex = new CommitteeIndex(committeeIndex);
@@ -144,7 +147,7 @@ namespace Nethermind.BeaconNode.Test
             // Assert
             validatorDuty.ValidatorPublicKey.ShouldBe(validatorPublicKey);
 
-            Slot expectedBlockProposalSlot = blockProposalSlot.HasValue ? new Slot(blockProposalSlot.Value) : Slot.None;
+            Slot? expectedBlockProposalSlot = (Slot?) blockProposalSlot;
             Slot expectedAttestationSlot = new Slot(attestationSlot);
             Shard expectedAttestationShard = new Shard(attestationShard);
             
@@ -212,7 +215,7 @@ namespace Nethermind.BeaconNode.Test
             // Assert
             validatorDuty.ValidatorPublicKey.ShouldBe(validatorPublicKey);
 
-            Slot expectedBlockProposalSlot = blockProposalSlot.HasValue ? new Slot(blockProposalSlot.Value) : Slot.None;
+            Slot? expectedBlockProposalSlot = (Slot?) blockProposalSlot;
             Slot expectedAttestationSlot = new Slot(attestationSlot);
             Shard expectedAttestationShard = new Shard(attestationShard);
             
@@ -312,8 +315,7 @@ namespace Nethermind.BeaconNode.Test
                 // Assert
                 validatorDuty.ValidatorPublicKey.ShouldBe(validatorPublicKey, $"Test {dataIndex}, public key {validatorPublicKey}, epoch {targetEpoch}");
 
-                Slot expectedBlockProposalSlot =
-                    blockProposalSlot.HasValue ? new Slot(blockProposalSlot.Value) : Slot.None;
+                Slot? expectedBlockProposalSlot = (Slot?)blockProposalSlot;
                 Slot expectedAttestationSlot = new Slot(attestationSlot);
                 Shard expectedAttestationShard = new Shard(attestationShard);
 

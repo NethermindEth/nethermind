@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
@@ -21,8 +22,8 @@ namespace Nethermind.Core2.Api
 {
     public class ValidatorDuty
     {
-        public ValidatorDuty(BlsPublicKey validatorPublicKey, Slot attestationSlot, Shard attestationShard,
-            Slot blockProposalSlot)
+        public ValidatorDuty(BlsPublicKey validatorPublicKey, Slot? attestationSlot, Shard attestationShard,
+            Slot? blockProposalSlot)
         {
             ValidatorPublicKey = validatorPublicKey;
             AttestationSlot = attestationSlot;
@@ -31,8 +32,8 @@ namespace Nethermind.Core2.Api
         }
 
         public Shard AttestationShard { get; }
-        public Slot AttestationSlot { get; }
-        public Slot BlockProposalSlot { get; }
+        public Slot? AttestationSlot { get; }
+        public Slot? BlockProposalSlot { get; }
         public BlsPublicKey ValidatorPublicKey { get; }
     }
 }

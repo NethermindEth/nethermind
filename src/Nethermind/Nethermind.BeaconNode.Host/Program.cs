@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using Essential.LoggerProvider;
 using Microsoft.AspNetCore.Hosting;
@@ -121,6 +122,7 @@ namespace Nethermind.BeaconNode.Host
 
         public static void Main(string[] args)
         {
+            Activity.DefaultIdFormat = ActivityIdFormat.W3C;
             CreateHostBuilder(args).Build().Run();
         }
     }

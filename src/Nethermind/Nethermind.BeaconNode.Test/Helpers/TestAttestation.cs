@@ -59,20 +59,17 @@ namespace Nethermind.BeaconNode.Test.Helpers
         }
 
         // def get_valid_attestation(spec, state, slot=None, index=None, signed=False):
-        public static Attestation GetValidAttestation(IServiceProvider testServiceProvider, BeaconState state, Slot slot, CommitteeIndex index, bool signed)
+        public static Attestation GetValidAttestation(IServiceProvider testServiceProvider, BeaconState state, Slot? slot, CommitteeIndex index, bool signed)
         {
             BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
-            if (slot == Slot.None)
-            {
-                slot = state.Slot;
-            }
+            Slot slotValue = slot.GetValueOrDefault(state.Slot);
             if (index == CommitteeIndex.None)
             {
                 index = new CommitteeIndex(0);
             }
 
-            AttestationData attestationData = BuildAttestationData(testServiceProvider, state, slot, index);
+            AttestationData attestationData = BuildAttestationData(testServiceProvider, state, slotValue, index);
 
             IReadOnlyList<ValidatorIndex> beaconCommittee = beaconStateAccessor.GetBeaconCommittee(state, attestationData.Slot, attestationData.Index);
 

@@ -174,6 +174,10 @@ namespace Nethermind.BeaconNode
             LoggerMessage.Define(LogLevel.Warning,
                 new EventId(4408, nameof(ApiErrorPublishBlock)),
                 "Exception result from API publish Block (post).");
+        public static readonly Action<ILogger, Epoch, BlsPublicKey, Exception?> ValidatorDoesNotHaveAttestationSlot =
+            LoggerMessage.Define<Epoch, BlsPublicKey>(LogLevel.Warning,
+                new EventId(4409, nameof(ValidatorDoesNotHaveAttestationSlot)),
+                "No attestation slot during epoch {Epoch} for validator {ValidatorPublicKey}.");
 
         public static readonly Action<ILogger, long, Exception?> QuickStartClockCreated =
             LoggerMessage.Define<long>(LogLevel.Warning,

@@ -26,6 +26,7 @@ using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
+using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode
 {
@@ -129,8 +130,8 @@ namespace Nethermind.BeaconNode
 
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
 
-            Slot startSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(epoch);
-            Slot endSlot = startSlot + new Slot(timeParameters.SlotsPerEpoch);
+            Slot startSlotInclusive = _beaconChainUtility.ComputeStartSlotOfEpoch(epoch);
+            Slot endSlotExclusive = startSlotInclusive + new Slot(timeParameters.SlotsPerEpoch);
 
             Duty duty = new Duty()
             {
@@ -143,14 +144,14 @@ namespace Nethermind.BeaconNode
             {
                 // Clone for next or current, so that it can be safely mutated (transitioned forward)
                 BeaconState state = BeaconState.Clone(headState);
-                _beaconStateTransition.ProcessSlots(state, startSlot);
+                _beaconStateTransition.ProcessSlots(state, startSlotInclusive);
 
                 // Check base state
                 ValidatorIndex validatorIndex = CheckValidatorIndex(state, validatorPublicKey);
                 duty = CheckStateDuty(state, validatorIndex, duty);
 
                 // Check future states
-                duty = CheckFutureSlots(state, endSlot, validatorIndex, duty);
+                duty = CheckFutureSlots(state, endSlotExclusive, validatorIndex, duty);
             }
             else if (epoch == currentEpoch)
             {
@@ -164,18 +165,18 @@ namespace Nethermind.BeaconNode
                 duty = CheckStateDuty(state, validatorIndex, duty);
 
                 // Check future states
-                duty = CheckFutureSlots(state, endSlot, validatorIndex, duty);
+                duty = CheckFutureSlots(state, endSlotExclusive, validatorIndex, duty);
 
                 // Check historical states
-                if (startSlot < fromSlot && (duty.AttestationSlot == Slot.None || duty.BlockProposalSlot == Slot.None))
+                if (startSlotInclusive < fromSlot && (!duty.AttestationSlot.HasValue || !duty.BlockProposalSlot.HasValue))
                 {
-                    duty = await CheckHistoricalSlotsAsync(_store, historicalBlockRoots, fromSlot, startSlot,
+                    duty = await CheckHistoricalSlotsAsync(_store, historicalBlockRoots, fromSlot, startSlotInclusive,
                         validatorIndex, duty).ConfigureAwait(false);
                 }
             }
             else
             {
-                Root endRoot = await _forkChoice.GetAncestorAsync(_store, head, endSlot - Slot.One);
+                Root endRoot = await _forkChoice.GetAncestorAsync(_store, head, endSlotExclusive - Slot.One);
                 BeaconState state = await _store.GetBlockStateAsync(endRoot).ConfigureAwait(false);
 
                 // Check base state
@@ -187,9 +188,14 @@ namespace Nethermind.BeaconNode
                 if (duty.AttestationSlot == Slot.None || duty.BlockProposalSlot == Slot.None)
                 {
                     Slot fromSlot = state.Slot;
-                    duty = await CheckHistoricalSlotsAsync(_store, historicalBlockRoots, fromSlot, startSlot,
+                    duty = await CheckHistoricalSlotsAsync(_store, historicalBlockRoots, fromSlot, startSlotInclusive,
                         validatorIndex, duty).ConfigureAwait(false);
                 }
+            }
+
+            if (!duty.AttestationSlot.HasValue)
+            {
+                if (_logger.IsWarn()) Log.ValidatorDoesNotHaveAttestationSlot(_logger, epoch, validatorPublicKey, null);
             }
 
             // HACK: Shards were removed from Phase 0, but analogy is committee index, so use for initial testing.
@@ -206,10 +212,10 @@ namespace Nethermind.BeaconNode
             return stateProposerIndex.Equals(validatorIndex);
         }
 
-        private Duty CheckFutureSlots(BeaconState state, Slot endSlot, ValidatorIndex validatorIndex, Duty duty)
+        private Duty CheckFutureSlots(BeaconState state, Slot endSlotExclusive, ValidatorIndex validatorIndex, Duty duty)
         {
             Slot nextSlot = state.Slot + Slot.One;
-            while (nextSlot < endSlot && (duty.AttestationSlot == Slot.None || duty.BlockProposalSlot == Slot.None))
+            while (nextSlot < endSlotExclusive && (!duty.AttestationSlot.HasValue || !duty.BlockProposalSlot.HasValue))
             {
                 _beaconStateTransition.ProcessSlots(state, nextSlot);
                 duty = CheckStateDuty(state, validatorIndex, duty);
@@ -220,7 +226,7 @@ namespace Nethermind.BeaconNode
         }
 
         private async Task<Duty> CheckHistoricalSlotsAsync(IStore store, IReadOnlyList<Root> historicalBlockRoots,
-            Slot fromSlot, Slot startSlot, ValidatorIndex validatorIndex, Duty duty)
+            Slot fromSlot, Slot startSlotInclusive, ValidatorIndex validatorIndex, Duty duty)
         {
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             Slot previousSlot = fromSlot;
@@ -233,8 +239,8 @@ namespace Nethermind.BeaconNode
 
                 duty = CheckStateDuty(previousState, validatorIndex, duty);
 
-                if (previousSlot <= startSlot ||
-                    (duty.AttestationSlot != Slot.None && duty.BlockProposalSlot != Slot.None))
+                if (previousSlot <= startSlotInclusive ||
+                    (duty.AttestationSlot.HasValue && duty.BlockProposalSlot.HasValue))
                 {
                     break;
                 }
@@ -246,7 +252,7 @@ namespace Nethermind.BeaconNode
         private Duty CheckStateDuty(BeaconState state, ValidatorIndex validatorIndex, Duty duty)
         {
             // check attestation
-            if (duty.AttestationSlot == Slot.None)
+            if (!duty.AttestationSlot.HasValue)
             {
                 ulong committeeCount = _beaconStateAccessor.GetCommitteeCountAtSlot(state, state.Slot);
                 for (CommitteeIndex index = CommitteeIndex.Zero;
@@ -264,7 +270,7 @@ namespace Nethermind.BeaconNode
             }
 
             // check proposer
-            if (duty.BlockProposalSlot == Slot.None)
+            if (!duty.BlockProposalSlot.HasValue)
             {
                 bool isProposer = IsProposer(state, validatorIndex);
                 if (isProposer)
@@ -298,8 +304,8 @@ namespace Nethermind.BeaconNode
         private class Duty
         {
             public CommitteeIndex AttestationCommitteeIndex { get; set; }
-            public Slot AttestationSlot { get; set; }
-            public Slot BlockProposalSlot { get; set; }
+            public Slot? AttestationSlot { get; set; }
+            public Slot? BlockProposalSlot { get; set; }
         }
 
         private ValidatorIndex FindValidatorIndexByPublicKey(BeaconState state, BlsPublicKey validatorPublicKey)
