@@ -113,7 +113,7 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             bool genesisHeaderRequested = _lowestRequestedHeaderNumber == 0;
             
-            bool isImmediateSync = !_syncConfig.DownloadOldHeaders;
+            bool isImmediateSync = !_syncConfig.DownloadHeadersInFastSync;
 
             bool noBatchesLeft = AllHeadersDownloaded
                                  || genesisHeaderRequested

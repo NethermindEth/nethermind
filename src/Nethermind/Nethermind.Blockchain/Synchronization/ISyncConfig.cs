@@ -43,7 +43,7 @@ namespace Nethermind.Blockchain.Synchronization
         public bool UseGethLimitsInFastBlocks { get; set; }
         
         [ConfigItem(Description = "If set to 'false' then beam sync will only download recent blockas.", DefaultValue = "true")]
-        bool DownloadOldHeaders { get; set; }
+        bool DownloadHeadersInFastSync { get; set; }
         
         [ConfigItem(Description = "If set to 'true' then the block bodies will be downloaded in the Fast Sync mode.", DefaultValue = "true")]
         bool DownloadBodiesInFastSync { get; set; }
