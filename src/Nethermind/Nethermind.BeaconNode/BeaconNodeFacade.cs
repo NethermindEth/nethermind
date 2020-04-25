@@ -213,7 +213,7 @@ namespace Nethermind.BeaconNode
                 try
                 {
                     validatorDuty =
-                        await _validatorAssignments.GetValidatorDutyAsync(validatorPublicKey, epoch ?? Epoch.None)
+                        await _validatorAssignments.GetValidatorDutyAsync(validatorPublicKey, epoch)
                             .ConfigureAwait(false);
                 }
                 catch (ArgumentOutOfRangeException outOfRangeException) when (outOfRangeException.ParamName == "epoch")

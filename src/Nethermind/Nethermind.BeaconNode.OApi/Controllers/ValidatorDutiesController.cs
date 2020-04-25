@@ -56,7 +56,7 @@ namespace Nethermind.BeaconNode.OApi.Controllers
         public async Task<IActionResult> GetAsync([FromQuery] byte[][] validator_pubkeys, [FromQuery] ulong? epoch, CancellationToken cancellationToken)
         {
             IList<BlsPublicKey> publicKeys = validator_pubkeys.Select(x => new BlsPublicKey(x)).ToList();
-            Epoch targetEpoch = epoch.HasValue ? new Epoch((ulong)epoch) : Epoch.None;
+            Epoch? targetEpoch = (Epoch?)epoch;
             ApiResponse<IList<ValidatorDuty>> apiResponse =
                 await _beaconNode.ValidatorDutiesAsync(publicKeys, targetEpoch, cancellationToken).ConfigureAwait(false);
             switch (apiResponse.StatusCode)

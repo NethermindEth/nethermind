@@ -110,7 +110,7 @@ namespace Nethermind.BeaconNode
             return CommitteeAssignment.None;
         }
 
-        public async Task<ValidatorDuty> GetValidatorDutyAsync(BlsPublicKey validatorPublicKey, Epoch epoch)
+        public async Task<ValidatorDuty> GetValidatorDutyAsync(BlsPublicKey validatorPublicKey, Epoch? optionalEpoch)
         {
             // NOTE: A validator may have two proposal slots in an epoch (in small test networks),
             // however this routine will always only return the first one, i.e. always the same
@@ -120,13 +120,10 @@ namespace Nethermind.BeaconNode
             BeaconState headState = await _store.GetBlockStateAsync(head).ConfigureAwait(false);
 
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(headState);
-            Epoch nextEpoch = currentEpoch + Epoch.One;
+            Epoch epoch = optionalEpoch ?? currentEpoch;
 
-            if (epoch == Epoch.None)
-            {
-                epoch = currentEpoch;
-            }
-            else if (epoch > nextEpoch)
+            Epoch nextEpoch = currentEpoch + Epoch.One;
+            if (epoch > nextEpoch)
             {
                 throw new ArgumentOutOfRangeException(nameof(epoch), epoch,
                     $"Duties cannot look ahead more than the next epoch {nextEpoch}.");
