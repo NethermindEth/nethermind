@@ -173,9 +173,8 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 return true;
             }
-
-            bool isBeamSync = _syncConfig.BeamSync;
-            bool isImmediateBeamSync = isBeamSync && !_syncConfig.DownloadOldHeadersInBeamSync;
+            
+            bool isImmediateBeamSync = _syncConfig.ImmediateBeamSync;
             bool anyHeaderDownloaded = _blockTree.LowestInsertedHeader != null;
             if (isImmediateBeamSync && anyHeaderDownloaded)
             {

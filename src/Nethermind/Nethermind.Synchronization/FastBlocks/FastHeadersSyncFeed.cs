@@ -112,16 +112,17 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool ShouldBuildANewBatch()
         {
             bool genesisHeaderRequested = _lowestRequestedHeaderNumber == 0;
-            bool downloadInBeamSync = _syncConfig.DownloadOldHeadersInBeamSync;
+            
+            bool isImmediateBeamSync = _syncConfig.ImmediateBeamSync;
 
             bool noBatchesLeft = AllHeadersDownloaded
                                  || genesisHeaderRequested
                                  || HeadersInQueue >= FastBlocksQueueLimits.ForHeaders
-                                 || !downloadInBeamSync && AnyHeaderDownloaded;
+                                 || isImmediateBeamSync && AnyHeaderDownloaded;
 
             if (noBatchesLeft)
             {
-                if (AllHeadersDownloaded || !downloadInBeamSync && AnyHeaderDownloaded)
+                if (AllHeadersDownloaded || isImmediateBeamSync && AnyHeaderDownloaded)
                 {
                     Finish();
                     PostFinishCleanUp();

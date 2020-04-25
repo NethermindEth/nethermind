@@ -191,7 +191,7 @@ namespace Nethermind.Synchronization
                 }
             });
 
-            if (_syncConfig.DownloadOldHeadersInBeamSync)
+            if (!_syncConfig.ImmediateBeamSync)
             {
                 if (_syncConfig.DownloadBodiesInFastSync)
                 {

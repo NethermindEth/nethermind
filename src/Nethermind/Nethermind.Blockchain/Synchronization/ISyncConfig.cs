@@ -60,6 +60,8 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "Hash of the pivot block for the Fast Blocks sync.", DefaultValue = "null")]
         string PivotHash { get; set; }
 
+        bool ImmediateBeamSync => BeamSync && !DownloadOldHeadersInBeamSync;
+        
         long PivotNumberParsed => LongConverter.FromString(PivotNumber ?? "0");
 
         UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0x0");
