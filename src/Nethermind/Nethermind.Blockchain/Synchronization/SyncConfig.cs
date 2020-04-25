@@ -32,6 +32,7 @@ namespace Nethermind.Blockchain.Synchronization
         public bool UseGethLimitsInFastBlocks { get; set; } = true;
         public bool BeamSync { get; set; }
         public bool FastSync { get; set; }
+        public bool DownloadOldHeadersInBeamSync { get; set; } = true;
         public bool DownloadBodiesInFastSync { get; set; } = true;
         public bool DownloadReceiptsInFastSync { get; set; } = true;
         public string PivotTotalDifficulty { get; set; }

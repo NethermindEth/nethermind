@@ -191,33 +191,42 @@ namespace Nethermind.Synchronization
                 }
             });
 
-            _bodiesFeed = new FastBodiesSyncFeed(_blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
-            BodiesSyncDispatcher bodiesDispatcher = new BodiesSyncDispatcher(_bodiesFeed, _syncPeerPool, fastFactory, _logManager);
-            Task bodiesTask = bodiesDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
+            if (_syncConfig.DownloadOldHeadersInBeamSync)
             {
-                if (t.IsFaulted)
+                if (_syncConfig.DownloadBodiesInFastSync)
                 {
-                    if (_logger.IsError) _logger.Error("Fast bodies sync failed", t.Exception);
+                    _bodiesFeed = new FastBodiesSyncFeed(_blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
+                    BodiesSyncDispatcher bodiesDispatcher = new BodiesSyncDispatcher(_bodiesFeed, _syncPeerPool, fastFactory, _logManager);
+                    Task bodiesTask = bodiesDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
+                    {
+                        if (t.IsFaulted)
+                        {
+                            if (_logger.IsError) _logger.Error("Fast bodies sync failed", t.Exception);
+                        }
+                        else
+                        {
+                            if (_logger.IsInfo) _logger.Info("Fast blocks bodies task completed.");
+                        }
+                    });
                 }
-                else
-                {
-                    if (_logger.IsInfo) _logger.Info("Fast blocks bodies task completed.");
-                }
-            });
 
-            FastReceiptsSyncFeed receiptsFeed = new FastReceiptsSyncFeed(_specProvider, _blockTree, _receiptStorage, _syncPeerPool, _syncConfig, _syncReport, _logManager);
-            ReceiptsSyncDispatcher receiptsDispatcher = new ReceiptsSyncDispatcher(receiptsFeed, _syncPeerPool, fastFactory, _logManager);
-            Task receiptsTask = receiptsDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
-            {
-                if (t.IsFaulted)
+                if (_syncConfig.DownloadReceiptsInFastSync)
                 {
-                    if (_logger.IsError) _logger.Error("Fast receipts sync failed", t.Exception);
+                    FastReceiptsSyncFeed receiptsFeed = new FastReceiptsSyncFeed(_specProvider, _blockTree, _receiptStorage, _syncPeerPool, _syncConfig, _syncReport, _logManager);
+                    ReceiptsSyncDispatcher receiptsDispatcher = new ReceiptsSyncDispatcher(receiptsFeed, _syncPeerPool, fastFactory, _logManager);
+                    Task receiptsTask = receiptsDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
+                    {
+                        if (t.IsFaulted)
+                        {
+                            if (_logger.IsError) _logger.Error("Fast receipts sync failed", t.Exception);
+                        }
+                        else
+                        {
+                            if (_logger.IsInfo) _logger.Info("Fast blocks receipts task completed.");
+                        }
+                    });
                 }
-                else
-                {
-                    if (_logger.IsInfo) _logger.Info("Fast blocks receipts task completed.");
-                }
-            });
+            }
         }
 
         private void StartFastSyncComponents()

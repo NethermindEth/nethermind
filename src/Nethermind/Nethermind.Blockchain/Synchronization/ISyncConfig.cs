@@ -42,6 +42,9 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "If set to 'true' then in the Fast Blocks mode Nethermind generates smaller requests to avoid Geth from disconnecting. On the Geth heavy networks (mainnet) it is desired while on Parity or Nethermind heavy networks (Goerli, AuRa) it slows down the sync by a factor of ~4", DefaultValue = "true")]
         public bool UseGethLimitsInFastBlocks { get; set; }
         
+        [ConfigItem(Description = "If set to 'false' then beam sync will only download recent blockas.", DefaultValue = "true")]
+        bool DownloadOldHeadersInBeamSync { get; set; }
+        
         [ConfigItem(Description = "If set to 'true' then the block bodies will be downloaded in the Fast Sync mode.", DefaultValue = "true")]
         bool DownloadBodiesInFastSync { get; set; }
         

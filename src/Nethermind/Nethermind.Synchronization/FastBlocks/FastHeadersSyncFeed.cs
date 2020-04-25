@@ -68,8 +68,9 @@ namespace Nethermind.Synchronization.FastBlocks
         private ConcurrentDictionary<long, HeadersSyncBatch> _dependencies = new ConcurrentDictionary<long, HeadersSyncBatch>();
 
         private bool AllHeadersDownloaded => (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) == 1;
-        
-        private long HeadersInQueue  => _dependencies.Sum(hd => hd.Value.Response.Length);
+        private bool AnyHeaderDownloaded => _blockTree.LowestInsertedHeader != null;
+
+        private long HeadersInQueue => _dependencies.Sum(hd => hd.Value.Response.Length);
 
         public FastHeadersSyncFeed(IBlockTree blockTree, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
             : base(logManager)
@@ -101,7 +102,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _nextHeaderDiff = startTotalDifficulty;
 
             _lowestRequestedHeaderNumber = startNumber + 1;
-            
+
             Activate();
         }
 
@@ -111,14 +112,16 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool ShouldBuildANewBatch()
         {
             bool genesisHeaderRequested = _lowestRequestedHeaderNumber == 0;
+            bool downloadInBeamSync = _syncConfig.DownloadOldHeadersInBeamSync;
 
             bool noBatchesLeft = AllHeadersDownloaded
                                  || genesisHeaderRequested
-                                 || HeadersInQueue >= FastBlocksQueueLimits.ForHeaders;
-            
+                                 || HeadersInQueue >= FastBlocksQueueLimits.ForHeaders
+                                 || !downloadInBeamSync && AnyHeaderDownloaded;
+
             if (noBatchesLeft)
             {
-                if (AllHeadersDownloaded)
+                if (AllHeadersDownloaded || !downloadInBeamSync && AnyHeaderDownloaded)
                 {
                     Finish();
                     PostFinishCleanUp();
@@ -154,7 +157,7 @@ namespace Nethermind.Synchronization.FastBlocks
         public override Task<HeadersSyncBatch> PrepareRequest()
         {
             HandleDependentBatches();
-            
+
             if (_pending.TryDequeue(out HeadersSyncBatch batch))
             {
                 batch.MarkRetry();

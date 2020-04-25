@@ -174,9 +174,17 @@ namespace Nethermind.Synchronization.ParallelSync
                 return true;
             }
 
-            bool allHeadersDownloaded = (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1;
-            bool allReceiptsDownloaded = !_syncConfig.DownloadReceiptsInFastSync || (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) <= 1;
-            bool allBodiesDownloaded = !_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1;
+            bool allHeadersDownloaded =
+                _blockTree.LowestInsertedHeader != null && !_syncConfig.DownloadOldHeadersInBeamSync
+                || (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1;
+            bool allReceiptsDownloaded =
+                !_syncConfig.DownloadOldHeadersInBeamSync
+                || !_syncConfig.DownloadReceiptsInFastSync
+                || (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) <= 1;
+            bool allBodiesDownloaded =
+                !_syncConfig.DownloadOldHeadersInBeamSync
+                || !_syncConfig.DownloadBodiesInFastSync
+                || (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1;
 
             return allBodiesDownloaded && allHeadersDownloaded && allReceiptsDownloaded;
         }
