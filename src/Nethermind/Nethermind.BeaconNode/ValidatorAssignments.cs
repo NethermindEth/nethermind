@@ -219,21 +219,21 @@ namespace Nethermind.BeaconNode
 
         private ValidatorIndex CheckValidatorIndex(BeaconState state, BlsPublicKey validatorPublicKey)
         {
-            ValidatorIndex validatorIndex = FindValidatorIndexByPublicKey(state, validatorPublicKey);
-            if (validatorIndex == ValidatorIndex.None)
+            ValidatorIndex? validatorIndex = FindValidatorIndexByPublicKey(state, validatorPublicKey);
+            if (!validatorIndex.HasValue)
             {
                 throw new ArgumentOutOfRangeException(nameof(validatorPublicKey), validatorPublicKey,
                     $"Could not find specified validator at slot {state.Slot}.");
             }
 
-            bool validatorActive = CheckIfValidatorActive(state, validatorIndex);
+            bool validatorActive = CheckIfValidatorActive(state, validatorIndex.Value);
             if (!validatorActive)
             {
                 throw new Exception(
                     $"Validator {validatorPublicKey} (index {validatorIndex}) not not active at slot {state.Slot}.");
             }
 
-            return validatorIndex;
+            return validatorIndex.Value;
         }
 
         private class Duty
@@ -243,7 +243,7 @@ namespace Nethermind.BeaconNode
             public Slot? BlockProposalSlot { get; set; }
         }
 
-        private ValidatorIndex FindValidatorIndexByPublicKey(BeaconState state, BlsPublicKey validatorPublicKey)
+        private ValidatorIndex? FindValidatorIndexByPublicKey(BeaconState state, BlsPublicKey validatorPublicKey)
         {
             for (int index = 0; index < state.Validators.Count; index++)
             {

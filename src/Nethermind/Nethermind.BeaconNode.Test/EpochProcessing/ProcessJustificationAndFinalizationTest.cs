@@ -378,7 +378,7 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
                     }
 
                     var attestationData = new AttestationData(slot, index, beaconBlockRoot, source, attestationTarget);
-                    var attestation = new PendingAttestation(aggregationBits, attestationData, new Slot(1), ValidatorIndex.None);
+                    var attestation = new PendingAttestation(aggregationBits, attestationData, new Slot(1), ValidatorIndex.Zero);
 
                     if (currentEpoch == epoch)
                     {
