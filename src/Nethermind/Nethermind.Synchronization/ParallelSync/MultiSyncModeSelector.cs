@@ -359,7 +359,9 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool HasJustStartedFullSync(Snapshot best)
         {
-            return best.State > PivotNumber && best.Processed < best.State;
+            return best.State > PivotNumber // we have saved some root
+                   && best.State == best.Header // and we do not need to catch up to headers anymore 
+                   && best.Processed < best.State; // not processed the block yet
         }
 
         private bool AnyPeerWithHigherDifficultyKnown(UInt256 bestPeerDiff)
