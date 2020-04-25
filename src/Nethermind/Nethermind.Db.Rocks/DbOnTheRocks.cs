@@ -394,7 +394,11 @@ namespace Nethermind.Db.Rocks
 
         private void Dispose(bool disposing)
         {
-            Flush();
+            if (disposing)
+            {
+                Flush();
+            }
+
             _isDisposed = true;
             
             ReleaseUnmanagedResources();
