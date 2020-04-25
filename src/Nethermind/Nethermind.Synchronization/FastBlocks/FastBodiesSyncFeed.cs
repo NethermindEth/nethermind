@@ -372,7 +372,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedBody?.Number} | HANDLED {batch}");
 
-            _syncReport.BodiesInQueue.Update(_dependencies.Sum(d => d.Value.Count));
+            _syncReport.BodiesInQueue.Update(BodiesInQueue);
             return validResponsesCount;
         }
     }

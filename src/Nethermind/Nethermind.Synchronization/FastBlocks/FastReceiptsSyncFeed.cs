@@ -433,7 +433,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_receiptStorage.LowestInsertedReceiptBlock} | HANDLED {receiptSyncBatch}");
 
-                _syncReport.ReceiptsInQueue.Update(_dependencies.Sum(d => d.Value.Count));
+                _syncReport.ReceiptsInQueue.Update(ReceiptsInQueue);
                 
                 return added;
             }
