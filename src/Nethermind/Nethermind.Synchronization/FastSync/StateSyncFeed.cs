@@ -36,7 +36,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    public partial class StateSyncFeed : SyncFeed<StateSyncBatch>
+    public partial class StateSyncFeed : SyncFeed<StateSyncBatch>, IDisposable
     {
         private const int AlreadySavedCapacity = 1024 * 64;
         private const int MaxRequestSize = 384;
@@ -775,6 +775,11 @@ namespace Nethermind.Synchronization.FastSync
             AlreadySaved,
             AlreadyRequested,
             Added
+        }
+
+        public void Dispose()
+        {
+            _syncModeSelector.Changed -= SyncModeSelectorOnChanged;
         }
     }
 }

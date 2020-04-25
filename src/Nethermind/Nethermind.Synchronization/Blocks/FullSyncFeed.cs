@@ -22,7 +22,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    public class FullSyncFeed : SyncFeed<BlocksRequest>
+    public class FullSyncFeed : SyncFeed<BlocksRequest>, IDisposable
     {
         private readonly ISyncModeSelector _syncModeSelector;
 
@@ -77,5 +77,10 @@ namespace Nethermind.Synchronization.Blocks
         public override bool IsMultiFeed => false;
         
         public override AllocationContexts Contexts => AllocationContexts.Blocks;
+
+        public void Dispose()
+        {
+            _syncModeSelector.Changed -= SyncModeSelectorOnChanged;
+        }
     }
 }

@@ -348,5 +348,10 @@ namespace Nethermind.Synchronization
                 if (_logger.IsDebug) _logger.Debug($"Broadcasting block {block.ToString(Block.Format.Short)} to {counter} peers.");
             }
         }
+
+        public void Dispose()
+        {
+            _blockTree.NewHeadBlock -= OnNewHeadBlock;
+        }
     }
 }

@@ -17,6 +17,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using MathNet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
 
@@ -129,6 +130,10 @@ namespace Nethermind.Synchronization.ParallelSync
                                 Free(allocation);
                                 SyncResponseHandlingResult result = Feed.HandleResponse(request);
                                 ReactToHandlingResult(request, result, allocatedPeer);
+                            }
+                            catch (ObjectDisposedException)
+                            {
+                                if (Logger.IsInfo) Logger.Info("Ignoring sync response as the DB has already closed.");
                             }
                             catch (Exception e)
                             {
