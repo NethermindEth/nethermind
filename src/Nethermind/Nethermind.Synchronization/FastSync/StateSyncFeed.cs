@@ -632,6 +632,8 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
+        private int _beamSyncedUsable = 0;
+
         public override async Task<StateSyncBatch> PrepareRequest()
         {
             if ((_syncModeSelector.Current & SyncMode.StateNodes) != SyncMode.StateNodes)
@@ -667,6 +669,15 @@ namespace Nethermind.Synchronization.FastSync
                 }
 
                 List<StateSyncItem> requestHashes = _pendingItems.TakeBatch(MaxRequestSize);
+                foreach (StateSyncItem stateSyncItem in requestHashes)
+                {
+                    if (_tempDb.Get(stateSyncItem.Hash) != null)
+                    {
+                        Interlocked.Increment(ref _beamSyncedUsable);
+                        _logger.Error($"Could have used the beam synced item {_beamSyncedUsable}");
+                    }
+                }
+                
                 LogRequestInfo(requestHashes);
 
                 if (requestHashes.Count > 0)
@@ -722,7 +733,7 @@ namespace Nethermind.Synchronization.FastSync
             if (_syncProgress != null)
             {
                 decimal progressVar = Math.Max(10m, _syncProgress.LastProgress);
-                long minimumBlockDifference = (long) (10000m / (progressVar * progressVar));
+                long minimumBlockDifference = (long) (100m / progressVar);
                 if (blockNumber - _currentRootNumber < minimumBlockDifference)
                 {
                     return;
