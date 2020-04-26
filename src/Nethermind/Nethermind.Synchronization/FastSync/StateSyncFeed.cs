@@ -719,7 +719,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public void ResetStateRoot(long blockNumber, Keccak stateRoot)
         {
-            long minimumBlockDifference = (long) (80m / _syncProgress.LastProgress);
+            long minimumBlockDifference = (long) (100m / _syncProgress.LastProgress);
             if (blockNumber - _currentRootNumber < minimumBlockDifference)
             {
                 return;
