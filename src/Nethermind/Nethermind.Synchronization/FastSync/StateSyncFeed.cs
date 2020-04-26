@@ -459,7 +459,7 @@ namespace Nethermind.Synchronization.FastSync
                 _handleWatch.Stop();
                 if (!_pendingRequests.TryRemove(batch, out _))
                 {
-                    _logger.Error($"Cannot remove pending request {batch}");
+                    if (_logger.IsDebug) _logger.Debug($"Cannot remove pending request {batch}");
                 }
                 else
                 {
@@ -715,8 +715,18 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
+        private long _currentRootNumber = 0;
+
         public void ResetStateRoot(long blockNumber, Keccak stateRoot)
         {
+            long minimumBlockDifference = (long) (80m / _syncProgress.LastProgress);
+            if (blockNumber - _currentRootNumber < minimumBlockDifference)
+            {
+                return;
+            }
+
+            _currentRootNumber = blockNumber;
+
             if (_logger.IsInfo) _logger.Info($"Setting state sync state root to {blockNumber} {stateRoot}");
             _currentSyncStart = DateTime.UtcNow;
             _currentSyncStartSecondsInSync = _data.SecondsInSync;
