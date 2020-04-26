@@ -42,7 +42,7 @@ namespace Nethermind.Synchronization.BeamSync
         private readonly IRewardCalculatorSource _rewardCalculatorSource;
         private readonly ILogger _logger;
 
-        private IBlockProcessingQueue _blockchainProcessor;
+        private IBlockProcessingQueue _standardProcessorQueue;
         private readonly ISyncModeSelector _syncModeSelector;
         private ReadOnlyBlockTree _readOnlyBlockTree;
         private IBlockTree _blockTree;
@@ -64,7 +64,7 @@ namespace Nethermind.Synchronization.BeamSync
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _rewardCalculatorSource = rewardCalculatorSource ?? throw new ArgumentNullException(nameof(rewardCalculatorSource));
-            _blockchainProcessor = blockchainProcessor ?? throw new ArgumentNullException(nameof(blockchainProcessor));
+            _standardProcessorQueue = blockchainProcessor ?? throw new ArgumentNullException(nameof(blockchainProcessor));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -105,7 +105,7 @@ namespace Nethermind.Synchronization.BeamSync
             if (block.IsGenesis || (_syncModeSelector.Current & SyncMode.Full) == SyncMode.Full)
             {
                 // TODO: what if we do not want to store receipts?
-                _blockchainProcessor.Enqueue(block, ProcessingOptions.StoreReceipts);
+                _standardProcessorQueue.Enqueue(block, ProcessingOptions.StoreReceipts);
             }
             else if ((_syncModeSelector.Current & SyncMode.Beam) == SyncMode.Beam)
             {
@@ -129,7 +129,7 @@ namespace Nethermind.Synchronization.BeamSync
 
             if (block.IsGenesis)
             {
-                _blockchainProcessor.Enqueue(block, ProcessingOptions.IgnoreParentNotOnMainChain);
+                _standardProcessorQueue.Enqueue(block, ProcessingOptions.Beam);
                 return;
             }
 
@@ -137,7 +137,7 @@ namespace Nethermind.Synchronization.BeamSync
             try
             {
                 _recoveryStep.RecoverData(block);
-                (IBlockchainProcessor processor, IStateReader stateReader) = CreateProcessor(block, new ReadOnlyDbProvider(_readOnlyDbProvider, true), _specProvider, _logManager);
+                (IBlockchainProcessor beamProcessor, IStateReader stateReader) = CreateProcessor(block, new ReadOnlyDbProvider(_readOnlyDbProvider, true), _specProvider, _logManager);
 
                 BlockHeader parentHeader = _readOnlyBlockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (parentHeader != null)
@@ -156,7 +156,7 @@ namespace Nethermind.Synchronization.BeamSync
                     BeamSyncContext.Description.Value = $"[preProcess of {block.Hash.ToShortString()}]";
                     BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
                     BeamSyncContext.Cancelled.Value = cancellationToken.Token;
-                    processedBlock = processor.Process(block, ProcessingOptions.ReadOnlyChain | ProcessingOptions.IgnoreParentNotOnMainChain, NullBlockTracer.Instance);
+                    processedBlock = beamProcessor.Process(block, ProcessingOptions.Beam, NullBlockTracer.Instance);
                     if (processedBlock == null)
                     {
                         if (_logger.IsDebug) _logger.Debug($"Block {block.ToString(Block.Format.Short)} skipped in beam sync");
@@ -175,10 +175,10 @@ namespace Nethermind.Synchronization.BeamSync
                     {
                         if (_logger.IsDebug) _logger.Debug($"Enqueuing for standard processing {block}");
                         // at this stage we are sure to have all the state available
-                        _blockchainProcessor.Enqueue(block, ProcessingOptions.IgnoreParentNotOnMainChain);
+                        _standardProcessorQueue.Enqueue(block, ProcessingOptions.IgnoreParentNotOnMainChain);
                     }
 
-                    processor.Dispose();
+                    beamProcessor.Dispose();
                 });
             }
             catch (Exception e)

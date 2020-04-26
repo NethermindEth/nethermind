@@ -1029,5 +1029,19 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .ThenInAnyFastSyncConfiguration()
                 .TheSyncModeShouldBe(SyncMode.Full);
         }
+        
+        /// <summary>
+        /// We DO NOT want the thing like below to happen (incorrectly go back to StateNodes from Full)
+        /// Changing state to None at processed:9947692|beam state:9947697|state:9947608|block:9947698|header:9947698|peer block:9947698
+        /// </summary>
+        [Test]
+        public void When_processed_is_higher_than_state_due_to_beam_sync()
+        {
+            // so at the moment beam synced nodes can update chain head
+            // we should split chain head to Head and BeamHead
+            // when beam processing we should return BeamHead as head / latest?
+            // when full processing we should return Head as latest
+            // SyncProgressResolver will be able to recognize these two states
+        }
     }
 }

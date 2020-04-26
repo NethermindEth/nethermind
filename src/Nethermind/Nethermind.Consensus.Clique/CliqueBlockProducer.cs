@@ -232,7 +232,7 @@ namespace Nethermind.Consensus.Clique
                     }
 
                     if (_logger.IsInfo) _logger.Info($"Processing prepared block {block.Number}");
-                    Block processedBlock = _processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance);
+                    Block processedBlock = _processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
                     if (processedBlock == null)
                     {
                         if (_logger.IsInfo) _logger.Info($"Prepared block has lost the race");
