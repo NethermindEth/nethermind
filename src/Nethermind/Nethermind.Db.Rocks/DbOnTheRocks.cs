@@ -350,11 +350,6 @@ namespace Nethermind.Db.Rocks
 
         public void Clear()
         {
-            if (_isDisposed)
-            {
-                throw new ObjectDisposedException($"Attempted to clear a disposed database {Name}");
-            }
-            
             try
             {
                 Directory.Delete(_fullPath, true);

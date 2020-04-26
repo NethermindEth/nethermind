@@ -52,8 +52,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.R
             }
             finally
             {
-                db.Clear();
                 db.Dispose();
+                db.Clear();
             }
         }
     }
