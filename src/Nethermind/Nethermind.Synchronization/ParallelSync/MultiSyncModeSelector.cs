@@ -184,10 +184,17 @@ namespace Nethermind.Synchronization.ParallelSync
                     if (_logger.IsTrace) _logger.Trace(message);
                 }
             }
-
+            
             SyncMode previous = Current;
+
+            SyncModeChangedEventArgs args = new SyncModeChangedEventArgs(previous, Current);
+            
+            // Changing is invoked here so we can block until all the subsystems are ready to switch
+            // for example when switching to Full sync we need to ensure that we safely transition
+            // the beam sync DB and beam processor
+            Changing?.Invoke(this, args);
             Current = newModes;
-            Changed?.Invoke(this, new SyncModeChangedEventArgs(previous, Current));
+            Changed?.Invoke(this, args);
         }
 
         /// <summary>
@@ -213,6 +220,7 @@ namespace Nethermind.Synchronization.ParallelSync
         }
 
         public SyncMode Current { get; private set; } = SyncMode.None;
+        public event EventHandler<SyncModeChangedEventArgs> Changing;
 
         private bool IsInAStickyFullSyncMode(Snapshot best)
         {

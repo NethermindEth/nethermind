@@ -46,5 +46,11 @@ namespace Nethermind.Synchronization.ParallelSync
             add { }
             remove { }
         }
+        
+        public event EventHandler<SyncModeChangedEventArgs> Changing
+        {
+            add { }
+            remove { }
+        }
     }
 }
