@@ -329,32 +329,17 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool ShouldBeInBeamSyncMode(Snapshot best)
         {
             bool beamSyncEnabled = BeamSyncEnabled;
-            bool fastSyncHasBeenActive = best.Header >= PivotNumber;
-            bool hasAnyPostPivotPeer = AnyPostPivotPeerKnown(best.PeerBlock);
-            bool inStateNodesSync = best.IsInStateSync;
-            bool notInFastSync = !best.IsInFastSync;
-            bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
-            bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
+            bool isInStateSync = best.IsInStateSync;
 
             if (_logger.IsTrace)
             {
                 _logger.Trace("======================== BEAM");
                 _logger.Trace("beamSyncEnabled " + beamSyncEnabled);
-                _logger.Trace("fastSyncHasBeenActive " + beamSyncEnabled);
-                _logger.Trace("hasAnyPostPivotPeer " + beamSyncEnabled);
-                _logger.Trace("inStateNodesSync " + inStateNodesSync);
-                _logger.Trace("notInFastSync " + beamSyncEnabled);
-                _logger.Trace("notInAStickyFullSync " + notInAStickyFullSync);
-                _logger.Trace("notHasJustStartedFullSync " + notHasJustStartedFullSync);
+                _logger.Trace("isInStateSync " + isInStateSync);
             }
 
             return beamSyncEnabled &&
-                   fastSyncHasBeenActive &&
-                   hasAnyPostPivotPeer &&
-                   inStateNodesSync &&
-                   notInAStickyFullSync &&
-                   notHasJustStartedFullSync &&
-                   notInFastSync;
+                   isInStateSync;
         }
 
         private bool HasJustStartedFullSync(Snapshot best)

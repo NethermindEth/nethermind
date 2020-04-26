@@ -1001,6 +1001,16 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .IfThisNodeJustFinishedFastBlocksAndFastSync()
                 .AndPeersMovedSlightlyForward()
                 .WhenBeamSyncIsConfigured()
+                .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.FastSync | SyncMode.Beam);
+        }
+        
+        [Test]
+        public void When_peers_move_slightly_forward_when_state_syncing_without_beam()
+        {
+            Scenario.GoesLikeThis()
+                .IfThisNodeJustFinishedFastBlocksAndFastSync()
+                .AndPeersMovedSlightlyForward()
+                .WhenFastSyncWithFastBlocksIsConfigured()
                 .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.FastSync);
         }
         
