@@ -27,6 +27,7 @@ using Nethermind.Synchronization.BeamSync;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.BeamSync
@@ -312,6 +313,29 @@ namespace Nethermind.Synchronization.Test.BeamSync
 
             byte[] retrievedFromTemp = beamSyncDb.Get(TestItem.KeccakA);
             retrievedFromTemp.Should().BeEquivalentTo(bytes);
+        }
+
+        [Test, Description("Write through means that the beam sync DB does no longer behave like a beam sync" +
+                           "and allows writes directly to the state database instead of memory. In case of" +
+                           "peers disconnecting the mode changes to None and we may still be processing some previous" +
+                           "blocks and we may end up saving a state root which would totally derail the state" +
+                           "sync because and sync progress resolver.")]
+        public void When_mode_changes_to_none_and_we_are_still_processing_a_previous_block_we_should_not_write_through()
+        {
+            MemDb beamDb = new MemDb();
+            MemDb stateDB = new MemDb();
+            ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
+            BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, beamDb, syncModeSelector, LimboLogs.Instance);
+            syncModeSelector.Current.Returns(SyncMode.Beam);
+            beamSyncDb[TestItem.KeccakA.Bytes] = new byte[] {1};
+            syncModeSelector.Current.Returns(SyncMode.None);
+            beamSyncDb[TestItem.KeccakB.Bytes] = new byte[] {1, 2};
+
+            stateDB[TestItem.KeccakA.Bytes].Should().BeNull();
+            stateDB[TestItem.KeccakB.Bytes].Should().BeNull();
+            
+            beamDb[TestItem.KeccakA.Bytes].Should().NotBeNull();
+            beamDb[TestItem.KeccakB.Bytes].Should().NotBeNull();
         }
     }
 }
