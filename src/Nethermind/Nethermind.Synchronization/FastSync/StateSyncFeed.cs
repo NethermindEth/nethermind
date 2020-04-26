@@ -673,14 +673,14 @@ namespace Nethermind.Synchronization.FastSync
                 }
 
                 List<StateSyncItem> requestHashes = _pendingItems.TakeBatch(MaxRequestSize);
-                foreach (StateSyncItem stateSyncItem in requestHashes)
-                {
-                    if (_tempDb.Get(stateSyncItem.Hash) != null)
-                    {
-                        Interlocked.Increment(ref _beamSyncedUsable);
-                        _logger.Error($"Could have used the beam synced item {_beamSyncedUsable}");
-                    }
-                }
+                // foreach (StateSyncItem stateSyncItem in requestHashes)
+                // {
+                //     if (_tempDb.Get(stateSyncItem.Hash) != null)
+                //     {
+                //         Interlocked.Increment(ref _beamSyncedUsable);
+                //         _logger.Error($"Could have used the beam synced item {_beamSyncedUsable}");
+                //     }
+                // }
                 
                 LogRequestInfo(requestHashes);
 
