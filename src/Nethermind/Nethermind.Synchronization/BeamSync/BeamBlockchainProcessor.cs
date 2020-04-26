@@ -72,12 +72,15 @@ namespace Nethermind.Synchronization.BeamSync
             _readOnlyBlockTree = new ReadOnlyBlockTree(_blockTree);
             _logger = logManager.GetClassLogger();
             _blockTree.NewBestSuggestedBlock += OnNewBlock;
-            _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
         }
 
-        private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
+        /// <summary>
+        /// Whenever we finish beam syncing one of the blocks we cancel all previous ones
+        /// and move our processing power to the future
+        /// </summary>
+        /// <param name="number">Number of the block that we have just processed</param>
+        private void CancelPreviousBeamSyncingBlocks(long number)
         {
-            long number = e.Block.Number;
             for (int i = 64; i > 0; i--)
             {
                 if (_tokens.TryGetValue(number - i, out CancellationTokenSource token))
@@ -102,12 +105,13 @@ namespace Nethermind.Synchronization.BeamSync
         private void OnNewBlock(object sender, BlockEventArgs e)
         {
             Block block = e.Block;
-            if (block.IsGenesis || (_syncModeSelector.Current & SyncMode.Full) == SyncMode.Full)
+            bool isBeamSync = (_syncModeSelector.Current & SyncMode.Beam) == SyncMode.Beam;
+            if (block.IsGenesis || !isBeamSync)
             {
                 // TODO: what if we do not want to store receipts?
                 _standardProcessorQueue.Enqueue(block, ProcessingOptions.StoreReceipts);
             }
-            else if ((_syncModeSelector.Current & SyncMode.Beam) == SyncMode.Beam)
+            else // beam sync
             {
                 BeamProcess(block);
                 long number = block.Number;
@@ -129,6 +133,9 @@ namespace Nethermind.Synchronization.BeamSync
 
             if (block.IsGenesis)
             {
+                // why would ever genesis be here? added a logger so we can see when that happens
+                // possibly we can remove these lines
+                if(_logger.IsInfo) _logger.Info("Beam processing genesis block.");
                 _standardProcessorQueue.Enqueue(block, ProcessingOptions.Beam);
                 return;
             }
@@ -175,7 +182,8 @@ namespace Nethermind.Synchronization.BeamSync
                     {
                         if (_logger.IsDebug) _logger.Debug($"Enqueuing for standard processing {block}");
                         // at this stage we are sure to have all the state available
-                        _standardProcessorQueue.Enqueue(block, ProcessingOptions.IgnoreParentNotOnMainChain);
+                        CancelPreviousBeamSyncingBlocks(processedBlock.Number);
+                        _standardProcessorQueue.Enqueue(block, ProcessingOptions.Beam);
                     }
 
                     beamProcessor.Dispose();
@@ -260,7 +268,6 @@ namespace Nethermind.Synchronization.BeamSync
 
         public void Dispose()
         {
-            _blockTree.NewBestSuggestedBlock -= OnNewBlock;
         }
     }
 }
