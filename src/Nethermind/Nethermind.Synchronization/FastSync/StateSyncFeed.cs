@@ -649,14 +649,14 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (_rootNode == Keccak.EmptyTreeHash)
                 {
-                    _logger.Error("Falling asleep - root is empty tree");
+                    if (_logger.IsDebug) _logger.Debug("Falling asleep - root is empty tree");
                     FallAsleep();
                     return _emptyBatch;
                 }
 
                 if (_hintsToResetRoot >= 32)
                 {
-                    _logger.Error("Falling asleep - many missing responses");
+                    if (_logger.IsDebug) _logger.Debug("Falling asleep - many missing responses");
                     FallAsleep();
                     return _emptyBatch;
                 }
@@ -732,6 +732,8 @@ namespace Nethermind.Synchronization.FastSync
         
         public void ResetStateRoot(long blockNumber, Keccak stateRoot)
         {
+            Interlocked.Exchange(ref _hintsToResetRoot, 0);
+            
             if (_logger.IsInfo) _logger.Info($"Setting state sync state root to {blockNumber} {stateRoot}");
             _currentSyncStart = DateTime.UtcNow;
             _currentSyncStartSecondsInSync = _data.SecondsInSync;
