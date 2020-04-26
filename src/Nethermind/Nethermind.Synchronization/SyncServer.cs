@@ -158,7 +158,8 @@ namespace Nethermind.Synchronization
             }
 
             ValidateSeal(block, nodeWhoSentTheBlock);
-            if ((_syncModeSelector.Current & (SyncMode.Beam | SyncMode.Full)) != SyncMode.None)
+            if ((_syncModeSelector.Current & (SyncMode.FastSync | SyncMode.StateNodes)) == SyncMode.None 
+                || (_syncModeSelector.Current & (SyncMode.Full | SyncMode.Beam)) != SyncMode.None)
             {
                 LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
                 SyncBlock(block, nodeWhoSentTheBlock);
