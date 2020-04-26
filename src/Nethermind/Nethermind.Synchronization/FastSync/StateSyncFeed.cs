@@ -715,14 +715,18 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        private long _currentRootNumber = 0;
+        private long _currentRootNumber;
 
         public void ResetStateRoot(long blockNumber, Keccak stateRoot)
         {
-            long minimumBlockDifference = (long) (10000m / (_syncProgress.LastProgress * _syncProgress.LastProgress));
-            if (blockNumber - _currentRootNumber < minimumBlockDifference)
+            if (_syncProgress != null)
             {
-                return;
+                decimal progressVar = Math.Max(10m, _syncProgress.LastProgress);
+                long minimumBlockDifference = (long) (10000m / (progressVar * progressVar));
+                if (blockNumber - _currentRootNumber < minimumBlockDifference)
+                {
+                    return;
+                }
             }
 
             _currentRootNumber = blockNumber;
