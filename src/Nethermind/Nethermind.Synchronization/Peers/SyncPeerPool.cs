@@ -45,7 +45,7 @@ namespace Nethermind.Synchronization.Peers
     /// </summary>
     public class SyncPeerPool : ISyncPeerPool
     {
-        private const int InitTimeout = 10000; // the Eth.Timeout hits us at 5000
+        private const int InitTimeout = 3000; // the Eth.Timeout hits us at 5000
 
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
