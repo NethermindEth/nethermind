@@ -122,6 +122,7 @@ namespace Nethermind.Synchronization.BeamSync
                     }
 
                     _isAfterBeam = true;
+                    if(_logger.IsInfo) _logger.Info($"Setting block action to shelving.");
                     _blockAction = Shelve;
                 }
 
@@ -138,10 +139,10 @@ namespace Nethermind.Synchronization.BeamSync
         {
             if ((e.Current & SyncMode.Full) == SyncMode.Full)
             {
+                if(_logger.IsInfo) _logger.Info($"Setting block action to standard processing.");
                 _blockAction = EnqueueForStandardProcessing;
+                UnregisterListeners();
             }
-
-            UnregisterListeners();
         }
 
         /// <summary>
@@ -366,6 +367,7 @@ namespace Nethermind.Synchronization.BeamSync
 
         private void UnregisterListeners()
         {
+            if(_logger.IsDebug) _logger.Debug($"Unregistering sync mode listeners.");
             _syncModeSelector.Preparing -= SyncModeSelectorOnPreparing;
             _syncModeSelector.Changing -= SyncModeSelectorOnChanging;
             _syncModeSelector.Changed -= SyncModeSelectorOnChanged;
