@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Org.BouncyCastle.Asn1.Sec;
@@ -25,9 +26,12 @@ using Org.BouncyCastle.Math;
 using Org.BouncyCastle.Math.EC;
 using Org.BouncyCastle.Security;
 
+[assembly: InternalsVisibleTo("Nethermind.Network.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Network.Benchmark")]
+
 namespace Nethermind.Crypto
 {
-    public static class BouncyCrypto
+    internal static class BouncyCrypto
     {
         internal static readonly ECDomainParameters DomainParameters;
         private static readonly SecureRandom SecureRandom = new SecureRandom();

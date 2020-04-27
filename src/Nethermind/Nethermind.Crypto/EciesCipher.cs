@@ -43,7 +43,7 @@ namespace Nethermind.Crypto
 
         public (bool, byte[]) Decrypt(PrivateKey privateKey, byte[] cipherText, byte[] macData = null)
         {
-            MemoryStream inputStream = new MemoryStream(cipherText);
+            using MemoryStream inputStream = new MemoryStream(cipherText);
             int ephemBytesLength = 2 * ((BouncyCrypto.DomainParameters.Curve.FieldSize + 7) / 8) + 1;
 
             byte[] ephemBytes = new byte[ephemBytesLength];
@@ -68,23 +68,12 @@ namespace Nethermind.Crypto
 
             IIesEngine iesEngine = MakeIesEngine(true, recipientPublicKey, ephemeralPrivateKey, iv);
 
-            try
-            {
-                byte[] cipher = iesEngine.ProcessBlock(plainText, 0, plainText.Length, macData);
-                MemoryStream memoryStream = new MemoryStream();
-                memoryStream.Write(ephemeralPrivateKey.PublicKey.PrefixedBytes, 0, ephemeralPrivateKey.PublicKey.PrefixedBytes.Length);
-                memoryStream.Write(iv, 0, iv.Length);
-                memoryStream.Write(cipher, 0, cipher.Length);
-                return memoryStream.ToArray();
-            }
-            catch (InvalidCipherTextException)
-            {
-                throw;
-            }
-            catch (IOException)
-            {
-                throw;
-            }
+            byte[] cipher = iesEngine.ProcessBlock(plainText, 0, plainText.Length, macData);
+            using MemoryStream memoryStream = new MemoryStream();
+            memoryStream.Write(ephemeralPrivateKey.PublicKey.PrefixedBytes, 0, ephemeralPrivateKey.PublicKey.PrefixedBytes.Length);
+            memoryStream.Write(iv, 0, iv.Length);
+            memoryStream.Write(cipher, 0, cipher.Length);
+            return memoryStream.ToArray();
         }
         
         private OptimizedKdf _optimizedKdf = new OptimizedKdf();
