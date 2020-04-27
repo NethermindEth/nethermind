@@ -104,7 +104,8 @@ namespace Nethermind.Network
                 if (_logger.IsTrace) _logger.Trace($"Sent ping messages to {tasks.Length} peers. Received {successes} pongs.");
                 if (failures > tasks.Length / 3)
                 {
-                    if (_logger.IsInfo) _logger.Info($"More than 33% of nodes did not respond to a Ping message - {failures}/{successes + failures}");
+                    decimal percentage = (decimal)failures/(successes + failures);
+                    if (_logger.IsInfo) _logger.Info($"{percentage:P0} of nodes did not respond to a Ping message - {failures}/{successes + failures}");
                 }
 
                 _pingTasks.Clear();
