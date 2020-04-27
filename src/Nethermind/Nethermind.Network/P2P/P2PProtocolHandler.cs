@@ -17,9 +17,11 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Common.Concurrency;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -202,6 +204,7 @@ namespace Nethermind.Network.P2P
             ProtocolInitialized?.Invoke(this, eventArgs);
         }
 
+        [SuppressMessage("ReSharper", "HeuristicUnreachableCode")]
         public async Task<bool> SendPing()
         {
             if (!_isInitialized)
@@ -209,13 +212,15 @@ namespace Nethermind.Network.P2P
                 return true;
             }
 
-            if (_pongCompletionSource != null)
+            // ReSharper disable once AssignNullToNotNullAttribute
+            TaskCompletionSource<Packet> previousSource = Interlocked.CompareExchange(ref _pongCompletionSource, new TaskCompletionSource<Packet>(), null);
+            // ReSharper disable once ConditionIsAlwaysTrueOrFalse
+            if (previousSource != null)
             {
                 if (Logger.IsWarn) Logger.Warn($"Another ping request in process: {Session.Node:c}");
                 return true;
             }
-
-            _pongCompletionSource = new TaskCompletionSource<Packet>();
+            
             Task<Packet> pongTask = _pongCompletionSource.Task;
 
             if (Logger.IsTrace) Logger.Trace($"{Session} P2P sending ping on {Session.RemotePort} ({RemoteClientId})");
@@ -224,19 +229,24 @@ namespace Nethermind.Network.P2P
             Stopwatch stopwatch = Stopwatch.StartNew();
 
             CancellationTokenSource delayCancellation = new CancellationTokenSource();
-            Task firstTask = await Task.WhenAny(pongTask, Task.Delay(Timeouts.P2PPing, delayCancellation.Token));
-            _pongCompletionSource = null;
-            if (firstTask != pongTask)
+            try
             {
-                _nodeStatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Latency,0);
-                return false;
-            }
+                Task firstTask = await Task.WhenAny(pongTask, Task.Delay(Timeouts.P2PPing, delayCancellation.Token));
+                if (firstTask != pongTask)
+                {
+                    _nodeStatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Latency, (long) Timeouts.P2PPing.TotalMilliseconds);
+                    return false;
+                }
 
-            delayCancellation.Cancel();
-            long latency = stopwatch.ElapsedMilliseconds;
-            
-            _nodeStatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Latency, latency);
-            return true;
+                long latency = stopwatch.ElapsedMilliseconds;
+                _nodeStatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Latency, latency);
+                return true;
+            }
+            finally
+            {
+                delayCancellation?.Cancel();
+                _pongCompletionSource = null;
+            }
         }
 
         public override void InitiateDisconnect(DisconnectReason disconnectReason, string details)

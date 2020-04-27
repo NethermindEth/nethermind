@@ -822,7 +822,11 @@ namespace Nethermind.Network
         {
             if (_logger.IsDebug) _logger.Debug("Starting peer persistence timer");
 
-            _peerPersistenceTimer = new System.Timers.Timer(_networkConfig.PeersPersistenceInterval) {AutoReset = false};
+            _peerPersistenceTimer = new System.Timers.Timer(_networkConfig.PeersPersistenceInterval)
+            {
+                AutoReset = false
+            };
+            
             _peerPersistenceTimer.Elapsed += (sender, e) =>
             {
                 try
