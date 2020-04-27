@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -35,7 +36,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
         private readonly IDiscoveryMessageFactory _discoveryMessageFactory;
         private readonly IEvictionManager _evictionManager;
 
-        private byte[] _expectedPingMdc;
+        private PingMessage _lastSentPing;
         private bool _isNeighborsExpected;
 
         public NodeLifecycleManager(Node node, IDiscoveryManager discoveryManager, INodeTable nodeTable, IDiscoveryMessageFactory discoveryMessageFactory, IEvictionManager evictionManager, INodeStats nodeStats, IDiscoveryConfig discoveryConfig, ILogger logger)
@@ -67,14 +68,18 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
         public void ProcessPongMessage(PongMessage discoveryMessage)
         {
-            if (Bytes.AreEqual(_expectedPingMdc, discoveryMessage.PingMdc))
+            PingMessage sentPing = Interlocked.Exchange(ref _lastSentPing, null);
+            if (sentPing == null)
+            {
+                return;
+            }
+
+            if (Bytes.AreEqual(sentPing.Mdc, discoveryMessage.PingMdc))
             {
                 NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPongIn);
                 RefreshNodeContactTime();
 
                 UpdateState(NodeLifecycleState.Active);
-
-                _expectedPingMdc = null;
             }
             else
             {
@@ -125,7 +130,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
         public void SendPing()
         {
-            Task.Run(() => _expectedPingMdc = SendPingAsync(_discoveryConfig.PingRetryCount).Result.Mdc);
+            Task.Run(() => SendPingAsync(_discoveryConfig.PingRetryCount));
         }
 
         public void SendPong(PingMessage discoveryMessage)
@@ -166,7 +171,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
             }
             else if (newState == NodeLifecycleState.Active)
             {
-                //TODO && !ManagedNode.IsDicoveryNode - should we exclude discovery nodes
+                //TODO && !ManagedNode.IsDiscoveryNode - should we exclude discovery nodes
                 //received pong first time
                 if (State == NodeLifecycleState.New)
                 {
@@ -198,14 +203,15 @@ namespace Nethermind.Network.Discovery.Lifecycle
             }
         }
 
-        private async Task<PingMessage> SendPingAsync(int counter)
+        private async Task SendPingAsync(int counter)
         {
             PingMessage msg = _discoveryMessageFactory.CreateOutgoingMessage<PingMessage>(ManagedNode);
             msg.SourceAddress = _nodeTable.MasterNode.Address;
             msg.DestinationAddress = msg.FarAddress;
-            
+
             try
             {
+                _lastSentPing = msg;
                 _discoveryManager.SendMessage(msg);
                 NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingOut);
 
@@ -224,8 +230,6 @@ namespace Nethermind.Network.Discovery.Lifecycle
             {
                 _logger.Error("Error during sending ping message", e);
             }
-
-            return msg;
         }
     }
 }

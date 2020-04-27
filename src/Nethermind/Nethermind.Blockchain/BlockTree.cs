@@ -457,7 +457,10 @@ namespace Nethermind.Blockchain
             }
             catch (Exception ex)
             {
-                if (_logger.IsError) _logger.Error("Failed to load blocks from DB", ex);
+                if (!(ex is TaskCanceledException))
+                {
+                    if (_logger.IsError) _logger.Error("Failed to load blocks from DB", ex);
+                }
             }
             finally
             {
