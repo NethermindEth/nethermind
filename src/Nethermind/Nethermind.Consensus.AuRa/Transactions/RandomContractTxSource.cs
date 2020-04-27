@@ -25,6 +25,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
+using Nethermind.HashLib;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Transactions
@@ -38,23 +39,28 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly IEciesCipher _eciesCipher;
         private readonly PrivateKey _privateKey;
         private readonly IList<RandomContract> _contracts;
-        private readonly Random _random = new Random();
+        private readonly ICryptoRandom _random;
 
-        public RandomContractTxSource(
-            IList<RandomContract> randomnessContracts,
+        public RandomContractTxSource(IList<RandomContract> randomnessContracts,
             IEciesCipher eciesCipher,
-            PrivateKey privateKey)
+            PrivateKey privateKey, 
+            ICryptoRandom cryptoRandom)
         {
             _contracts = randomnessContracts ?? throw new ArgumentNullException(nameof(randomnessContracts));
             _eciesCipher = eciesCipher ?? throw new ArgumentNullException(nameof(eciesCipher));
             _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));
+            _random = cryptoRandom;
         }
         
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
             if (_contracts.TryGetForBlock(parent.Number + 1, out var contract))
             {
-                yield return GetTransaction(contract, parent);
+                var tx = GetTransaction(contract, parent);
+                if (tx != null)
+                {
+                    yield return tx;
+                }
             }
         }
 
@@ -66,9 +72,9 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 case RandomContract.Phase.BeforeCommit:
                 {
                     byte[] bytes = new byte[32];
-                    _random.NextBytes(bytes);
+                    _random.GenerateRandomBytes(bytes);
                     var hash = Keccak.Compute(bytes);
-                    var cipher = _eciesCipher.Encrypt(_privateKey.PublicKey, bytes, null);
+                    var cipher = _eciesCipher.Encrypt(_privateKey.PublicKey, bytes);
                     return contract.CommitHash(hash, cipher);
                 }
                 case RandomContract.Phase.Reveal:

@@ -143,7 +143,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                         new ReadOnlyTransactionProcessorSource(environment), 
                         _context.NodeKey.Address),
                     new EciesCipher(_context.CryptoRandom),
-                    _context.NodeKey);
+                    _context.NodeKey, 
+                    _context.CryptoRandom);
                 
                 var systemTxSourceSigner = new SystemTxSourceBlockApprover(randomContractTxSource, new BasicWallet(_context.NodeKey), _context.Timestamper, environment.StateReader, _context.BlockTree.ChainId);
                 
