@@ -66,11 +66,23 @@ namespace Nethermind.Synchronization.BeamSync
             _targetDbForSaves = _tempDb; // before transition to full we are saving to beam DB
         }
 
+        private object _finishLock = new object();
+
         private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
         {
-            // the beam processor either already switched or is about ti switch to the full sync mode
-            // we should be already switched to the new database
-            Finish();
+            if ((e.Current & SyncMode.Full) == SyncMode.Full)
+            {
+                // the beam processor either already switched or is about ti switch to the full sync mode
+                // we should be already switched to the new database
+                lock (_finishLock)
+                {
+                    if (CurrentState != SyncFeedState.Finished)
+                    {
+                        Finish();
+                        UnregisterHandlers();
+                    }
+                }
+            }
         }
 
         private void SyncModeSelectorOnPreparing(object sender, SyncModeChangedEventArgs e)
@@ -93,7 +105,15 @@ namespace Nethermind.Synchronization.BeamSync
         public void Dispose()
         {
             _isDisposed = true;
+            UnregisterHandlers();
             _tempDb.Dispose();
+        }
+
+        private void UnregisterHandlers()
+        {
+            _syncModeSelector.Preparing -= SyncModeSelectorOnPreparing;
+            _syncModeSelector.Changing -= SyncModeSelectorOnChanging;
+            _syncModeSelector.Changed -= SyncModeSelectorOnChanged;
         }
 
         public string Name => _tempDb.Name;
