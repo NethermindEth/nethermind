@@ -203,7 +203,7 @@ namespace Nethermind.Synchronization.BeamSync
             ReadOnlyChainProcessingEnv env = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculatorSource.Get(txEnv.TransactionProcessor), NullReceiptStorage.Instance, _readOnlyDbProvider, specProvider, logManager);
             env.BlockProcessor.TransactionProcessed += (sender, args) =>
             {
-                if (_logger.IsInfo) _logger.Info($"Processed tx {args.Index}/{block.Transactions.Length} of {block.Number}");
+                if (_logger.IsInfo) _logger.Info($"Processed tx {args.Index + 1}/{block.Transactions.Length} of {block.Number}");
             };
 
             return (env.ChainProcessor, txEnv.StateReader);
