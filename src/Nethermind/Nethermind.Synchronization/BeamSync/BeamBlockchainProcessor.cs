@@ -310,7 +310,7 @@ namespace Nethermind.Synchronization.BeamSync
                     Transaction tx = block.Transactions[i];
                     BeamSyncContext.Description.Value = $"[tx prefetch {i}]";
                     BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
-                    stateReader.GetAccount(stateRoot, tx.To);
+                    stateReader.GetAccount(stateRoot, tx.SenderAddress);
                 }
 
                 return BeamSyncContext.ResolvedInContext.Value;
@@ -352,7 +352,7 @@ namespace Nethermind.Synchronization.BeamSync
                     {
                         BeamSyncContext.Description.Value = $"[code prefetch {i}]";
                         BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
-                        stateReader.GetCode(stateRoot, tx.SenderAddress);
+                        stateReader.GetCode(stateRoot, tx.To);
                     }
                 }
 
