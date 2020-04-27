@@ -19,6 +19,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -282,8 +283,8 @@ namespace Nethermind.Synchronization.Test.BeamSync
             BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, tempDb, StaticSelector.Beam, LimboLogs.Instance);
 
             byte[] bytes = new byte[] {1, 2, 3};
-            beamSyncDb.Set(TestItem.KeccakA, bytes);
-            byte[] retrievedFromTemp = stateDB.Get(TestItem.KeccakA);
+            beamSyncDb.Set(Keccak.Compute(bytes), bytes);
+            byte[] retrievedFromTemp = stateDB.Get(Keccak.Compute(bytes));
             retrievedFromTemp.Should().BeNull();
         }
 
@@ -295,9 +296,9 @@ namespace Nethermind.Synchronization.Test.BeamSync
             BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, tempDb, StaticSelector.Beam, LimboLogs.Instance);
 
             byte[] bytes = new byte[] {1, 2, 3};
-            tempDb.Set(TestItem.KeccakA, bytes);
+            tempDb.Set(Keccak.Compute(bytes), bytes);
 
-            byte[] retrievedFromTemp = beamSyncDb.Get(TestItem.KeccakA);
+            byte[] retrievedFromTemp = beamSyncDb.Get(Keccak.Compute(bytes));
             retrievedFromTemp.Should().BeEquivalentTo(bytes);
         }
 
@@ -309,9 +310,9 @@ namespace Nethermind.Synchronization.Test.BeamSync
             BeamSyncDb beamSyncDb = new BeamSyncDb(stateDB, tempDb, StaticSelector.Beam, LimboLogs.Instance);
 
             byte[] bytes = new byte[] {1, 2, 3};
-            stateDB.Set(TestItem.KeccakA, bytes);
+            stateDB.Set(Keccak.Compute(bytes), bytes);
 
-            byte[] retrievedFromTemp = beamSyncDb.Get(TestItem.KeccakA);
+            byte[] retrievedFromTemp = beamSyncDb.Get(Keccak.Compute(bytes));
             retrievedFromTemp.Should().BeEquivalentTo(bytes);
         }
 
