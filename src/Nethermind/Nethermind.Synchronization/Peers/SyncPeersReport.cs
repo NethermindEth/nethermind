@@ -47,7 +47,7 @@ namespace Nethermind.Synchronization.Peers
 
         private object _writeLock = new object();
 
-        private IEnumerable<PeerInfo> OrderedPeers => _peerPool.InitializedPeers.OrderBy(p => p.SyncPeer?.Node?.Host);
+        private IEnumerable<PeerInfo> OrderedPeers => _peerPool.InitializedPeers.OrderBy(p => p.SyncPeer?.HeadNumber).ThenBy(p => p.SyncPeer?.Node?.Host);
 
         public void WriteFullReport()
         {
