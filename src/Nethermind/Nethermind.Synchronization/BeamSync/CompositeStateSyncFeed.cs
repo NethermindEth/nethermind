@@ -66,11 +66,12 @@ namespace Nethermind.Synchronization.BeamSync
 
         public override Task<T> PrepareRequest()
         {
-            foreach (ISyncFeed<T> syncFeed in _subFeeds)
+            for (int subFeedIndex = 0; subFeedIndex < _subFeeds.Length; subFeedIndex++)
             {
-                if (syncFeed.CurrentState == SyncFeedState.Active)
+                ISyncFeed<T> subFeed = _subFeeds[subFeedIndex];
+                if (subFeed.CurrentState == SyncFeedState.Active)
                 {
-                    T batch = syncFeed.PrepareRequest().Result;
+                    T batch = subFeed.PrepareRequest().Result;
                     if (batch != null)
                     {
                         return Task.FromResult(batch);
@@ -83,14 +84,15 @@ namespace Nethermind.Synchronization.BeamSync
 
         public override SyncResponseHandlingResult HandleResponse(T batch)
         {
-            foreach (ISyncFeed<T> subFeed in _subFeeds)
+            for (int subFeedIndex = 0; subFeedIndex < _subFeeds.Length; subFeedIndex++)
             {
+                ISyncFeed<T> subFeed = _subFeeds[subFeedIndex];
                 if (subFeed.FeedId == batch.ConsumerId)
                 {
                     subFeed.HandleResponse(batch);
                 }
             }
-            
+
             return SyncResponseHandlingResult.OK;
         }
 
