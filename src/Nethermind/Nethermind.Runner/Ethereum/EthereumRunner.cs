@@ -122,7 +122,7 @@ namespace Nethermind.Runner.Ethereum
             while (_context.DisposeStack.Count != 0)
             {
                 IAsyncDisposable disposable = _context.DisposeStack.Pop();
-                if (_logger.IsDebug) _logger.Debug($"Disposing {disposable.GetType().Name}");
+                if (_logger.IsDebug) _logger.Debug($"Disposing {disposable}");
                 await disposable.DisposeAsync();
             }
             
