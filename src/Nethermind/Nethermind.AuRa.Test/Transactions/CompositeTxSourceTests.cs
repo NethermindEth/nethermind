@@ -35,14 +35,14 @@ namespace Nethermind.AuRa.Test.Transactions
         [Test]
         public void selectTransactions_injects_transactions_from_ImmediateTransactionSources_in_front_of_block_transactions()
         {
-            ITxSource CreateImmediateTransactionSource(BlockHeader header, int limit, Address address, List<Transaction> txs, bool createsTransaction)
+            ITxSource CreateImmediateTransactionSource(BlockHeader header, Address address, List<Transaction> txs, bool createsTransaction)
             {
                 var immediateTransactionSource = Substitute.For<ITxSource>();
-                immediateTransactionSource.GetTransactions(header, limit).Returns(x =>
+                immediateTransactionSource.GetTransactions(header, Arg.Any<long>()).Returns(x =>
                 {
                     if (createsTransaction)
                     {
-                        var transaction = Build.A.SystemTransaction.To(address).WithGasPrice(UInt256.Zero).TestObject;
+                        var transaction = Build.A.GeneratedTransaction.To(address).WithGasPrice(UInt256.Zero).TestObject;
                         txs.Add(transaction);
                         return new[] {transaction};
                     }
@@ -60,12 +60,12 @@ namespace Nethermind.AuRa.Test.Transactions
             
             var innerPendingTxSelector = Substitute.For<ITxSource>();
             
-            var immediateTransactionSource1 = CreateImmediateTransactionSource(parentHeader, gasLimit, TestItem.AddressB, expected, true);
-            var immediateTransactionSource2 = CreateImmediateTransactionSource(parentHeader, gasLimit, TestItem.AddressC, expected, false);
-            var immediateTransactionSource3 = CreateImmediateTransactionSource(parentHeader, gasLimit, TestItem.AddressD, expected, true);
+            var immediateTransactionSource1 = CreateImmediateTransactionSource(parentHeader, TestItem.AddressB, expected, true);
+            var immediateTransactionSource2 = CreateImmediateTransactionSource(parentHeader, TestItem.AddressC, expected, false);
+            var immediateTransactionSource3 = CreateImmediateTransactionSource(parentHeader, TestItem.AddressD, expected, true);
             
             var originalTxs = Build.A.Transaction.TestObjectNTimes(5);
-            innerPendingTxSelector.GetTransactions(parentHeader, gasLimit).Returns(originalTxs);
+            innerPendingTxSelector.GetTransactions(parentHeader, Arg.Any<long>()).Returns(originalTxs);
 
             var compositeTxSource = new CompositeTxSource(
                 immediateTransactionSource1, immediateTransactionSource2, immediateTransactionSource3, innerPendingTxSelector);

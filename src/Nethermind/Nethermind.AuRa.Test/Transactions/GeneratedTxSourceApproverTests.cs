@@ -36,7 +36,7 @@ namespace Nethermind.AuRa.Test.Transactions
         {
             int chainId = 5;
             var blockHeader = Build.A.BlockHeader.TestObject;
-            var tx = Build.A.SystemTransaction.TestObject;
+            var tx = Build.A.GeneratedTransaction.TestObject;
             var timestamper = Substitute.For<ITimestamper>();
             var stateReader = Substitute.For<IStateReader>();
             

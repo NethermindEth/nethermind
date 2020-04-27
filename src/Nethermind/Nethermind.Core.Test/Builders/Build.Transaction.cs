@@ -19,7 +19,7 @@ namespace Nethermind.Core.Test.Builders
     public partial class Build
     {
         public TransactionBuilder<Transaction> Transaction => new TransactionBuilder<Transaction>();
-        
         public TransactionBuilder<SystemTransaction> SystemTransaction => new TransactionBuilder<SystemTransaction>();
+        public TransactionBuilder<GeneratedTransaction> GeneratedTransaction => new TransactionBuilder<GeneratedTransaction>();
     }
 }

@@ -27,6 +27,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -76,7 +77,7 @@ namespace Nethermind.AuRa.Test.Contract
         [Test]
         public void finalize_change_should_call_correct_transaction()
         {
-            var expectation = new Transaction()
+            var expectation = new SystemTransaction()
             {
                 Value = 0, 
                 Data = new byte[] {0x75, 0x28, 0x62, 0x11},
@@ -87,12 +88,13 @@ namespace Nethermind.AuRa.Test.Contract
                 GasPrice = 0,
                 Nonce = 0
             };
+            expectation.Hash = expectation.CalculateHash();
             
             var contract = new ValidatorContract(_transactionProcessor, new AbiEncoder(), _contractAddress, _stateProvider, _readOnlyTransactionProcessorSource);
             
             contract.FinalizeChange(_block.Header);
             
-            _transactionProcessor.Received().Execute(Arg.Is<Transaction>(t => IsEquivalentTo(t, expectation)), _block.Header, Arg.Any<ITxTracer>());
+            _transactionProcessor.Received().Execute(Arg.Is<Transaction>(t => IsEquivalentTo(expectation, t)), _block.Header, Arg.Any<ITxTracer>());
         }
         
         private static bool IsEquivalentTo(object expected, object item)

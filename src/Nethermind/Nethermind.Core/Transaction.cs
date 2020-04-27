@@ -74,4 +74,12 @@ namespace Nethermind.Core
     /// System transaction that is to be executed by the node without including in the block. 
     /// </summary>
     public class SystemTransaction : Transaction { }
+
+    public static class TransactionExtensions
+    {
+        public static bool IsSystem(this Transaction tx)
+        {
+            return tx is SystemTransaction || tx.SenderAddress == Address.SystemUser;
+        }
+    }
 }
