@@ -68,10 +68,12 @@ namespace Nethermind.Synchronization.FastBlocks
         private ConcurrentDictionary<long, HeadersSyncBatch> _dependencies = new ConcurrentDictionary<long, HeadersSyncBatch>();
 
         private bool AllHeadersDownloaded => (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) == 1;
-        
-        private long HeadersInQueue  => _dependencies.Sum(hd => hd.Value.Response.Length);
+        private bool AnyHeaderDownloaded => _blockTree.LowestInsertedHeader != null;
+
+        private long HeadersInQueue => _dependencies.Sum(hd => hd.Value.Response.Length);
 
         public FastHeadersSyncFeed(IBlockTree blockTree, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
+            : base(logManager)
         {
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
@@ -100,21 +102,27 @@ namespace Nethermind.Synchronization.FastBlocks
             _nextHeaderDiff = startTotalDifficulty;
 
             _lowestRequestedHeaderNumber = startNumber + 1;
-            
+
             Activate();
         }
 
         public override bool IsMultiFeed => true;
         public override AllocationContexts Contexts => AllocationContexts.Headers;
 
-        private bool AnyBatchesLeftToBeBuilt()
+        private bool ShouldBuildANewBatch()
         {
             bool genesisHeaderRequested = _lowestRequestedHeaderNumber == 0;
+            
+            bool isImmediateSync = !_syncConfig.DownloadHeadersInFastSync;
 
-            bool noBatchesLeft = AllHeadersDownloaded || genesisHeaderRequested;
+            bool noBatchesLeft = AllHeadersDownloaded
+                                 || genesisHeaderRequested
+                                 || HeadersInQueue >= FastBlocksQueueLimits.ForHeaders
+                                 || isImmediateSync && AnyHeaderDownloaded;
+
             if (noBatchesLeft)
             {
-                if (AllHeadersDownloaded)
+                if (AllHeadersDownloaded || isImmediateSync && AnyHeaderDownloaded)
                 {
                     Finish();
                     PostFinishCleanUp();
@@ -150,12 +158,12 @@ namespace Nethermind.Synchronization.FastBlocks
         public override Task<HeadersSyncBatch> PrepareRequest()
         {
             HandleDependentBatches();
-            
+
             if (_pending.TryDequeue(out HeadersSyncBatch batch))
             {
                 batch.MarkRetry();
             }
-            else if (AnyBatchesLeftToBeBuilt())
+            else if (ShouldBuildANewBatch())
             {
                 batch = BuildNewBatch();
             }
@@ -163,7 +171,7 @@ namespace Nethermind.Synchronization.FastBlocks
             if (batch != null)
             {
                 _sent.TryAdd(batch, _dummyObject);
-                if (batch.StartNumber >= (_blockTree.LowestInsertedHeader?.Number ?? 0) - 2048)
+                if (batch.StartNumber >= (_blockTree.LowestInsertedHeader?.Number ?? 0) - FastBlocksPriorities.ForHeaders)
                 {
                     batch.Prioritized = true;
                 }

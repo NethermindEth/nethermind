@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -42,10 +43,11 @@ namespace Nethermind.Synchronization.BeamSync
         private readonly IRewardCalculatorSource _rewardCalculatorSource;
         private readonly ILogger _logger;
 
-        private IBlockProcessingQueue _blockchainProcessor;
+        private readonly IBlockProcessingQueue _standardProcessorQueue;
+        private readonly IBlockchainProcessor _processor;
         private readonly ISyncModeSelector _syncModeSelector;
-        private ReadOnlyBlockTree _readOnlyBlockTree;
-        private IBlockTree _blockTree;
+        private readonly ReadOnlyBlockTree _readOnlyBlockTree;
+        private readonly IBlockTree _blockTree;
         private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
 
@@ -57,14 +59,16 @@ namespace Nethermind.Synchronization.BeamSync
             IBlockValidator blockValidator,
             IBlockDataRecoveryStep recoveryStep,
             IRewardCalculatorSource rewardCalculatorSource,
-            IBlockProcessingQueue blockchainProcessor,
+            IBlockProcessingQueue processingQueue,
+            IBlockchainProcessor processor,
             ISyncModeSelector syncModeSelector)
         {
             _readOnlyDbProvider = readOnlyDbProvider ?? throw new ArgumentNullException(nameof(readOnlyDbProvider));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _rewardCalculatorSource = rewardCalculatorSource ?? throw new ArgumentNullException(nameof(rewardCalculatorSource));
-            _blockchainProcessor = blockchainProcessor ?? throw new ArgumentNullException(nameof(blockchainProcessor));
+            _standardProcessorQueue = processingQueue ?? throw new ArgumentNullException(nameof(processingQueue));
+            _processor = processor ?? throw new ArgumentNullException(nameof(processor));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -72,17 +76,123 @@ namespace Nethermind.Synchronization.BeamSync
             _readOnlyBlockTree = new ReadOnlyBlockTree(_blockTree);
             _logger = logManager.GetClassLogger();
             _blockTree.NewBestSuggestedBlock += OnNewBlock;
-            _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
+            _blockAction = BeamProcess;
+
+            _syncModeSelector.Preparing += SyncModeSelectorOnPreparing;
+            _syncModeSelector.Changing += SyncModeSelectorOnChanging;
+            _syncModeSelector.Changed += SyncModeSelectorOnChanged;
         }
 
-        private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
+        private Action<Block> _blockAction;
+
+        private Queue<Block> _shelvedBlocks = new Queue<Block>();
+
+        private void EnqueueForStandardProcessing(Block block)
         {
-            long number = e.Block.Number;
-            for (int i = 64; i > 0; i--)
+            while (_shelvedBlocks.TryDequeue(out Block shelvedBlock))
             {
-                if (_tokens.TryGetValue(number - i, out CancellationTokenSource token))
+                if(_logger.IsInfo) _logger.Info($"Enqueuing previously shelved block {shelvedBlock.ToString(Block.Format.Short)}");
+                _standardProcessorQueue.Enqueue(shelvedBlock, ProcessingOptions.StoreReceipts);
+            }
+
+            if(_logger.IsDebug) _logger.Debug($"Enqueuing block for standard processing (skipping beam in full sync)");
+            _standardProcessorQueue.Enqueue(block, ProcessingOptions.StoreReceipts);
+        }
+
+        private void Shelve(Block block)
+        {
+            if(_logger.IsInfo) _logger.Info($"Shelving block {block.ToString(Block.Format.Short)} while beam processor transitions to full processor.");
+            _shelvedBlocks.Enqueue(block);
+        }
+
+        private object _transitionLock = new object();
+
+        private bool _isAfterBeam;
+
+        private void SyncModeSelectorOnPreparing(object sender, SyncModeChangedEventArgs e)
+        {
+            if ((e.Current & SyncMode.Full) == SyncMode.Full)
+            {
+                lock (_transitionLock)
                 {
-                    token.Cancel();
+                    if (_isAfterBeam)
+                    {
+                        // we do it only once - later we stay forever in full sync mode
+                        return;
+                    }
+
+                    _isAfterBeam = true;
+                    if(_logger.IsInfo) _logger.Info($"Setting block action to shelving.");
+                    _blockAction = Shelve;
+                }
+
+                CancelAllBeamSyncTasks();
+                Task.WhenAll(_beamProcessTasks).Wait(); // sync mode selector is waiting for beam syncing blocks to stop
+            }
+        }
+
+        private void SyncModeSelectorOnChanging(object sender, SyncModeChangedEventArgs e)
+        {
+        }
+
+        private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
+        {
+            if ((e.Current & SyncMode.Full) == SyncMode.Full)
+            {
+                if(_logger.IsInfo) _logger.Info($"Setting block action to standard processing.");
+                _blockAction = EnqueueForStandardProcessing;
+                UnregisterListeners();
+            }
+        }
+
+        /// <summary>
+        /// Whenever we finish beam syncing one of the blocks we cancel all previous ones
+        /// and move our processing power to the future
+        /// </summary>
+        /// <param name="number">Number of the block that we have just processed</param>
+        private void CancelPreviousBeamSyncingBlocks(long number)
+        {
+            lock (_tokens)
+            {
+                for (int i = 64; i > 0; i--)
+                {
+                    if (_tokens.TryGetValue(number - i, out CancellationTokenSource token))
+                    {
+                        token.Cancel();
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Whenever we start beam syncing we want to ensure that we stop all the blocks
+        /// that did not process for long time (any blocks older than 6)
+        /// </summary>
+        /// <param name="number"></param>
+        private void CancelOldBeamTasks(long number)
+        {
+            lock (_tokens)
+            {
+                for (int i = 64; i > 6; i--)
+                {
+                    if (_tokens.TryGetValue(number - i, out CancellationTokenSource token))
+                    {
+                        token.Cancel();
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// When we transition to full sync we want to cancel all the beam sync tasks
+        /// </summary>
+        private void CancelAllBeamSyncTasks()
+        {
+            lock (_tokens)
+            {
+                foreach (KeyValuePair<long, CancellationTokenSource> cancellationTokenSource in _tokens)
+                {
+                    cancellationTokenSource.Value.Cancel();
                 }
             }
         }
@@ -99,64 +209,62 @@ namespace Nethermind.Synchronization.BeamSync
             return (env.ChainProcessor, txEnv.StateReader);
         }
 
+        private ConcurrentBag<Task> _beamProcessTasks = new ConcurrentBag<Task>();
+
         private void OnNewBlock(object sender, BlockEventArgs e)
         {
             Block block = e.Block;
-            if (block.IsGenesis || (_syncModeSelector.Current & SyncMode.Full) == SyncMode.Full)
+            if (block.IsGenesis)
             {
-                // TODO: what if we do not want to store receipts?
-                _blockchainProcessor.Enqueue(block, ProcessingOptions.StoreReceipts);
+                EnqueueForStandardProcessing(block);
             }
-            else if ((_syncModeSelector.Current & SyncMode.Beam) == SyncMode.Beam)
+
+            lock (_transitionLock)
             {
-                BeamProcess(block);
-                long number = block.Number;
-                for (int i = 64; i > 6; i--)
-                {
-                    if (_tokens.TryGetValue(number - i, out CancellationTokenSource token))
-                    {
-                        token.Cancel();
-                    }
-                }
+                _blockAction(block);
             }
         }
 
+        /// <summary>
+        /// Tokens really should be by hash or hash sets by number
+        /// </summary>
         private ConcurrentDictionary<long, CancellationTokenSource> _tokens = new ConcurrentDictionary<long, CancellationTokenSource>();
 
         private void BeamProcess(Block block)
         {
-            CancellationTokenSource cancellationToken = _tokens.GetOrAdd(block.Number, t => new CancellationTokenSource());
-
-            if (block.IsGenesis)
+            CancellationTokenSource cancellationToken;
+            lock (_tokens)
             {
-                _blockchainProcessor.Enqueue(block, ProcessingOptions.IgnoreParentNotOnMainChain);
-                return;
+                cancellationToken = _tokens.GetOrAdd(block.Number, t => new CancellationTokenSource());
+                if (_isDisposed)
+                {
+                    return;
+                }
             }
 
-            // we only want to trace the actual block
+            Task beamProcessingTask = Task.CompletedTask;
+            Task prefetchTasks = Task.CompletedTask;
+
             try
             {
+                if (_logger.IsInfo) _logger.Info($"Beam processing block {block}");
                 _recoveryStep.RecoverData(block);
-                (IBlockchainProcessor processor, IStateReader stateReader) = CreateProcessor(block, new ReadOnlyDbProvider(_readOnlyDbProvider, true), _specProvider, _logManager);
+                (IBlockchainProcessor beamProcessor, IStateReader stateReader) = CreateProcessor(block, new ReadOnlyDbProvider(_readOnlyDbProvider, true), _specProvider, _logManager);
 
                 BlockHeader parentHeader = _readOnlyBlockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (parentHeader != null)
                 {
-                    PrefetchNew(stateReader, block, parentHeader.StateRoot, parentHeader.Author ?? parentHeader.Beneficiary);
+                    prefetchTasks = PrefetchNew(stateReader, block, parentHeader.StateRoot, parentHeader.Author ?? parentHeader.Beneficiary);
                 }
-
-                // Prefetch(block, parentHeader.StateRoot, parentHeader.Author ?? parentHeader.Beneficiary);
-                // Prefetch(block, block.StateRoot, block.Author ?? block.Beneficiary);
-
-                if (_logger.IsInfo) _logger.Info($"Now beam processing {block}");
+                
                 Block processedBlock = null;
-                Task preProcessTask = Task.Run(() =>
+                beamProcessingTask = Task.Run(() =>
                 {
                     BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty.Value;
                     BeamSyncContext.Description.Value = $"[preProcess of {block.Hash.ToShortString()}]";
                     BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
                     BeamSyncContext.Cancelled.Value = cancellationToken.Token;
-                    processedBlock = processor.Process(block, ProcessingOptions.ReadOnlyChain | ProcessingOptions.IgnoreParentNotOnMainChain, NullBlockTracer.Instance);
+                    processedBlock = beamProcessor.Process(block, ProcessingOptions.Beam, NullBlockTracer.Instance);
                     if (processedBlock == null)
                     {
                         if (_logger.IsDebug) _logger.Debug($"Block {block.ToString(Block.Format.Short)} skipped in beam sync");
@@ -173,94 +281,135 @@ namespace Nethermind.Synchronization.BeamSync
 
                     if (processedBlock != null)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Enqueuing for standard processing {block}");
+                        if (_logger.IsDebug) _logger.Debug($"Running standard processor after beam sync for {block}");
                         // at this stage we are sure to have all the state available
-                        _blockchainProcessor.Enqueue(block, ProcessingOptions.IgnoreParentNotOnMainChain);
+                        CancelPreviousBeamSyncingBlocks(processedBlock.Number);
+                        _processor.Process(block, ProcessingOptions.Beam, NullBlockTracer.Instance);
                     }
 
-                    processor.Dispose();
+                    beamProcessor.Dispose();
                 });
             }
             catch (Exception e)
             {
                 if (_logger.IsError) _logger.Error($"Block {block.ToString(Block.Format.Short)} failed processing and it will be skipped from beam sync", e);
             }
+
+            _beamProcessTasks.Add(Task.WhenAll(beamProcessingTask, prefetchTasks));
+
+            long number = block.Number;
+            CancelOldBeamTasks(number);
         }
 
-        private void PrefetchNew(IStateReader stateReader, Block block, Keccak stateRoot, Address miner)
+        private Task PrefetchNew(IStateReader stateReader, Block block, Keccak stateRoot, Address miner)
         {
-            CancellationTokenSource cancellationToken = _tokens.GetOrAdd(block.Number, t => new CancellationTokenSource());
+            CancellationTokenSource cancellationToken;
+            lock (_tokens)
+            {
+                cancellationToken = _tokens.GetOrAdd(block.Number, t => new CancellationTokenSource());
+                if (_isDisposed)
+                {
+                    return Task.CompletedTask;
+                }
+            }
+
             string description = $"[miner {miner}]";
             Task minerTask = Task<int>.Run(() =>
             {
                 BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty ?? 0;
                 BeamSyncContext.Description.Value = description;
                 BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
-                stateReader.GetAccount(stateRoot, miner);
                 BeamSyncContext.Cancelled.Value = cancellationToken.Token;
+                stateReader.GetAccount(stateRoot, miner);
                 return BeamSyncContext.ResolvedInContext.Value;
-            }).ContinueWith(t => { if(_logger.IsDebug) _logger.Debug(t.IsFaulted ? $"{description} prefetch failed {t.Exception.Message}" : $"{description} prefetch complete - resolved {t.Result}"); });
+            }).ContinueWith(t =>
+            {
+                if (_logger.IsDebug) _logger.Debug(t.IsFaulted ? $"{description} prefetch failed {t.Exception.Message}" : $"{description} prefetch complete - resolved {t.Result}");
+            });
 
             Task senderTask = Task<int>.Run(() =>
             {
                 BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty ?? 0;
+                BeamSyncContext.Cancelled.Value = cancellationToken.Token;
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
                     Transaction tx = block.Transactions[i];
                     BeamSyncContext.Description.Value = $"[tx prefetch {i}]";
                     BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
-                    BeamSyncContext.Cancelled.Value = cancellationToken.Token;
-                    // _logger.Info($"Resolved sender of {block.Number}.{i}");
-                    stateReader.GetAccount(stateRoot, tx.To);
+                    stateReader.GetAccount(stateRoot, tx.SenderAddress);
                 }
 
                 return BeamSyncContext.ResolvedInContext.Value;
-            }).ContinueWith(t => { if(_logger.IsDebug) _logger.Debug(t.IsFaulted ? $"tx prefetch failed {t.Exception.Message}" : $"tx prefetch complete - resolved {t.Result}"); });
+            }).ContinueWith(t =>
+            {
+                if (_logger.IsDebug) _logger.Debug(t.IsFaulted ? $"tx prefetch failed {t.Exception.Message}" : $"tx prefetch complete - resolved {t.Result}");
+            });
 
             Task storageTask = Task<int>.Run(() =>
             {
                 BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty ?? 0;
+                BeamSyncContext.Cancelled.Value = cancellationToken.Token;
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
                     Transaction tx = block.Transactions[i];
                     if (tx.To != null)
                     {
                         BeamSyncContext.Description.Value = $"[storage prefetch {i}]";
-                        // _logger.Info($"Resolved storage of target of {block.Number}.{i}");
                         BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
-                        BeamSyncContext.Cancelled.Value = cancellationToken.Token;
                         stateReader.GetStorageRoot(stateRoot, tx.To);
                     }
                 }
 
                 return BeamSyncContext.ResolvedInContext.Value;
-            }).ContinueWith(t => { if(_logger.IsDebug) _logger.Debug(t.IsFaulted ? $"storage prefetch failed {t.Exception.Message}" : $"storage prefetch complete - resolved {t.Result}"); });
+            }).ContinueWith(t =>
+            {
+                if (_logger.IsDebug) _logger.Debug(t.IsFaulted ? $"storage prefetch failed {t.Exception.Message}" : $"storage prefetch complete - resolved {t.Result}");
+            });
 
 
             Task codeTask = Task<int>.Run(() =>
             {
                 BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty.Value;
+                BeamSyncContext.Cancelled.Value = cancellationToken.Token;
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
                     Transaction tx = block.Transactions[i];
                     if (tx.To != null)
                     {
                         BeamSyncContext.Description.Value = $"[code prefetch {i}]";
-                        // _logger.Info($"Resolved code of target of {block.Number}.{i}");
                         BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
-                        BeamSyncContext.Cancelled.Value = cancellationToken.Token;
-                        stateReader.GetCode(stateRoot, tx.SenderAddress);
-                        return BeamSyncContext.ResolvedInContext.Value;
+                        stateReader.GetCode(stateRoot, tx.To);
                     }
                 }
 
                 return BeamSyncContext.ResolvedInContext.Value;
-            }).ContinueWith(t => { if(_logger.IsDebug) _logger.Debug(t.IsFaulted ? $"code prefetch failed {t.Exception.Message}" : $"code prefetch complete - resolved {t.Result}"); });
+            }).ContinueWith(t =>
+            {
+                if (_logger.IsDebug) _logger.Debug(t.IsFaulted ? $"code prefetch failed {t.Exception.Message}" : $"code prefetch complete - resolved {t.Result}");
+            });
+
+            return Task.WhenAll(minerTask, senderTask, codeTask, storageTask);
         }
 
+        private void UnregisterListeners()
+        {
+            if(_logger.IsDebug) _logger.Debug($"Unregistering sync mode listeners.");
+            _syncModeSelector.Preparing -= SyncModeSelectorOnPreparing;
+            _syncModeSelector.Changing -= SyncModeSelectorOnChanging;
+            _syncModeSelector.Changed -= SyncModeSelectorOnChanged;
+        }
+
+        private bool _isDisposed;
+        
         public void Dispose()
         {
-            _blockTree.NewBestSuggestedBlock -= OnNewBlock;
+            lock (_tokens)
+            {
+                _isDisposed = true;
+                CancelAllBeamSyncTasks();
+            }
+            
+            UnregisterListeners();
         }
     }
 }

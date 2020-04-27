@@ -28,7 +28,10 @@ namespace Nethermind.Synchronization.ParallelSync
 {
     public class SyncProgressResolver : ISyncProgressResolver
     {
-        private const int _maxLookupBack = 128; // not that we will be doing that every second or so
+        // TODO: we can search 1024 back and confirm 128 deep header and start using it as Max(0, confirmed)
+        // then we will never have to look 128 back again
+        // note that we will be doing that every second or so
+        private const int _maxLookupBack = 128;
 
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
@@ -56,14 +59,14 @@ namespace Nethermind.Synchronization.ParallelSync
 
             return _stateDb.Innermost.Get(stateRoot) != null;
         }
-        
+
         private bool IsBeamSynced(Keccak stateRoot)
         {
             if (stateRoot == Keccak.EmptyTreeHash)
             {
                 return true;
             }
-            
+
             return _beamStateDb.Innermost.Get(stateRoot) != null;
         }
 
@@ -77,11 +80,11 @@ namespace Nethermind.Synchronization.ParallelSync
             // ideally we would like to check it siblings too (but this may be a bit expensive and less likely
             // to be important
             // we want to avoid a scenario where state is not found even as it is just near head or best suggested
-            
+
             Block head = _blockTree.Head;
             BlockHeader initialBestSuggested = _blockTree.BestSuggestedHeader; // just storing here for debugging sake
             BlockHeader bestSuggested = initialBestSuggested;
-            
+
             long bestFullState = 0;
             if (head != null)
             {
@@ -122,35 +125,6 @@ namespace Nethermind.Synchronization.ParallelSync
             return bestFullState;
         }
 
-        public long FindBestBeamState()
-        {
-            BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
-            Block head = _blockTree.Head;
-            long bestFullState = head?.Number ?? 0;
-            for (int i = 0; i < _maxLookupBack; i++)
-            {
-                if (bestSuggested == null)
-                {
-                    break;
-                }
-
-                if (bestSuggested.Number < _syncConfig.PivotNumberParsed)
-                {
-                    break;
-                }
-                
-                if (IsBeamSynced(bestSuggested.StateRoot))
-                {
-                    bestFullState = bestSuggested.Number;
-                    break;
-                }
-
-                bestSuggested = _blockTree.FindHeader(bestSuggested.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            }
-
-            return bestFullState;
-        }
-
         public long FindBestHeader() => _blockTree.BestSuggestedHeader?.Number ?? 0;
 
         public long FindBestFullBlock() => Math.Min(FindBestHeader(), _blockTree.BestSuggestedBody?.Number ?? 0); // avoiding any potential concurrency issue
@@ -173,10 +147,19 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 return true;
             }
+            
+            bool immediateBeamSync = !_syncConfig.DownloadHeadersInFastSync;
+            bool anyHeaderDownloaded = _blockTree.LowestInsertedHeader != null;
+            if (immediateBeamSync && anyHeaderDownloaded)
+            {
+                return true;
+            }
 
             bool allHeadersDownloaded = (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1;
-            bool allReceiptsDownloaded = !_syncConfig.DownloadReceiptsInFastSync || (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) <= 1;
-            bool allBodiesDownloaded = !_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1;
+            bool allReceiptsDownloaded = !_syncConfig.DownloadReceiptsInFastSync
+                                         || (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) <= 1;
+            bool allBodiesDownloaded = !_syncConfig.DownloadBodiesInFastSync
+                                       || (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1;
 
             return allBodiesDownloaded && allHeadersDownloaded && allReceiptsDownloaded;
         }

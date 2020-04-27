@@ -630,12 +630,7 @@ namespace Nethermind.Synchronization.Blocks
             
             allocationWithCancellation.Cancel();
         }
-
-        private void AllocationOnRefreshed(object sender, EventArgs e)
-        {
-            Feed.Activate();
-        }
-
+        
         private void AllocationOnReplaced(object sender, AllocationChangeEventArgs e)
         {
             if (e.Previous == null)

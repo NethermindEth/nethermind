@@ -36,7 +36,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    public partial class StateSyncFeed : SyncFeed<StateSyncBatch>
+    public partial class StateSyncFeed : SyncFeed<StateSyncBatch>, IDisposable
     {
         private const int AlreadySavedCapacity = 1024 * 64;
         private const int MaxRequestSize = 384;
@@ -74,9 +74,10 @@ namespace Nethermind.Synchronization.FastSync
         private HashSet<Keccak> _codesSameAsNodes = new HashSet<Keccak>();
 
         private StateSyncProgress _syncProgress;
-        private int _noResponsesInARow;
+        private int _hintsToResetRoot;
 
-        public StateSyncFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, IBlockTree blockTree, ISyncConfig syncConfig, ILogManager logManager)
+        public StateSyncFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, IBlockTree blockTree, ILogManager logManager)
+            : base(logManager)
         {
             _codeDb = codeDb?.Innermost ?? throw new ArgumentNullException(nameof(codeDb));
             _stateDb = stateDb?.Innermost ?? throw new ArgumentNullException(nameof(stateDb));
@@ -342,16 +343,12 @@ namespace Nethermind.Synchronization.FastSync
 
                     if (!hasValidFormat)
                     {
-                        _noResponsesInARow++;
+                        _hintsToResetRoot++;
 
                         AddAgainAllItems();
                         if (_logger.IsWarn) _logger.Warn($"Batch response had invalid format");
                         Interlocked.Increment(ref _data.InvalidFormatCount);
                         return isMissingRequestData ? SyncResponseHandlingResult.InternalError : SyncResponseHandlingResult.NotAssigned;
-                    }
-                    else
-                    {
-                        _noResponsesInARow = 0;
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"Received node data - {responseLength} items in response to {requestLength}");
@@ -404,7 +401,15 @@ namespace Nethermind.Synchronization.FastSync
 
                     /* magic formula is ratio of our desired batch size - 1024 to Geth max batch size 384 times some missing nodes ratio */
                     bool isEmptish = (decimal) nonEmptyResponses / Math.Max(requestLength, 1) < 384m / 1024m * 0.75m;
-                    if (isEmptish) Interlocked.Increment(ref _data.EmptishCount);
+                    if (isEmptish)
+                    {
+                        Interlocked.Increment(ref _hintsToResetRoot);
+                        Interlocked.Increment(ref _data.EmptishCount);
+                    }
+                    else
+                    {
+                        Interlocked.Exchange(ref _hintsToResetRoot, 0);
+                    }
 
                     /* here we are very forgiving for Geth nodes that send bad data fast */
                     bool isBadQuality = nonEmptyResponses > 64 && (decimal) invalidNodes / Math.Max(requestLength, 1) > 0.50m;
@@ -458,7 +463,7 @@ namespace Nethermind.Synchronization.FastSync
                 _handleWatch.Stop();
                 if (!_pendingRequests.TryRemove(batch, out _))
                 {
-                    _logger.Error($"Cannot remove pending request {batch}");
+                    if (_logger.IsDebug) _logger.Debug($"Cannot remove pending request {batch}");
                 }
                 else
                 {
@@ -631,6 +636,8 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
+        private int _beamSyncedUsable = 0;
+
         public override async Task<StateSyncBatch> PrepareRequest()
         {
             if ((_syncModeSelector.Current & SyncMode.StateNodes) != SyncMode.StateNodes)
@@ -642,14 +649,14 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (_rootNode == Keccak.EmptyTreeHash)
                 {
-                    _logger.Error("Falling asleep - root is empty tree");
+                    if (_logger.IsDebug) _logger.Debug("Falling asleep - root is empty tree");
                     FallAsleep();
                     return _emptyBatch;
                 }
 
-                if (_noResponsesInARow >= 20)
+                if (_hintsToResetRoot >= 32)
                 {
-                    _logger.Error("Falling asleep - many missing responses");
+                    if (_logger.IsDebug) _logger.Debug("Falling asleep - many missing responses");
                     FallAsleep();
                     return _emptyBatch;
                 }
@@ -666,6 +673,15 @@ namespace Nethermind.Synchronization.FastSync
                 }
 
                 List<StateSyncItem> requestHashes = _pendingItems.TakeBatch(MaxRequestSize);
+                // foreach (StateSyncItem stateSyncItem in requestHashes)
+                // {
+                //     if (_tempDb.Get(stateSyncItem.Hash) != null)
+                //     {
+                //         Interlocked.Increment(ref _beamSyncedUsable);
+                //         _logger.Error($"Could have used the beam synced item {_beamSyncedUsable}");
+                //     }
+                // }
+                
                 LogRequestInfo(requestHashes);
 
                 if (requestHashes.Count > 0)
@@ -681,10 +697,10 @@ namespace Nethermind.Synchronization.FastSync
                     return await Task.FromResult(result);
                 }
 
-                if (_pendingRequests.Count == 0)
+                if (requestHashes.Count == 0)
                 {
                     // trying to reproduce past behaviour where we can recognize the transition time this way
-                    FallAsleep();
+                    Interlocked.Increment(ref _hintsToResetRoot);
                 }
 
                 return await Task.FromResult(_emptyBatch);
@@ -713,9 +729,11 @@ namespace Nethermind.Synchronization.FastSync
                 }
             }
         }
-
+        
         public void ResetStateRoot(long blockNumber, Keccak stateRoot)
         {
+            Interlocked.Exchange(ref _hintsToResetRoot, 0);
+            
             if (_logger.IsInfo) _logger.Info($"Setting state sync state root to {blockNumber} {stateRoot}");
             _currentSyncStart = DateTime.UtcNow;
             _currentSyncStartSecondsInSync = _data.SecondsInSync;
@@ -774,6 +792,11 @@ namespace Nethermind.Synchronization.FastSync
             AlreadySaved,
             AlreadyRequested,
             Added
+        }
+
+        public void Dispose()
+        {
+            _syncModeSelector.Changed -= SyncModeSelectorOnChanged;
         }
     }
 }

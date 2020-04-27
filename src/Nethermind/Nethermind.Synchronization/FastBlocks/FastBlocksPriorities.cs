@@ -13,27 +13,25 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Runtime.CompilerServices;
-using Nethermind.Dirichlet.Numerics;
-
-[assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]
-namespace Nethermind.Synchronization.ParallelSync
+namespace Nethermind.Synchronization.FastBlocks
 {
-    public interface ISyncProgressResolver
+    internal static class FastBlocksPriorities
     {
-        long FindBestFullState();
-
-        long FindBestHeader();
+        /// <summary>
+        /// Batches that are so close to the lowest inserted header will be prioritized
+        /// </summary>
+        public const long ForHeaders = 16 * 1024;
         
-        long FindBestFullBlock();
+        /// <summary>
+        /// Batches that are so close to the lowest inserted body will be prioritized
+        /// </summary>
+        public const long ForBodies = 2 * 1024;
         
-        bool IsFastBlocksFinished();
-        
-        bool IsLoadingBlocksFromDb();
-        
-        long FindBestProcessedBlock();
-        
-        UInt256 ChainDifficulty { get; }
+        /// <summary>
+        /// Batches that are so close to the lowest inserted receipt will be prioritized
+        /// </summary>
+        public const long ForReceipts = 2 * 1024;
     }
 }

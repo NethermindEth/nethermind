@@ -72,7 +72,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             public void ReportWeakPeer(PeerInfo peerInfo, AllocationContexts contexts)
             {
             }
-            
+
             public void WakeUpAll()
             {
                 throw new NotImplementedException();
@@ -96,7 +96,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             public void RefreshTotalDifficulty(ISyncPeer syncPeer, Keccak hash)
             {
             }
-            
+
             public void Start()
             {
             }
@@ -152,10 +152,11 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         private class TestSyncFeed : SyncFeed<TestBatch>
         {
             public TestSyncFeed(bool isMultiFeed = true)
+                : base(LimboLogs.Instance)
             {
                 IsMultiFeed = isMultiFeed;
             }
-            
+
             public const int Max = 64;
 
             private int _highestRequested;

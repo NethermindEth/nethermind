@@ -17,6 +17,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using MathNet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
 
@@ -130,6 +131,10 @@ namespace Nethermind.Synchronization.ParallelSync
                                 SyncResponseHandlingResult result = Feed.HandleResponse(request);
                                 ReactToHandlingResult(request, result, allocatedPeer);
                             }
+                            catch (ObjectDisposedException)
+                            {
+                                if (Logger.IsInfo) Logger.Info("Ignoring sync response as the DB has already closed.");
+                            }
                             catch (Exception e)
                             {
                                 // possibly clear the response and handle empty response batch here (to avoid missing parts)
@@ -207,11 +212,8 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 if (_currentFeedState != state)
                 {
-                    if (!Feed.IsMultiFeed)
-                    {
-                        if(Logger.IsDebug) Logger.Debug($"{Feed.GetType().Name} state changed to {state}");
-                    }
-                    
+                    if(Logger.IsDebug) Logger.Debug($"{Feed.GetType().Name} state changed to {state}");
+
                     _currentFeedState = state;
                     TaskCompletionSource<object> newDormantStateTask = null;
                     if (state == SyncFeedState.Dormant)

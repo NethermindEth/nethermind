@@ -16,18 +16,20 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    public class FullSyncFeed : SyncFeed<BlocksRequest>
+    public class FullSyncFeed : SyncFeed<BlocksRequest>, IDisposable
     {
         private readonly ISyncModeSelector _syncModeSelector;
 
         private BlocksRequest _blocksRequest;
 
-        public FullSyncFeed(ISyncModeSelector syncModeSelector)
+        public FullSyncFeed(ISyncModeSelector syncModeSelector, ILogManager logManager)
+            : base(logManager)
         {
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
 
@@ -75,5 +77,10 @@ namespace Nethermind.Synchronization.Blocks
         public override bool IsMultiFeed => false;
         
         public override AllocationContexts Contexts => AllocationContexts.Blocks;
+
+        public void Dispose()
+        {
+            _syncModeSelector.Changed -= SyncModeSelectorOnChanged;
+        }
     }
 }

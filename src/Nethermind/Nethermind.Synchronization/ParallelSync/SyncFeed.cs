@@ -16,12 +16,15 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
     public abstract class SyncFeed<T> : ISyncFeed<T>
     {
+        private ILogger _logger;
+        
         public abstract Task<T> PrepareRequest();
         public abstract SyncResponseHandlingResult HandleResponse(T response);
 
@@ -31,6 +34,11 @@ namespace Nethermind.Synchronization.ParallelSync
         public SyncFeedState CurrentState { get; private set; }
         public event EventHandler<SyncFeedStateEventArgs> StateChanged;
 
+        protected SyncFeed(ILogManager logManager)
+        {
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        }
+        
         private void ChangeState(SyncFeedState newState)
         {
             CurrentState = newState;

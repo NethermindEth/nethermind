@@ -69,7 +69,13 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || _receiptStorage.LowestInsertedReceiptBlock == 1;
 
+        /// <summary>
+        /// Not it is meant to be counting blocks and not receipts
+        /// </summary>
+        private long ReceiptsInQueue => _dependencies.Sum(d => d.Value.Count);
+
         public FastReceiptsSyncFeed(ISpecProvider specProvider, IBlockTree blockTree, IReceiptStorage receiptStorage, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
+            : base(logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
@@ -108,13 +114,14 @@ namespace Nethermind.Synchronization.FastBlocks
         
         public override AllocationContexts Contexts => AllocationContexts.Receipts;
 
-        private bool AnyBatchesLeftToPrepare()
+        private bool ShouldBuildANewBatch()
         {
             bool shouldDownloadReceipts = _syncConfig.DownloadReceiptsInFastSync;
             bool allReceiptsDownloaded = _receiptStorage.LowestInsertedReceiptBlock == 1;
 
             bool noBatchesLeft = !shouldDownloadReceipts
-                                 || allReceiptsDownloaded;
+                                 || allReceiptsDownloaded 
+                                 || ReceiptsInQueue >= FastBlocksQueueLimits.ForReceipts;
 
             if (noBatchesLeft)
             {
@@ -242,7 +249,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 batch.MarkRetry();
             }
-            else if (AnyBatchesLeftToPrepare())
+            else if (ShouldBuildANewBatch())
             {
                 bool moreBodiesWaiting = (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue)
                                          < (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue);
@@ -275,7 +282,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 throw new InvalidOperationException("Batch needs to have the min number set to determine priority");
             }
             
-            if (_receiptStorage.LowestInsertedReceiptBlock - batch.MinNumber < 2 * 1024)
+            if (_receiptStorage.LowestInsertedReceiptBlock - batch.MinNumber < FastBlocksPriorities.ForReceipts)
             {
                 batch.Prioritized = true;
             }
@@ -426,7 +433,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_receiptStorage.LowestInsertedReceiptBlock} | HANDLED {receiptSyncBatch}");
 
-                _syncReport.ReceiptsInQueue.Update(_dependencies.Sum(d => d.Value.Count));
+                _syncReport.ReceiptsInQueue.Update(ReceiptsInQueue);
                 
                 return added;
             }

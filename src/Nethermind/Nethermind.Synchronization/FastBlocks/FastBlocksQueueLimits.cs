@@ -13,27 +13,25 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Runtime.CompilerServices;
-using Nethermind.Dirichlet.Numerics;
-
-[assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]
-namespace Nethermind.Synchronization.ParallelSync
+namespace Nethermind.Synchronization.FastBlocks
 {
-    public interface ISyncProgressResolver
+    internal static class FastBlocksQueueLimits
     {
-        long FindBestFullState();
-
-        long FindBestHeader();
+        /// <summary>
+        /// Max queued headers
+        /// </summary>
+        public const long ForHeaders = 128 * 1024;
         
-        long FindBestFullBlock();
+        /// <summary>
+        /// Max queued bodies
+        /// </summary>
+        public const long ForBodies = 16 * 1024;
         
-        bool IsFastBlocksFinished();
-        
-        bool IsLoadingBlocksFromDb();
-        
-        long FindBestProcessedBlock();
-        
-        UInt256 ChainDifficulty { get; }
+        /// <summary>
+        /// Max queued receipts
+        /// </summary>
+        public const long ForReceipts = 16 * 1024;
     }
 }

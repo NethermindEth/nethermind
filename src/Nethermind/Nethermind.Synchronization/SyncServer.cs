@@ -158,7 +158,8 @@ namespace Nethermind.Synchronization
             }
 
             ValidateSeal(block, nodeWhoSentTheBlock);
-            if ((_syncModeSelector.Current & (SyncMode.Beam | SyncMode.Full)) != SyncMode.None)
+            if ((_syncModeSelector.Current & (SyncMode.FastSync | SyncMode.StateNodes)) == SyncMode.None 
+                || (_syncModeSelector.Current & (SyncMode.Full | SyncMode.Beam)) != SyncMode.None)
             {
                 LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
                 SyncBlock(block, nodeWhoSentTheBlock);
@@ -347,6 +348,11 @@ namespace Nethermind.Synchronization
             {
                 if (_logger.IsDebug) _logger.Debug($"Broadcasting block {block.ToString(Block.Format.Short)} to {counter} peers.");
             }
+        }
+
+        public void Dispose()
+        {
+            _blockTree.NewHeadBlock -= OnNewHeadBlock;
         }
     }
 }
