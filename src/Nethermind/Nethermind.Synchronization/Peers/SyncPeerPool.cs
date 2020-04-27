@@ -513,7 +513,13 @@ namespace Nethermind.Synchronization.Peers
                 {
                     try
                     {
-                        if (firstToComplete.IsFaulted || firstToComplete == delayTask)
+                        if (firstToComplete == delayTask)
+                        {
+                            if (_logger.IsDebug) _logger.Debug($"InitPeerInfo timed out for node: {syncPeer.Node:c}");
+                            _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
+                            syncPeer.Disconnect(DisconnectReason.DisconnectRequested, "refresh peer info fault - timeout");
+                        }
+                        else if (firstToComplete.IsFaulted)
                         {
                             if (_logger.IsDebug) _logger.Debug($"InitPeerInfo failed for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
                             _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
@@ -532,7 +538,6 @@ namespace Nethermind.Synchronization.Peers
                             if (header == null)
                             {
                                 if (_logger.IsDebug) _logger.Debug($"InitPeerInfo failed for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
-
                                 _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
                                 syncPeer.Disconnect(DisconnectReason.DisconnectRequested, "refresh peer info fault - null response");
                                 return;
