@@ -164,11 +164,11 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number);
                             SyncProgressResolver.FindBestFullBlock().Returns(ChainHead.Number);
                             SyncProgressResolver.FindBestBeamState().Returns(ChainHead.Number);
-                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - 128);
-                            SyncProgressResolver.FindBestProcessedBlock().Returns(ChainHead.Number - 128);
+                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - FastSyncCatchUpHeightDelta + 1);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(ChainHead.Number - FastSyncCatchUpHeightDelta + 1);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(true);
                             SyncProgressResolver.ChainDifficulty.Returns(ChainHead.TotalDifficulty ?? 0);
-                            return "fully synching";
+                            return "fully syncing";
                         }
                     );
                     return this;
@@ -202,6 +202,24 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             SyncProgressResolver.FindBestBeamState().Returns(0);
                             SyncProgressResolver.FindBestFullState().Returns(0);
                             SyncProgressResolver.FindBestProcessedBlock().Returns(0);
+                            SyncProgressResolver.IsFastBlocksFinished().Returns(true);
+                            SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
+                            return "mid fast sync";
+                        }
+                    );
+                    return this;
+                }
+                
+                public ScenarioBuilder IfThisNodeJustCameBackFromBeingOfflineForLongTimeAndFinishedFastSyncCatchUp()
+                {
+                    _syncProgressSetups.Add(
+                        () =>
+                        {
+                            SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number);
+                            SyncProgressResolver.FindBestFullBlock().Returns(ChainHead.Number);
+                            SyncProgressResolver.FindBestBeamState().Returns(ChainHead.Number - FastSyncCatchUpHeightDelta - 1);
+                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - FastSyncCatchUpHeightDelta - 1);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(ChainHead.Number - FastSyncCatchUpHeightDelta - 1);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(true);
                             SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
                             return "mid fast sync";
@@ -533,6 +551,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                 public ScenarioBuilder WhateverTheSyncProgressIs()
                 {
+                    IfThisNodeJustCameBackFromBeingOfflineForLongTimeAndFinishedFastSyncCatchUp();
                     IfThisNodeHasNeverSyncedBefore();
                     IfThisNodeIsFullySynced();
                     IfThisNodeIsProcessingAlreadyDownloadedBlocksInFullSync();
@@ -1041,17 +1060,17 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         }
         
         /// <summary>
-        /// We DO NOT want the thing like below to happen (incorrectly go back to StateNodes from Full)
-        /// Changing state to None at processed:9947692|beam state:9947697|state:9947608|block:9947698|header:9947698|peer block:9947698
+        /// We should switch to State Sync in a case like below
+        /// 2020-04-27 11:48:30.6691|Changing state to StateNodes at processed:2594949|beam state:2594949|state:2594949|block:2596807|header:2596807|peer block:2596807
         /// </summary>
         [Test]
-        public void When_processed_is_higher_than_state_due_to_beam_sync()
+        public void When_long_range_state_catch_up_is_needed()
         {
-            // so at the moment beam synced nodes can update chain head
-            // we should split chain head to Head and BeamHead
-            // when beam processing we should return BeamHead as head / latest?
-            // when full processing we should return Head as latest
-            // SyncProgressResolver will be able to recognize these two states
+            Scenario.GoesLikeThis()
+                .IfThisNodeJustCameBackFromBeingOfflineForLongTimeAndFinishedFastSyncCatchUp()
+                .AndGoodPeersAreKnown()
+                .WhenBeamSyncIsConfigured()
+                .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.Beam);
         }
     }
 }
