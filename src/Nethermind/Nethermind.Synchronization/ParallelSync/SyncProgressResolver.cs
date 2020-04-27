@@ -125,35 +125,6 @@ namespace Nethermind.Synchronization.ParallelSync
             return bestFullState;
         }
 
-        public long FindBestBeamState()
-        {
-            BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
-            Block head = _blockTree.Head;
-            long bestFullState = head?.Number ?? 0;
-            for (int i = 0; i < _maxLookupBack; i++)
-            {
-                if (bestSuggested == null)
-                {
-                    break;
-                }
-
-                if (bestSuggested.Number < _syncConfig.PivotNumberParsed)
-                {
-                    break;
-                }
-
-                if (IsBeamSynced(bestSuggested.StateRoot))
-                {
-                    bestFullState = bestSuggested.Number;
-                    break;
-                }
-
-                bestSuggested = _blockTree.FindHeader(bestSuggested.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            }
-
-            return bestFullState;
-        }
-
         public long FindBestHeader() => _blockTree.BestSuggestedHeader?.Number ?? 0;
 
         public long FindBestFullBlock() => Math.Min(FindBestHeader(), _blockTree.BestSuggestedBody?.Number ?? 0); // avoiding any potential concurrency issue
