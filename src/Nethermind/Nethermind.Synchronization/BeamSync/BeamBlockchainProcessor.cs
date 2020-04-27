@@ -17,7 +17,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -44,11 +43,11 @@ namespace Nethermind.Synchronization.BeamSync
         private readonly IRewardCalculatorSource _rewardCalculatorSource;
         private readonly ILogger _logger;
 
-        private IBlockProcessingQueue _standardProcessorQueue;
+        private readonly IBlockProcessingQueue _standardProcessorQueue;
         private readonly IBlockchainProcessor _processor;
         private readonly ISyncModeSelector _syncModeSelector;
-        private ReadOnlyBlockTree _readOnlyBlockTree;
-        private IBlockTree _blockTree;
+        private readonly ReadOnlyBlockTree _readOnlyBlockTree;
+        private readonly IBlockTree _blockTree;
         private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
 
@@ -120,23 +119,16 @@ namespace Nethermind.Synchronization.BeamSync
                 {
                     if (_isAfterBeam)
                     {
+                        // we do it only once - later we stay forever in full sync mode
                         return;
                     }
 
                     _isAfterBeam = true;
-                }
-                
-                lock (_beamProcessTasks)
-                {
                     _blockAction = Shelve;
-                    
-                    foreach (KeyValuePair<long, CancellationTokenSource> cancellationTokenSource in _tokens)
-                    {
-                        cancellationTokenSource.Value.Cancel();
-                    }
-
-                    Task.WhenAll(_beamProcessTasks).Wait(); // sync mode selector is waiting for beam syncing blocks to stop
                 }
+
+                CancelAllBeamSyncTasks();
+                Task.WhenAll(_beamProcessTasks).Wait(); // sync mode selector is waiting for beam syncing blocks to stop
             }
         }
 
@@ -157,6 +149,33 @@ namespace Nethermind.Synchronization.BeamSync
                 {
                     token.Cancel();
                 }
+            }
+        }
+
+        /// <summary>
+        /// Whenever we start beam syncing we want to ensure that we stop all the blocks
+        /// that did not process for long time (any blocks older than 6)
+        /// </summary>
+        /// <param name="number"></param>
+        private void CancelOldBeamTasks(long number)
+        {
+            for (int i = 64; i > 6; i--)
+            {
+                if (_tokens.TryGetValue(number - i, out CancellationTokenSource token))
+                {
+                    token.Cancel();
+                }
+            }
+        }
+
+        /// <summary>
+        /// When we transition to full sync we want to cancel all the beam sync tasks
+        /// </summary>
+        private void CancelAllBeamSyncTasks()
+        {
+            foreach (KeyValuePair<long, CancellationTokenSource> cancellationTokenSource in _tokens)
+            {
+                cancellationTokenSource.Value.Cancel();
             }
         }
 
@@ -181,19 +200,10 @@ namespace Nethermind.Synchronization.BeamSync
             {
                 EnqueueForStandardProcessing(block);
             }
-            
-            lock (_beamProcessTasks)
+
+            lock (_transitionLock)
             {
-                if (_isAfterBeam)
-                {
-                    // TODO: what if we do not want to store receipts?
-                    EnqueueForStandardProcessing(block);
-                }
-                else // beam sync
-                {
-                    BeamProcess(block);
-     
-                }
+                _blockAction(block);
             }
         }
 
@@ -208,8 +218,7 @@ namespace Nethermind.Synchronization.BeamSync
 
             Task beamProcessingTask = Task.CompletedTask;
             Task prefetchTasks = Task.CompletedTask;
-
-            // we only want to trace the actual block
+            
             try
             {
                 _recoveryStep.RecoverData(block);
@@ -261,15 +270,9 @@ namespace Nethermind.Synchronization.BeamSync
             }
 
             _beamProcessTasks.Add(Task.WhenAll(beamProcessingTask, prefetchTasks));
-            
+
             long number = block.Number;
-            for (int i = 64; i > 6; i--)
-            {
-                if (_tokens.TryGetValue(number - i, out CancellationTokenSource token))
-                {
-                    token.Cancel();
-                }
-            }
+            CancelOldBeamTasks(number);
         }
 
         private Task PrefetchNew(IStateReader stateReader, Block block, Keccak stateRoot, Address miner)
@@ -359,6 +362,9 @@ namespace Nethermind.Synchronization.BeamSync
 
         public void Dispose()
         {
+            _syncModeSelector.Preparing -= SyncModeSelectorOnPreparing;
+            _syncModeSelector.Changing -= SyncModeSelectorOnChanging;
+            _syncModeSelector.Changed -= SyncModeSelectorOnChanged;
         }
     }
 }

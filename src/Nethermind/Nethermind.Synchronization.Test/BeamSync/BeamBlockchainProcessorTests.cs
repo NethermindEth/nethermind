@@ -96,19 +96,30 @@ namespace Nethermind.Synchronization.Test.BeamSync
         }
         
         [Test, Retry(3)]
-        public void Hanging()
+        public void Can_enqueue_previously_shelved()
         {
             ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
             SetupBeamProcessor(syncModeSelector);
-            syncModeSelector.Preparing += Raise.EventWith(new SyncModeChangedEventArgs(SyncMode.Beam, SyncMode.Full));
-            syncModeSelector.Changing += Raise.EventWith(new SyncModeChangedEventArgs(SyncMode.Beam, SyncMode.Full));
 
             EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(MainnetSpecProvider.Instance, LimboLogs.Instance);
-            Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA, 10000000).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB, 10000000).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
-            _blockTree.SuggestBlock(newBlock);
+            Block newBlock0 = Build.A.Block.WithParent(_blockTree.Head).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA, 10000000).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB, 10000000).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
+            Block newBlock1 = Build.A.Block.WithParent(newBlock0.Header).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA, 10000000).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB, 10000000).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 2).TestObject;
+            Block newBlock2 = Build.A.Block.WithParent(newBlock1.Header).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA, 10000000).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB, 10000000).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 3).TestObject;
+            Block newBlock3 = Build.A.Block.WithParent(newBlock2.Header).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA, 10000000).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB, 10000000).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 4).TestObject;
+            
+            _blockTree.SuggestBlock(newBlock0);
+            syncModeSelector.Preparing += Raise.EventWith(new SyncModeChangedEventArgs(SyncMode.Beam, SyncMode.Full));
+            _blockTree.SuggestBlock(newBlock1);
+            syncModeSelector.Changing += Raise.EventWith(new SyncModeChangedEventArgs(SyncMode.Beam, SyncMode.Full));
+            _blockTree.SuggestBlock(newBlock2);
+            syncModeSelector.Changed += Raise.EventWith(new SyncModeChangedEventArgs(SyncMode.Beam, SyncMode.Full));
+            _blockTree.SuggestBlock(newBlock3);
+            
             Thread.Sleep(1000);
-            _blockchainProcessor.DidNotReceiveWithAnyArgs().Process(newBlock, ProcessingOptions.Beam, NullBlockTracer.Instance);
-            _blockchainProcessingQueue.Received().Enqueue(newBlock, ProcessingOptions.StoreReceipts);
+            _blockchainProcessor.Received().Process(newBlock0, ProcessingOptions.Beam, NullBlockTracer.Instance);
+            _blockchainProcessingQueue.Received().Enqueue(newBlock1, ProcessingOptions.StoreReceipts);
+            _blockchainProcessingQueue.Received().Enqueue(newBlock2, ProcessingOptions.StoreReceipts);
+            _blockchainProcessingQueue.Received().Enqueue(newBlock3, ProcessingOptions.StoreReceipts);
         }
 
         private void SetupBeamProcessor(ISyncModeSelector syncModeSelector = null)
