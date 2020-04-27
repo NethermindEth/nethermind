@@ -135,7 +135,7 @@ namespace Nethermind.Network
                 if (!pongReceived)
                 {
                     if (_logger.IsDebug) _logger.Debug($"No pong received in response to the {pingTime:T} ping at {session?.Node:c} | last pong time {session.LastPongUtc:T}");
-                    return false;
+                    return session.IsClosing; // we ignore missing pongs if the session was just closed
                 }
                 
                 session.LastPongUtc = DateTime.UtcNow;

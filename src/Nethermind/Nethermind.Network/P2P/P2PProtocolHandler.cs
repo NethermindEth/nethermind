@@ -207,11 +207,6 @@ namespace Nethermind.Network.P2P
         [SuppressMessage("ReSharper", "HeuristicUnreachableCode")]
         public async Task<bool> SendPing()
         {
-            if (!_isInitialized)
-            {
-                return true;
-            }
-
             // ReSharper disable once AssignNullToNotNullAttribute
             TaskCompletionSource<Packet> previousSource = Interlocked.CompareExchange(ref _pongCompletionSource, new TaskCompletionSource<Packet>(), null);
             // ReSharper disable once ConditionIsAlwaysTrueOrFalse
