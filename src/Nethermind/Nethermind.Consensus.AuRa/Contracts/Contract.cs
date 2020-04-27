@@ -28,7 +28,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
 {
     public abstract class Contract
     {
-        public const long DefaultContractGasLimit = 50000000L;
+        public const long DefaultContractGasLimit = 1600000L;
+        
         private readonly ITransactionProcessor _transactionProcessor;
         protected IAbiEncoder AbiEncoder { get; }
         protected Address ContractAddress { get; }
@@ -40,9 +41,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
             ContractAddress = contractAddress ?? throw new ArgumentNullException(nameof(contractAddress));
         }
         
-        protected Transaction GenerateTransaction(byte[] transactionData, Address sender, UInt256? nonce = null, long gasLimit = DefaultContractGasLimit)
+        protected Transaction GenerateTransaction<T>(byte[] transactionData, Address sender, long gasLimit = DefaultContractGasLimit) where T : Transaction, new()
         {
-            var transaction = new Transaction(true)
+            var transaction = new T()
             {
                 Value = UInt256.Zero,
                 Data = transactionData,
@@ -50,7 +51,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 SenderAddress = sender ?? Address.SystemUser,
                 GasLimit = gasLimit,
                 GasPrice = UInt256.Zero,
-                Nonce = nonce ?? UInt256.Zero,
             };
                 
             transaction.Hash = transaction.CalculateHash();
@@ -58,8 +58,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
             return transaction;
         }
         
-        protected Transaction GenerateTransaction(AbiFunctionDescription function, Address sender, params object[] arguments) 
-            => GenerateTransaction(AbiEncoder.Encode(function.GetCallInfo(), arguments), sender);
+        protected Transaction GenerateTransaction<T>(AbiFunctionDescription function, Address sender, params object[] arguments) where T : Transaction, new()
+            => GenerateTransaction<T>(AbiEncoder.Encode(function.GetCallInfo(), arguments), sender);
 
         protected byte[] Call(BlockHeader header, Transaction transaction)
         {
@@ -68,7 +68,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         protected object[] Call(BlockHeader header, AbiFunctionDescription function, Address sender, params object[] arguments)
         {
-            var transaction = GenerateTransaction(function, sender, arguments);
+            var transaction = GenerateTransaction<SystemTransaction>(function, sender, arguments);
             var result = Call(header, transaction);
             var objects = AbiEncoder.Decode(function.GetReturnInfo(), result);
             return objects;
@@ -119,7 +119,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         protected bool TryCall(BlockHeader header, AbiFunctionDescription function, Address sender, out object[] result, params object[] arguments)
         {
-            var transaction = GenerateTransaction(function, sender, arguments);
+            var transaction = GenerateTransaction<SystemTransaction>(function, sender, arguments);
             if (TryCall(header, transaction, out var bytes))
             {
                 result = AbiEncoder.Decode(function.GetReturnInfo(), bytes);
@@ -167,7 +167,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
             public object[] Call(BlockHeader header, AbiFunctionDescription function, Address sender, params object[] arguments)
             {
-                var transaction = _contract.GenerateTransaction(function, sender, arguments);
+                var transaction = _contract.GenerateTransaction<SystemTransaction>(function, sender, arguments);
                 var result = Call(header, transaction);
                 var objects = _contract.AbiEncoder.Decode(function.GetReturnInfo(), result);
                 return objects;

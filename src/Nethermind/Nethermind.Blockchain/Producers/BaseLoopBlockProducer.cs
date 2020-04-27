@@ -90,7 +90,7 @@ namespace Nethermind.Blockchain.Producers
                     {
                         await ProducerLoopStep(LoopCancellationTokenSource.Token);
                     }
-                    catch (Exception e)
+                    catch (Exception e) when(!(e is TaskCanceledException))
                     {
                         if (Logger.IsError) { Logger.Error("Failed to produce block.", e); }
 

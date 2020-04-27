@@ -24,7 +24,7 @@ using Nethermind.Wallet;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class SystemTxSourceBlockApprover : ITxSource
+    public class GeneratedTxSourceApprover : ITxSource
     {
         private readonly ITxSource _innerSource;
         private readonly IBasicWallet _wallet;
@@ -32,7 +32,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly IStateReader _stateReader;
         private readonly int _chainId;
 
-        public SystemTxSourceBlockApprover(ITxSource innerSource, IBasicWallet wallet, ITimestamper timestamper, IStateReader stateReader, int chainId)
+        public GeneratedTxSourceApprover(ITxSource innerSource, IBasicWallet wallet, ITimestamper timestamper, IStateReader stateReader, int chainId)
         {
             _innerSource = innerSource ??  throw new ArgumentNullException(nameof(innerSource));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
@@ -45,7 +45,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         {
             foreach (var tx in _innerSource.GetTransactions(parent, gasLimit))
             {
-                if (tx.IsSystem())
+                if (tx is GeneratedTransaction)
                 {
                     ApproveTx(parent, tx);
                 }

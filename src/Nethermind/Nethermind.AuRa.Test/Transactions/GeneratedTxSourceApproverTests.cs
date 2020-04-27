@@ -29,7 +29,7 @@ using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Transactions
 {
-    public class SystemTxSourceBlockApproverTests
+    public class GeneratedTxSourceApproverTests
     {
         [Test]
         public void transaction_is_addable_to_block_after_fill()
@@ -50,7 +50,7 @@ namespace Nethermind.AuRa.Test.Transactions
             var innerTxSource = Substitute.For<ITxSource>();
             innerTxSource.GetTransactions(blockHeader, gasLimit).Returns(new[] {tx});
             
-            var transactionFiller = new SystemTxSourceBlockApprover(innerTxSource, new BasicWallet(Build.A.PrivateKey.TestObject), timestamper, stateReader, chainId);
+            var transactionFiller = new GeneratedTxSourceApprover(innerTxSource, new BasicWallet(Build.A.PrivateKey.TestObject), timestamper, stateReader, chainId);
             
             var txResult= transactionFiller.GetTransactions(blockHeader, gasLimit).First();
 

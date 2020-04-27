@@ -146,7 +146,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.NodeKey, 
                     _context.CryptoRandom);
                 
-                var systemTxSourceSigner = new SystemTxSourceBlockApprover(randomContractTxSource, new BasicWallet(_context.NodeKey), _context.Timestamper, environment.StateReader, _context.BlockTree.ChainId);
+                var systemTxSourceSigner = new GeneratedTxSourceApprover(randomContractTxSource, new BasicWallet(_context.NodeKey), _context.Timestamper, environment.StateReader, _context.BlockTree.ChainId);
                 
                 return new CompositeTxSource(systemTxSourceSigner, txSource);
             }

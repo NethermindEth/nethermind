@@ -38,7 +38,7 @@ namespace Nethermind.Consensus.Transactions
                 {
                     foreach (var tx in transactions)
                     {
-                        gasLimit -= tx.IsSystem() ? (long) tx.GasPrice : tx.GasLimit;
+                        gasLimit -= tx.GasLimit;
                         yield return tx;
                     }
                 }

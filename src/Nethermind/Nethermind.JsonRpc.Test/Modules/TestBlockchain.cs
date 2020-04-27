@@ -73,7 +73,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         public ManualTimestamper Timestamper { get; private set; }
 
-        public static TransactionBuilder BuildSimpleTransaction => Core.Test.Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
+        public static TransactionBuilder<Transaction> BuildSimpleTransaction => Core.Test.Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
         protected virtual async Task<TestBlockchain> Build()
         {
