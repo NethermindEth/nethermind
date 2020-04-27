@@ -14,17 +14,20 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Secp256k1;
 
 namespace Nethermind.Crypto
 {
-    public class PrivateKeyGenerator : IPrivateKeyGenerator
+    public class PrivateKeyGenerator : IPrivateKeyGenerator, IDisposable
     {
-        private ICryptoRandom _cryptoRandom;
+        private readonly ICryptoRandom _cryptoRandom;
+        private readonly bool _disposeRandom = false;
         
         public PrivateKeyGenerator()
         {
             _cryptoRandom = new CryptoRandom();
+            _disposeRandom = true;
         }
         
         public PrivateKeyGenerator(ICryptoRandom cryptoRandom)
@@ -42,6 +45,14 @@ namespace Nethermind.Crypto
                     return new PrivateKey(bytes);
                 }
             } while (true);
+        }
+
+        public void Dispose()
+        {
+            if (_disposeRandom)
+            {
+                _cryptoRandom.Dispose();
+            }
         }
     }
 }

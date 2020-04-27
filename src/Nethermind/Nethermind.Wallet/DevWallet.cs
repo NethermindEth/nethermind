@@ -67,7 +67,8 @@ namespace Nethermind.Wallet
 
         public Address NewAccount(SecureString passphrase)
         {
-            PrivateKey key = new PrivateKeyGenerator().Generate();
+            using var privateKeyGenerator = new PrivateKeyGenerator();
+            PrivateKey key = privateKeyGenerator.Generate();
             _keys.Add(key.Address, key);
             _isUnlocked.Add(key.Address, true);
             _passwords.Add(key.Address, passphrase.Unsecure());

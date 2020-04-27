@@ -51,7 +51,6 @@ namespace Nethermind.Network.Rlpx.Handshake
             _messageSerializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
             _eciesCipher = eciesCipher ?? throw new ArgumentNullException(nameof(eciesCipher));
             _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));
-            ;
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _ephemeralGenerator = new PrivateKeyGenerator(_cryptoRandom);
