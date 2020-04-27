@@ -346,26 +346,16 @@ namespace Nethermind.Synchronization.Blocks
             if (downloadTask.IsFaulted)
             {
                 _sinceLastTimeout = 0;
-                if (downloadTask.Exception?.InnerException is TimeoutException
-                    || (downloadTask.Exception?.InnerExceptions.Any(x => x is TimeoutException) ?? false)
-                    || (downloadTask.Exception?.InnerExceptions.Any(x => x.InnerException is TimeoutException) ?? false))
+                if (downloadTask.Exception?.Flatten().InnerExceptions.Any(x => x is TimeoutException) ?? false)
                 {
                     if (_logger.IsTrace) _logger.Error($"Failed to retrieve {entities} when synchronizing (Timeout)", downloadTask.Exception);
                     _syncBatchSize.Shrink();
                 }
-                else
+
+                if (downloadTask.Exception != null)
                 {
-                    Exception exception = downloadTask.Exception;
-                    AggregateException aggregateException = exception as AggregateException;
-                    if (aggregateException != null)
-                    {
-                        exception = aggregateException.Flatten().InnerExceptions[0];
-                    }
-
-                    if (_logger.IsInfo) _logger.Error($"Failed to retrieve {entities} when synchronizing.", exception);
+                    throw downloadTask.Exception;
                 }
-
-                throw new EthSyncException($"{entities} task faulted", downloadTask.Exception);
             }
 
             return default;
