@@ -67,7 +67,8 @@ namespace Nethermind.Wallet
 
         public Address NewAccount(SecureString passphrase)
         {
-            PrivateKey key = new PrivateKeyGenerator().Generate();
+            using var privateKeyGenerator = new PrivateKeyGenerator();
+            PrivateKey key = privateKeyGenerator.Generate();
             _keys.Add(key.Address, key);
             _isUnlocked.Add(key.Address, true);
             _passwords.Add(key.Address, passphrase.Unsecure());
@@ -125,13 +126,11 @@ namespace Nethermind.Wallet
 
             return Sign(message, address);
         }
-
+        
         public void Sign(Transaction tx, int chainId)
         {
             if (_logger.IsDebug) _logger?.Debug($"Signing transaction: {tx.Value} to {tx.To}");
-            Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, chainId).Bytes);
-            tx.Signature = Sign(hash, tx.SenderAddress);
-            tx.Signature.V = tx.Signature.V + 8 + 2 * chainId;
+            IBasicWallet.Sign(this, tx, chainId);
         }
 
         public bool IsUnlocked(Address address) => _isUnlocked.TryGetValue(address, out var unlocked) && unlocked;

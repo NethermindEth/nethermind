@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,14 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-
-namespace Nethermind.Consensus
+namespace Nethermind.Crypto
 {
-    public interface IPendingTxSelector
+    public interface IIesEngine
     {
-        IEnumerable<Transaction> SelectTransactions(Keccak stateRoot, long gasLimit);
+        byte[] ProcessBlock(
+            byte[] input,
+            int inOff,
+            int inLen,
+            byte[] macData);
     }
 }

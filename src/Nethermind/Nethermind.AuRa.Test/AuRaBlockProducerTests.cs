@@ -45,7 +45,7 @@ namespace Nethermind.AuRa.Test
     {
         private class Context
         {
-            public IPendingTxSelector PendingTxSelector { get; }
+            public ITxSource TransactionSource { get; }
             public IBlockchainProcessor BlockchainProcessor { get; }
             public ISealer Sealer { get; }
             public IBlockTree BlockTree { get; }
@@ -60,7 +60,7 @@ namespace Nethermind.AuRa.Test
             public Context()
             {
                 StepDelay = TimeSpan.FromMilliseconds(20);
-                PendingTxSelector = Substitute.For<IPendingTxSelector>();
+                TransactionSource = Substitute.For<ITxSource>();
                 BlockchainProcessor = Substitute.For<IBlockchainProcessor>();
                 Sealer = Substitute.For<ISealer>();
                 BlockTree = Substitute.For<IBlockTree>();
@@ -69,7 +69,7 @@ namespace Nethermind.AuRa.Test
                 Timestamper = Substitute.For<ITimestamper>();
                 AuRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
                 NodeAddress = TestItem.AddressA;
-                PendingTxSelector.SelectTransactions(Arg.Any<Keccak>(), Arg.Any<long>()).Returns(Array.Empty<Transaction>());
+            	TransactionSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>()).Returns(Array.Empty<Transaction>());
                 Sealer.CanSeal(Arg.Any<long>(), Arg.Any<Keccak>()).Returns(true);
                 Sealer.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(c => Task.FromResult(c.Arg<Block>()));
                 BlockProcessingQueue.IsEmpty.Returns(true);
@@ -90,7 +90,7 @@ namespace Nethermind.AuRa.Test
                     public void InitProducer(IAuraConfig auraConfig)
                     {
                         AuRaBlockProducer = new AuRaBlockProducer(
-                            PendingTxSelector,
+                            TransactionSource,
                             BlockchainProcessor,
                             StateProvider,
                             Sealer,
@@ -161,7 +161,7 @@ namespace Nethermind.AuRa.Test
             var context = new Context();
             AuRaConfig auRaConfig = new AuRaConfig {ForceSealing = false};
             context.InitProducer(auRaConfig);
-            context.PendingTxSelector.SelectTransactions(Arg.Any<Keccak>(), Arg.Any<long>()).Returns(new[] {Build.A.Transaction.TestObject});
+            context.TransactionSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>()).Returns(new[] {Build.A.Transaction.TestObject});
             (await StartStop(context)).ShouldProduceBlocks(Quantity.AtLeastOne());
         }
         

@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
+using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
@@ -40,8 +41,8 @@ namespace Nethermind.Runner.Ethereum.Steps
     public abstract class StartBlockProducer : IStep, ISubsystemStateAware
     {
         private readonly EthereumRunnerContext _context;
-        [NotNull]
-        private ReadOnlyDbProvider? _readOnlyDbProvider;
+        private BlockProducerContext? _blockProducerContext;
+        
 
         public StartBlockProducer(EthereumRunnerContext context)
         {
@@ -53,7 +54,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             IInitConfig initConfig = _context.Config<IInitConfig>();
             if (initConfig.IsMining)
             {
-                _readOnlyDbProvider = new ReadOnlyDbProvider(_context.DbProvider, false);
                 BuildProducer();
                 if (_context.BlockProducer == null) throw new StepDependencyException(nameof(_context.BlockProducer));
 
@@ -73,26 +73,26 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected BlockProducerContext GetProducerChain()
         {
-            ReadOnlyBlockTree readOnlyBlockTree = new ReadOnlyBlockTree(_context.BlockTree);
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(_readOnlyDbProvider, readOnlyBlockTree, _context.SpecProvider, _context.LogManager);
-            BlockProcessor blockProcessor = CreateBlockProcessor(readOnlyTxProcessingEnv, _readOnlyDbProvider);
-            OneTimeChainProcessor chainProcessor = new OneTimeChainProcessor(_readOnlyDbProvider, new BlockchainProcessor(readOnlyBlockTree, blockProcessor, _context.RecoveryStep, _context.LogManager, false));
-            var pendingTxSelector = CreatePendingTxSelector();
-
-            return new BlockProducerContext
+            BlockProducerContext Create()
             {
-                ChainProcessor = chainProcessor, 
-                ReadOnlyStateProvider = readOnlyTxProcessingEnv.StateProvider, 
-                PendingTxSelector = pendingTxSelector
-            };
+                ReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_context.DbProvider, false);
+                ReadOnlyBlockTree readOnlyBlockTree = new ReadOnlyBlockTree(_context.BlockTree);
+                ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyBlockTree, _context.SpecProvider, _context.LogManager);
+                BlockProcessor blockProcessor = CreateBlockProcessor(readOnlyTxProcessingEnv, readOnlyDbProvider);
+                OneTimeChainProcessor chainProcessor = new OneTimeChainProcessor(readOnlyDbProvider, new BlockchainProcessor(readOnlyBlockTree, blockProcessor, _context.RecoveryStep, _context.LogManager, false));
+
+                return new BlockProducerContext
+                {
+                    ChainProcessor = chainProcessor,
+                    ReadOnlyStateProvider = readOnlyTxProcessingEnv.StateProvider,
+                    TxSource = CreateTxSourceForProducer(readOnlyTxProcessingEnv)
+                };
+            }
+
+            return _blockProducerContext ??= Create();
         }
 
-        protected virtual IPendingTxSelector CreatePendingTxSelector()
-        {
-            StateReader reader = new StateReader(_readOnlyDbProvider.StateDb, _readOnlyDbProvider.CodeDb, _context.LogManager);
-            var txSelector = new PendingTxSelector(_context.TxPool, reader, _context.LogManager);
-            return txSelector;
-        }
+        protected virtual ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv environment) => new TxPoolTxSource(_context.TxPool, environment.StateReader, _context.LogManager);
 
         protected virtual BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, IReadOnlyDbProvider readOnlyDbProvider)
         {

@@ -71,11 +71,6 @@ namespace Nethermind.Wallet
             return Array.Empty<Address>();
         }
 
-        public void Sign(Transaction tx, int chainId)
-        {
-            throw new NotImplementedException();
-        }
-
         public bool IsUnlocked(Address address)
         {
             return true;
