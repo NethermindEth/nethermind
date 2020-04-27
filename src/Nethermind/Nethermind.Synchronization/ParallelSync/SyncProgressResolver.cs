@@ -28,7 +28,10 @@ namespace Nethermind.Synchronization.ParallelSync
 {
     public class SyncProgressResolver : ISyncProgressResolver
     {
-        private const int _maxLookupBack = 128; // not that we will be doing that every second or so
+        // TODO: we can search 1024 back and confirm 128 deep header and start using it as Max(0, confirmed)
+        // then we will never have to look 128 back again
+        // note that we will be doing that every second or so
+        private const int _maxLookupBack = 128;
 
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
@@ -117,35 +120,6 @@ namespace Nethermind.Synchronization.ParallelSync
                 }
 
                 startHeader = _blockTree.FindHeader(startHeader.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            }
-
-            return bestFullState;
-        }
-
-        public long FindBestBeamState()
-        {
-            BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
-            Block head = _blockTree.Head;
-            long bestFullState = head?.Number ?? 0;
-            for (int i = 0; i < _maxLookupBack; i++)
-            {
-                if (bestSuggested == null)
-                {
-                    break;
-                }
-
-                if (bestSuggested.Number < _syncConfig.PivotNumberParsed)
-                {
-                    break;
-                }
-
-                if (IsBeamSynced(bestSuggested.StateRoot))
-                {
-                    bestFullState = bestSuggested.Number;
-                    break;
-                }
-
-                bestSuggested = _blockTree.FindHeader(bestSuggested.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             }
 
             return bestFullState;

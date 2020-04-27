@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain
         BlockHeader Genesis { get; }
         
         /// <summary>
-        /// Best header that has been suggested
+        /// Best header that has been suggested (suggested for processing in the fast sync mode)
         /// </summary>
         BlockHeader BestSuggestedHeader { get; }
 
@@ -57,7 +57,7 @@ namespace Nethermind.Blockchain
         Block LowestInsertedBody { get; }
         
         /// <summary>
-        /// Best downloaded block number
+        /// Best downloaded block number (highest number of chain level on the chain)
         /// </summary>
         long BestKnownNumber { get; }
 
@@ -69,7 +69,7 @@ namespace Nethermind.Blockchain
         AddBlockResult Insert(BlockHeader header);
         
         /// <summary>
-        /// Inserts a disconnected block body
+        /// Inserts a disconnected block body (not for processing).
         /// </summary>
         /// <param name="block">Block to add</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>

@@ -23,9 +23,7 @@ namespace Nethermind.Synchronization.ParallelSync
     public interface ISyncProgressResolver
     {
         long FindBestFullState();
-        
-        long FindBestBeamState();
-        
+
         long FindBestHeader();
         
         long FindBestFullBlock();

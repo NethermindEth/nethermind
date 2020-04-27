@@ -33,9 +33,9 @@ namespace Nethermind.Synchronization.BeamSync
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _subFeeds = subFeeds;
-            foreach (ISyncFeed<T> dataConsumer in _subFeeds)
+            foreach (ISyncFeed<T> syncFeed in _subFeeds)
             {
-                dataConsumer.StateChanged += OnSubFeedStateChanged;
+                syncFeed.StateChanged += OnSubFeedStateChanged;
             }
         }
 
@@ -45,16 +45,33 @@ namespace Nethermind.Synchronization.BeamSync
             if (child.CurrentState == SyncFeedState.Active)
             {
                 Activate();
+                return;
+            }
+
+            bool areAllFinished = true;
+            foreach (ISyncFeed<T> subFeed in _subFeeds)
+            {
+                if (subFeed.CurrentState != SyncFeedState.Finished)
+                {
+                    areAllFinished = false;
+                    break;
+                }
+            }
+
+            if (areAllFinished)
+            {
+                Finish();
             }
         }
 
         public override Task<T> PrepareRequest()
         {
-            foreach (ISyncFeed<T> syncFeed in _subFeeds)
+            for (int subFeedIndex = 0; subFeedIndex < _subFeeds.Length; subFeedIndex++)
             {
-                if (syncFeed.CurrentState == SyncFeedState.Active)
+                ISyncFeed<T> subFeed = _subFeeds[subFeedIndex];
+                if (subFeed.CurrentState == SyncFeedState.Active)
                 {
-                    T batch = syncFeed.PrepareRequest().Result;
+                    T batch = subFeed.PrepareRequest().Result;
                     if (batch != null)
                     {
                         return Task.FromResult(batch);
@@ -67,14 +84,15 @@ namespace Nethermind.Synchronization.BeamSync
 
         public override SyncResponseHandlingResult HandleResponse(T batch)
         {
-            foreach (ISyncFeed<T> subFeed in _subFeeds)
+            for (int subFeedIndex = 0; subFeedIndex < _subFeeds.Length; subFeedIndex++)
             {
+                ISyncFeed<T> subFeed = _subFeeds[subFeedIndex];
                 if (subFeed.FeedId == batch.ConsumerId)
                 {
                     subFeed.HandleResponse(batch);
                 }
             }
-            
+
             return SyncResponseHandlingResult.OK;
         }
 
