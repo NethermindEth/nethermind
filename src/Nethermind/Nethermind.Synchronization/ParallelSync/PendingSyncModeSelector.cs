@@ -26,8 +26,14 @@ namespace Nethermind.Synchronization.ParallelSync
         public void SetActual(ISyncModeSelector syncModeSelector)
         {
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
-            _syncModeSelector.Changed += SyncModeSelectorOnChanged;
+            _syncModeSelector.Preparing +=SyncModeSelectorOnPreparing;
             _syncModeSelector.Changing += SyncModeSelectorOnChanging;
+            _syncModeSelector.Changed += SyncModeSelectorOnChanged;
+        }
+
+        private void SyncModeSelectorOnPreparing(object? sender, SyncModeChangedEventArgs e)
+        {
+            Preparing?.Invoke(this, e);
         }
 
         private void SyncModeSelectorOnChanging(object? sender, SyncModeChangedEventArgs e)
@@ -41,6 +47,7 @@ namespace Nethermind.Synchronization.ParallelSync
         }
 
         public SyncMode Current => _syncModeSelector?.Current ?? SyncMode.None;
+        public event EventHandler<SyncModeChangedEventArgs> Preparing;
         public event EventHandler<SyncModeChangedEventArgs> Changing;
         public event EventHandler<SyncModeChangedEventArgs> Changed;
     }

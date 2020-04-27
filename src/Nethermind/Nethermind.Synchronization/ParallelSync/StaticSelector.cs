@@ -40,6 +40,12 @@ namespace Nethermind.Synchronization.ParallelSync
         public static StaticSelector FullWithFastBlocks { get; } = new StaticSelector(SyncMode.Full | SyncMode.FastBlocks);
 
         public SyncMode Current { get; }
+        
+        public event EventHandler<SyncModeChangedEventArgs> Preparing
+        {
+            add { }
+            remove { }
+        }
 
         public event EventHandler<SyncModeChangedEventArgs> Changed
         {

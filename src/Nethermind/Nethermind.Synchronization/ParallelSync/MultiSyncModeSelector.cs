@@ -192,6 +192,7 @@ namespace Nethermind.Synchronization.ParallelSync
             // Changing is invoked here so we can block until all the subsystems are ready to switch
             // for example when switching to Full sync we need to ensure that we safely transition
             // the beam sync DB and beam processor
+            Preparing?.Invoke(this, args);
             Changing?.Invoke(this, args);
             Current = newModes;
             Changed?.Invoke(this, args);
@@ -220,7 +221,6 @@ namespace Nethermind.Synchronization.ParallelSync
         }
 
         public SyncMode Current { get; private set; } = SyncMode.None;
-        public event EventHandler<SyncModeChangedEventArgs> Changing;
 
         private bool IsInAStickyFullSyncMode(Snapshot best)
         {
@@ -435,6 +435,8 @@ namespace Nethermind.Synchronization.ParallelSync
             }
         }
 
+        public event EventHandler<SyncModeChangedEventArgs> Preparing;
+        public event EventHandler<SyncModeChangedEventArgs> Changing;
         public event EventHandler<SyncModeChangedEventArgs> Changed;
 
         private struct Snapshot

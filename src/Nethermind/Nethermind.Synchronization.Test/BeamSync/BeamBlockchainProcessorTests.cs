@@ -28,6 +28,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Synchronization.BeamSync;
@@ -43,12 +44,14 @@ namespace Nethermind.Synchronization.Test.BeamSync
     {
         private BlockTree _blockTree;
         private BlockValidator _validator;
-        private IBlockProcessingQueue _blockchainProcessor;
+        private IBlockProcessingQueue _blockchainProcessingQueue;
+        private IBlockchainProcessor _blockchainProcessor;
 
         [SetUp]
         public void SetUp()
         {
-            _blockchainProcessor = Substitute.For<IBlockProcessingQueue>();
+            _blockchainProcessingQueue = Substitute.For<IBlockProcessingQueue>();
+            _blockchainProcessor = Substitute.For<IBlockchainProcessor>();
             _blockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             HeaderValidator headerValidator = new HeaderValidator(_blockTree, NullSealEngine.Instance, MainnetSpecProvider.Instance, LimboLogs.Instance);
             _validator = new BlockValidator(Always.Valid, headerValidator, Always.Valid, MainnetSpecProvider.Instance, LimboLogs.Instance);
@@ -57,36 +60,58 @@ namespace Nethermind.Synchronization.Test.BeamSync
         [Test, Retry(3)]
         public void Valid_block_makes_it_all_the_way()
         {
-            SetupBeamProcessor(SyncMode.Beam);
+            SetupBeamProcessor();
             Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
             _blockTree.SuggestBlock(newBlock);
             Thread.Sleep(1000);
-            _blockchainProcessor.Received().Enqueue(newBlock, ProcessingOptions.Beam);
+            _blockchainProcessor.Received().Process(newBlock, ProcessingOptions.Beam, NullBlockTracer.Instance);
         }
 
         [Test, Retry(3)]
         public void Valid_block_with_transactions_makes_it_all_the_way()
         {
-            SetupBeamProcessor(SyncMode.Beam);
+            SetupBeamProcessor();
             EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(MainnetSpecProvider.Instance, LimboLogs.Instance);
             Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA, 10000000).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB, 10000000).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
             _blockTree.SuggestBlock(newBlock);
             Thread.Sleep(1000);
-            _blockchainProcessor.Received().Enqueue(newBlock, ProcessingOptions.Beam);
+            _blockchainProcessor.Received().Process(newBlock, ProcessingOptions.Beam, NullBlockTracer.Instance);
         }
         
         [Test, Retry(3)]
         public void Valid_block_with_transactions_makes_it_is_processed_normally_if_beam_syncing_finished()
         {
-            SetupBeamProcessor(SyncMode.None);
+            ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
+            SetupBeamProcessor(syncModeSelector);
+            syncModeSelector.Preparing += Raise.EventWith(new SyncModeChangedEventArgs(SyncMode.Beam, SyncMode.Full));
+            syncModeSelector.Changing += Raise.EventWith(new SyncModeChangedEventArgs(SyncMode.Beam, SyncMode.Full));
+            syncModeSelector.Changed += Raise.EventWith(new SyncModeChangedEventArgs(SyncMode.Beam, SyncMode.Full));
+            
             EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(MainnetSpecProvider.Instance, LimboLogs.Instance);
             Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA, 10000000).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB, 10000000).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
             _blockTree.SuggestBlock(newBlock);
             Thread.Sleep(1000);
-            _blockchainProcessor.Received().Enqueue(newBlock, ProcessingOptions.StoreReceipts);
+            _blockchainProcessor.DidNotReceiveWithAnyArgs().Process(newBlock, ProcessingOptions.Beam, NullBlockTracer.Instance);
+            _blockchainProcessingQueue.Received().Enqueue(newBlock, ProcessingOptions.StoreReceipts);
+        }
+        
+        [Test, Retry(3)]
+        public void Hanging()
+        {
+            ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
+            SetupBeamProcessor(syncModeSelector);
+            syncModeSelector.Preparing += Raise.EventWith(new SyncModeChangedEventArgs(SyncMode.Beam, SyncMode.Full));
+            syncModeSelector.Changing += Raise.EventWith(new SyncModeChangedEventArgs(SyncMode.Beam, SyncMode.Full));
+
+            EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(MainnetSpecProvider.Instance, LimboLogs.Instance);
+            Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithReceiptsRoot(new Keccak("0xeb82c315eaf2c2a5dfc1766b075263d80e8b3ab9cb690d5304cdf114fff26939")).WithTransactions(Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyA, 10000000).TestObject, Build.A.Transaction.SignedAndResolved(ethereumEcdsa, TestItem.PrivateKeyB, 10000000).TestObject).WithGasUsed(42000).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
+            _blockTree.SuggestBlock(newBlock);
+            Thread.Sleep(1000);
+            _blockchainProcessor.DidNotReceiveWithAnyArgs().Process(newBlock, ProcessingOptions.Beam, NullBlockTracer.Instance);
+            _blockchainProcessingQueue.Received().Enqueue(newBlock, ProcessingOptions.StoreReceipts);
         }
 
-        private void SetupBeamProcessor(SyncMode syncMode = SyncMode.Beam)
+        private void SetupBeamProcessor(ISyncModeSelector syncModeSelector = null)
         {
             MemDbProvider memDbProvider = new MemDbProvider();
             _ = new BeamBlockchainProcessor(
@@ -97,29 +122,30 @@ namespace Nethermind.Synchronization.Test.BeamSync
                 _validator,
                 NullRecoveryStep.Instance,
                 new InstanceRewardCalculatorSource(NoBlockRewards.Instance),
+                _blockchainProcessingQueue,
                 _blockchainProcessor,
-                new StaticSelector(SyncMode.Beam)
+                syncModeSelector ?? new StaticSelector(SyncMode.Beam)
             );
         }
 
         [Test]
         public void Invalid_block_will_never_reach_actual_processor()
         {
-            SetupBeamProcessor(SyncMode.Beam);
+            SetupBeamProcessor();
             Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithTotalDifficulty(_blockTree.Head.TotalDifficulty + 1).TestObject;
             newBlock.Header.Hash = Keccak.Zero;
             _blockTree.SuggestBlock(newBlock);
-            _blockchainProcessor.DidNotReceiveWithAnyArgs().Enqueue(newBlock, ProcessingOptions.None);
+            _blockchainProcessor.DidNotReceiveWithAnyArgs().Process(newBlock, ProcessingOptions.None, NullBlockTracer.Instance);
         }
 
         [Test]
         public void Valid_block_that_would_be_skipped_will_never_reach_actual_processor()
         {
-            SetupBeamProcessor(SyncMode.Beam);
+            SetupBeamProcessor();
             // setting same difficulty as head to make sure the block will be ignored
             Block newBlock = Build.A.Block.WithParent(_blockTree.Head).WithTotalDifficulty(_blockTree.Head.TotalDifficulty).TestObject;
             _blockTree.SuggestBlock(newBlock);
-            _blockchainProcessor.DidNotReceiveWithAnyArgs().Enqueue(newBlock, ProcessingOptions.None);
+            _blockchainProcessor.DidNotReceiveWithAnyArgs().Process(newBlock, ProcessingOptions.None, NullBlockTracer.Instance);
         }
         
         private async Task WaitFor(Func<bool> isConditionMet, string description = "condition to be met")
