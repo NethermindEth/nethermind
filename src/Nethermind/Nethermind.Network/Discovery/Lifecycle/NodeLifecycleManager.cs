@@ -39,6 +39,9 @@ namespace Nethermind.Network.Discovery.Lifecycle
         private PingMessage _lastSentPing;
         private bool _isNeighborsExpected;
 
+        private bool _receivedPing;
+        private bool _receivedPong;
+
         public NodeLifecycleManager(Node node, IDiscoveryManager discoveryManager, INodeTable nodeTable, IDiscoveryMessageFactory discoveryMessageFactory, IEvictionManager evictionManager, INodeStats nodeStats, IDiscoveryConfig discoveryConfig, ILogger logger)
         {
             _discoveryManager = discoveryManager;
@@ -55,11 +58,13 @@ namespace Nethermind.Network.Discovery.Lifecycle
         public Node ManagedNode { get; }
         public NodeLifecycleState State { get; private set; }
         public INodeStats NodeStats { get; }
-
+        public bool IsBonded => _receivedPing && _receivedPong;
+        
         public event EventHandler<NodeLifecycleState> OnStateChanged;
 
         public void ProcessPingMessage(PingMessage discoveryMessage)
         {
+            _receivedPing = true;
             SendPong(discoveryMessage);
 
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingIn);
@@ -76,9 +81,9 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
             if (Bytes.AreEqual(sentPing.Mdc, discoveryMessage.PingMdc))
             {
+                _receivedPong = true;
                 NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPongIn);
                 RefreshNodeContactTime();
-
                 UpdateState(NodeLifecycleState.Active);
             }
             else
@@ -89,6 +94,11 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
         public void ProcessNeighborsMessage(NeighborsMessage discoveryMessage)
         {
+            if (!IsBonded)
+            {
+                return;
+            }
+            
             if (_isNeighborsExpected)
             {
                 NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryNeighboursIn);
@@ -112,6 +122,11 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
         public void ProcessFindNodeMessage(FindNodeMessage discoveryMessage)
         {
+            if (!IsBonded)
+            {
+                return;
+            }
+            
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryFindNodeIn);
             RefreshNodeContactTime();
 
