@@ -316,7 +316,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 catch (Exception ex)
                 {
-                    if(_logger.IsDebug) _logger.Error("Error when adding receipts", ex);
+                    if(_logger.IsError) _logger.Error("Error when adding receipts", ex);
                     _pending.Enqueue(batch);
                     return SyncResponseHandlingResult.InternalError;
                 }
