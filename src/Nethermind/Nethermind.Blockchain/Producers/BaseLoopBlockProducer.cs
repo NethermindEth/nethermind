@@ -86,7 +86,16 @@ namespace Nethermind.Blockchain.Producers
             {
                 if (CanProduce && BlockProcessingQueue.IsEmpty)
                 {
-                    await ProducerLoopStep(LoopCancellationTokenSource.Token);
+                    try
+                    {
+                        await ProducerLoopStep(LoopCancellationTokenSource.Token);
+                    }
+                    catch (Exception e)
+                    {
+                        if (Logger.IsError) { Logger.Error("Failed to produce block.", e); }
+
+                        throw;
+                    }
                 }
                 else
                 {
