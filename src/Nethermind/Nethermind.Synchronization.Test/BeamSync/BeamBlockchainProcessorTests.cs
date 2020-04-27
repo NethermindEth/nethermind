@@ -46,6 +46,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         private BlockValidator _validator;
         private IBlockProcessingQueue _blockchainProcessingQueue;
         private IBlockchainProcessor _blockchainProcessor;
+        private BeamBlockchainProcessor _beamBlockchainProcessor;
 
         [SetUp]
         public void SetUp()
@@ -55,6 +56,13 @@ namespace Nethermind.Synchronization.Test.BeamSync
             _blockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             HeaderValidator headerValidator = new HeaderValidator(_blockTree, NullSealEngine.Instance, MainnetSpecProvider.Instance, LimboLogs.Instance);
             _validator = new BlockValidator(Always.Valid, headerValidator, Always.Valid, MainnetSpecProvider.Instance, LimboLogs.Instance);
+        }
+        
+        [TearDown]
+        public void TearDown()
+        {
+            _beamBlockchainProcessor.Dispose();
+            _blockchainProcessor.Dispose();
         }
 
         [Test, Retry(3)]
@@ -125,8 +133,6 @@ namespace Nethermind.Synchronization.Test.BeamSync
             _blockchainProcessingQueue.Received().Enqueue(newBlock2, ProcessingOptions.StoreReceipts);
             _blockchainProcessingQueue.Received().Enqueue(newBlock3, ProcessingOptions.StoreReceipts);
             _blockchainProcessingQueue.Received().Enqueue(newBlock4, ProcessingOptions.StoreReceipts);
-            
-            _blockchainProcessor.Dispose();
         }
         
         [Test, Retry(3)]
@@ -161,7 +167,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         private void SetupBeamProcessor(ISyncModeSelector syncModeSelector = null)
         {
             MemDbProvider memDbProvider = new MemDbProvider();
-            _ = new BeamBlockchainProcessor(
+            _beamBlockchainProcessor  = new BeamBlockchainProcessor(
                 new ReadOnlyDbProvider(memDbProvider, false),
                 _blockTree,
                 MainnetSpecProvider.Instance,
