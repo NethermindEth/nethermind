@@ -91,14 +91,17 @@ namespace Nethermind.Synchronization.BeamSync
         {
             while (_shelvedBlocks.TryDequeue(out Block shelvedBlock))
             {
+                if(_logger.IsInfo) _logger.Info($"Enqueuing previously shelved block {shelvedBlock.ToString(Block.Format.Short)}");
                 _standardProcessorQueue.Enqueue(shelvedBlock, ProcessingOptions.StoreReceipts);
             }
 
+            if(_logger.IsDebug) _logger.Debug($"Enqueuing block for standard processing (skipping beam in full sync)");
             _standardProcessorQueue.Enqueue(block, ProcessingOptions.StoreReceipts);
         }
 
         private void Shelve(Block block)
         {
+            if(_logger.IsInfo) _logger.Info($"Shelving block {block.ToString(Block.Format.Short)} while beam processor transitions to full processor.");
             _shelvedBlocks.Enqueue(block);
         }
 
@@ -226,6 +229,7 @@ namespace Nethermind.Synchronization.BeamSync
 
             try
             {
+                if (_logger.IsInfo) _logger.Info($"Beam processing block {block}");
                 _recoveryStep.RecoverData(block);
                 (IBlockchainProcessor beamProcessor, IStateReader stateReader) = CreateProcessor(block, new ReadOnlyDbProvider(_readOnlyDbProvider, true), _specProvider, _logManager);
 
@@ -234,8 +238,7 @@ namespace Nethermind.Synchronization.BeamSync
                 {
                     prefetchTasks = PrefetchNew(stateReader, block, parentHeader.StateRoot, parentHeader.Author ?? parentHeader.Beneficiary);
                 }
-
-                if (_logger.IsInfo) _logger.Info($"Now beam processing {block}");
+                
                 Block processedBlock = null;
                 beamProcessingTask = Task.Run(() =>
                 {
@@ -260,7 +263,7 @@ namespace Nethermind.Synchronization.BeamSync
 
                     if (processedBlock != null)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Enqueuing for standard processing {block}");
+                        if (_logger.IsDebug) _logger.Debug($"Running standard processor after beam sync for {block}");
                         // at this stage we are sure to have all the state available
                         CancelPreviousBeamSyncingBlocks(processedBlock.Number);
                         _processor.Process(block, ProcessingOptions.Beam, NullBlockTracer.Instance);
