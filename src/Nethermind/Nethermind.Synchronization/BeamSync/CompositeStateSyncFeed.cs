@@ -33,9 +33,9 @@ namespace Nethermind.Synchronization.BeamSync
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _subFeeds = subFeeds;
-            foreach (ISyncFeed<T> dataConsumer in _subFeeds)
+            foreach (ISyncFeed<T> syncFeed in _subFeeds)
             {
-                dataConsumer.StateChanged += OnSubFeedStateChanged;
+                syncFeed.StateChanged += OnSubFeedStateChanged;
             }
         }
 
@@ -45,6 +45,22 @@ namespace Nethermind.Synchronization.BeamSync
             if (child.CurrentState == SyncFeedState.Active)
             {
                 Activate();
+                return;
+            }
+
+            bool areAllFinished = true;
+            foreach (ISyncFeed<T> subFeed in _subFeeds)
+            {
+                if (subFeed.CurrentState != SyncFeedState.Finished)
+                {
+                    areAllFinished = false;
+                    break;
+                }
+            }
+
+            if (areAllFinished)
+            {
+                Finish();
             }
         }
 

@@ -48,8 +48,6 @@ namespace Nethermind.Synchronization.BeamSync
 
         private readonly ISyncModeSelector _syncModeSelector;
 
-        private readonly Func<bool> _writeThrough;
-
         private ILogger _logger;
 
         private IDb _targetDbForSaves;
@@ -72,6 +70,7 @@ namespace Nethermind.Synchronization.BeamSync
         {
             // the beam processor either already switched or is about ti switch to the full sync mode
             // we should be already switched to the new database
+            Finish();
         }
 
         private void SyncModeSelectorOnPreparing(object sender, SyncModeChangedEventArgs e)
