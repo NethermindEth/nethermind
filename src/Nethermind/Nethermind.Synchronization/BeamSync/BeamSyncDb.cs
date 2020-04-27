@@ -323,6 +323,7 @@ namespace Nethermind.Synchronization.BeamSync
         {
             if (stateSyncBatch.ConsumerId != FeedId)
             {
+                if(_logger.IsWarn) _logger.Warn($"Beam sync response sent by feed {stateSyncBatch.ConsumerId} came back to feed {FeedId}");
                 return SyncResponseHandlingResult.InternalError;
             }
 
