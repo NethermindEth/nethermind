@@ -20,7 +20,7 @@ using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Validators;
 using Nethermind.Core.Extensions;
-using Nethermind.Network.Crypto;
+using Nethermind.Crypto;
 
 namespace Nethermind.Network.Benchmarks
 {

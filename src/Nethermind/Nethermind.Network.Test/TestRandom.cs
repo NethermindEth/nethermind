@@ -60,6 +60,11 @@ namespace Nethermind.Network.Test
             return _nextRandomBytesFunc(length);
         }
 
+        public void GenerateRandomBytes(Span<byte> bytes)
+        {
+            GenerateRandomBytes(bytes.Length).CopyTo(bytes);
+        }
+
         public int NextInt(int max)
         {
             return _nextIntFunc(max);
@@ -71,6 +76,11 @@ namespace Nethermind.Network.Test
             {
                 _nextRandomBytesQueue.Enqueue(randomBytes);
             }
+        }
+
+        public void Dispose()
+        {
+            
         }
     }
 }

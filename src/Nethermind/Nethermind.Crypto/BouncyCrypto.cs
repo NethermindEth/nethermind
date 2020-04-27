@@ -14,9 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Crypto;
 using Org.BouncyCastle.Asn1.Sec;
 using Org.BouncyCastle.Asn1.X9;
 using Org.BouncyCastle.Crypto.Agreement;
@@ -26,7 +26,10 @@ using Org.BouncyCastle.Math;
 using Org.BouncyCastle.Math.EC;
 using Org.BouncyCastle.Security;
 
-namespace Nethermind.Network.Crypto
+[assembly: InternalsVisibleTo("Nethermind.Network.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Network.Benchmark")]
+
+namespace Nethermind.Crypto
 {
     internal static class BouncyCrypto
     {
@@ -43,13 +46,13 @@ namespace Nethermind.Network.Crypto
             generator.Init(keyGeneratorParameters);
         }
 
-        internal static ECPrivateKeyParameters WrapPrivateKey(PrivateKey privateKey)
+        public static ECPrivateKeyParameters WrapPrivateKey(PrivateKey privateKey)
         {
             BigInteger d = new BigInteger(1, privateKey.KeyBytes);
             return new ECPrivateKeyParameters(d, DomainParameters);
         }
 
-        internal static ECPublicKeyParameters WrapPublicKey(PublicKey publicKey)
+        public static ECPublicKeyParameters WrapPublicKey(PublicKey publicKey)
         {
             ECPoint point = DomainParameters.Curve.DecodePoint(publicKey.PrefixedBytes);
             return new ECPublicKeyParameters(point, DomainParameters);

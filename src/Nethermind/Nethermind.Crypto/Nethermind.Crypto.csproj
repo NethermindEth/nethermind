@@ -9,4 +9,8 @@
       <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <PackageReference Include="Portable.BouncyCastle" Version="1.8.6" />
+    </ItemGroup>
+
 </Project>

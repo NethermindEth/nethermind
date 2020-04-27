@@ -14,24 +14,24 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
-namespace Nethermind.Consensus
+namespace Nethermind.Consensus.Transactions
 {
-    public class SinglePendingTxSelector : IPendingTxSelector
+    public class SinglePendingTxSelector : ITxSource
     {
-        private readonly IPendingTxSelector _innerPendingTxSelector;
+        private readonly ITxSource _innerSource;
 
-        public SinglePendingTxSelector(IPendingTxSelector innerPendingTxSelector)
+        public SinglePendingTxSelector(ITxSource innerSource)
         {
-            _innerPendingTxSelector = innerPendingTxSelector;
+            _innerSource = innerSource ?? throw new ArgumentNullException(nameof(innerSource));
         }
-        
-        public IEnumerable<Transaction> SelectTransactions(Keccak stateRoot, long gasLimit) => 
-            _innerPendingTxSelector.SelectTransactions(stateRoot, gasLimit)
+
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) => 
+            _innerSource.GetTransactions(parent, gasLimit)
                 .OrderBy(t => t.Nonce)
                 .ThenByDescending(t => t.Timestamp)
                 .Take(1);

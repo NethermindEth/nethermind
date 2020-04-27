@@ -73,7 +73,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         public ManualTimestamper Timestamper { get; private set; }
 
-        public static TransactionBuilder BuildSimpleTransaction => Core.Test.Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
+        public static TransactionBuilder<Transaction> BuildSimpleTransaction => Core.Test.Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
         protected virtual async Task<TestBlockchain> Build()
         {
@@ -116,9 +116,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             chainProcessor.Start();
 
             StateReader = new StateReader(StateDb, CodeDb, LimboLogs.Instance);
-            PendingTxSelector txSelector = new PendingTxSelector(TxPool, StateReader, LimboLogs.Instance);
+            TxPoolTxSource txPoolTxSource = new TxPoolTxSource(TxPool, StateReader, LimboLogs.Instance);
             ISealer sealer = new FakeSealer(TimeSpan.Zero);
-            BlockProducer = new TestBlockProducer(txSelector, chainProcessor, State, sealer, BlockTree, chainProcessor, Timestamper, LimboLogs.Instance);
+            BlockProducer = new TestBlockProducer(txPoolTxSource, chainProcessor, State, sealer, BlockTree, chainProcessor, Timestamper, LimboLogs.Instance);
             BlockProducer.Start();
 
             _resetEvent = new AutoResetEvent(false);

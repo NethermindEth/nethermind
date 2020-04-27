@@ -17,24 +17,40 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
+using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Serialization.Json.Abi;
+using Nethermind.Specs.Forks;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class ValidatorContract : SystemContract
+    public class ValidatorContract : Contract
     {
         private readonly IAbiEncoder _abiEncoder;
-        private readonly byte[] _finalizeChangeTransactionData;
-        private readonly byte[] _getValidatorsTransactionData;
         
         private static readonly IEqualityComparer<LogEntry> LogEntryEqualityComparer = new LogEntryAddressAndTopicEqualityComparer();
         
-        public static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<ValidatorContract>();
+        internal static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<ValidatorContract>();
         
+        private ConstantContract Constant { get; }
+
+        public ValidatorContract(
+            ITransactionProcessor transactionProcessor, 
+            IAbiEncoder abiEncoder, 
+            Address contractAddress, 
+            IStateProvider stateProvider,
+            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource) 
+            : base(transactionProcessor, abiEncoder, contractAddress)
+        {
+            _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
+            Constant = GetConstant(stateProvider, readOnlyReadOnlyTransactionProcessorSource);
+        }
+
         /// <summary>
         /// Called when an initiated change reaches finality and is activated.
         /// Only valid when msg.sender == SUPER_USER (EIP96, 2**160 - 2)
@@ -43,7 +59,17 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// the "change" finalized is the activation of the initial set.
         /// function finalizeChange();
         /// </summary>
-        public const string FinalizeChangeFunction = "finalizeChange";
+        public void FinalizeChange(BlockHeader blockHeader) => TryCall(blockHeader, Definition.GetFunction(nameof(FinalizeChange)), Address.SystemUser, out _);
+
+        internal static readonly string GetValidatorsFunction = Definition.GetFunctionName(nameof(GetValidators));
+
+        /// <summary>
+        /// Get current validator set (last enacted or initial if no changes ever made)
+        /// function getValidators() constant returns (address[] _validators);
+        /// </summary>
+        public Address[] GetValidators(BlockHeader blockHeader) => Constant.Call<Address[]>(blockHeader, Definition.GetFunction(nameof(GetValidators)), Address.Zero);
+
+        internal const string InitiateChange = nameof(InitiateChange);
         
         /// <summary>
         /// Issue this log event to signal a desired change in validator set.
@@ -58,30 +84,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// signal will not be recognized.
         /// event InitiateChange(bytes32 indexed _parent_hash, address[] _new_set);
         /// </summary>
-        public  const string InitiateChangeEvent = "InitiateChange";
-        
-        /// <summary>
-        /// Get current validator set (last enacted or initial if no changes ever made)
-        /// function getValidators() constant returns (address[] _validators);
-        /// </summary>
-        public  const string GetValidatorsFunction = "getValidators";
-
-        public ValidatorContract(IAbiEncoder abiEncoder, Address contractAddress) : base(contractAddress)
+        public bool CheckInitiateChangeEvent(BlockHeader blockHeader, TxReceipt[] receipts, out Address[] addresses)
         {
-            _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
-            _finalizeChangeTransactionData = _abiEncoder.Encode(Definition.Functions[FinalizeChangeFunction].GetCallInfo());
-            _getValidatorsTransactionData = _abiEncoder.Encode(Definition.Functions[GetValidatorsFunction].GetCallInfo());
-        }
-
-        public Transaction FinalizeChange() => GenerateSystemTransaction(_finalizeChangeTransactionData);
-
-        public Transaction GetValidators() => GenerateTransaction(_getValidatorsTransactionData, ContractAddress);
-
-        public bool CheckInitiateChangeEvent(Address contractAddress, BlockHeader blockHeader, TxReceipt[] receipts, out Address[] addresses)
-        {
-            var logEntry = new LogEntry(contractAddress, 
+            var logEntry = new LogEntry(ContractAddress, 
                 Array.Empty<byte>(),
-                new[] {Definition.Events[InitiateChangeEvent].GetHash(), blockHeader.ParentHash});
+                new[] {Definition.Events[InitiateChange].GetHash(), blockHeader.ParentHash});
 
             if (blockHeader.TryFindLog(receipts, logEntry, LogEntryEqualityComparer, out var foundEntry))
             {
@@ -93,23 +100,20 @@ namespace Nethermind.Consensus.AuRa.Contracts
             return false;
         }
 
-        public Address[] DecodeAddresses(byte[] data)
+        private Address[] DecodeAddresses(byte[] data)
         {
-            var objects = _abiEncoder.Decode(Definition.Functions[GetValidatorsFunction].GetReturnInfo(), data);
+            var objects = _abiEncoder.Decode(Definition.GetFunction(nameof(GetValidators)).GetReturnInfo(), data);
+            return GetAddresses(objects);
+        }
+
+        private static Address[] GetAddresses(object[] objects)
+        {
             return (Address[]) objects[0];
         }
-    }
 
-    public class LogEntryAddressAndTopicEqualityComparer : IEqualityComparer<LogEntry>
-    {
-        public bool Equals(LogEntry x, LogEntry y)
+        public void EnsureSystemAccount()
         {
-            return ReferenceEquals(x, y) || (x != null && x.LoggersAddress == y?.LoggersAddress && x.Topics.SequenceEqual(y.Topics));
-        }
-
-        public int GetHashCode(LogEntry obj)
-        {
-            return obj.Topics.Aggregate(obj.LoggersAddress.GetHashCode(), (i, keccak) => i ^ keccak.GetHashCode());
+            EnsureSystemAccount(Constant.StateProvider);
         }
     }
 }

@@ -14,28 +14,24 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class SystemContract : Contract
+    public class LogEntryAddressAndTopicEqualityComparer : IEqualityComparer<LogEntry>
     {
-        protected SystemContract(Address contractAddress) : base(contractAddress)
+        public bool Equals(LogEntry x, LogEntry y)
         {
-        }
-        
-        public void EnsureSystemAccount(IStateProvider stateProvider)
-        {
-            if (!stateProvider.AccountExists(Address.SystemUser))
-            {
-                stateProvider.CreateAccount(Address.SystemUser, UInt256.Zero);
-                stateProvider.Commit(Homestead.Instance);
-            }
+            return ReferenceEquals(x, y) || (x != null && x.LoggersAddress == y?.LoggersAddress && x.Topics.SequenceEqual(y?.Topics ?? Array.Empty<Keccak>()));
         }
 
-        protected Transaction GenerateSystemTransaction(byte[] transactionData, long gasLimit = long.MaxValue, UInt256? nonce = null) => GenerateTransaction(transactionData, Address.SystemUser, gasLimit, nonce);
+        public int GetHashCode(LogEntry obj)
+        {
+            return obj.Topics.Aggregate(obj.LoggersAddress.GetHashCode(), (i, keccak) => i ^ keccak.GetHashCode());
+        }
     }
 }
