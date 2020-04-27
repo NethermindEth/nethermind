@@ -152,11 +152,14 @@ namespace Nethermind.Synchronization.BeamSync
         /// <param name="number">Number of the block that we have just processed</param>
         private void CancelPreviousBeamSyncingBlocks(long number)
         {
-            for (int i = 64; i > 0; i--)
+            lock (_tokens)
             {
-                if (_tokens.TryGetValue(number - i, out CancellationTokenSource token))
+                for (int i = 64; i > 0; i--)
                 {
-                    token.Cancel();
+                    if (_tokens.TryGetValue(number - i, out CancellationTokenSource token))
+                    {
+                        token.Cancel();
+                    }
                 }
             }
         }
@@ -168,11 +171,14 @@ namespace Nethermind.Synchronization.BeamSync
         /// <param name="number"></param>
         private void CancelOldBeamTasks(long number)
         {
-            for (int i = 64; i > 6; i--)
+            lock (_tokens)
             {
-                if (_tokens.TryGetValue(number - i, out CancellationTokenSource token))
+                for (int i = 64; i > 6; i--)
                 {
-                    token.Cancel();
+                    if (_tokens.TryGetValue(number - i, out CancellationTokenSource token))
+                    {
+                        token.Cancel();
+                    }
                 }
             }
         }
@@ -182,9 +188,12 @@ namespace Nethermind.Synchronization.BeamSync
         /// </summary>
         private void CancelAllBeamSyncTasks()
         {
-            foreach (KeyValuePair<long, CancellationTokenSource> cancellationTokenSource in _tokens)
+            lock (_tokens)
             {
-                cancellationTokenSource.Value.Cancel();
+                foreach (KeyValuePair<long, CancellationTokenSource> cancellationTokenSource in _tokens)
+                {
+                    cancellationTokenSource.Value.Cancel();
+                }
             }
         }
 
@@ -223,7 +232,15 @@ namespace Nethermind.Synchronization.BeamSync
 
         private void BeamProcess(Block block)
         {
-            CancellationTokenSource cancellationToken = _tokens.GetOrAdd(block.Number, t => new CancellationTokenSource());
+            CancellationTokenSource cancellationToken;
+            lock (_tokens)
+            {
+                cancellationToken = _tokens.GetOrAdd(block.Number, t => new CancellationTokenSource());
+                if (_isDisposed)
+                {
+                    return;
+                }
+            }
 
             Task beamProcessingTask = Task.CompletedTask;
             Task prefetchTasks = Task.CompletedTask;
@@ -286,7 +303,16 @@ namespace Nethermind.Synchronization.BeamSync
 
         private Task PrefetchNew(IStateReader stateReader, Block block, Keccak stateRoot, Address miner)
         {
-            CancellationTokenSource cancellationToken = _tokens.GetOrAdd(block.Number, t => new CancellationTokenSource());
+            CancellationTokenSource cancellationToken;
+            lock (_tokens)
+            {
+                cancellationToken = _tokens.GetOrAdd(block.Number, t => new CancellationTokenSource());
+                if (_isDisposed)
+                {
+                    return Task.CompletedTask;
+                }
+            }
+
             string description = $"[miner {miner}]";
             Task minerTask = Task<int>.Run(() =>
             {
@@ -373,8 +399,16 @@ namespace Nethermind.Synchronization.BeamSync
             _syncModeSelector.Changed -= SyncModeSelectorOnChanged;
         }
 
+        private bool _isDisposed;
+        
         public void Dispose()
         {
+            lock (_tokens)
+            {
+                _isDisposed = true;
+                CancelAllBeamSyncTasks();
+            }
+            
             UnregisterListeners();
         }
     }
