@@ -16,6 +16,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Messages;
@@ -34,7 +35,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
         private readonly IDiscoveryMessageFactory _discoveryMessageFactory;
         private readonly IEvictionManager _evictionManager;
 
-        private bool _isPongExpected;
+        private byte[] _expectedPingMdc;
         private bool _isNeighborsExpected;
 
         public NodeLifecycleManager(Node node, IDiscoveryManager discoveryManager, INodeTable nodeTable, IDiscoveryMessageFactory discoveryMessageFactory, IEvictionManager evictionManager, INodeStats nodeStats, IDiscoveryConfig discoveryConfig, ILogger logger)
@@ -62,20 +63,23 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingIn);
             RefreshNodeContactTime();
-            
         }
 
         public void ProcessPongMessage(PongMessage discoveryMessage)
         {
-            if (_isPongExpected)
+            if (Bytes.AreEqual(_expectedPingMdc, discoveryMessage.PingMdc))
             {
                 NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPongIn);
                 RefreshNodeContactTime();
 
                 UpdateState(NodeLifecycleState.Active);
-            }
 
-            _isPongExpected = false;
+                _expectedPingMdc = null;
+            }
+            else
+            {
+                // ignore spoofed message
+            }
         }
 
         public void ProcessNeighborsMessage(NeighborsMessage discoveryMessage)
@@ -89,9 +93,10 @@ namespace Nethermind.Network.Discovery.Lifecycle
                 {
                     if (node.Address.Address.ToString().Contains("127.0.0.1"))
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Received localhost as node address from: {discoveryMessage.FarPublicKey}, node: {node}"); 
+                        if (_logger.IsTrace) _logger.Trace($"Received localhost as node address from: {discoveryMessage.FarPublicKey}, node: {node}");
                         continue;
                     }
+
                     //If node is new it will create a new nodeLifecycleManager and will update state to New, which will trigger Ping
                     _discoveryManager.GetNodeLifecycleManager(node);
                 }
@@ -120,8 +125,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
         public void SendPing()
         {
-            _isPongExpected = true;
-            Task.Run(() => SendPingAsync(_discoveryConfig.PingRetryCount));
+            Task.Run(() => _expectedPingMdc = SendPingAsync(_discoveryConfig.PingRetryCount).Result.Mdc);
         }
 
         public void SendPong(PingMessage discoveryMessage)
@@ -194,13 +198,14 @@ namespace Nethermind.Network.Discovery.Lifecycle
             }
         }
 
-        private async Task SendPingAsync(int counter)
+        private async Task<PingMessage> SendPingAsync(int counter)
         {
+            PingMessage msg = _discoveryMessageFactory.CreateOutgoingMessage<PingMessage>(ManagedNode);
+            msg.SourceAddress = _nodeTable.MasterNode.Address;
+            msg.DestinationAddress = msg.FarAddress;
+            
             try
             {
-                PingMessage msg = _discoveryMessageFactory.CreateOutgoingMessage<PingMessage>(ManagedNode);
-                msg.SourceAddress = _nodeTable.MasterNode.Address;
-                msg.DestinationAddress = msg.FarAddress;
                 _discoveryManager.SendMessage(msg);
                 NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingOut);
 
@@ -211,16 +216,16 @@ namespace Nethermind.Network.Discovery.Lifecycle
                     {
                         await SendPingAsync(counter - 1);
                     }
-                    else
-                    {
-                        UpdateState(NodeLifecycleState.Unreachable);
-                    }
+
+                    UpdateState(NodeLifecycleState.Unreachable);
                 }
             }
             catch (Exception e)
             {
                 _logger.Error("Error during sending ping message", e);
             }
+
+            return msg;
         }
     }
 }
