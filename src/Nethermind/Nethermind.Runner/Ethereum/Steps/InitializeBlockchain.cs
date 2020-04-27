@@ -193,7 +193,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (syncConfig.BeamSync)
             {
-                _ = new BeamBlockchainProcessor(
+                BeamBlockchainProcessor beamBlockchainProcessor = new BeamBlockchainProcessor(
                     new ReadOnlyDbProvider(_context.DbProvider, false),
                     _context.BlockTree,
                     _context.SpecProvider,
@@ -204,6 +204,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.BlockProcessingQueue,
                     _context.BlockchainProcessor,
                     _context.SyncModeSelector);
+                
+                _context.DisposeStack.Push(beamBlockchainProcessor);
             }
 
             ThisNodeInfo.AddInfo("Mem est trie :", $"{LruCache<Keccak, byte[]>.CalculateMemorySize(52 + 320, Trie.MemoryAllowance.TrieNodeCacheSize) / 1024 / 1024}MB".PadLeft(8));
