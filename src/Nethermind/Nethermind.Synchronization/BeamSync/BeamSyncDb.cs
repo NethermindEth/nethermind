@@ -147,7 +147,6 @@ namespace Nethermind.Synchronization.BeamSync
                 // if we keep timing out then we would finally reject the block (but only shelve it instead of marking invalid)
 
                 bool wasInDb = true;
-                var fromMem = _stateDb[key];
                 while (true)
                 {
                     if (BeamSyncContext.Cancelled.Value.IsCancellationRequested)
@@ -170,7 +169,7 @@ namespace Nethermind.Synchronization.BeamSync
                         }
                     }
 
-                    fromMem ??= _tempDb[key] ?? _stateDb[key];
+                    var fromMem = _tempDb[key] ?? _stateDb[key];
                     if (fromMem == null)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Beam sync miss - {key.ToHexString()} - retrieving");
@@ -217,6 +216,11 @@ namespace Nethermind.Synchronization.BeamSync
                         }
 
                         BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
+                        
+                        // if (!Bytes.AreEqual(Keccak.Compute(fromMem).Bytes, key))
+                        // {
+                        //     throw new Exception("DB had an entry with a hash mismatch {key}");
+                        // }
 
                         return fromMem;
                     }
