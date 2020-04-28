@@ -455,9 +455,13 @@ namespace Nethermind.Blockchain
 
                 await VisitBlocks(startBlockNumber.Value, blocksToLoad, BlockFound, HeaderFound, NoneFound, cancellationToken);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!(ex is TaskCanceledException))
             {
                 if (_logger.IsError) _logger.Error("Failed to load blocks from DB", ex);
+            }
+            catch (TaskCanceledException)
+            {
+                // ignore
             }
             finally
             {

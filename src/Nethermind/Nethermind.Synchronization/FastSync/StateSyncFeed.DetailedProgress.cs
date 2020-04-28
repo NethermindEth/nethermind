@@ -88,6 +88,7 @@ namespace Nethermind.Synchronization.FastSync
                     string dataSizeInfo = $"{(decimal) DataSize / 1000 / 1000,6:F2}MB";
                     if (_chainSizeInfo != null)
                     {
+                        Metrics.StateSynced = DataSize;
                         decimal percentage = Math.Min(1, (decimal) DataSize / _chainSizeInfo.Value.Current);
                         dataSizeInfo = string.Concat($"~{percentage:P2} | ", dataSizeInfo, $" / ~{(decimal) _chainSizeInfo.Value.Current / 1000 / 1000,6:F2}MB");
                     }

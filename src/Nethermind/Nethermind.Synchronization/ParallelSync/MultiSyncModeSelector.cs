@@ -108,7 +108,7 @@ namespace Nethermind.Synchronization.ParallelSync
             // to avoid expensive checks we make this simple check at the beginning
             if (!FastSyncEnabled)
             {
-                bool anyPeers = peerBlock.Value > 0 && peerDifficulty.Value > _syncProgressResolver.ChainDifficulty;
+                bool anyPeers = peerBlock.Value > 0 && peerDifficulty.Value >= _syncProgressResolver.ChainDifficulty;
                 UpdateSyncModes(anyPeers ? SyncMode.Full : SyncMode.None);
                 return;
             }

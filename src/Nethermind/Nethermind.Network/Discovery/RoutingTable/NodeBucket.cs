@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -46,6 +47,17 @@ namespace Nethermind.Network.Discovery.RoutingTable
                 lock (_nodeBucketLock)
                 {
                     return _items.ToArray();
+                }
+            }
+        }
+        
+        public IReadOnlyCollection<NodeBucketItem> BondedItems
+        {
+            get
+            {
+                lock (_nodeBucketLock)
+                {
+                    return _items.Where(i => (DateTime.UtcNow - i.LastContactTime) < TimeSpan.FromDays(2)).ToArray();
                 }
             }
         }

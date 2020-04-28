@@ -62,7 +62,7 @@ namespace Nethermind.Network.Discovery
             List<Keccak> alreadyTriedNodes = new List<Keccak>();
 
             if(_logger.IsDebug) _logger.Debug($"Starting discovery process for node: {(searchedNodeId != null ? $"randomNode: {new PublicKey(searchedNodeId).ToShortString()}" : $"masterNode: {_masterNode.Id}")}");
-            int nodesCountBeforeDiscovery = _nodeTable.Buckets.Sum(x => x.Items.Count);
+            int nodesCountBeforeDiscovery = _nodeTable.Buckets.Sum(x => x.BondedItems.Count);
 
             for (int i = 0; i < _discoveryConfig.MaxDiscoveryRounds; i++)
             {
@@ -110,7 +110,7 @@ namespace Nethermind.Network.Discovery
                     Node[] nodesToSend = tryCandidates.Skip(nodesTriedCount).Take(count).ToArray();
                     if (!nodesToSend.Any())
                     {
-                        if(_logger.IsTrace) _logger.Trace($"No more nodes to send, sent {successRequestsCount} successfull requests, failedRequestCounter: {failRequestCount}, nodesTriedCounter: {nodesTriedCount}");
+                        if(_logger.IsDebug) _logger.Debug($"No more nodes to send, sent {successRequestsCount} successfull requests, failedRequestCounter: {failRequestCount}, nodesTriedCounter: {nodesTriedCount}");
                         break;
                     }
 
@@ -138,7 +138,7 @@ namespace Nethermind.Network.Discovery
                     }
                 }
             }
-            int nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.Items.Count);
+            int nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.BondedItems.Count);
             if(_logger.IsDebug) _logger.Debug($"Finished discovery cycle, tried contacting {alreadyTriedNodes.Count} nodes. All nodes count before the process: {nodesCountBeforeDiscovery}, after the process: {nodesCountAfterDiscovery}");
 
             if (_logger.IsTrace)
@@ -149,15 +149,15 @@ namespace Nethermind.Network.Discovery
 
         private void LogNodeTable()
         {
-            NodeBucket[] nonEmptyBuckets = _nodeTable.Buckets.Where(x => x.Items.Any()).ToArray();
+            NodeBucket[] nonEmptyBuckets = _nodeTable.Buckets.Where(x => x.BondedItems.Any()).ToArray();
             StringBuilder sb = new StringBuilder();
             sb.AppendLine("------------------------------------------------------");
-            sb.AppendLine($"NodeTable, non-empty bucket count: {nonEmptyBuckets.Length}, total items count: {nonEmptyBuckets.Sum(x => x.Items.Count)}");
+            sb.AppendLine($"NodeTable, non-empty bucket count: {nonEmptyBuckets.Length}, total items count: {nonEmptyBuckets.Sum(x => x.BondedItems.Count)}");
 
             foreach (NodeBucket nodeBucket in nonEmptyBuckets)
             {
-                sb.AppendLine($"Bucket: {nodeBucket.Distance}, count: {nodeBucket.Items.Count}");
-                foreach (NodeBucketItem bucketItem in nodeBucket.Items)
+                sb.AppendLine($"Bucket: {nodeBucket.Distance}, count: {nodeBucket.BondedItems.Count}");
+                foreach (NodeBucketItem bucketItem in nodeBucket.BondedItems)
                 {
                     sb.AppendLine($"{bucketItem.Node}, LastContactTime: {bucketItem.LastContactTime:yyyy-MM-dd HH:mm:ss:000}");
                 }
@@ -184,6 +184,7 @@ namespace Nethermind.Network.Discovery
             try
             {
                 INodeLifecycleManager nodeManager = _discoveryManager.GetNodeLifecycleManager(destinationNode);
+                
                 nodeManager?.SendFindNode(searchedNodeId ?? _masterNode.Id.Bytes);
 
                 if (await _discoveryManager.WasMessageReceived(destinationNode.IdHash, MessageType.Neighbors, _discoveryConfig.SendNodeTimeout))

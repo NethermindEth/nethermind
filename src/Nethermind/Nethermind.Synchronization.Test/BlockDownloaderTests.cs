@@ -907,7 +907,7 @@ namespace Nethermind.Synchronization.Test
             syncPeer.HeadNumber.Returns(2);
 
             Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(), CancellationToken.None);
-            action.Should().Throw<EthSyncException>().WithInnerException<AggregateException>().WithInnerException<TimeoutException>();
+            action.Should().Throw<AggregateException>().WithInnerException<TimeoutException>();
         }
 
         [TestCase(DownloaderOptions.WithReceipts, true)]
@@ -943,7 +943,7 @@ namespace Nethermind.Synchronization.Test
             Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
             if (shouldThrow)
             {
-                action.Should().Throw<EthSyncException>().WithInnerException<AggregateException>().WithInnerException<TimeoutException>();
+                action.Should().Throw<AggregateException>().WithInnerException<TimeoutException>();
             }
             else
             {

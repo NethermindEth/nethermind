@@ -104,7 +104,8 @@ namespace Nethermind.Network
                 if (_logger.IsTrace) _logger.Trace($"Sent ping messages to {tasks.Length} peers. Received {successes} pongs.");
                 if (failures > tasks.Length / 3)
                 {
-                    if (_logger.IsInfo) _logger.Info($"More than 33% of nodes did not respond to a Ping message - {failures}/{successes + failures}");
+                    decimal percentage = (decimal)failures/(successes + failures);
+                    if (_logger.IsInfo) _logger.Info($"{percentage:P0} of nodes did not respond to a Ping message - {failures}/{successes + failures}");
                 }
 
                 _pingTasks.Clear();
@@ -133,8 +134,13 @@ namespace Nethermind.Network
                 bool pongReceived = await session.PingSender.SendPing();
                 if (!pongReceived)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"No pong received in response to the {pingTime:T} ping at {session?.Node:c} | last pong time {session.LastPongUtc:T}");
-                    return false;
+                    if (!session.IsClosing)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"No pong received in response to the {pingTime:T} ping at {session?.Node:c} | last pong time {session.LastPongUtc:T}");
+                        return false;
+                    }
+
+                    return true;
                 }
                 
                 session.LastPongUtc = DateTime.UtcNow;

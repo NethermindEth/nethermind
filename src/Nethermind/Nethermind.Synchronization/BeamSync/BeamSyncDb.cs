@@ -211,8 +211,8 @@ namespace Nethermind.Synchronization.BeamSync
                         if (!wasInDb)
                         {
                             BeamSyncContext.ResolvedInContext.Value++;
-                            Interlocked.Increment(ref _resolvedKeysCount);
-                            if (_logger.IsTrace) _logger.Trace($"Resolved key {key.ToHexString()} of context {BeamSyncContext.Description.Value} - resolved ctx {BeamSyncContext.ResolvedInContext.Value} | total {_resolvedKeysCount}");
+                            Interlocked.Increment(ref Metrics.BeamedTrieNodes);
+                            if (_logger.IsTrace) _logger.Trace($"Resolved key {key.ToHexString()} of context {BeamSyncContext.Description.Value} - resolved ctx {BeamSyncContext.ResolvedInContext.Value} | total {Metrics.BeamedTrieNodes}");
                         }
 
                         BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
@@ -316,6 +316,7 @@ namespace Nethermind.Synchronization.BeamSync
                 }
             }
 
+            Interlocked.Increment(ref Metrics.BeamedRequests);
             return Task.FromResult(request);
         }
 
@@ -323,6 +324,7 @@ namespace Nethermind.Synchronization.BeamSync
         {
             if (stateSyncBatch.ConsumerId != FeedId)
             {
+                if(_logger.IsWarn) _logger.Warn($"Beam sync response sent by feed {stateSyncBatch.ConsumerId} came back to feed {FeedId}");
                 return SyncResponseHandlingResult.InternalError;
             }
 

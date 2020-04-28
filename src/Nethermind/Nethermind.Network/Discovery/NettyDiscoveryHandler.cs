@@ -136,9 +136,10 @@ namespace Nethermind.Network.Discovery
 
             try
             {
-                if ((ulong)message.ExpirationTime < _timestamper.EpochSeconds)
+                long timeToExpire = message.ExpirationTime - (long) _timestamper.EpochSeconds;
+                if (timeToExpire < 0)
                 {
-                    if(_logger.IsDebug) _logger.Debug($"Received a discovery message that has expired, type: {type}, sender: {address}, message: {message}");
+                    if(_logger.IsDebug) _logger.Debug($"Received a discovery message that has expired {-timeToExpire} seconds ago, type: {type}, sender: {address}, message: {message}");
                     return;
                 }
 

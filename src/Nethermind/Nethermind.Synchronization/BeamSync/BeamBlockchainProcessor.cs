@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -203,7 +204,8 @@ namespace Nethermind.Synchronization.BeamSync
             ReadOnlyChainProcessingEnv env = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculatorSource.Get(txEnv.TransactionProcessor), NullReceiptStorage.Instance, _readOnlyDbProvider, specProvider, logManager);
             env.BlockProcessor.TransactionProcessed += (sender, args) =>
             {
-                if (_logger.IsInfo) _logger.Info($"Processed tx {args.Index}/{block.Transactions.Length} of {block.Number}");
+                Interlocked.Increment(ref Metrics.BeamedTransactions);
+                if (_logger.IsInfo) _logger.Info($"Processed tx {args.Index + 1}/{block.Transactions.Length} of {block.Number}");
             };
 
             return (env.ChainProcessor, txEnv.StateReader);
@@ -257,6 +259,7 @@ namespace Nethermind.Synchronization.BeamSync
                     prefetchTasks = PrefetchNew(stateReader, block, parentHeader.StateRoot, parentHeader.Author ?? parentHeader.Beneficiary);
                 }
                 
+                Stopwatch stopwatch = Stopwatch.StartNew();
                 Block processedBlock = null;
                 beamProcessingTask = Task.Run(() =>
                 {
@@ -265,9 +268,15 @@ namespace Nethermind.Synchronization.BeamSync
                     BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
                     BeamSyncContext.Cancelled.Value = cancellationToken.Token;
                     processedBlock = beamProcessor.Process(block, ProcessingOptions.Beam, NullBlockTracer.Instance);
+                    stopwatch.Stop();
                     if (processedBlock == null)
                     {
                         if (_logger.IsDebug) _logger.Debug($"Block {block.ToString(Block.Format.Short)} skipped in beam sync");
+                    }
+                    else
+                    {
+                        Interlocked.Increment(ref Metrics.BeamedBlocks);
+                        if(_logger.IsInfo) _logger.Info($"Successfuly beam processed block {processedBlock.ToString(Block.Format.Short)} in {stopwatch.ElapsedMilliseconds}ms");
                     }
                 }).ContinueWith(t =>
                 {
@@ -281,10 +290,23 @@ namespace Nethermind.Synchronization.BeamSync
 
                     if (processedBlock != null)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Running standard processor after beam sync for {block}");
+                        // if (_logger.IsDebug) _logger.Debug($"Running standard processor after beam sync for {block}");
                         // at this stage we are sure to have all the state available
                         CancelPreviousBeamSyncingBlocks(processedBlock.Number);
-                        _processor.Process(block, ProcessingOptions.Beam, NullBlockTracer.Instance);
+                        
+                        // do I even need this?
+                        // do I even need to process any of these blocks or just leave the RPC available
+                        // (based on user expectations they may need to trace or just query balance)
+                        
+                        // soo - there should be a separate beam queue that we can wait for to finish?
+                        // then we can ensure that it finishes before the normal queue fires
+                        // and so they never hit the wrong databases?
+                        // but, yeah, we do not even need to process it twice
+                        // we can just announce that we have finished beam processing here...
+                        // _standardProcessorQueue.Enqueue(block, ProcessingOptions.Beam);
+                        // I only needed it in the past when I wanted to actually store the beam data
+                        // now I can generate the witness on the fly and transfer the witness to the right place...
+                        // OK, seems fine
                     }
 
                     beamProcessor.Dispose();

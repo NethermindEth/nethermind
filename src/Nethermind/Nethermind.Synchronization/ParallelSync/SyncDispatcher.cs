@@ -193,6 +193,9 @@ namespace Nethermind.Synchronization.ParallelSync
                     break;
                 case SyncResponseHandlingResult.NotAssigned:
                     break;
+                case SyncResponseHandlingResult.InternalError:
+                    Logger.Error($"Feed {Feed} has reported an internal error when handling {request}");
+                    break;
                 case SyncResponseHandlingResult.OK:
                     break;
                 default:
