@@ -150,6 +150,8 @@ namespace Nethermind.Synchronization.Reporting
 
         private void WriteSyncReport()
         {
+            UpdateMetrics();
+            
             if (!_logger.IsInfo)
             {
                 return;
@@ -206,6 +208,13 @@ namespace Nethermind.Synchronization.Reporting
             {
                 _logger.Info("Beam Sync is ON - you can query the latest state");
             }
+        }
+
+        private void UpdateMetrics()
+        {
+            Metrics.FastHeaders = FastBlocksHeaders.CurrentValue;
+            Metrics.FastBodies = FastBlocksBodies.CurrentValue;
+            Metrics.FastReceipts = FastBlocksReceipts.CurrentValue;
         }
 
         private void WriteSyncConfigReport()

@@ -204,6 +204,7 @@ namespace Nethermind.Synchronization.BeamSync
             ReadOnlyChainProcessingEnv env = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculatorSource.Get(txEnv.TransactionProcessor), NullReceiptStorage.Instance, _readOnlyDbProvider, specProvider, logManager);
             env.BlockProcessor.TransactionProcessed += (sender, args) =>
             {
+                Interlocked.Increment(ref Metrics.BeamedTransactions);
                 if (_logger.IsInfo) _logger.Info($"Processed tx {args.Index + 1}/{block.Transactions.Length} of {block.Number}");
             };
 
@@ -267,13 +268,14 @@ namespace Nethermind.Synchronization.BeamSync
                     BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
                     BeamSyncContext.Cancelled.Value = cancellationToken.Token;
                     processedBlock = beamProcessor.Process(block, ProcessingOptions.Beam, NullBlockTracer.Instance);
+                    stopwatch.Stop();
                     if (processedBlock == null)
                     {
                         if (_logger.IsDebug) _logger.Debug($"Block {block.ToString(Block.Format.Short)} skipped in beam sync");
                     }
                     else
                     {
-                        stopwatch.Stop();
+                        Interlocked.Increment(ref Metrics.BeamedBlocks);
                         if(_logger.IsInfo) _logger.Info($"Successfuly beam processed block {processedBlock.ToString(Block.Format.Short)} in {stopwatch.ElapsedMilliseconds}ms");
                     }
                 }).ContinueWith(t =>
