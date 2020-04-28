@@ -43,5 +43,8 @@ namespace Nethermind.Synchronization
 
         [Description("Trie nodes retrieved via beam sync DB")]
         public static long BeamedTrieNodes;
+        
+        [Description("Number of sync peers.")]
+        public static long SyncPeers { get; set; }
     }
 }
