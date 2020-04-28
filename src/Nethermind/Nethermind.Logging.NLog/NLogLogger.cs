@@ -20,7 +20,6 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using NLog;
 using NLog.Targets;
-using NLog.Filters;
 
 [assembly: InternalsVisibleTo("Nethermind.Logging.NLog.Test")]
 
@@ -29,7 +28,7 @@ namespace Nethermind.Logging.NLog
     public class NLogLogger : ILogger
     {
         private const string DefaultFileTargetName = "file-async_wrapped";
-        
+
         public bool IsError { get; private set; }
         public bool IsWarn { get; private set; }
         public bool IsInfo { get; private set; }
@@ -53,10 +52,13 @@ namespace Nethermind.Logging.NLog
                 Directory.CreateDirectory(logsDir);
             }
 
-            foreach (FileTarget target in global::NLog.LogManager.Configuration?.AllTargets.OfType<FileTarget>())
+            if (global::NLog.LogManager.Configuration?.AllTargets != null)
             {
-                string fileNameToUse = (target.Name == DefaultFileTargetName) ? fileName : target.FileName.Render(LogEventInfo.CreateNullEvent());
-                target.FileName = !Path.IsPathFullyQualified(fileNameToUse) ? Path.Combine(logsDir, fileNameToUse) : fileNameToUse;
+                foreach (FileTarget target in global::NLog.LogManager.Configuration?.AllTargets.OfType<FileTarget>())
+                {
+                    string fileNameToUse = (target.Name == DefaultFileTargetName) ? fileName : target.FileName.Render(LogEventInfo.CreateNullEvent());
+                    target.FileName = !Path.IsPathFullyQualified(fileNameToUse) ? Path.Combine(logsDir, fileNameToUse) : fileNameToUse;
+                }
             }
 
             /* NOTE: minor perf gain - not planning to switch logging levels while app is running */
@@ -72,26 +74,8 @@ namespace Nethermind.Logging.NLog
         {
             loggerName = string.IsNullOrEmpty(loggerName) ? StackTraceUsageUtils.GetClassFullName().Replace("Nethermind.", string.Empty) : loggerName;
             Logger = global::NLog.LogManager.GetLogger(loggerName);
-            global::NLog.LogManager.GetLogger(loggerName); 
+            global::NLog.LogManager.GetLogger(loggerName);
             Init(fileName, logDirectory);
-        }
-
-        private string Level
-        {
-            get
-            {
-                if (IsTrace) return "Trace";
-
-                if (IsDebug) return "Debug";
-
-                if (IsInfo) return "Info";
-
-                if (IsWarn) return "Warn";
-
-                if (IsError) return "Error";
-
-                return "None";
-            }
         }
 
         public void Info(string text)
