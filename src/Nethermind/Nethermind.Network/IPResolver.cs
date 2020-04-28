@@ -68,8 +68,8 @@ namespace Nethermind.Network
             {
                 yield return new EnvironmentVariableIPSource();
                 yield return new NetworkConfigExternalIPSource(_networkConfig, _logManager);
-                yield return new WebIPSource("http://icanhazip.com", _logManager);
-                yield return new WebIPSource("http://bot.whatismyipaddress.com", _logManager);
+                yield return new WebIPSource("http://ipv4.icanhazip.com", _logManager);
+                yield return new WebIPSource("http://ipv4bot.whatismyipaddress.com", _logManager);
                 yield return new WebIPSource("http://checkip.amazonaws.com", _logManager);
                 yield return new WebIPSource("http://ipinfo.io/ip", _logManager);
                 yield return new WebIPSource("http://api.ipify.org", _logManager);
