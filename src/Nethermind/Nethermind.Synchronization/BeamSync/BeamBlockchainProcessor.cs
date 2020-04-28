@@ -284,7 +284,11 @@ namespace Nethermind.Synchronization.BeamSync
                         if (_logger.IsDebug) _logger.Debug($"Running standard processor after beam sync for {block}");
                         // at this stage we are sure to have all the state available
                         CancelPreviousBeamSyncingBlocks(processedBlock.Number);
-                        _processor.Process(block, ProcessingOptions.Beam, NullBlockTracer.Instance);
+                        
+                        // do I even need this?
+                        // do I even need to process any of these blocks or just leave the RPC available
+                        // (based on user expectations they may need to trace or just query balance)
+                        _standardProcessorQueue.Enqueue(block, ProcessingOptions.Beam);
                     }
 
                     beamProcessor.Dispose();
