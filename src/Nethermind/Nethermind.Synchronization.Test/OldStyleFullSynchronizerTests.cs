@@ -17,6 +17,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -41,7 +42,7 @@ namespace Nethermind.Synchronization.Test
     [TestFixture]
     public class OldStyleFullSynchronizerTests
     {
-        private readonly TimeSpan _standardTimeoutUnit = TimeSpan.FromMilliseconds(2000);
+        private readonly TimeSpan _standardTimeoutUnit = TimeSpan.FromMilliseconds(4000);
         
         [SetUp]
         public void Setup()
@@ -181,7 +182,7 @@ namespace Nethermind.Synchronization.Test
             Assert.AreEqual(SyncBatchSize.Max - 1, (int) _blockTree.BestSuggestedHeader.Number);
         }
 
-        [Test, Retry(3)]
+        [Test]
         public void Can_sync_on_split_of_length_1()
         {
             BlockTree miner1Tree = Build.A.BlockTree(_genesisBlock).OfChainLength(6).TestObject;
@@ -190,6 +191,7 @@ namespace Nethermind.Synchronization.Test
             ManualResetEvent resetEvent = new ManualResetEvent(false);
             _synchronizer.SyncEvent += (sender, args) =>
             {
+                TestContext.WriteLine(args.SyncEvent);
                 if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
             };
             
@@ -198,8 +200,8 @@ namespace Nethermind.Synchronization.Test
             _pool.AddPeer(miner1);
 
             resetEvent.WaitOne(_standardTimeoutUnit);
-
-            Assert.AreEqual(miner1Tree.BestSuggestedHeader.Hash, _blockTree.BestSuggestedHeader.Hash, "client agrees with miner before split");
+            
+            miner1Tree.BestSuggestedHeader.Should().BeEquivalentTo(_blockTree.BestSuggestedHeader, "client agrees with miner before split");
 
             Block splitBlock = Build.A.Block.WithParent(miner1Tree.FindParent(miner1Tree.Head, BlockTreeLookupOptions.TotalDifficultyNotNeeded)).WithDifficulty(miner1Tree.Head.Difficulty - 1).TestObject;
             Block splitBlockChild = Build.A.Block.WithParent(splitBlock).TestObject;
@@ -209,7 +211,7 @@ namespace Nethermind.Synchronization.Test
             miner1Tree.SuggestBlock(splitBlockChild);
             miner1Tree.UpdateMainChain(splitBlockChild);
 
-            Assert.AreEqual(splitBlockChild.Hash, miner1Tree.BestSuggestedHeader.Hash, "split as expected");
+            splitBlockChild.Header.Should().BeEquivalentTo(miner1Tree.BestSuggestedHeader, "split as expected");
 
             resetEvent.Reset();
 

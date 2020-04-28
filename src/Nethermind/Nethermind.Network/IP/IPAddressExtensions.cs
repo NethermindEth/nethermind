@@ -13,29 +13,33 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.Specs.Forks;
-using Nethermind.State;
+using System.Net;
 
-namespace Nethermind.Consensus.AuRa.Contracts
+namespace Nethermind.Network.IP
 {
-    public class SystemContract : Contract
+    public static class IPAddressExtensions
     {
-        protected SystemContract(Address contractAddress) : base(contractAddress)
+        /// <summary>
+        /// An extension method to determine if an IP address is internal, as specified in RFC1918
+        /// </summary>
+        /// <param name="toTest">The IP address that will be tested</param>
+        /// <returns>Returns true if the IP is internal, false if it is external</returns>
+        public static bool IsInternal(this IPAddress toTest)
         {
-        }
-        
-        public void EnsureSystemAccount(IStateProvider stateProvider)
-        {
-            if (!stateProvider.AccountExists(Address.SystemUser))
+            byte[] bytes = toTest.GetAddressBytes();
+            switch (bytes[0])
             {
-                stateProvider.CreateAccount(Address.SystemUser, UInt256.Zero);
-                stateProvider.Commit(Homestead.Instance);
+                case 10:
+                    return true;
+                case 172:
+                    return bytes[1] < 32 && bytes[1] >= 16;
+                case 192:
+                    return bytes[1] == 168;
+                default:
+                    return false;
             }
         }
-
-        protected Transaction GenerateSystemTransaction(byte[] transactionData, long gasLimit = long.MaxValue, UInt256? nonce = null) => GenerateTransaction(transactionData, Address.SystemUser, gasLimit, nonce);
     }
 }

@@ -16,6 +16,7 @@
 
 using System.IO;
 using System.Threading.Tasks;
+using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
@@ -201,6 +202,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.RecoveryStep,
                     _context.RewardCalculatorSource,
                     _context.BlockProcessingQueue,
+                    _context.BlockchainProcessor,
                     _context.SyncModeSelector);
             }
 

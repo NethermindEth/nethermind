@@ -1512,7 +1512,7 @@ namespace Nethermind.Serialization.Rlp
         public static int LengthOf(LogEntry item)
         {
             var rlpDecoder = GetDecoder<LogEntry>();
-            return rlpDecoder?.GetLength(item, RlpBehaviors.None) ?? throw new RlpException($"{nameof(Rlp)} does not support length of {typeof(LogEntry).Name}");
+            return rlpDecoder?.GetLength(item, RlpBehaviors.None) ?? throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(LogEntry)}");
         }
     }
 }

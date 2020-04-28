@@ -25,6 +25,11 @@ namespace Nethermind.Crypto
     {
         private readonly RandomNumberGenerator _secureRandom = new RNGCryptoServiceProvider();
         private readonly Random _random = new Random();
+        
+        public void GenerateRandomBytes(Span<byte> bytes)
+        {
+            _secureRandom.GetBytes(bytes);
+        }
 
         public byte[] GenerateRandomBytes(int length)
         {
@@ -37,6 +42,11 @@ namespace Nethermind.Crypto
         public int NextInt(int max)
         {
             return _random.Next(max);
+        }
+
+        public void Dispose()
+        {
+            _secureRandom.Dispose();
         }
     }
 }

@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Specs;
@@ -22,96 +23,98 @@ using Nethermind.Logging;
 
 namespace Nethermind.Core.Test.Builders
 {
-    public class TransactionBuilder : BuilderBase<Transaction>
+    public class TransactionBuilder<T> : BuilderBase<Transaction> where T : Transaction, new()
     {   
-        public TransactionBuilder(bool isSystem = false)
-        {   
-            TestObjectInternal = new Transaction(isSystem);
-            TestObjectInternal.GasPrice = 1;
-            TestObjectInternal.GasLimit = Transaction.BaseTxGasCost;
-            TestObjectInternal.To = Address.Zero;
-            TestObjectInternal.Nonce = 0;
-            TestObjectInternal.Value = 1;
-            TestObjectInternal.Data = new byte[0];
-            TestObjectInternal.Timestamp = 0;
+        public TransactionBuilder()
+        {
+            TestObjectInternal = new T
+            {
+                GasPrice = 1,
+                GasLimit = Transaction.BaseTxGasCost,
+                To = Address.Zero,
+                Nonce = 0,
+                Value = 1,
+                Data = new byte[0],
+                Timestamp = 0
+            };
         }
 
-        public TransactionBuilder WithNonce(UInt256 nonce)
+        public TransactionBuilder<T> WithNonce(UInt256 nonce)
         {
             TestObjectInternal.Nonce = nonce;
             return this;
         }
         
-        public TransactionBuilder WithTo(Address address)
+        public TransactionBuilder<T> WithTo(Address address)
         {
             TestObjectInternal.To = address;
             return this;
         }
         
-        public TransactionBuilder To(Address address)
+        public TransactionBuilder<T> To(Address address)
         {
             TestObjectInternal.To = address;
             return this;
         }
         
-        public TransactionBuilder WithData(byte[] data)
+        public TransactionBuilder<T> WithData(byte[] data)
         {
             TestObjectInternal.Init = null;
             TestObjectInternal.Data = data;
             return this;
         }
         
-        public TransactionBuilder WithInit(byte[] initCode)
+        public TransactionBuilder<T> WithInit(byte[] initCode)
         {
             TestObjectInternal.Data = null;
             TestObjectInternal.Init = initCode;
             return this;
         }
         
-        public TransactionBuilder WithGasPrice(UInt256 gasPrice)
+        public TransactionBuilder<T> WithGasPrice(UInt256 gasPrice)
         {
             TestObjectInternal.GasPrice = gasPrice;
             return this;
         }
         
-        public TransactionBuilder WithGasLimit(long gasLimit)
+        public TransactionBuilder<T> WithGasLimit(long gasLimit)
         {
             TestObjectInternal.GasLimit = gasLimit;
             return this;
         }
 
-        public TransactionBuilder WithTimestamp(UInt256 timestamp)
+        public TransactionBuilder<T> WithTimestamp(UInt256 timestamp)
         {
             TestObject.Timestamp = timestamp;
             return this;
         }
         
-        public TransactionBuilder WithValue(UInt256 value)
+        public TransactionBuilder<T> WithValue(UInt256 value)
         {
             TestObjectInternal.Value = value;
             return this;
         }
         
-        public TransactionBuilder WithValue(int value)
+        public TransactionBuilder<T> WithValue(int value)
         {
             TestObjectInternal.Value = (UInt256) value;
             return this;
         }
         
-        public TransactionBuilder WithSenderAddress(Address address)
+        public TransactionBuilder<T> WithSenderAddress(Address address)
         {
             TestObjectInternal.SenderAddress = address;
             return this;
         }
         
-        public TransactionBuilder Signed(IEthereumEcdsa ecdsa, PrivateKey privateKey, long blockNumber)
+        public TransactionBuilder<T> Signed(IEthereumEcdsa ecdsa, PrivateKey privateKey, long blockNumber)
         {
             ecdsa.Sign(privateKey, TestObjectInternal, blockNumber);
             return this;
         }
 
         // TODO: auto create ecdsa here
-        public TransactionBuilder SignedAndResolved(IEthereumEcdsa ecdsa, PrivateKey privateKey, long blockNumber)
+        public TransactionBuilder<T> SignedAndResolved(IEthereumEcdsa ecdsa, PrivateKey privateKey, long blockNumber)
         {
             ecdsa.Sign(privateKey, TestObjectInternal, blockNumber);
             TestObjectInternal.SenderAddress = privateKey.Address;
@@ -120,14 +123,14 @@ namespace Nethermind.Core.Test.Builders
         
         private EthereumEcdsa _ecdsa = new EthereumEcdsa(MainnetSpecProvider.Instance, LimboLogs.Instance);
         
-        public TransactionBuilder SignedAndResolved(PrivateKey privateKey)
+        public TransactionBuilder<T> SignedAndResolved(PrivateKey privateKey)
         {
             _ecdsa.Sign(privateKey, TestObjectInternal, MainnetSpecProvider.MuirGlacierBlockNumber);
             TestObjectInternal.SenderAddress = privateKey.Address;
             return this;
         }
         
-        public TransactionBuilder SignedAndResolved()
+        public TransactionBuilder<T> SignedAndResolved()
         {
             EthereumEcdsa ecdsa = new EthereumEcdsa(MainnetSpecProvider.Instance, LimboLogs.Instance);
             ecdsa.Sign(TestItem.IgnoredPrivateKey, TestObjectInternal, 10000000);
@@ -135,7 +138,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder DeliveredBy(PublicKey publicKey)
+        public TransactionBuilder<T> DeliveredBy(PublicKey publicKey)
         {
             TestObjectInternal.DeliveredBy = publicKey;
             return this;

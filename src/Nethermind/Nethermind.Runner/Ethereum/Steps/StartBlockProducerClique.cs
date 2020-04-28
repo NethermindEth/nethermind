@@ -43,7 +43,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             BlockProducerContext producerChain = GetProducerChain();
             CliqueConfig cliqueConfig = new CliqueConfig {BlockPeriod = _context.ChainSpec.Clique.Period, Epoch = _context.ChainSpec.Clique.Epoch};
             _context.BlockProducer = new CliqueBlockProducer(
-                producerChain.PendingTxSelector,
+                producerChain.TxSource,
                 producerChain.ChainProcessor,
                 producerChain.ReadOnlyStateProvider,
                 _context.BlockTree,

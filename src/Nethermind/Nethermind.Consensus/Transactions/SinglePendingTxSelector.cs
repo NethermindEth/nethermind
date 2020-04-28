@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,14 +14,26 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Network.Crypto
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Core;
+
+namespace Nethermind.Consensus.Transactions
 {
-    public interface IIesEngine
+    public class SinglePendingTxSelector : ITxSource
     {
-        byte[] ProcessBlock(
-            byte[] input,
-            int inOff,
-            int inLen,
-            byte[] macData);
+        private readonly ITxSource _innerSource;
+
+        public SinglePendingTxSelector(ITxSource innerSource)
+        {
+            _innerSource = innerSource ?? throw new ArgumentNullException(nameof(innerSource));
+        }
+
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) => 
+            _innerSource.GetTransactions(parent, gasLimit)
+                .OrderBy(t => t.Nonce)
+                .ThenByDescending(t => t.Timestamp)
+                .Take(1);
     }
 }

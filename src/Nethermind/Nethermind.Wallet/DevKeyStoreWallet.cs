@@ -112,13 +112,11 @@ namespace Nethermind.Wallet
             AccountLocked?.Invoke(this, new AccountLockedEventArgs(address));
             return _unlockedAccounts.Remove(address);
         }
-
+        
         public void Sign(Transaction tx, int chainId)
         {
             if (_logger.IsDebug) _logger?.Debug($"Signing transaction: {tx.Value} to {tx.To}");
-            Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, chainId).Bytes);
-            tx.Signature = Sign(hash, tx.SenderAddress);
-            tx.Signature.V = tx.Signature.V + 8 + 2 * chainId;
+            IBasicWallet.Sign(this, tx, chainId);
         }
 
         public bool IsUnlocked(Address address) => _unlockedAccounts.ContainsKey(address);

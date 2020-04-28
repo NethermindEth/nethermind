@@ -82,7 +82,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 if (allocation.Constructor != null)
                 {
-                    Transaction constructorTransaction = new Transaction(true)
+                    Transaction constructorTransaction = new SystemTransaction()
                     {
                         SenderAddress = address,
                         Init = allocation.Constructor,

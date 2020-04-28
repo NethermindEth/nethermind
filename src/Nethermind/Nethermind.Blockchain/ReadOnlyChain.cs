@@ -16,6 +16,7 @@
 
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
+using Nethermind.Core;
 using Nethermind.State;
 
 namespace Nethermind.Blockchain
@@ -24,8 +25,6 @@ namespace Nethermind.Blockchain
     {
         public IBlockchainProcessor ChainProcessor { get; set; }
         public IStateProvider ReadOnlyStateProvider { get; set; }
-        
-        public IBlockProcessor BlockProcessor { get; set; }
-        public IPendingTxSelector PendingTxSelector { get; set; }
+        public ITxSource TxSource { get; set; }
     }
 }

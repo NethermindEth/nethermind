@@ -21,7 +21,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class TransactionDecoder : IRlpDecoder<Transaction>, IRlpValueDecoder<Transaction>
+    public class TransactionDecoder : IRlpDecoder<Transaction>, IRlpValueDecoder<Transaction>, IRlpDecoder<SystemTransaction>, IRlpDecoder<GeneratedTransaction>
     {
         public Transaction Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -245,9 +245,24 @@ namespace Nethermind.Serialization.Rlp
             return contentLength;
         }
 
-        public int GetLength(Transaction item, RlpBehaviors rlpBehaviors)
+        public int GetLength(Transaction item, RlpBehaviors rlpBehaviors) => Rlp.GetSequenceRlpLength(GetContentLength(item, false));
+
+        Rlp IRlpDecoder<GeneratedTransaction>.Encode(GeneratedTransaction item, RlpBehaviors rlpBehaviors) => Encode(item, rlpBehaviors);
+
+        int IRlpDecoder<GeneratedTransaction>.GetLength(GeneratedTransaction item, RlpBehaviors rlpBehaviors) => GetLength(item, rlpBehaviors);
+
+        Rlp IRlpDecoder<SystemTransaction>.Encode(SystemTransaction item, RlpBehaviors rlpBehaviors) => Encode(item, rlpBehaviors);
+
+        int IRlpDecoder<SystemTransaction>.GetLength(SystemTransaction item, RlpBehaviors rlpBehaviors) => GetLength(item, rlpBehaviors);
+
+        SystemTransaction IRlpDecoder<SystemTransaction>.Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
         {
-            return Rlp.GetSequenceRlpLength(GetContentLength(item, false));
+            throw new NotSupportedException();
+        }
+
+        GeneratedTransaction IRlpDecoder<GeneratedTransaction>.Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
+        {
+            throw new NotSupportedException();
         }
     }
 }
