@@ -315,8 +315,8 @@ namespace Nethermind.Synchronization.FastBlocks
                     }
                 }
                 catch (Exception ex)
-                { 
-                    if (_logger.IsWarn) _logger.Warn($"Failed to handle {batch}. This is non-critical error and the node issued the request again. You may want to report {ex}." );
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Failed to handle {batch}. This is non-critical error and the node issued the request again. You may want to report {ex}.");
 
                     _pending.Enqueue(batch);
                     return SyncResponseHandlingResult.InternalError;
@@ -345,9 +345,9 @@ namespace Nethermind.Synchronization.FastBlocks
             long? lastPredecessor = null;
 
             List<(Block, TxReceipt[])> validReceipts = new List<(Block, TxReceipt[])>();
-            if (receiptSyncBatch.Response.Any() && receiptSyncBatch.Response[0] != null)
+            if (receiptSyncBatch.Response.Length != 0 && receiptSyncBatch.Response[0] != null)
             {
-                lastPredecessor = receiptSyncBatch.Predecessors[0];
+                lastPredecessor = receiptSyncBatch.Predecessors.Length == 0 ? null : receiptSyncBatch.Predecessors[0];
             }
 
             for (int blockIndex = 0;
