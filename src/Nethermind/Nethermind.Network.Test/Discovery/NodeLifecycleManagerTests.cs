@@ -88,16 +88,16 @@ namespace Nethermind.Network.Test.Discovery
             _discoveryManager.MessageSender = _udpClient;
         }
 
-        [Test]
-        public void ActiveStateTest()
+        [Test, Ignore("awaiting review")]
+        public void Wrong_pong_will_get_ignored()
         {
             var node = new Node(_host, _port);
             var manager = _discoveryManager.GetNodeLifecycleManager(node);
             Assert.AreEqual(NodeLifecycleState.New, manager.State);
-
+            
             manager.ProcessPongMessage(new PongMessage {FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _nodeIds[0] });
 
-            Assert.AreEqual(NodeLifecycleState.Active, manager.State);
+            Assert.AreEqual(NodeLifecycleState.New, manager.State);
         }
 
         [Test]
@@ -114,7 +114,7 @@ namespace Nethermind.Network.Test.Discovery
             //Assert.AreEqual(NodeLifecycleState.Unreachable, manager.State);
         }
 
-        [Test, Retry(3)]
+        [Test, Retry(3), Ignore("Eviction changes were introduced and we would need to expose some internals to test bonding")]
         public void EvictCandidateStateWonEvictionTest()
         {
             //adding 3 active nodes
@@ -128,14 +128,14 @@ namespace Nethermind.Network.Test.Discovery
                 Assert.AreEqual(NodeLifecycleState.New, manager.State);
 
                 _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _nodeIds[i] });
-                Assert.AreEqual(NodeLifecycleState.Active, manager.State);
+                Assert.AreEqual(NodeLifecycleState.New, manager.State);
             }
 
             //table should contain 3 active nodes
             var closestNodes = _nodeTable.GetClosestNodes();
-            Assert.IsTrue(closestNodes.Count(x => x.Host == managers[0].ManagedNode.Host) == 1);
-            Assert.IsTrue(closestNodes.Count(x => x.Host == managers[1].ManagedNode.Host) == 1);
-            Assert.IsTrue(closestNodes.Count(x => x.Host == managers[2].ManagedNode.Host) == 1);
+            Assert.IsTrue(closestNodes.Count(x => x.Host == managers[0].ManagedNode.Host) == 0);
+            Assert.IsTrue(closestNodes.Count(x => x.Host == managers[1].ManagedNode.Host) == 0);
+            Assert.IsTrue(closestNodes.Count(x => x.Host == managers[2].ManagedNode.Host) == 0);
 
             //adding 4th node - table can store only 3, eviction process should start
             var candidateNode = new Node(_nodeIds[3], _host, _port);
@@ -144,7 +144,7 @@ namespace Nethermind.Network.Test.Discovery
             Assert.AreEqual(NodeLifecycleState.New, candidateManager.State);
 
             _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _nodeIds[3]});
-            Assert.AreEqual(NodeLifecycleState.Active, candidateManager.State);
+            Assert.AreEqual(NodeLifecycleState.New, candidateManager.State);
             var evictionCandidate = managers.First(x => x.State == NodeLifecycleState.EvictCandidate);
 
             //receiving pong for eviction candidate - should survive
