@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -257,6 +258,7 @@ namespace Nethermind.Synchronization.BeamSync
                     prefetchTasks = PrefetchNew(stateReader, block, parentHeader.StateRoot, parentHeader.Author ?? parentHeader.Beneficiary);
                 }
                 
+                Stopwatch stopwatch = Stopwatch.StartNew();
                 Block processedBlock = null;
                 beamProcessingTask = Task.Run(() =>
                 {
@@ -288,7 +290,19 @@ namespace Nethermind.Synchronization.BeamSync
                         // do I even need this?
                         // do I even need to process any of these blocks or just leave the RPC available
                         // (based on user expectations they may need to trace or just query balance)
-                        _standardProcessorQueue.Enqueue(block, ProcessingOptions.Beam);
+                        
+                        // soo - there should be a separate beam queue that we can wait for to finish?
+                        // then we can ensure that it finishes before the normal queue fires
+                        // and so they never hit the wrong databases?
+                        // but, yeah, we do not even need to process it twice
+                        // we can just announce that we have finished beam processing here...
+                        // _standardProcessorQueue.Enqueue(block, ProcessingOptions.Beam);
+                        // I only needed it in the past when I wanted to actually store the beam data
+                        // now I can generate the witness on the fly and transfer the witness to the right place...
+                        // OK, seems fine
+                        
+                        stopwatch.Stop();
+                        if(_logger.IsInfo) _logger.Info($"Successfuly beam processed block {processedBlock.ToString(Block.Format.Short)} in {stopwatch.ElapsedMilliseconds}ms");
                     }
 
                     beamProcessor.Dispose();
