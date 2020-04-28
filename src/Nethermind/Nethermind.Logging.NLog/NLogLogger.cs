@@ -49,7 +49,7 @@ namespace Nethermind.Logging.NLog
 
             foreach (FileTarget target in global::NLog.LogManager.Configuration?.AllTargets.OfType<FileTarget>())
             {
-                string fileNameToUse = (target.Name == "file-async") ? fileName : target.FileName.Render(LogEventInfo.CreateNullEvent());
+                string fileNameToUse = (target.Name == "file-async_wrapped") ? fileName : target.FileName.Render(LogEventInfo.CreateNullEvent());
                 target.FileName = !Path.IsPathFullyQualified(fileNameToUse) ? Path.Combine(logsDir, fileNameToUse) : fileNameToUse;
             }
 
