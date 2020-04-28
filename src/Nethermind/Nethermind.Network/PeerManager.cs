@@ -787,12 +787,28 @@ namespace Nethermind.Network
             if (_logger.IsTrace) _logger.Trace($"RemoteNodeId was updated due to handshake difference, old: {session.ObsoleteRemoteNodeId}, new: {session.RemoteNodeId}, new peer not present in candidate collection");
         }
 
+        private int _maxPeerPoolLength;
+        private int _lastPeerPoolLength;
+        
         private void OnNodeDiscovered(object sender, NodeEventArgs nodeEventArgs)
         {
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {nodeEventArgs.Node:e} node discovered");
             Peer peer = _peerPool.GetOrAdd(nodeEventArgs.Node);
+
+            lock (_peerPool)
+            {
+                int newPeerPoolLength = _peerPool.CandidatePeerCount;
+                _lastPeerPoolLength = newPeerPoolLength;
+
+                if (_lastPeerPoolLength > _maxPeerPoolLength + 100)
+                {
+                    _maxPeerPoolLength = _lastPeerPoolLength;
+                    if(_logger.IsInfo) _logger.Info($"Peer pool size is: {_lastPeerPoolLength}");
+                }
+            }
+
             _stats.ReportEvent(nodeEventArgs.Node, NodeStatsEventType.NodeDiscovered);
-            if (_pending < AvailableActivePeersCount)
+            // if (_pending < AvailableActivePeersCount)
             {
 #pragma warning disable 4014
                 // fire and forget - all the surrounding logic will be executed

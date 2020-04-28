@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Net;
+using DotNetty.Common.Utilities;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Serialization.Rlp;
@@ -42,6 +43,8 @@ namespace Nethermind.Network.Discovery.Serializers
             ).Bytes;
 
             byte[] serializedMsg = Serialize(typeByte, data);
+            message.Mdc = serializedMsg.Slice(0, 32);
+            
             return serializedMsg;
         }
 
