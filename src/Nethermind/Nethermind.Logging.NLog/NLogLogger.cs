@@ -28,11 +28,13 @@ namespace Nethermind.Logging.NLog
 {
     public class NLogLogger : ILogger
     {
-        public bool IsError { get; }
-        public bool IsWarn { get; }
-        public bool IsInfo { get; }
-        public bool IsDebug { get; }
-        public bool IsTrace { get; }
+        private const string DefaultFileTargetName = "file-async_wrapped";
+        
+        public bool IsError { get; private set; }
+        public bool IsWarn { get; private set; }
+        public bool IsInfo { get; private set; }
+        public bool IsDebug { get; private set; }
+        public bool IsTrace { get; private set; }
 
         internal readonly global::NLog.Logger Logger;
 
@@ -40,7 +42,11 @@ namespace Nethermind.Logging.NLog
         {
             loggerName = string.IsNullOrEmpty(loggerName) ? type.FullName.Replace("Nethermind.", string.Empty) : loggerName;
             Logger = global::NLog.LogManager.GetLogger(loggerName);
+            Init(fileName, logDirectory);
+        }
 
+        private void Init(string fileName, string logDirectory)
+        {
             var logsDir = string.IsNullOrEmpty(logDirectory) ? "logs".GetApplicationResourcePath() : logDirectory;
             if (!Directory.Exists(logsDir))
             {
@@ -49,12 +55,12 @@ namespace Nethermind.Logging.NLog
 
             foreach (FileTarget target in global::NLog.LogManager.Configuration?.AllTargets.OfType<FileTarget>())
             {
-                string fileNameToUse = (target.Name == "file-async_wrapped") ? fileName : target.FileName.Render(LogEventInfo.CreateNullEvent());
+                string fileNameToUse = (target.Name == DefaultFileTargetName) ? fileName : target.FileName.Render(LogEventInfo.CreateNullEvent());
                 target.FileName = !Path.IsPathFullyQualified(fileNameToUse) ? Path.Combine(logsDir, fileNameToUse) : fileNameToUse;
             }
 
             /* NOTE: minor perf gain - not planning to switch logging levels while app is running */
-            // TODO: review the behaviour on log levels switching which we have just added recently...
+            // TODO: review the behaviour on log levels switching
             IsInfo = Logger.IsInfoEnabled;
             IsWarn = Logger.IsWarnEnabled;
             IsDebug = Logger.IsDebugEnabled;
@@ -66,25 +72,8 @@ namespace Nethermind.Logging.NLog
         {
             loggerName = string.IsNullOrEmpty(loggerName) ? StackTraceUsageUtils.GetClassFullName().Replace("Nethermind.", string.Empty) : loggerName;
             Logger = global::NLog.LogManager.GetLogger(loggerName);
-            global::NLog.LogManager.GetLogger(loggerName);
-
-            var logsDir = string.IsNullOrEmpty(logDirectory) ? "logs".GetApplicationResourcePath(): logDirectory;
-            if (!Directory.Exists(logsDir))
-            {
-                Directory.CreateDirectory(logsDir);
-            }
-
-            if (global::NLog.LogManager.Configuration?.AllTargets.SingleOrDefault(t => t.Name == "file") is FileTarget target)
-            {
-                target.FileName = !Path.IsPathFullyQualified(fileName) ? Path.Combine(logsDir, fileName) : fileName;
-            }
-
-            /* NOTE: minor perf gain - not planning to switch logging levels while app is running */
-            IsInfo = Logger.IsInfoEnabled;
-            IsWarn = Logger.IsWarnEnabled;
-            IsDebug = Logger.IsDebugEnabled;
-            IsTrace = Logger.IsTraceEnabled;
-            IsError = Logger.IsErrorEnabled || Logger.IsFatalEnabled;
+            global::NLog.LogManager.GetLogger(loggerName); 
+            Init(fileName, logDirectory);
         }
 
         private string Level
@@ -103,11 +92,6 @@ namespace Nethermind.Logging.NLog
 
                 return "None";
             }
-        }
-
-        private void Log(string text)
-        {
-            Logger.Info(text);
         }
 
         public void Info(string text)
