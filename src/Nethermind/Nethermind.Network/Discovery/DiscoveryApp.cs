@@ -138,23 +138,21 @@ namespace Nethermind.Network.Discovery
 
         private void InitializeUdpChannel()
         {
-            if (_logger.IsDebug) _logger.Debug($"Discovery    : udp://{_networkConfig.LocalIp}:{_networkConfig.DiscoveryPort}");
-            ThisNodeInfo.AddInfo("Discovery    :", $"udp://{_networkConfig.LocalIp}:{_networkConfig.DiscoveryPort}");
+            if(_logger.IsDebug) _logger.Debug($"Discovery    : udp://{_networkConfig.ExternalIp}:{_networkConfig.DiscoveryPort}");
+            ThisNodeInfo.AddInfo("Discovery    :", $"udp://{_networkConfig.ExternalIp}:{_networkConfig.DiscoveryPort}");
+            
             _group = new MultithreadEventLoopGroup(1);
             Bootstrap bootstrap = new Bootstrap();
-            bootstrap
-                .Group(_group);
+            bootstrap.Group(_group);
 
             if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             {
-                bootstrap
-                    .ChannelFactory(() => new SocketDatagramChannel(AddressFamily.InterNetwork))
+                bootstrap.ChannelFactory(() => new SocketDatagramChannel(AddressFamily.InterNetwork))
                     .Handler(new ActionChannelInitializer<IDatagramChannel>(InitializeChannel));
             }
             else
             {
-                bootstrap
-                    .Channel<SocketDatagramChannel>()
+                bootstrap.Channel<SocketDatagramChannel>()
                     .Handler(new ActionChannelInitializer<IDatagramChannel>(InitializeChannel));
             }
 
