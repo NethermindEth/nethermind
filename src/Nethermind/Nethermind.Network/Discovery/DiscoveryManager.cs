@@ -120,6 +120,8 @@ namespace Nethermind.Network.Discovery
             }
         }
 
+        private int _managersCreated = 0;
+        
         public INodeLifecycleManager GetNodeLifecycleManager(Node node, bool isPersisted = false)
         {
             if (_nodeTable.MasterNode.Equals(node))
@@ -135,6 +137,7 @@ namespace Nethermind.Network.Discovery
 
             return _nodeLifecycleManagers.GetOrAdd(node.IdHash, x =>
             {
+                Interlocked.Increment(ref _managersCreated);
                 INodeLifecycleManager manager = _nodeLifecycleManagerFactory.CreateNodeLifecycleManager(node);
                 if (!isPersisted)
                 {

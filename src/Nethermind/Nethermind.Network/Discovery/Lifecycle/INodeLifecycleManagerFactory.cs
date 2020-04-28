@@ -22,7 +22,6 @@ namespace Nethermind.Network.Discovery.Lifecycle
     public interface INodeLifecycleManagerFactory
     {
         INodeLifecycleManager CreateNodeLifecycleManager(Node node);
-        INodeLifecycleManager CreateNodeLifecycleManager(PublicKey id, string host, int port);
         IDiscoveryManager DiscoveryManager { set; }
     }
 }

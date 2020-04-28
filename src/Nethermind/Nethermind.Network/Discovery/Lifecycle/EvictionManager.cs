@@ -52,9 +52,9 @@ namespace Nethermind.Network.Discovery.Lifecycle
                 if(_logger.IsTrace) _logger.Trace($"Existing eviction in process, evictionCandidate: {evictionCandidate.ManagedNode}, replacementCandidate: {replacementCandidate.ManagedNode}");
                 return;
             }
-           
-            evictionCandidate.OnStateChanged += OnStateChange;
+            
             evictionCandidate.StartEvictionProcess();
+            evictionCandidate.OnStateChanged += OnStateChange;
         }
 
         private void OnStateChange(object sender, NodeLifecycleState state)
@@ -87,8 +87,8 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
         private void CloseEvictionProcess(INodeLifecycleManager evictionCandidate)
         {
-            _evictionPairs.TryRemove(evictionCandidate.ManagedNode.IdHash, out EvictionPair _);
             evictionCandidate.OnStateChanged -= OnStateChange;
+            _evictionPairs.TryRemove(evictionCandidate.ManagedNode.IdHash, out EvictionPair _);
         }
     }
 }
