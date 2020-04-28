@@ -125,6 +125,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
             _isNeighborsExpected = false;
         }
+        
 
         public void ProcessFindNodeMessage(FindNodeMessage discoveryMessage)
         {
@@ -139,12 +140,19 @@ namespace Nethermind.Network.Discovery.Lifecycle
             Node[] nodes = _nodeTable.GetClosestNodes(discoveryMessage.SearchedNodeId);
             SendNeighbors(nodes);
         }
+        
+        private DateTime _lastTimeSendFindNode = DateTime.MinValue;
 
         public void SendFindNode(byte[] searchedNodeId)
         {
             if (!IsBonded)
             {
-                if (_logger.IsWarn) _logger.Warn($"Sending FIND NODE on {ManagedNode} before bonding");
+                if (_logger.IsDebug) _logger.Debug($"Sending FIND NODE on {ManagedNode} before bonding");
+            }
+            
+            if (DateTime.UtcNow - _lastTimeSendFindNode < TimeSpan.FromSeconds(60))
+            {
+                return;
             }
 
             FindNodeMessage msg = _discoveryMessageFactory.CreateOutgoingMessage<FindNodeMessage>(ManagedNode);
