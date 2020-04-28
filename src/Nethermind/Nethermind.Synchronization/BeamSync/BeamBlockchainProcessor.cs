@@ -276,15 +276,14 @@ namespace Nethermind.Synchronization.BeamSync
                     else
                     {
                         Interlocked.Increment(ref Metrics.BeamedBlocks);
-                        if(_logger.IsInfo) _logger.Info($"Successfuly beam processed block {processedBlock.ToString(Block.Format.Short)} in {stopwatch.ElapsedMilliseconds}ms");
+                        if(_logger.IsInfo) _logger.Info($"Successfully beam processed block {processedBlock.ToString(Block.Format.Short)} in {stopwatch.ElapsedMilliseconds}ms");
                     }
                 }).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
                         if (_logger.IsInfo) _logger.Info($"Stopped processing block {block} | {t.Exception?.Flatten().InnerException?.Message}");
-                        if (_logger.IsDebug) _logger.Debug($"Details of beam sync failure {block} | {t.Exception}");
-
+                        if (_logger.IsTrace) _logger.Trace($"Details of beam sync failure {block} | {t.Exception}");
                         return;
                     }
 

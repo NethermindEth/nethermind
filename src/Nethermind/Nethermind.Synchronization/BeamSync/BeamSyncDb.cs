@@ -78,7 +78,8 @@ namespace Nethermind.Synchronization.BeamSync
                 {
                     if (CurrentState != SyncFeedState.Finished)
                     {
-                        Finish();
+                        // we do not want to finish this feed - instead we will keep using it in Beam Synced RPC requests
+                        // Finish();
                         UnregisterHandlers();
                     }
                 }
@@ -151,7 +152,7 @@ namespace Nethermind.Synchronization.BeamSync
                 {
                     if (BeamSyncContext.Cancelled.Value.IsCancellationRequested)
                     {
-                        throw new TaskCanceledException("Found a better block.");
+                        throw new BeamCanceledException("Beam cancellation requested");
                     }
 
                     if (_isDisposed)
