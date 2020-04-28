@@ -316,6 +316,11 @@ namespace Nethermind.Blockchain.Processing
                 if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, last processed is null: {lastProcessed == null}, processedBlocks.Length: {processedBlocks?.Length}");
             }
 
+            if ((options & ProcessingOptions.ReadOnlyChain) == ProcessingOptions.None)
+            {
+                _stats.UpdateStats(lastProcessed, _recoveryQueue.Count, _blockQueue.Count);
+            }
+
             return lastProcessed;
         }
 
