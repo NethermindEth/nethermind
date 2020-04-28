@@ -271,6 +271,11 @@ namespace Nethermind.Synchronization.BeamSync
                     {
                         if (_logger.IsDebug) _logger.Debug($"Block {block.ToString(Block.Format.Short)} skipped in beam sync");
                     }
+                    else
+                    {
+                        stopwatch.Stop();
+                        if(_logger.IsInfo) _logger.Info($"Successfuly beam processed block {processedBlock.ToString(Block.Format.Short)} in {stopwatch.ElapsedMilliseconds}ms");
+                    }
                 }).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
@@ -283,7 +288,7 @@ namespace Nethermind.Synchronization.BeamSync
 
                     if (processedBlock != null)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Running standard processor after beam sync for {block}");
+                        // if (_logger.IsDebug) _logger.Debug($"Running standard processor after beam sync for {block}");
                         // at this stage we are sure to have all the state available
                         CancelPreviousBeamSyncingBlocks(processedBlock.Number);
                         
@@ -300,9 +305,6 @@ namespace Nethermind.Synchronization.BeamSync
                         // I only needed it in the past when I wanted to actually store the beam data
                         // now I can generate the witness on the fly and transfer the witness to the right place...
                         // OK, seems fine
-                        
-                        stopwatch.Stop();
-                        if(_logger.IsInfo) _logger.Info($"Successfuly beam processed block {processedBlock.ToString(Block.Format.Short)} in {stopwatch.ElapsedMilliseconds}ms");
                     }
 
                     beamProcessor.Dispose();
