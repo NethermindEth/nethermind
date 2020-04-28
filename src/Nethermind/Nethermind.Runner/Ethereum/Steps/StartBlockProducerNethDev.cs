@@ -15,8 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Transactions;
+using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 
@@ -37,7 +40,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (logger.IsWarn) logger.Warn("Starting Neth Dev block producer & sealer");
             BlockProducerContext producerChain = GetProducerChain();
             _context.BlockProducer = new DevBlockProducer(
-                producerChain.PendingTxSelector,
+                producerChain.TxSource,
                 producerChain.ChainProcessor,
                 producerChain.ReadOnlyStateProvider,
                 _context.BlockTree,
@@ -47,6 +50,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.LogManager);
         }
 
-        protected override IPendingTxSelector CreatePendingTxSelector() => new SinglePendingTxSelector(base.CreatePendingTxSelector());
+        protected override ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv environment) => new SinglePendingTxSelector(base.CreateTxSourceForProducer(environment));
     }
 }

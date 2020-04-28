@@ -94,11 +94,16 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             
             public long? BlockRewardContractTransition { get; set; }
             
+            public IDictionary<long, Address> BlockRewardContractTransitions { get; set; } = new Dictionary<long, Address>();
+            
             public long ValidateScoreTransition { get; set; }
         
             public long ValidateStepTransition { get; set; }
 		
             public AuRaValidatorJson Validators { get; set; }
+
+            public IDictionary<long, Address> RandomnessContractAddress { get; set; } = new Dictionary<long, Address>();
+
         }
 
         internal class AuRaValidatorJson
@@ -146,12 +151,16 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public Address BlockRewardContractAddress => Params.BlockRewardContractAddress;
             
             public long? BlockRewardContractTransition => Params.BlockRewardContractTransition;
+            
+            public IDictionary<long, Address> BlockRewardContractTransitions => Params.BlockRewardContractTransitions;
 
             public long ValidateScoreTransition => Params.ValidateScoreTransition;
 
             public long ValidateStepTransition => Params.ValidateStepTransition;
 
             public AuRaValidatorJson Validator => Params.Validators;
+            
+            public IDictionary<long, Address> RandomnessContractAddress => Params.RandomnessContractAddress;
             
             public AuraEngineParamsJson Params { get; set; }
         }

@@ -14,26 +14,24 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Consensus
+namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class SinglePendingTxSelector : IPendingTxSelector
+    public class LogEntryAddressAndTopicEqualityComparer : IEqualityComparer<LogEntry>
     {
-        private readonly IPendingTxSelector _innerPendingTxSelector;
-
-        public SinglePendingTxSelector(IPendingTxSelector innerPendingTxSelector)
+        public bool Equals(LogEntry x, LogEntry y)
         {
-            _innerPendingTxSelector = innerPendingTxSelector;
+            return ReferenceEquals(x, y) || (x != null && x.LoggersAddress == y?.LoggersAddress && x.Topics.SequenceEqual(y?.Topics ?? Array.Empty<Keccak>()));
         }
-        
-        public IEnumerable<Transaction> SelectTransactions(Keccak stateRoot, long gasLimit) => 
-            _innerPendingTxSelector.SelectTransactions(stateRoot, gasLimit)
-                .OrderBy(t => t.Nonce)
-                .ThenByDescending(t => t.Timestamp)
-                .Take(1);
+
+        public int GetHashCode(LogEntry obj)
+        {
+            return obj.Topics.Aggregate(obj.LoggersAddress.GetHashCode(), (i, keccak) => i ^ keccak.GetHashCode());
+        }
     }
 }

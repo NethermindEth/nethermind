@@ -292,7 +292,7 @@ namespace Nethermind.Synchronization.Test
             var devTxProcessor = new TransactionProcessor(specProvider, devState, devStorage, devEvm, logManager);
             var devBlockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, devTxProcessor, stateDb, codeDb, devState, devStorage, txPool, receiptStorage, logManager);
             var devChainProcessor = new BlockchainProcessor(tree, devBlockProcessor, step, logManager, false);
-            var transactionSelector = new PendingTxSelector(txPool, stateReader, logManager);
+            var transactionSelector = new TxPoolTxSource(txPool, stateReader, logManager);
             var producer = new DevBlockProducer(transactionSelector, devChainProcessor, stateProvider, tree, processor, txPool, new Timestamper(), logManager);
             
             SyncProgressResolver resolver = new SyncProgressResolver(tree, receiptStorage, stateDb, new MemDb(), syncConfig, logManager);

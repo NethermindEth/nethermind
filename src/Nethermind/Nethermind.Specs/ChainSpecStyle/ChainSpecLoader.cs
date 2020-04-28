@@ -177,9 +177,11 @@ namespace Nethermind.Specs.ChainSpecStyle
                     BlockReward = chainSpecJson.Engine.AuthorityRound.BlockReward,
                     BlockRewardContractAddress = chainSpecJson.Engine.AuthorityRound.BlockRewardContractAddress,
                     BlockRewardContractTransition = chainSpecJson.Engine.AuthorityRound.BlockRewardContractTransition,
+                    BlockRewardContractTransitions = chainSpecJson.Engine.AuthorityRound.BlockRewardContractTransitions,
                     ValidateScoreTransition = chainSpecJson.Engine.AuthorityRound.ValidateScoreTransition,
                     ValidateStepTransition = chainSpecJson.Engine.AuthorityRound.ValidateStepTransition,
-                    Validators = LoadValidator(chainSpecJson.Engine.AuthorityRound.Validator)
+                    Validators = LoadValidator(chainSpecJson.Engine.AuthorityRound.Validator),
+                    RandomnessContractAddress = chainSpecJson.Engine.AuthorityRound.RandomnessContractAddress,
                 };
             }
             else if (chainSpecJson.Engine?.Clique != null)

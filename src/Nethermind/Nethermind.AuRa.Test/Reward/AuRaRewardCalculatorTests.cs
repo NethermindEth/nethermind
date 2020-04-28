@@ -229,7 +229,10 @@ namespace Nethermind.AuRa.Test.Reward
 
             _abiEncoder.Decode(
                 AbiEncodingStyle.None,
-                Arg.Is<AbiSignature>(s => s.Types.Length == 2 && s.Types[0].CSharpType == typeof(Address[]) && s.Types[1].CSharpType == typeof(BigInteger[])),
+                Arg.Is<AbiSignature>(s =>
+                    s.Types.Length == 2
+                    && s.Types[0] is AbiArray && ((AbiArray) s.Types[0]).ElementType is AbiAddress
+                    && s.Types[1] is AbiArray && ((AbiArray) s.Types[1]).ElementType is AbiUInt),
                 data).Returns(new object[] {rewards.Select(r => r.Address).ToArray(), rewards.Select(r => r.Value).ToArray()});
 
             return data;

@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,17 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Blockchain.Processing;
-using Nethermind.Consensus;
-using Nethermind.Core;
-using Nethermind.State;
-
-namespace Nethermind.Blockchain
+namespace Nethermind.Consensus.AuRa
 {
-    public class BlockProducerContext
+    public interface IActivatedAtBlock
     {
-        public IBlockchainProcessor ChainProcessor { get; set; }
-        public IStateProvider ReadOnlyStateProvider { get; set; }
-        public ITxSource TxSource { get; set; }
+        long ActivationBlock { get; }
     }
 }
