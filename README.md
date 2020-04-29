@@ -54,7 +54,7 @@ Instructions for other distributions such as CentOS, Fedora or Debian are availa
 *	Mac https://www.microsoft.com/net/download?initial-os=macos
 * `brew install gmp && brew install snappy && brew install lz4 && brew install zstd`
 * if you have issues on launch you may need to call
-`brew install rocksdb`
+`brew install rocksdb` or add `<UseAppHost>true</UseAppHost>` to `<PropertyGroup></PropertyGroup>` in Nethermind.Runner.csproj
 
 ### Build
 

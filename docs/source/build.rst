@@ -61,6 +61,13 @@ MacOS
 ::
 
     brew install gmp && brew install snappy && brew install lz4
+
+in some cases in order to load snappy correctly you might have to add in Nethermind.Runner.csproj
+::
+    <PropertyGroup>
+        [...]
+        <UseAppHost>true</UseAppHost>
+    </PropertyGroup>
     
 Windows
 ^^^^^^^
