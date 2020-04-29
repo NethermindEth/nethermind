@@ -49,7 +49,6 @@ namespace Nethermind.BeaconNode.OApi.Controllers
         /// </remarks>
         /// <param name="slot">The slot for which the block should be proposed.</param>
         /// <param name="randao_reveal">The validator's randao reveal value. Hex-encoded.</param>
-        /// <returns></returns>
         [HttpGet]
         // ReSharper disable once InconsistentNaming
         // ReSharper disable once IdentifierTypo
