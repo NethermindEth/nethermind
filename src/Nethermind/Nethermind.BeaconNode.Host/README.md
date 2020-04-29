@@ -43,7 +43,7 @@ Other GET queries:
 * syncing: ```https://localhost:8230/node/syncing```
 * fork: ```https://localhost:8230/node/fork```
 * validator duties: ```https://localhost:8230/validator/duties?validator_pubkeys=0xab8d3a9bcc160e518fac0756d3e192c74789588ed4a2b1debf0c78f78479ca8edb05b12ce21103076df6af4eb8756ff9&validator_pubkeys=0xa3a32b0f8b4ddb83f1a0a853d81dd725dfe577d4f4c3db8ece52ce2b026eca84815c1a7e8e92a4de3d755733bf7e4a9b&epoch=0```
-* get an unsigned block: ```https://localhost:8230/validator/block?slot=1&randao_reveal=0xa3426b6391a29c88f2280428d5fdae9e20f4c75a8d38d0714e3aa5b9e55594dbd555c4bc685191e83d39158c3be9744d06adc34b21d2885998a206e3b3fd435eab424cf1c01b8fd562deb411348a601e83d7332d8774d1fd3bf8b88d7a33c67c```
+* get an unsigned block: ```https://localhost:8230/validator/block?slot=2&randao_reveal=0x0x82198aed997488a8f153394345ff0fae280f678e0a6f2d7843a0298f2d447c91d119766781d9cbeefe62f3a0baaf62d2054f8754254c28b48582a81cf2dbe0eaa6230d245f22754979d004d6a1ba26276d3be54006e287d0f75d93b5045741f9```
 
 Note: With QuickStart validator count 64, validators index 20, with public key 0xa1c76af1..., is the validator for slot 1. The corresponding randao signature for fork 0x00000000, at epoch 0, that must be used is 0xa3426b63... (other values will fail validation).
 
