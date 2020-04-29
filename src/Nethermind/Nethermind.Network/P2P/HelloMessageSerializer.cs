@@ -53,7 +53,17 @@ namespace Nethermind.Network.P2P
             }).ToList();
             
             helloMessage.ListenPort = rlpStream.DecodeInt();
-            helloMessage.NodeId = new PublicKey(rlpStream.DecodeByteArray());
+
+            byte[] publicKeyBytes = rlpStream.DecodeByteArray();
+            if (publicKeyBytes.Length != PublicKey.LengthInBytes && publicKeyBytes.Length != PublicKey.PrefixedLengthInBytes)
+            {
+                throw new NetworkingException($"Client {helloMessage.ClientId} sent an invalid public key format (length was {publicKeyBytes.Length})", NetworkExceptionType.HandshakeOrInit);
+            }
+            else
+            {
+                helloMessage.NodeId = new PublicKey(publicKeyBytes);
+            }
+
             return helloMessage;
         }
     }

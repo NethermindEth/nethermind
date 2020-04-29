@@ -53,7 +53,7 @@ namespace Nethermind.Network.P2P
         // this mean that we know what the number, hash, and total diff of the head block is
         public bool IsInitialized { get; set; }
         
-        public override string ToString() => $"[Peer|{Node:s}|{HeadNumber}|{ClientId}|{Name}]";
+        public override string ToString() => $"[Peer|{Name}|{HeadNumber}|{ClientId}|{Node:s}]";
 
         protected Keccak _remoteHeadBlockHash;
         protected ITxPool _txPool;
