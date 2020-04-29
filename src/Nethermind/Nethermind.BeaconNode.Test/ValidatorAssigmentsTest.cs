@@ -96,9 +96,10 @@ namespace Nethermind.BeaconNode.Test
 
         [DataTestMethod]
         // TODO: Values not validated against manual check or another client; just set based on first run.
-        // invalid tests
-        [DataRow("0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb", 2uL, false, 0uL, 0uL, null)]
-        [DataRow("0x123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0", 0uL, false, 0uL, 0uL, null)]
+        // invalid tests (exception as epoch too far in future)
+        [DataRow("0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb", 2uL, false, null, 0uL, null)]
+        // invalid tests (return null duty)
+        [DataRow("0x123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0", 0uL, true, null, 0uL, null)]
         // epoch 0 tests
         [DataRow("0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb", 0uL, true, 3uL, 0uL, null)]
         [DataRow("0xa572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e", 0uL, true, 6uL, 1uL, null)]
@@ -111,7 +112,7 @@ namespace Nethermind.BeaconNode.Test
         [DataRow("0xa572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e", 1uL, true, 13uL, 1uL, null)]
         [DataRow("0x89ece308f9d1f0131765212deca99697b112d61f9be9a5f1f3780a51335b3ff981747a0b2ca2179b96d2c0c9024e5224", 1uL, true, 9uL, 0uL, null)]
         [DataRow("0x8515e7f61ca0470e165a44d247a23f17f24bf6e37185467bedb7981c1003ea70bbec875703f793dd8d11e56afa7f74ba", 1uL, true, 15uL, 0uL, 9uL)]
-        public async Task BasicValidatorDuty(string publicKey, ulong epoch, bool success, ulong attestationSlot, ulong attestationShard, ulong? blockProposalSlot)
+        public async Task BasicValidatorDuty(string publicKey, ulong epoch, bool success, ulong? attestationSlot, ulong attestationShard, ulong? blockProposalSlot)
         {
             // Arrange
             IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
@@ -148,7 +149,7 @@ namespace Nethermind.BeaconNode.Test
             validatorDuty.ValidatorPublicKey.ShouldBe(validatorPublicKey);
 
             Slot? expectedBlockProposalSlot = (Slot?) blockProposalSlot;
-            Slot expectedAttestationSlot = new Slot(attestationSlot);
+            Slot? expectedAttestationSlot = (Slot?) attestationSlot;
             Shard expectedAttestationShard = new Shard(attestationShard);
             
             validatorDuty.BlockProposalSlot.ShouldBe(expectedBlockProposalSlot);
@@ -283,7 +284,7 @@ namespace Nethermind.BeaconNode.Test
                 string publicKey = (string)dataRow[0]!;
                 ulong epoch = (ulong)dataRow[1]!;
                 bool success = (bool)dataRow[2]!;
-                ulong attestationSlot = (ulong)dataRow[3]!;
+                ulong? attestationSlot = (ulong?)dataRow[3]!;
                 ulong attestationShard = (ulong)dataRow[4]!;
                 ulong? blockProposalSlot = (ulong?)dataRow[5];
                 
@@ -319,7 +320,7 @@ namespace Nethermind.BeaconNode.Test
                 validatorDuty.ValidatorPublicKey.ShouldBe(validatorPublicKey, $"Test {dataIndex}, public key {validatorPublicKey}, epoch {targetEpoch}");
 
                 Slot? expectedBlockProposalSlot = (Slot?)blockProposalSlot;
-                Slot expectedAttestationSlot = new Slot(attestationSlot);
+                Slot? expectedAttestationSlot = (Slot?)attestationSlot;
                 Shard expectedAttestationShard = new Shard(attestationShard);
 
                 validatorDuty.BlockProposalSlot.ShouldBe(expectedBlockProposalSlot, $"Test {dataIndex}, public key {validatorPublicKey}, epoch {targetEpoch}");
@@ -331,16 +332,18 @@ namespace Nethermind.BeaconNode.Test
         private IEnumerable<object?[]> FutureEpochValidatorDutyData()
         {
             // TODO: Values not validated against manual check or another client; just set based on first run.
-            // invalid tests
+            
+            // invalid tests (throw exception because requested epoch is too far in the future)
             yield return new object?[]
             {
                 "0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
-                6uL, false, 0uL, 0uL, null
+                6uL, false, null, 0uL, null
             };
+            // invalid tests (return a duty with null values)
             yield return new object?[]
             {
                 "0x123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0",
-                4uL, false, 0uL, 0uL, null
+                4uL, true, null, 0uL, null
             };
             // epoch 0 tests
             yield return new object?[]
