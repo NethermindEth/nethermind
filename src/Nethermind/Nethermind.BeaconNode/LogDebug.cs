@@ -232,6 +232,6 @@ namespace Nethermind.BeaconNode
         public static readonly Action<ILogger, int, Epoch, Root, Exception?> GettingMissingValidatorDutiesForCache =
             LoggerMessage.Define<int, Epoch, Root>(LogLevel.Debug,
                 new EventId(6403, nameof(GettingMissingValidatorDutiesForCache)),
-                "Validator duties for {0} validators are missing from the cache and need to be calculated for epoch {Epoch} from head {HeadRoot}.");
+                "Validator duties for {0} validators are missing from the cache and need to be calculated for epoch {Epoch} with starting root {EpochStartRoot}.");
     }
 }

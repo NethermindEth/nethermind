@@ -192,7 +192,7 @@ namespace Nethermind.BeaconNode
 
         public async Task<ApiResponse<IList<ValidatorDuty>>> ValidatorDutiesAsync(
             IList<BlsPublicKey> validatorPublicKeys,
-            Epoch? epoch, 
+            Epoch? epoch,
             CancellationToken cancellationToken)
         {
             if (validatorPublicKeys.Count < 1)

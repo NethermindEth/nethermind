@@ -40,8 +40,8 @@ namespace Nethermind.BeaconNode
         private readonly IForkChoice _forkChoice;
         private readonly ILogger<ValidatorAssignments> _logger;
         private readonly IStore _store;
-        private readonly ValidatorAssignmentsCache _validatorAssignmentsCache;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
+        private readonly ValidatorAssignmentsCache _validatorAssignmentsCache;
 
         public ValidatorAssignments(ILogger<ValidatorAssignments> logger,
             IOptionsMonitor<TimeParameters> timeParameterOptions,
@@ -121,10 +121,10 @@ namespace Nethermind.BeaconNode
         {
             Root head = await _forkChoice.GetHeadAsync(_store).ConfigureAwait(false);
             BeaconState headState = await _store.GetBlockStateAsync(head).ConfigureAwait(false);
-            
+
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(headState);
             Epoch epoch = optionalEpoch ?? currentEpoch;
-            
+
             Epoch nextEpoch = currentEpoch + Epoch.One;
             if (epoch > nextEpoch)
             {
@@ -132,11 +132,13 @@ namespace Nethermind.BeaconNode
                     $"Duties cannot look ahead more than the next epoch {nextEpoch}.");
             }
 
+            Slot startSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(epoch);
+            Root epochStartRoot = await _store.GetAncestorAsync(head, startSlot);
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
 
-            (Root head, Epoch epoch) cachKey = (head, epoch);
+            (Root epochStartRoot, Epoch epoch) cacheKey = (epochStartRoot, epoch);
             ConcurrentDictionary<BlsPublicKey, ValidatorDuty> dutiesForEpoch =
-                await _validatorAssignmentsCache.Cache.GetOrCreateAsync(cachKey, entry =>
+                await _validatorAssignmentsCache.Cache.GetOrCreateAsync(cacheKey, entry =>
                 {
                     entry.SlidingExpiration = TimeSpan.FromSeconds(2 * timeParameters.SecondsPerSlot);
                     return Task.FromResult(new ConcurrentDictionary<BlsPublicKey, ValidatorDuty>());
@@ -146,22 +148,18 @@ namespace Nethermind.BeaconNode
             if (missingValidators.Any())
             {
                 if (_logger.IsDebug())
-                    LogDebug.GettingMissingValidatorDutiesForCache(_logger, missingValidators.Count(), epoch, head,
+                    LogDebug.GettingMissingValidatorDutiesForCache(_logger, missingValidators.Count(), epoch, epochStartRoot,
                         null);
-                
-                Slot slotToCheck = _beaconChainUtility.ComputeStartSlotOfEpoch(epoch);
-                Slot endSlotExclusive = slotToCheck + new Slot(timeParameters.SlotsPerEpoch);
 
-                Root rootForStart = await _store.GetAncestorAsync(head, slotToCheck);
-                BeaconState storedState = await _store.GetBlockStateAsync(rootForStart);
+                BeaconState storedState = await _store.GetBlockStateAsync(epochStartRoot);
 
                 // Clone, so that it can be safely mutated (transitioned forward)
                 BeaconState state = BeaconState.Clone(storedState);
 
-                // Transition to start slot, of target epoch (may have been a skip slot, i.e. stored state may have been older)
-                _beaconStateTransition.ProcessSlots(state, slotToCheck);
+                // Transition to start slot, of target epoch (may have been a skip slot, i.e. stored state root may have been older)
+                _beaconStateTransition.ProcessSlots(state, startSlot);
 
-                // Check validators are valid.
+                // Check validators are valid (if not duties are empty).
                 IList<DutyDetails> dutyDetailsList = new List<DutyDetails>();
                 foreach (BlsPublicKey validatorPublicKey in missingValidators)
                 {
@@ -177,7 +175,8 @@ namespace Nethermind.BeaconNode
                         else
                         {
                             if (_logger.IsWarn())
-                                Log.ValidatorNotActiveAtEpoch(_logger, epoch, validatorIndex.Value, validatorPublicKey, null);
+                                Log.ValidatorNotActiveAtEpoch(_logger, epoch, validatorIndex.Value, validatorPublicKey,
+                                    null);
                             dutiesForEpoch[validatorPublicKey] =
                                 new ValidatorDuty(validatorPublicKey, Slot.None, Shard.Zero, Slot.None);
                         }
@@ -195,9 +194,10 @@ namespace Nethermind.BeaconNode
                 {
                     // Check starting state
                     UpdateDutyDetailsForState(dutyDetailsList, state);
-                    slotToCheck += Slot.One;
 
                     // Check other slots in epoch, if needed
+                    Slot endSlotExclusive = startSlot + new Slot(timeParameters.SlotsPerEpoch);
+                    Slot slotToCheck = startSlot + Slot.One;
                     while (slotToCheck < endSlotExclusive)
                     {
                         _beaconStateTransition.ProcessSlots(state, slotToCheck);
@@ -249,7 +249,36 @@ namespace Nethermind.BeaconNode
             ValidatorIndex stateProposerIndex = _beaconStateAccessor.GetBeaconProposerIndex(state);
             return stateProposerIndex.Equals(validatorIndex);
         }
-        
+
+        private class DutyDetails
+        {
+            public DutyDetails(BlsPublicKey validatorPublicKey, ValidatorIndex validatorIndex)
+            {
+                ValidatorPublicKey = validatorPublicKey;
+                ValidatorIndex = validatorIndex;
+            }
+
+            public CommitteeIndex? AttestationCommitteeIndex { get; set; }
+            public Slot? AttestationSlot { get; set; }
+            public Slot? BlockProposalSlot { get; set; }
+            public ValidatorIndex ValidatorIndex { get; }
+
+            public BlsPublicKey ValidatorPublicKey { get; }
+        }
+
+        private ValidatorIndex? FindValidatorIndexByPublicKey(BeaconState state, BlsPublicKey validatorPublicKey)
+        {
+            for (int index = 0; index < state.Validators.Count; index++)
+            {
+                if (state.Validators[index].PublicKey.Equals(validatorPublicKey))
+                {
+                    return new ValidatorIndex((ulong) index);
+                }
+            }
+
+            return ValidatorIndex.None;
+        }
+
         private void UpdateDutyDetailsForState(IList<DutyDetails> dutyDetailsList, BeaconState state)
         {
             // check attestation
@@ -282,34 +311,6 @@ namespace Nethermind.BeaconNode
                     }
                 }
             }
-        }
-        
-        private class DutyDetails
-        {
-            public DutyDetails(BlsPublicKey validatorPublicKey, ValidatorIndex validatorIndex)
-            {
-                ValidatorPublicKey = validatorPublicKey;
-                ValidatorIndex = validatorIndex;
-            }
-            
-            public BlsPublicKey ValidatorPublicKey { get; }
-            public ValidatorIndex ValidatorIndex { get; }
-            public CommitteeIndex? AttestationCommitteeIndex { get; set; }
-            public Slot? AttestationSlot { get; set; }
-            public Slot? BlockProposalSlot { get; set; }
-        }
-
-        private ValidatorIndex? FindValidatorIndexByPublicKey(BeaconState state, BlsPublicKey validatorPublicKey)
-        {
-            for (int index = 0; index < state.Validators.Count; index++)
-            {
-                if (state.Validators[index].PublicKey.Equals(validatorPublicKey))
-                {
-                    return new ValidatorIndex((ulong) index);
-                }
-            }
-
-            return ValidatorIndex.None;
         }
     }
 }

@@ -21,11 +21,11 @@ namespace Nethermind.BeaconNode
 {
     public class ValidatorAssignmentsCache
     {
-        public IMemoryCache Cache { get; }
-        
         public ValidatorAssignmentsCache()
         {
             Cache = new MemoryCache(new MemoryCacheOptions());
         }
+
+        public IMemoryCache Cache { get; }
     }
 }
