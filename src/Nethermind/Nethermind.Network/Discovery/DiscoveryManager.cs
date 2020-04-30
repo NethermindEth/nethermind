@@ -155,6 +155,8 @@ namespace Nethermind.Network.Discovery
 
         public void SendMessage(DiscoveryMessage discoveryMessage)
         {
+            if (_logger.IsTrace) _logger.Trace($"Sending msg: {discoveryMessage}");
+            
             try
             {
                 if (discoveryMessage is PingMessage pingMessage)
