@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Diagnostics;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -52,6 +53,18 @@ namespace Nethermind.State
             }
 
             return _decoder.Decode(bytes.AsRlpStream());
+        }
+        
+        [DebuggerStepThrough]
+        public ValueTask<Account> GetAsync(Address address, Keccak rootHash = null)
+        {
+            byte[] bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
+            if (bytes == null)
+            {
+                return default;
+            }
+
+            return new ValueTask<Account>(_decoder.Decode(bytes.AsRlpStream()));
         }
         
         [DebuggerStepThrough]

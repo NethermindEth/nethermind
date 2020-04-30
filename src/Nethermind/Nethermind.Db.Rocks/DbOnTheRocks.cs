@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
@@ -210,6 +211,11 @@ namespace Nethermind.Db.Rocks
                     }
                 }
             }
+        }
+
+        public ValueTask<byte[]> Get(byte[] key)
+        {
+            return new ValueTask<byte[]>(this[key]);
         }
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => Db.MultiGet(keys);

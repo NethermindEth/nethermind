@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks
@@ -72,6 +73,11 @@ namespace Nethermind.Db.Rocks
                     }
                 }
             }
+        }
+
+        public ValueTask<byte[]> Get(byte[] key)
+        {
+            throw new NotImplementedException();
         }
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => _rocksDb.MultiGet(keys, keys.Select(k => _columnFamily).ToArray());

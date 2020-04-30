@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
@@ -73,6 +74,11 @@ namespace Nethermind.Db
                 WritesCount++;
                 _db[key] = value;
             }
+        }
+
+        public ValueTask<byte[]> Get(byte[] key)
+        {
+            return new ValueTask<byte[]>(this[key]);
         }
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys]

@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
@@ -57,6 +58,11 @@ namespace Nethermind.Db.Rpc
         {
             get => GetThroughRpc(key);
             set => throw new InvalidOperationException("RPC DB does not support writes");
+        }
+
+        public ValueTask<byte[]> Get(byte[] key)
+        {
+            throw new NotImplementedException();
         }
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, GetThroughRpc(k))).ToArray();

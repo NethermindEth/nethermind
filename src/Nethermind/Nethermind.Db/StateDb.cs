@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 
@@ -49,7 +50,7 @@ namespace Nethermind.Db
 
         public byte[] this[byte[] key]
         {
-            get => Get(key);
+            get => Get(key).Result;
             set => Set(key, value);
         }
 
@@ -145,10 +146,10 @@ namespace Nethermind.Db
             _db?.Dispose();
         }
 
-        private byte[] Get(byte[] key)
+        public ValueTask<byte[]> Get(byte[] key)
         {
-            if (_pendingChanges.TryGetValue(key, out int pendingChangeIndex)) return _changes[pendingChangeIndex].Value;
-            return _db[key];
+            if (_pendingChanges.TryGetValue(key, out int pendingChangeIndex)) return new ValueTask<byte[]>(_changes[pendingChangeIndex].Value);
+            return new ValueTask<byte[]>(_db[key]);
         }
 
         /// <summary>

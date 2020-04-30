@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -60,6 +61,11 @@ namespace Nethermind.Network
         {
             get => _cache[key];
             set { _cache.AddOrUpdate(key, newValue => Add(value), (x, oldValue) => Update(oldValue, value)); }
+        }
+
+        public ValueTask<byte[]> Get(byte[] key)
+        {
+            throw new NotImplementedException();
         }
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] =>  keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _cache.TryGetValue(k, out var value) ? value : null)).ToArray();

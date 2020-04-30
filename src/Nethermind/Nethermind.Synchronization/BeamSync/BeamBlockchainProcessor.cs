@@ -18,7 +18,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -199,7 +198,7 @@ namespace Nethermind.Synchronization.BeamSync
             }
         }
 
-        private (IBlockchainProcessor, IStateReader) CreateProcessor(Block block, IReadOnlyDbProvider readOnlyDbProvider, ISpecProvider specProvider, ILogManager logManager)
+        private (IBlockchainProcessor, IAsyncStateReader) CreateProcessor(Block block, IReadOnlyDbProvider readOnlyDbProvider, ISpecProvider specProvider, ILogManager logManager)
         {
             ReadOnlyTxProcessingEnv txEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, _readOnlyBlockTree, specProvider, logManager);
             ReadOnlyChainProcessingEnv env = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculatorSource.Get(txEnv.TransactionProcessor), NullReceiptStorage.Instance, _readOnlyDbProvider, specProvider, logManager);
@@ -252,34 +251,15 @@ namespace Nethermind.Synchronization.BeamSync
             {
                 if (_logger.IsInfo) _logger.Info($"Beam processing block {block} with {block.Transactions.Length} ttransactions");
                 _recoveryStep.RecoverData(block);
-                (IBlockchainProcessor beamProcessor, IStateReader stateReader) = CreateProcessor(block, new ReadOnlyDbProvider(_readOnlyDbProvider, true), _specProvider, _logManager);
+                (IBlockchainProcessor beamProcessor, IAsyncStateReader stateReader) = CreateProcessor(block, new ReadOnlyDbProvider(_readOnlyDbProvider, true), _specProvider, _logManager);
 
                 BlockHeader parentHeader = _readOnlyBlockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (parentHeader != null)
                 {
-                    prefetchTasks = PrefetchNew(stateReader, block, parentHeader.StateRoot, parentHeader.Author ?? parentHeader.Beneficiary);
+                    prefetchTasks = Prefetch(stateReader, block, parentHeader.StateRoot, parentHeader.Author ?? parentHeader.Beneficiary);
                 }
-                
-                Stopwatch stopwatch = Stopwatch.StartNew();
-                Block processedBlock = null;
-                beamProcessingTask = Task.Run(() =>
-                {
-                    BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty.Value;
-                    BeamSyncContext.Description.Value = $"[preProcess of {block.Hash.ToShortString()}]";
-                    BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
-                    BeamSyncContext.Cancelled.Value = cancellationToken.Token;
-                    processedBlock = beamProcessor.Process(block, ProcessingOptions.Beam, NullBlockTracer.Instance);
-                    stopwatch.Stop();
-                    if (processedBlock == null)
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Block {block.ToString(Block.Format.Short)} skipped in beam sync");
-                    }
-                    else
-                    {
-                        Interlocked.Increment(ref Metrics.BeamedBlocks);
-                        if(_logger.IsWarn) _logger.Warn($"Successfully beam processed block {processedBlock.ToString(Block.Format.Short)} with {processedBlock.Transactions.Length} transactions in {stopwatch.ElapsedMilliseconds}ms");
-                    }
-                }).ContinueWith(t =>
+
+                beamProcessingTask = ProcessBlock(beamProcessor, block, cancellationToken).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
@@ -288,25 +268,9 @@ namespace Nethermind.Synchronization.BeamSync
                         return;
                     }
 
-                    if (processedBlock != null)
+                    if (t.Result != null)
                     {
-                        // if (_logger.IsDebug) _logger.Debug($"Running standard processor after beam sync for {block}");
-                        // at this stage we are sure to have all the state available
-                        CancelPreviousBeamSyncingBlocks(processedBlock.Number);
-                        
-                        // do I even need this?
-                        // do I even need to process any of these blocks or just leave the RPC available
-                        // (based on user expectations they may need to trace or just query balance)
-                        
-                        // soo - there should be a separate beam queue that we can wait for to finish?
-                        // then we can ensure that it finishes before the normal queue fires
-                        // and so they never hit the wrong databases?
-                        // but, yeah, we do not even need to process it twice
-                        // we can just announce that we have finished beam processing here...
-                        // _standardProcessorQueue.Enqueue(block, ProcessingOptions.Beam);
-                        // I only needed it in the past when I wanted to actually store the beam data
-                        // now I can generate the witness on the fly and transfer the witness to the right place...
-                        // OK, seems fine
+                        CancelPreviousBeamSyncingBlocks(t.Result.Number);
                     }
 
                     beamProcessor.Dispose();
@@ -323,7 +287,29 @@ namespace Nethermind.Synchronization.BeamSync
             CancelOldBeamTasks(number);
         }
 
-        private Task PrefetchNew(IStateReader stateReader, Block block, Keccak stateRoot, Address miner)
+        private Task<Block> ProcessBlock(IBlockchainProcessor beamProcessor, Block block, CancellationTokenSource cancellationToken)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty.Value;
+            BeamSyncContext.Description.Value = $"[preProcess of {block.Hash.ToShortString()}]";
+            BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
+            BeamSyncContext.Cancelled.Value = cancellationToken.Token;
+            Block processedBlock = beamProcessor.Process(block, ProcessingOptions.Beam, NullBlockTracer.Instance);
+            stopwatch.Stop();
+            if (processedBlock == null)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Block {block.ToString(Block.Format.Short)} skipped in beam sync");
+            }
+            else
+            {
+                Interlocked.Increment(ref Metrics.BeamedBlocks);
+                if (_logger.IsWarn) _logger.Warn($"Successfully beam processed block {processedBlock.ToString(Block.Format.Short)} with {processedBlock.Transactions.Length} transactions in {stopwatch.ElapsedMilliseconds}ms");
+            }
+
+            return Task.FromResult(processedBlock);
+        }
+
+        private async Task Prefetch(IAsyncStateReader stateReader, Block block, Keccak stateRoot, Address miner)
         {
             CancellationTokenSource cancellationToken;
             lock (_tokens)
@@ -331,66 +317,24 @@ namespace Nethermind.Synchronization.BeamSync
                 cancellationToken = _tokens.GetOrAdd(block.Number, t => new CancellationTokenSource());
                 if (_isDisposed)
                 {
-                    return Task.CompletedTask;
+                    return;
                 }
             }
 
-            int numberOfTasks = 0;
-            
             string description = $"[miner {miner}]";
-            Task minerTask = Task<int>.Run(() =>
+            Task minerTask = PrefetchMiner(stateReader, block, stateRoot, miner, description, cancellationToken).ContinueWith(t =>
             {
-                Interlocked.Increment(ref numberOfTasks);
-                BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty ?? 0;
-                BeamSyncContext.Description.Value = description;
-                BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
-                BeamSyncContext.Cancelled.Value = cancellationToken.Token;
-                stateReader.GetAccount(stateRoot, miner);
-                return BeamSyncContext.ResolvedInContext.Value;
-            }).ContinueWith(t =>
-            {
-                if (_logger.IsDebug) _logger.Debug(t.IsFaulted ? $"{description} prefetch failed {t.Exception.Message}" : $"{description} prefetch complete - resolved {t.Result}");
+                if (_logger.IsDebug) _logger.Debug(t.IsFaulted ? $"{description} prefetch failed {t.Exception!.Message}" : $"{description} prefetch complete - resolved {t.Result}");
             });
 
-            Task senderTask = Task<int>.Run(() =>
+            Task senderTask = PrefetchSenders(stateReader, block, stateRoot, cancellationToken).ContinueWith(t =>
             {
-                Interlocked.Increment(ref numberOfTasks);
-                BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty ?? 0;
-                BeamSyncContext.Cancelled.Value = cancellationToken.Token;
-                for (int i = 0; i < block.Transactions.Length; i++)
-                {
-                    Transaction tx = block.Transactions[i];
-                    BeamSyncContext.Description.Value = $"[tx prefetch {i}]";
-                    BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
-                    stateReader.GetAccount(stateRoot, tx.SenderAddress);
-                }
-
-                return BeamSyncContext.ResolvedInContext.Value;
-            }).ContinueWith(t =>
-            {
-                if (_logger.IsDebug) _logger.Debug(t.IsFaulted ? $"tx prefetch failed {t.Exception.Message}" : $"tx prefetch complete - resolved {t.Result}");
+                if (_logger.IsDebug) _logger.Debug(t.IsFaulted ? $"tx prefetch failed {t.Exception!.Message}" : $"tx prefetch complete - resolved {t.Result}");
             });
 
-            Task storageTask = Task<int>.Run(() =>
+            Task storageTask = PrefetchStorage(stateReader, block, stateRoot, cancellationToken).ContinueWith(t =>
             {
-                Interlocked.Increment(ref numberOfTasks);
-                BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty ?? 0;
-                BeamSyncContext.Cancelled.Value = cancellationToken.Token;
-                for (int i = 0; i < block.Transactions.Length; i++)
-                {
-                    Transaction tx = block.Transactions[i];
-                    if (tx.To != null)
-                    {
-                        BeamSyncContext.Description.Value = $"[storage prefetch {i}]";
-                        BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
-                        stateReader.GetStorageRoot(stateRoot, tx.To);
-                    }
-                }
-
-                return BeamSyncContext.ResolvedInContext.Value;
-            }).ContinueWith(t =>
-            {
-                if (_logger.IsDebug) _logger.Debug(t.IsFaulted ? $"storage prefetch failed {t.Exception.Message}" : $"storage prefetch complete - resolved {t.Result}");
+                if (_logger.IsDebug) _logger.Debug(t.IsFaulted ? $"storage prefetch failed {t.Exception!.Message}" : $"storage prefetch complete - resolved {t.Result}");
             });
             
             // Task codeTask = Task<int>.Run(() =>
@@ -415,7 +359,50 @@ namespace Nethermind.Synchronization.BeamSync
             // });
 
             // return Task.WhenAll(minerTask, senderTask, codeTask, storageTask);
-            return Task.WhenAll(minerTask, senderTask, storageTask);
+            await Task.WhenAll(minerTask, senderTask, storageTask);
+        }
+
+        private static async Task<int> PrefetchMiner(IAsyncStateReader stateReader, Block block, Keccak stateRoot, Address miner, string description, CancellationTokenSource cancellationToken)
+        {
+            BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty ?? 0;
+            BeamSyncContext.Description.Value = description;
+            BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
+            BeamSyncContext.Cancelled.Value = cancellationToken.Token;
+            await stateReader.GetAccountAsync(stateRoot, miner);
+            return BeamSyncContext.ResolvedInContext.Value;
+        }
+
+        private static async Task<int> PrefetchStorage(IAsyncStateReader stateReader, Block block, Keccak stateRoot, CancellationTokenSource cancellationToken)
+        {
+            BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty ?? 0;
+            BeamSyncContext.Cancelled.Value = cancellationToken.Token;
+            for (int i = 0; i < block.Transactions.Length; i++)
+            {
+                Transaction tx = block.Transactions[i];
+                if (tx.To != null)
+                {
+                    BeamSyncContext.Description.Value = $"[storage prefetch {i}]";
+                    BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
+                    await stateReader.GetStorageRootAsync(stateRoot, tx.To);
+                }
+            }
+
+            return BeamSyncContext.ResolvedInContext.Value;
+        }
+
+        private static async Task<int> PrefetchSenders(IAsyncStateReader stateReader, Block block, Keccak stateRoot, CancellationTokenSource cancellationToken)
+        {
+            BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty ?? 0;
+            BeamSyncContext.Cancelled.Value = cancellationToken.Token;
+            for (int i = 0; i < block.Transactions.Length; i++)
+            {
+                Transaction tx = block.Transactions[i];
+                BeamSyncContext.Description.Value = $"[tx prefetch {i}]";
+                BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
+                await stateReader.GetAccountAsync(stateRoot, tx.SenderAddress);
+            }
+
+            return BeamSyncContext.ResolvedInContext.Value;
         }
 
         private void UnregisterListeners()

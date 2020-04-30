@@ -17,6 +17,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.Db
 {
@@ -35,6 +36,11 @@ namespace Nethermind.Db
         {
             get => null;
             set => throw new System.NotSupportedException();
+        }
+
+        public ValueTask<byte[]> Get(byte[] key)
+        {
+            return default;
         }
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, null)).ToArray(); 

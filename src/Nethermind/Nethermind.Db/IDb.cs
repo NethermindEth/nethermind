@@ -20,7 +20,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Db
 {
-    public interface IDb : IKeyValueStore, IDisposable
+    public interface IDb : IAsyncKeyValueStore, IDisposable
     {
         string Name { get; }
         KeyValuePair<byte[],byte[]>[] this[byte[][] keys] { get; }

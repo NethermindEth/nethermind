@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -38,5 +39,14 @@ namespace Nethermind.State
         byte[] GetCode(Keccak codeHash);
         
         void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot);
+    }
+    
+    public interface IAsyncStateReader : IStateReader
+    {
+        ValueTask<Account> GetAccountAsync(Keccak stateRoot, Address address);
+        
+        ValueTask<Keccak> GetStorageRootAsync(Keccak stateRoot, Address address);
+
+        ValueTask<Keccak> GetCodeHashAsync(Keccak stateRoot, Address address);
     }
 }

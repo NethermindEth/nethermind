@@ -14,10 +14,17 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading.Tasks;
+
 namespace Nethermind.Trie
 {
     public interface IKeyValueStore
     {
         byte[] this[byte[] key] { get; set; }
+    }
+    
+    public interface IAsyncKeyValueStore : IKeyValueStore
+    {
+        ValueTask<byte[]> Get(byte[] key);
     }
 }

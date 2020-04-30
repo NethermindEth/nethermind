@@ -128,110 +128,111 @@ namespace Nethermind.Synchronization.BeamSync
 
         public byte[] this[byte[] key]
         {
-            get
-            {
-                lock (_diffLock)
-                {
-                    RequiredPeerDifficulty = UInt256.Max(RequiredPeerDifficulty, BeamSyncContext.MinimumDifficulty.Value);
-                }
-
-                // it is not possible for the item to be requested from the DB and missing in the DB unless the DB is corrupted
-                // if it is missing in the MemDb then it must exist somewhere on the web (unless the block is corrupted / invalid)
-
-                // we grab the node from the web through requests
-
-                // if the block is invalid then we will be timing out for a long time
-                // in such case it would be good to have some gossip about corrupted blocks
-                // but such gossip would be cheap
-                // if we keep timing out then we would finally reject the block (but only shelve it instead of marking invalid)
-
-                bool wasInDb = true;
-                int timeToWait = 10;
-                while (true)
-                {
-                    if (BeamSyncContext.Cancelled.Value.IsCancellationRequested)
-                    {
-                        throw new BeamCanceledException("Beam cancellation requested");
-                    }
-
-                    if (_isDisposed)
-                    {
-                        throw new ObjectDisposedException("Beam Sync DB disposed");
-                    }
-
-                    // shall I leave test logic forever?
-                    if (BeamSyncContext.LoopIterationsToFailInTest.Value != null)
-                    {
-                        int? currentValue = BeamSyncContext.LoopIterationsToFailInTest.Value--;
-                        if (currentValue == 0)
-                        {
-                            throw new Exception();
-                        }
-                    }
-
-                    var fromMem = _tempDb[key] ?? _stateDb[key];
-                    if (fromMem == null)
-                    {
-                        if (Bytes.AreEqual(key, Keccak.Zero.Bytes))
-                        {
-                            // we store sync progress data at Keccak.Zero;
-                            return null;
-                        }
-
-                        TimeSpan expiry = _contextExpiryTimeSpan;
-                        if (BeamSyncContext.Description.Value?.Contains("preProcess") ?? false)
-                        {
-                            expiry = _preProcessExpiryTimeSpan;
-                        }
-
-                        if (DateTime.UtcNow - (BeamSyncContext.LastFetchUtc.Value ?? DateTime.UtcNow) > expiry)
-                        {
-                            string message = $"Beam sync request {BeamSyncContext.Description.Value} for key {key.ToHexString()} with last update on {BeamSyncContext.LastFetchUtc.Value:hh:mm:ss.fff} has expired";
-                            if (_logger.IsDebug) _logger.Debug(message);
-                            throw new BeamSyncException(message);
-                        }
-
-                        wasInDb = false;
-                        // _logger.Info($"BEAM SYNC Asking for {key.ToHexString()} - resolved keys so far {_resolvedKeysCount}");
-                        
-                        lock (_requestedNodes)
-                        {
-                            if (_requestedNodes.Add(new Keccak(key)))
-                            {
-                                if (_logger.IsTrace) _logger.Trace($"Beam sync miss - {key.ToHexString()} - retrieving");
-                                Activate();
-                            }
-                        }
-
-                        timeToWait = Math.Min(100, timeToWait * 2);
-                        _autoReset.WaitOne(timeToWait); // are we starving the thread pool here?
-                        // _logger.Error($"Requested {key.ToHexString()}");
-                    }
-                    else
-                    {
-                        if (!wasInDb)
-                        {
-                            BeamSyncContext.ResolvedInContext.Value++;
-                            Interlocked.Increment(ref Metrics.BeamedTrieNodes);
-                            if (_logger.IsTrace) _logger.Trace($"Resolved key {key.ToHexString()} of context {BeamSyncContext.Description.Value} - resolved ctx {BeamSyncContext.ResolvedInContext.Value} | total {Metrics.BeamedTrieNodes}");
-                        }
-
-                        BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
-                        
-                        // if (!Bytes.AreEqual(Keccak.Compute(fromMem).Bytes, key))
-                        // {
-                        //     throw new Exception("DB had an entry with a hash mismatch {key}");
-                        // }
-
-                        return fromMem;
-                    }
-                }
-            }
-
+            get => Get(key).Result;
             set
             {
                 if (_logger.IsTrace) _logger.Trace($"Saving to temp - {key.ToHexString()}");
                 _targetDbForSaves[key] = value;
+            }
+        }
+
+        public async ValueTask<byte[]> Get(byte[] key)
+        {
+            lock (_diffLock)
+            {
+                RequiredPeerDifficulty = UInt256.Max(RequiredPeerDifficulty, BeamSyncContext.MinimumDifficulty.Value);
+            }
+
+            // it is not possible for the item to be requested from the DB and missing in the DB unless the DB is corrupted
+            // if it is missing in the MemDb then it must exist somewhere on the web (unless the block is corrupted / invalid)
+
+            // we grab the node from the web through requests
+
+            // if the block is invalid then we will be timing out for a long time
+            // in such case it would be good to have some gossip about corrupted blocks
+            // but such gossip would be cheap
+            // if we keep timing out then we would finally reject the block (but only shelve it instead of marking invalid)
+
+            bool wasInDb = true;
+            int timeToWait = 10;
+            while (true)
+            {
+                if (BeamSyncContext.Cancelled.Value.IsCancellationRequested)
+                {
+                    throw new BeamCanceledException("Beam cancellation requested");
+                }
+
+                if (_isDisposed)
+                {
+                    throw new ObjectDisposedException("Beam Sync DB disposed");
+                }
+
+                // shall I leave test logic forever?
+                if (BeamSyncContext.LoopIterationsToFailInTest.Value != null)
+                {
+                    int? currentValue = BeamSyncContext.LoopIterationsToFailInTest.Value--;
+                    if (currentValue == 0)
+                    {
+                        throw new Exception();
+                    }
+                }
+
+                var fromMem = _tempDb[key] ?? _stateDb[key];
+                if (fromMem == null)
+                {
+                    if (Bytes.AreEqual(key, Keccak.Zero.Bytes))
+                    {
+                        // we store sync progress data at Keccak.Zero;
+                        return default;
+                    }
+
+                    TimeSpan expiry = _contextExpiryTimeSpan;
+                    if (BeamSyncContext.Description.Value?.Contains("preProcess") ?? false)
+                    {
+                        expiry = _preProcessExpiryTimeSpan;
+                    }
+
+                    if (DateTime.UtcNow - (BeamSyncContext.LastFetchUtc.Value ?? DateTime.UtcNow) > expiry)
+                    {
+                        string message = $"Beam sync request {BeamSyncContext.Description.Value} for key {key.ToHexString()} with last update on {BeamSyncContext.LastFetchUtc.Value:hh:mm:ss.fff} has expired";
+                        if (_logger.IsDebug) _logger.Debug(message);
+                        throw new BeamSyncException(message);
+                    }
+
+                    wasInDb = false;
+                    // _logger.Info($"BEAM SYNC Asking for {key.ToHexString()} - resolved keys so far {_resolvedKeysCount}");
+
+                    lock (_requestedNodes)
+                    {
+                        if (_requestedNodes.Add(new Keccak(key)))
+                        {
+                            if (_logger.IsTrace) _logger.Trace($"Beam sync miss - {key.ToHexString()} - retrieving");
+                            Activate();
+                        }
+                    }
+
+                    timeToWait = Math.Min(100, timeToWait * 2);
+                    await _autoReset.WaitOneAsync(timeToWait, CancellationToken.None); // are we starving the thread pool here?
+                    // _logger.Error($"Requested {key.ToHexString()}");
+                }
+                else
+                {
+                    if (!wasInDb)
+                    {
+                        BeamSyncContext.ResolvedInContext.Value++;
+                        Interlocked.Increment(ref Metrics.BeamedTrieNodes);
+                        if (_logger.IsTrace) _logger.Trace($"Resolved key {key.ToHexString()} of context {BeamSyncContext.Description.Value} - resolved ctx {BeamSyncContext.ResolvedInContext.Value} | total {Metrics.BeamedTrieNodes}");
+                    }
+
+                    BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
+
+                    // if (!Bytes.AreEqual(Keccak.Compute(fromMem).Bytes, key))
+                    // {
+                    //     throw new Exception("DB had an entry with a hash mismatch {key}");
+                    // }
+
+                    return fromMem;
+                }
             }
         }
 
@@ -325,7 +326,7 @@ namespace Nethermind.Synchronization.BeamSync
         {
             if (stateSyncBatch.FeedId != FeedId)
             {
-                if(_logger.IsWarn) _logger.Warn($"Beam sync response sent by feed {stateSyncBatch.FeedId} came back to feed {FeedId}");
+                if (_logger.IsWarn) _logger.Warn($"Beam sync response sent by feed {stateSyncBatch.FeedId} came back to feed {FeedId}");
                 return SyncResponseHandlingResult.InternalError;
             }
 

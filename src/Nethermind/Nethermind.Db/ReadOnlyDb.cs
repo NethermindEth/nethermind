@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace Nethermind.Db
 {
@@ -51,6 +52,11 @@ namespace Nethermind.Db
 
                 _memDb[key] = value;
             }
+        }
+
+        public ValueTask<byte[]> Get(byte[] key)
+        {
+            return new ValueTask<byte[]>(this[key]);
         }
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys]

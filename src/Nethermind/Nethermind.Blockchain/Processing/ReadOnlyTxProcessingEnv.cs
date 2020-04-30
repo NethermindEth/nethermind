@@ -24,7 +24,7 @@ namespace Nethermind.Blockchain.Processing
 {
     public class ReadOnlyTxProcessingEnv
     {
-        public IStateReader StateReader;
+        public IAsyncStateReader StateReader;
         public IStateProvider StateProvider;
         public IStorageProvider StorageProvider;
         public IBlockhashProvider BlockhashProvider;

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -25,7 +26,7 @@ using Metrics = Nethermind.Db.Metrics;
 
 namespace Nethermind.State
 {
-    public class StateReader : IStateReader
+    public class StateReader : IAsyncStateReader
     {
         private readonly ILogger _logger;
         
@@ -111,6 +112,28 @@ namespace Nethermind.State
         {
             Metrics.StateTreeReads++;
             Account account = _state.Get(address, rootHash);
+            return account;
+        }
+
+        public async ValueTask<Account> GetAccountAsync(Keccak stateRoot, Address address)
+        {
+            return await GetStateAsync(stateRoot, address);
+        }
+
+        public async ValueTask<Keccak> GetStorageRootAsync(Keccak stateRoot, Address address)
+        {
+            return (await GetStateAsync(stateRoot, address)).StorageRoot;
+        }
+
+        public async ValueTask<Keccak> GetCodeHashAsync(Keccak stateRoot, Address address)
+        {
+            return (await GetStateAsync(stateRoot, address)).CodeHash;
+        }
+        
+        private async ValueTask<Account> GetStateAsync(Keccak rootHash, Address address)
+        {
+            Metrics.StateTreeReads++;
+            Account account = await _state.GetAsync(address, rootHash);
             return account;
         }
     }
