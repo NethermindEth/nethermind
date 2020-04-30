@@ -192,8 +192,8 @@ jobs:
     - name: Nethermind.WebSockets.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.WebSockets.Test
-  neth-tests6:
-    name: Nethermind Tests 6
+  neth-tests7:
+    name: Nethermind Tests 7
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
