@@ -82,9 +82,9 @@ jobs:
     - name: Nethermind.Evm.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Evm.Test
-    - name: Nethermind.Facade.Test
+    - name: Nethermind.Network.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Facade.Test
+        dotnet test -c Release src/Nethermind/Nethermind.Network.Test
   neth-tests3:
     name: Nethermind Tests 3
     runs-on: ${{ matrix.os }}
@@ -115,9 +115,9 @@ jobs:
     - name: Nethermind.Mining.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Mining.Test
-    - name: Nethermind.Network.Test
+    - name: Nethermind.Facade.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Network.Test
+        dotnet test -c Release src/Nethermind/Nethermind.Facade.Test
     - name: Nethermind.Secp256k1.Test.Linux
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Secp256k1.Test
