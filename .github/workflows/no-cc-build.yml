@@ -79,9 +79,9 @@ jobs:
     - name: Nethermind.Cryptography.Bls.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Cryptography.Bls.Test
-    - name: Nethermind.Evm.Test
+    - name: Nethermind.Network.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Evm.Test
+        dotnet test -c Release src/Nethermind/Nethermind.Network.Test
     - name: Nethermind.Facade.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Facade.Test
@@ -133,9 +133,9 @@ jobs:
     - name: Installing macOS packages
       if: matrix.os == 'macOS'
       run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
-    - name: Nethermind.Network.Test
+    - name: Nethermind.Evm.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Network.Test
+        dotnet test -c Release src/Nethermind/Nethermind.Evm.Test
     - name: Nethermind.Secp256k1.Test.Linux
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Secp256k1.Test
