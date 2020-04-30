@@ -56,15 +56,15 @@ namespace Nethermind.State
         }
         
         [DebuggerStepThrough]
-        public ValueTask<Account> GetAsync(Address address, Keccak rootHash = null)
+        public async ValueTask<Account> GetAsync(Address address, Keccak rootHash = null)
         {
-            byte[] bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
+            byte[] bytes = await GetAsync(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
             if (bytes == null)
             {
                 return default;
             }
 
-            return new ValueTask<Account>(_decoder.Decode(bytes.AsRlpStream()));
+            return _decoder.Decode(bytes.AsRlpStream());
         }
         
         [DebuggerStepThrough]

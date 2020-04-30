@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Synchronization.FastSync;
@@ -68,7 +67,7 @@ namespace Nethermind.Synchronization.BeamSync
 
         public override async ValueTask<MultiStateSyncBatch> PrepareRequest()
         {
-            bool someWereNotEmpty = true;
+            bool someWereNotEmpty;
             MultiStateSyncBatch result = null;
             List<StateSyncBatch> batches = null;
 
@@ -97,7 +96,7 @@ namespace Nethermind.Synchronization.BeamSync
             if (batches != null)
             {
                 result = new MultiStateSyncBatch(batches);
-                if(_logger.IsWarn) _logger.Warn($"Combining {batches.Count} with {result.AllRequestedNodes.Count()} requests into one multibatch");
+                // if(_logger.IsWarn) _logger.Warn($"Combining {batches.Count} with {result.AllRequestedNodes.Count()} requests into one multibatch");
             }
             
             return result;

@@ -54,7 +54,7 @@ namespace Nethermind.Db
             }
         }
 
-        public ValueTask<byte[]> Get(byte[] key)
+        public ValueTask<byte[]> GetAsync(byte[] key)
         {
             return new ValueTask<byte[]>(this[key]);
         }

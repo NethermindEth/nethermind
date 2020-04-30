@@ -60,7 +60,7 @@ namespace Nethermind.Db.Rpc
             set => throw new InvalidOperationException("RPC DB does not support writes");
         }
 
-        public ValueTask<byte[]> Get(byte[] key)
+        public ValueTask<byte[]> GetAsync(byte[] key)
         {
             throw new NotImplementedException();
         }

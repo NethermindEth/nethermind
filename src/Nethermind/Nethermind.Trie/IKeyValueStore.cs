@@ -25,6 +25,6 @@ namespace Nethermind.Trie
     
     public interface IAsyncKeyValueStore : IKeyValueStore
     {
-        ValueTask<byte[]> Get(byte[] key);
+        ValueTask<byte[]> GetAsync(byte[] key);
     }
 }

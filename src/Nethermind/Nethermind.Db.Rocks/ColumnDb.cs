@@ -75,7 +75,7 @@ namespace Nethermind.Db.Rocks
             }
         }
 
-        public ValueTask<byte[]> Get(byte[] key)
+        public ValueTask<byte[]> GetAsync(byte[] key)
         {
             throw new NotImplementedException();
         }

@@ -46,7 +46,7 @@ namespace Nethermind.Trie
         
         private readonly ConcurrentQueue<TrieNode> _currentCommit;
 
-        private readonly IKeyValueStore _keyValueStore;
+        private readonly IAsyncKeyValueStore _keyValueStore;
         private readonly bool _parallelBranches;
         private readonly bool _allowCommits;
 
@@ -59,12 +59,12 @@ namespace Nethermind.Trie
         {
         }
         
-        public PatriciaTree(IKeyValueStore keyValueStore)
+        public PatriciaTree(IAsyncKeyValueStore keyValueStore)
             : this(keyValueStore, EmptyTreeHash, false, true)
         {
         }
 
-        public PatriciaTree(IKeyValueStore keyValueStore, Keccak rootHash, bool parallelBranches, bool allowCommits)
+        public PatriciaTree(IAsyncKeyValueStore keyValueStore, Keccak rootHash, bool parallelBranches, bool allowCommits)
         {
             _keyValueStore = keyValueStore;
             _parallelBranches = parallelBranches;
@@ -232,6 +232,20 @@ namespace Nethermind.Trie
             if (array != null) ArrayPool<byte>.Shared.Return(array);
             return result;
         }
+        
+        [DebuggerStepThrough]
+        public ValueTask<byte[]> GetAsync(Span<byte> rawKey, Keccak rootHash = null)
+        {
+            int nibblesCount = 2 * rawKey.Length;
+            byte[] array = null;
+            Span<byte> nibbles = rawKey.Length <= 64
+                ? stackalloc byte[nibblesCount]
+                : array = ArrayPool<byte>.Shared.Rent(nibblesCount);
+            Nibbles.BytesToNibbleBytes(rawKey, nibbles);
+            var result = Run(nibbles, nibblesCount, null, false, rootHash: rootHash);
+            if (array != null) ArrayPool<byte>.Shared.Return(array);
+            return new ValueTask<byte[]>(result);
+        }
 
         [DebuggerStepThrough]
         public void Set(Span<byte> rawKey, byte[] value)
@@ -264,6 +278,29 @@ namespace Nethermind.Trie
             if (cachedRlp == null)
             {
                 byte[] dbValue = _keyValueStore[keccak.Bytes];
+                if (dbValue == null)
+                {
+                    throw new TrieException($"Node {keccak} is missing from the DB");
+                }
+                
+                NodeCache.Set(keccak, dbValue);
+                return dbValue;
+            }
+
+            return cachedRlp;
+        }
+        
+        internal async ValueTask<byte[]> GetNodeAsync(Keccak keccak, bool allowCaching)
+        {
+            if (!allowCaching)
+            {
+                return await _keyValueStore.GetAsync(keccak.Bytes);
+            }
+
+            byte[] cachedRlp = NodeCache.Get(keccak);
+            if (cachedRlp == null)
+            {
+                byte[] dbValue = await _keyValueStore.GetAsync(keccak.Bytes);
                 if (dbValue == null)
                 {
                     throw new TrieException($"Node {keccak} is missing from the DB");
@@ -317,6 +354,48 @@ namespace Nethermind.Trie
             TraverseContext traverseContext = new TraverseContext(updatePath.Slice(0, nibblesCount), updateValue, isUpdate, ignoreMissingDelete);
             return TraverseNode(RootRef, traverseContext);
         }
+        
+        private async ValueTask<byte[]> RunAsync(Memory<byte> updatePath, int nibblesCount, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true, Keccak rootHash = null)
+        {
+            if (isUpdate && rootHash != null)
+            {
+                throw new InvalidOperationException("Only reads can be done in parallel on the Patricia tree");
+            }
+
+            if (isUpdate)
+            {
+                _nodeStack.Clear();
+            }
+
+            if (isUpdate && updateValue.Length == 0)
+            {
+                updateValue = null;
+            }
+
+            if (!(rootHash is null))
+            {
+                var rootRef = new TrieNode(NodeType.Unknown, rootHash);
+                await rootRef.ResolveNodeAsync(this);
+                return await TraverseNodeAsync(rootRef, new MemoryTraverseContext(updatePath.Slice(0, nibblesCount), updateValue,
+                    false, ignoreMissingDelete));
+            }
+
+            if (RootRef == null)
+            {
+                if (!isUpdate || updateValue == null)
+                {
+                    return null;
+                }
+
+                RootRef = TrieNodeFactory.CreateLeaf(new HexPrefix(true, updatePath.Slice(0, nibblesCount).ToArray()), updateValue);
+                RootRef.IsDirty = true;
+                return updateValue;
+            }
+
+            await RootRef.ResolveNodeAsync(this);
+            MemoryTraverseContext traverseContext = new MemoryTraverseContext(updatePath.Slice(0, nibblesCount), updateValue, isUpdate, ignoreMissingDelete);
+            return await TraverseNodeAsync(RootRef, traverseContext);
+        }
 
         private byte[] TraverseNode(TrieNode node, TraverseContext traverseContext)
         {
@@ -333,6 +412,26 @@ namespace Nethermind.Trie
             if (node.IsExtension)
             {
                 return TraverseExtension(node, traverseContext);
+            }
+
+            throw new NotSupportedException($"Unknown node type {node.NodeType}");
+        }
+        
+        private ValueTask<byte[]> TraverseNodeAsync(TrieNode node, MemoryTraverseContext traverseContext)
+        {
+            if (node.IsLeaf)
+            {
+                return TraverseLeafAsync(node, traverseContext);
+            }
+
+            if (node.IsBranch)
+            {
+                return TraverseBranchAsync(node, traverseContext);
+            }
+
+            if (node.IsExtension)
+            {
+                return TraverseExtensionAsync(node, traverseContext);
             }
 
             throw new NotSupportedException($"Unknown node type {node.NodeType}");
@@ -515,6 +614,75 @@ namespace Nethermind.Trie
             TrieNode nextNode = childNode;
             return TraverseNode(nextNode, traverseContext);
         }
+        
+         private async ValueTask<byte[]> TraverseBranchAsync(TrieNode node, MemoryTraverseContext traverseContext)
+        {
+            if (traverseContext.RemainingUpdatePathLength == 0)
+            {
+                if (!traverseContext.IsUpdate)
+                {
+                    return node.Value;
+                }
+
+                if (traverseContext.UpdateValue == null)
+                {
+                    if (node.Value == null)
+                    {
+                        return null;
+                    }
+
+                    ConnectNodes(null);
+                }
+                else if (Bytes.AreEqual(traverseContext.UpdateValue, node.Value))
+                {
+                    return traverseContext.UpdateValue;
+                }
+                else
+                {
+                    node.Value = traverseContext.UpdateValue;
+                    node.IsDirty = true;
+                }
+
+                return traverseContext.UpdateValue;
+            }
+
+            TrieNode childNode = node.GetChild(traverseContext.UpdatePath.Span[traverseContext.CurrentIndex]);
+            if (traverseContext.IsUpdate)
+            {
+                _nodeStack.Push(new StackedNode(node, traverseContext.UpdatePath.Span[traverseContext.CurrentIndex]));
+            }
+
+            traverseContext.CurrentIndex++;
+
+            if (childNode == null)
+            {
+                if (!traverseContext.IsUpdate)
+                {
+                    return null;
+                }
+
+                if (traverseContext.UpdateValue == null)
+                {
+                    if (traverseContext.IgnoreMissingDelete)
+                    {
+                        return null;
+                    }
+
+                    throw new InvalidOperationException($"Could not find the leaf node to delete: {traverseContext.UpdatePath.Span.ToHexString(false)}");
+                }
+
+                byte[] leafPath = traverseContext.UpdatePath.Slice(traverseContext.CurrentIndex, traverseContext.UpdatePath.Length - traverseContext.CurrentIndex).ToArray();
+                TrieNode leaf = TrieNodeFactory.CreateLeaf(new HexPrefix(true, leafPath), traverseContext.UpdateValue);
+                leaf.IsDirty = true;
+                ConnectNodes(leaf);
+
+                return traverseContext.UpdateValue;
+            }
+
+            await childNode.ResolveNodeAsync(this);
+            TrieNode nextNode = childNode;
+            return await TraverseNodeAsync(nextNode, traverseContext);
+        }
 
         private byte[] TraverseLeaf(TrieNode node, TraverseContext traverseContext)
         {
@@ -624,6 +792,115 @@ namespace Nethermind.Trie
 
             return traverseContext.UpdateValue;
         }
+        
+         private async ValueTask<byte[]> TraverseLeafAsync(TrieNode node, MemoryTraverseContext traverseContext)
+        {
+            Memory<byte> remaining = traverseContext.GetRemainingUpdatePath();
+            Memory<byte> shorterPath;
+            Memory<byte> longerPath;
+            if (traverseContext.RemainingUpdatePathLength - node.Path.Length < 0)
+            {
+                shorterPath = remaining;
+                longerPath = node.Path;
+            }
+            else
+            {
+                shorterPath = node.Path;
+                longerPath = remaining;
+            }
+
+            byte[] shorterPathValue;
+            byte[] longerPathValue;
+
+            if (Bytes.AreEqual(shorterPath.Span, node.Path))
+            {
+                shorterPathValue = node.Value;
+                longerPathValue = traverseContext.UpdateValue;
+            }
+            else
+            {
+                shorterPathValue = traverseContext.UpdateValue;
+                longerPathValue = node.Value;
+            }
+
+            int extensionLength = 0;
+            for (int i = 0; i < Math.Min(shorterPath.Length, longerPath.Length) && shorterPath.Span[i] == longerPath.Span[i]; i++, extensionLength++)
+            {
+            }
+
+            if (extensionLength == shorterPath.Length && extensionLength == longerPath.Length)
+            {
+                if (!traverseContext.IsUpdate)
+                {
+                    return node.Value;
+                }
+
+                if (traverseContext.UpdateValue == null)
+                {
+                    ConnectNodes(null);
+                    return traverseContext.UpdateValue;
+                }
+
+                if (!Bytes.AreEqual(node.Value, traverseContext.UpdateValue))
+                {
+                    node.Value = traverseContext.UpdateValue;
+                    node.IsDirty = true;
+                    ConnectNodes(node);
+                    return traverseContext.UpdateValue;
+                }
+
+                return traverseContext.UpdateValue;
+            }
+
+            if (!traverseContext.IsUpdate)
+            {
+                return null;
+            }
+
+            if (traverseContext.UpdateValue == null)
+            {
+                if (traverseContext.IgnoreMissingDelete)
+                {
+                    return null;
+                }
+
+                throw new InvalidOperationException($"Could not find the leaf node to delete: {traverseContext.UpdatePath.Span.ToHexString(false)}");
+            }
+
+            if (extensionLength != 0)
+            {
+                Memory<byte> extensionPath = longerPath.Slice(0, extensionLength);
+                TrieNode extension = TrieNodeFactory.CreateExtension(new HexPrefix(false, extensionPath.ToArray()));
+                extension.IsDirty = true;
+                _nodeStack.Push(new StackedNode(extension, 0));
+            }
+
+            TrieNode branch = TrieNodeFactory.CreateBranch();
+            branch.IsDirty = true;
+            if (extensionLength == shorterPath.Length)
+            {
+                branch.Value = shorterPathValue;
+            }
+            else
+            {
+                Memory<byte> shortLeafPath = shorterPath.Slice(extensionLength + 1, shorterPath.Length - extensionLength - 1);
+                TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(new HexPrefix(true, shortLeafPath.ToArray()), shorterPathValue);
+                shortLeaf.IsDirty = true;
+                branch.SetChild(shorterPath.Span[extensionLength], shortLeaf);
+            }
+
+            Memory<byte> leafPath = longerPath.Slice(extensionLength + 1, longerPath.Length - extensionLength - 1);
+
+
+            node.IsDirty = true;
+            node.Key = new HexPrefix(true, leafPath.ToArray());
+            node.Value = longerPathValue;
+
+            _nodeStack.Push(new StackedNode(branch, longerPath.Span[extensionLength]));
+            ConnectNodes(node);
+
+            return traverseContext.UpdateValue;
+        }
 
         private byte[] TraverseExtension(TrieNode node, TraverseContext traverseContext)
         {
@@ -699,6 +976,82 @@ namespace Nethermind.Trie
             ConnectNodes(branch);
             return traverseContext.UpdateValue;
         }
+        
+        
+        private async ValueTask<byte[]> TraverseExtensionAsync(TrieNode node, MemoryTraverseContext traverseContext)
+        {
+            Memory<byte> remaining = traverseContext.GetRemainingUpdatePath();
+            int extensionLength = 0;
+            for (int i = 0; i < Math.Min(remaining.Length, node.Path.Length) && remaining.Span[i] == node.Path[i]; i++, extensionLength++)
+            {
+            }
+
+            if (extensionLength == node.Path.Length)
+            {
+                traverseContext.CurrentIndex += extensionLength;
+                if (traverseContext.IsUpdate)
+                {
+                    _nodeStack.Push(new StackedNode(node, 0));
+                }
+
+                TrieNode next = node.GetChild(0);
+                await next.ResolveNodeAsync(this);
+                return await TraverseNodeAsync(next, traverseContext);
+            }
+
+            if (!traverseContext.IsUpdate)
+            {
+                return null;
+            }
+
+            if (traverseContext.UpdateValue == null)
+            {
+                if (traverseContext.IgnoreMissingDelete)
+                {
+                    return null;
+                }
+
+                throw new InvalidOperationException("Could find the leaf node to delete: {Hex.FromBytes(context.UpdatePath, false)}");
+            }
+
+            byte[] pathBeforeUpdate = node.Path;
+            if (extensionLength != 0)
+            {
+                byte[] extensionPath = node.Path.Slice(0, extensionLength);
+                node.Key = new HexPrefix(false, extensionPath);
+                node.IsDirty = true;
+                _nodeStack.Push(new StackedNode(node, 0));
+            }
+
+            TrieNode branch = TrieNodeFactory.CreateBranch();
+            branch.IsDirty = true;
+            if (extensionLength == remaining.Length)
+            {
+                branch.Value = traverseContext.UpdateValue;
+            }
+            else
+            {
+                byte[] path = remaining.Slice(extensionLength + 1, remaining.Length - extensionLength - 1).ToArray();
+                TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(new HexPrefix(true, path), traverseContext.UpdateValue);
+                shortLeaf.IsDirty = true;
+                branch.SetChild(remaining.Span[extensionLength], shortLeaf);
+            }
+
+            if (pathBeforeUpdate.Length - extensionLength > 1)
+            {
+                byte[] extensionPath = pathBeforeUpdate.Slice(extensionLength + 1, pathBeforeUpdate.Length - extensionLength - 1);
+                TrieNode secondExtension = TrieNodeFactory.CreateExtension(new HexPrefix(false, extensionPath), node.GetChild(0));
+                secondExtension.IsDirty = true;
+                branch.SetChild(pathBeforeUpdate[extensionLength], secondExtension);
+            }
+            else
+            {
+                branch.SetChild(pathBeforeUpdate[extensionLength], node.GetChild(0));
+            }
+
+            ConnectNodes(branch);
+            return traverseContext.UpdateValue;
+        }
 
         private ref struct TraverseContext
         {
@@ -715,6 +1068,30 @@ namespace Nethermind.Trie
             }
 
             public TraverseContext(Span<byte> updatePath, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true)
+            {
+                UpdatePath = updatePath;
+                UpdateValue = updateValue;
+                IsUpdate = isUpdate;
+                IgnoreMissingDelete = ignoreMissingDelete;
+                CurrentIndex = 0;
+            }
+        }
+        
+        private struct MemoryTraverseContext
+        {
+            public Memory<byte> UpdatePath { get; }
+            public byte[] UpdateValue { get; }
+            public bool IsUpdate { get; }
+            public bool IgnoreMissingDelete { get; }
+            public int CurrentIndex { get; set; }
+            public int RemainingUpdatePathLength => UpdatePath.Length - CurrentIndex;
+
+            public Memory<byte> GetRemainingUpdatePath()
+            {
+                return UpdatePath.Slice(CurrentIndex, RemainingUpdatePathLength);
+            }
+
+            public MemoryTraverseContext(Memory<byte> updatePath, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true)
             {
                 UpdatePath = updatePath;
                 UpdateValue = updateValue;

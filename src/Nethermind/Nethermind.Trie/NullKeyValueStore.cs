@@ -15,10 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.Trie
 {
-    public class NullKeyValueStore : IKeyValueStore
+    public class NullKeyValueStore : IAsyncKeyValueStore
     {
         private NullKeyValueStore()
         {
@@ -31,6 +32,11 @@ namespace Nethermind.Trie
         {
             get => null;
             set => throw new System.NotSupportedException();
+        }
+
+        public ValueTask<byte[]> GetAsync(byte[] key)
+        {
+            return default;
         }
     }
 }

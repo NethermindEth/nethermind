@@ -63,7 +63,7 @@ namespace Nethermind.Network
             set { _cache.AddOrUpdate(key, newValue => Add(value), (x, oldValue) => Update(oldValue, value)); }
         }
 
-        public ValueTask<byte[]> Get(byte[] key)
+        public ValueTask<byte[]> GetAsync(byte[] key)
         {
             throw new NotImplementedException();
         }

@@ -38,7 +38,7 @@ namespace Nethermind.Db
             set => throw new System.NotSupportedException();
         }
 
-        public ValueTask<byte[]> Get(byte[] key)
+        public ValueTask<byte[]> GetAsync(byte[] key)
         {
             return default;
         }

@@ -50,8 +50,20 @@ namespace Nethermind.Db
 
         public byte[] this[byte[] key]
         {
-            get => Get(key).Result;
+            get => Get(key);
             set => Set(key, value);
+        }
+        
+        private byte[] Get(byte[] key)
+        {
+            if (_pendingChanges.TryGetValue(key, out int pendingChangeIndex)) return _changes[pendingChangeIndex].Value;
+            return _db[key];
+        }
+        
+        public ValueTask<byte[]> GetAsync(byte[] key)
+        {
+            if (_pendingChanges.TryGetValue(key, out int pendingChangeIndex)) return new ValueTask<byte[]>(_changes[pendingChangeIndex].Value);
+            return new ValueTask<byte[]>(_db[key]);
         }
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys]
@@ -144,12 +156,6 @@ namespace Nethermind.Db
         public void Dispose()
         {
             _db?.Dispose();
-        }
-
-        public ValueTask<byte[]> Get(byte[] key)
-        {
-            if (_pendingChanges.TryGetValue(key, out int pendingChangeIndex)) return new ValueTask<byte[]>(_changes[pendingChangeIndex].Value);
-            return new ValueTask<byte[]>(_db[key]);
         }
 
         /// <summary>
