@@ -11,8 +11,6 @@ jobs:
         os: [ubuntu-latest, windows-latest, macOS]
     steps:
     - uses: actions/checkout@v2
-    - name: Unshallow fetching
-      run: git fetch --unshallow --progress --prune origin +refs/heads/*:refs/remotes/origin/*
     - name: Updating submodules
       run: git submodule update --init src/Dirichlet src/rocksdb-sharp
     - name: Installing Linux packages
@@ -38,6 +36,24 @@ jobs:
     - name: Nethermind.BeaconNode.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.BeaconNode.Test
+  neth-tests2:
+    name: Nethermind Tests 2
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Updating submodules
+      run: git submodule update --init src/Dirichlet src/rocksdb-sharp
+    - name: Installing Linux packages
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: Installing macOS packages
+      if: matrix.os == 'macOS'
+      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
     - name: Nethermind.Blockchain.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Blockchain.Test
@@ -50,6 +66,24 @@ jobs:
     - name: Nethermind.Config.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Config.Test
+  neth-tests3:
+    name: Nethermind Tests 3
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Updating submodules
+      run: git submodule update --init src/Dirichlet src/rocksdb-sharp
+    - name: Installing Linux packages
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: Installing macOS packages
+      if: matrix.os == 'macOS'
+      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
     - name: Nethermind.Core.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Core.Test
@@ -62,6 +96,24 @@ jobs:
     - name: Nethermind.Cryptography.Bls.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Cryptography.Bls.Test
+  neth-tests4:
+    name: Nethermind Tests 4
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Updating submodules
+      run: git submodule update --init src/Dirichlet src/rocksdb-sharp
+    - name: Installing Linux packages
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: Installing macOS packages
+      if: matrix.os == 'macOS'
+      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
     - name: Nethermind.Evm.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Evm.Test
@@ -74,6 +126,24 @@ jobs:
     - name: Nethermind.Logging.NLog.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Logging.NLog.Test
+  neth-tests5:
+    name: Nethermind Tests 5
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Updating submodules
+      run: git submodule update --init src/Dirichlet src/rocksdb-sharp
+    - name: Installing Linux packages
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: Installing macOS packages
+      if: matrix.os == 'macOS'
+      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
     - name: Nethermind.JsonRpc.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.JsonRpc.Test
@@ -89,6 +159,24 @@ jobs:
         #    - name: Nethermind.Runner.Test
         #      run: |
         #        dotnet test -c Release src/Nethermind/Nethermind.Runner.Test
+  neth-tests6:
+    name: Nethermind Tests 6
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Updating submodules
+      run: git submodule update --init src/Dirichlet src/rocksdb-sharp
+    - name: Installing Linux packages
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: Installing macOS packages
+      if: matrix.os == 'macOS'
+      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
     - name: Nethermind.State.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.State.Test
@@ -104,6 +192,24 @@ jobs:
     - name: Nethermind.WebSockets.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.WebSockets.Test
+  neth-tests6:
+    name: Nethermind Tests 6
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Updating submodules
+      run: git submodule update --init src/Dirichlet src/rocksdb-sharp
+    - name: Installing Linux packages
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: Installing macOS packages
+      if: matrix.os == 'macOS'
+      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
     - name: Nethermind.DataMarketplace.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Test
