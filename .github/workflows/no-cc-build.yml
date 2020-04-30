@@ -82,9 +82,9 @@ jobs:
     - name: Nethermind.Evm.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Evm.Test
-    - name: Nethermind.Network.Test
+    - name: Nethermind.Facade.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Network.Test
+        dotnet test -c Release src/Nethermind/Nethermind.Facade.Test
   neth-tests3:
     name: Nethermind Tests 3
     runs-on: ${{ matrix.os }}
@@ -133,9 +133,9 @@ jobs:
     - name: Installing macOS packages
       if: matrix.os == 'macOS'
       run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
-    - name: Nethermind.Facade.Test
+    - name: Nethermind.Network.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Facade.Test
+        dotnet test -c Release src/Nethermind/Nethermind.Network.Test
     - name: Nethermind.Secp256k1.Test.Linux
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Secp256k1.Test
