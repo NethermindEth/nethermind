@@ -106,9 +106,9 @@ jobs:
     - name: Nethermind.HonestValidator.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.HonestValidator.Test
-    - name: Nethermind.Logging.NLog.Test
+    - name: Nethermind.Evm.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Logging.NLog.Test
+        dotnet test -c Release src/Nethermind/Nethermind.Evm.Test
     - name: Nethermind.JsonRpc.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.JsonRpc.Test
@@ -133,9 +133,9 @@ jobs:
     - name: Installing macOS packages
       if: matrix.os == 'macOS'
       run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
-    - name: Nethermind.Evm.Test
+    - name: Nethermind.Logging.NLog.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Evm.Test
+        dotnet test -c Release src/Nethermind/Nethermind.Logging.NLog.Test
     - name: Nethermind.Secp256k1.Test.Linux
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Secp256k1.Test
