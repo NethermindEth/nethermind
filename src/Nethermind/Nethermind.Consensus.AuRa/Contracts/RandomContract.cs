@@ -23,7 +23,6 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Serialization.Json.Abi;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -36,7 +35,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public RandomContract(ITransactionProcessor transactionProcessor,
             IAbiEncoder abiEncoder,
             Address contractAddress,
-            IStateProvider stateProvider,
             IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource,
             long transitionBlock,
             Address nodeAddress)
@@ -44,7 +42,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         {
             _nodeAddress = nodeAddress;
             ActivationBlock = transitionBlock;
-            Constant = GetConstant(stateProvider, readOnlyReadOnlyTransactionProcessorSource);
+            Constant = GetConstant(readOnlyReadOnlyTransactionProcessorSource);
         }
 
         public long ActivationBlock { get; }

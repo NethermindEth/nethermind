@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,15 +13,26 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.Core.Caching
+using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Core;
+
+namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public interface ICache<in TKey, TValue>
+    public class TxFilterTxSource : ITxSource
     {
-        void Clear();
-        TValue Get(TKey key);
-        bool TryGet(TKey key, out TValue value);
-        void Set(TKey key, TValue val);
-        void Delete(TKey key);
+        private readonly ITxSource _innerSource;
+        private readonly ITxPermissionFilter _txPermissionFilter;
+
+        public TxFilterTxSource(ITxSource innerSource, ITxPermissionFilter txPermissionFilter)
+        {
+            _innerSource = innerSource;
+            _txPermissionFilter = txPermissionFilter;
+        }
+
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) => 
+            _innerSource.GetTransactions(parent, gasLimit).Where(tx => _txPermissionFilter.IsAllowed(tx, parent));
     }
 }

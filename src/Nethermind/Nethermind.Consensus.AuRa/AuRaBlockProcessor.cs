@@ -20,6 +20,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -35,6 +36,8 @@ namespace Nethermind.Consensus.AuRa
     public class AuRaBlockProcessor : BlockProcessor
     {
         private readonly IAuRaBlockProcessorExtension _auRaBlockProcessorExtension;
+        private readonly ITxPermissionFilter _txFilter;
+        private readonly ILogger _logger;
 
         public AuRaBlockProcessor(
             ISpecProvider specProvider,
@@ -48,18 +51,38 @@ namespace Nethermind.Consensus.AuRa
             ITxPool txPool,
             IReceiptStorage receiptStorage,
             ILogManager logManager,
-            IAuRaBlockProcessorExtension auRaBlockProcessorExtension)
+            IAuRaBlockProcessorExtension auRaBlockProcessorExtension,
+            ITxPermissionFilter txFilter = null)
             : base(specProvider, blockValidator, rewardCalculator, transactionProcessor, stateDb, codeDb, stateProvider, storageProvider, txPool, receiptStorage, logManager)
         {
             _auRaBlockProcessorExtension = auRaBlockProcessorExtension ?? throw new ArgumentNullException(nameof(auRaBlockProcessorExtension));
+            _logger = logManager?.GetClassLogger<AuRaBlockProcessor>() ?? throw new ArgumentNullException(nameof(logManager));
+            _txFilter = txFilter;
         }
 
         protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
         {
+            ValidateTxs(block);
             _auRaBlockProcessorExtension.PreProcess(block, options);
             var receipts = base.ProcessBlock(block, blockTracer, options);
             _auRaBlockProcessorExtension.PostProcess(block, receipts, options);
             return receipts;
+        }
+
+        private void ValidateTxs(Block block)
+        {
+            if (_txFilter != null)
+            {
+                for (int i = 0; i < block.Transactions.Length; i++)
+                {
+                    var tx = block.Transactions[i];
+                    if (!_txFilter.IsAllowed(tx, block.Header))
+                    {
+                        if (_logger.IsError) _logger.Error($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {tx.ToShortString()} doesn't have required permissions.");
+                        throw new InvalidBlockException(block.Hash);
+                    }
+                }
+            }
         }
     }
 }

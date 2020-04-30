@@ -37,7 +37,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         
         internal static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<ValidatorContract>();
         
-        private ConstantContract Constant { get; }
+        private ConstantContractOnState Constant { get; }
 
         public ValidatorContract(
             ITransactionProcessor transactionProcessor, 
@@ -48,7 +48,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             : base(transactionProcessor, abiEncoder, contractAddress)
         {
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
-            Constant = GetConstant(stateProvider, readOnlyReadOnlyTransactionProcessorSource);
+            Constant = GetConstantOnState(readOnlyReadOnlyTransactionProcessorSource, stateProvider);
         }
 
         /// <summary>

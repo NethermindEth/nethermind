@@ -18,7 +18,9 @@ using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Rewards;
+using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Evm;
 using Nethermind.Runner.Ethereum.Context;
@@ -29,6 +31,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class InitializeBlockchainAuRa : InitializeBlockchain
     {
         private readonly AuRaEthereumRunnerContext _context;
+        private ReadOnlyTransactionProcessorSource? _readOnlyTransactionProcessorSource;
 
         public InitializeBlockchainAuRa(AuRaEthereumRunnerContext context) : base(context)
         {
@@ -60,7 +63,33 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.TxPool,
                 _context.ReceiptStorage,
                 _context.LogManager,
-                _context.AuRaBlockProcessorExtension);
+                _context.AuRaBlockProcessorExtension,
+                GetTxPermissionFilter());
+        }
+
+        private ITxPermissionFilter? GetTxPermissionFilter()
+        {
+            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
+            
+            if (_context.ChainSpec.Parameters.TransactionPermissionContract != null)
+            {
+                _context.TxFilterCache = new ITxPermissionFilter.Cache();
+                
+                var txPermissionFilter = new TxPermissionFilter(
+                    new TransactionPermissionContract(
+                        _context.TransactionProcessor,
+                        _context.AbiEncoder,
+                        _context.ChainSpec.Parameters.TransactionPermissionContract,
+                        _context.ChainSpec.Parameters.TransactionPermissionContractTransition ?? 0, 
+                        GetReadOnlyTransactionProcessorSource(),
+                        _context.StateProvider),
+                    _context.TxFilterCache,
+                    _context.LogManager);
+                
+                return txPermissionFilter;
+            }
+
+            return null;
         }
 
         protected override void InitSealEngine()
@@ -71,8 +100,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_context.NodeKey == null) throw new StepDependencyException(nameof(_context.NodeKey));
             
             _context.ValidatorStore = new ValidatorStore(_context.DbProvider.BlockInfosDb);
-            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource = new ReadOnlyTransactionProcessorSource(_context.DbProvider, _context.BlockTree, _context.SpecProvider, _context.LogManager);
-            IAuRaValidatorProcessorExtension validatorProcessorExtension = new AuRaValidatorProcessorFactory(_context.StateProvider, _context.AbiEncoder, _context.TransactionProcessor, readOnlyTransactionProcessorSource, _context.BlockTree, _context.ReceiptStorage, _context.ValidatorStore, _context.LogManager)
+            
+            IAuRaValidatorProcessorExtension validatorProcessorExtension = new AuRaValidatorProcessorFactory(_context.StateProvider, _context.AbiEncoder, _context.TransactionProcessor, GetReadOnlyTransactionProcessorSource(), _context.BlockTree, _context.ReceiptStorage, _context.ValidatorStore, _context.LogManager)
                 .CreateValidatorProcessor(_context.ChainSpec.AuRa.Validators);
 
             AuRaStepCalculator auRaStepCalculator = new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper);
@@ -81,5 +110,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.Sealer = new AuRaSealer(_context.BlockTree, _context.ValidatorStore, auRaStepCalculator, _context.NodeKey.Address, new BasicWallet(_context.NodeKey), new ValidSealerStrategy(), _context.LogManager);
             _context.AuRaBlockProcessorExtension = validatorProcessorExtension;
         }
+
+        private IReadOnlyTransactionProcessorSource GetReadOnlyTransactionProcessorSource() => 
+            _readOnlyTransactionProcessorSource ??= new ReadOnlyTransactionProcessorSource(_context.DbProvider, _context.BlockTree, _context.SpecProvider, _context.LogManager);
     }
 }

@@ -26,7 +26,7 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public abstract class Contract
+    public abstract partial class Contract
     {
         public const long DefaultContractGasLimit = 1600000L;
         
@@ -136,52 +136,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
             {
                 stateProvider.CreateAccount(Address.SystemUser, UInt256.Zero);
                 stateProvider.Commit(Homestead.Instance);
-            }
-        }
-
-        protected ConstantContract GetConstant(IStateProvider stateProvider, IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource) => 
-            new ConstantContract(this, stateProvider, readOnlyReadOnlyTransactionProcessorSource);
-
-        protected internal class ConstantContract
-        {
-            public IStateProvider StateProvider { get; }
-
-            private readonly Contract _contract;
-            private readonly IReadOnlyTransactionProcessorSource _readOnlyReadOnlyTransactionProcessorSource;
-
-            public ConstantContract(
-                Contract contract,
-                IStateProvider stateProvider, 
-                IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource)
-            {
-                StateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-                _contract = contract;
-                _readOnlyReadOnlyTransactionProcessorSource = readOnlyReadOnlyTransactionProcessorSource ?? throw new ArgumentNullException(nameof(readOnlyReadOnlyTransactionProcessorSource));
-            }
-        
-            public byte[] Call(BlockHeader header, Transaction transaction)
-            {
-                using var readOnlyTransactionProcessor = _readOnlyReadOnlyTransactionProcessorSource.Get(StateProvider.StateRoot);
-                return _contract.CallCore(readOnlyTransactionProcessor, header, transaction);
-            }
-
-            public object[] Call(BlockHeader header, AbiFunctionDescription function, Address sender, params object[] arguments)
-            {
-                var transaction = _contract.GenerateTransaction<SystemTransaction>(function, sender, arguments);
-                var result = Call(header, transaction);
-                var objects = _contract.AbiEncoder.Decode(function.GetReturnInfo(), result);
-                return objects;
-            }
-
-            public T Call<T>(BlockHeader header, AbiFunctionDescription function, Address sender,params object[] arguments)
-            {
-                return (T) Call(header, function, sender, arguments)[0];
-            }
-            
-            public (T1, T2) Call<T1, T2>(BlockHeader header, AbiFunctionDescription function, Address sender,params object[] arguments)
-            {
-                var objects = Call(header, function, sender, arguments);
-                return ((T1) objects[0], (T2) objects[1]);
             }
         }
     }

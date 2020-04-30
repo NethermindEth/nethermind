@@ -31,7 +31,6 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.State;
 using Nethermind.Store;
 using Nethermind.Wallet;
 
@@ -41,7 +40,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class StartBlockProducerAuRa : StartBlockProducer
     {
         private readonly AuRaEthereumRunnerContext _context;
-
+        
         public StartBlockProducerAuRa(AuRaEthereumRunnerContext context) : base(context)
         {
             _context = context;
@@ -72,7 +71,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.NodeKey.Address);
         }
 
-        protected override BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, IReadOnlyDbProvider readOnlyDbProvider)
+        protected override BlockProcessor CreateBlockProcessor(
+            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, 
+            ReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource, 
+            IReadOnlyDbProvider readOnlyDbProvider)
         {
             if (_context.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_context.RewardCalculatorSource));
             if (_context.ValidatorStore == null) throw new StepDependencyException(nameof(_context.ValidatorStore));
@@ -82,7 +84,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     readOnlyTxProcessingEnv.StateProvider,
                     _context.AbiEncoder,
                     readOnlyTxProcessingEnv.TransactionProcessor,
-                    new ReadOnlyTransactionProcessorSource(readOnlyTxProcessingEnv),
+                    readOnlyTransactionProcessorSource,
                     readOnlyTxProcessingEnv.BlockTree,
                     _context.ReceiptStorage,
                     _context.ValidatorStore,
@@ -101,28 +103,27 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.TxPool,
                 _context.ReceiptStorage,
                 _context.LogManager, 
-                validator);
+                validator,
+                GetTxPermissionFilter(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource, true));
             
             validator.SetFinalizationManager(_context.FinalizationManager, true);
 
             return blockProducer;
         }
 
-        protected override ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv environment)
+        protected override ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, ReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource)
         {
             IList<RandomContract> GetRandomContracts(
                 IDictionary<long, Address> randomnessContractAddress, 
                 ITransactionProcessor transactionProcessor, 
-                IAbiEncoder abiEncoder, 
-                IStateProvider stateProvider,
-                IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource, 
+                IAbiEncoder abiEncoder,
+                IReadOnlyTransactionProcessorSource txProcessorSource, 
                 Address nodeAddress) =>
                 randomnessContractAddress
                     .Select(kvp => new RandomContract(transactionProcessor, 
                         abiEncoder, 
                         kvp.Value, 
-                        stateProvider, 
-                        readOnlyTransactionProcessorSource, 
+                        txProcessorSource, 
                         kvp.Key, 
                         nodeAddress))
                     .ToArray();
@@ -132,28 +133,65 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
             if (_context.NodeKey == null) throw new StepDependencyException(nameof(_context.NodeKey));
 
-            var txSource = base.CreateTxSourceForProducer(environment);
+            IList<ITxSource> txSources = new List<ITxSource> { base.CreateTxSourceForProducer(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource) };
+            bool needSigner = false;
             
             if (_context.ChainSpec.AuRa.RandomnessContractAddress?.Any() == true)
             {
                 var randomContractTxSource = new RandomContractTxSource(
                     GetRandomContracts(_context.ChainSpec.AuRa.RandomnessContractAddress, 
-                        environment.TransactionProcessor, _context.AbiEncoder, 
-                        environment.StateProvider, 
-                        new ReadOnlyTransactionProcessorSource(environment), 
+                        readOnlyTxProcessingEnv.TransactionProcessor, _context.AbiEncoder, 
+                        readOnlyTransactionProcessorSource, 
                         _context.NodeKey.Address),
                     new EciesCipher(_context.CryptoRandom),
                     _context.NodeKey, 
                     _context.CryptoRandom);
                 
-                var systemTxSourceSigner = new GeneratedTxSourceApprover(randomContractTxSource, new BasicWallet(_context.NodeKey), _context.Timestamper, environment.StateReader, _context.BlockTree.ChainId);
-                
-                return new CompositeTxSource(systemTxSourceSigner, txSource);
+                txSources.Insert(0, randomContractTxSource);
+                needSigner = true;
             }
-            else
+
+            ITxSource txSource = txSources.Count > 1 ? new CompositeTxSource(txSources.ToArray()) : txSources[0];
+
+            if (needSigner)
             {
-                return txSource;
+                txSource = new GeneratedTxSourceApprover(txSource, new BasicWallet(_context.NodeKey), _context.Timestamper, readOnlyTxProcessingEnv.StateReader, _context.BlockTree.ChainId);
             }
+
+            var txPermissionFilter = GetTxPermissionFilter(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource, false);
+            
+            if (txPermissionFilter != null)
+            {
+                txSource = new TxFilterTxSource(txSource, txPermissionFilter);
+            }
+            
+            return txSource;
+        }
+
+        private TxPermissionFilter? GetTxPermissionFilter(
+            ReadOnlyTxProcessingEnv environment, 
+            ReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource,
+            bool useStateProvider)
+        {
+            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
+            
+            if (_context.ChainSpec.Parameters.TransactionPermissionContract != null)
+            {
+                var txPermissionFilter = new TxPermissionFilter(
+                    new TransactionPermissionContract(
+                        environment.TransactionProcessor,
+                        _context.AbiEncoder,
+                        _context.ChainSpec.Parameters.TransactionPermissionContract,
+                        _context.ChainSpec.Parameters.TransactionPermissionContractTransition ?? 0, 
+                        readOnlyTransactionProcessorSource,
+                        useStateProvider ? environment.StateProvider : null),
+                    _context.TxFilterCache,
+                    _context.LogManager);
+                
+                return txPermissionFilter;
+            }
+
+            return null;
         }
     }
 }

@@ -90,5 +90,9 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public long? Eip2028Transition { get; set; }
         
         public long? Eip2200Transition { get; set; }
+        
+        public Address TransactionPermissionContract { get; set; }
+
+        public long ? TransactionPermissionContractTransition { get; set; }
     }
 }
