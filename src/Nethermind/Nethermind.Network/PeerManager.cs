@@ -808,7 +808,7 @@ namespace Nethermind.Network
             }
 
             _stats.ReportEvent(nodeEventArgs.Node, NodeStatsEventType.NodeDiscovered);
-            if (_pending < AvailableActivePeersCount)
+            // if (_pending < AvailableActivePeersCount)
             {
 #pragma warning disable 4014
                 // fire and forget - all the surrounding logic will be executed

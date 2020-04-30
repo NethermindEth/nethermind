@@ -55,8 +55,11 @@ namespace Nethermind.Synchronization
 
         [Description("Trie nodes retrieved via beam sync DB")]
         public static long BeamedTrieNodes;
-        
+
         [Description("Number of sync peers.")]
-        public static long SyncPeers { get; set; }
+        public static long SyncPeers;
+
+        [Description("State branch progress (percentage of completed branches at second level).")]
+        public static long StateBranchProgress;
     }
 }

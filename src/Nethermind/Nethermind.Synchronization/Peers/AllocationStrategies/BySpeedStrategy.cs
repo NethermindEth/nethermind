@@ -28,7 +28,7 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
         public BySpeedStrategy(TransferSpeedType speedType, bool priority)
         {
             _speedType = speedType;
-            _priority = priority;
+            _priority = true;
         }
 
         public bool CanBeReplaced => false;

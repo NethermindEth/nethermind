@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
@@ -48,7 +49,8 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             IPeerAllocationStrategy strategy = _priority ? _fastest : _slowest;
             peers = _minNumber == null ? peers : peers.Where(p => p.HeadNumber > _minNumber);
-            return strategy.Allocate(currentPeer, peers, nodeStatsManager, blockTree);
+            PeerInfo allocated = strategy.Allocate(currentPeer, peers, nodeStatsManager, blockTree);
+            return allocated;
         }
     }
 }
