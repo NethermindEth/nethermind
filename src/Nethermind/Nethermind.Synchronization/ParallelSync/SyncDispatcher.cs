@@ -15,11 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using MathNet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
+using Org.BouncyCastle.Utilities.Zlib;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
@@ -90,8 +92,8 @@ namespace Nethermind.Synchronization.ParallelSync
                 }
                 else if (currentStateLocal == SyncFeedState.Active)
                 {
-                    T request = await (Feed.PrepareRequest() ?? Task.FromResult<T>(default)); // just to avoid null refs
-                    if (request == null)
+                    T request = await Feed.PrepareRequest();
+                    if (EqualityComparer<T>.Default.Equals(request, default))
                     {
                         if (!Feed.IsMultiFeed)
                         {

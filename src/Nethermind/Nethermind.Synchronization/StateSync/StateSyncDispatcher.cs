@@ -25,17 +25,17 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.StateSync
 {
-    public class StateSyncDispatcher : SyncDispatcher<StateSyncBatch>
+    public class StateSyncDispatcher<T> : SyncDispatcher<T> where T : IStateSyncBatch
     {
-        public StateSyncDispatcher(ISyncFeed<StateSyncBatch> syncFeed, ISyncPeerPool syncPeerPool, IPeerAllocationStrategyFactory<StateSyncBatch> peerAllocationStrategy, ILogManager logManager)
+        public StateSyncDispatcher(ISyncFeed<T> syncFeed, ISyncPeerPool syncPeerPool, IPeerAllocationStrategyFactory<T> peerAllocationStrategy, ILogManager logManager)
             : base(syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
         {
         }
 
-        protected override async Task Dispatch(PeerInfo peerInfo, StateSyncBatch request, CancellationToken cancellationToken)
+        protected override async Task Dispatch(PeerInfo peerInfo, T request, CancellationToken cancellationToken)
         {
             ISyncPeer peer = peerInfo.SyncPeer;
-            var getNodeDataTask = peer.GetNodeData(request.RequestedNodes.Select(n => n.Hash).ToArray(), cancellationToken);
+            var getNodeDataTask = peer.GetNodeData(request.AllRequestedNodes.Select(n => n.Hash).ToArray(), cancellationToken);
             await getNodeDataTask.ContinueWith(
                 (t, state) =>
                 {
@@ -44,10 +44,10 @@ namespace Nethermind.Synchronization.StateSync
                         if(Logger.IsTrace) Logger.Error("DEBUG/ERROR Error after dispatching the state sync request", t.Exception);
                     }
                     
-                    StateSyncBatch batchLocal = (StateSyncBatch) state;
                     if (t.IsCompletedSuccessfully)
                     {
-                        batchLocal.Responses = t.Result;
+                        T batchLocal = (T) state;
+                        batchLocal!.Responses = t.Result;
                     }
                 }, request);
         }

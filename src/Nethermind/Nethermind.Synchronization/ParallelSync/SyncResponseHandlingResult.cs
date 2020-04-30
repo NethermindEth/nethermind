@@ -18,11 +18,12 @@ namespace Nethermind.Synchronization.ParallelSync
 {
     public enum SyncResponseHandlingResult
     {
+        // order matters here (ordered from best to worst peer)
         OK,
-        NoProgress,
-        InternalError,
         NotAssigned,
+        InternalError,
+        Emptish,
         LesserQuality,
-        Emptish
+        NoProgress
     }
 }

@@ -241,7 +241,7 @@ namespace Nethermind.Synchronization.FastBlocks
             return batch;
         }
 
-        public override Task<ReceiptsSyncBatch> PrepareRequest()
+        public override ValueTask<ReceiptsSyncBatch> PrepareRequest()
         {
             HandleDependentBatches();
 
@@ -272,7 +272,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 LogStateOnPrepare();
             }
 
-            return Task.FromResult(batch);
+            return new ValueTask<ReceiptsSyncBatch>(batch);
         }
 
         private void SetBatchPriority(ReceiptsSyncBatch batch)

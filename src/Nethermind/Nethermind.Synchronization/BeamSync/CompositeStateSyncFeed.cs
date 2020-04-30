@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Synchronization.FastSync;
@@ -23,17 +25,17 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.BeamSync
 {
-    public class CompositeStateSyncFeed<T> : SyncFeed<T> where T : StateSyncBatch
+    public class CompositeStateSyncFeed : SyncFeed<MultiStateSyncBatch>
     {
-        private readonly ISyncFeed<T>[] _subFeeds;
+        private readonly ISyncFeed<StateSyncBatch>[] _subFeeds;
         private ILogger _logger;
 
-        public CompositeStateSyncFeed(ILogManager logManager, params ISyncFeed<T>[] subFeeds)
+        public CompositeStateSyncFeed(ILogManager logManager, params ISyncFeed<StateSyncBatch>[] subFeeds)
             : base(logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _subFeeds = subFeeds;
-            foreach (ISyncFeed<T> syncFeed in _subFeeds)
+            foreach (ISyncFeed<StateSyncBatch> syncFeed in _subFeeds)
             {
                 syncFeed.StateChanged += OnSubFeedStateChanged;
             }
@@ -49,7 +51,7 @@ namespace Nethermind.Synchronization.BeamSync
             }
 
             bool areAllFinished = true;
-            foreach (ISyncFeed<T> subFeed in _subFeeds)
+            foreach (ISyncFeed<StateSyncBatch> subFeed in _subFeeds)
             {
                 if (subFeed.CurrentState != SyncFeedState.Finished)
                 {
@@ -64,41 +66,69 @@ namespace Nethermind.Synchronization.BeamSync
             }
         }
 
-        public override Task<T> PrepareRequest()
+        public override async ValueTask<MultiStateSyncBatch> PrepareRequest()
         {
-            for (int subFeedIndex = 0; subFeedIndex < _subFeeds.Length; subFeedIndex++)
+            bool someWereNotEmpty = true;
+            MultiStateSyncBatch result = null;
+            List<StateSyncBatch> batches = null;
+
+            // we will try to fill the multi batch as long as the sub feed threads keep adding items
+            do
             {
-                ISyncFeed<T> subFeed = _subFeeds[subFeedIndex];
-                if (subFeed.CurrentState == SyncFeedState.Active)
+                someWereNotEmpty = false;
+                for (int subFeedIndex = 0; subFeedIndex < _subFeeds.Length; subFeedIndex++)
                 {
-                    T batch = subFeed.PrepareRequest().Result;
-                    if (batch != null)
+                    ISyncFeed<StateSyncBatch> subFeed = _subFeeds[subFeedIndex];
+
+                    // we ignore 
+                    if (subFeed.CurrentState == SyncFeedState.Active)
                     {
-                        return Task.FromResult(batch);
+                        StateSyncBatch batch = await subFeed.PrepareRequest();
+                        if (batch != null)
+                        {
+                            batches ??= new List<StateSyncBatch>();
+                            batches.Add(batch);
+                            someWereNotEmpty = true;
+                        }
+                    }
+                }
+            } while (someWereNotEmpty);
+
+            if (batches != null)
+            {
+                result = new MultiStateSyncBatch(batches);
+                if(_logger.IsWarn) _logger.Warn($"Combining {batches.Count} with {result.AllRequestedNodes.Count()} requests into one multibatch");
+            }
+            
+            return result;
+        }
+
+        public override SyncResponseHandlingResult HandleResponse(MultiStateSyncBatch response)
+        {
+            SyncResponseHandlingResult result = SyncResponseHandlingResult.OK; 
+            foreach (ISyncFeed<StateSyncBatch> subFeed in _subFeeds)
+            {
+                foreach (StateSyncBatch stateSyncBatch in response.Batches)
+                {
+                    SyncResponseHandlingResult subResult = SyncResponseHandlingResult.NoProgress;
+                    if (subFeed.FeedId == stateSyncBatch.FeedId)
+                    {
+                        subResult = subFeed.HandleResponse(stateSyncBatch);
+                    }
+                    
+                    if (subResult > result)
+                    {
+                        result = subResult;
                     }
                 }
             }
 
-            return null;
-        }
-
-        public override SyncResponseHandlingResult HandleResponse(T batch)
-        {
-            for (int subFeedIndex = 0; subFeedIndex < _subFeeds.Length; subFeedIndex++)
-            {
-                ISyncFeed<T> subFeed = _subFeeds[subFeedIndex];
-                if (subFeed.FeedId == batch.ConsumerId)
-                {
-                    subFeed.HandleResponse(batch);
-                }
-            }
-
-            return SyncResponseHandlingResult.OK;
+            return result;
         }
 
         // false for now but probably true
         public override bool IsMultiFeed => false;
-        
+
         public override AllocationContexts Contexts => AllocationContexts.State;
     }
 }

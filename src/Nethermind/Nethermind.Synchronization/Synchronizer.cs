@@ -118,8 +118,8 @@ namespace Nethermind.Synchronization
         {
             // so bad
             BeamSyncDbProvider beamSyncDbProvider = _dbProvider as BeamSyncDbProvider;
-            ISyncFeed<StateSyncBatch> beamSyncFeed = beamSyncDbProvider.BeamSyncFeed;
-            StateSyncDispatcher dispatcher = new StateSyncDispatcher(beamSyncFeed, _syncPeerPool, new StateSyncAllocationStrategyFactory(), _logManager);
+            ISyncFeed<MultiStateSyncBatch> beamSyncFeed = beamSyncDbProvider.BeamSyncFeed;
+            StateSyncDispatcher<MultiStateSyncBatch> dispatcher = new StateSyncDispatcher<MultiStateSyncBatch>(beamSyncFeed, _syncPeerPool, new StateSyncAllocationStrategyFactory<MultiStateSyncBatch>(), _logManager);
             dispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -160,7 +160,7 @@ namespace Nethermind.Synchronization
         private void StartStateSyncComponents()
         {
             _stateSyncFeed = new StateSyncFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _dbProvider.BeamStateDb, _syncMode, _blockTree, _logManager);
-            StateSyncDispatcher stateSyncDispatcher = new StateSyncDispatcher(_stateSyncFeed, _syncPeerPool, new StateSyncAllocationStrategyFactory(), _logManager);
+            StateSyncDispatcher<StateSyncBatch> stateSyncDispatcher = new StateSyncDispatcher<StateSyncBatch>(_stateSyncFeed, _syncPeerPool, new StateSyncAllocationStrategyFactory<StateSyncBatch>(), _logManager);
             Task syncDispatcherTask = stateSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)

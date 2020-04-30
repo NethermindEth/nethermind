@@ -25,7 +25,7 @@ namespace Nethermind.Synchronization.ParallelSync
     {
         private ILogger _logger;
         
-        public abstract Task<T> PrepareRequest();
+        public abstract ValueTask<T> PrepareRequest();
         public abstract SyncResponseHandlingResult HandleResponse(T response);
 
         public abstract bool IsMultiFeed { get; }

@@ -271,7 +271,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         private ISyncModeSelector _syncModeSelector;
         private ISyncPeerPool _pool;
         private StateSyncFeed _feed;
-        private StateSyncDispatcher _stateSyncDispatcher;
+        private StateSyncDispatcher<StateSyncBatch> _stateSyncDispatcher;
 
         private void PrepareDownloader(ISyncPeer syncPeer)
         {
@@ -285,7 +285,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             syncConfig.FastSync = true;
             _syncModeSelector = StaticSelector.StateNodesWithFastBlocks;
             _feed = new StateSyncFeed(dbContext.LocalCodeDb, dbContext.LocalStateDb, new MemDb(), _syncModeSelector, blockTree, _logManager);
-            _stateSyncDispatcher = new StateSyncDispatcher(_feed, _pool, new StateSyncAllocationStrategyFactory(), _logManager);
+            _stateSyncDispatcher = new StateSyncDispatcher<StateSyncBatch>(_feed, _pool, new StateSyncAllocationStrategyFactory<StateSyncBatch>(), _logManager);
         }
 
         private const int TimeoutLength = 1000;

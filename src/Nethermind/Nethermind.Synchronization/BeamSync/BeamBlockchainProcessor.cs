@@ -18,6 +18,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -249,7 +250,7 @@ namespace Nethermind.Synchronization.BeamSync
 
             try
             {
-                if (_logger.IsInfo) _logger.Info($"Beam processing block {block}");
+                if (_logger.IsInfo) _logger.Info($"Beam processing block {block} with {block.Transactions.Length} ttransactions");
                 _recoveryStep.RecoverData(block);
                 (IBlockchainProcessor beamProcessor, IStateReader stateReader) = CreateProcessor(block, new ReadOnlyDbProvider(_readOnlyDbProvider, true), _specProvider, _logManager);
 
@@ -276,7 +277,7 @@ namespace Nethermind.Synchronization.BeamSync
                     else
                     {
                         Interlocked.Increment(ref Metrics.BeamedBlocks);
-                        if(_logger.IsInfo) _logger.Info($"Successfully beam processed block {processedBlock.ToString(Block.Format.Short)} in {stopwatch.ElapsedMilliseconds}ms");
+                        if(_logger.IsWarn) _logger.Warn($"Successfully beam processed block {processedBlock.ToString(Block.Format.Short)} with {processedBlock.Transactions.Length} transactions in {stopwatch.ElapsedMilliseconds}ms");
                     }
                 }).ContinueWith(t =>
                 {
@@ -334,9 +335,12 @@ namespace Nethermind.Synchronization.BeamSync
                 }
             }
 
+            int numberOfTasks = 0;
+            
             string description = $"[miner {miner}]";
             Task minerTask = Task<int>.Run(() =>
             {
+                Interlocked.Increment(ref numberOfTasks);
                 BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty ?? 0;
                 BeamSyncContext.Description.Value = description;
                 BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
@@ -350,6 +354,7 @@ namespace Nethermind.Synchronization.BeamSync
 
             Task senderTask = Task<int>.Run(() =>
             {
+                Interlocked.Increment(ref numberOfTasks);
                 BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty ?? 0;
                 BeamSyncContext.Cancelled.Value = cancellationToken.Token;
                 for (int i = 0; i < block.Transactions.Length; i++)
@@ -368,6 +373,7 @@ namespace Nethermind.Synchronization.BeamSync
 
             Task storageTask = Task<int>.Run(() =>
             {
+                Interlocked.Increment(ref numberOfTasks);
                 BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty ?? 0;
                 BeamSyncContext.Cancelled.Value = cancellationToken.Token;
                 for (int i = 0; i < block.Transactions.Length; i++)
@@ -386,30 +392,30 @@ namespace Nethermind.Synchronization.BeamSync
             {
                 if (_logger.IsDebug) _logger.Debug(t.IsFaulted ? $"storage prefetch failed {t.Exception.Message}" : $"storage prefetch complete - resolved {t.Result}");
             });
+            
+            // Task codeTask = Task<int>.Run(() =>
+            // {
+            //     BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty.Value;
+            //     BeamSyncContext.Cancelled.Value = cancellationToken.Token;
+            //     for (int i = 0; i < block.Transactions.Length; i++)
+            //     {
+            //         Transaction tx = block.Transactions[i];
+            //         if (tx.To != null)
+            //         {
+            //             BeamSyncContext.Description.Value = $"[code prefetch {i}]";
+            //             BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
+            //             stateReader.GetCode(stateRoot, tx.To);
+            //         }
+            //     }
+            //
+            //     return BeamSyncContext.ResolvedInContext.Value;
+            // }).ContinueWith(t =>
+            // {
+            //     if (_logger.IsDebug) _logger.Debug(t.IsFaulted ? $"code prefetch failed {t.Exception.Message}" : $"code prefetch complete - resolved {t.Result}");
+            // });
 
-
-            Task codeTask = Task<int>.Run(() =>
-            {
-                BeamSyncContext.MinimumDifficulty.Value = block.TotalDifficulty.Value;
-                BeamSyncContext.Cancelled.Value = cancellationToken.Token;
-                for (int i = 0; i < block.Transactions.Length; i++)
-                {
-                    Transaction tx = block.Transactions[i];
-                    if (tx.To != null)
-                    {
-                        BeamSyncContext.Description.Value = $"[code prefetch {i}]";
-                        BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
-                        stateReader.GetCode(stateRoot, tx.To);
-                    }
-                }
-
-                return BeamSyncContext.ResolvedInContext.Value;
-            }).ContinueWith(t =>
-            {
-                if (_logger.IsDebug) _logger.Debug(t.IsFaulted ? $"code prefetch failed {t.Exception.Message}" : $"code prefetch complete - resolved {t.Result}");
-            });
-
-            return Task.WhenAll(minerTask, senderTask, codeTask, storageTask);
+            // return Task.WhenAll(minerTask, senderTask, codeTask, storageTask);
+            return Task.WhenAll(minerTask, senderTask, storageTask);
         }
 
         private void UnregisterListeners()

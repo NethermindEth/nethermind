@@ -25,7 +25,7 @@ namespace Nethermind.Synchronization.ParallelSync
         int FeedId { get; }
         SyncFeedState CurrentState { get; }
         event EventHandler<SyncFeedStateEventArgs> StateChanged;
-        Task<T> PrepareRequest();
+        ValueTask<T> PrepareRequest();
         SyncResponseHandlingResult HandleResponse(T response);
         
         /// <summary>

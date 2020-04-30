@@ -155,7 +155,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        public override Task<HeadersSyncBatch> PrepareRequest()
+        public override ValueTask<HeadersSyncBatch> PrepareRequest()
         {
             HandleDependentBatches();
 
@@ -179,7 +179,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 LogStateOnPrepare();
             }
 
-            return Task.FromResult(batch);
+            return batch == null ? default : new ValueTask<HeadersSyncBatch>(batch);
         }
 
         private HeadersSyncBatch BuildNewBatch()

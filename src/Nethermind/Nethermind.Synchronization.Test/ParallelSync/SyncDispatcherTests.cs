@@ -193,7 +193,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             private int _pendingRequests;
 
-            public override async Task<TestBatch> PrepareRequest()
+            public override async ValueTask<TestBatch> PrepareRequest()
             {
                 TestBatch testBatch;
                 if (_returned.TryDequeue(out TestBatch returned))

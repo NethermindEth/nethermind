@@ -167,7 +167,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        public override Task<BodiesSyncBatch> PrepareRequest()
+        public override ValueTask<BodiesSyncBatch> PrepareRequest()
         {
             HandleDependentBatches();
 
@@ -182,27 +182,27 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (lowestInsertedHeader != 1 &&
                     (lowestInsertedHeader ?? _pivotNumber) > (lowestInsertedBody ?? _pivotNumber) - 1024 * 32)
                 {
-                    return Task.FromResult((BodiesSyncBatch) null);
+                    return default;
                 }
 
                 Keccak hash = _lowestRequestedBodyHash;
                 BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (header == null)
                 {
-                    return Task.FromResult((BodiesSyncBatch) null);
+                    return default;
                 }
 
                 if (_lowestRequestedBodyHash != _pivotHash)
                 {
                     if (header.ParentHash == _blockTree.Genesis.Hash)
                     {
-                        return Task.FromResult((BodiesSyncBatch) null);
+                        return default;
                     }
 
                     header = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                     if (header == null)
                     {
-                        return Task.FromResult((BodiesSyncBatch) null);
+                        return default;
                     }
                 }
 
@@ -235,7 +235,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 if (collectedRequests == 0)
                 {
-                    return Task.FromResult((BodiesSyncBatch) null);
+                    return default;
                 }
 
                 //only for the final one
@@ -261,7 +261,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 LogStateOnPrepare();
             }
 
-            return Task.FromResult(batch);
+            return new ValueTask<BodiesSyncBatch>(batch);
         }
 
         private void HandleDependentBatches()

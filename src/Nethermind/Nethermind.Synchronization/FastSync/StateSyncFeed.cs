@@ -640,7 +640,7 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        public override async Task<StateSyncBatch> PrepareRequest()
+        public override async ValueTask<StateSyncBatch> PrepareRequest()
         {
             if ((_syncModeSelector.Current & SyncMode.StateNodes) != SyncMode.StateNodes)
             {

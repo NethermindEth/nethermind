@@ -14,18 +14,69 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using System.Diagnostics;
 
 namespace Nethermind.Synchronization.FastSync
 {
+    public interface IStateSyncBatch
+    {
+        IEnumerable<StateSyncItem> AllRequestedNodes { get; }
+
+        byte[][] Responses { set; }
+    }
+
+    public class MultiStateSyncBatch : IStateSyncBatch
+    {
+        public IEnumerable<StateSyncBatch> Batches { get; }
+
+        public MultiStateSyncBatch(IEnumerable<StateSyncBatch> batches)
+        {
+            Batches = batches;
+        }
+
+        public IEnumerable<StateSyncItem> AllRequestedNodes
+        {
+            get
+            {
+                foreach (StateSyncBatch stateSyncBatch in Batches)
+                {
+                    foreach (StateSyncItem stateSyncItem in stateSyncBatch.AllRequestedNodes)
+                    {
+                        yield return stateSyncItem;
+                    }
+                }
+            }
+        }
+
+        public byte[][] Responses
+        {
+            set
+            {
+                int indexInResponse = 0;
+                foreach (StateSyncBatch batch in Batches)
+                {
+                    batch.Responses = new byte[batch.RequestedNodes.Length][];
+                    for (int i = 0; i < batch.RequestedNodes.Length; i++)
+                    {
+                        batch.Responses[i] = value[indexInResponse];
+                        indexInResponse++;
+                    }
+                }
+            }
+        }
+    }
+
     [DebuggerDisplay("Requested Nodes: {RequestedNodes?.Length ?? 0}, Responses: {Responses?.Length ?? 0}, Assigned: {AssignedPeer?.Current}")]
-    public class StateSyncBatch
+    public class StateSyncBatch : IStateSyncBatch
     {
         public StateSyncItem[] RequestedNodes { get; set; }
-        
+
+        public IEnumerable<StateSyncItem> AllRequestedNodes => RequestedNodes;
+
         public byte[][] Responses { get; set; }
 
-        public int ConsumerId { get; set; }
+        public int FeedId { get; set; }
 
         public override string ToString()
         {

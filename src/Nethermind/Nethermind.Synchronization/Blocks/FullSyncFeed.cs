@@ -58,14 +58,14 @@ namespace Nethermind.Synchronization.Blocks
             return DownloaderOptions.WithBodies | DownloaderOptions.Process;
         }
 
-        public override Task<BlocksRequest> PrepareRequest()
+        public override ValueTask<BlocksRequest> PrepareRequest()
         {
             if (ShouldBeActive(_syncModeSelector.Current))
             {
-                return Task.FromResult(_blocksRequest);
+                return new ValueTask<BlocksRequest>(_blocksRequest);
             }
 
-            return Task.FromResult((BlocksRequest) null);
+            return default;
         }
 
         public override SyncResponseHandlingResult HandleResponse(BlocksRequest response)

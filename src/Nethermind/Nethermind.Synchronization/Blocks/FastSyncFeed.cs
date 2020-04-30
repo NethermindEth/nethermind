@@ -66,14 +66,14 @@ namespace Nethermind.Synchronization.Blocks
 
         private BlocksRequest _blocksRequest;
 
-        public override Task<BlocksRequest> PrepareRequest()
+        public override ValueTask<BlocksRequest> PrepareRequest()
         {
             if ((_syncModeSelector.Current & SyncMode.FastSync) == SyncMode.FastSync)
             {
-                return Task.FromResult(_blocksRequest);
+                return new ValueTask<BlocksRequest>(_blocksRequest);
             }
 
-            return Task.FromResult((BlocksRequest) null);
+            return default;
         }
 
         public override SyncResponseHandlingResult HandleResponse(BlocksRequest response)

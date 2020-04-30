@@ -119,8 +119,6 @@ namespace Nethermind.Synchronization.BeamSync
 
         public string Name => _tempDb.Name;
 
-        private int _resolvedKeysCount;
-
         private object _diffLock = new object();
 
         private HashSet<Keccak> _requestedNodes = new HashSet<Keccak>();
@@ -148,6 +146,7 @@ namespace Nethermind.Synchronization.BeamSync
                 // if we keep timing out then we would finally reject the block (but only shelve it instead of marking invalid)
 
                 bool wasInDb = true;
+                int timeToWait = 10;
                 while (true)
                 {
                     if (BeamSyncContext.Cancelled.Value.IsCancellationRequested)
@@ -173,8 +172,6 @@ namespace Nethermind.Synchronization.BeamSync
                     var fromMem = _tempDb[key] ?? _stateDb[key];
                     if (fromMem == null)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Beam sync miss - {key.ToHexString()} - retrieving");
-
                         if (Bytes.AreEqual(key, Keccak.Zero.Bytes))
                         {
                             // we store sync progress data at Keccak.Zero;
@@ -196,16 +193,19 @@ namespace Nethermind.Synchronization.BeamSync
 
                         wasInDb = false;
                         // _logger.Info($"BEAM SYNC Asking for {key.ToHexString()} - resolved keys so far {_resolvedKeysCount}");
-
+                        
                         lock (_requestedNodes)
                         {
-                            _requestedNodes.Add(new Keccak(key));
+                            if (_requestedNodes.Add(new Keccak(key)))
+                            {
+                                if (_logger.IsTrace) _logger.Trace($"Beam sync miss - {key.ToHexString()} - retrieving");
+                                Activate();
+                            }
                         }
 
+                        timeToWait = Math.Min(100, timeToWait * 2);
+                        _autoReset.WaitOne(timeToWait); // are we starving the thread pool here?
                         // _logger.Error($"Requested {key.ToHexString()}");
-
-                        Activate();
-                        _autoReset.WaitOne(50);
                     }
                     else
                     {
@@ -278,18 +278,18 @@ namespace Nethermind.Synchronization.BeamSync
             _stateDb.Clear();
         }
 
-        public override Task<StateSyncBatch> PrepareRequest()
+        public override ValueTask<StateSyncBatch> PrepareRequest()
         {
             StateSyncBatch request;
             lock (_requestedNodes)
             {
                 if (_requestedNodes.Count == 0)
                 {
-                    return Task.FromResult((StateSyncBatch) null);
+                    return default;
                 }
 
                 request = new StateSyncBatch();
-                request.ConsumerId = FeedId;
+                request.FeedId = FeedId;
 
                 if (_requestedNodes.Count < 256)
                 {
@@ -318,14 +318,14 @@ namespace Nethermind.Synchronization.BeamSync
             }
 
             Interlocked.Increment(ref Metrics.BeamedRequests);
-            return Task.FromResult(request);
+            return new ValueTask<StateSyncBatch>(request);
         }
 
         public override SyncResponseHandlingResult HandleResponse(StateSyncBatch stateSyncBatch)
         {
-            if (stateSyncBatch.ConsumerId != FeedId)
+            if (stateSyncBatch.FeedId != FeedId)
             {
-                if(_logger.IsWarn) _logger.Warn($"Beam sync response sent by feed {stateSyncBatch.ConsumerId} came back to feed {FeedId}");
+                if(_logger.IsWarn) _logger.Warn($"Beam sync response sent by feed {stateSyncBatch.FeedId} came back to feed {FeedId}");
                 return SyncResponseHandlingResult.InternalError;
             }
 
