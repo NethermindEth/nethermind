@@ -115,6 +115,24 @@ jobs:
     - name: Nethermind.Mining.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Mining.Test
+  neth-tests4:
+    name: Nethermind Tests 4
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Updating submodules
+      run: git submodule update --init src/Dirichlet src/rocksdb-sharp
+    - name: Installing Linux packages
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: Installing macOS packages
+      if: matrix.os == 'macOS'
+      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
     - name: Nethermind.Facade.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Facade.Test
@@ -130,8 +148,8 @@ jobs:
     - name: Nethermind.Synchronization.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Synchronization.Test
-  neth-tests4:
-    name: Nethermind Tests 4
+  neth-tests5:
+    name: Nethermind Tests 5
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
