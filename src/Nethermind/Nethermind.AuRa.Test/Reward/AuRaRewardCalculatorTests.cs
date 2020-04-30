@@ -104,10 +104,10 @@ namespace Nethermind.AuRa.Test.Reward
             action.Should().Throw<ArgumentException>();
         }
         
-        [TestCase(0, 200)]
-        [TestCase(5, 200)]
-        [TestCase(9, 200)]
-        public void calculates_rewards_correctly_before_contract_transition(long blockNumber, long expectedReward)
+        [TestCase(0, 200ul)]
+        [TestCase(5, 200ul)]
+        [TestCase(9, 200ul)]
+        public void calculates_rewards_correctly_before_contract_transition(long blockNumber, ulong expectedReward)
         {
             _block.Header.Number = blockNumber;
             var calculator = new AuRaRewardCalculator(_auraParameters, _abiEncoder, _transactionProcessor);
@@ -115,9 +115,9 @@ namespace Nethermind.AuRa.Test.Reward
             result.Should().BeEquivalentTo(new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.Block));
         }
         
-        [TestCase(10, 100)]
-        [TestCase(15, 150)]
-        public void calculates_rewards_correctly_after_contract_transition(long blockNumber, long expectedReward)
+        [TestCase(10, 100ul)]
+        [TestCase(15, 150ul)]
+        public void calculates_rewards_correctly_after_contract_transition(long blockNumber, ulong expectedReward)
         {
             _block.Header.Number = blockNumber;
             var expected = new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.Block);
@@ -131,14 +131,14 @@ namespace Nethermind.AuRa.Test.Reward
         {
             get
             {
-                yield return new TestCaseData(10, 100, TestItem.AddressA);
-                yield return new TestCaseData(50, 150, TestItem.AddressB);
-                yield return new TestCaseData(150, 200, TestItem.AddressC);
+                yield return new TestCaseData(10, 100ul, TestItem.AddressA);
+                yield return new TestCaseData(50, 150ul, TestItem.AddressB);
+                yield return new TestCaseData(150, 200ul, TestItem.AddressC);
             }
         }
 
         [TestCaseSource(nameof(SubsequentTransitionsTestCases))]
-        public void calculates_rewards_correctly_after_subsequent_contract_transitions(long blockNumber, long expectedReward, Address address)
+        public void calculates_rewards_correctly_after_subsequent_contract_transitions(long blockNumber, ulong expectedReward, Address address)
         {
             _auraParameters.BlockRewardContractTransitions = new Dictionary<long, Address>()
             {
@@ -153,9 +153,9 @@ namespace Nethermind.AuRa.Test.Reward
             result.Should().BeEquivalentTo(expected);
         }
         
-        [TestCase(10, 100)]
-        [TestCase(15, 150)]
-        public void calculates_rewards_correctly_for_ommers(long blockNumber, long expectedReward)
+        [TestCase(10, 100ul)]
+        [TestCase(15, 150ul)]
+        public void calculates_rewards_correctly_for_ommers(long blockNumber, ulong expectedReward)
         {
             _block.Header.Number = blockNumber;
             _block.Body = new BlockBody(_block.Body.Transactions, new[]
