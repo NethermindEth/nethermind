@@ -150,11 +150,6 @@ namespace Nethermind.Synchronization.BeamSync
                 bool wasInDb = true;
                 while (true)
                 {
-                    if (BeamSyncContext.Cancelled.Value.IsCancellationRequested)
-                    {
-                        throw new BeamCanceledException("Beam cancellation requested");
-                    }
-
                     if (_isDisposed)
                     {
                         throw new ObjectDisposedException("Beam Sync DB disposed");
@@ -174,6 +169,11 @@ namespace Nethermind.Synchronization.BeamSync
                     if (fromMem == null)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Beam sync miss - {key.ToHexString()} - retrieving");
+                        
+                        if (BeamSyncContext.Cancelled.Value.IsCancellationRequested)
+                        {
+                            throw new BeamCanceledException("Beam cancellation requested");
+                        }
 
                         if (Bytes.AreEqual(key, Keccak.Zero.Bytes))
                         {
