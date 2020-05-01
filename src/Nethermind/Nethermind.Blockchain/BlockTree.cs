@@ -316,10 +316,16 @@ namespace Nethermind.Blockchain
                 if (level == null)
                 {
                     _logger.Warn($"Missing level - {blockNumber}");
-                    break;
+                    // break; <- was here before
+                    
+                    bool shouldContinue = await noneFound(blockNumber);
+                    if (!shouldContinue)
+                    {
+                        break;
+                    }
                 }
 
-                int numberOfBlocksAtThisLevel = level.BlockInfos.Length;
+                int numberOfBlocksAtThisLevel = level?.BlockInfos.Length ?? 0;
                 for (int blockIndex = 0; blockIndex < numberOfBlocksAtThisLevel; blockIndex++)
                 {
                     // if we delete blocks during the process then the number of blocks at this level will be falling and we need to adjust the index
@@ -955,7 +961,14 @@ namespace Nethermind.Blockchain
             return childHash;
         }
 
-        public bool IsMainChain(BlockHeader blockHeader) => LoadLevel(blockHeader.Number).MainChainBlock?.BlockHash.Equals(blockHeader.Hash) == true;
+        public bool IsMainChain(BlockHeader blockHeader)
+        {
+            
+            ChainLevelInfo chainLevelInfo = LoadLevel(blockHeader.Number);
+            bool isOn = chainLevelInfo.MainChainBlock?.BlockHash.Equals(blockHeader.Hash) == true;
+            _logger.Warn($"{blockHeader.ToString(BlockHeader.Format.Short)} on main chain? {isOn}");
+            return isOn;
+        }
 
         public bool IsMainChain(Keccak blockHash)
         {
@@ -1047,7 +1060,7 @@ namespace Nethermind.Blockchain
         [Todo(Improve.MissingFunctionality, "Recalculate bloom storage on reorg.")]
         private void MoveToMain(Block block, BatchWrite batch, bool wasProcessed)
         {
-            if (_logger.IsTrace) _logger.Trace($"Moving {block.ToString(Block.Format.Short)} to main");
+            if (_logger.IsError) _logger.Error($"Moving {block.ToString(Block.Format.Short)} to main");
 
             ChainLevelInfo level = LoadLevel(block.Number);
             int? index = FindIndex(block.Hash, level);
@@ -1085,6 +1098,7 @@ namespace Nethermind.Blockchain
 
                 if (wasProcessed)
                 {
+                    if (_logger.IsWarn) _logger.Warn($"Updating head block with {block.Number}");
                     UpdateHeadBlock(block);
                 }
             }
@@ -1472,10 +1486,15 @@ namespace Nethermind.Blockchain
                 long? gapStart = null;
                 long? gapEnd = null;
 
+                bool hadMissingLevels = false;
                 Keccak firstInvalidHash = null;
                 bool shouldDelete = false;
 
-                Task<bool> NoneFound(long number) => Task.FromResult(false);
+                Task<bool> NoneFound(long number)
+                {
+                    hadMissingLevels = true;
+                    return Task.FromResult(true);
+                }
 
                 Task<bool> HeaderFound(BlockHeader header)
                 {
@@ -1490,8 +1509,9 @@ namespace Nethermind.Blockchain
 
                 Task<bool> BlockFound(Block block)
                 {
-                    if (firstInvalidHash != null && !shouldDelete)
+                    if ((hadMissingLevels || firstInvalidHash != null) && !shouldDelete)
                     {
+                        firstInvalidHash ??= block.Hash;
                         gapEnd = block.Number;
                         shouldDelete = true;
                     }
