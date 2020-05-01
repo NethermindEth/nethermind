@@ -22,16 +22,19 @@ namespace Nethermind.Synchronization.FastBlocks
         /// <summary>
         /// Batches that are so close to the lowest inserted header will be prioritized
         /// </summary>
-        public const long ForHeaders = 16 * 1024;
-        
+        // public const long ForHeaders = 16 * 1024;
+        public const long ForHeaders = FastBlocksQueueLimits.ForHeaders;
+
         /// <summary>
         /// Batches that are so close to the lowest inserted body will be prioritized
         /// </summary>
-        public const long ForBodies = 2 * 1024;
-        
+        // public const long ForBodies = 2 * 1024;
+        public const long ForBodies = FastBlocksQueueLimits.ForBodies;
+
         /// <summary>
         /// Batches that are so close to the lowest inserted receipt will be prioritized
         /// </summary>
-        public const long ForReceipts = 2 * 1024;
+        // public const long ForReceipts = 2 * 1024;
+        public const long ForReceipts = FastBlocksQueueLimits.ForReceipts;
     }
 }
