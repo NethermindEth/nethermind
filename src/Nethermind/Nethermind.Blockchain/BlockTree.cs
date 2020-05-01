@@ -417,7 +417,6 @@ namespace Nethermind.Blockchain
                 Task<bool> NoneFound(long number)
                 {
                     _chainLevelInfoRepository.Delete(number);
-                    BestKnownNumber = number - 1;
                     return Task.FromResult(false);
                 }
 
@@ -875,6 +874,7 @@ namespace Nethermind.Blockchain
         private void DeleteBlocks(Keccak deletePointer)
         {
             BlockHeader deleteHeader = FindHeader(deletePointer, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            
             long currentNumber = deleteHeader.Number;
             Keccak currentHash = deleteHeader.Hash;
             Keccak nextHash = null;
@@ -963,11 +963,9 @@ namespace Nethermind.Blockchain
 
         public bool IsMainChain(BlockHeader blockHeader)
         {
-            
             ChainLevelInfo chainLevelInfo = LoadLevel(blockHeader.Number);
-            bool isOn = chainLevelInfo.MainChainBlock?.BlockHash.Equals(blockHeader.Hash) == true;
-            _logger.Warn($"{blockHeader.ToString(BlockHeader.Format.Short)} on main chain? {isOn}");
-            return isOn;
+            bool isMain = chainLevelInfo.MainChainBlock?.BlockHash.Equals(blockHeader.Hash) == true;
+            return isMain;
         }
 
         public bool IsMainChain(Keccak blockHash)
@@ -1098,7 +1096,6 @@ namespace Nethermind.Blockchain
 
                 if (wasProcessed)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Updating head block with {block.Number}");
                     UpdateHeadBlock(block);
                 }
             }
