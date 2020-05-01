@@ -209,7 +209,7 @@ namespace Nethermind.Consensus.Clique
 
         private Snapshot? GetSnapshot(long number, Keccak hash)
         {
-            if(_logger.IsWarn) _logger.Warn($"Getting snapshot for {number}");
+            if(_logger.IsTrace) _logger.Trace($"Getting snapshot for {number}");
             // If an in-memory snapshot was found, use that
             Snapshot cachedSnapshot = _snapshotCache.Get(hash);
             if (cachedSnapshot != null) return cachedSnapshot;
