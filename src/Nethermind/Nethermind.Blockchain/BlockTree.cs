@@ -1058,8 +1058,6 @@ namespace Nethermind.Blockchain
         [Todo(Improve.MissingFunctionality, "Recalculate bloom storage on reorg.")]
         private void MoveToMain(Block block, BatchWrite batch, bool wasProcessed)
         {
-            if (_logger.IsError) _logger.Error($"Moving {block.ToString(Block.Format.Short)} to main");
-
             ChainLevelInfo level = LoadLevel(block.Number);
             int? index = FindIndex(block.Hash, level);
             if (index == null)
