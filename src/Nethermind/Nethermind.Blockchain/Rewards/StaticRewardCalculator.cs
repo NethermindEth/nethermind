@@ -22,7 +22,7 @@ namespace Nethermind.Blockchain.Rewards
 {
     public class StaticRewardCalculator : IRewardCalculator
     {
-        private readonly BigInteger _blockReward;
+        private readonly UInt256 _blockReward;
 
         public StaticRewardCalculator(UInt256 blockReward)
         {

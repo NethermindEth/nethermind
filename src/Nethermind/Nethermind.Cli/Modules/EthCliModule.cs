@@ -37,7 +37,7 @@ namespace Nethermind.Cli.Modules
             tx.Gas = Transaction.BaseTxGasCost;
             tx.GasPrice = (UInt256) Engine.JintEngine.GetValue("gasPrice").AsNumber();
             tx.To = address;
-            tx.Nonce = (ulong) NodeManager.Post<long>("eth_getTransactionCount", address, blockNumber).Result;
+            tx.Nonce = (ulong) NodeManager.Post<long>("eth_getTransactionCount", from, blockNumber).Result;
             tx.From = from;
 
             Keccak keccak = NodeManager.Post<Keccak>("eth_sendTransaction", tx).Result;

@@ -46,12 +46,12 @@ namespace Nethermind.Blockchain.Rewards
             BlockReward[] rewards = new BlockReward[1 + block.Ommers.Length];
 
             BlockHeader blockHeader = block.Header;
-            BigInteger mainReward = blockReward + (uint) block.Ommers.Length * (blockReward >> 5);
+            UInt256 mainReward = blockReward + (uint) block.Ommers.Length * (blockReward >> 5);
             rewards[0] = new BlockReward(blockHeader.Beneficiary, mainReward);
 
             for (int i = 0; i < block.Ommers.Length; i++)
             {
-                BigInteger ommerReward = GetOmmerReward(blockReward, blockHeader, block.Ommers[i]);
+                UInt256 ommerReward = GetOmmerReward(blockReward, blockHeader, block.Ommers[i]);
                 rewards[i + 1] = new BlockReward(block.Ommers[i].Beneficiary, ommerReward, BlockRewardType.Uncle);
             }
 
