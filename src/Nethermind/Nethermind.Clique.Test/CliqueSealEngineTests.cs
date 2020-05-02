@@ -36,7 +36,6 @@ using Nethermind.Trie;
 using Nethermind.Wallet;
 using NUnit.Framework;
 
-
 namespace Nethermind.Clique.Test
 {
     [Parallelizable(ParallelScope.Self)]

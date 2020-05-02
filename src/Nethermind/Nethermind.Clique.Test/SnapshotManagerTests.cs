@@ -28,7 +28,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using NUnit.Framework;
 
-
 namespace Nethermind.Clique.Test
 {
     [Parallelizable(ParallelScope.Self)]

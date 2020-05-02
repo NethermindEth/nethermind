@@ -32,7 +32,6 @@ using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using Nethermind.Wallet;
 
-
 namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
 {
     public static class BlockchainBridgeBuilder

@@ -41,7 +41,6 @@ using Newtonsoft.Json;
 using NSubstitute;
 using NUnit.Framework;
 
-
 namespace Nethermind.AuRa.Test.Validators
 {
     public class ContractValidatorTests

@@ -46,7 +46,6 @@ using Nethermind.TxPool.Storages;
 using Nethermind.Wallet;
 using NUnit.Framework;
 
-
 namespace Nethermind.Clique.Test
 {
     [TestFixture]
