@@ -20,6 +20,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -42,15 +43,18 @@ namespace Nethermind.Blockchain.Visitors
         private long? _lastProcessedLevel;
         private long? _processingGapStart;
 
-        public StartupBlockTreeFixer(IBlockTree blockTree, ILogger logger)
+        public StartupBlockTreeFixer(ISyncConfig syncConfig, IBlockTree blockTree, ILogger logger)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-            _startNumber = (_blockTree.Head?.Number ?? 0) + 1;
-            _blocksToLoad = _blockTree.BestKnownNumber - _startNumber + 1;
+            long assumedHead = _blockTree.Head?.Number ?? 0;
+            _startNumber = Math.Max(syncConfig.PivotNumberParsed, assumedHead + 1);
+            _blocksToLoad = assumedHead > _startNumber ? _blockTree.BestKnownNumber - _startNumber : 0;
 
             _currentLevelNumber = _startNumber - 1; // because we always increment on entering
+
+            LogPlannedOperation();
         }
 
         public long StartLevelInclusive => _startNumber;
@@ -70,6 +74,11 @@ namespace Nethermind.Blockchain.Visitors
             _currentLevelNumber++;
             _currentLevel = chainLevelInfo;
 
+            if ((_currentLevelNumber - StartLevelInclusive) % 10000 == 0)
+            {
+                if(_logger.IsInfo) _logger.Info($"Reviewed {_currentLevelNumber - StartLevelInclusive} blocks out of {EndLevelExclusive - StartLevelInclusive}");
+            }
+            
             if (_gapStart != null)
             {
                 _currentLevel = null;
@@ -142,6 +151,7 @@ namespace Nethermind.Blockchain.Visitors
 
             if (_gapStart != null)
             {
+                if(_logger.IsInfo) _logger.Info($"Found a gap in blocks after last shutdown - deleting {_currentLevelNumber}");
                 return Task.FromResult(LevelVisitOutcome.DeleteLevel);
             }
 
@@ -159,6 +169,18 @@ namespace Nethermind.Blockchain.Visitors
             if (_gapStart != null)
             {
                 throw new InvalidOperationException($"Not expecting to visit block at {_currentLevelNumber} because the gap has already been identified.");
+            }
+        }
+        
+        private void LogPlannedOperation()
+        {
+            if (_blocksToLoad == 0)
+            {
+                if (_logger.IsInfo) _logger.Info("No block tree levels to review for fixes. All fine.");
+            }
+            else
+            {
+                if (_logger.IsInfo) _logger.Info($"Found {_blocksToLoad} block tree levels to review for fixes starting from {StartLevelInclusive}");
             }
         }
     }
