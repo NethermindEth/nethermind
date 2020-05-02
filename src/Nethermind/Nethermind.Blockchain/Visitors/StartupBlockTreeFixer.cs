@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Visitors
 
             long assumedHead = _blockTree.Head?.Number ?? 0;
             _startNumber = Math.Max(syncConfig.PivotNumberParsed, assumedHead + 1);
-            _blocksToLoad = assumedHead > _startNumber ? _blockTree.BestKnownNumber - _startNumber : 0;
+            _blocksToLoad = (assumedHead + 1) >= _startNumber ? (_blockTree.BestKnownNumber - _startNumber + 1) : 0;
 
             _currentLevelNumber = _startNumber - 1; // because we always increment on entering
 
