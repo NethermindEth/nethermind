@@ -41,7 +41,6 @@ using Nethermind.Store.Bloom;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 
-
 namespace Nethermind.JsonRpc.Benchmark
 {
     [MemoryDiagnoser]

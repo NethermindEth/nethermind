@@ -39,7 +39,6 @@ using Nethermind.Store.Bloom;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
-
 namespace Nethermind.JsonRpc.Test.Modules.Trace
 {
     [Parallelizable(ParallelScope.Self)]

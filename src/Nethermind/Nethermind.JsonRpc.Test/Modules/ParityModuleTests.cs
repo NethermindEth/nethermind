@@ -33,7 +33,6 @@ using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using NUnit.Framework;
 
-
 namespace Nethermind.JsonRpc.Test.Modules
 {
     [Parallelizable(ParallelScope.Self)]

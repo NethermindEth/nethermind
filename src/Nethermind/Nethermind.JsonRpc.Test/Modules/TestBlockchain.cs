@@ -42,7 +42,6 @@ using Nethermind.Store.Bloom;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 
-
 namespace Nethermind.JsonRpc.Test.Modules
 {
     public class TestBlockchain : IDisposable

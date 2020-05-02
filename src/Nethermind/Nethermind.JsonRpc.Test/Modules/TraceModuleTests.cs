@@ -55,7 +55,6 @@ using Newtonsoft.Json;
 using NSubstitute;
 using NUnit.Framework;
 
-
 namespace Nethermind.JsonRpc.Test.Modules
 {
     [Parallelizable(ParallelScope.Self)]

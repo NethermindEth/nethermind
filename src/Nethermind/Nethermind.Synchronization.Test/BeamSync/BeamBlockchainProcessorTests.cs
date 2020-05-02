@@ -36,7 +36,6 @@ using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
 
-
 namespace Nethermind.Synchronization.Test.BeamSync
 {
     [Parallelizable(ParallelScope.Self)]

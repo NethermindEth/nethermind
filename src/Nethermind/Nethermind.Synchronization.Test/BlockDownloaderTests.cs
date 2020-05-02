@@ -48,7 +48,6 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
-
 namespace Nethermind.Synchronization.Test
 {
     [Parallelizable(ParallelScope.Self)]

@@ -40,7 +40,6 @@ using Nethermind.Synchronization.StateSync;
 using Nethermind.Trie;
 using NUnit.Framework;
 
-
 namespace Nethermind.Synchronization.Test.FastSync
 {
     [TestFixture]
