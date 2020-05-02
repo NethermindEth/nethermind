@@ -44,6 +44,7 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using NUnit.Framework;
+using BlockTree = Nethermind.Blockchain.BlockTree;
 using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Synchronization.Test

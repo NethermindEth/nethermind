@@ -19,8 +19,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Numerics;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
@@ -42,16 +40,13 @@ using Nethermind.TxPool;
 namespace Nethermind.Blockchain
 {
     [Todo(Improve.Refactor, "After the fast sync work there are some duplicated code parts for the 'by header' and 'by block' approaches.")]
-    public class BlockTree : IBlockTree
+    public partial class BlockTree : IBlockTree
     {
         private const int CacheSize = 64;
         private readonly ICache<Keccak, Block> _blockCache = new LruCacheWithRecycling<Keccak, Block>(CacheSize, CacheSize, "blocks");
         private readonly ICache<Keccak, BlockHeader> _headerCache = new LruCacheWithRecycling<Keccak, BlockHeader>(CacheSize, CacheSize, "headers");
 
         private const int BestKnownSearchLimit = 256_000_000;
-        public const int DbLoadBatchSize = 4000;
-
-        private long _currentDbLoadBatchEnd;
 
         private readonly object _batchInsertLock = new object();
 
@@ -300,178 +295,6 @@ namespace Nethermind.Blockchain
             }
 
             return result;
-        }
-
-        private async Task VisitBlocks(long startNumber, long blocksToVisit, Func<Block, Task<bool>> blockFound, Func<BlockHeader, Task<bool>> headerFound, Func<long, Task<bool>> noneFound, CancellationToken cancellationToken)
-        {
-            long blockNumber = startNumber;
-            for (long i = 0; i < blocksToVisit; i++)
-            {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    break;
-                }
-
-                ChainLevelInfo level = LoadLevel(blockNumber);
-                if (level == null)
-                {
-                    _logger.Warn($"Missing level - {blockNumber}");
-                    // break; <- was here before
-                    
-                    bool shouldContinue = await noneFound(blockNumber);
-                    if (!shouldContinue)
-                    {
-                        break;
-                    }
-                }
-
-                int numberOfBlocksAtThisLevel = level?.BlockInfos.Length ?? 0;
-                for (int blockIndex = 0; blockIndex < numberOfBlocksAtThisLevel; blockIndex++)
-                {
-                    // if we delete blocks during the process then the number of blocks at this level will be falling and we need to adjust the index
-                    Keccak hash = level.BlockInfos[blockIndex - (numberOfBlocksAtThisLevel - level.BlockInfos.Length)].BlockHash;
-                    Block block = FindBlock(hash, BlockTreeLookupOptions.None);
-                    if (block == null)
-                    {
-                        BlockHeader header = FindHeader(hash, BlockTreeLookupOptions.None);
-                        if (header == null)
-                        {
-                            bool shouldContinue = await noneFound(blockNumber);
-                            if (!shouldContinue)
-                            {
-                                break;
-                            }
-                        }
-                        else
-                        {
-                            bool shouldContinue = await headerFound(header);
-                            if (!shouldContinue)
-                            {
-                                break;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        bool shouldContinue = await blockFound(block);
-                        if (!shouldContinue)
-                        {
-                            break;
-                        }
-                    }
-                }
-
-                blockNumber++;
-            }
-
-            if (cancellationToken.IsCancellationRequested)
-            {
-                _logger.Info($"Canceled visiting blocks in DB at block {blockNumber}");
-            }
-
-            if (_logger.IsDebug) _logger.Debug($"Completed visiting blocks in DB at block {blockNumber} - best known {BestKnownNumber}");
-        }
-
-        public async Task LoadBlocksFromDb(
-            CancellationToken cancellationToken,
-            long? startBlockNumber = null,
-            int batchSize = DbLoadBatchSize,
-            int maxBlocksToLoad = int.MaxValue)
-        {
-            if (Genesis == null)
-            {
-                return;
-            }
-
-            try
-            {
-                CanAcceptNewBlocks = false;
-
-                byte[] deletePointer = _blockInfoDb.Get(DeletePointerAddressInDb);
-                if (deletePointer != null)
-                {
-                    Keccak deletePointerHash = new Keccak(deletePointer);
-                    if (_logger.IsInfo) _logger.Info($"Cleaning invalid blocks starting from {deletePointer}");
-                    DeleteBlocks(deletePointerHash);
-                }
-
-                if (startBlockNumber == null)
-                {
-                    startBlockNumber = Head?.Number ?? 0;
-                }
-                else
-                {
-                    Head = startBlockNumber == 0 ? null : FindBlock(startBlockNumber.Value - 1, BlockTreeLookupOptions.RequireCanonical);
-                }
-
-                // we will also load the current head block again to test continuity
-                long blocksToLoad = Math.Min(CountKnownAheadOfHead(), maxBlocksToLoad) + 1;
-                if (blocksToLoad == 0)
-                {
-                    if (_logger.IsInfo) _logger.Info("Found no blocks to load from DB");
-                    return;
-                }
-
-                if (_logger.IsInfo) _logger.Info($"Found {blocksToLoad} blocks to load from DB starting from current head block {Head?.Header.ToString(BlockHeader.Format.Short)}");
-
-                Task<bool> NoneFound(long number)
-                {
-                    _chainLevelInfoRepository.Delete(number);
-                    return Task.FromResult(false);
-                }
-
-                Task<bool> HeaderFound(BlockHeader header)
-                {
-                    BestSuggestedHeader = header;
-                    long i = header.Number - startBlockNumber.Value;
-                    // copy paste from below less batching
-                    if (i % batchSize == batchSize - 1 && i != blocksToLoad - 1 && Head.Number + batchSize < header.Number)
-                    {
-                        if (_logger.IsInfo) _logger.Info($"Loaded {i + 1} out of {blocksToLoad} headers from DB.");
-                    }
-
-                    return Task.FromResult(true);
-                }
-
-                async Task<bool> BlockFound(Block block)
-                {
-                    BestSuggestedHeader = block.Header;
-                    BestSuggestedBody = block;
-                    NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
-
-                    long i = block.Number - startBlockNumber.Value;
-                    if (i % batchSize == batchSize - 1 && i != blocksToLoad - 1 && Head.Number + batchSize < block.Number)
-                    {
-                        if (_logger.IsInfo)
-                        {
-                            _logger.Info($"Loaded {i + 1} out of {blocksToLoad} blocks from DB into processing queue, waiting for processor before loading more.");
-                        }
-
-                        _dbBatchProcessed = new TaskCompletionSource<object>();
-                        await using (cancellationToken.Register(() => _dbBatchProcessed.SetCanceled()))
-                        {
-                            _currentDbLoadBatchEnd = block.Number - batchSize;
-                            await _dbBatchProcessed.Task;
-                        }
-                    }
-
-                    return true;
-                }
-
-                await VisitBlocks(startBlockNumber.Value, blocksToLoad, BlockFound, HeaderFound, NoneFound, cancellationToken);
-            }
-            catch (Exception ex) when (!(ex is TaskCanceledException))
-            {
-                if (_logger.IsError) _logger.Error("Failed to load blocks from DB", ex);
-            }
-            catch (TaskCanceledException)
-            {
-                // ignore
-            }
-            finally
-            {
-                CanAcceptNewBlocks = true;
-            }
         }
 
         public AddBlockResult Insert(BlockHeader header)
@@ -1053,8 +876,6 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private TaskCompletionSource<object> _dbBatchProcessed;
-
         [Todo(Improve.MissingFunctionality, "Recalculate bloom storage on reorg.")]
         private void MoveToMain(Block block, BatchWrite batch, bool wasProcessed)
         {
@@ -1115,12 +936,6 @@ namespace Nethermind.Blockchain
             }
 
             if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.Short)} added to main chain");
-        }
-
-        private long CountKnownAheadOfHead()
-        {
-            long headNumber = Head?.Number ?? 0;
-            return BestKnownNumber - headNumber;
         }
 
         private void LoadHeadBlockAtStart()
@@ -1188,15 +1003,6 @@ namespace Nethermind.Blockchain
             Head = block;
             _blockInfoDb.Set(HeadAddressInDb, Head.Hash.Bytes);
             NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
-            if (_dbBatchProcessed != null)
-            {
-                if (block.Number == _currentDbLoadBatchEnd)
-                {
-                    TaskCompletionSource<object> completionSource = _dbBatchProcessed;
-                    _dbBatchProcessed = null;
-                    completionSource.SetResult(null);
-                }
-            }
         }
 
         private void UpdateOrCreateLevel(long number, BlockInfo blockInfo, bool setAsMain = false)
@@ -1459,75 +1265,6 @@ namespace Nethermind.Blockchain
             }
 
             return deleted;
-        }
-
-        public async Task FixFastSyncGaps(CancellationToken cancellationToken)
-        {
-            try
-            {
-                CanAcceptNewBlocks = false;
-                long startNumber = Head?.Number ?? 0;
-                if (startNumber == 0)
-                {
-                    return;
-                }
-
-                long blocksToLoad = CountKnownAheadOfHead();
-                if (blocksToLoad == 0)
-                {
-                    return;
-                }
-
-                long? gapStart = null;
-                long? gapEnd = null;
-
-                bool hadMissingLevels = false;
-                Keccak firstInvalidHash = null;
-                bool shouldDelete = false;
-
-                Task<bool> NoneFound(long number)
-                {
-                    hadMissingLevels = true;
-                    return Task.FromResult(true);
-                }
-
-                Task<bool> HeaderFound(BlockHeader header)
-                {
-                    if (firstInvalidHash == null)
-                    {
-                        gapStart = header.Number;
-                        firstInvalidHash = header.Hash;
-                    }
-
-                    return Task.FromResult(true);
-                }
-
-                Task<bool> BlockFound(Block block)
-                {
-                    if ((hadMissingLevels || firstInvalidHash != null) && !shouldDelete)
-                    {
-                        firstInvalidHash ??= block.Hash;
-                        gapEnd = block.Number;
-                        shouldDelete = true;
-                    }
-
-                    return Task.FromResult(true);
-                }
-
-                await VisitBlocks(startNumber + 1, blocksToLoad, BlockFound, HeaderFound, NoneFound, cancellationToken);
-
-                if (shouldDelete)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Deleting blocks starting with {firstInvalidHash} due to the gap found between {gapStart} and {gapEnd}");
-                    DeleteBlocks(firstInvalidHash);
-                    BestSuggestedHeader = Head?.Header;
-                    BestSuggestedBody = Head == null ? null : FindBlock(Head.Hash, BlockTreeLookupOptions.None);
-                }
-            }
-            finally
-            {
-                CanAcceptNewBlocks = true;
-            }
         }
     }
 }

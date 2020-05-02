@@ -21,6 +21,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Specs;
@@ -664,7 +665,8 @@ namespace Nethermind.Blockchain.Test
 
                 BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
 
-                await blockTree.LoadBlocksFromDb(CancellationToken.None);
+                DbBlocksLoader loader = new DbBlocksLoader(null, null, null, blockTree, LimboNoErrorLogger.Instance);
+                await blockTree.Accept(loader, CancellationToken.None);
 
                 Assert.AreEqual(testTree.Head.Hash, blockTree.BestSuggestedHeader.Hash, $"head {chainLength}");
             }
@@ -697,7 +699,8 @@ namespace Nethermind.Blockchain.Test
                 headersDb.Set(genesisBlock.Header.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
 
                 BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, Substitute.For<ITxPool>(), NullBloomStorage.Instance, LimboLogs.Instance);
-                await blockTree.LoadBlocksFromDb(CancellationToken.None);
+                DbBlocksLoader loader = new DbBlocksLoader(null, null, null, blockTree, LimboNoErrorLogger.Instance);
+                await blockTree.Accept(loader, CancellationToken.None);
 
                 Assert.AreEqual(testTree.Head.Hash, blockTree.BestSuggestedHeader.Hash, $"head {chainLength}");
             }
@@ -909,7 +912,8 @@ namespace Nethermind.Blockchain.Test
 #pragma warning disable 4014
             Task.Delay(_dbLoadTimeout).ContinueWith(t => tokenSource.Cancel());
 #pragma warning restore 4014
-            await tree.LoadBlocksFromDb(tokenSource.Token);
+            DbBlocksLoader loader = new DbBlocksLoader(null, null, null, tree, LimboNoErrorLogger.Instance);
+            await tree.Accept(loader, CancellationToken.None);
 
             Assert.AreEqual(0L, tree.BestKnownNumber, "best known");
             Assert.AreEqual(null, tree.Head, "head");
@@ -993,7 +997,8 @@ namespace Nethermind.Blockchain.Test
 
             tree.UpdateMainChain(block2);
 
-            tree.FixFastSyncGaps(CancellationToken.None);
+            StartupBlockTreeFixer fixer = new StartupBlockTreeFixer(tree, LimboNoErrorLogger.Instance);
+            tree.Accept(fixer, CancellationToken.None);
 
             Assert.Null(blockInfosDb.Get(3), "level 3");
             Assert.Null(blockInfosDb.Get(4), "level 4");
@@ -1068,7 +1073,8 @@ namespace Nethermind.Blockchain.Test
 #pragma warning disable 4014
             Task.Delay(_dbLoadTimeout).ContinueWith(t => tokenSource.Cancel());
 #pragma warning restore 4014
-            await tree.LoadBlocksFromDb(tokenSource.Token);
+            DbBlocksLoader loader = new DbBlocksLoader(null, null, null, tree, LimboNoErrorLogger.Instance);
+            await tree.Accept(loader, CancellationToken.None);
 
             Assert.AreEqual(3L, tree.BestKnownNumber, "best known");
             Assert.AreEqual(null, tree.Head, "head");
@@ -1130,7 +1136,8 @@ namespace Nethermind.Blockchain.Test
                 }
             };
 
-            await tree2.LoadBlocksFromDb(tokenSource.Token, startBlockNumber: null, batchSize: 1);
+            DbBlocksLoader loader = new DbBlocksLoader(null, 1, null, tree2, LimboNoErrorLogger.Instance);
+            await tree2.Accept(loader, tokenSource.Token);
 
             Assert.AreEqual(3L, tree2.BestKnownNumber, "best known");
             Assert.AreEqual(block3B.Hash, tree2.Head.Hash, "head");
@@ -1184,7 +1191,8 @@ namespace Nethermind.Blockchain.Test
                 }
             };
 
-            await tree2.LoadBlocksFromDb(tokenSource.Token, startBlockNumber: null, batchSize: 1);
+            DbBlocksLoader loader = new DbBlocksLoader(null, 1, null, tree2, LimboNoErrorLogger.Instance);
+            await tree2.Accept(loader, tokenSource.Token);
 
             /* note the block tree historically loads one less block than it could */
 
