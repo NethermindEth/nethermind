@@ -29,6 +29,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
 using Nethermind.Wallet;
 using NUnit.Framework;
+using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Clique.Test
 {

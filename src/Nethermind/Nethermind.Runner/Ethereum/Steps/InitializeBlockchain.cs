@@ -37,7 +37,6 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Store.Bloom;
 using Nethermind.Synchronization.BeamSync;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 
