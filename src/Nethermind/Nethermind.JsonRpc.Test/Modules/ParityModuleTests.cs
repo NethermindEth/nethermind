@@ -32,7 +32,7 @@ using Nethermind.Store.Bloom;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using NUnit.Framework;
-using BlockTree = Nethermind.Blockchain.BlockTree;
+
 
 namespace Nethermind.JsonRpc.Test.Modules
 {

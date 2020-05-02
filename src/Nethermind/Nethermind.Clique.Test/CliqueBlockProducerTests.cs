@@ -45,7 +45,7 @@ using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using Nethermind.Wallet;
 using NUnit.Framework;
-using BlockTree = Nethermind.Blockchain.BlockTree;
+
 
 namespace Nethermind.Clique.Test
 {

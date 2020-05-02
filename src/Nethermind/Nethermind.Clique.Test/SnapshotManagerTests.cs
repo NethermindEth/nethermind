@@ -27,7 +27,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using NUnit.Framework;
-using BlockTree = Nethermind.Blockchain.BlockTree;
+
 
 namespace Nethermind.Clique.Test
 {

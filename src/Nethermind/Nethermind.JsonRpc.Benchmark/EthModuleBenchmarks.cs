@@ -40,7 +40,7 @@ using Nethermind.Store;
 using Nethermind.Store.Bloom;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using BlockTree = Nethermind.Blockchain.BlockTree;
+
 
 namespace Nethermind.JsonRpc.Benchmark
 {

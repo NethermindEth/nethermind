@@ -31,7 +31,7 @@ using Nethermind.Store.Bloom;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using Nethermind.Wallet;
-using BlockTree = Nethermind.Blockchain.BlockTree;
+
 
 namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
 {

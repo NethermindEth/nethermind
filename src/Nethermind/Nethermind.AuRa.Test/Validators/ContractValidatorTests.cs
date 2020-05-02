@@ -40,7 +40,7 @@ using Nethermind.Store;
 using Newtonsoft.Json;
 using NSubstitute;
 using NUnit.Framework;
-using BlockTree = Nethermind.Blockchain.BlockTree;
+
 
 namespace Nethermind.AuRa.Test.Validators
 {
