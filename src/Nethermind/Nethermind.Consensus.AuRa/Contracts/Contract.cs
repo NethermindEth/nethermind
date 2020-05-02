@@ -74,7 +74,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             return objects;
         }
 
-        protected byte[] CallCore(ITransactionProcessor transactionProcessor, BlockHeader header, Transaction transaction)
+        protected byte[] CallCore(ITransactionProcessor transactionProcessor, BlockHeader header, Transaction transaction, bool callAndRestore = false)
         {
             bool failure;
             
@@ -82,7 +82,15 @@ namespace Nethermind.Consensus.AuRa.Contracts
             
             try
             {
-                transactionProcessor.Execute(transaction, header, tracer);
+                if (callAndRestore)
+                {
+                    transactionProcessor.CallAndRestore(transaction, header, tracer);
+                }
+                else
+                {
+                    transactionProcessor.Execute(transaction, header, tracer);
+                }
+                
                 failure = tracer.StatusCode != StatusCode.Success;
             }
             catch (Exception e)

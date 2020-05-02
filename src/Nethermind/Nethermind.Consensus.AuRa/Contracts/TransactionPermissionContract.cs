@@ -92,7 +92,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 UInt256 version = _versionContract.ContractVersion(blockHeader);
                 return GetVersionedContract(version);
             }
-            catch (Exception)
+            catch (AuRaException)
             {
                 return _versionedContracts[UInt256.One];
             }

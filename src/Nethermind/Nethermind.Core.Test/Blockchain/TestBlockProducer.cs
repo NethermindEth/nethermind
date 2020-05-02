@@ -20,13 +20,12 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.State;
 
-namespace Nethermind.JsonRpc.Test.Modules
+namespace Nethermind.Core.Test.Blockchain
 {
     public class TestBlockProducer : BaseLoopBlockProducer
     {

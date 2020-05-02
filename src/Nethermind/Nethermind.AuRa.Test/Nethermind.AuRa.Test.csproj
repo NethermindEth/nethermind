@@ -23,4 +23,10 @@
       <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <EmbeddedResource Include="Transactions\TxPermissionFilterTest.V2.json" />
+      <None Remove="Transactions\TxPermissionsFilterTest.V1.json" />
+      <EmbeddedResource Include="Transactions\TxPermissionFilterTest.V1.json" />
+    </ItemGroup>
+
 </Project>

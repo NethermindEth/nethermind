@@ -46,7 +46,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             public byte[] Call(BlockHeader header, Transaction transaction)
             {
                 using var readOnlyTransactionProcessor = _readOnlyReadOnlyTransactionProcessorSource.Get(GetState(header));
-                return _contract.CallCore(readOnlyTransactionProcessor, header, transaction);
+                return _contract.CallCore(readOnlyTransactionProcessor, header, transaction, true);
             }
 
             protected virtual Keccak GetState(BlockHeader header) => header.StateRoot;
