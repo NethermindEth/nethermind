@@ -17,6 +17,7 @@
 
 using System.Threading;
 using FluentAssertions;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -78,7 +79,7 @@ namespace Nethermind.Blockchain.Test.Visitors
 
             tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
             
-            StartupBlockTreeFixer fixer = new StartupBlockTreeFixer(tree, LimboNoErrorLogger.Instance);
+            StartupBlockTreeFixer fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, LimboNoErrorLogger.Instance);
             tree.Accept(fixer, CancellationToken.None);
 
             Assert.Null(blockInfosDb.Get(3), "level 3");
@@ -114,7 +115,7 @@ namespace Nethermind.Blockchain.Test.Visitors
 
             tree.UpdateMainChain(block2);
 
-            StartupBlockTreeFixer fixer = new StartupBlockTreeFixer(tree, LimboNoErrorLogger.Instance);
+            StartupBlockTreeFixer fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, LimboNoErrorLogger.Instance);
             tree.Accept(fixer, CancellationToken.None);
 
             Assert.Null(blockInfosDb.Get(3), "level 3");

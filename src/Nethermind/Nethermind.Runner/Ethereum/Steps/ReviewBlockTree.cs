@@ -80,7 +80,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             else
             {
-                StartupBlockTreeFixer fixer = new StartupBlockTreeFixer(_context.BlockTree, _logger);
+                StartupBlockTreeFixer fixer = new StartupBlockTreeFixer(_context.Config<ISyncConfig>(), _context.BlockTree, _logger);
                 await _context.BlockTree.Accept(fixer, _context.RunnerCancellation?.Token ?? CancellationToken.None).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
