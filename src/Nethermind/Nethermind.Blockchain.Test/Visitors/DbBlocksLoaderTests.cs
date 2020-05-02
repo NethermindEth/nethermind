@@ -18,7 +18,6 @@
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
-using FluentAssertions.Equivalency;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -127,13 +126,13 @@ namespace Nethermind.Blockchain.Test.Visitors
             Block block3B = Build.A.Block.WithNumber(3).WithDifficulty(1).WithParent(block2B).TestObject;
 
             tree1.SuggestBlock(block0);
-            tree1.SuggestBlock(block1);
-            tree1.SuggestBlock(block2);
-            tree1.SuggestBlock(block3);
+            tree1.SuggestBlock(block1); // invalid block
+            tree1.SuggestBlock(block2); // invalid branch
+            tree1.SuggestBlock(block3); // invalid branch
 
             tree1.SuggestBlock(block1B);
             tree1.SuggestBlock(block2B);
-            tree1.SuggestBlock(block3B);
+            tree1.SuggestBlock(block3B); // expected to be head
 
             tree1.UpdateMainChain(block0);
 

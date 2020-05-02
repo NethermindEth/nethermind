@@ -136,14 +136,19 @@ namespace Nethermind.Blockchain
                     LoadHeadBlockAtStart();
                 }
 
-                LoadLowestInsertedHeader();
-                LoadLowestInsertedBody();
-                LoadBestKnown();
+                RecalculateTreeLevels();
             }
 
             if (_logger.IsInfo) _logger.Info($"Block tree initialized, last processed is {Head?.Header?.ToString(BlockHeader.Format.Short) ?? "0"}, best queued is {BestSuggestedHeader?.Number.ToString() ?? "0"}, best known is {BestKnownNumber}, lowest inserted header {LowestInsertedHeader?.Number}, body {LowestInsertedBody?.Number}");
             ThisNodeInfo.AddInfo("Chain ID     :", $"{Nethermind.Core.ChainId.GetChainName(ChainId)}");
             ThisNodeInfo.AddInfo("Chain head   :", $"{Head?.Header?.ToString(BlockHeader.Format.Short) ?? "0"}");
+        }
+
+        private void RecalculateTreeLevels()
+        {
+            LoadLowestInsertedHeader();
+            LoadLowestInsertedBody();
+            LoadBestKnown();
         }
 
         private void LoadBestKnown()

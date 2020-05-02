@@ -33,11 +33,12 @@ namespace Nethermind.Blockchain.Visitors
         /// Last block tree level to visit
         /// </summary>
         long EndLevelExclusive { get; }
-        
+
         /// <summary>
         /// When new chain level is visited (and before its blocks are enumerated)
         /// </summary>
         /// <param name="chainLevelInfo">Chain level info with basic information about the tree level</param>
+        /// <param name="cancellationToken"></param>
         /// <returns><value>false</value> if the visitor wants to stop visiting remaining levels, otherwise <value>true</value></returns>
         Task<LevelVisitOutcome> VisitLevel(ChainLevelInfo chainLevelInfo, CancellationToken cancellationToken);
 
@@ -45,13 +46,15 @@ namespace Nethermind.Blockchain.Visitors
         /// If the block hash is defined on the chain level but is missing from the database.
         /// </summary>
         /// <param name="hash">Hash of the missing block</param>
+        /// <param name="cancellationToken"></param>
         /// <returns></returns>
         Task<bool> VisitMissing(Keccak hash, CancellationToken cancellationToken);
-        
+
         /// <summary>
         /// If the block hash is defined on the chain level and only header is available but not block body 
         /// </summary>
         /// <param name="header"></param>
+        /// <param name="cancellationToken"></param>
         /// <returns></returns>
         Task<bool> VisitHeader(BlockHeader header, CancellationToken cancellationToken);
 
@@ -59,7 +62,15 @@ namespace Nethermind.Blockchain.Visitors
         /// If the block hash is defined on the chain level and both header and body are in the database
         /// </summary>
         /// <param name="block"></param>
+        /// <param name="cancellationToken"></param>
         /// <returns></returns>
         Task<BlockVisitOutcome> VisitBlock(Block block, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// So the visitor can execute any logic after all block / headers have been visited for the level and before the next level is visited
+        /// </summary>
+        /// <param name="cancellationToken"></param>
+        /// <returns></returns>
+        Task<LevelVisitOutcome> AfterVisitingLevel(CancellationToken cancellationToken);
     }
 }

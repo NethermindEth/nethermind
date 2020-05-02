@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain.Visitors
 
             StartLevelInclusive = Math.Max(1L, startBlockNumber ?? _blockTree.Head?.Number ?? 0L);
             _blocksToLoad = Math.Min(maxBlocksToLoad ?? long.MaxValue, _blockTree.BestKnownNumber - StartLevelInclusive);
-            EndLevelExclusive = StartLevelInclusive + _blocksToLoad;
+            EndLevelExclusive = StartLevelInclusive + _blocksToLoad + 1;
 
             if (_blocksToLoad != 0)
             {
@@ -130,6 +130,11 @@ namespace Nethermind.Blockchain.Visitors
             }
 
             return BlockVisitOutcome.Suggest;
+        }
+
+        Task<LevelVisitOutcome> IBlockTreeVisitor.AfterVisitingLevel(CancellationToken cancellationToken)
+        {
+            return Task.FromResult(LevelVisitOutcome.None);
         }
 
         private void LogPlannedOperation()

@@ -27,8 +27,8 @@ namespace Nethermind.Blockchain
     {
         public async Task Accept(IBlockTreeVisitor visitor, CancellationToken cancellationToken)
         {
-            long blockNumber = visitor.StartLevelInclusive;
-            long blocksToVisit = visitor.EndLevelExclusive - visitor.StartLevelInclusive + 1;
+            long levelNumber = visitor.StartLevelInclusive;
+            long blocksToVisit = visitor.EndLevelExclusive - visitor.StartLevelInclusive;
             for (long i = 0; i < blocksToVisit; i++)
             {
                 if (cancellationToken.IsCancellationRequested)
@@ -36,13 +36,13 @@ namespace Nethermind.Blockchain
                     break;
                 }
 
-                ChainLevelInfo level = LoadLevel(blockNumber);
+                ChainLevelInfo level = LoadLevel(levelNumber);
                 {
                     // just start a new scope
                     LevelVisitOutcome visitOutcome = await visitor.VisitLevel(level, cancellationToken);
                     if ((visitOutcome & LevelVisitOutcome.DeleteLevel) == LevelVisitOutcome.DeleteLevel)
                     {
-                        _chainLevelInfoRepository.Delete(blockNumber);
+                        _chainLevelInfoRepository.Delete(levelNumber);
                         level = null;
                     }
 
@@ -76,15 +76,22 @@ namespace Nethermind.Blockchain
                     }
                 }
 
-                blockNumber++;
+                {
+                    LevelVisitOutcome visitOutcome = await visitor.AfterVisitingLevel(cancellationToken);
+                    if ((visitOutcome & LevelVisitOutcome.DeleteLevel) == LevelVisitOutcome.DeleteLevel)
+                    {
+                        _chainLevelInfoRepository.Delete(levelNumber);
+                    }
+                }
+
+                levelNumber++;
             }
 
-            if (cancellationToken.IsCancellationRequested)
-            {
-                _logger.Info($"Canceled visiting blocks in DB at block {blockNumber}");
-            }
+            RecalculateTreeLevels();
 
-            if (_logger.IsDebug) _logger.Debug($"Completed visiting blocks in DB at block {blockNumber} - best known {BestKnownNumber}");
+            string resultWord = cancellationToken.IsCancellationRequested ? "Canceled" : "Completed";
+
+            if (_logger.IsDebug) _logger.Debug($"{resultWord} visiting blocks in DB at level {levelNumber} - best known {BestKnownNumber}");
         }
 
         private static async Task<bool> VisitMissing(IBlockTreeVisitor visitor, Keccak hash, CancellationToken cancellationToken)
