@@ -803,7 +803,7 @@ namespace Nethermind.Network
                 if (_lastPeerPoolLength > _maxPeerPoolLength + 100)
                 {
                     _maxPeerPoolLength = _lastPeerPoolLength;
-                    if(_logger.IsInfo) _logger.Info($"Peer pool size is: {_lastPeerPoolLength}");
+                    if(_logger.IsDebug) _logger.Debug($"Peer pool size is: {_lastPeerPoolLength}");
                 }
             }
 

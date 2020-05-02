@@ -110,6 +110,27 @@ namespace Nethermind.Blockchain.Test
             Keccak result = provider.GetBlockhash(current.Header, lookupNumber);
             Assert.NotNull(result);
         }
+        
+        [Test]
+        public void Can_handle_non_main_chain_in_fast_sync()
+        {
+            const int chainLength = 512;
+
+            Block genesis = Build.A.Block.Genesis.TestObject;
+            BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(out Block headBlock, chainLength).OfChainLength(out Block alternativeHeadBlock, chainLength, 1).TestObject;
+            Block current = Build.A.Block.WithParent(headBlock).TestObject;
+            for (int i = 0; i < 6; i++)
+            {
+                tree.SuggestBlock(current);
+                tree.UpdateMainChain(current);
+                current = Build.A.Block.WithParent(current).TestObject;
+            }
+            
+            BlockhashProvider provider = new BlockhashProvider(tree, LimboLogs.Instance);
+            
+            Keccak result = provider.GetBlockhash(current.Header, 509);
+            Assert.NotNull(result);
+        }
 
         [Test]
         public void Can_get_parent_hash()
