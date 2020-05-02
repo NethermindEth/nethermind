@@ -112,6 +112,12 @@ namespace Nethermind.Blockchain
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
 
+            var deletePointer = _blockInfoDb.Get(DeletePointerAddressInDb);
+            if (deletePointer != null)
+            {
+                DeleteBlocks(new Keccak(deletePointer));
+            }
+            
             ChainLevelInfo genesisLevel = LoadLevel(0, true);
             if (genesisLevel != null)
             {
@@ -141,7 +147,7 @@ namespace Nethermind.Blockchain
         }
 
         private void LoadBestKnown()
-        {
+        {            
             long headNumber = Head?.Number ?? _syncConfig.PivotNumberParsed;
             long left = Math.Max(_syncConfig.PivotNumberParsed, headNumber);
             long right = headNumber + BestKnownSearchLimit;
@@ -703,68 +709,66 @@ namespace Nethermind.Blockchain
             Keccak nextHash = null;
             ChainLevelInfo nextLevel = null;
 
-            using (var batch = _chainLevelInfoRepository.StartBatch())
+            using var batch = _chainLevelInfoRepository.StartBatch();
+            while (true)
             {
-                while (true)
+                ChainLevelInfo currentLevel = nextLevel ?? LoadLevel(currentNumber);
+                nextLevel = LoadLevel(currentNumber + 1);
+
+                bool shouldRemoveLevel = false;
+                if (currentLevel != null) // preparing update of the level (removal of the invalid branch block)
                 {
-                    ChainLevelInfo currentLevel = nextLevel ?? LoadLevel(currentNumber);
-                    nextLevel = LoadLevel(currentNumber + 1);
-
-                    bool shouldRemoveLevel = false;
-                    if (currentLevel != null) // preparing update of the level (removal of the invalid branch block)
+                    if (currentLevel.BlockInfos.Length == 1)
                     {
-                        if (currentLevel.BlockInfos.Length == 1)
-                        {
-                            shouldRemoveLevel = true;
-                        }
-                        else
-                        {
-                            for (int i = 0; i < currentLevel.BlockInfos.Length; i++)
-                            {
-                                if (currentLevel.BlockInfos[0].BlockHash == currentHash)
-                                {
-                                    currentLevel.BlockInfos = currentLevel.BlockInfos.Where(bi => bi.BlockHash != currentHash).ToArray();
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    // just finding what the next descendant will be
-                    if (nextLevel != null)
-                    {
-                        nextHash = FindChild(nextLevel, currentHash);
-                    }
-
-                    UpdateDeletePointer(nextHash);
-
-
-                    if (shouldRemoveLevel)
-                    {
-                        BestKnownNumber = Math.Min(BestKnownNumber, currentNumber - 1);
-                        _chainLevelInfoRepository.Delete(currentNumber, batch);
+                        shouldRemoveLevel = true;
                     }
                     else
                     {
-                        _chainLevelInfoRepository.PersistLevel(currentNumber, currentLevel, batch);
+                        for (int i = 0; i < currentLevel.BlockInfos.Length; i++)
+                        {
+                            if (currentLevel.BlockInfos[0].BlockHash == currentHash)
+                            {
+                                currentLevel.BlockInfos = currentLevel.BlockInfos.Where(bi => bi.BlockHash != currentHash).ToArray();
+                                break;
+                            }
+                        }
                     }
-
-
-                    if (_logger.IsInfo) _logger.Info($"Deleting invalid block {currentHash} at level {currentNumber}");
-                    _blockCache.Delete(currentHash);
-                    _blockDb.Delete(currentHash);
-                    _headerCache.Delete(currentHash);
-                    _headerDb.Delete(currentHash);
-
-                    if (nextHash == null)
-                    {
-                        break;
-                    }
-
-                    currentNumber++;
-                    currentHash = nextHash;
-                    nextHash = null;
                 }
+
+                // just finding what the next descendant will be
+                if (nextLevel != null)
+                {
+                    nextHash = FindChild(nextLevel, currentHash);
+                }
+
+                UpdateDeletePointer(nextHash);
+
+
+                if (shouldRemoveLevel)
+                {
+                    BestKnownNumber = Math.Min(BestKnownNumber, currentNumber - 1);
+                    _chainLevelInfoRepository.Delete(currentNumber, batch);
+                }
+                else
+                {
+                    _chainLevelInfoRepository.PersistLevel(currentNumber, currentLevel, batch);
+                }
+
+
+                if (_logger.IsInfo) _logger.Info($"Deleting invalid block {currentHash} at level {currentNumber}");
+                _blockCache.Delete(currentHash);
+                _blockDb.Delete(currentHash);
+                _headerCache.Delete(currentHash);
+                _headerDb.Delete(currentHash);
+
+                if (nextHash == null)
+                {
+                    break;
+                }
+
+                currentNumber++;
+                currentHash = nextHash;
+                nextHash = null;
             }
         }
 

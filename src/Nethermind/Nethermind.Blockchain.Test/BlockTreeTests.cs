@@ -24,6 +24,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -169,6 +170,80 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
+        public void Cleans_invalid_blocks_before_starting()
+        {
+            MemDb blocksDb = new MemDb();
+            MemDb blockInfosDb = new MemDb();
+            MemDb headersDb = new MemDb();
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
+            Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(block2).TestObject;
+
+            tree.SuggestBlock(block0);
+            tree.SuggestBlock(block1);
+            tree.SuggestBlock(block2);
+            tree.SuggestBlock(block3);
+
+            blockInfosDb.Set(BlockTree.DeletePointerAddressInDb, block1.Hash.Bytes);
+            BlockTree tree2 = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+
+            Assert.AreEqual(0L, tree2.BestKnownNumber, "best known");
+            Assert.AreEqual(null, tree2.Head, "head");
+            Assert.AreEqual(0L, tree2.BestSuggestedHeader.Number, "suggested");
+
+            Assert.IsNull(blocksDb.Get(block2.Hash), "block 1");
+            Assert.IsNull(blocksDb.Get(block2.Hash), "block 2");
+            Assert.IsNull(blocksDb.Get(block3.Hash), "block 3");
+
+            Assert.IsNull(blockInfosDb.Get(2), "level 1");
+            Assert.IsNull(blockInfosDb.Get(2), "level 2");
+            Assert.IsNull(blockInfosDb.Get(3), "level 3");
+        }
+
+        [Test]
+        public void When_cleaning_descendants_of_invalid_does_not_touch_other_branches()
+        {
+            MemDb blocksDb = new MemDb();
+            MemDb blockInfosDb = new MemDb();
+            MemDb headersDb = new MemDb();
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
+            Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(block2).TestObject;
+
+            Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(1).WithParent(block0).TestObject;
+            Block block2B = Build.A.Block.WithNumber(2).WithDifficulty(1).WithParent(block1B).TestObject;
+            Block block3B = Build.A.Block.WithNumber(3).WithDifficulty(1).WithParent(block2B).TestObject;
+
+            tree.SuggestBlock(block0);
+            tree.SuggestBlock(block1);
+            tree.SuggestBlock(block2);
+            tree.SuggestBlock(block3);
+
+            tree.SuggestBlock(block1B);
+            tree.SuggestBlock(block2B);
+            tree.SuggestBlock(block3B);
+
+            blockInfosDb.Set(BlockTree.DeletePointerAddressInDb, block1.Hash.Bytes);
+            BlockTree tree2 = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+
+            Assert.AreEqual(3L, tree2.BestKnownNumber, "best known");
+            Assert.AreEqual(null, tree2.Head, "head");
+            Assert.AreEqual(block3B.Hash, tree2.BestSuggestedHeader.Hash, "suggested");
+
+            blocksDb.Get(block1.Hash).Should().BeNull("block 1");
+            blocksDb.Get(block2.Hash).Should().BeNull("block 2");
+            blocksDb.Get(block3.Hash).Should().BeNull("block 3");
+
+            Assert.NotNull(blockInfosDb.Get(1), "level 1");
+            Assert.NotNull(blockInfosDb.Get(2), "level 2");
+            Assert.NotNull(blockInfosDb.Get(3), "level 3");
+        }
+
+        [Test]
         public void Can_load_best_known_up_to_256million()
         {
             _blocksDb = new MemDb();
@@ -176,10 +251,10 @@ namespace Nethermind.Blockchain.Test
             IDb blocksInfosDb = Substitute.For<IDb>();
 
             Rlp chainLevel = Rlp.Encode(new ChainLevelInfo(true, new BlockInfo[] {new BlockInfo(TestItem.KeccakA, 1)}));
-            blocksInfosDb[Arg.Any<byte[]>()].Returns(chainLevel.Bytes);
+            blocksInfosDb[BlockTree.DeletePointerAddressInDb.Bytes].Returns((byte[]) null);
+            blocksInfosDb[Arg.Is<byte[]>(b => !Bytes.AreEqual(b, BlockTree.DeletePointerAddressInDb.Bytes))].Returns(chainLevel.Bytes);
 
             BlockTree blockTree = new BlockTree(_blocksDb, _headersDb, blocksInfosDb, new ChainLevelInfoRepository(blocksInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
-
 
             Assert.AreEqual(256000000, blockTree.BestKnownNumber);
         }

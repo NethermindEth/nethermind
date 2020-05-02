@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain.Visitors
     public class DbBlocksLoader : IBlockTreeVisitor
     {
         public const int DefaultBatchSize = 4000;
-        
+
         private readonly long _batchSize;
         private readonly long _blocksToLoad;
         private readonly IBlockTree _blockTree;
@@ -44,12 +44,14 @@ namespace Nethermind.Blockchain.Visitors
             IBlockTree blockTree,
             ILogger logger)
         {
-            _batchSize = batchSize ?? DefaultBatchSize;
-            _blocksToLoad = Math.Min(CountKnownAheadOfHead(), maxBlocksToLoad ?? long.MaxValue) + 1;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-            StartLevelInclusive = startBlockNumber ?? _blockTree.Head?.Number ?? 0;
+            _batchSize = batchSize ?? DefaultBatchSize;
+
+            StartLevelInclusive = Math.Max(1L, startBlockNumber ?? _blockTree.Head?.Number ?? 0L);
+            _blocksToLoad = Math.Min(maxBlocksToLoad ?? long.MaxValue, _blockTree.BestKnownNumber - StartLevelInclusive);
+            EndLevelExclusive = StartLevelInclusive + _blocksToLoad;
 
             if (_blocksToLoad != 0)
             {
@@ -74,7 +76,7 @@ namespace Nethermind.Blockchain.Visitors
 
         public long StartLevelInclusive { get; }
 
-        public long EndLevelExclusive => StartLevelInclusive + _blocksToLoad;
+        public long EndLevelExclusive { get; }
 
         Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevel(ChainLevelInfo chainLevelInfo, CancellationToken cancellationToken)
         {
@@ -128,12 +130,6 @@ namespace Nethermind.Blockchain.Visitors
             }
 
             return BlockVisitOutcome.Suggest;
-        }
-
-        private long CountKnownAheadOfHead()
-        {
-            long headNumber = _blockTree.Head?.Number ?? 0;
-            return _blockTree.BestKnownNumber - headNumber;
         }
 
         private void LogPlannedOperation()
