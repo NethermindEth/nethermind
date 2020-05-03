@@ -65,7 +65,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             if (!syncConfig.FastSync && !syncConfig.BeamSync)
             {
-                DbBlocksLoader loader = new DbBlocksLoader(null, null, null, _context.BlockTree, _logger);
+                DbBlocksLoader loader = new DbBlocksLoader(_context.BlockTree, _logger);
                 await _context.BlockTree.Accept(loader, _context.RunnerCancellation?.Token ?? CancellationToken.None).ContinueWith(t =>
                 {
                     if (t.IsFaulted)

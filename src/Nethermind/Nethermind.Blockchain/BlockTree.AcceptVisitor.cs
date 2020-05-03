@@ -39,7 +39,7 @@ namespace Nethermind.Blockchain
                 ChainLevelInfo level = LoadLevel(levelNumber);
                 {
                     // just start a new scope
-                    LevelVisitOutcome visitOutcome = await visitor.VisitLevel(level, cancellationToken);
+                    LevelVisitOutcome visitOutcome = await visitor.VisitLevelStart(level, cancellationToken);
                     if ((visitOutcome & LevelVisitOutcome.DeleteLevel) == LevelVisitOutcome.DeleteLevel)
                     {
                         _chainLevelInfoRepository.Delete(levelNumber);
@@ -77,7 +77,7 @@ namespace Nethermind.Blockchain
                 }
 
                 {
-                    LevelVisitOutcome visitOutcome = await visitor.AfterVisitingLevel(cancellationToken);
+                    LevelVisitOutcome visitOutcome = await visitor.VisitLevelEnd(cancellationToken);
                     if ((visitOutcome & LevelVisitOutcome.DeleteLevel) == LevelVisitOutcome.DeleteLevel)
                     {
                         _chainLevelInfoRepository.Delete(levelNumber);

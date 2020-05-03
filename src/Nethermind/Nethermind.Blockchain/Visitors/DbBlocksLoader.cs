@@ -37,20 +37,18 @@ namespace Nethermind.Blockchain.Visitors
         private TaskCompletionSource<object> _dbBatchProcessed;
         private long _currentDbLoadBatchEnd;
 
-        public DbBlocksLoader(
-            long? startBlockNumber,
-            long? batchSize,
-            long? maxBlocksToLoad,
-            IBlockTree blockTree,
-            ILogger logger)
+        public DbBlocksLoader(IBlockTree blockTree,
+            ILogger logger,
+            long? startBlockNumber = null,
+            long batchSize = DefaultBatchSize,
+            long maxBlocksToLoad = long.MaxValue)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-            _batchSize = batchSize ?? DefaultBatchSize;
-
+            _batchSize = batchSize;
             StartLevelInclusive = Math.Max(1L, startBlockNumber ?? _blockTree.Head?.Number ?? 0L);
-            _blocksToLoad = Math.Min(maxBlocksToLoad ?? long.MaxValue, _blockTree.BestKnownNumber - StartLevelInclusive);
+            _blocksToLoad = Math.Min(maxBlocksToLoad, _blockTree.BestKnownNumber - StartLevelInclusive);
             EndLevelExclusive = StartLevelInclusive + _blocksToLoad + 1;
 
             if (_blocksToLoad != 0)
@@ -78,7 +76,7 @@ namespace Nethermind.Blockchain.Visitors
 
         public long EndLevelExclusive { get; }
 
-        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevel(ChainLevelInfo chainLevelInfo, CancellationToken cancellationToken)
+        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelStart(ChainLevelInfo chainLevelInfo, CancellationToken cancellationToken)
         {
             if (chainLevelInfo == null)
             {
@@ -132,7 +130,7 @@ namespace Nethermind.Blockchain.Visitors
             return BlockVisitOutcome.Suggest;
         }
 
-        Task<LevelVisitOutcome> IBlockTreeVisitor.AfterVisitingLevel(CancellationToken cancellationToken)
+        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelEnd(CancellationToken cancellationToken)
         {
             return Task.FromResult(LevelVisitOutcome.None);
         }
