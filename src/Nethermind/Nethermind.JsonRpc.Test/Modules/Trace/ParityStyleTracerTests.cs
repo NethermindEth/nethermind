@@ -34,11 +34,9 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Store;
 using Nethermind.Store.Bloom;
 using Nethermind.TxPool;
 using NUnit.Framework;
-using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace
 {

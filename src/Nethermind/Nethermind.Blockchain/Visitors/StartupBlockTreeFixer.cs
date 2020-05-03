@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Visitors
 
         public long EndLevelExclusive => _startNumber + _blocksToLoad;
 
-        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevel(ChainLevelInfo chainLevelInfo, CancellationToken cancellationToken)
+        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelStart(ChainLevelInfo chainLevelInfo, CancellationToken cancellationToken)
         {
             if (_currentLevelNumber >= EndLevelExclusive - 1)
             {
@@ -117,7 +117,7 @@ namespace Nethermind.Blockchain.Visitors
         {
             AssertNotVisitingAfterGap();
             _blocksCheckedInCurrentLevel++;
-            if (_logger.IsWarn) _logger.Warn($"Discovered a missing block for hash {hash} at level {_currentLevelNumber}. This means there is a minor chain level corruption that in general should not lead to any issues but is a result of incorrect node behaviour ina the past.");
+            if (_logger.IsWarn) _logger.Warn($"Discovered a missing block for hash {hash} at level {_currentLevelNumber}. This means there is a minor chain level corruption that in general should not lead to any issues but is a result of incorrect node behaviour in the past.");
             return Task.FromResult(true);
         }
 
@@ -136,7 +136,7 @@ namespace Nethermind.Blockchain.Visitors
             return Task.FromResult(BlockVisitOutcome.None);
         }
 
-        Task<LevelVisitOutcome> IBlockTreeVisitor.AfterVisitingLevel(CancellationToken cancellationToken)
+        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelEnd(CancellationToken cancellationToken)
         {
             int expectedVisitedBlocksCount = _currentLevel?.BlockInfos.Length ?? 0;
             if (_blocksCheckedInCurrentLevel != expectedVisitedBlocksCount)

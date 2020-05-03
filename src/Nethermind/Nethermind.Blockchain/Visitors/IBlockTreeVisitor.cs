@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain.Visitors
         /// <param name="chainLevelInfo">Chain level info with basic information about the tree level</param>
         /// <param name="cancellationToken"></param>
         /// <returns><value>false</value> if the visitor wants to stop visiting remaining levels, otherwise <value>true</value></returns>
-        Task<LevelVisitOutcome> VisitLevel(ChainLevelInfo chainLevelInfo, CancellationToken cancellationToken);
+        Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, CancellationToken cancellationToken);
 
         /// <summary>
         /// If the block hash is defined on the chain level but is missing from the database.
@@ -71,6 +71,6 @@ namespace Nethermind.Blockchain.Visitors
         /// </summary>
         /// <param name="cancellationToken"></param>
         /// <returns></returns>
-        Task<LevelVisitOutcome> AfterVisitingLevel(CancellationToken cancellationToken);
+        Task<LevelVisitOutcome> VisitLevelEnd(CancellationToken cancellationToken);
     }
 }
