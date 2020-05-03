@@ -16,7 +16,10 @@
 
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.FSharp.Linq;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Visitors;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 
@@ -62,7 +65,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             if (!syncConfig.FastSync && !syncConfig.BeamSync)
             {
-                await _context.BlockTree.LoadBlocksFromDb(_context.RunnerCancellation?.Token ?? CancellationToken.None, null).ContinueWith(t =>
+                DbBlocksLoader loader = new DbBlocksLoader(_context.BlockTree, _logger);
+                await _context.BlockTree.Accept(loader, _context.RunnerCancellation?.Token ?? CancellationToken.None).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
@@ -76,7 +80,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             else
             {
-                await _context.BlockTree.FixFastSyncGaps(_context.RunnerCancellation?.Token ?? CancellationToken.None).ContinueWith(t =>
+                StartupBlockTreeFixer fixer = new StartupBlockTreeFixer(_context.Config<ISyncConfig>(), _context.BlockTree, _logger);
+                await _context.BlockTree.Accept(fixer, _context.RunnerCancellation?.Token ?? CancellationToken.None).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {

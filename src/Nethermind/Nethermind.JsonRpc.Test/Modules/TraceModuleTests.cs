@@ -54,6 +54,7 @@ using Nethermind.Wallet;
 using Newtonsoft.Json;
 using NSubstitute;
 using NUnit.Framework;
+using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {

@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -37,7 +38,7 @@ namespace Nethermind.Blockchain
         BlockHeader Genesis { get; }
         
         /// <summary>
-        /// Best header that has been suggested (suggested for processing in the fast sync mode)
+        /// Best header that has been suggested for processing
         /// </summary>
         BlockHeader BestSuggestedHeader { get; }
 
@@ -116,11 +117,9 @@ namespace Nethermind.Blockchain
         void UpdateMainChain(Block[] processedBlocks, bool wereProcessed);
 
         bool CanAcceptNewBlocks { get; }
-        
-        Task LoadBlocksFromDb(CancellationToken cancellationToken, long? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue);
 
-        Task FixFastSyncGaps(CancellationToken cancellationToken);
-        
+        Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken);
+
         ChainLevelInfo FindLevel(long number);
 
         Keccak FindHash(long blockNumber);
