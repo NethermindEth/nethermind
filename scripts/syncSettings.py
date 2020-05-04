@@ -15,6 +15,7 @@ headers = {
 print(emoji.emojize("Fast Sync configuration settings initialization     :white_check_mark: ", use_aliases=True))
 
 configs = {
+    # fast sync section
     "mainnet": {
         "url": "api.etherscan.io",
         "blockReduced": 8192,
@@ -50,6 +51,32 @@ configs = {
         "blockReduced": 8192,
         "multiplierRequirement": 30000
     },
+    # beam sections
+    "mainnet_beam": {
+        "url": "api.etherscan.io",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000 
+    },
+    "goerli_beam": {
+        "url": "api-goerli.etherscan.io",
+        "blockReduced": 8192,
+        "multiplierRequirement": 30000 
+    },
+    "ropsten_beam": {
+        "url": "api-ropsten.etherscan.io",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },
+    "rinkeby_beam": {
+        "url": "api-rinkeby.etherscan.io",
+        "blockReduced": 8192,
+        "multiplierRequirement": 30000
+    },
+    "poacore_beam": {
+        "url": "https://core.poa.network",
+        "blockReduced": 8192,
+        "multiplierRequirement": 30000
+    }
 }
 
 def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequirement):

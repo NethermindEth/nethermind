@@ -14,7 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -26,6 +28,7 @@ using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.PubSub.Kafka;
 using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test
@@ -34,544 +37,373 @@ namespace Nethermind.Runner.Test
     [TestFixture]
     public class ConfigFilesTests
     {
+        private HashSet<string> _configs = new HashSet<string>
+        {
+            "ropsten_archive.cfg",
+            "ropsten_beam.cfg",
+            "ropsten.cfg",
+            "rinkeby_archive.cfg",
+            "rinkeby_beam.cfg",
+            "rinkeby.cfg",
+            "goerli_archive.cfg",
+            "goerli_beam.cfg",
+            "goerli.cfg",
+            "mainnet_archive.cfg",
+            "mainnet_beam.cfg",
+            "mainnet.cfg",
+            "sokol.cfg",
+            "sokol_archive.cfg",
+            "sokol_validator.cfg",
+            "poacore.cfg",
+            "poacore_archive.cfg",
+            "poacore_beam.cfg",
+            "poacore_validator.cfg",
+            "xdai.cfg",
+            "xdai_archive.cfg",
+            "xdai_validator.cfg",
+            "spaceneth.cfg",
+            "volta.cfg",
+            "volta_archive.cfg",
+        };
+
         [SetUp]
         public void Setup()
         {
         }
 
-        [TestCase("ropsten_archive.cfg", false, false)]
-        [TestCase("ropsten.cfg", true, true, true)]
-        [TestCase("rinkeby_archive.cfg", false, false)]
-        [TestCase("rinkeby.cfg", true, true, true)]
-        [TestCase("goerli_archive.cfg", false, false)]
-        [TestCase("goerli.cfg", true, true, true)]
-        [TestCase("mainnet_archive.cfg", false, false)]
-        [TestCase("mainnet.cfg", true, true)]
-        [TestCase("sokol.cfg", true, true)]
-        [TestCase("sokol_archive.cfg", false, false)]
-        [TestCase("sokol_validator.cfg", true, true)]
-        [TestCase("sokol_fastsync.cfg", true, false)]        
-        [TestCase("poacore.cfg", true, true)]
-        [TestCase("poacore_archive.cfg", false, false)]
+
+        [TestCase("validators", true, true)]
         [TestCase("poacore_validator.cfg", true, true)]
-        [TestCase("xdai.cfg", true, true)]
-        [TestCase("xdai_archive.cfg", false, false)]
         [TestCase("xdai_validator.cfg", true, true)]
         [TestCase("spaceneth.cfg", false, false)]
-        [TestCase("volta.cfg", true, false)]
-        [TestCase("volta_archive.cfg", false, false)]
-        public void Sync_defaults_are_correct(string configFile, bool fastSyncEnabled, bool fastBlocksEnabled, bool beamSyncEnabled = false)
+        [TestCase("archive", false, false, false)]
+        [TestCase("beam", true, true, true)]
+        [TestCase("fast", true, true)]
+        public void Sync_defaults_are_correct(string configWildcard, bool fastSyncEnabled, bool fastBlocksEnabled, bool beamSyncEnabled = false)
         {
-            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
-            ISyncConfig config = configProvider.GetConfig<ISyncConfig>();
-            Assert.AreEqual(fastSyncEnabled, config.FastSync, "fast sync");
-            Assert.AreEqual(fastBlocksEnabled, config.FastBlocks, "fast blocks");
-            Assert.AreEqual(beamSyncEnabled, config.BeamSync);
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                ISyncConfig config = configProvider.GetConfig<ISyncConfig>();
+                config.FastSync.Should().Be(fastSyncEnabled, configFile);
+                config.FastBlocks.Should().Be(fastBlocksEnabled, configFile);
+                config.BeamSync.Should().Be(beamSyncEnabled, configFile);
+            }
         }
-        
-        [TestCase("ropsten_archive.cfg", true)]
-        [TestCase("ropsten.cfg", true)]
-        [TestCase("rinkeby_archive.cfg", true)]
-        [TestCase("rinkeby.cfg", true)]
-        [TestCase("goerli_archive.cfg", true)]
-        [TestCase("goerli.cfg", true)]
-        [TestCase("mainnet_archive.cfg", true)]
-        [TestCase("mainnet.cfg", true)]
-        [TestCase("sokol.cfg", true)]
-        [TestCase("sokol_archive.cfg", true)]
-        [TestCase("sokol_validator.cfg", true)]
-        [TestCase("sokol_fastsync.cfg", true)]        
-        [TestCase("poacore.cfg", true)]
-        [TestCase("poacore_archive.cfg", true)]
-        [TestCase("poacore_validator.cfg", true)]
-        [TestCase("xdai.cfg", true)]
-        [TestCase("xdai_archive.cfg", true)]
-        [TestCase("xdai_validator.cfg", true)]
+
+        [TestCase("archive", true)]
+        [TestCase("fast", true)]
+        [TestCase("beam", true)]
         [TestCase("spaceneth.cfg", false)]
-        [TestCase("volta.cfg", true)]
-        [TestCase("volta_archive.cfg", true)]
         [TestCase("ndm_consumer_goerli.cfg", true)]
         [TestCase("ndm_consumer_local.cfg", true)]
         [TestCase("ndm_consumer_mainnet_proxy.cfg", false)]
         [TestCase("ndm_consumer_ropsten.cfg", true)]
         [TestCase("ndm_consumer_ropsten_proxy.cfg", false)]
-        public void Sync_is_disabled_when_needed(string configFile, bool isSyncEnabled)
+        public void Sync_is_disabled_when_needed(string configWildcard, bool isSyncEnabled)
         {
-            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
-            ISyncConfig config = configProvider.GetConfig<ISyncConfig>();
-            Assert.AreEqual(isSyncEnabled, config.SynchronizationEnabled);
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                ISyncConfig config = configProvider.GetConfig<ISyncConfig>();
+                Assert.AreEqual(isSyncEnabled, config.SynchronizationEnabled);
+            }
         }
-        
-        [TestCase("ropsten_archive.cfg", "ws://ropsten-stats.parity.io/api")]
-        [TestCase("ropsten.cfg", "ws://ropsten-stats.parity.io/api")]
-        [TestCase("rinkeby_archive.cfg", "ws://localhost:3000/api")]
-        [TestCase("rinkeby.cfg", "ws://localhost:3000/api")]
-        [TestCase("goerli_archive.cfg", "wss://stats.goerli.net/api")]
-        [TestCase("goerli.cfg", "wss://stats.goerli.net/api")]
-        [TestCase("mainnet_archive.cfg", "wss://ethstats.net/api")]
-        [TestCase("mainnet.cfg", "wss://ethstats.net/api")]
-        [TestCase("sokol.cfg", "ws://localhost:3000/api")]
-        [TestCase("sokol_archive.cfg", "ws://localhost:3000/api")]
-        [TestCase("sokol_validator.cfg", "ws://localhost:3000/api")]
-        [TestCase("sokol_fastsync.cfg", "ws://localhost:3000/api")]        
-        [TestCase("poacore.cfg", "ws://localhost:3000/api")]
-        [TestCase("poacore_archive.cfg", "ws://localhost:3000/api")]
-        [TestCase("poacore_validator.cfg", "ws://localhost:3000/api")]
-        [TestCase("xdai.cfg", "ws://localhost:3000/api")]
-        [TestCase("xdai_archive.cfg", "ws://localhost:3000/api")]
-        [TestCase("xdai_validator.cfg", "ws://localhost:3000/api")]
+
+        [TestCase("ropsten", "ws://ropsten-stats.parity.io/api")]
+        [TestCase("rinkeby", "ws://localhost:3000/api")]
+        [TestCase("goerli", "wss://stats.goerli.net/api")]
+        [TestCase("mainnet", "wss://ethstats.net/api")]
+        [TestCase("sokol", "ws://localhost:3000/api")]
+        [TestCase("poacore", "ws://localhost:3000/api")]
+        [TestCase("xdai", "ws://localhost:3000/api")]
         [TestCase("spaceneth.cfg", "ws://localhost:3000/api")]
-        [TestCase("volta.cfg", "ws://localhost:3000/api")]
-        [TestCase("volta_archive.cfg", "ws://localhost:3000/api")]
-        public void Ethstats_values_are_correct(string configFile, string host)
+        [TestCase("volta", "ws://localhost:3000/api")]
+        public void Ethstats_values_are_correct(string configWildcard, string host)
         {
-            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
-            IEthStatsConfig config = configProvider.GetConfig<IEthStatsConfig>();
-            Assert.AreEqual(host, config.Server);
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                IEthStatsConfig config = configProvider.GetConfig<IEthStatsConfig>();
+                config.Enabled.Should().BeFalse(configFile);
+                config.Server.Should().Be(host, configFile);
+                config.Secret.Should().Be("secret", configFile);
+                config.Contact.Should().Be("hello@nethermind.io", configFile);
+            }
+        }
+
+        [TestCase("aura", false)]
+        [TestCase("ethhash", true)]
+        [TestCase("clique", true)]
+        public void Geth_limits_configs_are_correct(string configWildcard, bool useGethLimitsInFastSync)
+        {
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                ISyncConfig config = configProvider.GetConfig<ISyncConfig>();
+                Assert.AreEqual(useGethLimitsInFastSync, config.UseGethLimitsInFastBlocks);
+            }
+        }
+
+        [TestCase("ropsten", "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d")]
+        [TestCase("rinkeby", "0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177")]
+        [TestCase("goerli", "0xbf7e331f7f7c1dd2e05159666b3bf8bc7a8a3a9eb1d518969eab529dd9b88c1a")]
+        [TestCase("mainnet", "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")]
+        [TestCase("sokol", "0x5b28c1bfd3a15230c9a46b399cd0f9a6920d432e85381cc6a140b06e8410112f")]
+        [TestCase("poacore", "0x39f02c003dde5b073b3f6e1700fc0b84b4877f6839bb23edadd3d2d82a488634")]
+        [TestCase("xdai", "0x4f1dd23188aab3a76b463e4af801b52b1248ef073c648cbdc4c9333d3da79756")]
+        [TestCase("volta", "0xebd8b413ca7b7f84a8dd20d17519ce2b01954c74d94a0a739a3e416abe0e43e5")]
+        public void Genesis_hash_is_correct(string configWildcard, string genesisHash)
+        {
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                IInitConfig config = configProvider.GetConfig<IInitConfig>();
+                Assert.AreEqual(config.GenesisHash, genesisHash);
+            }
+        }
+
+        [TestCase("spaceneth.cfg", true)]
+        [TestCase("validators", true)]
+        [TestCase("^validators ^spaceneth.cfg", false)]
+        public void Mining_defaults_are_correct(string configWildcard, bool defaultValue = false)
+        {
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                IInitConfig config = configProvider.GetConfig<IInitConfig>();
+                config.IsMining.Should().Be(defaultValue, configFile);
+            }
+        }
+
+        [TestCase("*")]
+        public void Required_config_files_exist(string configWildcard)
+        {
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                var configPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "configs", configFile);
+                Assert.True(File.Exists(configPath));
+            }
+        }
+
+        [TestCase("*")]
+        public void Eth_stats_disabled_by_default(string configWildcard)
+        {
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                IEthStatsConfig config = configProvider.GetConfig<IEthStatsConfig>();
+                Assert.AreEqual(config.Enabled, false);
+            }
+        }
+
+        [TestCase("^ndm", false)]
+        [TestCase("ndm", true)]
+        public void Grpc_defaults(string configWildcard, bool expectedDefault)
+        {
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                IGrpcConfig config = configProvider.GetConfig<IGrpcConfig>();
+                config.Enabled.Should().Be(expectedDefault, configFile);
+                config.ProducerEnabled.Should().Be(false, configFile);
+            }
         }
         
-        [TestCase("ropsten_archive.cfg", true)]
-        [TestCase("ropsten.cfg", true)]
-        [TestCase("rinkeby_archive.cfg", true)]
-        [TestCase("rinkeby.cfg", true)]
-        [TestCase("goerli_archive.cfg", true)]
-        [TestCase("goerli.cfg", true)]
+        [TestCase("ndm_consumer_local.cfg")]
+        public void IsMining_enabled_for_ndm_consumer_local(string configWildcard)
+        {
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                IInitConfig config = configProvider.GetConfig<IInitConfig>();
+                Assert.AreEqual(true, config.IsMining);
+            }
+        }
+
+        [TestCase("ndm", true)]
+        [TestCase("^ndm", false)]
+        public void Ndm_enabled_only_for_ndm_configs(string configWildcard, bool ndmEnabled)
+        {
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                INdmConfig config = configProvider.GetConfig<INdmConfig>();
+                Assert.AreEqual(config.Enabled, ndmEnabled);
+            }
+        }
+
+        [TestCase("*")]
+        public void Metrics_disabled_by_default(string configWildcard)
+        {
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                IMetricsConfig config = configProvider.GetConfig<IMetricsConfig>();
+                config.Enabled.Should().Be(false, configFile);
+                config.NodeName.ToUpperInvariant().Should().Be(configFile.Replace("_", " ").Replace(".cfg", "").ToUpperInvariant().Replace("POACORE", "POA CORE"), configFile);
+                config.IntervalSeconds.Should().Be(5, configFile);
+                config.PushGatewayUrl.Should().Be("http://localhost:9091/metrics", configFile);
+            }
+        }
+
+        [TestCase("^mainnet", 50)]
+        [TestCase("mainnet", 100)]
+        public void Network_defaults_are_correct(string configWildcard, int activePeers = 50)
+        {
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
+                Assert.AreEqual(30303, networkConfig.DiscoveryPort, nameof(networkConfig.DiscoveryPort));
+                Assert.AreEqual(30303, networkConfig.P2PPort, nameof(networkConfig.P2PPort));
+                Assert.Null(networkConfig.ExternalIp, nameof(networkConfig.ExternalIp));
+                Assert.Null(networkConfig.LocalIp, nameof(networkConfig.LocalIp));
+                networkConfig.ActivePeersMaxCount.Should().Be(activePeers, configFile);
+            }
+        }
+        
+        [TestCase("*", 2048)]
+        public void Tx_pool_defaults_are_correct(string configWildcard, int poolSize)
+        {
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                ITxPoolConfig txPoolConfig = configProvider.GetConfig<ITxPoolConfig>();
+                txPoolConfig.Size.Should().Be(poolSize, configFile);
+            }
+        }
+
+        [TestCase("^spaceneth.cfg", false)]
+        public void Json_defaults_are_correct(string configWildcard, bool jsonEnabled)
+        {
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
+                Assert.AreEqual(8545, jsonRpcConfig.Port, nameof(jsonRpcConfig.Port));
+                Assert.AreEqual("127.0.0.1", jsonRpcConfig.Host, nameof(jsonRpcConfig.Host));
+                jsonRpcConfig.Enabled.Should().Be(jsonEnabled, configFile);
+            }
+        }
+
+        [TestCase("*")]
+        public void Kafka_disabled_by_default(string configWildcard)
+        {
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                IKafkaConfig kafkaConfig = configProvider.GetConfig<IKafkaConfig>();
+                Assert.AreEqual(false, kafkaConfig.Enabled, nameof(kafkaConfig.Enabled));
+            }
+        }
+
+        [TestCase("^mainnet ^validators ^beam ^archive", true, true)]
+        [TestCase("mainnet ^beam", false, false)]
+        [TestCase("beam", false, false, false)]
+        [TestCase("validators", true, false)]
+        public void Fast_sync_settings_as_expected(string configWildcard, bool downloadBodies, bool downloadsReceipts, bool downloadHeaders = true)
+        {
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();
+                syncConfig.DownloadBodiesInFastSync.Should().Be(downloadBodies, configFile);
+                syncConfig.DownloadReceiptsInFastSync.Should().Be(downloadsReceipts, configFile);
+                syncConfig.DownloadHeadersInFastSync.Should().Be(downloadHeaders, configFile);
+            }
+        }
+
+        [TestCase("^aura", false)]
+        [TestCase("aura ^archive", true)]
+        public void Stays_on_full_sync(string configWildcard, bool stickToFullSyncAfterFastSync)
+        {
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();
+                if (stickToFullSyncAfterFastSync)
+                {
+                    syncConfig.FastSyncCatchUpHeightDelta.Should().BeGreaterOrEqualTo(1000000000, configFile);
+                }
+                else
+                {
+                    syncConfig.FastSyncCatchUpHeightDelta.Should().Be(1024, configFile);
+                }
+            }
+        }
+
+        [TestCase("^validators", true)]
+        [TestCase("validators", false)]
+        public void Stores_receipts(string configWildcard, bool storeReceipts)
+        {
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+                initConfig.StoreReceipts.Should().Be(storeReceipts, configFile);
+            }
+        }
+
+        [TestCase("ropsten", false)]
+        [TestCase("rinkeby", false)]
+        [TestCase("goerli", false)]
         [TestCase("mainnet_archive.cfg", true)]
         [TestCase("mainnet.cfg", true)]
-        [TestCase("sokol.cfg", false)]
-        [TestCase("sokol_archive.cfg", false)]
-        [TestCase("sokol_validator.cfg", false)]
-        [TestCase("sokol_fastsync.cfg", false)]
-        [TestCase("poacore.cfg", false)]
-        [TestCase("poacore_archive.cfg", false)]
-        [TestCase("poacore_validator.cfg", false)]
-        [TestCase("xdai.cfg", false)]
-        [TestCase("xdai_archive.cfg", false)]
-        [TestCase("xdai_validator.cfg", false)]
-        [TestCase("spaceneth.cfg", true)]
-        [TestCase("volta.cfg", false)]
-        [TestCase("volta_archive.cfg", false)]
-        public void Geth_limits_configs_are_correct(string configFile, bool useGethLimitsInFastSync)
+        [TestCase("sokol", false)]
+        [TestCase("poacore", true)]
+        [TestCase("xdai", true)]
+        [TestCase("volta", false)]
+        public void Basic_configs_are_as_expected(string configWildcard, bool isProduction = false)
         {
-            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
-            ISyncConfig config = configProvider.GetConfig<ISyncConfig>();
-            Assert.AreEqual( useGethLimitsInFastSync, config.UseGethLimitsInFastBlocks);
-        }
-        
-        [TestCase("ropsten_archive.cfg", "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d")]
-        [TestCase("ropsten.cfg", "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d")]
-        [TestCase("rinkeby_archive.cfg", "0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177")]
-        [TestCase("rinkeby.cfg", "0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177")]
-        [TestCase("goerli_archive.cfg", "0xbf7e331f7f7c1dd2e05159666b3bf8bc7a8a3a9eb1d518969eab529dd9b88c1a")]
-        [TestCase("goerli.cfg", "0xbf7e331f7f7c1dd2e05159666b3bf8bc7a8a3a9eb1d518969eab529dd9b88c1a")]
-        [TestCase("mainnet_archive.cfg", "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")]
-        [TestCase("mainnet.cfg", "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")]
-        [TestCase("sokol.cfg", "0x5b28c1bfd3a15230c9a46b399cd0f9a6920d432e85381cc6a140b06e8410112f")]
-        [TestCase("sokol_archive.cfg", "0x5b28c1bfd3a15230c9a46b399cd0f9a6920d432e85381cc6a140b06e8410112f")]
-        [TestCase("sokol_validator.cfg", "0x5b28c1bfd3a15230c9a46b399cd0f9a6920d432e85381cc6a140b06e8410112f")]
-        [TestCase("sokol_fastsync.cfg", "0x5b28c1bfd3a15230c9a46b399cd0f9a6920d432e85381cc6a140b06e8410112f")]
-        [TestCase("poacore.cfg", "0x39f02c003dde5b073b3f6e1700fc0b84b4877f6839bb23edadd3d2d82a488634")]
-        [TestCase("poacore_archive.cfg", "0x39f02c003dde5b073b3f6e1700fc0b84b4877f6839bb23edadd3d2d82a488634")]
-        [TestCase("poacore_validator.cfg", "0x39f02c003dde5b073b3f6e1700fc0b84b4877f6839bb23edadd3d2d82a488634")]
-        [TestCase("xdai.cfg", "0x4f1dd23188aab3a76b463e4af801b52b1248ef073c648cbdc4c9333d3da79756")]
-        [TestCase("xdai_archive.cfg", "0x4f1dd23188aab3a76b463e4af801b52b1248ef073c648cbdc4c9333d3da79756")]
-        [TestCase("xdai_validator.cfg", "0x4f1dd23188aab3a76b463e4af801b52b1248ef073c648cbdc4c9333d3da79756")]
-        [TestCase("volta.cfg", "0xebd8b413ca7b7f84a8dd20d17519ce2b01954c74d94a0a739a3e416abe0e43e5")]
-        [TestCase("volta_archive.cfg", "0xebd8b413ca7b7f84a8dd20d17519ce2b01954c74d94a0a739a3e416abe0e43e5")]
-        public void Genesis_hash_is_correct(string configFile, string genesisHash)
-        {
-            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
-            IInitConfig config = configProvider.GetConfig<IInitConfig>();
-            Assert.AreEqual(config.GenesisHash, genesisHash);
-        }
-        
-        [TestCase("ropsten_archive.cfg")]
-        [TestCase("ropsten.cfg")]
-        [TestCase("rinkeby_archive.cfg")]
-        [TestCase("rinkeby.cfg")]
-        [TestCase("goerli_archive.cfg")]
-        [TestCase("goerli.cfg")]
-        [TestCase("mainnet_archive.cfg")]
-        [TestCase("mainnet.cfg")]
-        [TestCase("spaceneth.cfg", true)]
-        [TestCase("sokol.cfg")]
-        [TestCase("sokol_archive.cfg")]
-        [TestCase("sokol_validator.cfg", true)]
-        [TestCase("sokol_fastsync.cfg")]
-        [TestCase("poacore.cfg")]
-        [TestCase("poacore_archive.cfg")]
-        [TestCase("poacore_validator.cfg", true)]
-        [TestCase("xdai.cfg")]
-        [TestCase("xdai_archive.cfg")]
-        [TestCase("xdai_validator.cfg", true)]
-        [TestCase("volta.cfg")]
-        [TestCase("volta_archive.cfg")]
-        public void Mining_defaults_are_correct(string configFile, bool defaultValue = false)
-        {
-            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
-            IInitConfig config = configProvider.GetConfig<IInitConfig>();
-            Assert.AreEqual(config.IsMining, defaultValue);
-        }
-        
-        [TestCase("ropsten_archive.cfg")]
-        [TestCase("ropsten.cfg")]
-        [TestCase("rinkeby_archive.cfg")]
-        [TestCase("rinkeby.cfg")]
-        [TestCase("goerli_archive.cfg")]
-        [TestCase("goerli.cfg")]
-        [TestCase("mainnet_archive.cfg")]
-        [TestCase("mainnet.cfg")]
-        [TestCase("sokol.cfg")]
-        [TestCase("sokol_archive.cfg")]
-        [TestCase("sokol_validator.cfg")]
-        [TestCase("sokol_fastsync.cfg")]
-        [TestCase("poacore.cfg")]
-        [TestCase("poacore_archive.cfg")]
-        [TestCase("poacore_validator.cfg")]
-        [TestCase("spaceneth.cfg")]
-        [TestCase("ndm_consumer_goerli.cfg")]
-        [TestCase("ndm_consumer_local.cfg")]
-        [TestCase("xdai.cfg")]
-        [TestCase("xdai_archive.cfg")]
-        [TestCase("xdai_validator.cfg")]
-        [TestCase("volta.cfg")]
-        [TestCase("volta_archive.cfg")]
-        public void Required_config_files_exist(string configFile)
-        {
-            var configPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "configs", configFile);
-            Assert.True(File.Exists(configPath));
-        }
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+                ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();
 
-        [TestCase("ropsten_archive.cfg")]
-        [TestCase("ropsten.cfg")]
-        [TestCase("rinkeby_archive.cfg")]
-        [TestCase("rinkeby.cfg")]
-        [TestCase("goerli_archive.cfg")]
-        [TestCase("goerli.cfg")]
-        [TestCase("mainnet_archive.cfg")]
-        [TestCase("mainnet.cfg")]
-        [TestCase("sokol.cfg")]
-        [TestCase("sokol_archive.cfg")]
-        [TestCase("sokol_validator.cfg")]
-        [TestCase("sokol_fastsync.cfg")]
-        [TestCase("poacore.cfg")]
-        [TestCase("poacore_archive.cfg")]
-        [TestCase("poacore_validator.cfg")]
-        [TestCase("xdai.cfg")]
-        [TestCase("xdai_archive.cfg")]
-        [TestCase("xdai_validator.cfg")]
-        [TestCase("volta.cfg")]
-        [TestCase("volta_archive.cfg")]
-        public void Eth_stats_disabled_by_default(string configFile)
-        {
-            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
-            IEthStatsConfig config = configProvider.GetConfig<IEthStatsConfig>();
-            Assert.AreEqual(config.Enabled, false);
-        }
-        
-        [TestCase("ropsten_archive.cfg")]
-        [TestCase("ropsten.cfg")]
-        [TestCase("rinkeby_archive.cfg")]
-        [TestCase("rinkeby.cfg")]
-        [TestCase("goerli_archive.cfg")]
-        [TestCase("goerli.cfg")]
-        [TestCase("mainnet_archive.cfg")]
-        [TestCase("mainnet.cfg")]
-        [TestCase("sokol.cfg")]
-        [TestCase("sokol_archive.cfg")]
-        [TestCase("sokol_validator.cfg")]
-        [TestCase("sokol_fastsync.cfg")]
-        [TestCase("poacore.cfg")]
-        [TestCase("poacore_archive.cfg")]
-        [TestCase("poacore_validator.cfg")]
-        [TestCase("xdai.cfg")]
-        [TestCase("xdai_archive.cfg")]
-        [TestCase("xdai_validator.cfg")]
-        [TestCase("volta.cfg")]
-        [TestCase("volta_archive.cfg")]
-        public void Grpc_disabled_by_default(string configFile)
-        {
-            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
-            IGrpcConfig config = configProvider.GetConfig<IGrpcConfig>();
-            Assert.AreEqual(false, config.Enabled);
-            Assert.AreEqual(false, config.ProducerEnabled);
-        }
-        
-        [TestCase("ndm_consumer_goerli.cfg")]
-        [TestCase("ndm_consumer_local.cfg")]
-        public void Grpc_enabled_for_ndm(string configFile)
-        {
-            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
-            IGrpcConfig config = configProvider.GetConfig<IGrpcConfig>();
-            Assert.AreEqual(true, config.Enabled);
-            Assert.AreEqual(false, config.ProducerEnabled);
-        }
-        
-        [TestCase("ndm_consumer_local.cfg")]
-        public void IsMining_enabled_for_ndm_consumer_local(string configFile)
-        {
-            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
-            IInitConfig config = configProvider.GetConfig<IInitConfig>();
-            Assert.AreEqual(true, config.IsMining);
-        }
-        
-        [TestCase("ropsten_archive.cfg")]
-        [TestCase("ropsten.cfg")]
-        [TestCase("rinkeby_archive.cfg")]
-        [TestCase("rinkeby.cfg")]
-        [TestCase("goerli_archive.cfg")]
-        [TestCase("goerli.cfg")]
-        [TestCase("mainnet_archive.cfg")]
-        [TestCase("mainnet.cfg")]
-        [TestCase("sokol.cfg")]
-        [TestCase("sokol_archive.cfg")]
-        [TestCase("sokol_validator.cfg")]
-        [TestCase("sokol_fastsync.cfg")]
-        [TestCase("poacore.cfg")]
-        [TestCase("poacore_archive.cfg")]
-        [TestCase("poacore_validator.cfg")]
-        [TestCase("xdai.cfg")]
-        [TestCase("xdai_archive.cfg")]
-        [TestCase("xdai_validator.cfg")]
-        [TestCase("volta.cfg")]
-        [TestCase("volta_archive.cfg")]
-        public void Ndm_disabled_by_default(string configFile)
-        {
-            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
-            INdmConfig config = configProvider.GetConfig<INdmConfig>();
-            Assert.AreEqual(config.Enabled, false);
-        }
-        
-        [TestCase("ropsten_archive.cfg")]
-        [TestCase("ropsten.cfg")]
-        [TestCase("rinkeby_archive.cfg")]
-        [TestCase("rinkeby.cfg")]
-        [TestCase("goerli_archive.cfg")]
-        [TestCase("goerli.cfg")]
-        [TestCase("mainnet_archive.cfg")]
-        [TestCase("mainnet.cfg")]
-        [TestCase("sokol.cfg")]
-        [TestCase("sokol_archive.cfg")]
-        [TestCase("sokol_validator.cfg")]
-        [TestCase("sokol_fastsync.cfg")]
-        [TestCase("poacore.cfg")]
-        [TestCase("poacore_archive.cfg")]
-        [TestCase("poacore_validator.cfg")]
-        [TestCase("xdai.cfg")]
-        [TestCase("xdai_archive.cfg")]
-        [TestCase("xdai_validator.cfg")]
-        [TestCase("volta.cfg")]
-        [TestCase("volta_archive.cfg")]
-        public void Metrics_disabled_by_default(string configFile)
-        {
-            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
-            IMetricsConfig config = configProvider.GetConfig<IMetricsConfig>();
-            Assert.AreEqual(config.Enabled, false);
-        }
-        
-        [TestCase("ropsten_archive.cfg")]
-        [TestCase("ropsten.cfg")]
-        [TestCase("rinkeby_archive.cfg")]
-        [TestCase("rinkeby.cfg")]
-        [TestCase("goerli_archive.cfg")]
-        [TestCase("goerli.cfg")]
-        [TestCase("mainnet_archive.cfg")]
-        [TestCase("mainnet.cfg", 100)]
-        [TestCase("sokol.cfg")]
-        [TestCase("sokol_archive.cfg")]
-        [TestCase("sokol_validator.cfg")]
-        [TestCase("sokol_fastsync.cfg")]
-        [TestCase("poacore.cfg")]
-        [TestCase("poacore_archive.cfg")]
-        [TestCase("poacore_validator.cfg")]
-        [TestCase("xdai.cfg")]
-        [TestCase("xdai_archive.cfg")]
-        [TestCase("xdai_validator.cfg")]
-        [TestCase("volta.cfg")]
-        [TestCase("volta_archive.cfg")]
-        public void Network_defaults_are_correct(string configFile, int activePeers = 50)
-        {
-            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
-            INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
-            Assert.AreEqual(30303, networkConfig.DiscoveryPort, nameof(networkConfig.DiscoveryPort));
-            Assert.AreEqual(30303, networkConfig.P2PPort, nameof(networkConfig.P2PPort));
-            Assert.Null(networkConfig.ExternalIp, nameof(networkConfig.ExternalIp));
-            Assert.Null(networkConfig.LocalIp, nameof(networkConfig.LocalIp));
-            Assert.AreEqual(activePeers, networkConfig.ActivePeersMaxCount);
-        }
-        
-        [TestCase("ropsten_archive.cfg")]
-        [TestCase("ropsten.cfg")]
-        [TestCase("rinkeby_archive.cfg")]
-        [TestCase("rinkeby.cfg")]
-        [TestCase("goerli_archive.cfg")]
-        [TestCase("goerli.cfg")]
-        [TestCase("mainnet_archive.cfg")]
-        [TestCase("mainnet.cfg")]
-        [TestCase("sokol.cfg")]
-        [TestCase("sokol_archive.cfg")]
-        [TestCase("sokol_validator.cfg")]
-        [TestCase("sokol_fastsync.cfg")]
-        [TestCase("poacore.cfg")]
-        [TestCase("poacore_archive.cfg")]
-        [TestCase("poacore_validator.cfg")]
-        [TestCase("xdai.cfg")]
-        [TestCase("xdai_archive.cfg")]
-        [TestCase("xdai_validator.cfg")]
-        [TestCase("volta.cfg")]
-        [TestCase("volta_archive.cfg")]
-        public void Json_default_are_correct(string configFile)
-        {
-            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
-            IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
-            Assert.AreEqual(8545, jsonRpcConfig.Port, nameof(jsonRpcConfig.Port));
-            Assert.AreEqual("127.0.0.1", jsonRpcConfig.Host, nameof(jsonRpcConfig.Host));
-            Assert.AreEqual(false, jsonRpcConfig.Enabled, nameof(jsonRpcConfig.Enabled));
-        }
-        
-        [TestCase("ropsten_archive.cfg")]
-        [TestCase("ropsten.cfg")]
-        [TestCase("rinkeby_archive.cfg")]
-        [TestCase("rinkeby.cfg")]
-        [TestCase("goerli_archive.cfg")]
-        [TestCase("goerli.cfg")]
-        [TestCase("mainnet_archive.cfg")]
-        [TestCase("mainnet.cfg")]
-        [TestCase("sokol.cfg")]
-        [TestCase("sokol_archive.cfg")]
-        [TestCase("sokol_validator.cfg")]
-        [TestCase("sokol_fastsync.cfg")]
-        [TestCase("poacore.cfg")]
-        [TestCase("poacore_archive.cfg")]
-        [TestCase("poacore_validator.cfg")]
-        [TestCase("xdai.cfg")]
-        [TestCase("xdai_archive.cfg")]
-        [TestCase("xdai_validator.cfg")]
-        [TestCase("volta.cfg")]
-        [TestCase("volta_archive.cfg")]
-        public void Kafka_disabled_by_default(string configFile)
-        {
-            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
-            IKafkaConfig kafkaConfig = configProvider.GetConfig<IKafkaConfig>();
-            Assert.AreEqual(false, kafkaConfig.Enabled, nameof(kafkaConfig.Enabled));
-        }
-        
-        [TestCase("ropsten.cfg", false, false)]
-        [TestCase("rinkeby.cfg", false, false)]
-        [TestCase("goerli.cfg", true, true)]
-        [TestCase("mainnet.cfg", false, false)]
-        [TestCase("sokol.cfg", true, true)]
-        [TestCase("sokol_validator.cfg", true, false)]
-        [TestCase("sokol_fastsync.cfg", true, true)]
-        [TestCase("poacore.cfg", true, true)]
-        [TestCase("poacore_validator.cfg", true, false)]
-        [TestCase("xdai.cfg", true, true)]
-        [TestCase("xdai_validator.cfg", true, false)]
-        [TestCase("volta.cfg", true, true)]
-        public void Fast_sync_settings_as_expected(string configFile, bool downloadBodies, bool downloadsReceipts)
-        {
-            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
-            ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();
-            Assert.AreEqual(downloadBodies, syncConfig.DownloadBodiesInFastSync, nameof(syncConfig.DownloadBodiesInFastSync));
-            Assert.AreEqual(downloadsReceipts, syncConfig.DownloadReceiptsInFastSync, nameof(syncConfig.DownloadReceiptsInFastSync));
-        }
-        
-        [TestCase("ropsten.cfg", false)]
-        [TestCase("rinkeby.cfg", false)]
-        [TestCase("goerli.cfg", false)]
-        [TestCase("mainnet.cfg", false)]
-        [TestCase("sokol.cfg", true)]
-        [TestCase("sokol_validator.cfg", true)]
-        [TestCase("sokol_fastsync.cfg", true)]
-        [TestCase("poacore.cfg", true)]
-        [TestCase("poacore_validator.cfg", true)]
-        [TestCase("xdai.cfg", true)]
-        [TestCase("xdai_validator.cfg", true)]
-        [TestCase("volta.cfg", false)]
-        public void Stays_on_full_sync(string configFile, bool stickToFullSyncAfterFastSync)
-        {
-            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
-            ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();
-            if (stickToFullSyncAfterFastSync)
-            {
-                syncConfig.FastSyncCatchUpHeightDelta.Should().BeGreaterOrEqualTo(1000000000);
-            }
-            else
-            {
-                syncConfig.FastSyncCatchUpHeightDelta.Should().Be(1024);
+                Assert.True(initConfig.DiscoveryEnabled, nameof(initConfig.DiscoveryEnabled));
+                Assert.True(initConfig.ProcessingEnabled, nameof(initConfig.ProcessingEnabled));
+                Assert.True(initConfig.PeerManagerEnabled, nameof(initConfig.PeerManagerEnabled));
+                Assert.True(syncConfig.SynchronizationEnabled, nameof(syncConfig.SynchronizationEnabled));
+                Assert.False(initConfig.WebSocketsEnabled, nameof(initConfig.WebSocketsEnabled));
+                if (isProduction)
+                {
+                    Assert.False(initConfig.EnableUnsecuredDevWallet, nameof(initConfig.EnableUnsecuredDevWallet));
+                }
+
+                Assert.False(initConfig.KeepDevWalletInMemory, nameof(initConfig.KeepDevWalletInMemory));
+
+                Assert.AreEqual(configFile.Replace("cfg", "logs.txt"), initConfig.LogFileName, nameof(initConfig.LogFileName));
             }
         }
-        
-        [TestCase("ropsten_archive.cfg")]
-        [TestCase("ropsten.cfg")]
-        [TestCase("rinkeby_archive.cfg")]
-        [TestCase("rinkeby.cfg")]
-        [TestCase("goerli_archive.cfg")]
-        [TestCase("goerli.cfg")]
-        [TestCase("mainnet_archive.cfg", true)]
-        [TestCase("mainnet.cfg", true)]
-        [TestCase("sokol.cfg")]
-        [TestCase("sokol_archive.cfg")]
-        [TestCase("sokol_fastsync.cfg")]
-        [TestCase("poacore.cfg", true)]
-        [TestCase("poacore_archive.cfg", true)]
-        [TestCase("xdai.cfg", true)]
-        [TestCase("xdai_archive.cfg", true)]
-        [TestCase("volta.cfg")]
-        [TestCase("volta_archive.cfg")]
-        public void Basic_configs_are_as_expected(string configFile, bool isProduction = false)
-        {
-            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
-            IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
-            ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();
-            
-            Assert.True(initConfig.DiscoveryEnabled, nameof(initConfig.DiscoveryEnabled));
-            Assert.True(initConfig.ProcessingEnabled, nameof(initConfig.ProcessingEnabled));
-            Assert.True(initConfig.PeerManagerEnabled, nameof(initConfig.PeerManagerEnabled));
-            Assert.True(syncConfig.SynchronizationEnabled, nameof(syncConfig.SynchronizationEnabled));
-            Assert.False(initConfig.WebSocketsEnabled, nameof(initConfig.WebSocketsEnabled));
-            if (isProduction)
-            {
-                Assert.False(initConfig.EnableUnsecuredDevWallet, nameof(initConfig.EnableUnsecuredDevWallet));
-            }
 
-            Assert.False(initConfig.KeepDevWalletInMemory, nameof(initConfig.KeepDevWalletInMemory));
-            Assert.False(initConfig.IsMining, nameof(initConfig.IsMining));
-            Assert.True(initConfig.StoreReceipts, nameof(initConfig.StoreReceipts));
 
-            Assert.AreEqual(configFile.Replace("cfg", "logs.txt"), initConfig.LogFileName, nameof(initConfig.LogFileName));
-        }
-        
-        
-        [TestCase("ropsten_archive.cfg")]
-        [TestCase("ropsten.cfg")]
-        [TestCase("rinkeby_archive.cfg")]
-        [TestCase("rinkeby.cfg")]
-        [TestCase("goerli_archive.cfg", new [] { 16, 16, 16, 16 })]
-        [TestCase("goerli.cfg", new [] { 16, 16, 16, 16 })]
-        [TestCase("goerli_beam.cfg", new [] { 16, 16, 16, 16 })]
-        [TestCase("mainnet_archive.cfg")]
-        [TestCase("mainnet.cfg")]
-        [TestCase("sokol.cfg", new [] { 16, 16, 16, 16 })]
-        [TestCase("sokol_archive.cfg", new [] { 16, 16, 16, 16 })]
-        [TestCase("sokol_fastsync.cfg", new [] { 16, 16, 16, 16 })]
+        [TestCase("ropsten")]
+        [TestCase("rinkeby")]
+        [TestCase("goerli", new[] {16, 16, 16, 16})]
+        [TestCase("mainnet")]
+        [TestCase("sokol.cfg", new[] {16, 16, 16, 16})]
+        [TestCase("sokol_archive.cfg", new[] {16, 16, 16, 16})]
         [TestCase("sokol_validator.cfg", null, false)]
-        [TestCase("poacore.cfg", new [] { 16, 16, 16, 16 })]
-        [TestCase("poacore_archive.cfg", new [] { 16, 16, 16, 16 })]
+        [TestCase("poacore.cfg", new[] {16, 16, 16, 16})]
+        [TestCase("poacore_archive.cfg", new[] {16, 16, 16, 16})]
         [TestCase("poacore_validator.cfg", null, false)]
-        [TestCase("xdai.cfg", new [] { 16, 16, 16 })]
-        [TestCase("xdai_archive.cfg", new [] { 16, 16, 16 })]
+        [TestCase("xdai.cfg", new[] {16, 16, 16})]
+        [TestCase("xdai_archive.cfg", new[] {16, 16, 16})]
         [TestCase("xdai_validator.cfg", null, false)]
-        [TestCase("volta.cfg")]
-        [TestCase("volta_archive.cfg")]
-        public void Bloom_configs_are_as_expected(string configFile, int[] levels = null, bool index = true)
+        [TestCase("volta")]
+        public void Bloom_configs_are_as_expected(string configWildcard, int[] levels = null, bool index = true)
         {
-            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
-            IBloomConfig bloomConfig = configProvider.GetConfig<IBloomConfig>();
-            bloomConfig.Index.Should().Be(index);
-            bloomConfig.Migration.Should().BeFalse();
-            bloomConfig.MigrationStatistics.Should().BeFalse();
-            bloomConfig.IndexLevelBucketSizes.Should().Equal(levels ?? new BloomConfig().IndexLevelBucketSizes);
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                IBloomConfig bloomConfig = configProvider.GetConfig<IBloomConfig>();
+                bloomConfig.Index.Should().Be(index, configFile);
+                bloomConfig.Migration.Should().BeFalse(configFile);
+                bloomConfig.MigrationStatistics.Should().BeFalse(configFile);
+                bloomConfig.IndexLevelBucketSizes.Should().Equal(levels ?? new BloomConfig().IndexLevelBucketSizes, configFile);
+            }
         }
 
         private static ConfigProvider GetConfigProviderFromFile(string configFile)
@@ -580,6 +412,235 @@ namespace Nethermind.Runner.Test
             var configPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "configs", configFile);
             configProvider.AddSource(new JsonConfigSource(configPath));
             return configProvider;
+        }
+
+        private IEnumerable<string> BeamConfigs
+        {
+            get
+            {
+                foreach (string config in _configs)
+                {
+                    if (config.Contains("_beam"))
+                    {
+                        yield return config;
+                    }
+                }
+            }
+        }
+
+        private IEnumerable<string> FastSyncConfigs
+        {
+            get
+            {
+                foreach (string config in _configs)
+                {
+                    if (!config.Contains("_") && !config.Contains("spaceneth"))
+                    {
+                        yield return config;
+                    }
+                }
+            }
+        }
+
+        private IEnumerable<string> ArchiveConfigs
+        {
+            get
+            {
+                foreach (string config in _configs)
+                {
+                    if (config.Contains("_archive"))
+                    {
+                        yield return config;
+                    }
+                }
+            }
+        }
+
+        private IEnumerable<string> RopstenConfigs
+        {
+            get
+            {
+                foreach (string config in _configs)
+                {
+                    if (config.Contains("ropsten"))
+                    {
+                        yield return config;
+                    }
+                }
+            }
+        }
+
+        private IEnumerable<string> PoaCoreConfigs
+        {
+            get
+            {
+                foreach (string config in _configs)
+                {
+                    if (config.Contains("poacore"))
+                    {
+                        yield return config;
+                    }
+                }
+            }
+        }
+
+        private IEnumerable<string> SokolConfigs
+        {
+            get
+            {
+                foreach (string config in _configs)
+                {
+                    if (config.Contains("sokol"))
+                    {
+                        yield return config;
+                    }
+                }
+            }
+        }
+
+        private IEnumerable<string> VoltaConfigs
+        {
+            get
+            {
+                foreach (string config in _configs)
+                {
+                    if (config.Contains("volta"))
+                    {
+                        yield return config;
+                    }
+                }
+            }
+        }
+
+        private IEnumerable<string> XDaiConfigs
+        {
+            get
+            {
+                foreach (string config in _configs)
+                {
+                    if (config.Contains("xdai"))
+                    {
+                        yield return config;
+                    }
+                }
+            }
+        }
+
+        private IEnumerable<string> GoerliConfigs
+        {
+            get
+            {
+                foreach (string config in _configs)
+                {
+                    if (config.Contains("goerli"))
+                    {
+                        yield return config;
+                    }
+                }
+            }
+        }
+
+        private IEnumerable<string> RinkebyConfigs
+        {
+            get
+            {
+                foreach (string config in _configs)
+                {
+                    if (config.Contains("rinkeby"))
+                    {
+                        yield return config;
+                    }
+                }
+            }
+        }
+
+        private IEnumerable<string> MainnetConfigs
+        {
+            get
+            {
+                foreach (string config in _configs)
+                {
+                    if (config.Contains("mainnet"))
+                    {
+                        yield return config;
+                    }
+                }
+            }
+        }
+
+        private IEnumerable<string> ValidatorConfigs
+        {
+            get
+            {
+                foreach (string config in _configs)
+                {
+                    if (config.Contains("validator"))
+                    {
+                        yield return config;
+                    }
+                }
+            }
+        }
+
+        private IEnumerable<string> NdmConfigs
+        {
+            get
+            {
+                foreach (string config in _configs)
+                {
+                    if (config.Contains("ndm"))
+                    {
+                        yield return config;
+                    }
+                }
+            }
+        }
+
+        private IEnumerable<string> Resolve(string configWildcard)
+        {
+            string[] configWildcards = configWildcard.Split(" ");
+            List<IEnumerable<string>> toIntersect = new List<IEnumerable<string>>();
+            foreach (string singleWildcard in configWildcards)
+            {
+                string singleWildcardBase = singleWildcard.Replace("^", "");
+                var result = (singleWildcard.Replace("^", "")) switch
+                {
+                    "*" => _configs,
+                    "archive" => ArchiveConfigs,
+                    "fast" => FastSyncConfigs,
+                    "beam" => BeamConfigs,
+                    "mainnet" => MainnetConfigs,
+                    "goerli" => GoerliConfigs,
+                    "rinkeby" => RinkebyConfigs,
+                    "ropsten" => RopstenConfigs,
+                    "sokol" => SokolConfigs,
+                    "poacore" => PoaCoreConfigs,
+                    "volta" => VoltaConfigs,
+                    "xdai" => XDaiConfigs,
+                    "validators" => ValidatorConfigs,
+                    "ndm" => NdmConfigs,
+                    "aura" => PoaCoreConfigs.Union(SokolConfigs).Union(XDaiConfigs).Union(VoltaConfigs),
+                    "aura_non_validating" => PoaCoreConfigs.Union(SokolConfigs).Union(XDaiConfigs).Union(VoltaConfigs).Where(c => !c.Contains("validator")),
+                    "clique" => RinkebyConfigs.Union(GoerliConfigs),
+                    "ethhash" => MainnetConfigs.Union(RopstenConfigs),
+                    _ => Enumerable.Repeat(singleWildcardBase, 1)
+                };
+
+                if (singleWildcard.StartsWith("^"))
+                {
+                    result = _configs.Except(result);
+                }
+
+                toIntersect.Add(result);
+            }
+
+            var intersection = toIntersect.First();
+            foreach (IEnumerable<string> next in toIntersect.Skip(1))
+            {
+                intersection = intersection.Intersect(next);
+            }
+
+            return intersection;
         }
     }
 }
