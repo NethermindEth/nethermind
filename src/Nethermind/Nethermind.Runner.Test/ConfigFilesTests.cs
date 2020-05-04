@@ -193,30 +193,19 @@ namespace Nethermind.Runner.Test
             }
         }
 
-        [TestCase("^ndm")]
-        public void Grpc_disabled_by_default(string configWildcard)
+        [TestCase("^ndm", false)]
+        [TestCase("ndm", true)]
+        public void Grpc_defaults(string configWildcard, bool expectedDefault)
         {
             foreach (string configFile in Resolve(configWildcard))
             {
                 ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
                 IGrpcConfig config = configProvider.GetConfig<IGrpcConfig>();
-                Assert.AreEqual(false, config.Enabled);
-                Assert.AreEqual(false, config.ProducerEnabled);
+                config.Enabled.Should().Be(expectedDefault, configFile);
+                config.ProducerEnabled.Should().Be(false, configFile);
             }
         }
-
-        [TestCase("ndm")]
-        public void Grpc_enabled_for_ndm(string configWildcard)
-        {
-            foreach (string configFile in Resolve(configWildcard))
-            {
-                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
-                IGrpcConfig config = configProvider.GetConfig<IGrpcConfig>();
-                Assert.AreEqual(true, config.Enabled);
-                Assert.AreEqual(false, config.ProducerEnabled);
-            }
-        }
-
+        
         [TestCase("ndm_consumer_local.cfg")]
         public void IsMining_enabled_for_ndm_consumer_local(string configWildcard)
         {
