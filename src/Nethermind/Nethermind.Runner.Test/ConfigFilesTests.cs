@@ -28,6 +28,7 @@ using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.PubSub.Kafka;
 using Nethermind.Store.Bloom;
+using Nethermind.TxPool;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test
@@ -71,7 +72,7 @@ namespace Nethermind.Runner.Test
         }
 
 
-        [TestCase("sokol_validator.cfg", true, true)]
+        [TestCase("validators", true, true)]
         [TestCase("poacore_validator.cfg", true, true)]
         [TestCase("xdai_validator.cfg", true, true)]
         [TestCase("spaceneth.cfg", false, false)]
@@ -124,7 +125,10 @@ namespace Nethermind.Runner.Test
             {
                 ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
                 IEthStatsConfig config = configProvider.GetConfig<IEthStatsConfig>();
-                Assert.AreEqual(host, config.Server);
+                config.Enabled.Should().BeFalse(configFile);
+                config.Server.Should().Be(host, configFile);
+                config.Secret.Should().Be("secret", configFile);
+                config.Contact.Should().Be("hello@nethermind.io", configFile);
             }
         }
 
@@ -236,7 +240,10 @@ namespace Nethermind.Runner.Test
             {
                 ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
                 IMetricsConfig config = configProvider.GetConfig<IMetricsConfig>();
-                Assert.AreEqual(config.Enabled, false);
+                config.Enabled.Should().Be(false, configFile);
+                config.NodeName.ToUpperInvariant().Should().Be(configFile.Replace("_", " ").Replace(".cfg", "").ToUpperInvariant().Replace("POACORE", "POA CORE"), configFile);
+                config.IntervalSeconds.Should().Be(5, configFile);
+                config.PushGatewayUrl.Should().Be("http://localhost:9091/metrics", configFile);
             }
         }
 
@@ -253,6 +260,17 @@ namespace Nethermind.Runner.Test
                 Assert.Null(networkConfig.ExternalIp, nameof(networkConfig.ExternalIp));
                 Assert.Null(networkConfig.LocalIp, nameof(networkConfig.LocalIp));
                 networkConfig.ActivePeersMaxCount.Should().Be(activePeers, configFile);
+            }
+        }
+        
+        [TestCase("*", 2048)]
+        public void Tx_pool_defaults_are_correct(string configWildcard, int poolSize)
+        {
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                ITxPoolConfig txPoolConfig = configProvider.GetConfig<ITxPoolConfig>();
+                txPoolConfig.Size.Should().Be(poolSize, configFile);
             }
         }
 
