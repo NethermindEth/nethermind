@@ -117,6 +117,7 @@ namespace Nethermind.Core.Caching
             }
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public bool Contains(TKey key) => _cacheMap.ContainsKey(key);
 
         private void RemoveFirst()
