@@ -386,7 +386,9 @@ namespace Nethermind.Blockchain.Processing
                     break;
                 }
 
-                bool isFastSyncTransition = (_blockTree.Head?.IsGenesis ?? false) && toBeProcessed.Number > 1;
+                bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
+                bool toBeProcessedIsNotBlockOne = toBeProcessed.Number > 1;
+                bool isFastSyncTransition = headIsGenesis && toBeProcessedIsNotBlockOne;
                 if (!isFastSyncTransition)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)}");
