@@ -18,6 +18,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Abi;
@@ -33,6 +34,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
@@ -45,137 +47,149 @@ namespace Nethermind.AuRa.Test.Transactions
     {
         private const string ContractAddress = "0xAB5b100cf7C8deFB3c8f3C48474223997A50fB13";
         
+        private static readonly TransactionPermissionContract.TxPermissions[] TxTypes = new[]
+        {
+            TransactionPermissionContract.TxPermissions.Basic,
+            TransactionPermissionContract.TxPermissions.Call,
+            TransactionPermissionContract.TxPermissions.Create
+        };
+        
         public static IEnumerable<TestCaseData> V1Tests()
         {
-            TestCaseData GetTestCase(
-                Func<Task<TestTxPermissionsBlockchain>> test,
-                PrivateKey key,
-                TransactionPermissionContract.TxPermissions check,
-                TransactionPermissionContract.TxPermissions expected)
+            IList<Test> tests = new List<Test>()
             {
-                var result = (expected & check) != TransactionPermissionContract.TxPermissions.None;
-                return new TestCaseData(test, key, check).SetName($"Expected {expected}, check {check} is {result}").SetCategory(nameof(V1Tests)).Returns(result);
-            }
-
-            IDictionary<PrivateKey, TransactionPermissionContract.TxPermissions> expectedPermissions = new Dictionary<PrivateKey, TransactionPermissionContract.TxPermissions>
-            {
-                { new PrivateKey("0x0000000000000000000000000000000000000000000000000000000000000001"), TransactionPermissionContract.TxPermissions.All },
-                { new PrivateKey("0x0000000000000000000000000000000000000000000000000000000000000002"), TransactionPermissionContract.TxPermissions.Basic | TransactionPermissionContract.TxPermissions.Call },
-                { new PrivateKey("0x0000000000000000000000000000000000000000000000000000000000000003"), TransactionPermissionContract.TxPermissions.Basic },
-                { new PrivateKey("0x0000000000000000000000000000000000000000000000000000000000000004"), TransactionPermissionContract.TxPermissions.None },
+                new Test() {SenderKey = GetPrivateKey(1), ContractPermissions = TransactionPermissionContract.TxPermissions.All},
+                new Test() {SenderKey = GetPrivateKey(2), ContractPermissions = TransactionPermissionContract.TxPermissions.Basic | TransactionPermissionContract.TxPermissions.Call},
+                new Test() {SenderKey = GetPrivateKey(3), ContractPermissions = TransactionPermissionContract.TxPermissions.Basic},
+                new Test() {SenderKey = GetPrivateKey(4), ContractPermissions = TransactionPermissionContract.TxPermissions.None},
             };
 
-            TransactionPermissionContract.TxPermissions[] checkedPermissions = new[]
-            {
-                TransactionPermissionContract.TxPermissions.Basic,
-                TransactionPermissionContract.TxPermissions.Call,
-                TransactionPermissionContract.TxPermissions.Create
-            };
-
-            var testTask = TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxPermissionFilterTest>(nameof(V1));
-            Func<Task<TestTxPermissionsBlockchain>> testFactory = () => testTask;
-
-            foreach (var permission in expectedPermissions)
-            {
-                foreach (var checkedPermission in checkedPermissions)
-                {
-                    yield return GetTestCase(testFactory, permission.Key, checkedPermission, permission.Value);
-                }
-            }
+            return GetTestCases(tests, nameof(V1), CreateV1Transaction);
         }
         
+        private static TransactionBuilder<Transaction> CreateV1Transaction(Test test, TransactionPermissionContract.TxPermissions txType)
+        {
+            var transactionBuilder = Build.A.Transaction.WithData(null).WithSenderAddress(test.Sender);
+            
+            switch (txType)
+            {
+                case TransactionPermissionContract.TxPermissions.Call:
+                    transactionBuilder.WithData(Bytes.Zero32);
+                    break;
+                case TransactionPermissionContract.TxPermissions.Create:
+                    transactionBuilder.WithInit(Bytes.Zero32);
+                    break;
+            }
+            
+            return transactionBuilder;
+        }
+
         // Contract code: https://gist.github.com/arkpar/38a87cb50165b7e683585eec71acb05a
         [TestCaseSource(nameof(V1Tests))]
-        public async Task<bool> V1(Func<Task<TestTxPermissionsBlockchain>> testFactory, PrivateKey key, TransactionPermissionContract.TxPermissions txType)
-        {
-            Transaction CreateTransaction()
-            {
-                var transactionBuilder = Build.A.Transaction.WithData(null).WithSenderAddress(key.Address);
-            
-                switch (txType)
-                {
-                    case TransactionPermissionContract.TxPermissions.Call:
-                        transactionBuilder.WithData(Bytes.Zero32);
-                        break;
-                    case TransactionPermissionContract.TxPermissions.Create:
-                        transactionBuilder.WithInit(Bytes.Zero32);
-                        break;
-                }
-            
-                return transactionBuilder.TestObject;
-            }
-            
-            var test = await testFactory();
-            var head = test.BlockTree.Head;
-            Transaction tx = CreateTransaction();
-            return test.TxPermissionFilter.IsAllowed(tx, head.Header);
-        }
-        
+        public async Task<(bool IsAllowed, bool Cache)> V1(Func<Task<TestTxPermissionsBlockchain>> chainFactory, Transaction tx) => await ChainTest(chainFactory, tx, 1);
+
         public static IEnumerable<TestCaseData> V2Tests()
         {
-            TestCaseData GetTestCase(
-                Func<Task<TestTxPermissionsBlockchain>> test,
-                PrivateKey key,
-                TransactionPermissionContract.TxPermissions check,
-                TransactionPermissionContract.TxPermissions expected)
+            IList<Test> tests = new List<Test>()
             {
-                var result = (expected & check) != TransactionPermissionContract.TxPermissions.None;
-                return new TestCaseData(test, key, check).SetName($"Expected {expected}, check {check} is {result}").SetCategory(nameof(V2Tests)).Returns(result);
-            }
-
-            IDictionary<PrivateKey, TransactionPermissionContract.TxPermissions> expectedPermissions = new Dictionary<PrivateKey, TransactionPermissionContract.TxPermissions>
-            {
-                { new PrivateKey("0x0000000000000000000000000000000000000000000000000000000000000001"), TransactionPermissionContract.TxPermissions.All },
-                { new PrivateKey("0x0000000000000000000000000000000000000000000000000000000000000002"), TransactionPermissionContract.TxPermissions.Basic | TransactionPermissionContract.TxPermissions.Call },
-                { new PrivateKey("0x0000000000000000000000000000000000000000000000000000000000000003"), TransactionPermissionContract.TxPermissions.Basic },
-                { new PrivateKey("0x0000000000000000000000000000000000000000000000000000000000000004"), TransactionPermissionContract.TxPermissions.None },
+                new Test() {SenderKey = GetPrivateKey(1), ContractPermissions = TransactionPermissionContract.TxPermissions.All, Cache = true},
+                new Test() {SenderKey = GetPrivateKey(2), ContractPermissions = TransactionPermissionContract.TxPermissions.Basic | TransactionPermissionContract.TxPermissions.Call, Cache = true},
+                new Test() {SenderKey = GetPrivateKey(3), ContractPermissions = TransactionPermissionContract.TxPermissions.Basic, Cache = true},
+                new Test() {SenderKey = GetPrivateKey(4), ContractPermissions = TransactionPermissionContract.TxPermissions.None, Cache = true},
+                
+                new Test() {SenderKey = GetPrivateKey(5), ContractPermissions = TransactionPermissionContract.TxPermissions.None, Cache = true},
+                new Test() {SenderKey = GetPrivateKey(5), ContractPermissions = TransactionPermissionContract.TxPermissions.All, Cache = false, Value = 0},
+                
+                new Test() {SenderKey = GetPrivateKey(6), ContractPermissions = TransactionPermissionContract.TxPermissions.None, Cache = true},
+                new Test() {SenderKey = GetPrivateKey(6), ContractPermissions = TransactionPermissionContract.TxPermissions.Basic, Cache = false, ToKey = GetPrivateKey(7)},
+                
+                new Test() {SenderKey = GetPrivateKey(7), ContractPermissions = TransactionPermissionContract.TxPermissions.None, Cache = true},
+                new Test() {SenderKey = GetPrivateKey(7), ContractPermissions = TransactionPermissionContract.TxPermissions.None, Cache = true, Value = 0},
+                new Test() {SenderKey = GetPrivateKey(7), ContractPermissions = TransactionPermissionContract.TxPermissions.None, Cache = true, ToKey = GetPrivateKey(6)},
+                new Test() {SenderKey = GetPrivateKey(7), ContractPermissions = TransactionPermissionContract.TxPermissions.All, Cache = false, ToKey = GetPrivateKey(6), Value = 0},
             };
 
-            TransactionPermissionContract.TxPermissions[] checkedPermissions = new[]
-            {
-                TransactionPermissionContract.TxPermissions.Basic,
-                TransactionPermissionContract.TxPermissions.Call,
-                TransactionPermissionContract.TxPermissions.Create
-            };
-
-            var testTask = TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxPermissionFilterTest>(nameof(V1));
-            Func<Task<TestTxPermissionsBlockchain>> testFactory = () => testTask;
-
-            foreach (var permission in expectedPermissions)
-            {
-                foreach (var checkedPermission in checkedPermissions)
-                {
-                    yield return GetTestCase(testFactory, permission.Key, checkedPermission, permission.Value);
-                }
-            }
+            return GetTestCases(tests, nameof(V2), CreateV2Transaction);
+        }
+        
+        private static TransactionBuilder<Transaction> CreateV2Transaction(Test test, TransactionPermissionContract.TxPermissions txType)
+        {
+            var transactionBuilder = CreateV1Transaction(test, txType);
+            transactionBuilder.To(test.To);
+            transactionBuilder.WithValue(test.Value);
+            return transactionBuilder;
         }
         
         // Contract code: https://gist.github.com/VladLupashevskyi/84f18eabb1e4afadf572cf92af3e7e7f
         [TestCaseSource(nameof(V2Tests))]
-        public async Task<bool> V2(Func<Task<TestTxPermissionsBlockchain>> testFactory, PrivateKey key, TransactionPermissionContract.TxPermissions txType)
+        public async Task<(bool IsAllowed, bool Cache)> V2(Func<Task<TestTxPermissionsBlockchain>> chainFactory, Transaction tx) => await ChainTest(chainFactory, tx, 2);
+        
+        public static IEnumerable<TestCaseData> V3Tests()
         {
-            Transaction CreateTransaction()
+            IList<Test> tests = new List<Test>()
             {
-                var transactionBuilder = Build.A.Transaction.WithData(null).WithSenderAddress(key.Address);
-            
-                switch (txType)
-                {
-                    case TransactionPermissionContract.TxPermissions.Call:
-                        transactionBuilder.WithData(Bytes.Zero32);
-                        break;
-                    case TransactionPermissionContract.TxPermissions.Create:
-                        transactionBuilder.WithInit(Bytes.Zero32);
-                        break;
-                }
-            
-                return transactionBuilder.TestObject;
-            }
-            
-            var test = await testFactory();
-            var head = test.BlockTree.Head;
-            Transaction tx = CreateTransaction();
-            return test.TxPermissionFilter.IsAllowed(tx, head.Header);
+                new Test() {SenderKey = GetPrivateKey(1), ContractPermissions = TransactionPermissionContract.TxPermissions.None, Cache = false},
+                new Test() {SenderKey = GetPrivateKey(1), ContractPermissions = TransactionPermissionContract.TxPermissions.All, Cache = false, GasPrice = 1},
+                new Test() {SenderKey = GetPrivateKey(1), ContractPermissions = TransactionPermissionContract.TxPermissions.All, Cache = false, Data = new byte[]{0, 1}},
+                new Test() {SenderKey = GetPrivateKey(1), ContractPermissions = TransactionPermissionContract.TxPermissions.All, Cache = false, GasPrice = 5, Data = new byte[]{0, 2, 3}},
+            };
+
+            return GetTestCases(tests, nameof(V3), CreateV3Transaction);
         }
+        
+        private static TransactionBuilder<Transaction> CreateV3Transaction(Test test, TransactionPermissionContract.TxPermissions txType)
+        {
+            var transactionBuilder = CreateV2Transaction(test, txType);
+            transactionBuilder.WithData(test.Data);
+            transactionBuilder.WithGasPrice(test.GasPrice);
+            return transactionBuilder;
+        }
+        
+        [TestCaseSource(nameof(V3Tests))]
+        public async Task<(bool IsAllowed, bool Cache)> V3(Func<Task<TestTxPermissionsBlockchain>> chainFactory, Transaction tx) => await ChainTest(chainFactory, tx, 3);
+
+        private static async Task<(bool IsAllowed, bool Cache)> ChainTest(Func<Task<TestTxPermissionsBlockchain>> chainFactory, Transaction tx, UInt256 version)
+        {
+            var chain = await chainFactory();
+            var head = chain.BlockTree.Head;
+            var isAllowed = chain.TxPermissionFilter.IsAllowed(tx, head.Header);
+            chain.TxPermissionFilterCache.VersionedContracts.Get(head.Hash).Should().Be(version);
+            return (isAllowed, chain.TxPermissionFilterCache.Permissions.Contains((head.Hash, tx.SenderAddress)));
+        }
+
+        private static IEnumerable<TestCaseData> GetTestCases(IEnumerable<Test> tests, string testsName, Func<Test, TransactionPermissionContract.TxPermissions, TransactionBuilder<Transaction>> transactionBuilder)
+        {
+            TestCaseData GetTestCase(
+                Func<Task<TestTxPermissionsBlockchain>> chainFactory,
+                Test test,
+                TransactionPermissionContract.TxPermissions txType)
+            {
+                var result = (test.ContractPermissions & txType) != TransactionPermissionContract.TxPermissions.None;
+                return new TestCaseData(chainFactory, transactionBuilder(test, txType).TestObject)
+                    .SetName($"{testsName} - {test.Number}: Expected {test.ContractPermissions}, check {txType} is {result}")
+                    .SetCategory(testsName + "Tests")
+                    .Returns((result, test.Cache ?? true));
+            }
+
+            var chainTask = TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxPermissionFilterTest>(testsName);
+            Func<Task<TestTxPermissionsBlockchain>> testFactory = async () =>
+            {
+                var chain = await chainTask;
+                chain.TxPermissionFilterCache.Permissions.Clear();
+                chain.TxPermissionFilterCache.VersionedContracts.Clear();
+                return chain;
+            };
+
+            foreach (var test in tests)
+            {
+                foreach (var txType in TxTypes)
+                {
+                    yield return GetTestCase(testFactory, test, txType);
+                }
+            }
+        }
+
+        private static PrivateKey GetPrivateKey(int key) => new PrivateKey(key.ToString("X64"));
 
         [TestCase(1, ExpectedResult = true)]
         [TestCase(3, ExpectedResult = true)]
@@ -197,7 +211,8 @@ namespace Nethermind.AuRa.Test.Transactions
 
         public class TestTxPermissionsBlockchain : TestContractBlockchain
         {
-            public TxPermissionFilter TxPermissionFilter { get; set; }
+            public TxPermissionFilter TxPermissionFilter { get; private set; }
+            public ITxPermissionFilter.Cache TxPermissionFilterCache { get; private set; }
             
             protected override BlockProcessor CreateBlockProcessor()
             {
@@ -210,7 +225,8 @@ namespace Nethermind.AuRa.Test.Transactions
                 var transactionPermissionContract = new TransactionPermissionContract(TxProcessor, new AbiEncoder(), new Address(ContractAddress), 1,
                     new ReadOnlyTransactionProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance));
 
-                TxPermissionFilter = new TxPermissionFilter(transactionPermissionContract, new ITxPermissionFilter.Cache(), LimboLogs.Instance);
+                TxPermissionFilterCache = new ITxPermissionFilter.Cache();
+                TxPermissionFilter = new TxPermissionFilter(transactionPermissionContract, TxPermissionFilterCache, LimboLogs.Instance);
                 
                 return new AuRaBlockProcessor(SpecProvider, Always.Valid, new RewardCalculator(SpecProvider), TxProcessor, StateDb, CodeDb, State, Storage, TxPool, ReceiptStorage, LimboLogs.Instance,
                     new ListBasedValidator(validator, new ValidSealerStrategy(), LimboLogs.Instance),
@@ -218,6 +234,21 @@ namespace Nethermind.AuRa.Test.Transactions
             }
 
             protected override Task AddBlocksOnStart() => Task.CompletedTask;
+        }
+
+        public class Test
+        {
+            public PrivateKey SenderKey { get; set; }
+            public PrivateKey ToKey { get; set; }
+            public UInt256 Value { get; set; } = 1;
+            public byte[] Data { get; set; } = Bytes.Zero32;
+            public UInt256 GasPrice { get; set; } = 0;
+            public Address Sender => SenderKey.Address;
+            public Address To => ToKey?.Address ?? TestItem.AddressA;
+            
+            public TransactionPermissionContract.TxPermissions ContractPermissions { get; set; }
+            public bool? Cache { get; set; }
+            public int Number => int.Parse(SenderKey.KeyBytes.ToHexString(), NumberStyles.HexNumber);
         }
     }
 }

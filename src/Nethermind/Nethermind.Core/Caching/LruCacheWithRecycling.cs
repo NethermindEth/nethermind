@@ -119,6 +119,8 @@ namespace Nethermind.Core.Caching
             }
         }
 
+        public bool Contains(TKey key) => _cacheMap.ContainsKey(key);
+
         private void Replace(TKey key, TValue value)
         {
             LinkedListNode<LruCacheItem> node = _lruList.First;

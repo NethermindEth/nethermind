@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Core.Caching
 {
     public interface ICache<in TKey, TValue>
@@ -23,5 +25,6 @@ namespace Nethermind.Core.Caching
         bool TryGet(TKey key, out TValue value);
         void Set(TKey key, TValue val);
         void Delete(TKey key);
+        bool Contains(TKey key);
     }
 }
