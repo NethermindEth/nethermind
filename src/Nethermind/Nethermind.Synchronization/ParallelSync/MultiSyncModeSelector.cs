@@ -29,7 +29,7 @@ namespace Nethermind.Synchronization.ParallelSync
         /// <summary>
         /// Number of blocks before the best peer's head when we switch from fast sync to full sync
         /// </summary>
-        public const int FastSyncLag = 32;
+        public const int FastSyncLag = 2;
 
         /// <summary>
         /// How many blocks can fast sync stay behind while state nodes is still syncing

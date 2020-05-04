@@ -35,6 +35,7 @@ using Nethermind.Synchronization.BeamSync;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
+using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Synchronization.Test.BeamSync
 {

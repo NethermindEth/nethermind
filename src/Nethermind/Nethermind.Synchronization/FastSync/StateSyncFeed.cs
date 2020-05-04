@@ -223,6 +223,7 @@ namespace Nethermind.Synchronization.FastSync
                     lock (_stateDbLock)
                     {
                         Interlocked.Add(ref _data.DataSize, data.Length);
+                        Interlocked.Increment(ref Metrics.SyncedStateTrieNodes);
                         _stateDb.Set(syncItem.Hash, data);
                     }
 
@@ -237,6 +238,7 @@ namespace Nethermind.Synchronization.FastSync
                             lock (_codeDbLock)
                             {
                                 Interlocked.Add(ref _data.DataSize, data.Length);
+                                Interlocked.Increment(ref Metrics.SyncedCodes);
                                 _codeDb.Set(syncItem.Hash, data);
                             }
 
@@ -248,6 +250,7 @@ namespace Nethermind.Synchronization.FastSync
                     lock (_stateDbLock)
                     {
                         Interlocked.Add(ref _data.DataSize, data.Length);
+                        Interlocked.Increment(ref Metrics.SyncedStorageTrieNodes);
                         _stateDb.Set(syncItem.Hash, data);
                     }
 
@@ -259,6 +262,7 @@ namespace Nethermind.Synchronization.FastSync
                     lock (_codeDbLock)
                     {
                         Interlocked.Add(ref _data.DataSize, data.Length);
+                        Interlocked.Increment(ref Metrics.SyncedCodes);
                         _codeDb.Set(syncItem.Hash, data);
                     }
 
@@ -636,8 +640,6 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        private int _beamSyncedUsable = 0;
-
         public override async Task<StateSyncBatch> PrepareRequest()
         {
             if ((_syncModeSelector.Current & SyncMode.StateNodes) != SyncMode.StateNodes)
@@ -694,6 +696,8 @@ namespace Nethermind.Synchronization.FastSync
                     if (_logger.IsTrace) _logger.Trace($"After preparing a request of {requestHashes.Count} from ({_pendingItems.Description}) nodes | {_dependencies.Count}");
                     if (_logger.IsTrace) _logger.Trace($"Adding pending request {result}");
                     _pendingRequests.TryAdd(result, null);
+
+                    Interlocked.Increment(ref Metrics.StateSyncRequests);
                     return await Task.FromResult(result);
                 }
 

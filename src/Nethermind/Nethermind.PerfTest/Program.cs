@@ -26,6 +26,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Blockchain.Visitors;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
@@ -41,11 +42,9 @@ using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
 using Nethermind.Serialization.Json;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Store;
 using Nethermind.Store.Bloom;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
@@ -92,14 +91,9 @@ namespace Nethermind.PerfTest
             public Block Head => _blockTree.Head;
             public bool CanAcceptNewBlocks { get; } = true;
 
-            public async Task LoadBlocksFromDb(CancellationToken cancellationToken, long? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue)
+            public async Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken)
             {
-                await _blockTree.LoadBlocksFromDb(cancellationToken, startBlockNumber, batchSize, maxBlocksToLoad);
-            }
-
-            public async Task FixFastSyncGaps(CancellationToken cancellationToken)
-            {
-                await _blockTree.FixFastSyncGaps(cancellationToken);
+                await _blockTree.Accept(blockTreeVisitor, cancellationToken);
             }
 
             public ChainLevelInfo FindLevel(long number) => _blockTree.FindLevel(number);
@@ -434,7 +428,8 @@ namespace Nethermind.PerfTest
                 }
             };
 
-            await Task.WhenAny(completionSource.Task, blockTree.LoadBlocksFromDb(CancellationToken.None, 0, 10000, BlocksToLoad));
+            DbBlocksLoader dbBlocksLoader = new DbBlocksLoader(blockTree, _logger, 0, 10000, BlocksToLoad);
+            await Task.WhenAny(completionSource.Task, blockTree.Accept(dbBlocksLoader, CancellationToken.None));
 
             await blockchainProcessor.StopAsync(true).ContinueWith(
                 t =>

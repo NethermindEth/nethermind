@@ -92,13 +92,13 @@ namespace Nethermind.Network.Test.Discovery
             //receiving ping
             var address = new IPEndPoint(IPAddress.Parse(_host), _port);
             _discoveryManager.OnIncomingMessage(new PingMessage {FarAddress = address, FarPublicKey = _publicKey, DestinationAddress = _nodeTable.MasterNode.Address, SourceAddress = address});
-            Thread.Sleep(400);
+            Thread.Sleep(200);
 
-            //expecting to send pong
+            // expecting to send pong
             _messageSender.Received(1).SendMessage(Arg.Is<PongMessage>(m => m.FarAddress.Address.ToString() == _host && m.FarAddress.Port == _port));
 
-            //expecting to send 3 pings for every new node
-            _messageSender.Received(3).SendMessage(Arg.Is<PingMessage>(m => m.FarAddress.Address.ToString() == _host && m.FarAddress.Port == _port));
+            // send pings to  new node
+            _messageSender.Received().SendMessage(Arg.Is<PingMessage>(m => m.FarAddress.Address.ToString() == _host && m.FarAddress.Port == _port));
         }
 
         [Test, Ignore("Add bonding"), Retry(3)]

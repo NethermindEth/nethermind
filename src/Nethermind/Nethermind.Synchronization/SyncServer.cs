@@ -101,10 +101,7 @@ namespace Nethermind.Synchronization
                 bool headIsGenesis = _blockTree.Head.Hash == _blockTree.Genesis.Hash;
                 if (headIsGenesis)
                 {
-                    if (_pivotHeader == null)
-                    {
-                        _pivotHeader = _blockTree.FindHeader(_pivotHash, BlockTreeLookupOptions.None);
-                    }
+                    _pivotHeader ??= _blockTree.FindHeader(_pivotHash, BlockTreeLookupOptions.None);
                 }
 
                 return headIsGenesis ? _pivotHeader ?? _blockTree.Genesis : _blockTree.Head?.Header;
@@ -202,7 +199,6 @@ namespace Nethermind.Synchronization
             // Parity sends invalid data here and it is equally expensive to validate and to set from null
             block.Header.TotalDifficulty = null;
 
-            AddBlockResult result = AddBlockResult.UnknownParent;
             bool isKnownParent = _blockTree.IsKnownBlock(block.Number - 1, block.ParentHash);
             if (isKnownParent)
             {
@@ -218,7 +214,7 @@ namespace Nethermind.Synchronization
                     throw new EthSyncException(message);
                 }
 
-                result = _blockTree.SuggestBlock(block, true);
+                AddBlockResult result = _blockTree.SuggestBlock(block, true);
                 if (_logger.IsTrace) _logger.Trace($"{block.Hash} ({block.Number}) adding result is {result}");
             }
 

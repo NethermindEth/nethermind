@@ -44,9 +44,9 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             public static BlockHeader MidWayToPivot { get; set; } = Build.A.Block.WithTotalDifficulty((UInt256) 512).WithNumber(512).TestObject.Header;
 
             public static BlockHeader ChainHead { get; set; } = Build.A.Block.WithTotalDifficulty(Pivot.TotalDifficulty + 2048).WithNumber(Pivot.Number + 2048).TestObject.Header;
-            
+
             public static BlockHeader FutureHead { get; set; } = Build.A.Block.WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 128).WithNumber(Pivot.Number + 2048 + 128).TestObject.Header;
-            
+
             public static BlockHeader SlightlyFutureHead { get; set; } = Build.A.Block.WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 4).WithNumber(Pivot.Number + 2048 + 4).TestObject.Header;
 
             public static BlockHeader MaliciousPrePivot { get; set; } = Build.A.Block.WithTotalDifficulty((UInt256) 1000000).WithNumber(512).TestObject.Header;
@@ -204,7 +204,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     );
                     return this;
                 }
-                
+
                 public ScenarioBuilder IfThisNodeJustCameBackFromBeingOfflineForLongTimeAndFinishedFastSyncCatchUp()
                 {
                     _syncProgressSetups.Add(
@@ -272,7 +272,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     );
                     return this;
                 }
-                
+
                 public ScenarioBuilder IfThisNodeJustFinishedStateSyncButNeedsToCatchUpToHeaders()
                 {
                     _syncProgressSetups.Add(
@@ -289,7 +289,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     );
                     return this;
                 }
-                
+
                 public ScenarioBuilder IfThisNodeJustFinishedStateSyncCatchUp()
                 {
                     _syncProgressSetups.Add(
@@ -360,6 +360,28 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
+                /// <summary>
+                /// Empty clique chains do not update state root on empty blocks (no block reward)
+                /// </summary>
+                /// <returns></returns>
+                public ScenarioBuilder IfThisNodeRecentlyStartedFullSyncProcessingOnEmptyCliqueChain()
+                {
+                    // so the state root check can think that state root is after processed
+                    _syncProgressSetups.Add(
+                        () =>
+                        {
+                            SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number);
+                            SyncProgressResolver.FindBestFullBlock().Returns(ChainHead.Number);
+                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - MultiSyncModeSelector.FastSyncLag + 1);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(ChainHead.Number - MultiSyncModeSelector.FastSyncLag);
+                            SyncProgressResolver.IsFastBlocksFinished().Returns(true);
+                            SyncProgressResolver.ChainDifficulty.Returns((UInt256) ChainHead.Number - MultiSyncModeSelector.FastSyncLag);
+                            return "recently started full sync on empty clique chain";
+                        }
+                    );
+                    return this;
+                }
+
                 public ScenarioBuilder IfThisNodeNeedsAFastSyncCatchUp()
                 {
                     long currentBlock = ChainHead.Number - FastSyncCatchUpHeightDelta;
@@ -377,7 +399,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     );
                     return this;
                 }
-                
+
                 public ScenarioBuilder IfThisNodeHasStateThatIsFarInThePast()
                 {
                     // this is a scenario when we actually have state but the lookup depth is limiting
@@ -423,7 +445,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         {
                             SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number);
                             SyncProgressResolver.FindBestFullBlock().Returns(ChainHead.Number);
-                            
+
                             SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - 1);
                             SyncProgressResolver.FindBestProcessedBlock().Returns(ChainHead.Number);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(true);
@@ -452,13 +474,13 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     AddPeeringSetup("good network", AddPeer(ChainHead));
                     return this;
                 }
-                
+
                 public ScenarioBuilder AndPeersMovedForward()
                 {
                     AddPeeringSetup("peers moved forward", AddPeer(FutureHead));
                     return this;
                 }
-                
+
                 public ScenarioBuilder AndPeersMovedSlightlyForward()
                 {
                     AddPeeringSetup("peers moved slightly forward", AddPeer(SlightlyFutureHead));
@@ -509,7 +531,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     WhenFastSyncWithoutFastBlocksIsConfigured();
                     return this;
                 }
-                
+
                 public ScenarioBuilder ThenInAnyFastSyncConfiguration()
                 {
                     WhenBeamSyncIsConfigured();
@@ -551,6 +573,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     IfThisNodeJustFinishedStateSyncCatchUp();
                     IfThisNodeNearlyNeedsAFastSyncCatchUp();
                     IfThisNodeHasStateThatIsFarInThePast();
+                    IfThisNodeRecentlyStartedFullSyncProcessingOnEmptyCliqueChain();
                     return this;
                 }
 
@@ -895,7 +918,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .ThenInAnyFastSyncConfiguration()
                 .TheSyncModeShouldBe(SyncMode.Full);
         }
-        
+
         [Test]
         public void When_just_started_full_sync_and_peers_moved_forward()
         {
@@ -905,7 +928,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .ThenInAnyFastSyncConfiguration()
                 .TheSyncModeShouldBe(SyncMode.Full);
         }
-        
+
         [Test, Description("Fixes this scenario: // 2020-04-23 19:46:46.0143|INFO|180|Changing state to Full at processed:0|beam state:9930654|state:9930654|block:0|header:9930654|peer block:9930686 // 2020-04-23 19:46:47.0361|INFO|68|Changing state to StateNodes at processed:0|beam state:9930654|state:9930654|block:9930686|header:9930686|peer block:9930686")]
         public void When_just_started_full_sync_and_peers_moved_slightly_forward()
         {
@@ -921,6 +944,16 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         {
             Scenario.GoesLikeThis()
                 .IfThisNodeRecentlyStartedFullSyncProcessing()
+                .AndGoodPeersAreKnown()
+                .ThenInAnyFastSyncConfiguration()
+                .TheSyncModeShouldBe(SyncMode.Full);
+        }
+        
+        [Test]
+        public void When_recently_started_full_sync_on_empty_clique_chain()
+        {
+            Scenario.GoesLikeThis()
+                .IfThisNodeRecentlyStartedFullSyncProcessingOnEmptyCliqueChain()
                 .AndGoodPeersAreKnown()
                 .ThenInAnyFastSyncConfiguration()
                 .TheSyncModeShouldBe(SyncMode.Full);
@@ -985,7 +1018,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .ThenInAnyFastSyncConfiguration()
                 .TheSyncModeShouldBe(SyncMode.Full);
         }
-        
+
         [Test]
         public void State_far_in_the_past()
         {
@@ -995,7 +1028,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .WhenBeamSyncIsConfigured()
                 .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.Beam);
         }
-        
+
         [Test]
         public void When_peers_move_slightly_forward_when_state_syncing()
         {
@@ -1005,7 +1038,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .WhenBeamSyncIsConfigured()
                 .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.FastSync | SyncMode.Beam);
         }
-        
+
         [Test]
         public void When_peers_move_slightly_forward_when_state_syncing_without_beam()
         {
@@ -1015,7 +1048,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .WhenFastSyncWithFastBlocksIsConfigured()
                 .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.FastSync);
         }
-        
+
         [Test]
         public void When_state_sync_finished_but_needs_to_catch_up()
         {
@@ -1025,7 +1058,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .WhenBeamSyncIsConfigured()
                 .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.Beam);
         }
-        
+
         /// <summary>
         /// we DO NOT want the thing like below to happen (incorrectly go back to StateNodes from Full)
         /// 2020-04-25 19:58:32.1466|INFO|254|Changing state to Full at processed:0|beam state:9943624|state:9943624|block:0|header:9943624|peer block:9943656
@@ -1041,7 +1074,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .ThenInAnyFastSyncConfiguration()
                 .TheSyncModeShouldBe(SyncMode.Full);
         }
-        
+
         /// <summary>
         /// We should switch to State Sync in a case like below
         /// 2020-04-27 11:48:30.6691|Changing state to StateNodes at processed:2594949|beam state:2594949|state:2594949|block:2596807|header:2596807|peer block:2596807

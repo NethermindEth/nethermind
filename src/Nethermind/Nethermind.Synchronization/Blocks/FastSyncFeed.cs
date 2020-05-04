@@ -35,7 +35,7 @@ namespace Nethermind.Synchronization.Blocks
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
 
             DownloaderOptions options = BuildOptions();
-            _blocksRequest = new BlocksRequest(options, 32);
+            _blocksRequest = new BlocksRequest(options, MultiSyncModeSelector.FastSyncLag);
             
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;
         }

@@ -24,7 +24,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -44,7 +43,6 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using NUnit.Framework;
-using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Synchronization.Test
 {

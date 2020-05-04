@@ -40,6 +40,7 @@ using Nethermind.State.Repositories;
 using Nethermind.Store.Bloom;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
+using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Core.Test.Blockchain
 {

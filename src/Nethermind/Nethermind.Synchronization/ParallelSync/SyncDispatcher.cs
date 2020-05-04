@@ -84,7 +84,6 @@ namespace Nethermind.Synchronization.ParallelSync
                 if (currentStateLocal == SyncFeedState.Dormant)
                 {
                     if(Logger.IsDebug) Logger.Debug($"{GetType().Name} is going to sleep.");
-                    await Task.Delay(50);
                     await dormantTaskLocal.Task;
                     if(Logger.IsDebug) Logger.Debug($"{GetType().Name} got activated.");
                 }
@@ -98,7 +97,7 @@ namespace Nethermind.Synchronization.ParallelSync
                             if(Logger.IsTrace) Logger.Trace($"{Feed.GetType().Name} enqueued a null request.");
                         }
 
-                        await Task.Delay(50);
+                        await Task.Delay(10);
                         continue;
                     }
 
