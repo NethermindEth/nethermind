@@ -186,6 +186,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                         readOnlyTransactionProcessorSource,
                         useStateProvider ? environment.StateProvider : null),
                     _context.TxFilterCache,
+                    environment.StateProvider,
                     _context.LogManager);
                 
                 return txPermissionFilter;

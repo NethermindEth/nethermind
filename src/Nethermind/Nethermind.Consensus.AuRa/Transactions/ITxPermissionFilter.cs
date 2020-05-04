@@ -25,7 +25,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
 {
     public interface ITxPermissionFilter
     {
-        bool IsAllowed(Transaction tx, BlockHeader blockHeader);
+        bool IsAllowed(Transaction tx, BlockHeader blockHeader, long blockNumber);
         
         public class Cache
         {

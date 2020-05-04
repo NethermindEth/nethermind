@@ -57,7 +57,7 @@ namespace Nethermind.Consensus.AuRa
         {
             _auRaBlockProcessorExtension = auRaBlockProcessorExtension ?? throw new ArgumentNullException(nameof(auRaBlockProcessorExtension));
             _logger = logManager?.GetClassLogger<AuRaBlockProcessor>() ?? throw new ArgumentNullException(nameof(logManager));
-            _txFilter = txFilter;
+            _txFilter = txFilter ?? NullTxPermissionFilter.Instance;
         }
 
         protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
@@ -71,16 +71,13 @@ namespace Nethermind.Consensus.AuRa
 
         private void ValidateTxs(Block block)
         {
-            if (_txFilter != null)
+            for (int i = 0; i < block.Transactions.Length; i++)
             {
-                for (int i = 0; i < block.Transactions.Length; i++)
+                var tx = block.Transactions[i];
+                if (!_txFilter.IsAllowed(tx, block.Header, block.Number))
                 {
-                    var tx = block.Transactions[i];
-                    if (!_txFilter.IsAllowed(tx, block.Header))
-                    {
-                        if (_logger.IsError) _logger.Error($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {tx.ToShortString()} doesn't have required permissions.");
-                        throw new InvalidBlockException(block.Hash);
-                    }
+                    if (_logger.IsError) _logger.Error($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {tx.ToShortString()} doesn't have required permissions.");
+                    throw new InvalidBlockException(block.Hash);
                 }
             }
         }

@@ -53,7 +53,7 @@
       "commandName": "Project",
       "commandLineArgs": "--JsonRpc.Enabled true --config configs\\volta.cfg --baseDbPath C:\\nethermind_db"  
     },
-    "SpaceNeth": {
+    "Spaceneth": {
       "commandName": "Project",
       "commandLineArgs": "--config configs\\spaceneth.cfg --baseDbPath C:\\nethermind_db",
       "environmentVariables": {

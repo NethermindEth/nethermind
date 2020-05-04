@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 Constant = constant;
             }
             
-            public (TxPermissions Permissions, bool Cache) AllowedTxTypes(BlockHeader blockHeader, Transaction tx) => 
+            public (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader blockHeader, Transaction tx) => 
                 (Constant.Call<TxPermissions>(blockHeader, Definition.GetFunction(nameof(AllowedTxTypes)), Address.Zero, tx.SenderAddress), true);
 
             public UInt256 Version => UInt256.One;

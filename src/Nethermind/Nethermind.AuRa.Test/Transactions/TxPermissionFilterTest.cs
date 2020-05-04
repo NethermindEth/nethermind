@@ -38,6 +38,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -46,21 +47,22 @@ namespace Nethermind.AuRa.Test.Transactions
     public class TxPermissionFilterTest
     {
         private const string ContractAddress = "0xAB5b100cf7C8deFB3c8f3C48474223997A50fB13";
+        private static Address _contractAddress = new Address(ContractAddress);
         
         private static readonly TransactionPermissionContract.TxPermissions[] TxTypes = new[]
         {
             TransactionPermissionContract.TxPermissions.Basic,
+            TransactionPermissionContract.TxPermissions.Create,
             TransactionPermissionContract.TxPermissions.Call,
-            TransactionPermissionContract.TxPermissions.Create
         };
-        
+
         public static IEnumerable<TestCaseData> V1Tests()
         {
             IList<Test> tests = new List<Test>()
             {
                 new Test() {SenderKey = GetPrivateKey(1), ContractPermissions = TransactionPermissionContract.TxPermissions.All},
                 new Test() {SenderKey = GetPrivateKey(2), ContractPermissions = TransactionPermissionContract.TxPermissions.Basic | TransactionPermissionContract.TxPermissions.Call},
-                new Test() {SenderKey = GetPrivateKey(3), ContractPermissions = TransactionPermissionContract.TxPermissions.Basic},
+                new Test() {SenderKey = GetPrivateKey(3), ContractPermissions = TransactionPermissionContract.TxPermissions.Basic, To = _contractAddress},
                 new Test() {SenderKey = GetPrivateKey(4), ContractPermissions = TransactionPermissionContract.TxPermissions.None},
             };
 
@@ -75,6 +77,7 @@ namespace Nethermind.AuRa.Test.Transactions
             {
                 case TransactionPermissionContract.TxPermissions.Call:
                     transactionBuilder.WithData(Bytes.Zero32);
+                    transactionBuilder.To(test.To);
                     break;
                 case TransactionPermissionContract.TxPermissions.Create:
                     transactionBuilder.WithInit(Bytes.Zero32);
@@ -94,7 +97,7 @@ namespace Nethermind.AuRa.Test.Transactions
             {
                 new Test() {SenderKey = GetPrivateKey(1), ContractPermissions = TransactionPermissionContract.TxPermissions.All, Cache = true},
                 new Test() {SenderKey = GetPrivateKey(2), ContractPermissions = TransactionPermissionContract.TxPermissions.Basic | TransactionPermissionContract.TxPermissions.Call, Cache = true},
-                new Test() {SenderKey = GetPrivateKey(3), ContractPermissions = TransactionPermissionContract.TxPermissions.Basic, Cache = true},
+                new Test() {SenderKey = GetPrivateKey(3), ContractPermissions = TransactionPermissionContract.TxPermissions.Basic, Cache = true, To = _contractAddress},
                 new Test() {SenderKey = GetPrivateKey(4), ContractPermissions = TransactionPermissionContract.TxPermissions.None, Cache = true},
                 
                 new Test() {SenderKey = GetPrivateKey(5), ContractPermissions = TransactionPermissionContract.TxPermissions.None, Cache = true},
@@ -116,6 +119,28 @@ namespace Nethermind.AuRa.Test.Transactions
         {
             var transactionBuilder = CreateV1Transaction(test, txType);
             transactionBuilder.To(test.To);
+            
+            switch (txType)
+            {
+                case TransactionPermissionContract.TxPermissions.Basic:
+                {
+                    if (test.To == _contractAddress)
+                    {
+                        transactionBuilder.To(Address.Zero);
+                    }
+
+                    break;
+                }
+                case TransactionPermissionContract.TxPermissions.Call:
+                    if (test.Number == 6 && test.To == GetPrivateKey(7).Address)
+                    {
+                        transactionBuilder.To(_contractAddress);
+                        test.Cache = true;
+                    }
+
+                    break;
+            }
+
             transactionBuilder.WithValue(test.Value);
             return transactionBuilder;
         }
@@ -152,7 +177,7 @@ namespace Nethermind.AuRa.Test.Transactions
         {
             var chain = await chainFactory();
             var head = chain.BlockTree.Head;
-            var isAllowed = chain.TxPermissionFilter.IsAllowed(tx, head.Header);
+            var isAllowed = chain.TxPermissionFilter.IsAllowed(tx, head.Header, head.Header.Number + 1);
             chain.TxPermissionFilterCache.VersionedContracts.Get(head.Hash).Should().Be(version);
             return (isAllowed, chain.TxPermissionFilterCache.Permissions.Contains((head.Hash, tx.SenderAddress)));
         }
@@ -205,8 +230,8 @@ namespace Nethermind.AuRa.Test.Transactions
                 5, 
                 Substitute.For<IReadOnlyTransactionProcessorSource>());
             
-            var filter = new TxPermissionFilter(transactionPermissionContract, new ITxPermissionFilter.Cache(), LimboLogs.Instance);
-            return filter.IsAllowed(Build.A.Transaction.TestObject, Build.A.BlockHeader.WithNumber(blockNumber).TestObject);
+            var filter = new TxPermissionFilter(transactionPermissionContract, new ITxPermissionFilter.Cache(), Substitute.For<IStateProvider>(), LimboLogs.Instance);
+            return filter.IsAllowed(Build.A.Transaction.TestObject, Build.A.BlockHeader.WithNumber(blockNumber).TestObject, blockNumber + 1);
         }
 
         public class TestTxPermissionsBlockchain : TestContractBlockchain
@@ -222,11 +247,11 @@ namespace Nethermind.AuRa.Test.Transactions
                     ValidatorType = AuRaParameters.ValidatorType.List
                 };
 
-                var transactionPermissionContract = new TransactionPermissionContract(TxProcessor, new AbiEncoder(), new Address(ContractAddress), 1,
+                var transactionPermissionContract = new TransactionPermissionContract(TxProcessor, new AbiEncoder(), _contractAddress, 1,
                     new ReadOnlyTransactionProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance));
 
                 TxPermissionFilterCache = new ITxPermissionFilter.Cache();
-                TxPermissionFilter = new TxPermissionFilter(transactionPermissionContract, TxPermissionFilterCache, LimboLogs.Instance);
+                TxPermissionFilter = new TxPermissionFilter(transactionPermissionContract, TxPermissionFilterCache, State, LimboLogs.Instance);
                 
                 return new AuRaBlockProcessor(SpecProvider, Always.Valid, new RewardCalculator(SpecProvider), TxProcessor, StateDb, CodeDb, State, Storage, TxPool, ReceiptStorage, LimboLogs.Instance,
                     new ListBasedValidator(validator, new ValidSealerStrategy(), LimboLogs.Instance),
@@ -238,14 +263,19 @@ namespace Nethermind.AuRa.Test.Transactions
 
         public class Test
         {
+            private Address _to;
             public PrivateKey SenderKey { get; set; }
             public PrivateKey ToKey { get; set; }
             public UInt256 Value { get; set; } = 1;
             public byte[] Data { get; set; } = Bytes.Zero32;
             public UInt256 GasPrice { get; set; } = 0;
             public Address Sender => SenderKey.Address;
-            public Address To => ToKey?.Address ?? TestItem.AddressA;
-            
+            public Address To
+            {
+                get => _to ?? ToKey?.Address ?? Address.Zero;
+                set => _to = value;
+            }
+
             public TransactionPermissionContract.TxPermissions ContractPermissions { get; set; }
             public bool? Cache { get; set; }
             public int Number => int.Parse(SenderKey.KeyBytes.ToHexString(), NumberStyles.HexNumber);

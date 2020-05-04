@@ -38,7 +38,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 Constant = constant;
             }
             
-            public (TxPermissions Permissions, bool Cache) AllowedTxTypes(BlockHeader blockHeader, Transaction tx) =>
+            public (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader blockHeader, Transaction tx) =>
                 // _sender Transaction sender address.
                 // _to Transaction recipient address. If creating a contract, the `_to` address is zero.
                 // _value Transaction amount in wei.

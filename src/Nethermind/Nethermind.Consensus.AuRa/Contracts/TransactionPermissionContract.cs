@@ -110,7 +110,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             /// <param name="blockHeader"></param>
             /// <param name="tx"></param>
             /// <returns><see cref="TxPermissions"/>Set of allowed transactions types and <see cref="bool"/> If `true` is returned, the same permissions will be applied from the same sender without calling this contract again.</returns>
-            (TxPermissions Permissions, bool Cache) AllowedTxTypes(BlockHeader blockHeader, Transaction tx);
+            (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader blockHeader, Transaction tx);
             
             /// <summary>
             /// Returns the contract's version number needed for node's engine.

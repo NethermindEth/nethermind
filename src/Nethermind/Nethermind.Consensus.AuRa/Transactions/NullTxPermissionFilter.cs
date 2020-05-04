@@ -15,24 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class TxFilterTxSource : ITxSource
+    public class NullTxPermissionFilter : ITxPermissionFilter
     {
-        private readonly ITxSource _innerSource;
-        private readonly ITxPermissionFilter _txPermissionFilter;
-
-        public TxFilterTxSource(ITxSource innerSource, ITxPermissionFilter txPermissionFilter)
-        {
-            _innerSource = innerSource;
-            _txPermissionFilter = txPermissionFilter;
-        }
-
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) => 
-            _innerSource.GetTransactions(parent, gasLimit).Where(tx => _txPermissionFilter.IsAllowed(tx, parent, parent.Number + 1));
+        public bool IsAllowed(Transaction tx, BlockHeader blockHeader, long blockNumber) => true;
+        
+        public static readonly NullTxPermissionFilter Instance = new NullTxPermissionFilter(); 
     }
 }
