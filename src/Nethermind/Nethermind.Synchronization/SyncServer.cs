@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -31,6 +32,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.LesSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
@@ -52,6 +54,7 @@ namespace Nethermind.Synchronization
         private readonly ISnapshotableDb _codeDb;
         private readonly ISynchronizer _synchronizer;
         private readonly ISyncConfig _syncConfig;
+        private readonly CanonicalHashTrie _cht;
         private object _dummyValue = new object();
         private LruCache<Keccak, object> _recentlySuggested = new LruCache<Keccak, object>(128, 128, "recently suggested blocks");
         private long _pivotNumber;
@@ -67,7 +70,8 @@ namespace Nethermind.Synchronization
             ISyncModeSelector syncModeSelector,
             ISynchronizer synchronizer,
             ISyncConfig syncConfig,
-            ILogManager logManager)
+            ILogManager logManager,
+            CanonicalHashTrie cht = null)
         {
             _synchronizer = synchronizer ?? throw new ArgumentNullException(nameof(synchronizer));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
@@ -80,6 +84,7 @@ namespace Nethermind.Synchronization
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _cht = cht;
             _pivotNumber = _syncConfig.PivotNumberParsed;
 
             _blockTree.NewHeadBlock += OnNewHeadBlock;
@@ -326,7 +331,40 @@ namespace Nethermind.Synchronization
             return _blockTree.FindLowestCommonAncestor(firstDescendant, secondDescendant, Sync.MaxReorgLength);
         }
 
+        private object _chtLock = new object();
+
+        // TODO - Cancellation token?
+        // TODO - not a fan of this function name - CatchUpCHT, AddMissingCHTBlocks, ...?
+        public Task BuildCHT()
+        {
+            return Task.Run(() =>
+            {
+                lock (_chtLock)
+                {
+                    // Note: The spec says this should be 2048, but I don't think we'd ever want it to be higher than the max reorg depth we allow.
+                    long maxSection = CanonicalHashTrie.GetSectionFromBlockNo(_blockTree.FindLatestHeader().Number - Sync.MaxReorgLength);
+                    long maxKnownSection = _cht.GetMaxSectionIndex();
+
+                    for (long section = (maxKnownSection + 1); section <= maxSection; section++)
+                    {
+                        long sectionStart = section * CanonicalHashTrie.SectionSize;
+                        for (int blockOffset = 0; blockOffset < CanonicalHashTrie.SectionSize; blockOffset++)
+                        {
+                            _cht.Set(_blockTree.FindHeader(sectionStart + blockOffset));
+                        }
+                        _cht.Commit(section);
+                    }
+                }
+            });
+        }
+
+        public CanonicalHashTrie GetCHT()
+        {
+            return _cht;
+        }
+
         public Block Find(Keccak hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+
 
         public Keccak FindHash(long number)
         {
@@ -374,6 +412,11 @@ namespace Nethermind.Synchronization
             if (counter > 0)
             {
                 if (_logger.IsDebug) _logger.Debug($"Broadcasting block {block.ToString(Block.Format.Short)} to {counter} peers.");
+            }
+
+            if ((block.Number - Sync.MaxReorgLength) % CanonicalHashTrie.SectionSize == 0)
+            {
+                _ = BuildCHT();
             }
         }
     }

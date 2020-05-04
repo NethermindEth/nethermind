@@ -14,28 +14,35 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.State.Proofs;
+using Nethermind.Trie;
 using System;
+using System.Collections.Generic;
+using System.Text;
+using System.Threading;
 
-namespace Nethermind.Db
+namespace Nethermind.Synchronization.LesSync
 {
-    public interface IReadOnlyDbProvider : IDbProvider
+    class ChtProofCollector: ProofCollector
     {
-        void ClearTempChanges();
-    }
-    
-    public interface IDbProvider : IDisposable
-    {
-        ISnapshotableDb StateDb { get; }
-        ISnapshotableDb CodeDb { get; }
-        IColumnsDb<ReceiptsColumns> ReceiptsDb { get; }
-        IDb BlocksDb { get; }
-        IDb HeadersDb { get; }
-        IDb BlockInfosDb { get; }
-        IDb PendingTxsDb { get; }
-        IDb ConfigsDb { get; }
-        IDb EthRequestsDb { get; }
-        IDb BloomDb { get; }
-        IDb ChtDb { get; }
-        // add C#8 Dispose (default implementation)
+        long _fromLevel;
+        long _level;
+        public ChtProofCollector(byte[] key, long fromLevel): base(key)
+        {
+            _fromLevel = fromLevel;
+            _level = 0;
+        }
+
+        protected override void AddProofBits(TrieNode node)
+        {
+            if (_level < _fromLevel)
+            {
+                _level++;
+            }
+            else
+            {
+                base.AddProofBits(node);
+            }
+        }
     }
 }

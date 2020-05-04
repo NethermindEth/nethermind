@@ -14,28 +14,28 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-
-namespace Nethermind.Db
+namespace Nethermind.Network.P2P.Subprotocols.Les
 {
-    public interface IReadOnlyDbProvider : IDbProvider
+    public class HelperTrieProofsMessage: P2PMessage
     {
-        void ClearTempChanges();
-    }
-    
-    public interface IDbProvider : IDisposable
-    {
-        ISnapshotableDb StateDb { get; }
-        ISnapshotableDb CodeDb { get; }
-        IColumnsDb<ReceiptsColumns> ReceiptsDb { get; }
-        IDb BlocksDb { get; }
-        IDb HeadersDb { get; }
-        IDb BlockInfosDb { get; }
-        IDb PendingTxsDb { get; }
-        IDb ConfigsDb { get; }
-        IDb EthRequestsDb { get; }
-        IDb BloomDb { get; }
-        IDb ChtDb { get; }
-        // add C#8 Dispose (default implementation)
+        public override int PacketType { get; } = LesMessageCode.HelperTrieProofs;
+        public override string Protocol { get; } = P2P.Protocol.Les;
+        public long RequestId;
+        public int BufferValue;
+
+        public byte[][] ProofNodes;
+        public byte[][] AuxiliaryData;
+
+        public HelperTrieProofsMessage()
+        {
+        }
+
+        public HelperTrieProofsMessage(byte[][] proofNodes, byte[][] auxiliaryData, long requestId, int bufferValue)
+        {
+            ProofNodes = proofNodes;
+            AuxiliaryData = auxiliaryData;
+            RequestId = requestId;
+            BufferValue = bufferValue;
+        }
     }
 }

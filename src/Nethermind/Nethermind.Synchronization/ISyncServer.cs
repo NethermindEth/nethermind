@@ -15,10 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.LesSync;
 
 namespace Nethermind.Synchronization
 {
@@ -29,6 +31,8 @@ namespace Nethermind.Synchronization
         TxReceipt[][] GetReceipts(IList<Keccak> blockHashes);
         Block Find(Keccak hash);
         BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant);
+        public Task BuildCHT();
+        public CanonicalHashTrie GetCHT();
         Keccak FindHash(long number);
         BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse);
         byte[][] GetNodeData(IList<Keccak> keys, NodeDataType includedTypes = NodeDataType.Code | NodeDataType.State);

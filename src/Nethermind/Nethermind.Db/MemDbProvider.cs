@@ -28,6 +28,7 @@ namespace Nethermind.Db
         public IDb ConfigsDb { get; } = new MemDb();
         public IDb EthRequestsDb { get; } = new MemDb();
         public IDb BloomDb { get; } = new MemDb();
+        public IDb ChtDb { get; } = new MemDb();
 
         public void Dispose()
         {
@@ -40,6 +41,7 @@ namespace Nethermind.Db
             ConfigsDb?.Dispose();
             EthRequestsDb?.Dispose();
             BloomDb?.Dispose();
+            ChtDb?.Dispose();
         }
     }
 }

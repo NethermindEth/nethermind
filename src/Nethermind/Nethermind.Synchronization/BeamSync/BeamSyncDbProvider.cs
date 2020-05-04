@@ -38,6 +38,7 @@ namespace Nethermind.Synchronization.BeamSync
             EthRequestsDb = otherProvider.EthRequestsDb;
             ReceiptsDb = otherProvider.ReceiptsDb;
             BloomDb = otherProvider.BloomDb;
+            ChtDb = otherProvider.ChtDb;
         }
         
         public ISnapshotableDb StateDb { get; }
@@ -50,6 +51,7 @@ namespace Nethermind.Synchronization.BeamSync
         public IDb ConfigsDb { get; }
         public IDb EthRequestsDb { get; }
         public IDb BloomDb { get; }
+        public IDb ChtDb { get; }
 
         public void Dispose()
         {
@@ -63,6 +65,7 @@ namespace Nethermind.Synchronization.BeamSync
             ConfigsDb?.Dispose();
             EthRequestsDb?.Dispose();
             BloomDb?.Dispose();
+            ChtDb?.Dispose();
         }
     }
 }

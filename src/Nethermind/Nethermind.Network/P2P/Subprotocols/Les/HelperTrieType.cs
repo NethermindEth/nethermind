@@ -14,28 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-
-namespace Nethermind.Db
+namespace Nethermind.Network.P2P.Subprotocols.Les
 {
-    public interface IReadOnlyDbProvider : IDbProvider
+    public enum HelperTrieType
     {
-        void ClearTempChanges();
-    }
-    
-    public interface IDbProvider : IDisposable
-    {
-        ISnapshotableDb StateDb { get; }
-        ISnapshotableDb CodeDb { get; }
-        IColumnsDb<ReceiptsColumns> ReceiptsDb { get; }
-        IDb BlocksDb { get; }
-        IDb HeadersDb { get; }
-        IDb BlockInfosDb { get; }
-        IDb PendingTxsDb { get; }
-        IDb ConfigsDb { get; }
-        IDb EthRequestsDb { get; }
-        IDb BloomDb { get; }
-        IDb ChtDb { get; }
-        // add C#8 Dispose (default implementation)
+        CHT = 0,
+        BloomBits = 1,
     }
 }

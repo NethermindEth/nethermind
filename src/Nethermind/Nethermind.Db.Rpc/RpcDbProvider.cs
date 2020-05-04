@@ -50,6 +50,7 @@ namespace Nethermind.Db.Rpc
         public IDb ConfigsDb { get; }
         public IDb EthRequestsDb { get; }
         public IDb BloomDb { get; }
+        public IDb ChtDb { get; }
 
         public void Dispose()
         {
@@ -63,6 +64,8 @@ namespace Nethermind.Db.Rpc
             ConfigsDb?.Dispose();
             EthRequestsDb?.Dispose();
             _recordDbProvider?.Dispose();
+            BloomDb?.Dispose();
+            ChtDb?.Dispose();
         }
     }
 }

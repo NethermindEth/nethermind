@@ -44,6 +44,7 @@ namespace Nethermind.Db
             NestedConfigsDb = new ReadOnlyDb(wrappedProvider.ConfigsDb, createInMemoryWriteStore);
             NestedEthRequestsDb = new ReadOnlyDb(wrappedProvider.EthRequestsDb, createInMemoryWriteStore);
             NestedBloomDb = new ReadOnlyDb(wrappedProvider.BloomDb, createInMemoryWriteStore);
+            NestedChtDb = new ReadOnlyDb(wrappedProvider.ChtDb, createInMemoryWriteStore);
         }
 
         public void Dispose()
@@ -60,6 +61,7 @@ namespace Nethermind.Db
         public IDb ConfigsDb => NestedConfigsDb;
         public IDb EthRequestsDb => NestedEthRequestsDb;
         public IDb BloomDb => NestedBloomDb;
+        public IDb ChtDb => NestedChtDb;
         public ReadOnlyColumnsDb<ReceiptsColumns> NestedReceiptsDb { get; }
         public ReadOnlyDb NestedBlocksDb { get; }
         public ReadOnlyDb NestedHeadersDb { get; }
@@ -68,6 +70,7 @@ namespace Nethermind.Db
         public ReadOnlyDb NestedConfigsDb { get; }
         public ReadOnlyDb NestedEthRequestsDb { get; }
         public ReadOnlyDb NestedBloomDb { get; }
+        public ReadOnlyDb NestedChtDb { get; }
 
         public void ClearTempChanges()
         {
@@ -81,6 +84,7 @@ namespace Nethermind.Db
             NestedEthRequestsDb.Restore(-1); 
             NestedReceiptsDb.Restore(-1);
             NestedBloomDb.Restore(-1);
+            NestedChtDb.Restore(-1);
         }
     }
 }
