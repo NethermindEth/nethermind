@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Linq;
 using System.Net;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -34,9 +35,10 @@ namespace Nethermind.Network
         public Enode(string enodeString)
         {
             string[] enodeParts = enodeString.Split(':');
-            _nodeKey = new PublicKey(enodeParts[1].Split('@')[0].TrimStart('/'));
+            string[] enodeParts2 = enodeParts[1].Split('@');
+            _nodeKey = new PublicKey(enodeParts2[0].TrimStart('/'));
             Port = int.Parse(enodeParts[2]);
-            HostIp = IPAddress.Parse(enodeParts[1].Split('@')[1]);
+            HostIp = IPAddress.TryParse(enodeParts2[1], out var ip) ? ip : Dns.GetHostAddresses(enodeParts2[1]).First();
         }
         
         public PublicKey PublicKey => _nodeKey;
