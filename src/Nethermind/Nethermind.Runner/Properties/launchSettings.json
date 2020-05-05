@@ -52,6 +52,13 @@
     "Volta": {
       "commandName": "Project",
       "commandLineArgs": "--JsonRpc.Enabled true --config configs\\volta.cfg --baseDbPath C:\\nethermind_db"  
-    }    
+    },
+    "Spaceneth": {
+      "commandName": "Project",
+      "commandLineArgs": "--config configs\\spaceneth.cfg --baseDbPath C:\\nethermind_db",
+      "environmentVariables": {
+        " ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
   }
 }

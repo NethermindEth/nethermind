@@ -72,7 +72,7 @@ namespace Nethermind.Serialization.Json.Abi
         
         private static StreamReader LoadResource(Type type)
         {
-            var jsonResource = type.FullName + ".json";
+            var jsonResource = type.FullName.Replace("+", ".") + ".json";
             var stream = type.Assembly.GetManifestResourceStream(jsonResource) ?? throw new ArgumentException($"Resource for {jsonResource} not found.");
             return new StreamReader(stream);
         }

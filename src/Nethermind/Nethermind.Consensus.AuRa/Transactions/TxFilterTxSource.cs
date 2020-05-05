@@ -13,26 +13,26 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Blockchain;
-using Nethermind.Config;
-using Nethermind.Consensus.AuRa;
-using Nethermind.Consensus.AuRa.Transactions;
-using Nethermind.Logging;
-using Nethermind.TxPool;
+using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Core;
 
-namespace Nethermind.Runner.Ethereum.Context
+namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class AuRaEthereumRunnerContext : EthereumRunnerContext
+    public class TxFilterTxSource : ITxSource
     {
-        public AuRaEthereumRunnerContext(IConfigProvider configProvider, ILogManager logManager)
-            : base(configProvider, logManager)
+        private readonly ITxSource _innerSource;
+        private readonly ITxPermissionFilter _txPermissionFilter;
+
+        public TxFilterTxSource(ITxSource innerSource, ITxPermissionFilter txPermissionFilter)
         {
+            _innerSource = innerSource;
+            _txPermissionFilter = txPermissionFilter;
         }
-        
-        public IAuRaBlockProcessorExtension? AuRaBlockProcessorExtension { get; set; }
-        public IBlockFinalizationManager? FinalizationManager { get; set; }
-        
-        public ITxPermissionFilter.Cache? TxFilterCache { get; set; }
+
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) => 
+            _innerSource.GetTransactions(parent, gasLimit).Where(tx => _txPermissionFilter.IsAllowed(tx, parent, parent.Number + 1));
     }
 }

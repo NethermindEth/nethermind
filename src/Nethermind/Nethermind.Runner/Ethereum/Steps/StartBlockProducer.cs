@@ -78,23 +78,28 @@ namespace Nethermind.Runner.Ethereum.Steps
                 ReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_context.DbProvider, false);
                 ReadOnlyBlockTree readOnlyBlockTree = new ReadOnlyBlockTree(_context.BlockTree);
                 ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyBlockTree, _context.SpecProvider, _context.LogManager);
-                BlockProcessor blockProcessor = CreateBlockProcessor(readOnlyTxProcessingEnv, readOnlyDbProvider);
+                var readOnlyTransactionProcessorSource = new ReadOnlyTransactionProcessorSource(readOnlyTxProcessingEnv);
+                BlockProcessor blockProcessor = CreateBlockProcessor(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource, readOnlyDbProvider);
                 OneTimeChainProcessor chainProcessor = new OneTimeChainProcessor(readOnlyDbProvider, new BlockchainProcessor(readOnlyBlockTree, blockProcessor, _context.RecoveryStep, _context.LogManager, false));
 
                 return new BlockProducerContext
                 {
                     ChainProcessor = chainProcessor,
                     ReadOnlyStateProvider = readOnlyTxProcessingEnv.StateProvider,
-                    TxSource = CreateTxSourceForProducer(readOnlyTxProcessingEnv)
+                    TxSource = CreateTxSourceForProducer(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource)
                 };
             }
 
             return _blockProducerContext ??= Create();
         }
 
-        protected virtual ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv environment) => new TxPoolTxSource(_context.TxPool, environment.StateReader, _context.LogManager);
+        protected virtual ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, ReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource) 
+            => new TxPoolTxSource(_context.TxPool, readOnlyTxProcessingEnv.StateReader, _context.LogManager);
 
-        protected virtual BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, IReadOnlyDbProvider readOnlyDbProvider)
+        protected virtual BlockProcessor CreateBlockProcessor(
+            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, 
+            ReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource, 
+            IReadOnlyDbProvider readOnlyDbProvider)
         {
             if (_context.SpecProvider == null) throw new StepDependencyException(nameof(_context.SpecProvider));
             if (_context.BlockValidator == null) throw new StepDependencyException(nameof(_context.BlockValidator));

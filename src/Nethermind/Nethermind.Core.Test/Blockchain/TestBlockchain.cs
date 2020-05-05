@@ -24,7 +24,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -43,7 +42,7 @@ using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 
-namespace Nethermind.JsonRpc.Test.Modules
+namespace Nethermind.Core.Test.Blockchain
 {
     public class TestBlockchain : IDisposable
     {
@@ -54,13 +53,15 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IStorageProvider Storage { get; set; }
         public IReceiptStorage ReceiptStorage { get; set; }
         public ITxPool TxPool { get; set; }
-        public ISnapshotableDb CodeDb { get; set; }
+        public ISnapshotableDb CodeDb => DbProvider.CodeDb;
         public IBlockProcessor BlockProcessor { get; set; }
         public IBlockTree BlockTree { get; set; }
         public IJsonSerializer JsonSerializer { get; set; }
         public IStateProvider State { get; set; }
-        public ISnapshotableDb StateDb { get; set; }
+        public ISnapshotableDb StateDb => DbProvider.StateDb;
         public TestBlockProducer BlockProducer { get; private set; }
+        public MemDbProvider DbProvider { get; set; }
+        public ISpecProvider SpecProvider { get; set; }
 
         protected TestBlockchain(SealEngineType sealEngineType)
         {
@@ -76,15 +77,14 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         public static TransactionBuilder<Transaction> BuildSimpleTransaction => Core.Test.Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
-        protected virtual async Task<TestBlockchain> Build()
+        protected virtual async Task<TestBlockchain> Build(ISpecProvider specProvider = null)
         {
             Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc));
             JsonSerializer = new EthereumJsonSerializer();
-            ISpecProvider specProvider = MainnetSpecProvider.Instance;
-            EthereumEcdsa = new EthereumEcdsa(specProvider, LimboLogs.Instance);
+            SpecProvider = specProvider ?? MainnetSpecProvider.Instance;
+            EthereumEcdsa = new EthereumEcdsa(SpecProvider, LimboLogs.Instance);
             ITxStorage txStorage = new InMemoryTxStorage();
-            StateDb = new StateDb();
-            CodeDb = new StateDb();
+            DbProvider = new MemDbProvider();
             State = new StateProvider(StateDb, CodeDb, LimboLogs.Instance);
             State.CreateAccount(TestItem.AddressA, 1000.Ether());
             State.CreateAccount(TestItem.AddressB, 1000.Ether());
@@ -92,26 +92,26 @@ namespace Nethermind.JsonRpc.Test.Modules
             byte[] code = Bytes.FromHexString("0xabcd");
             Keccak codeHash = Keccak.Compute(code);
             State.UpdateCode(code);
-            State.UpdateCodeHash(TestItem.AddressA, codeHash, specProvider.GenesisSpec);
+            State.UpdateCodeHash(TestItem.AddressA, codeHash, SpecProvider.GenesisSpec);
 
             Storage = new StorageProvider(StateDb, State, LimboLogs.Instance);
             Storage.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
             Storage.Commit();
 
-            State.Commit(specProvider.GenesisSpec);
+            State.Commit(SpecProvider.GenesisSpec);
             State.CommitTree();
 
-            TxPool = new TxPool.TxPool(txStorage, Timestamper, EthereumEcdsa, specProvider, new TxPoolConfig(), State, LimboLogs.Instance);
+            TxPool = new TxPool.TxPool(txStorage, Timestamper, EthereumEcdsa, SpecProvider, new TxPoolConfig(), State, LimboLogs.Instance);
 
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
             IDb blockInfoDb = new MemDb();
-            BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockDb), specProvider, TxPool, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockDb), SpecProvider, TxPool, NullBloomStorage.Instance, LimboLogs.Instance);
 
             ReceiptStorage = new InMemoryReceiptStorage();
-            VirtualMachine virtualMachine = new VirtualMachine(State, Storage, new BlockhashProvider(BlockTree, LimboLogs.Instance), specProvider, LimboLogs.Instance);
-            TxProcessor = new TransactionProcessor(specProvider, State, Storage, virtualMachine, LimboLogs.Instance);
-            BlockProcessor = new BlockProcessor(specProvider, Always.Valid, new RewardCalculator(specProvider), TxProcessor, StateDb, CodeDb, State, Storage, TxPool, ReceiptStorage, LimboLogs.Instance);
+            VirtualMachine virtualMachine = new VirtualMachine(State, Storage, new BlockhashProvider(BlockTree, LimboLogs.Instance), SpecProvider, LimboLogs.Instance);
+            TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LimboLogs.Instance);
+            BlockProcessor = CreateBlockProcessor();
 
             BlockchainProcessor chainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor, new TxSignaturesRecoveryStep(EthereumEcdsa, TxPool, LimboLogs.Instance), LimboLogs.Instance, true);
             chainProcessor.Start();
@@ -129,6 +129,16 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _resetEvent.Set();
             };
 
+            var genesis = GetGenesisBlock();
+            BlockTree.SuggestBlock(genesis);
+            await _resetEvent.WaitOneAsync(CancellationToken.None);
+            
+            await AddBlocksOnStart();
+            return this;
+        }
+
+        protected virtual Block GetGenesisBlock()
+        {
             var genesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"));
             if (_sealEngineType == SealEngineType.AuRa)
             {
@@ -136,14 +146,18 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
 
             Block genesis = genesisBlockBuilder.TestObject;
-            BlockTree.SuggestBlock(genesis);
-            await _resetEvent.WaitOneAsync(CancellationToken.None);
-            
+            return genesis;
+        }
+
+        protected virtual async Task AddBlocksOnStart()
+        {
             await AddBlock();
             await AddBlock(BuildSimpleTransaction.WithNonce(0).TestObject);
             await AddBlock(BuildSimpleTransaction.WithNonce(1).TestObject, BuildSimpleTransaction.WithNonce(2).TestObject);
-            return this;
         }
+
+        protected virtual BlockProcessor CreateBlockProcessor() => 
+            new BlockProcessor(SpecProvider, Always.Valid, new RewardCalculator(SpecProvider), TxProcessor, StateDb, CodeDb, State, Storage, TxPool, ReceiptStorage, LimboLogs.Instance);
 
         public async Task AddBlock(params Transaction[] transactions)
         {

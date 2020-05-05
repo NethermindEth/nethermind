@@ -18,6 +18,8 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -66,7 +68,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
         }
 
-        protected override async Task<TestBlockchain> Build()
+        protected override async Task<TestBlockchain> Build(ISpecProvider specProvider = null)
         {
             await base.Build();
             IFilterStore filterStore = new FilterStore();
