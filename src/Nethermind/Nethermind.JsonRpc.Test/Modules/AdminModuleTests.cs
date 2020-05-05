@@ -40,8 +40,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         private EthereumJsonSerializer _serializer;
         private NetworkConfig _networkConfig;
         private IBlockTree _blockTree;
-        private const string EnodeString = "enode://e1b7e0dc09aae610c9dec8a0bee62bab9946cc27ebdd2f9e3571ed6d444628f99e91e43f4a14d42d498217608bb3e1d1bc8ec2aa27d7f7e423413b851bae02bc@www.google.com:30303";
-        private const string ExampleDataDir = "/example/dbdir";
+        private const string _enodeString = "enode://e1b7e0dc09aae610c9dec8a0bee62bab9946cc27ebdd2f9e3571ed6d444628f99e91e43f4a14d42d498217608bb3e1d1bc8ec2aa27d7f7e423413b851bae02bc@127.0.0.1:30303";
+        private const string _exampleDataDir = "/example/dbdir";
         
         [SetUp]
         public void Setup()
@@ -52,8 +52,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             peerManager.ActivePeers.Returns(new List<Peer> {new Peer(new Node("127.0.0.1", 30303, true))});
             
             IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
-            Enode enode = new Enode(EnodeString);
-            _adminModule = new AdminModule(_blockTree, _networkConfig, peerManager, staticNodesManager, enode, ExampleDataDir);
+            Enode enode = new Enode(_enodeString);
+            _adminModule = new AdminModule(_blockTree, _networkConfig, peerManager, staticNodesManager, enode, _exampleDataDir);
             _serializer = new EthereumJsonSerializer();
         }
         
@@ -66,12 +66,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             settings.Converters = EthereumJsonSerializer.CommonConverters.ToList();
             
             NodeInfo nodeInfo = ((JObject) response.Result).ToObject<NodeInfo>(JsonSerializer.Create(settings));
-            var enode = new Enode(EnodeString);
-            nodeInfo.Enode.Should().Be(enode.ToString());
+            nodeInfo.Enode.Should().Be(_enodeString);
             nodeInfo.Id.Should().Be("ae3623ef35c06ab49e9ae4b9f5a2b0f1983c28f85de1ccc98e2174333fdbdf1f");
-            nodeInfo.Ip.Should().Be(enode.HostIp.ToString());
+            nodeInfo.Ip.Should().Be("127.0.0.1");
             nodeInfo.Name.Should().Be(ClientVersion.Description);
-            nodeInfo.ListenAddress.Should().Be($"{enode.HostIp}:{enode.Port}");
+            nodeInfo.ListenAddress.Should().Be("127.0.0.1:30303");
             nodeInfo.Ports.Discovery.Should().Be(_networkConfig.DiscoveryPort);
             nodeInfo.Ports.Listener.Should().Be(_networkConfig.P2PPort);
 
@@ -87,7 +86,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = RpcTest.TestSerializedRequest(_adminModule, "admin_dataDir");
             JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
-            response.Result.Should().Be(ExampleDataDir);
+            response.Result.Should().Be(_exampleDataDir);
         }
         
         [Test]
@@ -99,10 +98,10 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Smoke_test_peers()
         {
-            string serialized0 = RpcTest.TestSerializedRequest(_adminModule, "admin_addPeer", EnodeString);
-            string serialized1 = RpcTest.TestSerializedRequest(_adminModule, "admin_removePeer", EnodeString);
-            string serialized2 = RpcTest.TestSerializedRequest(_adminModule, "admin_addPeer", EnodeString, "true");
-            string serialized3 = RpcTest.TestSerializedRequest(_adminModule, "admin_removePeer", EnodeString, "true");
+            string serialized0 = RpcTest.TestSerializedRequest(_adminModule, "admin_addPeer", _enodeString);
+            string serialized1 = RpcTest.TestSerializedRequest(_adminModule, "admin_removePeer", _enodeString);
+            string serialized2 = RpcTest.TestSerializedRequest(_adminModule, "admin_addPeer", _enodeString, "true");
+            string serialized3 = RpcTest.TestSerializedRequest(_adminModule, "admin_removePeer", _enodeString, "true");
             string serialized4 = RpcTest.TestSerializedRequest(_adminModule, "admin_peers");
         }
     }
