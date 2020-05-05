@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Linq;
 using System.Net;
 using FluentAssertions;
@@ -46,6 +47,15 @@ namespace Nethermind.Network.Test
             enode.HostIp.Should().Be(IPAddress.Parse("172.217.20.196"), "Did google ip changed?");
             enode.Port.Should().Be(1234);
             enode.PublicKey.Should().BeEquivalentTo(publicKey);
+        }
+        
+        [Test]
+        public void dns_test_wrong_domain()
+        {
+            var publicKey = new PublicKey("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+            string domain = "i_do_not_exist";
+            Action action = () => new Enode($"enode://{publicKey.ToString(false)}@{domain}:{1234}");
+            action.Should().Throw<ArgumentException>();
         }
     }
 }
