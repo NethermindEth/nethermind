@@ -44,7 +44,6 @@ namespace Nethermind.Network.Test
             string domain = "www.google.com";
             Enode enode = new Enode($"enode://{publicKey.ToString(false)}@{domain}:{1234}");
             enode.HostIp.Should().BeEquivalentTo(Dns.GetHostAddresses(domain).First());
-            enode.HostIp.Should().Be(IPAddress.Parse("172.217.20.196"), "Did google ip changed?");
             enode.Port.Should().Be(1234);
             enode.PublicKey.Should().BeEquivalentTo(publicKey);
         }
