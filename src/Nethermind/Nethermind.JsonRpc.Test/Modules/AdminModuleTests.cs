@@ -66,11 +66,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             settings.Converters = EthereumJsonSerializer.CommonConverters.ToList();
             
             NodeInfo nodeInfo = ((JObject) response.Result).ToObject<NodeInfo>(JsonSerializer.Create(settings));
-            nodeInfo.Enode.Should().Be(EnodeString);
+            var enode = new Enode(EnodeString);
+            nodeInfo.Enode.Should().Be(enode.ToString());
             nodeInfo.Id.Should().Be("ae3623ef35c06ab49e9ae4b9f5a2b0f1983c28f85de1ccc98e2174333fdbdf1f");
-            nodeInfo.Ip.Should().Be("127.0.0.1");
+            nodeInfo.Ip.Should().Be(enode.HostIp.ToString());
             nodeInfo.Name.Should().Be(ClientVersion.Description);
-            nodeInfo.ListenAddress.Should().Be("127.0.0.1:30303");
+            nodeInfo.ListenAddress.Should().Be($"{enode.HostIp}:{enode.Port}");
             nodeInfo.Ports.Discovery.Should().Be(_networkConfig.DiscoveryPort);
             nodeInfo.Ports.Listener.Should().Be(_networkConfig.P2PPort);
 
