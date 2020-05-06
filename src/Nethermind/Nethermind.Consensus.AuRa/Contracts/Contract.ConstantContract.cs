@@ -26,11 +26,10 @@ namespace Nethermind.Consensus.AuRa.Contracts
 {
     public partial class Contract
     {
-        protected ConstantContractOnState GetConstantOnState(IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource, IStateProvider stateProvider) => 
-            new ConstantContractOnState(this, readOnlyReadOnlyTransactionProcessorSource, stateProvider);
-        
-        protected ConstantContract GetConstant(IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource) => 
-            new ConstantContract(this, readOnlyReadOnlyTransactionProcessorSource);
+        protected ConstantContract GetConstant(IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource, IStateProvider stateProvider = null) =>
+            stateProvider == null 
+                ? new ConstantContract(this, readOnlyReadOnlyTransactionProcessorSource) 
+                : new ConstantContractOnState(this, readOnlyReadOnlyTransactionProcessorSource, stateProvider);
 
         protected internal class ConstantContract
         {
@@ -53,8 +52,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
             public object[] Call(BlockHeader header, AbiFunctionDescription function, Address sender, params object[] arguments)
             {
-                var transaction = _contract.GenerateTransaction<SystemTransaction>(function, sender, arguments);
-                var result = Call(header, transaction);
+                var result = CallRaw(header, function, sender, arguments);
                 var objects = _contract.AbiEncoder.Decode(function.GetReturnInfo(), result);
                 return objects;
             }
@@ -68,6 +66,13 @@ namespace Nethermind.Consensus.AuRa.Contracts
             {
                 var objects = Call(header, function, sender, arguments);
                 return ((T1) objects[0], (T2) objects[1]);
+            }
+            
+            public byte[] CallRaw(BlockHeader header, AbiFunctionDescription function, Address sender, params object[] arguments)
+            {
+                var transaction = _contract.GenerateTransaction<SystemTransaction>(function, sender, arguments);
+                var result = Call(header, transaction);
+                return result;
             }
         }
         

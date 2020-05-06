@@ -36,6 +36,7 @@ namespace Nethermind.Consensus.AuRa
     public class AuRaBlockProcessor : BlockProcessor
     {
         private readonly IAuRaBlockProcessorExtension _auRaBlockProcessorExtension;
+        private readonly IGasLimitOverride _gasLimitOverride;
         private readonly ITxPermissionFilter _txFilter;
         private readonly ILogger _logger;
 
@@ -52,21 +53,43 @@ namespace Nethermind.Consensus.AuRa
             IReceiptStorage receiptStorage,
             ILogManager logManager,
             IAuRaBlockProcessorExtension auRaBlockProcessorExtension,
-            ITxPermissionFilter txFilter = null)
+            ITxPermissionFilter txFilter = null,
+            IGasLimitOverride gasLimitOverride = null)
             : base(specProvider, blockValidator, rewardCalculator, transactionProcessor, stateDb, codeDb, stateProvider, storageProvider, txPool, receiptStorage, logManager)
         {
             _auRaBlockProcessorExtension = auRaBlockProcessorExtension ?? throw new ArgumentNullException(nameof(auRaBlockProcessorExtension));
             _logger = logManager?.GetClassLogger<AuRaBlockProcessor>() ?? throw new ArgumentNullException(nameof(logManager));
             _txFilter = txFilter ?? NullTxPermissionFilter.Instance;
+            _gasLimitOverride = gasLimitOverride;
         }
 
         protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
         {
-            ValidateTxs(block);
+            ValidateAuRa(block);
             _auRaBlockProcessorExtension.PreProcess(block, options);
             var receipts = base.ProcessBlock(block, blockTracer, options);
             _auRaBlockProcessorExtension.PostProcess(block, receipts, options);
             return receipts;
+        }
+
+        // This validations cannot be run in AuraSealValidator because they are dependent on state.
+        private void ValidateAuRa(Block block)
+        {
+            if (!block.IsGenesis)
+            {
+                ValidateGasLimit(block.Header);
+                ValidateTxs(block);
+            }
+        }
+
+        private void ValidateGasLimit(BlockHeader header)
+        {
+            var gasLimit = _gasLimitOverride?.GetGasLimit(header, header.Number);
+            if (gasLimit.HasValue && header.GasLimit != gasLimit)
+            {
+                if (_logger.IsError) _logger.Error($"Invalid gas limit for block {header.Number}, hash {header.Hash}, expected value from contract {gasLimit.Value}, but found {header.GasLimit}.");
+                throw new InvalidBlockException(header.Hash);
+            }
         }
 
         private void ValidateTxs(Block block)

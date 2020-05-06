@@ -41,12 +41,12 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly IList<RandomContract> _contracts;
         private readonly ICryptoRandom _random;
 
-        public RandomContractTxSource(IList<RandomContract> randomnessContracts,
+        public RandomContractTxSource(IList<RandomContract> contracts,
             IEciesCipher eciesCipher,
             PrivateKey privateKey, 
             ICryptoRandom cryptoRandom)
         {
-            _contracts = randomnessContracts ?? throw new ArgumentNullException(nameof(randomnessContracts));
+            _contracts = contracts ?? throw new ArgumentNullException(nameof(contracts));
             _eciesCipher = eciesCipher ?? throw new ArgumentNullException(nameof(eciesCipher));
             _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));
             _random = cryptoRandom;

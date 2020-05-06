@@ -32,12 +32,13 @@ namespace Nethermind.Consensus.AuRa.Contracts
     public class ValidatorContract : Contract
     {
         private readonly IAbiEncoder _abiEncoder;
-        
+        private readonly IStateProvider _stateProvider;
+
         private static readonly IEqualityComparer<LogEntry> LogEntryEqualityComparer = new LogEntryAddressAndTopicEqualityComparer();
         
         internal static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<ValidatorContract>();
         
-        private ConstantContractOnState Constant { get; }
+        private ConstantContract Constant { get; }
 
         public ValidatorContract(
             ITransactionProcessor transactionProcessor, 
@@ -48,7 +49,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
             : base(transactionProcessor, abiEncoder, contractAddress)
         {
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
-            Constant = GetConstantOnState(readOnlyReadOnlyTransactionProcessorSource, stateProvider);
+            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            Constant = GetConstant(readOnlyReadOnlyTransactionProcessorSource, stateProvider);
         }
 
         /// <summary>
@@ -113,7 +115,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         public void EnsureSystemAccount()
         {
-            EnsureSystemAccount(Constant.StateProvider);
+            EnsureSystemAccount(_stateProvider);
         }
     }
 }

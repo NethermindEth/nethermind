@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             : base(transactionProcessor, abiEncoder, contractAddress)
         {
             ActivationBlock = activationBlock;
-            var constantContract = stateProvider == null ? GetConstant(readOnlyReadOnlyTransactionProcessorSource) : GetConstantOnState(readOnlyReadOnlyTransactionProcessorSource, stateProvider);
+            var constantContract = GetConstant(readOnlyReadOnlyTransactionProcessorSource, stateProvider);
             _versionedContracts = GetContracts(constantContract).ToDictionary(c => c.Version);
             _versionContract = (IVersionContract) _versionedContracts.Values.First(c => c is IVersionContract);
         }
