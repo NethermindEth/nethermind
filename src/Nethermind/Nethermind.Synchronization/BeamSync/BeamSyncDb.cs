@@ -119,8 +119,6 @@ namespace Nethermind.Synchronization.BeamSync
 
         public string Name => _tempDb.Name;
 
-        private int _resolvedKeysCount;
-
         private object _diffLock = new object();
 
         private HashSet<Keccak> _requestedNodes = new HashSet<Keccak>();
