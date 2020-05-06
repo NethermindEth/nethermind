@@ -106,7 +106,7 @@ namespace Nethermind.Consensus.Clique
             var headers = new List<BlockHeader>();
             lock (_snapshotCreationLock)
             {
-                BlockHeader header = null;
+                BlockHeader? header = null;
                 // Search for a snapshot in memory or on disk for checkpoints
                 while (true)
                 {
@@ -114,7 +114,7 @@ namespace Nethermind.Consensus.Clique
                     if (snapshot != null) break;
 
                     // If we're at an checkpoint block, make a snapshot if it's known
-                    BlockHeader previousHeader = header;
+                    BlockHeader? previousHeader = header;
                     header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                     if (header == null)
                     {
