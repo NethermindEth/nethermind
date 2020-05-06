@@ -11,7 +11,7 @@ Note that the Eth 2.0 impelmentation is only an alpha version and still in initi
 * .NET Core 3.0 development tools
 * On Linux and OSX, you also need GMP installed (big number library)
 
-Enable trust of the ASP.NET Core development certificate (you can ignore in a browser, but the validator client will reject the connection). On Windows or Max, dotnet will take care of this; on Linux you will need to follow distribution specific instructions (see .NET Core guidance).
+Enable trust of the ASP.NET Core development certificate (you can ignore in a browser, but the validator client will reject the connection). On Windows or Max, dotnet will take care of this; on Linux you will need to follow distribution specific instructions (see section below on separate validator).
 
 ```
 dotnet dev-certs https --trust
@@ -126,6 +126,63 @@ $offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds
 ```
 
 Note that it is possible to run ranges of validators both in-process and as separate validator processes, or even have multiple validator ranges in multiple validator processes.
+
+#### HTTPS On Linux
+
+The separate validator and beacon node tests use communication over HTTPS and require valid certificates (self-signed for development).
+
+On Linux the dotnet generated development certificate has key usage but without the signing flag, so can't be verified on Ubuntu (as certificate authority) due to a current bug in OpenSSL.
+
+```
+dotnet dev-certs https --export-path dotnet_dev_cert.pfx --password dev1234
+openssl pkcs12 -in dotnet_dev_cert.pfx -password pass:dev1234 -nokeys -clcerts -out dotnet_dev_cert.crt
+openssl x509 -text -noout -in dotnet_dev_cert.crt
+openssl verify -trusted dotnet_dev_cert.crt dotnet_dev_cert.crt
+```
+
+Work around is to generate a basic certificate without key usage (or with key usage that includes signing):
+
+--
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout nethermind_dotnet_dev_cert.key -out nethermind_dotnet_dev_cert.crt -subj "/CN=localhost"
+openssl verify -trusted nethermind_dotnet_dev_cert.crt nethermind_dotnet_dev_cert.crt
+--
+
+Install this into the Ubuntu certificate store (different distributions may vary):
+
+```
+sudo cp ./nethermind_dotnet_dev_cert.crt /usr/local/share/ca-certificates
+sudo update-ca-certificates --verbose
+```
+
+Create a PFX for .NET to use:
+
+```
+openssl pkcs12 -export -passout pass: -out nethermind_dotnet_dev_cert.pfx -inkey nethermind_dotnet_dev_cert.key -in nethermind_dotnet_dev_cert.crt
+```
+
+Configure this in appsettings.json for Kestrel to use as the default certificate.
+
+```json
+  "Kestrel": {
+    "Endpoints": {
+      "HttpsDefaultCert": {
+        "Url": "https://localhost:8230"
+      }
+    },
+    "Certificates": {
+      "Default": {
+        "Path": "Certificates/nethermind_dotnet_dev_cert.pfx",
+        "Password": ""
+      }
+    }
+  }
+```
+
+With the beacon node running you can the certificate is validated as self-signed (and the honest validator client will work):
+
+```
+openssl s_client -connect localhost:8230
+```
 
 ### Quick start clock
 
