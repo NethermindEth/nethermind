@@ -21,6 +21,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core2;
 using Nethermind.Core2.Api;
+using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode.OApi.Controllers
 {
@@ -46,6 +47,8 @@ namespace Nethermind.BeaconNode.OApi.Controllers
         [HttpGet]
         public async Task<IActionResult> GetAsync(CancellationToken cancellationToken)
         {
+            if (_logger.IsDebug()) LogDebug.NodeGenesisTimeRequested(_logger, null);
+            
             ApiResponse<ulong> apiResponse =
                 await _beaconNode.GetGenesisTimeAsync(cancellationToken).ConfigureAwait(false);
             if (apiResponse.StatusCode == Core2.Api.StatusCode.Success)

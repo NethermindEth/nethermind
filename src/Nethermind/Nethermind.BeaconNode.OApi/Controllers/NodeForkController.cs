@@ -23,6 +23,7 @@ using Nethermind.BeaconNode.OApi.Models;
 using Nethermind.Core2;
 using Nethermind.Core2.Api;
 using Nethermind.Core2.Containers;
+using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode.OApi.Controllers
 {
@@ -48,13 +49,12 @@ namespace Nethermind.BeaconNode.OApi.Controllers
         [HttpGet]
         public async Task<IActionResult> GetAsync(CancellationToken cancellationToken)
         {
+            if (_logger.IsDebug()) LogDebug.NodeForkRequested(_logger, null);
+
             ApiResponse<Fork> apiResponse = await _beaconNode.GetNodeForkAsync(cancellationToken).ConfigureAwait(false);
             if (apiResponse.StatusCode == Core2.Api.StatusCode.Success)
             {
-                ForkInformation forkInformation = new ForkInformation()
-                {
-                    Fork = apiResponse.Content
-                };
+                ForkInformation forkInformation = new ForkInformation(0, apiResponse.Content);
                 return Ok(forkInformation);
             }
 

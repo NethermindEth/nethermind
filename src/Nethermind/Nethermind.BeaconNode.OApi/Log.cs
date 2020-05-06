@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Net;
 using Microsoft.Extensions.Logging;
 
 namespace Nethermind.BeaconNode.OApi
@@ -46,6 +47,11 @@ namespace Nethermind.BeaconNode.OApi
 
 
         // 1bxx preliminary
+        
+        public static readonly Action<ILogger, IPAddress, Exception?> NodeVersionRequested =
+            LoggerMessage.Define<IPAddress>(LogLevel.Information,
+                new EventId(1480, nameof(NodeVersionRequested)),
+                "Node version requested by client {RemoteIpAddress}.");
 
         // 2bxx completion
 
