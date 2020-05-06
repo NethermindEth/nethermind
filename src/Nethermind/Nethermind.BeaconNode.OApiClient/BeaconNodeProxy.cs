@@ -17,9 +17,12 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Net.Mime;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -29,6 +32,7 @@ using Nethermind.Core2;
 using Nethermind.Core2.Api;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Json;
 using Nethermind.Core2.Types;
 using Nethermind.Logging.Microsoft;
 
@@ -37,19 +41,26 @@ namespace Nethermind.BeaconNode.OApiClient
     public class BeaconNodeProxy : IBeaconNodeApi
     {
         private readonly IOptionsMonitor<BeaconNodeConnection> _beaconNodeConnectionOptions;
-        private static readonly SemaphoreSlim _connectionAttemptSemaphore = new SemaphoreSlim(1, 1);
-        private int _connectionIndex = -1;
+        private HttpClient _httpClient;
+        // private static readonly SemaphoreSlim _connectionAttemptSemaphore = new SemaphoreSlim(1, 1);
+        // private int _connectionIndex = -1;
         private readonly ILogger _logger;
-        private IBeaconNodeOApiClient? _oapiClient;
-        private readonly IBeaconNodeOApiClientFactory _oapiClientFactory;
+        private readonly JsonSerializerOptions _jsonSerializerOptions;
 
         public BeaconNodeProxy(ILogger<BeaconNodeProxy> logger,
             IOptionsMonitor<BeaconNodeConnection> beaconNodeConnectionOptions,
-            IBeaconNodeOApiClientFactory oapiClientFactory)
+            HttpClient httpClient)
         {
             _logger = logger;
             _beaconNodeConnectionOptions = beaconNodeConnectionOptions;
-            _oapiClientFactory = oapiClientFactory;
+            
+            // Configure (and test) via IHttpClientFactory / AddHttpClient: https://docs.microsoft.com/en-us/dotnet/architecture/microservices/implement-resilient-applications/use-httpclientfactory-to-implement-resilient-http-requests
+            
+            _httpClient = httpClient;
+
+
+            _jsonSerializerOptions = new JsonSerializerOptions();
+            _jsonSerializerOptions.ConfigureNethermindCore2();
         }
 
         // public async Task<ulong> GetGenesisTimeAsync(CancellationToken cancellationToken)
@@ -65,23 +76,23 @@ namespace Nethermind.BeaconNode.OApiClient
         // }
         //
 
-        public async Task<ApiResponse<Core2.Containers.Fork>> GetNodeForkAsync(CancellationToken cancellationToken)
-        {
-            Response2? result = null;
-            await ClientOperationWithRetry(
-                async (oapiClient, innerCancellationToken) =>
-                {
-                    result = await oapiClient.ForkAsync(innerCancellationToken).ConfigureAwait(false);
-                }, cancellationToken).ConfigureAwait(false);
-        
-            Core2.Containers.Fork fork = new Core2.Containers.Fork(
-                new ForkVersion(result!.Fork.Previous_version),
-                new ForkVersion(result!.Fork.Current_version),
-                new Epoch((ulong) result!.Fork.Epoch)
-            );
-        
-            return ApiResponse.Create(StatusCode.Success, fork);
-        }
+        // public async Task<ApiResponse<Core2.Containers.Fork>> GetNodeForkAsync(CancellationToken cancellationToken)
+        // {
+        //     Response2? result = null;
+        //     await ClientOperationWithRetry(
+        //         async (oapiClient, innerCancellationToken) =>
+        //         {
+        //             result = await oapiClient.ForkAsync(innerCancellationToken).ConfigureAwait(false);
+        //         }, cancellationToken).ConfigureAwait(false);
+        //
+        //     Core2.Containers.Fork fork = new Core2.Containers.Fork(
+        //         new ForkVersion(result!.Fork.Previous_version),
+        //         new ForkVersion(result!.Fork.Current_version),
+        //         new Epoch((ulong) result!.Fork.Epoch)
+        //     );
+        //
+        //     return ApiResponse.Create(StatusCode.Success, fork);
+        // }
         
         // // The proxy needs to take care of this (i.e. transparent to worker)
         // // Not connected: (remote vs local)
@@ -270,82 +281,82 @@ namespace Nethermind.BeaconNode.OApiClient
         //     }
         // }
         
-        private async Task ClientOperationWithRetry(
-            Func<IBeaconNodeOApiClient, CancellationToken, Task> clientOperation, CancellationToken cancellationToken)
-        {
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                IBeaconNodeOApiClient? localClient = _oapiClient;
-                if (!(localClient is null))
-                {
-                    try
-                    {
-                        await clientOperation(localClient, cancellationToken).ConfigureAwait(false);
-                        // exit loop and complete on success
-                        break;
-                    }
-                    catch (HttpRequestException ex)
-                    {
-                        // Only null out if the same client is still there (i.e. no one else has replaced)
-                        IBeaconNodeOApiClient? exchangeResult =
-                            Interlocked.CompareExchange(ref _oapiClient, null, localClient);
-                        if (exchangeResult == localClient)
-                        {
-                            if (_logger.IsWarn()) Log.NodeConnectionFailed(_logger, localClient.BaseUrl, ex);
-                        }
-                    }
-                }
-        
-                // take turns trying the first connection
-                await _connectionAttemptSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-                try
-                {
-                    // this routine's turn to try and connect (if no one else has) 
-                    if (_oapiClient is null)
-                    {
-                        // create new client
-                        _connectionIndex++;
-                        BeaconNodeConnection beaconNodeConnection = _beaconNodeConnectionOptions.CurrentValue;
-                        if (_connectionIndex >= beaconNodeConnection.RemoteUrls.Length)
-                        {
-                            _connectionIndex = 0;
-                            if (_logger.IsWarn())
-                                Log.AllNodeConnectionsFailing(_logger, beaconNodeConnection.RemoteUrls.Length,
-                                    beaconNodeConnection.ConnectionFailureLoopMillisecondsDelay, null);
-                            await Task.Delay(beaconNodeConnection.ConnectionFailureLoopMillisecondsDelay,
-                                cancellationToken).ConfigureAwait(false);
-                        }
-        
-                        string baseUrl = beaconNodeConnection.RemoteUrls[_connectionIndex];
-                        if (_logger.IsDebug())
-                            LogDebug.AttemptingConnectionToNode(_logger, baseUrl, _connectionIndex, null);
-                        IBeaconNodeOApiClient newClient = _oapiClientFactory.CreateClient(baseUrl);
-        
-                        // check if it works
-                        await clientOperation(newClient, cancellationToken).ConfigureAwait(false);
-        
-                        // success! set the client, and if not the first, set the connection index to restart from first
-                        if (_logger.IsInfo()) Log.NodeConnectionSuccess(_logger, baseUrl, _connectionIndex, null);
-                        _oapiClient = newClient;
-                        if (_connectionIndex > 0)
-                        {
-                            _connectionIndex = -1;
-                        }
-        
-                        // exit loop and complete on success
-                        break;
-                    }
-                }
-                catch (HttpRequestException)
-                {
-                    // Continue
-                }
-                finally
-                {
-                    _connectionAttemptSemaphore.Release();
-                }
-            }
-        }
+        // private async Task ClientOperationWithRetry(
+        //     Func<IBeaconNodeOApiClient, CancellationToken, Task> clientOperation, CancellationToken cancellationToken)
+        // {
+        //     while (!cancellationToken.IsCancellationRequested)
+        //     {
+        //         IBeaconNodeOApiClient? localClient = _oapiClient;
+        //         if (!(localClient is null))
+        //         {
+        //             try
+        //             {
+        //                 await clientOperation(localClient, cancellationToken).ConfigureAwait(false);
+        //                 // exit loop and complete on success
+        //                 break;
+        //             }
+        //             catch (HttpRequestException ex)
+        //             {
+        //                 // Only null out if the same client is still there (i.e. no one else has replaced)
+        //                 IBeaconNodeOApiClient? exchangeResult =
+        //                     Interlocked.CompareExchange(ref _oapiClient, null, localClient);
+        //                 if (exchangeResult == localClient)
+        //                 {
+        //                     if (_logger.IsWarn()) Log.NodeConnectionFailed(_logger, localClient.BaseUrl, ex);
+        //                 }
+        //             }
+        //         }
+        //
+        //         // take turns trying the first connection
+        //         await _connectionAttemptSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+        //         try
+        //         {
+        //             // this routine's turn to try and connect (if no one else has) 
+        //             if (_oapiClient is null)
+        //             {
+        //                 // create new client
+        //                 _connectionIndex++;
+        //                 BeaconNodeConnection beaconNodeConnection = _beaconNodeConnectionOptions.CurrentValue;
+        //                 if (_connectionIndex >= beaconNodeConnection.RemoteUrls.Length)
+        //                 {
+        //                     _connectionIndex = 0;
+        //                     if (_logger.IsWarn())
+        //                         Log.AllNodeConnectionsFailing(_logger, beaconNodeConnection.RemoteUrls.Length,
+        //                             beaconNodeConnection.ConnectionFailureLoopMillisecondsDelay, null);
+        //                     await Task.Delay(beaconNodeConnection.ConnectionFailureLoopMillisecondsDelay,
+        //                         cancellationToken).ConfigureAwait(false);
+        //                 }
+        //
+        //                 string baseUrl = beaconNodeConnection.RemoteUrls[_connectionIndex];
+        //                 if (_logger.IsDebug())
+        //                     LogDebug.AttemptingConnectionToNode(_logger, baseUrl, _connectionIndex, null);
+        //                 HttpClient newClient = _httpClientFactory.CreateClient(baseUrl);
+        //
+        //                 // check if it works
+        //                 await clientOperation(newClient, cancellationToken).ConfigureAwait(false);
+        //
+        //                 // success! set the client, and if not the first, set the connection index to restart from first
+        //                 if (_logger.IsInfo()) Log.NodeConnectionSuccess(_logger, baseUrl, _connectionIndex, null);
+        //                 _oapiClient = newClient;
+        //                 if (_connectionIndex > 0)
+        //                 {
+        //                     _connectionIndex = -1;
+        //                 }
+        //
+        //                 // exit loop and complete on success
+        //                 break;
+        //             }
+        //         }
+        //         catch (HttpRequestException)
+        //         {
+        //             // Continue
+        //         }
+        //         finally
+        //         {
+        //             _connectionAttemptSemaphore.Release();
+        //         }
+        //     }
+        // }
         
         // private static Core2.Containers.AttestationData MapAttestationData(AttestationData attestationData)
         // {
@@ -420,19 +431,50 @@ namespace Nethermind.BeaconNode.OApiClient
         //     };
         // }
         
-        public Task<ApiResponse<string>> GetNodeVersionAsync(CancellationToken cancellationToken)
+        public async Task<ApiResponse<string>> GetNodeVersionAsync(CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            string uri = "node/version";
+            
+            using HttpResponseMessage httpResponse = await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            // TODO: Return appropriate ApiResponse
+            httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
+            // if (httpResponse.Content.Headers.ContentType.MediaType != MediaTypeNames.Application.Json)
+            Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
+            string content = await JsonSerializer.DeserializeAsync<string>(contentStream, _jsonSerializerOptions, cancellationToken);
+            return new ApiResponse<string>(StatusCode.Success, content);
         }
 
-        public Task<ApiResponse<ulong>> GetGenesisTimeAsync(CancellationToken cancellationToken)
+        public async Task<ApiResponse<ulong>> GetGenesisTimeAsync(CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            string uri = "node/genesis_time";
+            
+            using HttpResponseMessage httpResponse = await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
+            Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
+            ulong content = await JsonSerializer.DeserializeAsync<ulong>(contentStream, _jsonSerializerOptions, cancellationToken);
+            return new ApiResponse<ulong>(StatusCode.Success, content);
         }
 
-        public Task<ApiResponse<Syncing>> GetSyncingAsync(CancellationToken cancellationToken)
+        public async Task<ApiResponse<Syncing>> GetSyncingAsync(CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            string uri = "node/syncing";
+            
+            using HttpResponseMessage httpResponse = await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
+            Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
+            Syncing content = await JsonSerializer.DeserializeAsync<Syncing>(contentStream, _jsonSerializerOptions, cancellationToken);
+            return new ApiResponse<Syncing>(StatusCode.Success, content);
+        }
+
+        public async Task<ApiResponse<Fork>> GetNodeForkAsync(CancellationToken cancellationToken)
+        {
+            string uri = "node/fork";
+            
+            using HttpResponseMessage httpResponse = await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
+            Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
+            ForkInformation content = await JsonSerializer.DeserializeAsync<ForkInformation>(contentStream, _jsonSerializerOptions, cancellationToken);
+            return new ApiResponse<Fork>(StatusCode.Success, content.Fork);
         }
 
         public Task<ApiResponse<IList<Core2.Api.ValidatorDuty>>> ValidatorDutiesAsync(IList<BlsPublicKey> validatorPublicKeys, Epoch? epoch, CancellationToken cancellationToken)
