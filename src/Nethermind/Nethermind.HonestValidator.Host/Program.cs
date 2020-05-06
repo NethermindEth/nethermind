@@ -16,6 +16,7 @@
 
 using System;
 using System.IO;
+using Essential.LoggerProvider;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -46,6 +47,14 @@ namespace Nethermind.HonestValidator.Host
                     if (hostContext.Configuration.GetSection("Logging:Console").Exists())
                     {
                         configureLogging.AddConsole();
+                    }
+                    if (hostContext.Configuration.GetSection("Logging:Seq").Exists())
+                    {
+                        configureLogging.AddSeq(hostContext.Configuration.GetSection("Logging:Seq"));
+                    }
+                    if (hostContext.Configuration.GetSection("Logging:Elasticsearch").Exists())
+                    {
+                        configureLogging.AddElasticsearch();
                     }
                 })
                 .ConfigureAppConfiguration((hostContext, config) =>
