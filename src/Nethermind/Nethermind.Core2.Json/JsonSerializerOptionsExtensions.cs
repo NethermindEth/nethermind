@@ -38,6 +38,8 @@ namespace Nethermind.Core2.Json
             options.Converters.Add(new JsonConverterShard());
             options.Converters.Add(new JsonConverterSlot());
             options.Converters.Add(new JsonConverterValidatorIndex());
+            // options.Converters.Add(new JsonConverterSyncingStatus());
+            // options.Converters.Add(new JsonConverterSyncing());
         }
     }
 }
