@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
@@ -64,7 +65,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.ReceiptStorage,
                 _context.LogManager,
                 _context.AuRaBlockProcessorExtension,
-                GetTxPermissionFilter());
+                GetTxPermissionFilter(),
+                GetGasLimitOverride());
         }
 
         private ITxPermissionFilter? GetTxPermissionFilter()
@@ -88,6 +90,33 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.LogManager);
                 
                 return txPermissionFilter;
+            }
+
+            return null;
+        }
+        
+        private IGasLimitOverride? GetGasLimitOverride()
+        {
+            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
+            var blockGasLimitContractTransitions = _context.ChainSpec.AuRa.BlockGasLimitContractTransitions;
+            
+            if (blockGasLimitContractTransitions?.Any() == true)
+            {
+                _context.GasLimitOverrideCache = new IGasLimitOverride.Cache();
+                
+                var gasLimitOverride = new AuRaContractGasLimitOverride(
+                    blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
+                        new BlockGasLimitContract(
+                            _context.TransactionProcessor,
+                            _context.AbiEncoder,
+                            blockGasLimitContractTransition.Value,
+                            blockGasLimitContractTransition.Key,
+                            GetReadOnlyTransactionProcessorSource(),
+                            _context.StateProvider)).ToArray(),
+                    _context.GasLimitOverrideCache,
+                    _context.LogManager);
+                
+                return gasLimitOverride;
             }
 
             return null;
