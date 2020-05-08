@@ -60,7 +60,7 @@ namespace Nethermind.Consensus.AuRa
                 }
                 else
                 {
-                    if (_logger.IsDebug) _logger.Debug("Contract call returned nothing. Not changing the block gas limit.");
+                    if (_logger.IsTrace) _logger.Trace("Contract call returned nothing. Not changing the block gas limit.");
                 }
                 
                 return gasLimit;

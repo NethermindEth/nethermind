@@ -32,9 +32,9 @@ namespace Nethermind.Consensus.AuRa.Transactions
             private const int MaxCacheSize = 4096;
             
             internal ICache<(Keccak ParentHash, Address Sender), TransactionPermissionContract.TxPermissions?> Permissions { get; } =
-                new LruCache<(Keccak ParentHash, Address Sender), TransactionPermissionContract.TxPermissions?>(MaxCacheSize, "TxPermissions");
+                new LruCacheWithRecycling<(Keccak ParentHash, Address Sender), TransactionPermissionContract.TxPermissions?>(MaxCacheSize, "TxPermissions");
         
-            internal ICache<Keccak, UInt256> VersionedContracts { get; } = new LruCache<Keccak, UInt256>(MaxCacheSize, "TxPermissionsVersionedContracts");
+            internal ICache<Keccak, UInt256> VersionedContracts { get; } = new LruCacheWithRecycling<Keccak, UInt256>(MaxCacheSize, "TxPermissionsVersionedContracts");
         }
     }
 }

@@ -30,7 +30,7 @@ namespace Nethermind.Consensus.AuRa
         {
             private const int MaxCacheSize = 10;
 
-            internal ICache<Keccak, long?> GasLimitCache { get; } = new LruCache<Keccak, long?>(MaxCacheSize, "BlockGasLimit");
+            internal ICache<Keccak, long?> GasLimitCache { get; } = new LruCacheWithRecycling<Keccak, long?>(MaxCacheSize, "BlockGasLimit");
         }
     }
 }

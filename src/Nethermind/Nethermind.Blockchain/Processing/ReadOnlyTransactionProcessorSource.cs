@@ -36,11 +36,6 @@ namespace Nethermind.Blockchain.Processing
             _environment = environment;
         }
         
-        public IReadOnlyTransactionProcessor Get(Keccak stateRoot)
-        {
-            var oldState = _environment.StateProvider.StateRoot;
-            _environment.StateProvider.StateRoot = stateRoot;
-            return new ReadOnlyTransactionProcessor(_environment.TransactionProcessor, _environment.StateProvider, oldState);
-        }
+        public IReadOnlyTransactionProcessor Get(Keccak stateRoot) => new ReadOnlyTransactionProcessor(_environment.TransactionProcessor, _environment.StateProvider, stateRoot);
     }
 }
