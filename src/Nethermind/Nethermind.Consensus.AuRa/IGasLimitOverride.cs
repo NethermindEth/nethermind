@@ -24,7 +24,7 @@ namespace Nethermind.Consensus.AuRa
 {
     public interface IGasLimitOverride
     {
-        long? GetGasLimit(BlockHeader header, long blockNumber);
+        long? GetGasLimit(BlockHeader parentHeader);
         
         public class Cache
         {

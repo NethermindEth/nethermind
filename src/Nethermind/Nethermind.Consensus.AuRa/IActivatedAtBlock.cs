@@ -14,10 +14,24 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Core;
+
 namespace Nethermind.Consensus.AuRa
 {
     public interface IActivatedAtBlock
     {
         long ActivationBlock { get; }
+    }
+
+    internal static class ActivatedAtBlockExtensions
+    {
+        public static void ActivationCheck(this IActivatedAtBlock activatedAtBlock, BlockHeader parentHeader)
+        {
+            if (parentHeader.Number + 1 < activatedAtBlock.ActivationBlock) throw new InvalidOperationException($"{activatedAtBlock.GetType().Name} is not active for block {parentHeader.Number + 1}. Its activated on block {activatedAtBlock.ActivationBlock}.");
+        }
     }
 }

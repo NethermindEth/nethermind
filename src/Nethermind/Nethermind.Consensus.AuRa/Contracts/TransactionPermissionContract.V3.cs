@@ -38,14 +38,14 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 Constant = constant;
             }
             
-            public (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader blockHeader, Transaction tx) =>
+            public (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx) =>
                 // _sender Transaction sender address.
                 // _to Transaction recipient address. If creating a contract, the `_to` address is zero.
                 // _value Transaction amount in wei.
                 // _gasPrice Gas price in wei for the transaction.
                 // _data Transaction data.
                 Constant.Call<TxPermissions, bool>(
-                    blockHeader, 
+                    parentHeader, 
                     Definition.GetFunction(nameof(AllowedTxTypes)), 
                     Address.Zero, 
                     tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, tx.GasPrice, tx.Data ?? tx.Init ?? Bytes.Empty);

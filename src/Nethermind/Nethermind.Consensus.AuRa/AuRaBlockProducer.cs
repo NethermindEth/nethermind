@@ -73,7 +73,7 @@ namespace Nethermind.Consensus.AuRa
             return block;
         }
 
-        protected override long GetGasLimit(BlockHeader parent) => _gasLimitOverride?.GetGasLimit(parent, parent.Number + 1) ?? base.GetGasLimit(parent);
+        protected override long GetGasLimit(BlockHeader parent) => _gasLimitOverride?.GetGasLimit(parent) ?? base.GetGasLimit(parent);
 
         protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp) 
             => AuraDifficultyCalculator.CalculateDifficulty(parent.AuRaStep.Value, _auRaStepCalculator.CurrentStep);

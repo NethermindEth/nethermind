@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         {
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            Constant = GetConstant(readOnlyReadOnlyTransactionProcessorSource, stateProvider);
+            Constant = GetConstant(readOnlyReadOnlyTransactionProcessorSource);
         }
 
         /// <summary>
@@ -69,7 +69,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// Get current validator set (last enacted or initial if no changes ever made)
         /// function getValidators() constant returns (address[] _validators);
         /// </summary>
-        public Address[] GetValidators(BlockHeader blockHeader) => Constant.Call<Address[]>(blockHeader, Definition.GetFunction(nameof(GetValidators)), Address.Zero);
+        public Address[] GetValidators(BlockHeader parentHeader) => Constant.Call<Address[]>(parentHeader, Definition.GetFunction(nameof(GetValidators)), Address.Zero);
 
         internal const string InitiateChange = nameof(InitiateChange);
         

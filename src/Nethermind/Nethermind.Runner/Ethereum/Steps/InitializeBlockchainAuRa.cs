@@ -18,11 +18,13 @@ using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Wallet;
@@ -65,6 +67,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.ReceiptStorage,
                 _context.LogManager,
                 _context.AuRaBlockProcessorExtension,
+                _context.BlockTree,
                 GetTxPermissionFilter(),
                 GetGasLimitOverride());
         }
@@ -83,8 +86,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                         _context.AbiEncoder,
                         _context.ChainSpec.Parameters.TransactionPermissionContract,
                         _context.ChainSpec.Parameters.TransactionPermissionContractTransition ?? 0, 
-                        GetReadOnlyTransactionProcessorSource(),
-                        _context.StateProvider),
+                        GetReadOnlyTransactionProcessorSource()),
                     _context.TxFilterCache,
                     _context.StateProvider,
                     _context.LogManager);
@@ -111,8 +113,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                             _context.AbiEncoder,
                             blockGasLimitContractTransition.Value,
                             blockGasLimitContractTransition.Key,
-                            GetReadOnlyTransactionProcessorSource(),
-                            _context.StateProvider)).ToArray(),
+                            GetReadOnlyTransactionProcessorSource())).ToArray(),
                     _context.GasLimitOverrideCache,
                     _context.LogManager);
                 
@@ -143,5 +144,19 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private IReadOnlyTransactionProcessorSource GetReadOnlyTransactionProcessorSource() => 
             _readOnlyTransactionProcessorSource ??= new ReadOnlyTransactionProcessorSource(_context.DbProvider, _context.BlockTree, _context.SpecProvider, _context.LogManager);
+
+        protected override HeaderValidator CreateHeaderValidator()
+        {
+            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
+            var blockGasLimitContractTransitions = _context.ChainSpec.AuRa.BlockGasLimitContractTransitions;
+            return blockGasLimitContractTransitions?.Any() == true
+                ? new AuRaHeaderValidator(
+                    _context.BlockTree,
+                    _context.SealValidator,
+                    _context.SpecProvider,
+                    _context.LogManager,
+                    blockGasLimitContractTransitions.Keys.ToArray())
+                : base.CreateHeaderValidator();
+        }
     }
 }

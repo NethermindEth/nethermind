@@ -106,6 +106,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.ReceiptStorage,
                 _context.LogManager, 
                 validator,
+                readOnlyTxProcessingEnv.BlockTree,
                 GetTxPermissionFilter(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource, readOnlyTxProcessingEnv.StateProvider),
                 GetGasLimitOverride(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource, readOnlyTxProcessingEnv.StateProvider));
             
@@ -186,8 +187,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                         _context.AbiEncoder,
                         _context.ChainSpec.Parameters.TransactionPermissionContract,
                         _context.ChainSpec.Parameters.TransactionPermissionContractTransition ?? 0, 
-                        readOnlyTransactionProcessorSource,
-                        stateProvider),
+                        readOnlyTransactionProcessorSource),
                     _context.TxFilterCache,
                     environment.StateProvider,
                     _context.LogManager);
@@ -215,8 +215,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                             _context.AbiEncoder,
                             blockGasLimitContractTransition.Value,
                             blockGasLimitContractTransition.Key,
-                            readOnlyTransactionProcessorSource,
-                            stateProvider)).ToArray(),
+                            readOnlyTransactionProcessorSource)).ToArray(),
                     _context.GasLimitOverrideCache,
                     _context.LogManager);
                 

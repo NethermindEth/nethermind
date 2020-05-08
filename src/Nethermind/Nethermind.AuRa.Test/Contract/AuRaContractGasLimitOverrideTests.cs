@@ -39,7 +39,7 @@ namespace Nethermind.AuRa.Test.Contract
         public async Task can_read_block_gas_limit_from_contract()
         {
             var chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchain, AuRaContractGasLimitOverrideTests>();
-            var gasLimit = chain.GasLimitOverride.GetGasLimit(chain.BlockTree.Head.Header, 1);
+            var gasLimit = chain.GasLimitOverride.GetGasLimit(chain.BlockTree.Head.Header);
             gasLimit.Should().Be(1000000);
         }
 
@@ -64,7 +64,7 @@ namespace Nethermind.AuRa.Test.Contract
                 GasLimitOverride = new AuRaContractGasLimitOverride(new[] {gasLimitContract}, GasLimitOverrideCache, LimboLogs.Instance);
                 
                 return new AuRaBlockProcessor(SpecProvider, Always.Valid, new RewardCalculator(SpecProvider), TxProcessor, StateDb, CodeDb, State, Storage, TxPool, ReceiptStorage, LimboLogs.Instance,
-                    new ListBasedValidator(validator, new ValidSealerStrategy(), LimboLogs.Instance), null, GasLimitOverride);
+                    new ListBasedValidator(validator, new ValidSealerStrategy(), LimboLogs.Instance), BlockTree, null, GasLimitOverride);
             }
 
             protected override Task AddBlocksOnStart() => Task.CompletedTask;

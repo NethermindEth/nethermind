@@ -23,7 +23,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Serialization.Json.Abi;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -38,20 +37,19 @@ namespace Nethermind.Consensus.AuRa.Contracts
             IAbiEncoder abiEncoder, 
             Address contractAddress,
             long transitionBlock,
-            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource,
-            IStateProvider stateProvider = null) 
+            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource) 
             : base(transactionProcessor, abiEncoder, contractAddress)
         {
             ActivationBlock = transitionBlock;
-            Constant = GetConstant(readOnlyTransactionProcessorSource, stateProvider);
+            Constant = GetConstant(readOnlyTransactionProcessorSource);
         }
 
-        public UInt256? BlockGasLimit(BlockHeader parent)
+        public UInt256? BlockGasLimit(BlockHeader parentHeader)
         {
+            this.ActivationCheck(parentHeader);
             var function = Definition.GetFunction(nameof(BlockGasLimit));
-            var bytes = Constant.CallRaw(parent, function, Address.Zero);
+            var bytes = Constant.CallRaw(parentHeader, function, Address.Zero);
             return (bytes?.Length ?? 0) == 0 ? (UInt256?) null : (UInt256) AbiEncoder.Decode(function.GetReturnInfo(), bytes)[0];
         }
-        
     }
 }

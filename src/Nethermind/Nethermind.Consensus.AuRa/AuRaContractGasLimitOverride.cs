@@ -40,22 +40,22 @@ namespace Nethermind.Consensus.AuRa
             _logger = logManager?.GetClassLogger<AuRaContractGasLimitOverride>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
-        public long? GetGasLimit(BlockHeader header, long blockNumber)
+        public long? GetGasLimit(BlockHeader parentHeader)
         {
-            if (_cache.GasLimitCache.TryGet(header.Hash, out var gasLimit))
+            if (_cache.GasLimitCache.TryGet(parentHeader.Hash, out var gasLimit))
             {
                 return gasLimit;
             }
-            else if (_contracts.TryGetForBlock(blockNumber, out var contract))
+            else if (_contracts.TryGetForBlock(parentHeader.Number + 1, out var contract))
             {
-                var contractLimit = GetContractGasLimit(header, contract);
+                var contractLimit = GetContractGasLimit(parentHeader, contract);
                 gasLimit = contractLimit.HasValue ? (long) contractLimit.Value : (long?) null;
-                _cache.GasLimitCache.Set(header.Hash, gasLimit);
+                _cache.GasLimitCache.Set(parentHeader.Hash, gasLimit);
                 if (gasLimit.HasValue)
                 {
-                    if (gasLimit.Value != header.GasLimit)
+                    if (gasLimit.Value != parentHeader.GasLimit)
                     {
-                        if (_logger.IsInfo) _logger.Info($"Block gas limit was changed from {header.GasLimit} to {gasLimit.Value}.");
+                        if (_logger.IsInfo) _logger.Info($"Block gas limit was changed from {parentHeader.GasLimit} to {gasLimit.Value}.");
                     }
                 }
                 else
