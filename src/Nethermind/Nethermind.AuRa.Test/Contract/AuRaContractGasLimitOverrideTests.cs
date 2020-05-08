@@ -35,12 +35,20 @@ namespace Nethermind.AuRa.Test.Contract
 {
     public class AuRaContractGasLimitOverrideTests
     {
+        
+        // TestContract: 
+        // pragma solidity ^0.5.0;
+        // contract TestValidatorSet {
+        //    function blockGasLimit() public view returns(uint256) {
+        //        return 100000000;
+        //    }
+        // }
         [Test]
         public async Task can_read_block_gas_limit_from_contract()
         {
             var chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchain, AuRaContractGasLimitOverrideTests>();
             var gasLimit = chain.GasLimitOverride.GetGasLimit(chain.BlockTree.Head.Header);
-            gasLimit.Should().Be(1000000);
+            gasLimit.Should().Be(100000000);
         }
 
         public class TestGasLimitContractBlockchain : TestContractBlockchain
@@ -69,13 +77,5 @@ namespace Nethermind.AuRa.Test.Contract
 
             protected override Task AddBlocksOnStart() => Task.CompletedTask;
         }
-        
-        // TestContract: 
-        //pragma solidity ^0.5.0;
-        //contract TestValidatorSet {
-        //    function blockGasLimit() public view returns(uint256) {
-        //        return 1000000;
-        //    }
-        // }
     }
 }
