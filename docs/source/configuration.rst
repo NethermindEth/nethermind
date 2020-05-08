@@ -23,7 +23,7 @@ BloomConfig
    Defines if migration statistics are to be calculated and output.
    default value: false
 
-DbConfig
+DbConfig (https://github.com/facebook/rocksdb/wiki/Memory-usage-in-RocksDB)
 ^^^^^^^^
 
  BlockCacheSize

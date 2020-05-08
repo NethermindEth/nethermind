@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain.Visitors
             LogPlannedOperation();
         }
 
-        private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
+        private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
         {
             if (_dbBatchProcessed != null)
             {
