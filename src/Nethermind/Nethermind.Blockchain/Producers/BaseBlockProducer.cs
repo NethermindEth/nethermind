@@ -92,7 +92,7 @@ namespace Nethermind.Blockchain.Producers
             Block block = PrepareBlock(parent);
             if (PreparedBlockCanBeMined(block))
             {
-                Block processedBlock = Processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
+                var processedBlock = ProcessPreparedBlock(block);
                 if (processedBlock == null)
                 {
                     if (Logger.IsError) Logger.Error("Block prepared by block producer was rejected by processor.");
@@ -130,6 +130,8 @@ namespace Nethermind.Blockchain.Producers
 
             return Task.FromResult(false);
         }
+
+        protected virtual Block ProcessPreparedBlock(Block block) => Processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
 
         protected virtual bool PreparedBlockCanBeMined(Block block)
         {

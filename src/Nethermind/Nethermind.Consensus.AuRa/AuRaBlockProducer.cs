@@ -101,5 +101,21 @@ namespace Nethermind.Consensus.AuRa
             
             return false;
         }
+
+        protected override Block ProcessPreparedBlock(Block block)
+        {
+            var processedBlock = base.ProcessPreparedBlock(block);
+            
+            // We need to check if we are withing gas limit. We cannot calculate this in advance because:
+            // a) GasLimit can come from contract
+            // b) Some transactions that call contracts can be added to block and we don't know how much gas they will use.
+            if (processedBlock.GasUsed > processedBlock.GasLimit)
+            {
+                if (Logger.IsError) Logger.Error($"Block produced used {processedBlock.GasUsed} gas and exceeded gas limit {processedBlock.GasLimit}.");
+                return null;
+            }
+            
+            return processedBlock;
+        }
     }
 }
