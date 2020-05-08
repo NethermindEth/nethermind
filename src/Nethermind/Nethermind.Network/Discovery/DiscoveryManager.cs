@@ -70,9 +70,6 @@ namespace Nethermind.Network.Discovery
         {
             try
             {
-                if(_logger.IsTrace) _logger.Trace($"Received msg: {message}");
-                Console.WriteLine(message);
-
                 MessageType msgType = message.MessageType;
 
                 Node node = new Node(message.FarPublicKey, message.FarAddress);
