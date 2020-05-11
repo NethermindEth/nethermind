@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <summary>
         /// Default gas limit of transactions generated from contract. 
         /// </summary>
-        public const long DefaultContractGasLimit = 1600000L;
+        public const long DefaultContractGasLimit = 1_600_000L;
         
         private readonly ITransactionProcessor _transactionProcessor;
         protected IAbiEncoder AbiEncoder { get; }

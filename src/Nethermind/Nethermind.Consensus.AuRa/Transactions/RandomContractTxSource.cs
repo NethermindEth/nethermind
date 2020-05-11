@@ -57,7 +57,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             if (_contracts.TryGetForBlock(parent.Number + 1, out var contract))
             {
                 var tx = GetTransaction(contract, parent);
-                if (tx != null)
+                if (tx?.GasLimit <= gasLimit)
                 {
                     yield return tx;
                 }
