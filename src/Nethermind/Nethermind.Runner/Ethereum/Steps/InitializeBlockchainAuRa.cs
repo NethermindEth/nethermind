@@ -20,6 +20,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.AuRa.Transactions;
@@ -115,6 +116,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                             blockGasLimitContractTransition.Key,
                             GetReadOnlyTransactionProcessorSource())).ToArray(),
                     _context.GasLimitOverrideCache,
+                    _context.Config<IAuraConfig>().Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
                     _context.LogManager);
                 
                 return gasLimitOverride;

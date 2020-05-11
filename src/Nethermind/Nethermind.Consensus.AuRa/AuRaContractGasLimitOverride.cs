@@ -29,14 +29,31 @@ namespace Nethermind.Consensus.AuRa
 {
     public class AuRaContractGasLimitOverride : IGasLimitOverride
     {
+        private static UInt256? _minimalContractGasLimit;
+
+        private static UInt256 MinimalContractGasLimit
+        {
+            get
+            {
+                if (!_minimalContractGasLimit.HasValue)
+                {
+                    UInt256.Create(out var min, 2_000_000L);
+                    _minimalContractGasLimit = min;
+                }
+
+                return _minimalContractGasLimit.Value;
+            }
+        }
         private readonly IList<BlockGasLimitContract> _contracts;
         private readonly IGasLimitOverride.Cache _cache;
+        private readonly bool _minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract;
         private readonly ILogger _logger;
         
-        public AuRaContractGasLimitOverride(IList<BlockGasLimitContract> contracts, IGasLimitOverride.Cache cache, ILogManager logManager)
+        public AuRaContractGasLimitOverride(IList<BlockGasLimitContract> contracts, IGasLimitOverride.Cache cache, bool minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract, ILogManager logManager)
         {
             _contracts = contracts ?? throw new ArgumentNullException(nameof(contracts));
             _cache = cache ?? throw new ArgumentNullException(nameof(cache));
+            _minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract = minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract;
             _logger = logManager?.GetClassLogger<AuRaContractGasLimitOverride>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
@@ -75,7 +92,10 @@ namespace Nethermind.Consensus.AuRa
         {
             try
             {
-                return contract.BlockGasLimit(parent);
+                var contractGasLimit = contract.BlockGasLimit(parent);
+                return contractGasLimit.HasValue && _minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract && contractGasLimit < MinimalContractGasLimit 
+                    ? MinimalContractGasLimit 
+                    : contractGasLimit;
             }
             catch (AuRaException e)
             {

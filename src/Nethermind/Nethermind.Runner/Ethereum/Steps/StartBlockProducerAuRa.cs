@@ -217,6 +217,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                             blockGasLimitContractTransition.Key,
                             readOnlyTransactionProcessorSource)).ToArray(),
                     _context.GasLimitOverrideCache,
+                    _context.Config<IAuraConfig>().Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
                     _context.LogManager);
                 
                 return gasLimitOverride;

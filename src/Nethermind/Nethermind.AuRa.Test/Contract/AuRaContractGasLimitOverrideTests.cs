@@ -69,7 +69,7 @@ namespace Nethermind.AuRa.Test.Contract
                     new ReadOnlyTransactionProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance));
                 
                 GasLimitOverrideCache = new IGasLimitOverride.Cache();
-                GasLimitOverride = new AuRaContractGasLimitOverride(new[] {gasLimitContract}, GasLimitOverrideCache, LimboLogs.Instance);
+                GasLimitOverride = new AuRaContractGasLimitOverride(new[] {gasLimitContract}, GasLimitOverrideCache, false, LimboLogs.Instance);
                 
                 return new AuRaBlockProcessor(SpecProvider, Always.Valid, new RewardCalculator(SpecProvider), TxProcessor, StateDb, CodeDb, State, Storage, TxPool, ReceiptStorage, LimboLogs.Instance,
                     new ListBasedValidator(validator, new ValidSealerStrategy(), LimboLogs.Instance), BlockTree, null, GasLimitOverride);
