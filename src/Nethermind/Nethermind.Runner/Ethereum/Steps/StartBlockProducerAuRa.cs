@@ -41,7 +41,8 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class StartBlockProducerAuRa : StartBlockProducer
     {
         private readonly AuRaEthereumRunnerContext _context;
-        
+        private IAuraConfig? _auraConfig;
+
         public StartBlockProducerAuRa(AuRaEthereumRunnerContext context) : base(context)
         {
             _context = context;
@@ -52,12 +53,12 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_context.NodeKey == null) throw new StepDependencyException(nameof(_context.NodeKey));
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             
+            _auraConfig = _context.Config<IAuraConfig>();
             ILogger logger = _context.LogManager.GetClassLogger();
             if (logger.IsWarn) logger.Warn("Starting AuRa block producer & sealer");
             
             IAuRaStepCalculator stepCalculator = new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper);
             BlockProducerContext producerContext = GetProducerChain();
-            var auraConfig = _context.Config<IAuraConfig>();
             _context.BlockProducer = new AuRaBlockProducer(
                 producerContext.TxSource,
                 producerContext.ChainProcessor,
@@ -68,7 +69,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.Timestamper,
                 _context.LogManager,
                 stepCalculator,
-                auraConfig,
+                _auraConfig,
                 _context.NodeKey.Address,
                 GetGasLimitOverride(producerContext.ReadOnlyTxProcessingEnv, producerContext.ReadOnlyTransactionProcessorSource));
         }
@@ -217,7 +218,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                             blockGasLimitContractTransition.Key,
                             readOnlyTransactionProcessorSource)).ToArray(),
                     _context.GasLimitOverrideCache,
-                    _context.Config<IAuraConfig>().Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
+                    _auraConfig?.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract == true,
                     _context.LogManager);
                 
                 return gasLimitOverride;
