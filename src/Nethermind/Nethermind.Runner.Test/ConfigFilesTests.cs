@@ -333,10 +333,10 @@ namespace Nethermind.Runner.Test
             }
         }
 
-        [Test]
-        public void Diagnostics_mode_is_not_enabled_by_default()
+        [TestCase("^spaceneth.cfg")]
+        public void Diagnostics_mode_is_not_enabled_by_default(string configWildcard)
         {
-            foreach (string configFile in Resolve("^spaceneth.cfg"))
+            foreach (string configFile in Resolve(configWildcard))
             {
                 ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
                 IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
@@ -344,10 +344,10 @@ namespace Nethermind.Runner.Test
             }
         }
 
-        [Test]
-        public void Migrations_are_not_enabled_by_default()
+        [TestCase("*")]
+        public void Migrations_are_not_enabled_by_default(string configWildcard)
         {
-            foreach (string configFile in Resolve("*"))
+            foreach (string configFile in Resolve(configWildcard))
             {
                 ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
                 IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
