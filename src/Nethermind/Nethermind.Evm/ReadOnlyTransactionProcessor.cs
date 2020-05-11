@@ -14,7 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.State;
 
@@ -24,11 +26,14 @@ namespace Nethermind.Evm
     {
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly IStateProvider _stateProvider;
+        private readonly Keccak _stateBefore;
 
-        public ReadOnlyTransactionProcessor(ITransactionProcessor transactionProcessor, IStateProvider stateProvider)
+        public ReadOnlyTransactionProcessor(ITransactionProcessor transactionProcessor, IStateProvider stateProvider, Keccak startState)
         {
-            _transactionProcessor = transactionProcessor;
-            _stateProvider = stateProvider;
+            _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
+            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _stateBefore = _stateProvider.StateRoot;
+            _stateProvider.StateRoot = startState ?? throw new ArgumentException(nameof(startState));
         }
         
         public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer)
@@ -43,6 +48,7 @@ namespace Nethermind.Evm
 
         public void Dispose()
         {
+            _stateProvider.StateRoot = _stateBefore;
             _stateProvider.Reset();
         }
     }

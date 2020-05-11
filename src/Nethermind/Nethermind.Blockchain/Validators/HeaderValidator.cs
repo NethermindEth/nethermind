@@ -119,19 +119,7 @@ namespace Nethermind.Blockchain.Validators
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas used above gas limit");
             }
 
-            long maxGasLimitDifference = parent.GasLimit / spec.GasLimitBoundDivisor;
-            bool gasLimitNotTooHigh = header.GasLimit <= parent.GasLimit + maxGasLimitDifference;
-            if (!gasLimitNotTooHigh)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too high");
-            }
-
-            bool gasLimitNotTooLow = header.GasLimit >= parent.GasLimit - maxGasLimitDifference
-                                     && header.GasLimit >= spec.MinGasLimit;
-            if (!gasLimitNotTooLow)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too low");
-            }
+            var gasLimitInRange = ValidateGasLimitRange(header, parent, spec);
 
             // bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // described in the YellowPaper but not followed
             bool timestampMoreThanAtParent = header.Timestamp > parent.Timestamp;
@@ -151,14 +139,32 @@ namespace Nethermind.Blockchain.Validators
             return
                 totalDifficultyCorrect &&
                 gasUsedBelowLimit &&
-                gasLimitNotTooLow &&
-                gasLimitNotTooHigh &&
+                gasLimitInRange &&
                 sealParamsCorrect &&
                 // gasLimitAboveAbsoluteMinimum && // described in the YellowPaper but not followed
                 timestampMoreThanAtParent &&
                 numberIsParentPlusOne &&
                 hashAsExpected &&
                 extraDataValid;
+        }
+
+        protected virtual bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec)
+        {
+            long maxGasLimitDifference = parent.GasLimit / spec.GasLimitBoundDivisor;
+            
+            bool gasLimitNotTooHigh = header.GasLimit <= parent.GasLimit + maxGasLimitDifference;
+            if (!gasLimitNotTooHigh)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too high");
+            }
+
+            var gasLimitNotTooLow = header.GasLimit >= parent.GasLimit - maxGasLimitDifference && header.GasLimit >= spec.MinGasLimit;
+            if (!gasLimitNotTooLow)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too low");
+            }
+
+            return gasLimitNotTooHigh && gasLimitNotTooLow;
         }
 
         /// <summary>

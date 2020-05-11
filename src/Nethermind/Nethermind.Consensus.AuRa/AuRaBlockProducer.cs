@@ -33,6 +33,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly IAuRaStepCalculator _auRaStepCalculator;
         private readonly IAuraConfig _config;
         private readonly Address _nodeAddress;
+        private readonly IGasLimitOverride _gasLimitOverride;
 
         public AuRaBlockProducer(
             ITxSource txSource,
@@ -45,13 +46,15 @@ namespace Nethermind.Consensus.AuRa
             ILogManager logManager,
             IAuRaStepCalculator auRaStepCalculator,
             IAuraConfig config,
-            Address nodeAddress) 
+            Address nodeAddress, 
+            IGasLimitOverride gasLimitOverride = null) 
             : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager, "AuRa")
         {
             _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
             _config = config ?? throw new ArgumentNullException(nameof(config));
             CanProduce = _config.AllowAuRaPrivateChains;
             _nodeAddress = nodeAddress ?? throw new ArgumentNullException(nameof(nodeAddress));
+            _gasLimitOverride = gasLimitOverride;
         }
 
         protected override async ValueTask ProducerLoopStep(CancellationToken cancellationToken)
@@ -69,6 +72,8 @@ namespace Nethermind.Consensus.AuRa
             block.Header.Beneficiary = _nodeAddress;
             return block;
         }
+
+        protected override long GetGasLimit(BlockHeader parent) => _gasLimitOverride?.GetGasLimit(parent) ?? base.GetGasLimit(parent);
 
         protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp) 
             => AuraDifficultyCalculator.CalculateDifficulty(parent.AuRaStep.Value, _auRaStepCalculator.CurrentStep);
@@ -95,6 +100,22 @@ namespace Nethermind.Consensus.AuRa
             }
             
             return false;
+        }
+
+        protected override Block ProcessPreparedBlock(Block block)
+        {
+            var processedBlock = base.ProcessPreparedBlock(block);
+            
+            // We need to check if we are within gas limit. We cannot calculate this in advance because:
+            // a) GasLimit can come from contract
+            // b) Some transactions that call contracts can be added to block and we don't know how much gas they will use.
+            if (processedBlock.GasUsed > processedBlock.GasLimit)
+            {
+                if (Logger.IsError) Logger.Error($"Block produced used {processedBlock.GasUsed} gas and exceeded gas limit {processedBlock.GasLimit}.");
+                return null;
+            }
+            
+            return processedBlock;
         }
     }
 }
