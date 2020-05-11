@@ -209,7 +209,7 @@ namespace Nethermind.Runner.Test
                 config.ProducerEnabled.Should().Be(false, configFile);
             }
         }
-        
+
         [TestCase("ndm_consumer_local.cfg")]
         public void IsMining_enabled_for_ndm_consumer_local(string configWildcard)
         {
@@ -262,7 +262,7 @@ namespace Nethermind.Runner.Test
                 networkConfig.ActivePeersMaxCount.Should().Be(activePeers, configFile);
             }
         }
-        
+
         [TestCase("*", 2048)]
         public void Tx_pool_defaults_are_correct(string configWildcard, int poolSize)
         {
@@ -333,6 +333,55 @@ namespace Nethermind.Runner.Test
             }
         }
 
+        [TestCase("^spaceneth.cfg")]
+        public void Diagnostics_mode_is_not_enabled_by_default(string configWildcard)
+        {
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+                initConfig.DiagnosticMode.Should().Be(DiagnosticMode.None, configFile);
+            }
+        }
+
+        [TestCase("*")]
+        public void Migrations_are_not_enabled_by_default(string configWildcard)
+        {
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+                initConfig.ReceiptsMigration.Should().Be(false, configFile);
+
+                IBloomConfig bloomConfig = configProvider.GetConfig<IBloomConfig>();
+                bloomConfig.Migration.Should().Be(false, configFile);
+                bloomConfig.MigrationStatistics.Should().Be(false, configFile);
+            }
+        }
+
+        [TestCase("^spaceneth.cfg", "nethermind_db")]
+        [TestCase("spaceneth.cfg", "spaceneth_db")]
+        public void Base_db_path_is_set(string configWildcard, string startWith)
+        {
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+                initConfig.BaseDbPath.Should().StartWith(startWith, configFile);
+            }
+        }
+
+        [TestCase("*", "Data/static-nodes.json")]
+        public void Static_nodes_path_is_default(string configWildcard, string staticNodesPath)
+        {
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+                initConfig.StaticNodesPath.Should().Be(staticNodesPath, configFile);
+            }
+        }
+
         [TestCase("^validators", true)]
         [TestCase("validators", false)]
         public void Stores_receipts(string configWildcard, bool storeReceipts)
@@ -342,6 +391,17 @@ namespace Nethermind.Runner.Test
                 ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
                 IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
                 initConfig.StoreReceipts.Should().Be(storeReceipts, configFile);
+            }
+        }
+
+        [TestCase("clique")]
+        public void Clique_pivots_divide_by_30000_epoch_length(string configWildcard)
+        {
+            foreach (string configFile in Resolve(configWildcard))
+            {
+                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                ISyncConfig config = configProvider.GetConfig<ISyncConfig>();
+                (config.PivotNumberParsed % 30000).Should().Be(0);
             }
         }
 
@@ -375,6 +435,7 @@ namespace Nethermind.Runner.Test
                 Assert.False(initConfig.KeepDevWalletInMemory, nameof(initConfig.KeepDevWalletInMemory));
 
                 Assert.AreEqual(configFile.Replace("cfg", "logs.txt"), initConfig.LogFileName, nameof(initConfig.LogFileName));
+                initConfig.PluginsDirectory.Should().Be("plugins", configFile);
             }
         }
 
