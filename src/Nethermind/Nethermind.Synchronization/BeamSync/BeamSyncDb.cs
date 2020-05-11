@@ -78,7 +78,8 @@ namespace Nethermind.Synchronization.BeamSync
                 {
                     if (CurrentState != SyncFeedState.Finished)
                     {
-                        Finish();
+                        // we do not want to finish this feed - instead we will keep using it in Beam Synced RPC requests
+                        // Finish();
                         UnregisterHandlers();
                     }
                 }
@@ -118,8 +119,6 @@ namespace Nethermind.Synchronization.BeamSync
 
         public string Name => _tempDb.Name;
 
-        private int _resolvedKeysCount;
-
         private object _diffLock = new object();
 
         private HashSet<Keccak> _requestedNodes = new HashSet<Keccak>();
@@ -149,11 +148,6 @@ namespace Nethermind.Synchronization.BeamSync
                 bool wasInDb = true;
                 while (true)
                 {
-                    if (BeamSyncContext.Cancelled.Value.IsCancellationRequested)
-                    {
-                        throw new TaskCanceledException("Found a better block.");
-                    }
-
                     if (_isDisposed)
                     {
                         throw new ObjectDisposedException("Beam Sync DB disposed");
@@ -173,6 +167,11 @@ namespace Nethermind.Synchronization.BeamSync
                     if (fromMem == null)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Beam sync miss - {key.ToHexString()} - retrieving");
+                        
+                        if (BeamSyncContext.Cancelled.Value.IsCancellationRequested)
+                        {
+                            throw new BeamCanceledException("Beam cancellation requested");
+                        }
 
                         if (Bytes.AreEqual(key, Keccak.Zero.Bytes))
                         {

@@ -77,9 +77,11 @@ namespace Nethermind.Network.Rlpx
                 buffer.WriteBytes(auth.Data);
                 context.WriteAndFlushAsync(buffer);
             }
-
-            _session.RemoteHost = ((IPEndPoint) context.Channel.RemoteAddress).Address.ToString();
-            _session.RemotePort = ((IPEndPoint) context.Channel.RemoteAddress).Port;
+            else
+            {
+                _session.RemoteHost = ((IPEndPoint) context.Channel.RemoteAddress).Address.ToString();
+                _session.RemotePort = ((IPEndPoint) context.Channel.RemoteAddress).Port;   
+            }
 
             CheckHandshakeInitTimeout().ContinueWith(x =>
             {

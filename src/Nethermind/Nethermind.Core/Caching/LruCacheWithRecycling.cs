@@ -64,6 +64,21 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
+        public bool TryGet(TKey key, out TValue value)
+        {
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))
+            {
+                value = node.Value.Value;
+                _lruList.Remove(node);
+                _lruList.AddLast(node);
+                return true;
+            }
+
+            value = default;
+            return false;
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public void Set(TKey key, TValue val)
         {
             if (val == null)
@@ -103,6 +118,9 @@ namespace Nethermind.Core.Caching
                 _cacheMap.Remove(key);
             }
         }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public bool Contains(TKey key) => _cacheMap.ContainsKey(key);
 
         private void Replace(TKey key, TValue value)
         {

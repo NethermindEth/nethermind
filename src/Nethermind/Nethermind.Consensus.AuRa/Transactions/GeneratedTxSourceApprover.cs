@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.State;
@@ -41,19 +42,17 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _chainId = chainId;
         }
         
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
-        {
-            foreach (var tx in _innerSource.GetTransactions(parent, gasLimit))
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) =>
+            _innerSource.GetTransactions(parent, gasLimit).Select(tx =>
             {
                 if (tx is GeneratedTransaction)
                 {
                     ApproveTx(parent, tx);
                 }
 
-                yield return tx;
-            }
-        }
-        
+                return tx;
+            });
+
         private void ApproveTx(BlockHeader parent, Transaction tx)
         {
             tx.Nonce = _stateReader.GetNonce(parent.StateRoot, tx.SenderAddress);

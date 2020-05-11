@@ -104,7 +104,20 @@ namespace Nethermind.Facade
             _wallet.Sign(tx, _blockTree.ChainId);
         }
 
-        public Block Head => _blockTree.Head;
+        public Block Head
+        {
+            get
+            {
+                bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
+                
+                /*
+                 * when we are in the process of synchronising state
+                 * head remains Genesis block
+                 * and we want to allow users to use the API
+                 */
+                return headIsGenesis ? _blockTree.BestSuggestedBody : _blockTree.Head;
+            }
+        }
 
         public long BestKnown => _blockTree.BestKnownNumber;
 

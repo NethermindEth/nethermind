@@ -120,11 +120,13 @@ namespace Nethermind.Synchronization.FastSync
             }
 
             decimal currentProgress = (decimal) savedBranches / _syncProgress.Length;
+
             if (currentProgress == LastProgress)
             {
                 return;
             }
 
+            Metrics.StateBranchProgress = (int) (currentProgress * 100);
             LastProgress = currentProgress;
             if (nodeProgressState == NodeProgressState.Empty)
             {

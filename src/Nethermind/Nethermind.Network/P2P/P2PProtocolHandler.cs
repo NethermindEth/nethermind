@@ -35,7 +35,6 @@ namespace Nethermind.Network.P2P
     {
         private TaskCompletionSource<Packet> _pongCompletionSource;
         private readonly INodeStatsManager _nodeStatsManager;
-        private bool _isInitialized;
         private bool _sentHello;
 
         public P2PProtocolHandler(
@@ -184,8 +183,6 @@ namespace Nethermind.Network.P2P
                 }
             }
 
-            _isInitialized = true;
-            
             if (!capabilities.Any(c => SupportedCapabilities.Contains(c)))
             {
                 InitiateDisconnect(DisconnectReason.UselessPeer, $"capabilities: {string.Join(", ", capabilities.Select(c => string.Concat(c.ProtocolCode, c.Version)))}");

@@ -25,6 +25,12 @@
       <EmbeddedResource Include="Contracts\RewardContract.json" />
       <None Remove="Contracts\ValidatorContract.json" />
       <EmbeddedResource Include="Contracts\ValidatorContract.json" />
+      <None Remove="Contracts\TransactionPermissionContract.V1.json" />
+      <EmbeddedResource Include="Contracts\TransactionPermissionContract.V1.json" />
+      <None Remove="Contracts\TransactionPermissionContract.V2.json" />
+      <EmbeddedResource Include="Contracts\TransactionPermissionContract.V2.json" />
+      <None Remove="Contracts\TransactionPermissionContract.V3.json" />
+      <EmbeddedResource Include="Contracts\TransactionPermissionContract.V3.json" />
     </ItemGroup>
 
 </Project>

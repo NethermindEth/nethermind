@@ -40,6 +40,7 @@ using Nethermind.Store;
 using Newtonsoft.Json;
 using NSubstitute;
 using NUnit.Framework;
+using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.AuRa.Test.Validators
 {
@@ -210,7 +211,7 @@ namespace Nethermind.AuRa.Test.Validators
 
             // getValidators should have been called
             _transactionProcessor.Received(1)
-                .Execute(
+                .CallAndRestore(
                     Arg.Is<Transaction>(t => CheckTransaction(t, _getValidatorsData)),
                     _block.Header,
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer));
@@ -632,7 +633,7 @@ namespace Nethermind.AuRa.Test.Validators
         private void SetupInitialValidators(BlockHeader header, params Address[] initialValidators)
         {
             _initialValidators = initialValidators;
-            _transactionProcessor.When(x => x.Execute(
+            _transactionProcessor.When(x => x.CallAndRestore(
                     Arg.Is<Transaction>(t => CheckTransaction(t, _getValidatorsData)),
                     header,
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer)))

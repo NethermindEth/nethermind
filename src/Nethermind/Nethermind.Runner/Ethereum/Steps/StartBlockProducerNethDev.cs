@@ -50,6 +50,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.LogManager);
         }
 
-        protected override ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv environment) => new SinglePendingTxSelector(base.CreateTxSourceForProducer(environment));
+        protected override ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, ReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource) 
+            => new SinglePendingTxSelector(base.CreateTxSourceForProducer(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource));
     }
 }

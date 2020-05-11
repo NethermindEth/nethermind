@@ -1,9 +1,9 @@
 name: Update Documentation
 
 on:
-  push:
-    tags:
-    - '*'
+  repository_dispatch:
+    types: update_docs
+
 
 jobs:
   neth-docs:

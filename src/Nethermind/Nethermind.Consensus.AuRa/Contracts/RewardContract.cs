@@ -20,6 +20,7 @@ using System.Numerics;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Core;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Serialization.Json.Abi;
@@ -52,10 +53,10 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// 3 - External - Reward attributed by an external protocol (e.g. block reward contract)
         /// 101-106 - Uncle - Reward attributed to uncles, with distance 1 to 6 (Ethash engine)
         /// </param>
-        public (Address[] Addresses, BigInteger[] Rewards) Reward(BlockHeader blockHeader, Address[] benefactors, ushort[] kind)
+        public (Address[] Addresses, UInt256[] Rewards) Reward(BlockHeader blockHeader, Address[] benefactors, ushort[] kind)
         {
             var result = Call(blockHeader, Definition.GetFunction(nameof(Reward)), Address.SystemUser, benefactors, kind);
-            return ((Address[]) result[0], (BigInteger[]) result[1]);
+            return ((Address[]) result[0], (UInt256[]) result[1]);
         }
     }
 }

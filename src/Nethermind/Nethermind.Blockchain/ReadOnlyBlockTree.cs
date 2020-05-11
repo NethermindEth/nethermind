@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -43,9 +44,10 @@ namespace Nethermind.Blockchain
         public Block Head => _wrapped.Head;
         public bool CanAcceptNewBlocks { get; } = false;
 
-        public Task LoadBlocksFromDb(CancellationToken cancellationToken, long? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = Int32.MaxValue) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(LoadBlocksFromDb)} calls");
-
-        public Task FixFastSyncGaps(CancellationToken cancellationToken) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(FixFastSyncGaps)} calls");
+        public async Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken)
+        {
+            await _wrapped.Accept(blockTreeVisitor, cancellationToken);
+        }
 
         public ChainLevelInfo FindLevel(long number) => _wrapped.FindLevel(number);
 

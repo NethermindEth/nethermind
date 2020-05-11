@@ -47,7 +47,7 @@ namespace Nethermind.Synchronization.Peers
 
         private object _writeLock = new object();
 
-        private IEnumerable<PeerInfo> OrderedPeers => _peerPool.InitializedPeers.OrderBy(p => p.SyncPeer?.HeadNumber).ThenBy(p => p.SyncPeer?.Node?.ClientId).ThenBy(p => p.SyncPeer?.Node?.Host);
+        private IEnumerable<PeerInfo> OrderedPeers => _peerPool.InitializedPeers.OrderByDescending(p => p.SyncPeer?.HeadNumber).ThenByDescending(p => p.SyncPeer?.Node?.ClientId).ThenBy(p => p.SyncPeer?.Node?.Host);
 
         public void WriteFullReport()
         {
@@ -100,7 +100,7 @@ namespace Nethermind.Synchronization.Peers
 
         private void AddPeerInfo(PeerInfo peerInfo)
         {
-            _stringBuilder.Append($"   {peerInfo}[{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Latency) ?? 0}]");
+            _stringBuilder.Append($"   {peerInfo}[{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Latency) ?? 0}|{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Headers) ?? 0}|{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Bodies) ?? 0}|{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Receipts) ?? 0}|{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.NodeData) ?? 0}]");
         }
 
         private void RememberState(out bool initializedCountChanged)

@@ -38,13 +38,28 @@ namespace Nethermind.Synchronization
         [Description("Full blocks processed by the beam processor")]
         public static long BeamedBlocks;
 
+        [Description("Requests sent for state nodes sync")]
+        public static long StateSyncRequests;
+        
+        [Description("State trie nodes synced")]
+        public static long SyncedStateTrieNodes;
+        
+        [Description("Storage trie nodes synced")]
+        public static long SyncedStorageTrieNodes;
+        
+        [Description("Synced bytecodes")]
+        public static long SyncedCodes;
+        
         [Description("Requests sent for processing by the beam sync DB")]
         public static long BeamedRequests;
 
         [Description("Trie nodes retrieved via beam sync DB")]
         public static long BeamedTrieNodes;
-        
+
         [Description("Number of sync peers.")]
-        public static long SyncPeers { get; set; }
+        public static long SyncPeers;
+
+        [Description("State branch progress (percentage of completed branches at second level).")]
+        public static long StateBranchProgress;
     }
 }

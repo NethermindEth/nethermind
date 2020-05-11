@@ -22,6 +22,7 @@ namespace Nethermind.Network
         Timeout,
         Validation,
         Discovery,
+        HandshakeOrInit,
         Other
     }
 }

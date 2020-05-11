@@ -31,12 +31,12 @@ namespace Nethermind.Synchronization.ParallelSync
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;
         }
 
-        private void SyncModeSelectorOnPreparing(object? sender, SyncModeChangedEventArgs e)
+        private void SyncModeSelectorOnPreparing(object sender, SyncModeChangedEventArgs e)
         {
             Preparing?.Invoke(this, e);
         }
 
-        private void SyncModeSelectorOnChanging(object? sender, SyncModeChangedEventArgs e)
+        private void SyncModeSelectorOnChanging(object sender, SyncModeChangedEventArgs e)
         {
             Changing?.Invoke(this, e);
         }
