@@ -97,7 +97,6 @@ namespace Nethermind.Network.Discovery
                         {
                             nodeManager.ProcessPingMessage(ping);
                         }
-
                         break;
                     case MessageType.FindNode:
                         nodeManager.ProcessFindNodeMessage(message as FindNodeMessage);

@@ -94,11 +94,13 @@ namespace Nethermind.Network.Discovery
                 }
             });
         }
-
-        private static Random rand = new Random(42);
         
         protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
         {
+            Console.WriteLine("In ChannelRead0 method with parameters: ");
+            Console.WriteLine($"ctx = {ctx}");
+            Console.WriteLine($"packet = {packet}");
+
             IByteBuffer content = packet.Content;
             EndPoint address = packet.Sender;
 
@@ -126,6 +128,7 @@ namespace Nethermind.Network.Discovery
             try
             {
                 message = Deserialize(type, msg);
+                Console.WriteLine($"Recieved message {message}");
                 message.FarAddress = (IPEndPoint)address;
             }
             catch (Exception e)
@@ -136,33 +139,10 @@ namespace Nethermind.Network.Discovery
 
             try
             {
-                long timeToExpire = message.ExpirationTime - (long) _timestamper.EpochSeconds;
-                if (timeToExpire < 0)
-                {
-                    if(_logger.IsDebug) _logger.Debug($"Received a discovery message that has expired {-timeToExpire} seconds ago, type: {type}, sender: {address}, message: {message}");
-                    return;
-                }
+                if(ValidateMessage(message, type, address, ctx, packet))
+                    return; 
 
-                if (!message.FarAddress.Equals((IPEndPoint)packet.Sender))
-                {
-                    if(_logger.IsDebug) _logger.Debug($"Discovery fake IP detected - pretended {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
-                    return;
-                }
-                
-                if (message.FarPublicKey == null)
-                {
-                    if(_logger.IsDebug) _logger.Debug($"Discovery message without a valid signature {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
-                    return;
-                }
-
-                if (message is PingMessage pingMessage)
-                {
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMessage.FarAddress.Address.ToString(), "HANDLER disc v4", $"PING {pingMessage.SourceAddress.Address} -> {pingMessage.DestinationAddress.Address}");    
-                }
-                else
-                {
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress.Address.ToString(), "HANDLER disc v4", message.MessageType.ToString());    
-                }
+                ReportMessageByType(message);
                 
                 _discoveryManager.OnIncomingMessage(message);
             }
@@ -204,6 +184,42 @@ namespace Nethermind.Network.Discovery
                 default:
                     throw new Exception($"Unsupported messageType: {message.MessageType}");
             }
+        }
+
+        private bool ValidateMessage(DiscoveryMessage message, MessageType type, EndPoint address, IChannelHandlerContext ctx, DatagramPacket packet)
+        {
+                var timeToExpire = message.ExpirationTime - (long) _timestamper.EpochSeconds;
+                if (timeToExpire < 0)
+                {
+                    if(_logger.IsDebug) _logger.Debug($"Received a discovery message that has expired {-timeToExpire} seconds ago, type: {type}, sender: {address}, message: {message}");
+                    return false;
+                }
+
+                if (!message.FarAddress.Equals((IPEndPoint)packet.Sender))
+                {
+                    if(_logger.IsDebug) _logger.Debug($"Discovery fake IP detected - pretended {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
+                    return false;
+                }
+                
+                if (message.FarPublicKey == null)
+                {
+                    if(_logger.IsDebug) _logger.Debug($"Discovery message without a valid signature {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
+                    return false;
+                }
+
+                return true;
+        }
+
+        private void ReportMessageByType(DiscoveryMessage message)
+        {
+                if (message is PingMessage pingMessage)
+                {
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMessage.FarAddress.Address.ToString(), "HANDLER disc v4", $"PING {pingMessage.SourceAddress.Address} -> {pingMessage.DestinationAddress.Address}");    
+                }
+                else
+                {
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress.Address.ToString(), "HANDLER disc v4", message.MessageType.ToString());    
+                }
         }
         
         public event EventHandler OnChannelActivated;
