@@ -7,7 +7,6 @@
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
     <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
     <Nullable>enable</Nullable>
-    <UseAppHost>true</UseAppHost>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <WarningsAsErrors />
