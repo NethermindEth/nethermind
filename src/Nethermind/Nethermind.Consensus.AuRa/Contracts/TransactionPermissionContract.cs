@@ -26,7 +26,7 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public partial class TransactionPermissionContract : Contract, IActivatedAtBlock
+    public partial class TransactionPermissionContract : Contract, IActivatedAt
     {
         private readonly IDictionary<UInt256, ITransactionPermissionVersionedContract> _versionedContracts;
         private readonly IVersionContract _versionContract;
@@ -39,7 +39,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             IStateProvider stateProvider = null) 
             : base(transactionProcessor, abiEncoder, contractAddress)
         {
-            ActivationBlock = activationBlock;
+            Activation = activationBlock;
             var constantContract = stateProvider == null ? GetConstant(readOnlyReadOnlyTransactionProcessorSource) : GetConstantOnState(readOnlyReadOnlyTransactionProcessorSource, stateProvider);
             _versionedContracts = GetContracts(constantContract).ToDictionary(c => c.Version);
             _versionContract = (IVersionContract) _versionedContracts.Values.First(c => c is IVersionContract);
@@ -52,7 +52,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             yield return new V3(constant);
         }
 
-        public long ActivationBlock { get; }
+        public long Activation { get; }
         
         [Flags]
         public enum TxPermissions : uint

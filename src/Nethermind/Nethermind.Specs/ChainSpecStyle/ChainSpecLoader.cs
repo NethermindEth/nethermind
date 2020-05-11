@@ -175,7 +175,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 {
                     MaximumUncleCount = chainSpecJson.Engine.AuthorityRound.MaximumUncleCount,
                     MaximumUncleCountTransition = chainSpecJson.Engine.AuthorityRound.MaximumUncleCountTransition,
-                    StepDuration = chainSpecJson.Engine.AuthorityRound.StepDuration,
+                    StepDurations = chainSpecJson.Engine.AuthorityRound.StepDuration.HasValue ? new Dictionary<long, long>() { {0, chainSpecJson.Engine.AuthorityRound.StepDuration.Value} } : chainSpecJson.Engine.AuthorityRound.StepDurations,
                     BlockReward = chainSpecJson.Engine.AuthorityRound.BlockReward,
                     BlockRewardContractAddress = chainSpecJson.Engine.AuthorityRound.BlockRewardContractAddress,
                     BlockRewardContractTransition = chainSpecJson.Engine.AuthorityRound.BlockRewardContractTransition,

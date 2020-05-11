@@ -28,10 +28,7 @@ namespace Nethermind.Core
         {
             UtcNow = initialValue;
         }
-
-        public ulong EpochSeconds => (ulong)new DateTimeOffset(UtcNow).ToUnixTimeSeconds();
-        public ulong EpochMilliseconds => (ulong)new DateTimeOffset(UtcNow).ToUnixTimeMilliseconds();
-
+        
         public DateTime UtcNow { get; set; }
 
         public void AddOneSecond()

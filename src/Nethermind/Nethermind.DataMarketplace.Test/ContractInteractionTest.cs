@@ -125,7 +125,7 @@ namespace Nethermind.DataMarketplace.Test
             TxReceipt receipt = DeployContract(Bytes.FromHexString(ContractData.GetInitCode(_feeAccount)));
             ((NdmConfig) _ndmConfig).ContractAddress = receipt.ContractAddress.ToString();
             _contractAddress = receipt.ContractAddress;
-            _txPool = new TxPool.TxPool(new InMemoryTxStorage(), new Timestamper(),
+            _txPool = new TxPool.TxPool(new InMemoryTxStorage(), Timestamper.Default,
                 new EthereumEcdsa(specProvider, _logManager), specProvider, new TxPoolConfig(), _state, _logManager);
 
             _ndmBridge = new NdmBlockchainBridge(_bridge, _txPool);

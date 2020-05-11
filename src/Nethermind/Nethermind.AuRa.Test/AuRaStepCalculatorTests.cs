@@ -15,11 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test
@@ -31,7 +33,7 @@ namespace Nethermind.AuRa.Test
         [Retry(3)]
         public async Task step_increases_after_timeToNextStep(int stepDuration)
         {
-            var calculator = new AuRaStepCalculator(stepDuration, new Timestamper());
+            var calculator = new AuRaStepCalculator(GetStepDurationsForSingleStep(stepDuration), Timestamper.Default, LimboLogs.Instance);
             var step = calculator.CurrentStep;
             await TaskExt.DelayAtLeast(calculator.TimeToNextStep);
             calculator.CurrentStep.Should().Be(step + 1, calculator.TimeToNextStep.ToString());
@@ -42,7 +44,7 @@ namespace Nethermind.AuRa.Test
         [Retry(3)]
         public async Task after_waiting_for_next_step_timeToNextStep_should_be_close_to_stepDuration_in_seconds(int stepDuration)
         {
-            var calculator = new AuRaStepCalculator(stepDuration, new Timestamper());
+            var calculator = new AuRaStepCalculator(GetStepDurationsForSingleStep(stepDuration), Timestamper.Default, LimboLogs.Instance);
             await TaskExt.DelayAtLeast(calculator.TimeToNextStep);
             calculator.TimeToNextStep.Should().BeCloseTo(TimeSpan.FromSeconds(stepDuration), TimeSpan.FromMilliseconds(200));
         }
@@ -52,8 +54,10 @@ namespace Nethermind.AuRa.Test
         public void step_is_calculated_correctly(long milliSeconds, int stepDuration)
         {
             var time = DateTimeOffset.FromUnixTimeMilliseconds(milliSeconds);
-            var calculator = new AuRaStepCalculator(stepDuration, new Timestamper(time.UtcDateTime));
+            var calculator = new AuRaStepCalculator(GetStepDurationsForSingleStep(stepDuration), new Timestamper(time.UtcDateTime), LimboLogs.Instance);
             calculator.CurrentStep.Should().Be(time.ToUnixTimeSeconds() / stepDuration);
         }
+
+        private IDictionary<long, long> GetStepDurationsForSingleStep(long stepDuration) => new Dictionary<long, long>() {{0, stepDuration}};
     }
 }

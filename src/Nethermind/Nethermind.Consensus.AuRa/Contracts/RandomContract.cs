@@ -26,7 +26,7 @@ using Nethermind.Serialization.Json.Abi;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class RandomContract : Contract, IActivatedAtBlock
+    public class RandomContract : Contract, IActivatedAt
     {
         private readonly Address _nodeAddress;
         private static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<RandomContract>();
@@ -41,11 +41,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
             : base(transactionProcessor, abiEncoder, contractAddress)
         {
             _nodeAddress = nodeAddress;
-            ActivationBlock = transitionBlock;
+            Activation = transitionBlock;
             Constant = GetConstant(readOnlyReadOnlyTransactionProcessorSource);
         }
 
-        public long ActivationBlock { get; }
+        public long Activation { get; }
 
         public enum Phase
         {

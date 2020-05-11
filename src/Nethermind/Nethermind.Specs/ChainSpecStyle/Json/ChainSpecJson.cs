@@ -82,7 +82,9 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         
         internal class AuraEngineParamsJson
         {
-            public int StepDuration { get; set; }
+            public long? StepDuration { get; set; }
+            
+            public IDictionary<long, long> StepDurations { get; set; }
 
             public UInt256 BlockReward { get; set; }
 
@@ -140,7 +142,9 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
 
         internal class AuraEngineJson
         {
-            public int StepDuration  => Params.StepDuration;
+            public long? StepDuration  => Params.StepDuration;
+
+            public IDictionary<long, long> StepDurations => Params.StepDurations;
 
             public UInt256 BlockReward  => Params.BlockReward;
 

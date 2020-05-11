@@ -68,7 +68,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
             _abiEncoder = Substitute.For<IAbiEncoder>();
             _wallet = Substitute.For<IWallet>();
             _ecdsa = Substitute.For<IEthereumEcdsa>();
-            _timestamper = new Timestamper();
+            _timestamper = Timestamper.Default;
             _nodePublicKey = TestItem.PublicKeyA;
             _receiptService = new ReceiptService(_depositProvider, _providerService, _receiptRequestValidator,
                 _sessionService, _timestamper, _receiptRepository, _sessionRepository, _abiEncoder, _wallet,
