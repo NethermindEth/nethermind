@@ -71,8 +71,7 @@ namespace Nethermind.Network.Discovery
         {
             try
             {
-                if(_logger.IsTrace) _logger.Trace($"Logger");		
-                Console.WriteLine("Console log");
+                if (_logger.IsTrace) _logger.Trace($"Received msg: {message}");
 
                 MessageType msgType = message.MessageType;
 
@@ -220,7 +219,6 @@ namespace Nethermind.Network.Discovery
                 if (_logger.IsDebug) _logger.Debug($"Received a message with incorrect destination address, message: {message}");
                 return false;
             }
-
 
             return true;
         }
