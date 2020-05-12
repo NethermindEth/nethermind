@@ -124,7 +124,6 @@ namespace Nethermind.Network.Discovery
             try
             {
                 message = Deserialize(type, msg);
-                Console.WriteLine($"Recieved message {message}");
                 message.FarAddress = (IPEndPoint)address;
             }
             catch (Exception e)
