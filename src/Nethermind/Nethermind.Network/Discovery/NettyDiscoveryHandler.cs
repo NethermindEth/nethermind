@@ -139,7 +139,7 @@ namespace Nethermind.Network.Discovery
 
             try
             {
-                if(ValidateMessage(message, type, address, ctx, packet))
+                if(!ValidateMessage(message, type, address, ctx, packet))
                     return; 
 
                 ReportMessageByType(message);
