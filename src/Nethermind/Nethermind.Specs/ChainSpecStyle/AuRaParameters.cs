@@ -46,7 +46,7 @@ namespace Nethermind.Specs.ChainSpecStyle
     /// </summary>
     public class AuRaParameters
     {
-        public IDictionary<long, long> StepDurations { get; set; }
+        public IDictionary<long, long> StepDuration { get; set; }
 
         public UInt256 BlockReward { get; set; }
 

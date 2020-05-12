@@ -248,7 +248,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.NotNull(chainSpec.AuRa, "AuRa");
             Assert.AreEqual(0, chainSpec.AuRa.MaximumUncleCount, "maximum uncle count");
             Assert.AreEqual(0L, chainSpec.AuRa.MaximumUncleCountTransition, "maximum uncle count tr");
-            Assert.AreEqual(5L, chainSpec.AuRa.StepDurations[0], "step dur");
+            Assert.AreEqual(5L, chainSpec.AuRa.StepDuration[0], "step duration");
             Assert.AreEqual(UInt256.Parse("1000000000000000000"), chainSpec.AuRa.BlockReward, "rew");
             Assert.AreEqual(4639000, chainSpec.AuRa.BlockRewardContractTransition, "rew tr");
             Assert.AreEqual(new Address("0x3145197AD50D7083D0222DE4fCCf67d9BD05C30D"), chainSpec.AuRa.BlockRewardContractAddress, "rew add");

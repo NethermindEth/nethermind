@@ -38,6 +38,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ChainSpecLoader(IJsonSerializer serializer)
         {
             _serializer = serializer;
+            _serializer.RegisterConverter(new StepDurationJsonConverter());
         }
 
         public ChainSpec Load(byte[] data) => Load(System.Text.Encoding.UTF8.GetString(data));
@@ -175,7 +176,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 {
                     MaximumUncleCount = chainSpecJson.Engine.AuthorityRound.MaximumUncleCount,
                     MaximumUncleCountTransition = chainSpecJson.Engine.AuthorityRound.MaximumUncleCountTransition,
-                    StepDurations = chainSpecJson.Engine.AuthorityRound.StepDuration.HasValue ? new Dictionary<long, long>() { {0, chainSpecJson.Engine.AuthorityRound.StepDuration.Value} } : chainSpecJson.Engine.AuthorityRound.StepDurations,
+                    StepDuration = chainSpecJson.Engine.AuthorityRound.StepDuration,
                     BlockReward = chainSpecJson.Engine.AuthorityRound.BlockReward,
                     BlockRewardContractAddress = chainSpecJson.Engine.AuthorityRound.BlockRewardContractAddress,
                     BlockRewardContractTransition = chainSpecJson.Engine.AuthorityRound.BlockRewardContractTransition,
