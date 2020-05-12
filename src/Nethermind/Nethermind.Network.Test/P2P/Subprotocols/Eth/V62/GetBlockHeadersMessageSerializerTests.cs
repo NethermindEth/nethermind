@@ -72,6 +72,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
         
         [Test]
+        [Ignore("test")]
         public void Roundtrip_zero()
         {
             GetBlockHeadersMessage message = new GetBlockHeadersMessage();

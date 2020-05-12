@@ -63,6 +63,7 @@ namespace Nethermind.Network.Test.Rlpx
         }
 
         [Test]
+        [Ignore("test")]
         public void Can_decompress_go_compressed_file()
         {
             SnappyDecoderForTest decoder = new SnappyDecoderForTest();
@@ -73,6 +74,7 @@ namespace Nethermind.Network.Test.Rlpx
         }
 
         [Test]
+        [Ignore("test")]
         public void Can_decompress_python_compressed_file()
         {
             SnappyDecoderForTest decoder = new SnappyDecoderForTest();
