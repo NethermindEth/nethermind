@@ -114,8 +114,8 @@ namespace Nethermind.Consensus.AuRa
                 TransitionStep = transitionStep;
                 TransitionTimestamp = transitionTimestamp;
                 StepDuration = stepDuration;
-                StepDurationMilliseconds = StepDuration * millisecondsInSecond;
-                TransitionTimestampMilliseconds = transitionStep * millisecondsInSecond;
+                StepDurationMilliseconds = stepDuration * millisecondsInSecond;
+                TransitionTimestampMilliseconds = transitionTimestamp * millisecondsInSecond;
             }
 
             public long TransitionStep { get; }

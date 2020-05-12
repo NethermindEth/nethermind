@@ -31,9 +31,9 @@ namespace Nethermind.Core
         
         public DateTime UtcNow { get; set; }
 
-        public void AddOneSecond()
+        public void Add(TimeSpan timeSpan)
         {
-            UtcNow += TimeSpan.FromSeconds(1);
+            UtcNow += timeSpan;
         }
     }
 }
