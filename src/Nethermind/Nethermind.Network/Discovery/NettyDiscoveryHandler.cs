@@ -97,10 +97,6 @@ namespace Nethermind.Network.Discovery
         
         protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
         {
-            Console.WriteLine("In ChannelRead0 method with parameters: ");
-            Console.WriteLine($"ctx = {ctx}");
-            Console.WriteLine($"packet = {packet}");
-
             IByteBuffer content = packet.Content;
             EndPoint address = packet.Sender;
 
