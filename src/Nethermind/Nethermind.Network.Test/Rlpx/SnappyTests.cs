@@ -120,6 +120,7 @@ namespace Nethermind.Network.Test.Rlpx
         }
 
         [Test]
+        [Ignore("test")]
         public void Roundtrip_zero()
         {
             SnappyDecoderForTest decoder = new SnappyDecoderForTest();
