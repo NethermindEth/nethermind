@@ -96,7 +96,6 @@ namespace Nethermind.Network.Discovery
                         {
                             nodeManager.ProcessPingMessage(ping);
                         }
-
                         break;
                     case MessageType.FindNode:
                         nodeManager.ProcessFindNodeMessage(message as FindNodeMessage);
@@ -197,7 +196,7 @@ namespace Nethermind.Network.Discovery
 
         public event EventHandler<NodeEventArgs> NodeDiscovered;
 
-        public IReadOnlyCollection<INodeLifecycleManager> GetOrAddNodeLifecycleManagers()
+        public IReadOnlyCollection<INodeLifecycleManager> GetNodeLifecycleManagers()
         {
             return _nodeLifecycleManagers.Values.ToArray();
         }
@@ -220,7 +219,8 @@ namespace Nethermind.Network.Discovery
                 if (_logger.IsDebug) _logger.Debug($"Received a message with incorrect destination address, message: {message}");
                 return false;
             }
-
+            
+            #region 
             // port will be different as we dynamically open ports for each socket connection
             // if (_nodeTable.MasterNode.Port != message.DestinationAddress?.Port)
             // {
@@ -228,17 +228,18 @@ namespace Nethermind.Network.Discovery
             // }
 
             // either an old Nethermind or other nodes that make the same mistake 
-            if (!Bytes.AreEqual(message.FarAddress?.Address.MapToIPv6().GetAddressBytes(), message.SourceAddress?.Address.MapToIPv6().GetAddressBytes()))
-            {
-                // there is no sense to complain here as nodes sent a lot of garbage as their source addresses
-                // if (_logger.IsWarn) _logger.Warn($"Received message with incorrect source address {message.SourceAddress}, message: {message}");
-            }
+            // if (!Bytes.AreEqual(message.FarAddress?.Address.MapToIPv6().GetAddressBytes(), message.SourceAddress?.Address.MapToIPv6().GetAddressBytes()))
+            // {
+            //     // there is no sense to complain here as nodes sent a lot of garbage as their source addresses
+            //     // if (_logger.IsWarn) _logger.Warn($"Received message with incorrect source address {message.SourceAddress}, message: {message}");
+            // }
 
-            if (message.FarAddress?.Port != message.SourceAddress?.Port)
-            {
-                // there is no sense to complain here as nodes sent a lot of garbage as their source addresses
-                // if (_logger.IsWarn) _logger.Warn($"TRACE/WARN Received a message with incorrect source port, message: {message}");
-            }
+            // if (message.FarAddress?.Port != message.SourceAddress?.Port)
+            // {
+            //     // there is no sense to complain here as nodes sent a lot of garbage as their source addresses
+            //     // if (_logger.IsWarn) _logger.Warn($"TRACE/WARN Received a message with incorrect source port, message: {message}");
+            // }
+            #endregion
 
             return true;
         }
