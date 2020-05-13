@@ -37,7 +37,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource) 
             : base(transactionProcessor, abiEncoder, contractAddress)
         {
-            ActivationBlock = activationBlock;
+            Activation = activationBlock;
             var constantContract = GetConstant(readOnlyReadOnlyTransactionProcessorSource);
             _versionedContracts = GetContracts(constantContract).ToDictionary(c => c.Version);
             _versionContract = (IVersionContract) _versionedContracts.Values.First(c => c is IVersionContract);
@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             yield return new V3(constant);
         }
 
-        public long ActivationBlock { get; }
+        public long Activation { get; }
         
         [Flags]
         public enum TxPermissions : uint
@@ -85,7 +85,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         
         public ITransactionPermissionVersionedContract GetVersionedContract(BlockHeader parentHeader)
         {
-            this.ActivationCheck(parentHeader);
+            this.BlockActivationCheck(parentHeader);
             
             try
             {

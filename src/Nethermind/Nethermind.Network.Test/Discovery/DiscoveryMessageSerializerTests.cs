@@ -56,7 +56,7 @@ namespace Nethermind.Network.Test.Discovery
             _farAddress = new IPEndPoint(IPAddress.Parse("192.168.1.2"), 1);
             _nearAddress = new IPEndPoint(IPAddress.Parse(_networkConfig.LocalIp), _networkConfig.DiscoveryPort);
             _messageSerializationService = Build.A.SerializationService().WithDiscovery(_privateKey).TestObject;
-            _timestamper = new Timestamper();
+            _timestamper = Timestamper.Default;
         }
 
         [Test]

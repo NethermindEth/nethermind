@@ -30,7 +30,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
     {
         private static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<BlockGasLimitContract>();
         private ConstantContract Constant { get; }
-        public long ActivationBlock { get; }
+        public long Activation { get; }
         
         public BlockGasLimitContract(
             ITransactionProcessor transactionProcessor, 
@@ -40,13 +40,13 @@ namespace Nethermind.Consensus.AuRa.Contracts
             IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource) 
             : base(transactionProcessor, abiEncoder, contractAddress)
         {
-            ActivationBlock = transitionBlock;
+            Activation = transitionBlock;
             Constant = GetConstant(readOnlyTransactionProcessorSource);
         }
 
         public UInt256? BlockGasLimit(BlockHeader parentHeader)
         {
-            this.ActivationCheck(parentHeader);
+            this.BlockActivationCheck(parentHeader);
             var function = Definition.GetFunction(nameof(BlockGasLimit));
             var bytes = Constant.CallRaw(parentHeader, function, Address.Zero);
             return (bytes?.Length ?? 0) == 0 ? (UInt256?) null : (UInt256) AbiEncoder.Decode(function.GetReturnInfo(), bytes)[0];

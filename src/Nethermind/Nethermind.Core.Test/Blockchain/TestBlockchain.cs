@@ -166,7 +166,7 @@ namespace Nethermind.Core.Test.Blockchain
                 TxPool.AddTransaction(transaction, BlockTree.Head.Number + 1, TxHandlingOptions.None);    
             }
             
-            Timestamper.AddOneSecond();
+            Timestamper.Add(TimeSpan.FromSeconds(1));
             BlockProducer.BuildNewBlock();
             await _resetEvent.WaitOneAsync(CancellationToken.None);
         }

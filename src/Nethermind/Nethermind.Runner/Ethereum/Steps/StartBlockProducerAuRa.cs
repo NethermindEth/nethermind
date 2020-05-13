@@ -57,7 +57,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             ILogger logger = _context.LogManager.GetClassLogger();
             if (logger.IsWarn) logger.Warn("Starting AuRa block producer & sealer");
             
-            IAuRaStepCalculator stepCalculator = new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper);
+            IAuRaStepCalculator stepCalculator = new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper, _context.LogManager);
             BlockProducerContext producerContext = GetProducerChain();
             _context.BlockProducer = new AuRaBlockProducer(
                 producerContext.TxSource,

@@ -74,7 +74,7 @@ namespace Nethermind.Network.Test.Discovery
             _nodeTable = new NodeTable(calculator, discoveryConfig, _networkConfig, logManager);
             _nodeTable.Initialize(TestItem.PublicKeyA);
 
-            _timestamper = new Timestamper();
+            _timestamper = Timestamper.Default;
 
             var evictionManager = new EvictionManager(_nodeTable, logManager);
             var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeTable, new DiscoveryMessageFactory(_timestamper), evictionManager, new NodeStatsManager(statsConfig, logManager), discoveryConfig, logManager);

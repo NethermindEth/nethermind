@@ -210,9 +210,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        private IAuRaValidatorProcessorExtension CreateValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype)
-        {
-            return _validatorFactory.CreateValidatorProcessor(validatorPrototype, finalizedAtBlockNumber + 1);
-        }
+        private IAuRaValidatorProcessorExtension CreateValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype) => 
+            _validatorFactory.CreateValidatorProcessor(validatorPrototype, finalizedAtBlockNumber + 1);
     }
 }

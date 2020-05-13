@@ -37,7 +37,7 @@ namespace Nethermind.Network.Test.Builders
 
         public SerializationBuilder(ITimestamper timestamper = null)
         {
-            _timestamper = timestamper ?? new Timestamper();
+            _timestamper = timestamper ?? Timestamper.Default;
             TestObject = new MessageSerializationService();
         }
 
