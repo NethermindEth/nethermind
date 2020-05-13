@@ -21,6 +21,9 @@ namespace Nethermind.Consensus.AuRa.Validators
 {
     internal static class AuRaValidatorsCollectionExtensions
     {
-        public static int MinSealersForFinalization(this IList<Address> validators) => validators.Count / 2 + 1;
+        public static int MinSealersForFinalization(this IList<Address> validators, bool twoThirds = false)
+        {
+            return (twoThirds ? validators.Count * 2 / 3 : validators.Count / 2) + 1;
+        }
     }
 }

@@ -104,8 +104,9 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
 
             public IDictionary<long, Address> RandomnessContractAddress { get; set; } = new Dictionary<long, Address>();
 			
-            public IDictionary<long, Address> BlockGasLimitContractTransitions { get; set; } = new Dictionary<long, Address>();			
-            
+            public IDictionary<long, Address> BlockGasLimitContractTransitions { get; set; } = new Dictionary<long, Address>();
+            public long? TwoThirdsMajorityTransition { get; set; }
+
             public class StepDurationJson : SortedDictionary<long, long>
             {
             }
@@ -162,6 +163,8 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public long ValidateScoreTransition => Params.ValidateScoreTransition;
 
             public long ValidateStepTransition => Params.ValidateStepTransition;
+
+            public long? TwoThirdsMajorityTransition => Params.TwoThirdsMajorityTransition;
 
             public AuRaValidatorJson Validator => Params.Validators;
             
