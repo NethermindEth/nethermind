@@ -16,6 +16,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Core;
 
 namespace Nethermind.Consensus.AuRa
 {
@@ -23,8 +26,16 @@ namespace Nethermind.Consensus.AuRa
     {
         T Activation { get; }
     }
-
-    public interface IActivatedAt : IActivatedAt<long>
+	
+	public interface IActivatedAt : IActivatedAt<long>
     {
+    }
+
+    internal static class ActivatedAtBlockExtensions
+    {
+        public static void BlockActivationCheck(this IActivatedAt activatedAtBlock, BlockHeader parentHeader)
+        {
+            if (parentHeader.Number + 1 < activatedAtBlock.Activation) throw new InvalidOperationException($"{activatedAtBlock.GetType().Name} is not active for block {parentHeader.Number + 1}. Its activated on block {activatedAtBlock.Activation}.");
+        }
     }
 }

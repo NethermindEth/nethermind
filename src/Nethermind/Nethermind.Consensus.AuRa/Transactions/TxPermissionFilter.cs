@@ -41,34 +41,34 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _logger = logManager?.GetClassLogger<TxPermissionFilter>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
-        public bool IsAllowed(Transaction tx, BlockHeader blockHeader, long blockNumber)
+        public bool IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
-            if (blockNumber < _contract.Activation)
+            if (parentHeader.Number + 1 < _contract.Activation)
             {
                 return true;
             }
             else
             {
                 var txType = GetTxType(tx);
-                var txPermissions = GetPermissions(tx, blockHeader);
+                var txPermissions = GetPermissions(tx, parentHeader);
                 if (_logger.IsTrace) _logger.Trace($"Given transaction data: sender: {tx.SenderAddress} to: {tx.To} value: {tx.Value}, gas_price: {tx.GasPrice}. Permissions required: {txType}, got: {txPermissions}.");
                 return (txPermissions & txType) == txType;
             }
         }
 
-        private TransactionPermissionContract.TxPermissions GetPermissions(Transaction tx, BlockHeader blockHeader)
+        private TransactionPermissionContract.TxPermissions GetPermissions(Transaction tx, BlockHeader parentHeader)
         {
-            var key = (blockHeader.Hash, tx.SenderAddress);
+            var key = (parentHeader.Hash, tx.SenderAddress);
             var txCachedPermissions = _cache.Permissions.Get(key);
-            return txCachedPermissions ?? GetPermissionsFromContract(tx, blockHeader, key);
+            return txCachedPermissions ?? GetPermissionsFromContract(tx, parentHeader, key);
         }
 
-        private TransactionPermissionContract.TxPermissions GetPermissionsFromContract(Transaction tx, BlockHeader blockHeader, in (Keccak Hash, Address SenderAddress) key)
+        private TransactionPermissionContract.TxPermissions GetPermissionsFromContract(Transaction tx, BlockHeader parentHeader, in (Keccak Hash, Address SenderAddress) key)
         {
             TransactionPermissionContract.TxPermissions txPermissions = TransactionPermissionContract.TxPermissions.None;
             bool shouldCache = true;
             
-            var versionedContract = GetVersionedContract(blockHeader);
+            var versionedContract = GetVersionedContract(parentHeader);
             if (versionedContract == null)
             {
                 if (_logger.IsError) _logger.Error("Unknown version of tx permissions contract is used.");
@@ -79,7 +79,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 
                 try
                 {
-                    (txPermissions, shouldCache) = versionedContract.AllowedTxTypes(blockHeader, tx);
+                    (txPermissions, shouldCache) = versionedContract.AllowedTxTypes(parentHeader, tx);
                 }
                 catch (AuRaException e)
                 {

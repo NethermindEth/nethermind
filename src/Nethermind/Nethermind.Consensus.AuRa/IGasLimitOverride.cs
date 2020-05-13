@@ -13,26 +13,24 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Blockchain;
-using Nethermind.Config;
-using Nethermind.Consensus.AuRa;
-using Nethermind.Consensus.AuRa.Transactions;
-using Nethermind.Logging;
-using Nethermind.TxPool;
+using Nethermind.Core;
+using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Runner.Ethereum.Context
+namespace Nethermind.Consensus.AuRa
 {
-    public class AuRaEthereumRunnerContext : EthereumRunnerContext
+    public interface IGasLimitOverride
     {
-        public AuRaEthereumRunnerContext(IConfigProvider configProvider, ILogManager logManager)
-            : base(configProvider, logManager)
-        {
-        }
+        long? GetGasLimit(BlockHeader parentHeader);
         
-        public IAuRaBlockProcessorExtension? AuRaBlockProcessorExtension { get; set; }
-        public IBlockFinalizationManager? FinalizationManager { get; set; }
-        public ITxPermissionFilter.Cache? TxFilterCache { get; set; }
-        public IGasLimitOverride.Cache? GasLimitOverrideCache { get; set; }
+        public class Cache
+        {
+            private const int MaxCacheSize = 10;
+
+            internal ICache<Keccak, long?> GasLimitCache { get; } = new LruCacheWithRecycling<Keccak, long?>(MaxCacheSize, "BlockGasLimit");
+        }
     }
 }

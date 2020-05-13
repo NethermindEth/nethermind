@@ -31,6 +31,7 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
+using Nethermind.State;
 using Nethermind.Store;
 using Nethermind.Wallet;
 
@@ -40,7 +41,8 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class StartBlockProducerAuRa : StartBlockProducer
     {
         private readonly AuRaEthereumRunnerContext _context;
-        
+        private IAuraConfig? _auraConfig;
+
         public StartBlockProducerAuRa(AuRaEthereumRunnerContext context) : base(context)
         {
             _context = context;
@@ -51,12 +53,12 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_context.NodeKey == null) throw new StepDependencyException(nameof(_context.NodeKey));
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             
+            _auraConfig = _context.Config<IAuraConfig>();
             ILogger logger = _context.LogManager.GetClassLogger();
             if (logger.IsWarn) logger.Warn("Starting AuRa block producer & sealer");
             
             IAuRaStepCalculator stepCalculator = new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper, _context.LogManager);
             BlockProducerContext producerContext = GetProducerChain();
-            var auraConfig = _context.Config<IAuraConfig>();
             _context.BlockProducer = new AuRaBlockProducer(
                 producerContext.TxSource,
                 producerContext.ChainProcessor,
@@ -67,8 +69,9 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.Timestamper,
                 _context.LogManager,
                 stepCalculator,
-                auraConfig,
-                _context.NodeKey.Address);
+                _auraConfig,
+                _context.NodeKey.Address,
+                GetGasLimitOverride(producerContext.ReadOnlyTxProcessingEnv, producerContext.ReadOnlyTransactionProcessorSource));
         }
 
         protected override BlockProcessor CreateBlockProcessor(
@@ -104,7 +107,9 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.ReceiptStorage,
                 _context.LogManager, 
                 validator,
-                GetTxPermissionFilter(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource, true));
+                readOnlyTxProcessingEnv.BlockTree,
+                GetTxPermissionFilter(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource, readOnlyTxProcessingEnv.StateProvider),
+                GetGasLimitOverride(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource, readOnlyTxProcessingEnv.StateProvider));
             
             validator.SetFinalizationManager(_context.FinalizationManager, true);
 
@@ -158,7 +163,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 txSource = new GeneratedTxSourceApprover(txSource, new BasicWallet(_context.NodeKey), _context.Timestamper, readOnlyTxProcessingEnv.StateReader, _context.BlockTree.ChainId);
             }
 
-            var txPermissionFilter = GetTxPermissionFilter(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource, false);
+            var txPermissionFilter = GetTxPermissionFilter(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource);
             
             if (txPermissionFilter != null)
             {
@@ -168,10 +173,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             return txSource;
         }
 
-        private TxPermissionFilter? GetTxPermissionFilter(
+        private ITxPermissionFilter? GetTxPermissionFilter(
             ReadOnlyTxProcessingEnv environment, 
             ReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource,
-            bool useStateProvider)
+            IStateProvider? stateProvider = null)
         {
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             
@@ -183,13 +188,40 @@ namespace Nethermind.Runner.Ethereum.Steps
                         _context.AbiEncoder,
                         _context.ChainSpec.Parameters.TransactionPermissionContract,
                         _context.ChainSpec.Parameters.TransactionPermissionContractTransition ?? 0, 
-                        readOnlyTransactionProcessorSource,
-                        useStateProvider ? environment.StateProvider : null),
+                        readOnlyTransactionProcessorSource),
                     _context.TxFilterCache,
                     environment.StateProvider,
                     _context.LogManager);
                 
                 return txPermissionFilter;
+            }
+
+            return null;
+        }
+        
+        private IGasLimitOverride? GetGasLimitOverride(
+            ReadOnlyTxProcessingEnv environment, 
+            ReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource,
+            IStateProvider? stateProvider = null)
+        {
+            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
+            var blockGasLimitContractTransitions = _context.ChainSpec.AuRa.BlockGasLimitContractTransitions;
+            
+            if (blockGasLimitContractTransitions?.Any() == true)
+            {
+                var gasLimitOverride = new AuRaContractGasLimitOverride(
+                    blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
+                        new BlockGasLimitContract(
+                            environment.TransactionProcessor,
+                            _context.AbiEncoder,
+                            blockGasLimitContractTransition.Value,
+                            blockGasLimitContractTransition.Key,
+                            readOnlyTransactionProcessorSource)).ToArray(),
+                    _context.GasLimitOverrideCache,
+                    _auraConfig?.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract == true,
+                    _context.LogManager);
+                
+                return gasLimitOverride;
             }
 
             return null;

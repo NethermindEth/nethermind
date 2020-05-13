@@ -20,7 +20,13 @@ namespace Nethermind.Consensus.AuRa.Config
 {
     public interface IAuraConfig : IConfig
     {
+        [ConfigItem(Description = "If 'true' then Nethermind if mining will seal empty blocks.", DefaultValue = "false")]
         bool ForceSealing { get; set; }
+        
+        [ConfigItem(Description = "If 'true' then you can run Nethermind only private chains. Do not use with existing Parity AuRa chains.", DefaultValue = "false")]
         bool AllowAuRaPrivateChains { get; set; }
+        
+        [ConfigItem(Description = "If 'true' then when using BlockGasLimitContractTransitions if the contract returns less than 2mln gas, then 2 mln gas is used.", DefaultValue = "false")]
+        bool Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract { get; set; }
     }
 }

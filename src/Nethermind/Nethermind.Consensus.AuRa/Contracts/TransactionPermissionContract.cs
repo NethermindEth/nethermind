@@ -22,7 +22,6 @@ using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -35,12 +34,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
             IAbiEncoder abiEncoder,
             Address contractAddress,
             long activationBlock,
-            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource,
-            IStateProvider stateProvider = null) 
+            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource) 
             : base(transactionProcessor, abiEncoder, contractAddress)
         {
             Activation = activationBlock;
-            var constantContract = stateProvider == null ? GetConstant(readOnlyReadOnlyTransactionProcessorSource) : GetConstantOnState(readOnlyReadOnlyTransactionProcessorSource, stateProvider);
+            var constantContract = GetConstant(readOnlyReadOnlyTransactionProcessorSource);
             _versionedContracts = GetContracts(constantContract).ToDictionary(c => c.Version);
             _versionContract = (IVersionContract) _versionedContracts.Values.First(c => c is IVersionContract);
         }
@@ -85,11 +83,13 @@ namespace Nethermind.Consensus.AuRa.Contracts
             All = 0xffffffff,
         }
         
-        public ITransactionPermissionVersionedContract GetVersionedContract(BlockHeader blockHeader)
+        public ITransactionPermissionVersionedContract GetVersionedContract(BlockHeader parentHeader)
         {
+            this.BlockActivationCheck(parentHeader);
+            
             try
             {
-                UInt256 version = _versionContract.ContractVersion(blockHeader);
+                UInt256 version = _versionContract.ContractVersion(parentHeader);
                 return GetVersionedContract(version);
             }
             catch (AuRaException)
@@ -107,10 +107,10 @@ namespace Nethermind.Consensus.AuRa.Contracts
             /// the specified gas price and data. Used by node's engine each time a transaction is about to be
             /// included into a block.
             /// </summary>
-            /// <param name="blockHeader"></param>
+            /// <param name="parentHeader"></param>
             /// <param name="tx"></param>
             /// <returns><see cref="TxPermissions"/>Set of allowed transactions types and <see cref="bool"/> If `true` is returned, the same permissions will be applied from the same sender without calling this contract again.</returns>
-            (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader blockHeader, Transaction tx);
+            (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx);
             
             /// <summary>
             /// Returns the contract's version number needed for node's engine.

@@ -24,6 +24,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <EmbeddedResource Include="Contract\AuRaContractGasLimitOverrideTests.json" />
       <EmbeddedResource Include="Transactions\TxPermissionFilterTest.V2.json" />
       <EmbeddedResource Include="Transactions\TxPermissionFilterTest.V3.json" />
       <None Remove="Transactions\TxPermissionsFilterTest.V1.json" />
