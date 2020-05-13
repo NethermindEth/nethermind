@@ -32,6 +32,7 @@ namespace Nethermind.Core2.Json
         public override SyncingStatus Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             EnsureNames(options);
+            // Standard deserializer can write values directly into object, although a setter would still create and then pass in 
             var properties = new object[3];
             while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
             {
@@ -39,20 +40,23 @@ namespace Nethermind.Core2.Json
                 {
                     if (reader.ValueTextEquals(_currentSlotName.EncodedUtf8Bytes))
                     {
-                        properties[1] = JsonSerializer.Deserialize<Slot>(ref reader, options);
+                        reader.Read();
+                        properties[0] = JsonSerializer.Deserialize<Slot>(ref reader, options);
                     }
                     else if (reader.ValueTextEquals(_highestSlotName.EncodedUtf8Bytes))
                     {
-                        properties[2] = JsonSerializer.Deserialize<Slot>(ref reader, options);
+                        reader.Read();
+                        properties[1] = JsonSerializer.Deserialize<Slot>(ref reader, options);
                     }
                     else if (reader.ValueTextEquals(_startingSlotName.EncodedUtf8Bytes))
                     {
-                        properties[0] = JsonSerializer.Deserialize<Slot>(ref reader, options);
+                        reader.Read();
+                        properties[2] = JsonSerializer.Deserialize<Slot>(ref reader, options);
                     }
                 }
             }
 
-            return new SyncingStatus((Slot) properties[0], (Slot) properties[1], (Slot) properties[2]);
+            return new SyncingStatus((Slot) properties[2], (Slot) properties[0], (Slot) properties[1]);
         }
 
         public override void Write(Utf8JsonWriter writer, SyncingStatus value, JsonSerializerOptions options)
