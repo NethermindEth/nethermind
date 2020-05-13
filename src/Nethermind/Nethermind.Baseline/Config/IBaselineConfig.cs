@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,38 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using Nethermind.Core.Attributes;
+using Nethermind.Config;
 
-namespace Nethermind.JsonRpc.Modules
+namespace Nethermind.Baseline.Config
 {
-    [Todo(Improve.Refactor, "Can we use string instead to avoid coupling and introduce conventions?")]
-    public enum ModuleType
+    [ConfigCategory(Description = "Configuration of the Baseline Protocol integration with Nethermind")]
+    public interface IBaselineConfig : IConfig
     {
-        Admin,
-        Clique,
-        Db,
-        Debug,
-        Eth,
-        NdmProvider,
-        NdmConsumer,
-        Net,
-        Parity,
-        Personal,
-        Proof,
-        Trace,
-        TxPool,
-        Web3,
-        Baseline,
-    }
-
-    public class RpcModuleAttribute : Attribute
-    {
-        public ModuleType ModuleType { get; }
-
-        public RpcModuleAttribute(ModuleType moduleType)
-        {
-            ModuleType = moduleType;
-        }
+        [ConfigItem(Description = "If 'true' then the Baseline Module is enabled via JSON RPC", DefaultValue = "false")]
+        bool Enabled { get; }
     }
 }

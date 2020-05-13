@@ -39,7 +39,10 @@ using Nethermind.Grpc.Servers;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Web3;
+using Nethermind.JsonRpc.Modules.Baseline;
 using Nethermind.JsonRpc.WebSockets;
+using Nethermind.Baseline.Config;
+using Nethermind.Baseline;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Logging.NLog;
@@ -132,6 +135,7 @@ namespace Nethermind.Runner
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
             IMetricsConfig metricsConfig = configProvider.GetConfig<IMetricsConfig>();
+            IBaselineConfig baselineConfig = configProvider.GetConfig<IBaselineConfig>();
             NLogManager logManager = new NLogManager(initConfig.LogFileName, initConfig.LogDirectory);
             IRpcModuleProvider rpcModuleProvider = jsonRpcConfig.Enabled
                 ? new RpcModuleProvider(configProvider.GetConfig<IJsonRpcConfig>(), logManager)
@@ -227,6 +231,12 @@ namespace Nethermind.Runner
 
             if (jsonRpcConfig.Enabled)
             {
+                if (baselineConfig.Enabled)
+                {
+                    rpcModuleProvider.Register(new SingletonModulePool<IBaselineModule>(new BaselineModule(logManager), true));
+                    if (_logger?.IsInfo ?? false) _logger!.Info($"Baseline RPC Module has been enabled");
+                }
+
                 rpcModuleProvider.Register(new SingletonModulePool<IWeb3Module>(new Web3Module(logManager), true));
                 JsonRpcService jsonRpcService = new JsonRpcService(rpcModuleProvider, logManager);
                 JsonRpcProcessor jsonRpcProcessor = new JsonRpcProcessor(jsonRpcService, jsonSerializer, jsonRpcConfig, new FileSystem(), logManager);

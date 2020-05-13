@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,37 +15,36 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Logging;
 
-namespace Nethermind.JsonRpc.Modules
+
+namespace Nethermind.JsonRpc.Modules.Baseline
 {
-    [Todo(Improve.Refactor, "Can we use string instead to avoid coupling and introduce conventions?")]
-    public enum ModuleType
+    public class BaselineModule : IBaselineModule
     {
-        Admin,
-        Clique,
-        Db,
-        Debug,
-        Eth,
-        NdmProvider,
-        NdmConsumer,
-        Net,
-        Parity,
-        Personal,
-        Proof,
-        Trace,
-        TxPool,
-        Web3,
-        Baseline,
-    }
-
-    public class RpcModuleAttribute : Attribute
-    {
-        public ModuleType ModuleType { get; }
-
-        public RpcModuleAttribute(ModuleType moduleType)
+        public BaselineModule(ILogManager logManager)
         {
-            ModuleType = moduleType;
+        
+        }
+        public ResultWrapper<string> baseline_addLeaf()
+        {
+            return ResultWrapper<string>.Success("test");
+        }
+        public ResultWrapper<string> baseline_addLeaves()
+        {
+            return ResultWrapper<string>.Success("test1");
+        }
+
+        public ResultWrapper<string> baseline_deploy()
+        {
+            return ResultWrapper<string>.Success("test2");
+        }
+
+        public ResultWrapper<string> baseline_getSiblings()
+        {
+            return ResultWrapper<string>.Success("test3");
         }
     }
 }
