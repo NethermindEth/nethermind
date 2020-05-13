@@ -86,7 +86,9 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     ChainProcessor = chainProcessor,
                     ReadOnlyStateProvider = readOnlyTxProcessingEnv.StateProvider,
-                    TxSource = CreateTxSourceForProducer(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource)
+                    TxSource = CreateTxSourceForProducer(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource),
+                    ReadOnlyTxProcessingEnv = readOnlyTxProcessingEnv,
+                    ReadOnlyTransactionProcessorSource = readOnlyTransactionProcessorSource
                 };
             }
 

@@ -92,7 +92,7 @@ namespace Nethermind.Blockchain.Producers
             Block block = PrepareBlock(parent);
             if (PreparedBlockCanBeMined(block))
             {
-                Block processedBlock = Processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
+                var processedBlock = ProcessPreparedBlock(block);
                 if (processedBlock == null)
                 {
                     if (Logger.IsError) Logger.Error("Block prepared by block producer was rejected by processor.");
@@ -131,6 +131,8 @@ namespace Nethermind.Blockchain.Producers
             return Task.FromResult(false);
         }
 
+        protected virtual Block ProcessPreparedBlock(Block block) => Processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
+
         protected virtual bool PreparedBlockCanBeMined(Block block)
         {
             if (block == null)
@@ -152,7 +154,7 @@ namespace Nethermind.Blockchain.Producers
                 Address.Zero,
                 difficulty,
                 parent.Number + 1,
-                parent.GasLimit,
+                GetGasLimit(parent),
                 UInt256.Max(parent.Timestamp + 1, _timestamper.EpochSeconds),
                 Encoding.UTF8.GetBytes("Nethermind"))
             {
@@ -166,6 +168,8 @@ namespace Nethermind.Blockchain.Producers
             header.TxRoot = new TxTrie(block.Transactions).RootHash;
             return block;
         }
+
+        protected virtual long GetGasLimit(BlockHeader parent) => parent.GasLimit;
 
         protected abstract UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp);
     }

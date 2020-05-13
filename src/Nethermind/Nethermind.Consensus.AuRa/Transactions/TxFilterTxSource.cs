@@ -33,6 +33,6 @@ namespace Nethermind.Consensus.AuRa.Transactions
         }
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) => 
-            _innerSource.GetTransactions(parent, gasLimit).Where(tx => _txPermissionFilter.IsAllowed(tx, parent, parent.Number + 1));
+            _innerSource.GetTransactions(parent, gasLimit).Where(tx => _txPermissionFilter.IsAllowed(tx, parent));
     }
 }

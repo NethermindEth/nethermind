@@ -103,7 +103,8 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public AuRaValidatorJson Validators { get; set; }
 
             public IDictionary<long, Address> RandomnessContractAddress { get; set; } = new Dictionary<long, Address>();
-
+            
+            public IDictionary<long, Address> BlockGasLimitContractTransitions { get; set; } = new Dictionary<long, Address>();
         }
 
         internal class AuRaValidatorJson
@@ -161,6 +162,8 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public AuRaValidatorJson Validator => Params.Validators;
             
             public IDictionary<long, Address> RandomnessContractAddress => Params.RandomnessContractAddress;
+
+            public IDictionary<long, Address> BlockGasLimitContractTransitions => Params.BlockGasLimitContractTransitions;
             
             public AuraEngineParamsJson Params { get; set; }
         }
