@@ -97,9 +97,12 @@ namespace Nethermind.Consensus.AuRa
         /// <param name="item"></param>
         /// <typeparam name="T"></typeparam>
         /// <returns></returns>
-        public static bool TryGetForBlock<T>(this IList<T> list, in long blockNumber, out T item) where T : IActivatedAtBlock
+        public static bool TryGetForBlock<T>(this IList<T> list, in long blockNumber, out T item) where T : IActivatedAtBlock => 
+            list.TryGetForBlock(blockNumber, out item, activatedAtBlock => activatedAtBlock.ActivationBlock);
+
+        public static bool TryGetForBlock<T>(this IList<T> list, in long blockNumber, out T item, Func<T, long> getActivatedAtBlock = null)
         {
-            var index = list.BinarySearch(blockNumber, (b, c) => b.CompareTo(c.ActivationBlock));
+            var index = list.BinarySearch(blockNumber, (b, c) => b.CompareTo(getActivatedAtBlock?.Invoke(c) ?? Convert.ToInt64(c)));
             if (index >= 0)
             {
                 item = list[index];

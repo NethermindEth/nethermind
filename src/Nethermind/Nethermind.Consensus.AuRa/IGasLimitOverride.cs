@@ -13,25 +13,24 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Consensus.AuRa
 {
-    public interface IActivatedAtBlock
+    public interface IGasLimitOverride
     {
-        long ActivationBlock { get; }
-    }
-
-    internal static class ActivatedAtBlockExtensions
-    {
-        public static void ActivationCheck(this IActivatedAtBlock activatedAtBlock, BlockHeader parentHeader)
+        long? GetGasLimit(BlockHeader parentHeader);
+        
+        public class Cache
         {
-            if (parentHeader.Number + 1 < activatedAtBlock.ActivationBlock) throw new InvalidOperationException($"{activatedAtBlock.GetType().Name} is not active for block {parentHeader.Number + 1}. Its activated on block {activatedAtBlock.ActivationBlock}.");
+            private const int MaxCacheSize = 10;
+
+            internal ICache<Keccak, long?> GasLimitCache { get; } = new LruCacheWithRecycling<Keccak, long?>(MaxCacheSize, "BlockGasLimit");
         }
     }
 }
