@@ -97,6 +97,12 @@ namespace Nethermind.Consensus.AuRa
         public static bool TryGetForActivation<TComparable>(this IList<TComparable> list, in TComparable activation, out TComparable item) where TComparable : IComparable<TComparable> => 
             list.TryGetForActivation(activation, (b, c) => b.CompareTo(c), out item);
         
+        public static bool TryGetForBlock<T>(this IList<T> list, in long blockNumber, out T item) where T : IActivatedAtBlock =>
+            list.TryGetForActivation(blockNumber, (b, c) => b.CompareTo(c.ActivationBlock), out item);
+        
+        public static bool TryGetForBlock(this IList<long> list, in long blockNumber, out long item) =>
+            list.TryGetForActivation(blockNumber, (b, c) => b.CompareTo(c), out item);
+        
         public static bool TryGetForActivation<T, TComparable>(this IList<T> list, in TComparable activation, Func<TComparable, T, int> comparer, out T item)
         {
             var index = list.BinarySearch(activation, comparer);

@@ -26,7 +26,7 @@ using Nethermind.Serialization.Json.Abi;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class RandomContract : Contract, IActivatedAt
+    public class RandomContract : Contract, IActivatedAtBlock
     {
         private readonly Address _nodeAddress;
         private static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<RandomContract>();

@@ -68,7 +68,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
         }
 
         public BlockReward[] CalculateRewards(Block block)
-            => _contracts.TryGetForActivation(block.Number, out var contract)
+            => _contracts.TryGetForBlock(block.Number, out var contract)
                 ? CalculateRewardsWithContract(block, contract)
                 : _blockRewardCalculator.CalculateRewards(block);
         

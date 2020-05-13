@@ -54,7 +54,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
-            if (_contracts.TryGetForActivation(parent.Number + 1, out var contract))
+            if (_contracts.TryGetForBlock(parent.Number + 1, out var contract))
             {
                 var tx = GetTransaction(contract, parent);
                 if (tx?.GasLimit <= gasLimit)

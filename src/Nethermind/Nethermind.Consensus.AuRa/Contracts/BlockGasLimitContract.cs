@@ -26,7 +26,7 @@ using Nethermind.Serialization.Json.Abi;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class BlockGasLimitContract : Contract, IActivatedAt
+    public class BlockGasLimitContract : Contract, IActivatedAtBlock
     {
         private static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<BlockGasLimitContract>();
         private ConstantContract Constant { get; }

@@ -41,6 +41,6 @@ namespace Nethermind.Consensus.AuRa
         }
 
         protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec) => 
-            _blockGasLimitContractTransitions.TryGetForActivation(header.Number, out _) || base.ValidateGasLimitRange(header, parent, spec);
+            _blockGasLimitContractTransitions.TryGetForBlock(header.Number, out _) || base.ValidateGasLimitRange(header, parent, spec);
     }
 }

@@ -27,7 +27,7 @@ using Nethermind.Serialization.Json.Abi;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class RewardContract : Contract, IActivatedAt
+    public class RewardContract : Contract, IActivatedAtBlock
     {
         public long Activation { get; }
         
