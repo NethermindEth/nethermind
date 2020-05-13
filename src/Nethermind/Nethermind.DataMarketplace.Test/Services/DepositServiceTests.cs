@@ -56,7 +56,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task Can_make_and_verify_deposit()
         {
             DepositService depositService = new DepositService(_ndmBridge, _abiEncoder, _wallet, _contractAddress);
-            Deposit deposit = new Deposit(Keccak.Compute("a secret"), 10, (uint) new Timestamper().EpochSeconds + 86000, 1.Ether());
+            Deposit deposit = new Deposit(Keccak.Compute("a secret"), 10, (uint) Timestamper.Default.EpochSeconds + 86000, 1.Ether());
             Keccak depositTxHash = await depositService.MakeDepositAsync(_consumerAccount, deposit, 20.GWei());
             _bridge.IncrementNonce(_consumerAccount);
             TxReceipt depositTxReceipt = _bridge.GetReceipt(depositTxHash);
@@ -68,7 +68,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task Make_deposit_verify_incorrect_id()
         {
             DepositService depositService = new DepositService(_ndmBridge, _abiEncoder, _wallet, _contractAddress);
-            Deposit deposit = new Deposit(Keccak.Compute("a secret"), 10, (uint) new Timestamper().EpochSeconds + 86000, 1.Ether());
+            Deposit deposit = new Deposit(Keccak.Compute("a secret"), 10, (uint) Timestamper.Default.EpochSeconds + 86000, 1.Ether());
             Keccak depositTxHash = await depositService.MakeDepositAsync(_consumerAccount, deposit, 20.GWei());
             _bridge.IncrementNonce(_consumerAccount);
             TxReceipt depositTxReceipt = _bridge.GetReceipt(depositTxHash);
@@ -80,7 +80,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task Can_make_and_verify_deposit_locally()
         {
             DepositService depositService = new DepositService(_ndmBridge, _abiEncoder, _wallet, _contractAddress);
-            Deposit deposit = new Deposit(Keccak.Compute("a secret"), 10, (uint) new Timestamper().EpochSeconds + 86000, 1.Ether());
+            Deposit deposit = new Deposit(Keccak.Compute("a secret"), 10, (uint) Timestamper.Default.EpochSeconds + 86000, 1.Ether());
             Keccak depositTxHash = await depositService.MakeDepositAsync(_consumerAccount, deposit, 20.GWei());
             _bridge.IncrementNonce(_consumerAccount);
             TxReceipt depositTxReceipt = _bridge.GetReceipt(depositTxHash);
@@ -132,7 +132,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task Returns_a_valid_balance()
         {
             DepositService depositService = new DepositService(_ndmBridge, _abiEncoder, _wallet, _contractAddress);
-            Deposit deposit = new Deposit(Keccak.Compute("a secret"), 10, (uint) new Timestamper().EpochSeconds + 86000, 1.Ether());
+            Deposit deposit = new Deposit(Keccak.Compute("a secret"), 10, (uint) Timestamper.Default.EpochSeconds + 86000, 1.Ether());
             Keccak depositTxHash = await depositService.MakeDepositAsync(_consumerAccount, deposit, 20.GWei());
             _bridge.IncrementNonce(_consumerAccount);
             TxReceipt depositTxReceipt = _bridge.GetReceipt(depositTxHash);
