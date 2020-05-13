@@ -16,60 +16,73 @@
 // 
 
 using System;
-using System.Collections;
-using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core2.Api;
-using Nethermind.Core2.Containers;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2.Json
 {
     public class JsonConverterSyncingStatus : JsonConverter<SyncingStatus>
     {
+        private static JsonEncodedText _currentSlotName;
+        private static JsonEncodedText _highestSlotName;
+        private static JsonEncodedText _startingSlotName;
+
         public override SyncingStatus Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
+            EnsureNames(options);
             var properties = new object[3];
-            while (true)
+            while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
             {
-                if (reader.TokenType == JsonTokenType.EndObject)
+                if (reader.TokenType == JsonTokenType.PropertyName)
                 {
-                    break;
-                }
-                else if (reader.TokenType == JsonTokenType.PropertyName)
-                {
-                    if (reader.ValueTextEquals("StartingSlot"))
-                    {
-                        properties[0] = JsonSerializer.Deserialize<Slot>(ref reader, options);
-                    }
-                    else if (reader.ValueTextEquals("CurrentSlot"))
+                    if (reader.ValueTextEquals(_currentSlotName.EncodedUtf8Bytes))
                     {
                         properties[1] = JsonSerializer.Deserialize<Slot>(ref reader, options);
                     }
-                    else if (reader.ValueTextEquals("HighestSlot"))
+                    else if (reader.ValueTextEquals(_highestSlotName.EncodedUtf8Bytes))
                     {
                         properties[2] = JsonSerializer.Deserialize<Slot>(ref reader, options);
                     }
-                }
-                else
-                {
-                    if (!reader.Read())
+                    else if (reader.ValueTextEquals(_startingSlotName.EncodedUtf8Bytes))
                     {
-                        break;
+                        properties[0] = JsonSerializer.Deserialize<Slot>(ref reader, options);
                     }
                 }
             }
-            return new SyncingStatus((Slot)properties[0], (Slot)properties[1], (Slot)properties[2]);
+
+            return new SyncingStatus((Slot) properties[0], (Slot) properties[1], (Slot) properties[2]);
         }
 
         public override void Write(Utf8JsonWriter writer, SyncingStatus value, JsonSerializerOptions options)
         {
-            writer.WritePropertyName(nameof(value.StartingSlot));
-            JsonSerializer.Serialize(writer, value.StartingSlot, options);
-            
-            writer.WriteNumber(nameof(value.CurrentSlot), value.CurrentSlot);
-            writer.WriteNumber(nameof(value.HighestSlot), value.HighestSlot);
+            EnsureNames(options);
+            // Default is alphabetical order
+            writer.WriteStartObject();
+            writer.WriteNumber(_currentSlotName, value.CurrentSlot);
+            writer.WriteNumber(_highestSlotName, value.HighestSlot);
+            writer.WriteNumber(_startingSlotName, value.StartingSlot);
+            writer.WriteEndObject();
+        }
+
+        private void EnsureNames(JsonSerializerOptions options)
+        {
+            if (_currentSlotName.Equals(default))
+            {
+                _currentSlotName =
+                    JsonEncodedText.Encode(
+                        options.PropertyNamingPolicy.ConvertName(nameof(SyncingStatus.Zero.CurrentSlot)),
+                        options.Encoder);
+                _highestSlotName =
+                    JsonEncodedText.Encode(
+                        options.PropertyNamingPolicy.ConvertName(nameof(SyncingStatus.Zero.HighestSlot)),
+                        options.Encoder);
+                _startingSlotName =
+                    JsonEncodedText.Encode(
+                        options.PropertyNamingPolicy.ConvertName(nameof(SyncingStatus.Zero.StartingSlot)),
+                        options.Encoder);
+            }
         }
     }
 }

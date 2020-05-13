@@ -22,10 +22,6 @@ namespace Nethermind.Core2.Api
     {
         public static SyncingStatus Zero = new SyncingStatus(Slot.Zero, Slot.Zero, Slot.Zero);
 
-        public SyncingStatus()
-        {
-        }
-
         public SyncingStatus(Slot startingSlot, Slot currentSlot, Slot highestSlot)
         {
             StartingSlot = startingSlot;
@@ -33,8 +29,8 @@ namespace Nethermind.Core2.Api
             HighestSlot = highestSlot;
         }
 
-        public Slot CurrentSlot { get; set; }
-        public Slot HighestSlot { get; set; }
-        public Slot StartingSlot { get; set; }
+        public Slot CurrentSlot { get; }
+        public Slot HighestSlot { get; }
+        public Slot StartingSlot { get; }
     }
 }
