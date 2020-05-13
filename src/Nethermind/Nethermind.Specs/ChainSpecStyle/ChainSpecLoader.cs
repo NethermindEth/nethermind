@@ -38,6 +38,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ChainSpecLoader(IJsonSerializer serializer)
         {
             _serializer = serializer;
+            _serializer.RegisterConverter(new StepDurationJsonConverter());
         }
 
         public ChainSpec Load(byte[] data) => Load(System.Text.Encoding.UTF8.GetString(data));

@@ -41,11 +41,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
             : base(transactionProcessor, abiEncoder, contractAddress)
         {
             _nodeAddress = nodeAddress;
-            ActivationBlock = transitionBlock;
+            Activation = transitionBlock;
             Constant = GetConstant(readOnlyReadOnlyTransactionProcessorSource);
         }
 
-        public long ActivationBlock { get; }
+        public long Activation { get; }
 
         public enum Phase
         {
@@ -75,7 +75,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         public (Phase Phase, UInt256 Round) GetPhase(BlockHeader parentHeader)
         {
-            this.ActivationCheck(parentHeader);
+            this.BlockActivationCheck(parentHeader);
             
             UInt256 round = CurrentCollectRound(parentHeader);
             bool isCommitPhase = IsCommitPhase(parentHeader);

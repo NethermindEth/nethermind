@@ -29,6 +29,7 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Contract
@@ -72,7 +73,7 @@ namespace Nethermind.AuRa.Test.Contract
                 GasLimitOverride = new AuRaContractGasLimitOverride(new[] {gasLimitContract}, GasLimitOverrideCache, false, LimboLogs.Instance);
                 
                 return new AuRaBlockProcessor(SpecProvider, Always.Valid, new RewardCalculator(SpecProvider), TxProcessor, StateDb, CodeDb, State, Storage, TxPool, ReceiptStorage, LimboLogs.Instance,
-                    new ListBasedValidator(validator, new ValidSealerStrategy(), LimboLogs.Instance), BlockTree, null, GasLimitOverride);
+                    new ListBasedValidator(validator, new ValidSealerStrategy(), Substitute.For<IValidatorStore>(), LimboLogs.Instance, 1), BlockTree, null, GasLimitOverride);
             }
 
             protected override Task AddBlocksOnStart() => Task.CompletedTask;

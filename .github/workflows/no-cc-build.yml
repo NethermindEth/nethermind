@@ -8,7 +8,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macOS]
+        os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
     - uses: actions/checkout@v2
     - name: Updating submodules
@@ -19,7 +19,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Installing macOS packages
-      if: matrix.os == 'macOS'
+      if: matrix.os == 'macOS-latest'
       run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
     - name: Nethermind.Abi.Test
       run: |
@@ -48,7 +48,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macOS]
+        os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
     - uses: actions/checkout@v2
     - name: Updating submodules
@@ -59,7 +59,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Installing macOS packages
-      if: matrix.os == 'macOS'
+      if: matrix.os == 'macOS-latest'
       run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
     - name: Nethermind.Clique.Test
       run: |
@@ -93,7 +93,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macOS]
+        os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
     - uses: actions/checkout@v2
     - name: Updating submodules
@@ -104,7 +104,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Installing macOS packages
-      if: matrix.os == 'macOS'
+      if: matrix.os == 'macOS-latest'
       run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
     - name: Nethermind.HonestValidator.Test
       run: |
@@ -123,7 +123,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macOS]
+        os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
     - uses: actions/checkout@v2
     - name: Updating submodules
@@ -134,7 +134,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Installing macOS packages
-      if: matrix.os == 'macOS'
+      if: matrix.os == 'macOS-latest'
       run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
     - name: Nethermind.Secp256k1.Test.Linux
       run: |
@@ -153,7 +153,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macOS]
+        os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
     - uses: actions/checkout@v2
     - name: Updating submodules
@@ -164,7 +164,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Installing macOS packages
-      if: matrix.os == 'macOS'
+      if: matrix.os == 'macOS-latest'
       run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
     - name: Nethermind.Ssz.Test
       run: |
@@ -198,7 +198,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macOS]
+        os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
     - uses: actions/checkout@v2
     - name: Unshallow fetching

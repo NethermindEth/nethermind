@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Blockchain;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -22,7 +23,8 @@ namespace Nethermind.Consensus.AuRa.Validators
 {
     public sealed class ListBasedValidator : AuRaValidatorProcessorExtension
     {
-        public ListBasedValidator(AuRaParameters.Validator validator, IValidSealerStrategy validSealerStrategy, ILogManager logManager) : base(validator, validSealerStrategy, logManager)
+        public ListBasedValidator(AuRaParameters.Validator validator, IValidSealerStrategy validSealerStrategy, IValidatorStore validatorStore, ILogManager logManager, long startBlockNumber) 
+            : base(validator, validSealerStrategy, validatorStore, logManager, startBlockNumber)
         {
             Validators = validator.Addresses?.Length > 0
                 ? validator.Addresses

@@ -43,7 +43,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         
         public bool IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
-            if (parentHeader.Number + 1 < _contract.ActivationBlock)
+            if (parentHeader.Number + 1 < _contract.Activation)
             {
                 return true;
             }

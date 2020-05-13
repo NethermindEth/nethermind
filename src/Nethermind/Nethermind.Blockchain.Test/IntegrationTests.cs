@@ -80,7 +80,7 @@ namespace Nethermind.Blockchain.Test
             IReceiptStorage receiptStorage = new PersistentReceiptStorage(receiptsDb, specProvider, new ReceiptsRecovery());
             var blockInfoDb = new MemDb();
             BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, txPool, NullBloomStorage.Instance, logManager);
-            Timestamper timestamper = new Timestamper();
+            ITimestamper timestamper = Timestamper.Default;
             DifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
             HeaderValidator headerValidator = new HeaderValidator(blockTree, sealer, specProvider, logManager);
             OmmersValidator ommersValidator = new OmmersValidator(blockTree, headerValidator, logManager);

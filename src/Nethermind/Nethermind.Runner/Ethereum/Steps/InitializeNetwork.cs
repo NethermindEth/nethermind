@@ -184,7 +184,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (!_ctx.Config<IInitConfig>().DiscoveryEnabled)
             {
-                if (_logger.IsWarn) _logger.Warn($"Skipping discovery init due to ({nameof(IInitConfig.DiscoveryEnabled)} set to false)");
+                if (_logger.IsWarn) _logger.Warn($"Skipping discovery init due to {nameof(IInitConfig.DiscoveryEnabled)} set to false");
                 return Task.CompletedTask;
             }
 
@@ -201,7 +201,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (!_ctx.Config<IInitConfig>().PeerManagerEnabled)
             {
-                if (_logger.IsWarn) _logger.Warn($"Skipping peer manager init due to {nameof(IInitConfig.PeerManagerEnabled)} set to false)");
+                if (_logger.IsWarn) _logger.Warn($"Skipping peer manager init due to {nameof(IInitConfig.PeerManagerEnabled)} set to false");
             }
 
             if (_logger.IsDebug) _logger.Debug("Initializing peer manager");
@@ -292,7 +292,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (!_ctx.Config<ISyncConfig>().SynchronizationEnabled)
             {
-                if (_logger.IsWarn) _logger.Warn($"Skipping blockchain synchronization init due to ({nameof(ISyncConfig.SynchronizationEnabled)} set to false)");
+                if (_logger.IsWarn) _logger.Warn($"Skipping blockchain synchronization init due to {nameof(ISyncConfig.SynchronizationEnabled)} set to false");
                 return Task.CompletedTask;
             }
 

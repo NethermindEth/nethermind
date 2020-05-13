@@ -22,6 +22,5 @@ namespace Nethermind.Consensus.AuRa
     {
         long CurrentStep { get; }
         TimeSpan TimeToNextStep { get; }
-        TimeSpan TimeToStep(long step);
     }
 }
