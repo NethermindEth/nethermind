@@ -27,17 +27,28 @@ namespace Nethermind.Consensus.AuRa.Validators
     {
         private readonly IValidSealerStrategy _validSealerStrategy;
         private readonly ILogger _logger;
-
-        protected AuRaValidatorProcessorExtension(AuRaParameters.Validator validator, IValidSealerStrategy validSealerStrategy, ILogManager logManager)
+        
+        protected AuRaValidatorProcessorExtension(AuRaParameters.Validator validator, IValidSealerStrategy validSealerStrategy, IValidatorStore validatorStore, ILogManager logManager, long startBlockNumber)
         {
             if (validator == null) throw new ArgumentNullException(nameof(validator));
+            ValidatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
             _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            InitBlockNumber = startBlockNumber;
         }
         
         public Address[] Validators { get; protected set; }
+        
+        protected long InitBlockNumber { get; }
+        protected IValidatorStore ValidatorStore { get; }
 
-        public virtual void SetFinalizationManager(IBlockFinalizationManager finalizationManager, in bool forSealing) { }
+        public virtual void SetFinalizationManager(IBlockFinalizationManager finalizationManager, in bool forSealing)
+        {
+            if (finalizationManager != null && !forSealing && InitBlockNumber == AuRaValidatorProcessorFactory.DefaultStartBlockNumber)
+            {
+                ValidatorStore.SetValidators(InitBlockNumber, Validators);
+            }
+        }
 
         public virtual void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None)
         {

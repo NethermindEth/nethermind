@@ -29,7 +29,7 @@ namespace Nethermind.Consensus.AuRa
 {
     public class AuRaValidatorProcessorFactory : IAuRaValidatorProcessorFactory
     {
-        private const long DefaultStartBlockNumber = 1;
+        public const long DefaultStartBlockNumber = 1;
 
         private readonly IStateProvider _stateProvider;
         private readonly IAbiEncoder _abiEncoder;
@@ -65,7 +65,7 @@ namespace Nethermind.Consensus.AuRa
             long startBlockNumber = startBlock ?? DefaultStartBlockNumber;
             return validator.ValidatorType switch
             {
-                AuRaParameters.ValidatorType.List => (IAuRaValidatorProcessorExtension) new ListBasedValidator(validator, auRaSealerValidator, _logManager),
+                AuRaParameters.ValidatorType.List => (IAuRaValidatorProcessorExtension) new ListBasedValidator(validator, auRaSealerValidator, _validatorStore, _logManager, startBlockNumber),
                 AuRaParameters.ValidatorType.Contract => new ContractBasedValidator(validator, _stateProvider, _abiEncoder, _transactionProcessor, _readOnlyReadOnlyTransactionProcessorSource, _blockTree, _receiptFinder, _validatorStore, auRaSealerValidator, _logManager, startBlockNumber),
                 AuRaParameters.ValidatorType.ReportingContract => new ReportingContractBasedValidator(validator, _stateProvider, _abiEncoder, _transactionProcessor, _readOnlyReadOnlyTransactionProcessorSource, _blockTree, _receiptFinder, _validatorStore, auRaSealerValidator, _logManager, startBlockNumber),
                 AuRaParameters.ValidatorType.Multi => new MultiValidator(validator, this, _blockTree, _validatorStore, _logManager),
