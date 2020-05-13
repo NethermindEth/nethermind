@@ -32,12 +32,13 @@ namespace Nethermind.Consensus.AuRa.Contracts
     public class ValidatorContract : Contract
     {
         private readonly IAbiEncoder _abiEncoder;
-        
+        private readonly IStateProvider _stateProvider;
+
         private static readonly IEqualityComparer<LogEntry> LogEntryEqualityComparer = new LogEntryAddressAndTopicEqualityComparer();
         
         internal static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<ValidatorContract>();
         
-        private ConstantContractOnState Constant { get; }
+        private ConstantContract Constant { get; }
 
         public ValidatorContract(
             ITransactionProcessor transactionProcessor, 
@@ -48,7 +49,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
             : base(transactionProcessor, abiEncoder, contractAddress)
         {
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
-            Constant = GetConstantOnState(readOnlyReadOnlyTransactionProcessorSource, stateProvider);
+            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            Constant = GetConstant(readOnlyReadOnlyTransactionProcessorSource);
         }
 
         /// <summary>
@@ -67,7 +69,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// Get current validator set (last enacted or initial if no changes ever made)
         /// function getValidators() constant returns (address[] _validators);
         /// </summary>
-        public Address[] GetValidators(BlockHeader blockHeader) => Constant.Call<Address[]>(blockHeader, Definition.GetFunction(nameof(GetValidators)), Address.Zero);
+        public Address[] GetValidators(BlockHeader parentHeader) => Constant.Call<Address[]>(parentHeader, Definition.GetFunction(nameof(GetValidators)), Address.Zero);
 
         internal const string InitiateChange = nameof(InitiateChange);
         
@@ -113,7 +115,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         public void EnsureSystemAccount()
         {
-            EnsureSystemAccount(Constant.StateProvider);
+            EnsureSystemAccount(_stateProvider);
         }
     }
 }

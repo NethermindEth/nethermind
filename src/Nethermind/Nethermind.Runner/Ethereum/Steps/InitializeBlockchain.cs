@@ -153,11 +153,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_context.SealValidator == null) throw new StepDependencyException(nameof(_context.SealValidator));
 
             /* validation */
-            _context.HeaderValidator = new HeaderValidator(
-                _context.BlockTree,
-                _context.SealValidator,
-                _context.SpecProvider,
-                _context.LogManager);
+            _context.HeaderValidator = CreateHeaderValidator();
 
             OmmersValidator ommersValidator = new OmmersValidator(
                 _context.BlockTree,
@@ -211,6 +207,13 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             return Task.CompletedTask;
         }
+
+        protected virtual  HeaderValidator CreateHeaderValidator() =>
+            new HeaderValidator(
+                _context.BlockTree,
+                _context.SealValidator,
+                _context.SpecProvider,
+                _context.LogManager);
 
         protected virtual BlockProcessor CreateBlockProcessor()
         {

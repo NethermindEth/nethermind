@@ -32,7 +32,7 @@ namespace Nethermind.Runner.Ethereum.Context
         
         public IAuRaBlockProcessorExtension? AuRaBlockProcessorExtension { get; set; }
         public IBlockFinalizationManager? FinalizationManager { get; set; }
-        
         public ITxPermissionFilter.Cache? TxFilterCache { get; set; }
+        public IGasLimitOverride.Cache? GasLimitOverrideCache { get; set; }
     }
 }

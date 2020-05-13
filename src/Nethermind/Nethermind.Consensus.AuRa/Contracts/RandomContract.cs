@@ -73,12 +73,14 @@ namespace Nethermind.Consensus.AuRa.Contracts
             Reveal
         }
 
-        public (Phase Phase, UInt256 Round) GetPhase(BlockHeader blockHeader)
+        public (Phase Phase, UInt256 Round) GetPhase(BlockHeader parentHeader)
         {
-            UInt256 round = CurrentCollectRound(blockHeader);
-            bool isCommitPhase = IsCommitPhase(blockHeader);
-            bool isCommitted = IsCommitted(blockHeader, round);
-            bool revealed = SentReveal(blockHeader, round);
+            this.ActivationCheck(parentHeader);
+            
+            UInt256 round = CurrentCollectRound(parentHeader);
+            bool isCommitPhase = IsCommitPhase(parentHeader);
+            bool isCommitted = IsCommitted(parentHeader, round);
+            bool revealed = SentReveal(parentHeader, round);
 
             var phase = isCommitPhase
                 ? revealed
@@ -97,52 +99,52 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <summary>
         /// Returns a boolean flag of whether the specified validator has revealed their number for the specified collection round.
         /// </summary>
-        /// <param name="blockHeader">Block header on which this is to be executed on.</param>
+        /// <param name="parentHeader">Block header on which this is to be executed on.</param>
         /// <param name="collectRound">The serial number of the collection round for which the checkup should be done.</param>
         /// <returns>Boolean flag of whether the specified validator has revealed their number for the specified collection round.</returns>
         /// <remarks>
         /// The mining address of validator is last contract parameter.
         /// </remarks>
-        private bool SentReveal(BlockHeader blockHeader, UInt256 collectRound) => Constant.Call<bool>(blockHeader, Definition.GetFunction(nameof(SentReveal)), _nodeAddress, collectRound, _nodeAddress);
+        private bool SentReveal(BlockHeader parentHeader, UInt256 collectRound) => Constant.Call<bool>(parentHeader, Definition.GetFunction(nameof(SentReveal)), _nodeAddress, collectRound, _nodeAddress);
 
         /// <summary>
         /// Returns a boolean flag indicating whether the specified validator has committed their secret's hash for the specified collection round.
         /// </summary>
-        /// <param name="blockHeader">Block header on which this is to be executed on.</param>
+        /// <param name="parentHeader">Block header on which this is to be executed on.</param>
         /// <param name="collectRound">The serial number of the collection round for which the checkup should be done.</param>
         /// <returns>Boolean flag indicating whether the specified validator has committed their secret's hash for the specified collection round.</returns>
         /// <remarks>
         /// The mining address of validator is last contract parameter.
         /// </remarks>
-        private bool IsCommitted(BlockHeader blockHeader, UInt256 collectRound) => Constant.Call<bool>(blockHeader, Definition.GetFunction(nameof(IsCommitted)), _nodeAddress, collectRound, _nodeAddress);
+        private bool IsCommitted(BlockHeader parentHeader, UInt256 collectRound) => Constant.Call<bool>(parentHeader, Definition.GetFunction(nameof(IsCommitted)), _nodeAddress, collectRound, _nodeAddress);
 
         /// <summary>
         /// Returns the serial number of the current collection round.
         /// </summary>
-        /// <param name="blockHeader">Block header on which this is to be executed on.</param>
+        /// <param name="parentHeader">Block header on which this is to be executed on.</param>
         /// <returns>Serial number of the current collection round.</returns>
-        private UInt256 CurrentCollectRound(BlockHeader blockHeader) => Constant.Call<UInt256>(blockHeader, Definition.GetFunction(nameof(CurrentCollectRound)), _nodeAddress);
+        private UInt256 CurrentCollectRound(BlockHeader parentHeader) => Constant.Call<UInt256>(parentHeader, Definition.GetFunction(nameof(CurrentCollectRound)), _nodeAddress);
 
         /// <summary>
         /// Returns a boolean flag indicating whether the current phase of the current collection round is a `commits phase`.
         /// Used by the validator's node to determine if it should commit the hash of the secret during the current collection round.
         /// </summary>
-        /// <param name="blockHeader">Block header on which this is to be executed on.</param>
+        /// <param name="parentHeader">Block header on which this is to be executed on.</param>
         /// <returns>Boolean flag indicating whether the current phase of the current collection round is a `commits phase`.</returns>
-        private bool IsCommitPhase(BlockHeader blockHeader) => Constant.Call<bool>(blockHeader, Definition.GetFunction(nameof(IsCommitPhase)), _nodeAddress);
+        private bool IsCommitPhase(BlockHeader parentHeader) => Constant.Call<bool>(parentHeader, Definition.GetFunction(nameof(IsCommitPhase)), _nodeAddress);
 
         /// <summary>
         /// Returns the Keccak-256 hash and cipher of the validator's secret for the specified collection round and the specified validator stored by the validator through the `commitHash` function.
         /// </summary>
-        /// <param name="blockHeader">Block header on which this is to be executed on.</param>
+        /// <param name="parentHeader">Block header on which this is to be executed on.</param>
         /// <param name="collectRound">The serial number of the collection round for which hash and cipher should be retrieved.</param>
         /// <returns>Keccak-256 hash and cipher of the validator's secret for the specified collection round and the specified validator stored by the validator through the `commitHash` function.</returns>
         /// <remarks>
         /// The mining address of validator is last contract parameter.
         /// </remarks>
-        public (Keccak Hash, byte[] Cipher) GetCommitAndCipher(BlockHeader blockHeader, UInt256 collectRound)
+        public (Keccak Hash, byte[] Cipher) GetCommitAndCipher(BlockHeader parentHeader, UInt256 collectRound)
         {
-            var (hash, cipher) = Constant.Call<byte[], byte[]>(blockHeader, Definition.GetFunction(nameof(GetCommitAndCipher)), _nodeAddress, collectRound, _nodeAddress);
+            var (hash, cipher) = Constant.Call<byte[], byte[]>(parentHeader, Definition.GetFunction(nameof(GetCommitAndCipher)), _nodeAddress, collectRound, _nodeAddress);
             return (new Keccak(hash), cipher);
         }
 

@@ -18,6 +18,7 @@ using System;
 using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa.Contracts;
@@ -119,7 +120,9 @@ namespace Nethermind.Consensus.AuRa.Validators
             
             if (shouldLoadValidators)
             {
-                Validators = isInitBlock ? LoadValidatorsFromContract(block.Header) : _validatorStore.GetValidators();
+                Validators = isInitBlock 
+                    ? LoadValidatorsFromContract(_blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None)) 
+                    : _validatorStore.GetValidators();
 
                 if (mainChainProcessing)
                 {
@@ -237,9 +240,9 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        private Address[] LoadValidatorsFromContract(BlockHeader blockHeader)
+        private Address[] LoadValidatorsFromContract(BlockHeader parentHeader)
         {
-            var validators = ValidatorContract.GetValidators(blockHeader);
+            var validators = ValidatorContract.GetValidators(parentHeader);
 
             if (validators.Length == 0)
             {

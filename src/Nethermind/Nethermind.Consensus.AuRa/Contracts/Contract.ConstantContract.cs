@@ -26,13 +26,18 @@ namespace Nethermind.Consensus.AuRa.Contracts
 {
     public partial class Contract
     {
-        protected ConstantContractOnState GetConstantOnState(IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource, IStateProvider stateProvider) => 
-            new ConstantContractOnState(this, readOnlyReadOnlyTransactionProcessorSource, stateProvider);
-        
-        protected ConstantContract GetConstant(IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource) => 
+        /// <summary>
+        /// Gets constant version of the contract. Allowing to call contract methods without state modification.
+        /// </summary>
+        /// <param name="readOnlyReadOnlyTransactionProcessorSource">Source of readonly <see cref="ITransactionProcessor"/> to call transactions.</param>
+        /// <returns>Constant version of the contract.</returns>
+        protected ConstantContract GetConstant(IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource) =>
             new ConstantContract(this, readOnlyReadOnlyTransactionProcessorSource);
 
-        protected internal class ConstantContract
+        /// <summary>
+        /// Constant version of the contract. Allows to call contract methods without state modification.
+        /// </summary>
+        protected class ConstantContract
         {
             private readonly Contract _contract;
             private readonly IReadOnlyTransactionProcessorSource _readOnlyReadOnlyTransactionProcessorSource;
@@ -42,47 +47,66 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 _contract = contract;
                 _readOnlyReadOnlyTransactionProcessorSource = readOnlyReadOnlyTransactionProcessorSource ?? throw new ArgumentNullException(nameof(readOnlyReadOnlyTransactionProcessorSource));
             }
-        
-            public byte[] Call(BlockHeader header, Transaction transaction)
+
+            private byte[] Call(BlockHeader parentHeader, Transaction transaction)
             {
-                using var readOnlyTransactionProcessor = _readOnlyReadOnlyTransactionProcessorSource.Get(GetState(header));
-                return _contract.CallCore(readOnlyTransactionProcessor, header, transaction, true);
+                using var readOnlyTransactionProcessor = _readOnlyReadOnlyTransactionProcessorSource.Get(GetState(parentHeader));
+                return CallCore(readOnlyTransactionProcessor, parentHeader, transaction, true);
             }
 
-            protected virtual Keccak GetState(BlockHeader header) => header.StateRoot;
-
-            public object[] Call(BlockHeader header, AbiFunctionDescription function, Address sender, params object[] arguments)
+            private object[] Call(BlockHeader parentHeader, AbiFunctionDescription function, Address sender, params object[] arguments)
             {
-                var transaction = _contract.GenerateTransaction<SystemTransaction>(function, sender, arguments);
-                var result = Call(header, transaction);
+                var result = CallRaw(parentHeader, function, sender, arguments);
                 var objects = _contract.AbiEncoder.Decode(function.GetReturnInfo(), result);
                 return objects;
             }
 
-            public T Call<T>(BlockHeader header, AbiFunctionDescription function, Address sender, params object[] arguments)
+            /// <summary>
+            /// 
+            /// </summary>
+            /// <param name="parentHeader"></param>
+            /// <param name="function"></param>
+            /// <param name="sender"></param>
+            /// <param name="arguments"></param>
+            /// <typeparam name="T"></typeparam>
+            /// <returns></returns>
+            public T Call<T>(BlockHeader parentHeader, AbiFunctionDescription function, Address sender, params object[] arguments)
             {
-                return (T) Call(header, function, sender, arguments)[0];
+                return (T) Call(parentHeader, function, sender, arguments)[0];
             }
             
-            public (T1, T2) Call<T1, T2>(BlockHeader header, AbiFunctionDescription function, Address sender,params object[] arguments)
+            /// <summary>
+            /// 
+            /// </summary>
+            /// <param name="parentHeader"></param>
+            /// <param name="function"></param>
+            /// <param name="sender"></param>
+            /// <param name="arguments"></param>
+            /// <typeparam name="T1"></typeparam>
+            /// <typeparam name="T2"></typeparam>
+            /// <returns></returns>
+            public (T1, T2) Call<T1, T2>(BlockHeader parentHeader, AbiFunctionDescription function, Address sender,params object[] arguments)
             {
-                var objects = Call(header, function, sender, arguments);
+                var objects = Call(parentHeader, function, sender, arguments);
                 return ((T1) objects[0], (T2) objects[1]);
             }
-        }
-        
-        protected internal class ConstantContractOnState : ConstantContract
-        {
-            public IStateProvider StateProvider { get; }
-
-            public ConstantContractOnState(Contract contract,
-                IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource,
-                IStateProvider stateProvider) : base(contract, readOnlyReadOnlyTransactionProcessorSource)
+            
+            /// <summary>
+            /// 
+            /// </summary>
+            /// <param name="parentHeader"></param>
+            /// <param name="function"></param>
+            /// <param name="sender"></param>
+            /// <param name="arguments"></param>
+            /// <returns></returns>
+            public byte[] CallRaw(BlockHeader parentHeader, AbiFunctionDescription function, Address sender, params object[] arguments)
             {
-                StateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+                var transaction = _contract.GenerateTransaction<SystemTransaction>(function, sender, arguments);
+                var result = Call(parentHeader, transaction);
+                return result;
             }
-
-            protected override Keccak GetState(BlockHeader header) => StateProvider.StateRoot;
+            
+            private Keccak GetState(BlockHeader parentHeader) => parentHeader.StateRoot;
         }
     }
 }

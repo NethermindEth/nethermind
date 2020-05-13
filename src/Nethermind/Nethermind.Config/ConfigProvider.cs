@@ -24,19 +24,19 @@ namespace Nethermind.Config
 {
     public class ConfigProvider : IConfigProvider
     {
-        private ConcurrentDictionary<Type, object> _instances = new ConcurrentDictionary<Type, object>();
+        private readonly ConcurrentDictionary<Type, object> _instances = new ConcurrentDictionary<Type, object>();
         
-        private List<IConfigSource> _configSource = new List<IConfigSource>();
+        private readonly List<IConfigSource> _configSource = new List<IConfigSource>();
 
-        public ConfigProvider()
-        {
-            Initialize();
-        }
-        
         public T GetConfig<T>() where T : IConfig
         {
             if (!_instances.ContainsKey(typeof(T)))
             {
+                if (!_implementations.ContainsKey(typeof(T)))
+                {
+                    Initialize();
+                }
+                
                 T config = (T)Activator.CreateInstance(_implementations[typeof(T)]);
                 _instances[typeof(T)] = config;
                 foreach (PropertyInfo propertyInfo in config.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))

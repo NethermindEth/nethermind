@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
 {
     public class NullTxPermissionFilter : ITxPermissionFilter
     {
-        public bool IsAllowed(Transaction tx, BlockHeader blockHeader, long blockNumber) => true;
+        public bool IsAllowed(Transaction tx, BlockHeader parentHeader) => true;
         
         public static readonly NullTxPermissionFilter Instance = new NullTxPermissionFilter(); 
     }
