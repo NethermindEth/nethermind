@@ -43,7 +43,6 @@ namespace Nethermind.Network.Test
 {
     [Parallelizable(ParallelScope.Self)]
     [TestFixture]
-    // [Explicit("Repeatedly fails on Travis")]
     public class PeerManagerTests
     {
         private RlpxMock _rlpxPeer;
@@ -356,7 +355,7 @@ namespace Nethermind.Network.Test
             {
                 DiscoverNew(25);
                 Thread.Sleep(_travisDelay);
-                Assert.AreEqual(25 * (i + 1), _peerManager.ActivePeers.Count);
+                Assert.AreEqual(25, _peerManager.ActivePeers.Count);
             }
         }
 
