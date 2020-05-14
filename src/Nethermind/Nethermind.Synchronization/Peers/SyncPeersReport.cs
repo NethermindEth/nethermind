@@ -108,8 +108,8 @@ namespace Nethermind.Synchronization.Peers
             long AverageSpeedOf(TransferSpeedType transferSpeedType) => nodeStats.GetAverageTransferSpeed(transferSpeedType) ?? 0;
 
             _stringBuilder
-                .Append("   ")
-                .Append($"{peerInfo}")
+                .Append("  ")
+                .Append(peerInfo.ToString().Replace("Peer|", ""))
                 .Append("[")
                 .Append($"{AverageSpeedOf(TransferSpeedType.Latency)}|")
                 .Append($"{AverageSpeedOf(TransferSpeedType.Headers)}|")
