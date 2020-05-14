@@ -46,7 +46,7 @@ namespace Nethermind.Network.Discovery.Serializers
 
         protected byte[] Serialize(byte type, Span<byte> data)
         {
-            Span<byte> result = new byte[32 + 1 + data.Length + 64 + 1].AsSpan();
+            byte[] result = new byte[32 + 1 + data.Length + 64 + 1];
             result[32 + 65] = type;
             data.CopyTo(result.Slice(32 + 65 + 1, data.Length));
 
@@ -57,9 +57,9 @@ namespace Nethermind.Network.Discovery.Serializers
             result[32 + 64] = signature.RecoveryId;
             
             Span<byte> forMdc = result.Slice(32);
-            Keccak mdc = Keccak.Compute(forMdc);
-            mdc.Bytes.AsSpan().CopyTo(result.Slice(0,32));
-            return result.ToArray();
+            ValueKeccak mdc = ValueKeccak.Compute(forMdc);
+            mdc.BytesAsSpan.CopyTo(result.Slice(0,32));
+            return result;
         }
 
         protected (T Message, byte[] Mdc, byte[] Data) PrepareForDeserialization<T>(byte[] msg) where T : DiscoveryMessage
