@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.WebSockets;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -52,6 +53,13 @@ namespace Nethermind.WebSockets.Test
                     }
                 }
 
+                if (!_receiveResults.Any() && ReturnTaskWithFaultOnEmptyQueue)
+                {
+                    Task<WebSocketReceiveResult> a = new Task<WebSocketReceiveResult>(() => throw new Exception());
+                    a.Start();
+                    return a;
+                }
+
                 return Task.FromResult(_receiveResults.Dequeue());
             }
 
@@ -64,6 +72,7 @@ namespace Nethermind.WebSockets.Test
             public override string CloseStatusDescription { get; }
             public override WebSocketState State { get; }
             public override string SubProtocol { get; }
+            public bool ReturnTaskWithFaultOnEmptyQueue { get; set; }
         }
 
         [SetUp]
@@ -141,6 +150,19 @@ namespace Nethermind.WebSockets.Test
             
             Assert.ThrowsAsync<InvalidOperationException>(async () => await mock.ReceiveAsync(webSocketsClient));
             await webSocketsClient.DidNotReceive().ReceiveAsync(Arg.Any<Memory<byte>>());
+        }
+        
+        [Test, Timeout(5000)]
+        public async Task Stops_on_dirty_disconnect()
+        {
+            Queue<WebSocketReceiveResult> receiveResult = new Queue<WebSocketReceiveResult>();
+            receiveResult.Enqueue(new WebSocketReceiveResult(1, WebSocketMessageType.Text, true));
+            WebSocketMock mock = new WebSocketMock(receiveResult);
+            mock.ReturnTaskWithFaultOnEmptyQueue = true;
+
+            IWebSocketsClient webSocketsClient = Substitute.For<IWebSocketsClient>();
+            
+            await mock.ReceiveAsync(webSocketsClient);
         }
     }
 }
