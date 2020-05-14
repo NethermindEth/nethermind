@@ -1,0 +1,149 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) 2018, Demerzel Solutions Limited
+# This file is distributed under the same license as the nethermind package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2020.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: nethermind \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2020-05-14 17:16+0100\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.8.0\n"
+
+#: ../../source/cloud.rst:2
+msgid "Cloud"
+msgstr ""
+
+#: ../../source/cloud.rst:5
+msgid "Digital Ocean"
+msgstr ""
+
+#: ../../source/cloud.rst:7
+msgid "Create a new droplet"
+msgstr ""
+
+#: ../../source/cloud.rst:12
+msgid "Select Ubuntu version (18.10)"
+msgstr ""
+
+#: ../../source/cloud.rst:17
+msgid "Choose the minimal option"
+msgstr ""
+
+#: ../../source/cloud.rst:22 ../../source/cloud.rst:99
+msgid "Select preferred region (some will sync faster)"
+msgstr ""
+
+#: ../../source/cloud.rst:27 ../../source/cloud.rst:120
+msgid "Choose a hostname"
+msgstr ""
+
+#: ../../source/cloud.rst:32
+msgid "Wait for the droplet to be created"
+msgstr ""
+
+#: ../../source/cloud.rst:37 ../../source/cloud.rst:125
+msgid "Install packages::"
+msgstr ""
+
+#: ../../source/cloud.rst:44 ../../source/cloud.rst:132
+msgid "Wait for the packages (input 'Y' when prompted)"
+msgstr ""
+
+#: ../../source/cloud.rst:49 ../../source/cloud.rst:137
+msgid ""
+"Download Nethermind Launcher (you may need to change the url to download "
+"the latest version, check `here "
+"<https://github.com/NethermindEth/nethermind/releases>`_.)::"
+msgstr ""
+
+#: ../../source/cloud.rst:56 ../../source/cloud.rst:144
+msgid "Unzip the package::"
+msgstr ""
+
+#: ../../source/cloud.rst:64 ../../source/cloud.rst:152
+msgid "Launch screen (and press ENTER)::"
+msgstr ""
+
+#: ../../source/cloud.rst:71 ../../source/cloud.rst:159
+msgid "Launch Nethermind::"
+msgstr ""
+
+#: ../../source/cloud.rst:77 ../../source/cloud.rst:165
+msgid "Select the network"
+msgstr ""
+
+#: ../../source/cloud.rst:81 ../../source/cloud.rst:169
+msgid "Select the sync mode (fast sync or full archive)"
+msgstr ""
+
+#: ../../source/cloud.rst:86 ../../source/cloud.rst:174
+msgid ""
+"It can take some time (up to a few minutes before it finds the first "
+"nodes to sync with):"
+msgstr ""
+
+#: ../../source/cloud.rst:92
+msgid "UpCloud"
+msgstr ""
+
+#: ../../source/cloud.rst:94
+msgid "Deploy a new server"
+msgstr ""
+
+#: ../../source/cloud.rst:104
+msgid ""
+"Choose the server size ($5 is enough for Goerli, $40 is enough for the "
+"mainnet fast sync)"
+msgstr ""
+
+#: ../../source/cloud.rst:110
+msgid "Leave the storage size unchanged"
+msgstr ""
+
+#: ../../source/cloud.rst:115
+msgid "Choose the operating system (Ubuntu 18.04)"
+msgstr ""
+
+#: ../../source/cloud.rst:180
+msgid "Google Cloud"
+msgstr ""
+
+#: ../../source/cloud.rst:182
+msgid ""
+"Based on our tests it is probably the third best option from the "
+"providers listed here (after UpCloud and Digital Ocean). Should be fine "
+"(although more expensive) for fast syncing nodes. Full archive is not "
+"reasonable with the price / IOPS ratio."
+msgstr ""
+
+#: ../../source/cloud.rst:186
+msgid "AWS"
+msgstr ""
+
+#: ../../source/cloud.rst:188
+msgid ""
+"Based on our tests it is probably the fourth best option from the "
+"providers listed here (after UpCloud, Digital Ocean, and AWS). Should be "
+"fine (although more expensive) for fast syncing nodes. Full archive is "
+"not reasonable with the price / IOPS ratio."
+msgstr ""
+
+#: ../../source/cloud.rst:192
+msgid "Azure"
+msgstr ""
+
+#: ../../source/cloud.rst:194
+msgid ""
+"Based on our tests it is probably the worst choice from the providers "
+"listed here. Should be fine (although more expensive) for fast syncing "
+"nodes. Full archive is not reasonable with the price / IOPS ratio."
+msgstr ""
+
