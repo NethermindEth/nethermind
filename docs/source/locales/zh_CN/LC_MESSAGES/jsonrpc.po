@@ -1,0 +1,751 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) 2018, Demerzel Solutions Limited
+# This file is distributed under the same license as the nethermind package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2020.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: nethermind \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2020-05-14 17:16+0100\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.8.0\n"
+
+#: ../../source/jsonrpc.rst:2
+msgid "JSON RPC"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:4
+msgid ""
+"JSON RPC is available via HTTP and WS (needs to be explicitly switched on"
+" in the InitConfig). Some of the methods listed below are not implemented"
+" by Nethermind (they are marked)."
+msgstr ""
+
+#: ../../source/jsonrpc.rst:8
+msgid "admin"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:10
+msgid "admin_addPeer(enode, addToStaticNodes)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:14
+msgid "admin_dataDir()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:14 ../../source/jsonrpc.rst:17
+#: ../../source/jsonrpc.rst:26 ../../source/jsonrpc.rst:65
+#: ../../source/jsonrpc.rst:68 ../../source/jsonrpc.rst:83
+#: ../../source/jsonrpc.rst:86 ../../source/jsonrpc.rst:89
+#: ../../source/jsonrpc.rst:92 ../../source/jsonrpc.rst:104
+#: ../../source/jsonrpc.rst:206 ../../source/jsonrpc.rst:242
+#: ../../source/jsonrpc.rst:245 ../../source/jsonrpc.rst:287
+#: ../../source/jsonrpc.rst:299 ../../source/jsonrpc.rst:327
+#: ../../source/jsonrpc.rst:330 ../../source/jsonrpc.rst:333
+#: ../../source/jsonrpc.rst:336
+msgid "[NOT IMPLEMENTED]"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:17
+msgid "admin_nodeInfo()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:19
+msgid "admin_peers()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:22
+msgid "admin_removePeer(enode, removeFromStaticNodes)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:26
+msgid "admin_setSolc()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:29
+msgid "clique"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:32
+msgid "clique_discard(signer)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:32 ../../source/jsonrpc.rst:35
+#: ../../source/jsonrpc.rst:38 ../../source/jsonrpc.rst:41
+#: ../../source/jsonrpc.rst:44 ../../source/jsonrpc.rst:47
+#: ../../source/jsonrpc.rst:50 ../../source/jsonrpc.rst:53
+#: ../../source/jsonrpc.rst:56 ../../source/jsonrpc.rst:257
+#: ../../source/jsonrpc.rst:260 ../../source/jsonrpc.rst:263
+#: ../../source/jsonrpc.rst:266 ../../source/jsonrpc.rst:269
+#: ../../source/jsonrpc.rst:275 ../../source/jsonrpc.rst:278
+#: ../../source/jsonrpc.rst:290 ../../source/jsonrpc.rst:293
+#: ../../source/jsonrpc.rst:296 ../../source/jsonrpc.rst:306
+#: ../../source/jsonrpc.rst:354 ../../source/jsonrpc.rst:357
+#: ../../source/jsonrpc.rst:360 ../../source/jsonrpc.rst:366
+#: ../../source/jsonrpc.rst:369
+msgid "<description missing>"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:35
+msgid "clique_getSigners()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:38
+msgid "clique_getSignersAnnotated()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:41
+msgid "clique_getSignersAtHash(hash)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:44
+msgid "clique_getSignersAtHashAnnotated(hash)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:47
+msgid "clique_getSignersAtNumber(number)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:50
+msgid "clique_getSnapshot()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:53
+msgid "clique_getSnapshotAtHash(hash)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:56
+msgid "clique_propose(signer, vote)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:59
+msgid "debug"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:62
+msgid "debug_deleteChainSlice(startNumber, endNumber)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:62
+msgid ""
+"Deletes a slice of a chain from the tree on all branches (Nethermind "
+"specific)."
+msgstr ""
+
+#: ../../source/jsonrpc.rst:65
+msgid "debug_dumpBlock(blockParameter)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:68
+msgid "debug_gcStats()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:71
+msgid "debug_getBlockRlp(number)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:71 ../../source/jsonrpc.rst:74
+msgid "Retrieves a block in the RLP-serialized form."
+msgstr ""
+
+#: ../../source/jsonrpc.rst:74
+msgid "debug_getBlockRlpByHash(hash)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:77
+msgid "debug_getChainLevel(number)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:77
+msgid ""
+"Retrieves a representation of tree branches on a given chain level "
+"(Nethermind specific)."
+msgstr ""
+
+#: ../../source/jsonrpc.rst:80
+msgid "debug_getConfigValue(category, name)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:80
+msgid "Retrieves the Nethermind configuration value, e.g. JsonRpc.Enabled"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:83
+msgid "debug_getFromDb(dbName, key)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:86
+msgid "debug_memStats(blockParameter)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:89
+msgid "debug_seedHash(blockParameter)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:92
+msgid "debug_setHead(blockParameter)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:94
+msgid "debug_traceBlock(blockRlp, options)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:97
+msgid "debug_traceBlockByHash(blockHash, options)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:100
+msgid "debug_traceBlockByNumber(number, options)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:104
+msgid "debug_traceBlockFromFile(fileName, options)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:106
+msgid "debug_traceTransaction(transactionHash, options)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:109
+msgid "debug_traceTransactionByBlockAndIndex(blockParameter, txIndex, options)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:112
+msgid "debug_traceTransactionByBlockhashAndIndex(blockHash, txIndex, options)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:115
+msgid "debug_traceTransactionInBlockByHash(blockRlp, transactionHash, options)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:118
+msgid "debug_traceTransactionInBlockByIndex(blockRlp, txIndex, options)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:122
+msgid "eth"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:125
+msgid "eth_accounts()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:125
+msgid "[NOT IMPLEMENTED] Returns accounts"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:128
+msgid "eth_blockNumber()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:128
+msgid "Returns current block number"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:131
+msgid "eth_call(transactionCall, blockParameter)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:131
+msgid "Executes a tx call (does not create a transaction)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:134
+msgid "eth_chainId()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:134
+msgid "Returns ChainID"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:137
+msgid "eth_coinbase()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:137
+msgid "[NOT IMPLEMENTED] Returns miner's coinbase'"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:140
+msgid "eth_estimateGas(transactionCall)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:140
+msgid "Executes a tx call and returns gas used (does not create a transaction)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:143
+msgid "eth_gasPrice()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:143
+msgid "[NOT IMPLEMENTED] Returns miner's gas price"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:146
+msgid "eth_getBalance(address, blockParameter)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:146
+msgid "Returns account balance"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:149
+msgid "eth_getBlockByHash(blockHash, returnFullTransactionObjects)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:149
+msgid "Retrieves a block by hash"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:152
+msgid "eth_getBlockByNumber(blockParameter, returnFullTransactionObjects)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:152
+msgid "Retrieves a block by number"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:155
+msgid "eth_getBlockTransactionCountByHash(blockHash)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:155
+msgid "Returns number of transactions in the block block hash"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:158
+msgid "eth_getBlockTransactionCountByNumber(blockParameter)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:158
+msgid "Returns number of transactions in the block by block number"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:161
+msgid "eth_getCode(address, blockParameter)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:161
+msgid "Returns account code at given address and block"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:164
+msgid "eth_getFilterChanges(filterId)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:164 ../../source/jsonrpc.rst:167
+msgid "Reads filter changes"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:167
+msgid "eth_getFilterLogs(filterId)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:170
+msgid "eth_getLogs(filter)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:170
+msgid "Reads logs"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:173
+msgid "eth_getProof(accountAddress, hashRate, blockParameter)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:173
+msgid "https://github.com/ethereum/EIPs/issues/1186"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:176
+msgid "eth_getStorageAt(address, positionIndex, blockParameter)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:176
+msgid "Returns storage data at address. storage_index"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:179
+msgid "eth_getTransactionByBlockHashAndIndex(blockHash, positionIndex)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:179
+msgid "Retrieves a transaction by block hash and index"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:182
+msgid "eth_getTransactionByBlockNumberAndIndex(blockParameter, positionIndex)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:182
+msgid "Retrieves a transaction by block number and index"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:185
+msgid "eth_getTransactionByHash(transactionHash)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:185
+msgid "Retrieves a transaction by hash"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:188
+msgid "eth_getTransactionCount(address, blockParameter)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:188
+msgid ""
+"Returns account nonce (number of trnsactions from the account since "
+"genesis) at the given block number"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:191
+msgid "eth_getTransactionReceipt(txHashData)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:191
+msgid "Retrieves a transaction receipt by tx hash"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:194
+msgid "eth_getUncleByBlockHashAndIndex(blockHashData, positionIndex)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:194
+msgid "Retrieves an uncle block header by block hash and uncle index"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:197
+msgid "eth_getUncleByBlockNumberAndIndex(blockParameter, positionIndex)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:197
+msgid "Retrieves an uncle block header by block number and uncle index"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:200
+msgid "eth_getUncleCountByBlockHash(blockHash)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:200
+msgid "Returns number of uncles in the block by block hash"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:203
+msgid "eth_getUncleCountByBlockNumber(blockParameter)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:203
+msgid "Returns number of uncles in the block by block number"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:206
+msgid "eth_getWork()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:209
+msgid "eth_hashrate()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:209
+msgid "[NOT IMPLEMENTED] Returns mining hashrate"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:212
+msgid "eth_mining()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:212
+msgid "[NOT IMPLEMENTED] Returns mining status"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:215
+msgid "eth_newBlockFilter()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:215 ../../source/jsonrpc.rst:218
+#: ../../source/jsonrpc.rst:221 ../../source/jsonrpc.rst:251
+msgid "Creates an update filter"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:218
+msgid "eth_newFilter(filter)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:221
+msgid "eth_newPendingTransactionFilter()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:224
+msgid "eth_pendingTransactions()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:224
+msgid "Returns the pending transactions list"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:227
+msgid "eth_protocolVersion()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:227
+msgid "Returns ETH protocol version"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:230
+msgid "eth_sendRawTransaction(transaction)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:230
+msgid "Send a raw transaction to the tx pool and broadcasting"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:233
+msgid "eth_sendTransaction(transactionForRpc)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:233
+msgid "Send a transaction to the tx pool and broadcasting"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:236
+msgid "eth_sign(addressData, message)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:236
+msgid "[NOT IMPLEMENTED] Signs a transaction"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:239
+msgid "eth_snapshot()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:239
+msgid "[NOT IMPLEMENTED] Returns full state snapshot"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:242
+msgid "eth_submitHashrate(hashRate, id)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:245
+msgid "eth_submitWork(nonce, headerPowHash, mixDigest)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:248
+msgid "eth_syncing()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:248
+msgid "Returns syncing status"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:251
+msgid "eth_uninstallFilter(filterId)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:254
+msgid "net"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:257
+msgid "net_listening()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:260
+msgid "net_localAddress()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:263
+msgid "net_localEnode()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:266
+msgid "net_peerCount()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:269
+msgid "net_version()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:272
+msgid "parity"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:275
+msgid "parity_getBlockReceipts(blockParameter)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:278
+msgid "parity_pendingTransactions()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:281
+msgid "personal"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:284
+msgid "personal_ecRecover(message, signature)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:284
+msgid ""
+"[NOT IMPLEMENTED] ecRecover returns the address associated with the "
+"private key that was used to calculate the signature in personal_sign"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:287
+msgid "personal_importRawKey(keyData, passphrase)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:290
+msgid "personal_listAccounts()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:293
+msgid "personal_lockAccount(address)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:296
+msgid "personal_newAccount(passphrase)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:299
+msgid "personal_sendTransaction(transaction, passphrase)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:301
+msgid "personal_sign(message, address, passphrase)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:302
+msgid ""
+"[NOT IMPLEMENTED] The sign method calculates an Ethereum specific "
+"signature with: sign(keccack256(\"ƞthereum Signed Message:"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:303
+msgid "\" + len(message) + message)))."
+msgstr ""
+
+#: ../../source/jsonrpc.rst:306
+msgid "personal_unlockAccount(address, passphrase)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:309
+msgid "proof"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:312
+msgid "proof_call(tx, blockParameter)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:312
+msgid ""
+"[NOT IMPLEMENTED] This function returns the same result as "
+"`eth_getTransactionByHash` and also a tx proof and a serialized block "
+"header."
+msgstr ""
+
+#: ../../source/jsonrpc.rst:315
+msgid "proof_getTransactionByHash(txHash, includeHeader)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:315
+msgid ""
+"This function returns the same result as `eth_getTransactionReceipt` and "
+"also a tx proof, receipt proof and serialized block headers."
+msgstr ""
+
+#: ../../source/jsonrpc.rst:318
+msgid "proof_getTransactionReceipt(txHash, includeHeader)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:318
+msgid ""
+"This function should return the same result as `eth_call` and also proofs"
+" of all USED accunts and their storages and serialized block headers"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:321
+msgid "trace"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:323
+msgid "trace_block(numberOrTag)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:327
+msgid "trace_call(message, traceTypes, numberOrTag)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:330
+msgid "trace_callMany(calls)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:333
+msgid "trace_filter(fromBlock, toBlock, toAddress, after, count)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:336
+msgid "trace_get(txHash, positions)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:339
+msgid "trace_rawTransaction(data, traceTypes)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:339
+msgid ""
+"Traces a call to eth_sendRawTransaction without making the call, "
+"returning the traces"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:341
+msgid "trace_replayBlockTransactions(numberOrTag, traceTypes)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:344
+msgid "trace_replayTransaction(txHash, traceTypes)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:347
+msgid "trace_transaction(txHash)"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:351
+msgid "txpool"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:354
+msgid "txpool_content()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:357
+msgid "txpool_inspect()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:360
+msgid "txpool_status()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:363
+msgid "web3"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:366
+msgid "web3_clientVersion()"
+msgstr ""
+
+#: ../../source/jsonrpc.rst:369
+msgid "web3_sha3(data)"
+msgstr ""
+
