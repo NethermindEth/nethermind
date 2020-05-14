@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -68,6 +70,23 @@ namespace Nethermind.Network.Test
             await _staticNodesManager.RemoveAsync(Enode, false);
             _staticNodesManager.Nodes.Count().Should().Be(0);
             eventRaised.Should().BeTrue();
+        }
+        
+        [Test]
+        public async Task init_should_load_static_nodes_from_empty_file()
+        {
+            var path = Path.GetTempFileName();
+            await File.WriteAllTextAsync(path, string.Empty);
+            try
+            {
+                _staticNodesManager = new StaticNodesManager(path, LimboLogs.Instance);
+                await _staticNodesManager.InitAsync();
+                _staticNodesManager.Nodes.Count().Should().Be(0);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
         }
     }
 }
