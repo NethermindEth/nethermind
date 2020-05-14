@@ -19,7 +19,7 @@ msgstr ""
 
 #: ../../source/build.rst:2
 msgid "Build"
-msgstr ""
+msgstr "ttt"
 
 #: ../../source/build.rst:5
 msgid "IDE (optional)"
