@@ -100,16 +100,24 @@ namespace Nethermind.Synchronization.Peers
                 _stringBuilder.Clear();
             }
         }
-        private void AddPeerInfo(PeerInfo peerInfo) => _stringBuilder
-            .Append("   ")
-            .Append($"{peerInfo}")
-            .Append("[")
-            .Append($"{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Latency) ?? 0}|")
-            .Append($"{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Headers) ?? 0}|")
-            .Append($"{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Bodies) ?? 0}|")
-            .Append($"{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Receipts) ?? 0}|")
-            .Append($"{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.NodeData) ?? 0}")
-            .Append("]");
+
+        private void AddPeerInfo(PeerInfo peerInfo)
+        {
+            INodeStats nodeStats = _stats.GetOrAdd(peerInfo.SyncPeer.Node);
+            
+            long AverageSpeedOf(TransferSpeedType transferSpeedType) => nodeStats.GetAverageTransferSpeed(transferSpeedType) ?? 0;
+
+            _stringBuilder
+                .Append("   ")
+                .Append($"{peerInfo}")
+                .Append("[")
+                .Append($"{AverageSpeedOf(TransferSpeedType.Latency)}|")
+                .Append($"{AverageSpeedOf(TransferSpeedType.Headers)}|")
+                .Append($"{AverageSpeedOf(TransferSpeedType.Bodies)}|")
+                .Append($"{AverageSpeedOf(TransferSpeedType.Receipts)}|")
+                .Append($"{AverageSpeedOf(TransferSpeedType.NodeData)}")
+                .Append("]");
+        }
 
         private void RememberState(out bool initializedCountChanged)
         {
