@@ -177,11 +177,6 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
         public void SendPong(PingMessage discoveryMessage)
         {
-            if (!ManagedNode.Address.Address.MapToIPv4().Equals(discoveryMessage.FarAddress.Address.MapToIPv4()))
-            {
-                _logger.Error($"Sending message to a different address: {ManagedNode.Address} vs {discoveryMessage.FarAddress}");
-            }
-            
             PongMessage msg = _discoveryMessageFactory.CreateOutgoingMessage<PongMessage>(ManagedNode);
             msg.PingMdc = discoveryMessage.Mdc;
             _discoveryManager.SendMessage(msg);
