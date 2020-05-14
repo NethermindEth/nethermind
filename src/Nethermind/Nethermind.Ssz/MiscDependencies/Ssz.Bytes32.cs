@@ -25,6 +25,11 @@ namespace Nethermind.Ssz
     {
         public const int Bytes32Length = Bytes32.Length;
 
+        public static ReadOnlySpan<byte> DecodeBytes(ReadOnlySpan<byte> span)
+        {
+            return span.ToArray();
+        }
+        
         public static Bytes32 DecodeBytes32(ReadOnlySpan<byte> span)
         {
             return new Bytes32(span);
