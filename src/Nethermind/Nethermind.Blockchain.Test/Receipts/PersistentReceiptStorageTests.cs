@@ -56,6 +56,14 @@ namespace Nethermind.Blockchain.Test.Receipts
         }
         
         [Test]
+        public void ReceiptsIterator_doesnt_throw_on_null()
+        {
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, null);
+            _storage.TryGetReceiptsIterator(1, Keccak.Zero, out var iterator);
+            iterator.TryGetNext(out _).Should().BeFalse();
+        }
+        
+        [Test]
         public void Get_returns_empty_on_empty_span()
         {
             _storage.Get(Keccak.Zero).Should().BeEquivalentTo(Array.Empty<TxReceipt>());
