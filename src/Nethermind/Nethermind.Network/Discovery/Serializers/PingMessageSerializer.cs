@@ -62,7 +62,6 @@ namespace Nethermind.Network.Discovery.Serializers
             
             // TODO: please note that we decode only one field for port and if the UDP is different from TCP then
             // our discovery messages will not be routed correctly (the fix will not be part of this commit)
-            IPEndPoint source = GetAddress(sourceAddress, rlp.DecodeInt());
             rlp.DecodeInt(); // UDP port
             int tcpPort = rlp.DecodeInt(); // we assume here that UDP and TCP port are same 
 
