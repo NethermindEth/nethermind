@@ -367,3 +367,4 @@ src/Nethermind/Nethermind.BeaconNode.Host/release
 
 # Memory dumps
 mono_crash.mem.*.blob
+src/.DS_Store

@@ -32,7 +32,7 @@ namespace Nethermind.Network.Discovery
         Task<bool> WasMessageReceived(Keccak senderIdHash, MessageType messageType, int timeout);
         event EventHandler<NodeEventArgs> NodeDiscovered;
 
-        IReadOnlyCollection<INodeLifecycleManager> GetOrAddNodeLifecycleManagers();
+        IReadOnlyCollection<INodeLifecycleManager> GetNodeLifecycleManagers();
         IReadOnlyCollection<INodeLifecycleManager> GetOrAddNodeLifecycleManagers(Func<INodeLifecycleManager, bool> query);
     }
 }

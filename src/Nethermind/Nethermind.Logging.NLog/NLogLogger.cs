@@ -102,5 +102,10 @@ namespace Nethermind.Logging.NLog
         {
             Logger.Error(ex, text);
         }
+
+        public static void Shutdown()
+        {
+            global::NLog.LogManager.Shutdown();
+        }
     }
 }

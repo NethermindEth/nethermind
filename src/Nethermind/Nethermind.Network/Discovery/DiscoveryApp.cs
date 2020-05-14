@@ -530,7 +530,7 @@ namespace Nethermind.Network.Discovery
         {
             try
             {
-                IReadOnlyCollection<INodeLifecycleManager> managers = _discoveryManager.GetOrAddNodeLifecycleManagers();
+                IReadOnlyCollection<INodeLifecycleManager> managers = _discoveryManager.GetNodeLifecycleManagers();
                 //we need to update all notes to update reputation
                 _discoveryStorage.UpdateNodes(managers.Select(x => new NetworkNode(x.ManagedNode.Id, x.ManagedNode.Host, x.ManagedNode.Port, x.NodeStats.NewPersistedNodeReputation)).ToArray());
 
