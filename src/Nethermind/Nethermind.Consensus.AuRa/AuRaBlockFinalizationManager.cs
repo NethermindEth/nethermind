@@ -118,7 +118,7 @@ namespace Nethermind.Consensus.AuRa
                 if (_logger.IsInfo) _logger.Info($"Block {_twoThirdsMajorityTransition}: Transitioning to 2/3 quorum.");
             }
 
-            var minSealersForFinalization = block.IsGenesis ? 1 : GetMinSealersForFinalization(block.Number);
+            var minSealersForFinalization = GetMinSealersForFinalization(block.Number);
             var originalBlock = block;
             
             bool IsConsecutiveBlock() => originalBlock.ParentHash == _lastProcessedBlockHash;
@@ -299,7 +299,10 @@ namespace Nethermind.Consensus.AuRa
             return null;
         }
 
-        private int GetMinSealersForFinalization(long blockNumber) => Validators.MinSealersForFinalization(blockNumber >= _twoThirdsMajorityTransition);
+        private int GetMinSealersForFinalization(long blockNumber) =>
+            blockNumber == 0
+                ? 1
+                : Validators.MinSealersForFinalization(blockNumber >= _twoThirdsMajorityTransition);
 
         public long LastFinalizedBlockLevel
         {
