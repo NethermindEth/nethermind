@@ -58,12 +58,9 @@ namespace Nethermind.Network.Discovery.Serializers
 
             rlp.ReadSequenceLength();
             byte[] sourceAddress = rlp.DecodeByteArray();
-            int udpPort = rlp.DecodeInt();
-            int tcpPort = rlp.DecodeInt();
-            if (udpPort != tcpPort)
-            {
-                
-            }
+            rlp.DecodeInt(); // UDP port
+            int tcpPort = rlp.DecodeInt(); // we assume here that UDP and TCP port are same 
+
             IPEndPoint source = GetAddress(sourceAddress, tcpPort);
             rlp.ReadSequenceLength();
             byte[] destinationAddress = rlp.DecodeByteArray();
