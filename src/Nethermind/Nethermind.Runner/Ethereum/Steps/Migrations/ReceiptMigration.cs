@@ -99,7 +99,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                         _syncModeSelector.Changed += OnSyncModeChanged;
                     }
                 }
-                else
+                else if (MigrateToBlockNumber != 0)
                 {
                     if (_logger.IsInfo) _logger.Info($"ReceiptsDb migration disabled. Finding logs when multiple blocks receipts need to be scanned might be slow.");
                 }
