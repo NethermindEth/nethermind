@@ -138,9 +138,9 @@ namespace Nethermind.Network.Discovery
 
         private void InitializeUdpChannel()
         {
-            if(_logger.IsDebug) _logger.Debug($"Discovery    : udp://{_networkConfig.ExternalIp}:{_networkConfig.DiscoveryPort}");
+            if (_logger.IsDebug) _logger.Debug($"Discovery    : udp://{_networkConfig.ExternalIp}:{_networkConfig.DiscoveryPort}");
             ThisNodeInfo.AddInfo("Discovery    :", $"udp://{_networkConfig.ExternalIp}:{_networkConfig.DiscoveryPort}");
-            
+
             _group = new MultithreadEventLoopGroup(1);
             Bootstrap bootstrap = new Bootstrap();
             bootstrap.Group(_group);
@@ -157,7 +157,17 @@ namespace Nethermind.Network.Discovery
             }
 
             _bindingTask = bootstrap.BindAsync(IPAddress.Parse(_networkConfig.LocalIp), _networkConfig.DiscoveryPort)
-                .ContinueWith(t => _channel = t.Result);
+                .ContinueWith(
+                    t
+                        =>
+                    {
+                        if (t.IsFaulted)
+                        {
+                            _logger.Error("Error when establishing discovery connection", t.Exception);
+                        }
+
+                        return _channel = t.Result;
+                    });
         }
 
         private Task _bindingTask;
@@ -167,7 +177,7 @@ namespace Nethermind.Network.Discovery
             _discoveryHandler = new NettyDiscoveryHandler(_discoveryManager, channel, _messageSerializationService, _timestamper, _logManager);
             _discoveryManager.MessageSender = _discoveryHandler;
             _discoveryHandler.OnChannelActivated += OnChannelActivated;
-            
+
             channel.Pipeline
                 .AddLast(new LoggingHandler(DotNetty.Handlers.Logging.LogLevel.INFO))
                 .AddLast(_discoveryHandler);
@@ -490,7 +500,7 @@ namespace Nethermind.Network.Discovery
             });
 
             disc.Wait();
-            
+
             Task refresh = RunRefreshAsync(_appShutdownSource.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -498,7 +508,7 @@ namespace Nethermind.Network.Discovery
                     _logger.Error($"Error during discovery refresh process: {t.Exception}");
                 }
             });
-            
+
             refresh.Wait();
         }
 
