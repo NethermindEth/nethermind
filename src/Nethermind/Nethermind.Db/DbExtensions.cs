@@ -158,7 +158,7 @@ namespace Nethermind.Db
                 if (db is IDbWithSpan spanDb && decoder is IRlpValueDecoder<TItem> valueDecoder)
                 {
                     Span<byte> data = spanDb.GetSpan(key);
-                    if (data == null || data.Length == 0)
+                    if (data.IsNullOrEmpty())
                     {
                         return null;
                     }
