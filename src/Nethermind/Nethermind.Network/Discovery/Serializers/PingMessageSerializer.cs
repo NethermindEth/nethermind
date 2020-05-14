@@ -64,6 +64,9 @@ namespace Nethermind.Network.Discovery.Serializers
             // our discovery messages will not be routed correctly (the fix will not be part of this commit)
             IPEndPoint source = GetAddress(sourceAddress, rlp.DecodeInt());
             rlp.DecodeInt(); // UDP port
+            int tcpPort = rlp.DecodeInt(); // we assume here that UDP and TCP port are same 
+
+            IPEndPoint source = GetAddress(sourceAddress, tcpPort);
             rlp.ReadSequenceLength();
             ReadOnlySpan<byte> destinationAddress = rlp.DecodeByteArraySpan();
             IPEndPoint destination = GetAddress(destinationAddress, rlp.DecodeInt());

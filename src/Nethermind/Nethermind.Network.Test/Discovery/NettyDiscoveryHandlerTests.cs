@@ -17,6 +17,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Handlers.Logging;
@@ -83,7 +84,6 @@ namespace Nethermind.Network.Test.Discovery
         }
 
         [Test]
-        [Ignore("Failing on Mac GitHUb actions - needs review")]
         [Retry(5)]
         public void PingSentReceivedTest()
         {
@@ -113,7 +113,6 @@ namespace Nethermind.Network.Test.Discovery
         }
 
         [Test]
-        [Ignore("Failing on Mac GitHUb actions - needs review")]
         [Retry(5)]
         public void PongSentReceivedTest()
         {
@@ -146,7 +145,6 @@ namespace Nethermind.Network.Test.Discovery
         }
 
         [Test]
-        [Ignore("Failing on Mac GitHUb actions - needs review")]
         [Retry(5)]
         public void FindNodeSentReceivedTest()
         {
@@ -174,7 +172,6 @@ namespace Nethermind.Network.Test.Discovery
         }
 
         [Test]
-        [Ignore("Failing on Mac GitHUb actions - needs review")]
         [Retry(5)]
         public void NeighborsSentReceivedTest()
         {
@@ -208,7 +205,7 @@ namespace Nethermind.Network.Test.Discovery
             var bootstrap = new Bootstrap();
             bootstrap
                 .Group(group)
-                .Channel<SocketDatagramChannel>()
+                .ChannelFactory(() => new SocketDatagramChannel(AddressFamily.InterNetwork))
                 .Handler(new ActionChannelInitializer<IDatagramChannel>(x => InitializeChannel(x, discoveryManager, service)));
 
             _channels.Add(await bootstrap.BindAsync(IPAddress.Parse(address), port));
