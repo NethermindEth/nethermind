@@ -49,9 +49,12 @@ namespace Nethermind.Network.Discovery.Serializers
 
             // GetAddress(rlp.DecodeByteArray(), rlp.DecodeInt());
             rlp.DecodeByteArray();
-            rlp.DecodeInt();
-
-            rlp.DecodeInt(); // UDP port
+            int udp = rlp.DecodeInt(); // UDP port
+            int tcp = rlp.DecodeInt();
+            if (tcp != udp)
+            {
+                
+            }
             byte[] token = rlp.DecodeByteArray();
             long expirationTime = rlp.DecodeLong();
 

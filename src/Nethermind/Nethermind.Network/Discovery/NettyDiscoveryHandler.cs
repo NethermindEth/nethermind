@@ -85,7 +85,7 @@ namespace Nethermind.Network.Discovery
             }
             
             IAddressedEnvelope<IByteBuffer> packet = new DatagramPacket(Unpooled.CopiedBuffer(message), discoveryMessage.FarAddress);
-            // _logger.Debug($"The message {discoveryMessage} will be sent to {_channel.RemoteAddress}");
+            // _logger.Info($"The message {discoveryMessage} will be sent to {_channel.RemoteAddress}");
             await _channel.WriteAndFlushAsync(packet).ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -95,8 +95,6 @@ namespace Nethermind.Network.Discovery
             });
         }
 
-        private static Random rand = new Random(42);
-        
         protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
         {
             IByteBuffer content = packet.Content;
