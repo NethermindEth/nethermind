@@ -109,7 +109,7 @@ namespace Nethermind.Network.Discovery.Serializers
             );
         }
 
-        protected static IPEndPoint GetAddress(byte[] ip, int port)
+        protected static IPEndPoint GetAddress(ReadOnlySpan<byte> ip, int port)
         {
             IPAddress ipAddress;
             try

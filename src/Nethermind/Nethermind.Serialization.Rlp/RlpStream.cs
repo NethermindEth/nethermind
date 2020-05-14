@@ -673,7 +673,7 @@ namespace Nethermind.Serialization.Rlp
                 return byteValue;
             }
 
-            Span<byte> byteSpan = DecodeByteArraySpan();
+            ReadOnlySpan<byte> byteSpan = DecodeByteArraySpan();
             if (byteSpan.Length > 32)
             {
                 throw new ArgumentException();
@@ -696,13 +696,13 @@ namespace Nethermind.Serialization.Rlp
 
         public BigInteger DecodeUBigInt()
         {
-            Span<byte> bytes = DecodeByteArraySpan();
+            ReadOnlySpan<byte> bytes = DecodeByteArraySpan();
             return bytes.ToUnsignedBigInteger();
         }
 
         public Bloom DecodeBloom()
         {
-            Span<byte> bloomBytes;
+            ReadOnlySpan<byte> bloomBytes;
 
             // tks: not sure why but some nodes send us Blooms in a sequence form
             // https://github.com/NethermindEth/nethermind/issues/113
@@ -808,7 +808,7 @@ namespace Nethermind.Serialization.Rlp
 
         public string DecodeString()
         {
-            Span<byte> bytes = DecodeByteArraySpan();
+            ReadOnlySpan<byte> bytes = DecodeByteArraySpan();
             return System.Text.Encoding.UTF8.GetString(bytes);
         }
 
@@ -821,7 +821,7 @@ namespace Nethermind.Serialization.Rlp
                 return byteValue;
             }
             
-            Span<byte> bytes = DecodeByteArraySpan();
+            ReadOnlySpan<byte> bytes = DecodeByteArraySpan();
             return bytes.Length == 0 ? (byte) 0
                 : bytes.Length == 1 ? bytes[0] == (byte) 128
                     ? (byte) 0
@@ -865,7 +865,7 @@ namespace Nethermind.Serialization.Rlp
 
         public uint DecodeUInt()
         {
-            Span<byte> bytes = DecodeByteArraySpan();
+            ReadOnlySpan<byte> bytes = DecodeByteArraySpan();
             return bytes.Length == 0 ? 0 : bytes.ReadEthUInt32();
         }
 
@@ -905,7 +905,7 @@ namespace Nethermind.Serialization.Rlp
 
         public ulong DecodeUlong()
         {
-            Span<byte> bytes = DecodeByteArraySpan();
+            ReadOnlySpan<byte> bytes = DecodeByteArraySpan();
             return bytes.Length == 0 ? 0L : bytes.ReadEthUInt64();
         }
 
@@ -914,7 +914,7 @@ namespace Nethermind.Serialization.Rlp
             return DecodeByteArraySpan().ToArray();
         }
 
-        public Span<byte> DecodeByteArraySpan()
+        public ReadOnlySpan<byte> DecodeByteArraySpan()
         {
             int prefix = ReadByte();
             if (prefix == 0)
