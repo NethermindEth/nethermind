@@ -84,7 +84,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_ctx.SealValidator == null) throw new StepDependencyException(nameof(_ctx.SealValidator));
             if (_ctx.Enode == null) throw new StepDependencyException(nameof(_ctx.Enode));
 
-            if (_networkConfig.DiagTracerEnabled)
+            // if (_networkConfig.DiagTracerEnabled)
             {
                 NetworkDiagTracer.IsEnabled = true;
                 NetworkDiagTracer.Start();

@@ -134,34 +134,37 @@ namespace Nethermind.Network.Discovery
 
             try
             {
+                if (message is PingMessage pingMessage)
+                {
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMessage.FarAddress.Address.MapToIPv4().ToString(), "HANDLER disc v4", $"Ping {pingMessage.SourceAddress.Address} -> {pingMessage.DestinationAddress.Address}");    
+                }
+                else
+                {
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress.Address.MapToIPv4().ToString(), "HANDLER disc v4", message.MessageType.ToString());    
+                }
+                
                 long timeToExpire = message.ExpirationTime - (long) _timestamper.EpochSeconds;
                 if (timeToExpire < 0)
                 {
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress.Address.MapToIPv4().ToString(), "HANDLER disc v4", $"{message.MessageType.ToString()} expired");
                     if(_logger.IsDebug) _logger.Debug($"Received a discovery message that has expired {-timeToExpire} seconds ago, type: {type}, sender: {address}, message: {message}");
                     return;
                 }
 
                 if (!message.FarAddress.Equals((IPEndPoint)packet.Sender))
                 {
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress.Address.MapToIPv4().ToString(), "HANDLER disc v4", $"{message.MessageType.ToString()} has incorrect far address");
                     if(_logger.IsDebug) _logger.Debug($"Discovery fake IP detected - pretended {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
                     return;
                 }
                 
                 if (message.FarPublicKey == null)
                 {
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress.Address.ToString(), "HANDLER disc v4", $"{message.MessageType.ToString()} has null far public key");
                     if(_logger.IsDebug) _logger.Debug($"Discovery message without a valid signature {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
                     return;
                 }
 
-                if (message is PingMessage pingMessage)
-                {
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMessage.FarAddress.Address.ToString(), "HANDLER disc v4", $"PING {pingMessage.SourceAddress.Address} -> {pingMessage.DestinationAddress.Address}");    
-                }
-                else
-                {
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress.Address.ToString(), "HANDLER disc v4", message.MessageType.ToString());    
-                }
-                
                 _discoveryManager.OnIncomingMessage(message);
             }
             catch (Exception e)
