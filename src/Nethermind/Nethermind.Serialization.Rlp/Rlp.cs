@@ -1039,7 +1039,7 @@ namespace Nethermind.Serialization.Rlp
 
             public BigInteger DecodeUBigInt()
             {
-                Span<byte> bytes = DecodeByteArraySpan();
+                ReadOnlySpan<byte> bytes = DecodeByteArraySpan();
                 return bytes.ToUnsignedBigInteger();
             }
 

@@ -63,7 +63,7 @@ namespace Nethermind.Trie
             return output;
         }
 
-        public static HexPrefix FromBytes(Span<byte> bytes)
+        public static HexPrefix FromBytes(ReadOnlySpan<byte> bytes)
         {
             HexPrefix hexPrefix = new HexPrefix(bytes[0] >= 32);
             bool isEven = (bytes[0] & 16) == 0;

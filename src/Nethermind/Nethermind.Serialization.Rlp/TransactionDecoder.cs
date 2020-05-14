@@ -52,9 +52,9 @@ namespace Nethermind.Serialization.Rlp
 
             if (rlpStream.Position < lastCheck)
             {
-                Span<byte> vBytes = rlpStream.DecodeByteArraySpan();
-                Span<byte> rBytes = rlpStream.DecodeByteArraySpan();
-                Span<byte> sBytes = rlpStream.DecodeByteArraySpan();
+                ReadOnlySpan<byte> vBytes = rlpStream.DecodeByteArraySpan();
+                ReadOnlySpan<byte> rBytes = rlpStream.DecodeByteArraySpan();
+                ReadOnlySpan<byte> sBytes = rlpStream.DecodeByteArraySpan();
 
                 bool allowUnsigned = (rlpBehaviors & RlpBehaviors.AllowUnsigned) == RlpBehaviors.AllowUnsigned;
                 bool isSignatureOk = true;
