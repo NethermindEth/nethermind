@@ -122,7 +122,6 @@ namespace Nethermind.DataMarketplace.Test
                 specProvider, _logManager);
             TransactionProcessor processor = new TransactionProcessor(specProvider, _state, storageProvider, machine, _logManager);
             _bridge = new BlockchainBridge(processor, _releaseSpec);
-            _txPoolBridge = new TxPoolBridge(_txPool, _wallet, specProvider.ChainId);
 
             TxReceipt receipt = DeployContract(Bytes.FromHexString(ContractData.GetInitCode(_feeAccount)));
             ((NdmConfig) _ndmConfig).ContractAddress = receipt.ContractAddress.ToString();
@@ -130,7 +129,7 @@ namespace Nethermind.DataMarketplace.Test
             _txPool = new TxPool.TxPool(new InMemoryTxStorage(), Timestamper.Default,
                 new EthereumEcdsa(specProvider.ChainId, _logManager), specProvider, new TxPoolConfig(), _state, _logManager);
 
-            _ndmBridge = new NdmBlockchainBridge(_txPoolBridge, _bridge, _txPool);
+            _ndmBridge = new NdmBlockchainBridge(_bridge, _bridge, _txPool);
         }
 
         protected TxReceipt DeployContract(byte[] initCode)
@@ -146,7 +145,7 @@ namespace Nethermind.DataMarketplace.Test
             return receipt;
         }
 
-        public class BlockchainBridge : IBlockchainBridge
+        public class BlockchainBridge : IBlockchainBridge, ITxPoolBridge
         {
             private readonly TransactionProcessor _processor;
             private readonly IReleaseSpec _spec;
