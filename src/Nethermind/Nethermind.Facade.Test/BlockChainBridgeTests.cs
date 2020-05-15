@@ -29,7 +29,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Db.Blooms;
-using Nethermind.Db.Blooms;
 using Nethermind.Specs;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
