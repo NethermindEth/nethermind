@@ -38,6 +38,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Db.Blooms;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Logging;
@@ -46,7 +47,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Store.Bloom;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using NUnit.Framework;
@@ -135,7 +135,7 @@ namespace Ethereum.Test.Base
             DifficultyCalculator.Wrapped = new DifficultyCalculator(specProvider);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
 
-            IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider, _logManager);
+            IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
             IStateProvider stateProvider = new StateProvider(stateDb, codeDb, _logManager);
             ITxPool transactionPool = new TxPool(NullTxStorage.Instance, new Timestamper(), ecdsa, specProvider, new TxPoolConfig(), stateProvider, _logManager);
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
@@ -175,7 +175,7 @@ namespace Ethereum.Test.Base
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(
                 blockTree,
                 blockProcessor,
-                new TxSignaturesRecoveryStep(ecdsa, NullTxPool.Instance, _logManager),
+                new TxSignaturesRecoveryStep(specProvider, ecdsa, NullTxPool.Instance, _logManager),
                 _logManager,
                 false);
 
