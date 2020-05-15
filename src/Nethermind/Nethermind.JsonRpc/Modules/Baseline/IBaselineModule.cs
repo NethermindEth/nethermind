@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.JsonRpc.Modules.Baseline
 {
@@ -23,7 +24,7 @@ namespace Nethermind.JsonRpc.Modules.Baseline
     {
         ResultWrapper<string> baseline_addLeaf();
         ResultWrapper<string> baseline_addLeaves();
-        ResultWrapper<string> baseline_deploy();
+        ResultWrapper<Keccak> baseline_deploy(Address address);
         ResultWrapper<string> baseline_getSiblings();
     }
 }

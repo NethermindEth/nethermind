@@ -35,6 +35,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Subsystems;
+using Nethermind.Baseline.Config;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -65,6 +66,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             IInitConfig initConfig = _context.Config<IInitConfig>();
             INdmConfig ndmConfig = _context.Config<INdmConfig>();
             IJsonRpcConfig rpcConfig = _context.Config<IJsonRpcConfig>();
+            IBaselineConfig baselineConfig = _context.Config<IBaselineConfig>();
             INetworkConfig networkConfig = _context.Config<INetworkConfig>();
             if (ndmConfig.Enabled && !(_context.NdmInitializer is null) && ndmConfig.ProxyEnabled)
             {
@@ -97,6 +99,12 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             AdminModule adminModule = new AdminModule(_context.BlockTree, networkConfig, _context.PeerManager, _context.StaticNodesManager, _context.Enode, initConfig.BaseDbPath);
             _context.RpcModuleProvider.Register(new SingletonModulePool<IAdminModule>(adminModule, true));
+
+            if (baselineConfig.Enabled)
+            {
+                _context.RpcModuleProvider.Register(new SingletonModulePool<IBaselineModule>(new BaselineModule(_context.BlockchainBridge, _context.LogManager), true));
+                if (logger?.IsInfo ?? false) _logger!.Info($"Baseline RPC Module has been enabled");
+            }
 
             TxPoolModule txPoolModule = new TxPoolModule(_context.BlockTree, _context.TxPoolInfoProvider, _context.LogManager);
             _context.RpcModuleProvider.Register(new SingletonModulePool<ITxPoolModule>(txPoolModule, true));
