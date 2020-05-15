@@ -34,14 +34,12 @@ namespace Nethermind.Blockchain.Test
     public class TransactionFilterTests
     {
         private IEthereumEcdsa _ethereumEcdsa;
-        private ISpecProvider _specProvider;
         private ITxFilter _filter;
 
         [SetUp]
         public void Setup()
         {
-            _specProvider = RopstenSpecProvider.Instance;
-            _ethereumEcdsa = new EthereumEcdsa(_specProvider, LimboLogs.Instance);
+            _ethereumEcdsa = new EthereumEcdsa(ChainId.Ropsten, LimboLogs.Instance);
         }
 
         [Test]
@@ -97,7 +95,7 @@ namespace Nethermind.Blockchain.Test
                 .WithData(data)
                 .To(to)
                 .DeliveredBy(privateKey.PublicKey)
-                .SignedAndResolved(_ethereumEcdsa, privateKey, 1)
+                .SignedAndResolved(_ethereumEcdsa, privateKey)
                 .TestObject;
     }
 }

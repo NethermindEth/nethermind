@@ -28,7 +28,6 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Db.Blooms;
-using Nethermind.Db.Blooms;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using Nethermind.Wallet;

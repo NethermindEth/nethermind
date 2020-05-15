@@ -35,20 +35,17 @@ namespace Nethermind.Crypto
         public static readonly BigInteger LowSTransform = BigInteger.Parse("00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141", NumberStyles.HexNumber);
 
         private readonly int _chainIdValue;
-        private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
 
-        public EthereumEcdsa(ISpecProvider specProvider, ILogManager logManager)
+        public EthereumEcdsa(int chainId, ILogManager logManager)
         {
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _chainIdValue = specProvider.ChainId;
+            _chainIdValue = chainId;
         }
 
-        public void Sign(PrivateKey privateKey, Transaction tx, long blockNumber)
+        public void Sign(PrivateKey privateKey, Transaction tx, bool isEip155Enabled)
         {
             if(_logger.IsDebug) _logger.Debug($"Signing transaction {tx.SenderAddress} -> {tx.To} ({tx.Value}) with data {tx.Data}");
-            bool isEip155Enabled = _specProvider.GetSpec(blockNumber).IsEip155Enabled;
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue).Bytes);
             tx.Signature = Sign(privateKey, hash);
             if (isEip155Enabled)
@@ -59,17 +56,29 @@ namespace Nethermind.Crypto
             if(_logger.IsDebug) _logger.Debug($"Transaction {tx.SenderAddress} -> {tx.To} ({tx.Value}) signed");
         }
 
-        public bool Verify(Address sender, Transaction tx, long blockNumber)
+        
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="tx"></param>
+        /// <param name="isEip155Enabled">Use <value>true</value> if you are not sure.</param>
+        /// <returns></returns>
+        public bool Verify(Address sender, Transaction tx, bool isEip155Enabled)
         {
-            bool isEip155Enabled = _specProvider.GetSpec(blockNumber).IsEip155Enabled;
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue).Bytes);
             Address recovered = RecoverAddress(tx.Signature, hash);
             return recovered.Equals(sender);
         }
-
-        public Address RecoverAddress(Transaction tx, long blockNumber)
+        
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="tx"></param>
+        /// <param name="isEip155Enabled">Use <value>true</value> if you are not sure.</param>
+        /// <returns></returns>
+        public Address RecoverAddress(Transaction tx, bool isEip155Enabled)
         {
-            bool isEip155Enabled = _specProvider.GetSpec(blockNumber).IsEip155Enabled;
             bool applyEip155 = isEip155Enabled && (tx.Signature.V == _chainIdValue * 2 + 35 || tx.Signature.V == _chainIdValue * 2 + 36);
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, applyEip155, _chainIdValue).Bytes);
             return RecoverAddress(tx.Signature, hash);

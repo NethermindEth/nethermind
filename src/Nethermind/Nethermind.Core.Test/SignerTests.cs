@@ -46,7 +46,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Sign_and_recover()
         {
-            EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(OlympicSpecProvider.Instance, LimboLogs.Instance);
+            EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(ChainId.Olympic, LimboLogs.Instance);
 
             Keccak message = Keccak.Compute("Test message");
             PrivateKey privateKey = Build.A.PrivateKey.TestObject;

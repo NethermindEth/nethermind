@@ -17,6 +17,7 @@
 using System;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Specs;
@@ -93,7 +94,7 @@ namespace Nethermind.Network.Benchmarks
             }
         }
         
-        private readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(RopstenSpecProvider.Instance, LimboLogs.Instance); // TODO: separate general crypto signer from Ethereum transaction signing
+        private readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(ChainId.Ropsten, LimboLogs.Instance); // TODO: separate general crypto signer from Ethereum transaction signing
 
         private IMessageSerializationService _messageSerializationService;
 

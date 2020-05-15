@@ -135,7 +135,7 @@ namespace Ethereum.Test.Base
             DifficultyCalculator.Wrapped = new DifficultyCalculator(specProvider);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
 
-            IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider, _logManager);
+            IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
             IStateProvider stateProvider = new StateProvider(stateDb, codeDb, _logManager);
             ITxPool transactionPool = new TxPool(NullTxStorage.Instance, new Timestamper(), ecdsa, specProvider, new TxPoolConfig(), stateProvider, _logManager);
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
@@ -175,7 +175,7 @@ namespace Ethereum.Test.Base
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(
                 blockTree,
                 blockProcessor,
-                new TxSignaturesRecoveryStep(ecdsa, NullTxPool.Instance, _logManager),
+                new TxSignaturesRecoveryStep(specProvider, ecdsa, NullTxPool.Instance, _logManager),
                 _logManager,
                 false);
 

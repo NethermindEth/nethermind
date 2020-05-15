@@ -167,8 +167,8 @@ namespace Nethermind.Synchronization.Test
                 transaction.GasLimit = 21000;
                 transaction.GasPrice = 20.GWei();
                 transaction.Hash = transaction.CalculateHash();
-                _originPeer.Ecdsa.Sign(TestItem.PrivateKeyA, transaction, i);
-                _originPeer.TxPool.AddTransaction(transaction, i, TxHandlingOptions.None);
+                _originPeer.Ecdsa.Sign(TestItem.PrivateKeyA, transaction);
+                _originPeer.TxPool.AddTransaction(transaction, TxHandlingOptions.None);
                 if (!resetEvent.WaitOne(1000))
                 {
                     throw new Exception($"Failed to produce block {i + 1}");
@@ -263,7 +263,7 @@ namespace Nethermind.Synchronization.Test
             var storageProvider = new StorageProvider(stateDb, stateProvider, logManager);
             var receiptStorage = new InMemoryReceiptStorage();
 
-            var ecdsa = new EthereumEcdsa(specProvider, logManager);
+            var ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
             var txPool = new TxPool.TxPool(new InMemoryTxStorage(), Timestamper.Default, ecdsa, specProvider, new TxPoolConfig(), stateProvider, logManager);
             var tree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, txPool, NullBloomStorage.Instance, logManager);
             var blockhashProvider = new BlockhashProvider(tree, LimboLogs.Instance);
@@ -281,7 +281,7 @@ namespace Nethermind.Synchronization.Test
             var txProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, txProcessor, stateDb, codeDb, stateProvider, storageProvider, txPool, receiptStorage, logManager);
 
-            var step = new TxSignaturesRecoveryStep(ecdsa, txPool, logManager);
+            var step = new TxSignaturesRecoveryStep(specProvider, ecdsa, txPool, logManager);
             var processor = new BlockchainProcessor(tree, blockProcessor, step, logManager, true);
 
             var nodeStatsManager = new NodeStatsManager(new StatsConfig(), logManager);
