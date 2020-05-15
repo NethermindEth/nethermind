@@ -216,12 +216,14 @@ namespace Nethermind.Network.Discovery
             if (message.DestinationAddress == null || message.SourceAddress == null || message.FarAddress == null)
             {
                 if (_logger.IsDebug) _logger.Debug($"Received a ping message with empty address, message: {message}");
+                Console.WriteLine($"Received a ping message with empty address, message: {message}");
                 return false;
             }
 
             if (!Bytes.AreEqual(_nodeTable.MasterNode.Address.Address.MapToIPv6().GetAddressBytes(), message.DestinationAddress?.Address.MapToIPv6().GetAddressBytes()))
             {
                 if (_logger.IsDebug) _logger.Debug($"Received a message with incorrect destination address, message: {message}");
+                Console.WriteLine($"Received a message with incorrect destination address, message: {message}");
                 return false;
             }
             
