@@ -213,7 +213,7 @@ namespace Nethermind.Network.Discovery
 
         private bool ValidatePingAddress(PingMessage message)
         {
-            if (message.DestinationAddress == null || message.SourceAddress == null || message.FarAddress == null)
+            if (message.DestinationAddress == null || message.FarAddress == null)
             {
                 if (_logger.IsDebug) _logger.Debug($"Received a ping message with empty address, message: {message}");
                 Console.WriteLine($"Received a ping message with empty address, message: {message}");
