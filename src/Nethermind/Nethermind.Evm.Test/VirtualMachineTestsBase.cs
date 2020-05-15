@@ -74,7 +74,7 @@ namespace Nethermind.Evm.Test
             _stateDb = UseBeamSync ? beamSyncDb : new StateDb();
             TestState = new StateProvider(_stateDb, codeDb, logger);
             Storage = new StorageProvider(_stateDb, TestState, logger);
-            _ethereumEcdsa = new EthereumEcdsa(SpecProvider, logger);
+            _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logger);
             IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;
             Machine = new VirtualMachine(TestState, Storage, blockhashProvider, SpecProvider, logger);
             _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, logger);
@@ -127,7 +127,7 @@ namespace Nethermind.Evm.Test
                 .WithGasLimit(gasLimit)
                 .WithGasPrice(1)
                 .To(senderRecipientAndMiner.Recipient)
-                .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey, blockNumber)
+                .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
                 .TestObject;
 
             Block block = BuildBlock(blockNumber, senderRecipientAndMiner, transaction);
@@ -150,7 +150,7 @@ namespace Nethermind.Evm.Test
                 .WithData(input)
                 .WithValue(value)
                 .To(senderRecipientAndMiner.Recipient)
-                .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey, blockNumber)
+                .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
                 .TestObject;
 
             Block block = BuildBlock(blockNumber, senderRecipientAndMiner);
@@ -169,7 +169,7 @@ namespace Nethermind.Evm.Test
                 .WithGasLimit(gasLimit)
                 .WithGasPrice(1)
                 .WithInit(code)
-                .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey, blockNumber)
+                .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
                 .TestObject;
 
             Block block = BuildBlock(blockNumber, senderRecipientAndMiner);

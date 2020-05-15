@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         private void Initialize(bool auRa = false)
         {
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
-            IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider, LimboLogs.Instance);
+            IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
             ITxStorage txStorage = new InMemoryTxStorage();
             _stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
@@ -98,9 +98,9 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, blockProcessor, txPool, LimboLogs.Instance);
-            _blockchainBridge = new BlockchainBridge(stateReader, _stateProvider, storageProvider, blockTree, txPool, receiptStorage, filterStore, filterManager, NullWallet.Instance, txProcessor, ethereumEcdsa, NullBloomStorage.Instance, LimboLogs.Instance, false);
+            _blockchainBridge = new BlockchainBridge(stateReader, _stateProvider, storageProvider, blockTree, txPool, receiptStorage, filterStore, filterManager, NullWallet.Instance, txProcessor, ethereumEcdsa, NullBloomStorage.Instance, specProvider, LimboLogs.Instance, false);
 
-            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(ethereumEcdsa, txPool, LimboLogs.Instance), LimboLogs.Instance, true);
+            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(specProvider, ethereumEcdsa, txPool, LimboLogs.Instance), LimboLogs.Instance, true);
             blockchainProcessor.Start();
 
             ManualResetEventSlim resetEvent = new ManualResetEventSlim(false);

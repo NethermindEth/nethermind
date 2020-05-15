@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         public void Setup()
         {
             _specProvider = RopstenSpecProvider.Instance;
-            _ethereumEcdsa = new EthereumEcdsa(_specProvider, LimboLogs.Instance);
+            _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
         }
 
         [Test]
@@ -81,7 +81,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         }
 
         private Transaction GetSignedTransaction(Address to = null)
-            => Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).TestObject;
+            => Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
         private static TxReceipt GetReceipt(Transaction transaction, Block block)
             => Build.A.Receipt.WithState(TestItem.KeccakB)

@@ -20,6 +20,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -29,6 +30,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Db.Blooms;
 using Nethermind.Db.Blooms;
+using Nethermind.Specs;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -38,6 +40,7 @@ namespace Nethermind.Facade.Test
 {
     public class BlockchainBridgeTests
     {
+        private TxPoolBridge _txPoolBridge;
         private BlockchainBridge _blockchainBridge;
         private IStateReader _stateReader;
         private IStateProvider _stateProvider;
@@ -51,7 +54,7 @@ namespace Nethermind.Facade.Test
         private ITransactionProcessor _transactionProcessor;
         private IEthereumEcdsa _ethereumEcdsa;
         private IBloomStorage _bloomStorage;
-        private IReceiptsRecovery _receiptsRecovery;
+        private ISpecProvider _specProvider;
 
         [SetUp]
         public void SetUp()
@@ -68,7 +71,7 @@ namespace Nethermind.Facade.Test
             _transactionProcessor = Substitute.For<ITransactionProcessor>();
             _ethereumEcdsa = Substitute.For<IEthereumEcdsa>();
             _bloomStorage = Substitute.For<IBloomStorage>();
-            _receiptsRecovery = Substitute.For<IReceiptsRecovery>();
+            _specProvider = MainnetSpecProvider.Instance;
             _blockchainBridge = new BlockchainBridge(
                 _stateReader, 
                 _stateProvider,
@@ -82,8 +85,11 @@ namespace Nethermind.Facade.Test
                 _transactionProcessor,
                 _ethereumEcdsa,
                 _bloomStorage,
+                _specProvider,
                 LimboLogs.Instance,
                 false);
+            
+            _txPoolBridge = new TxPoolBridge(_txPool, _wallet, ChainId.Mainnet);
         }
 
         [Test]
@@ -130,7 +136,7 @@ namespace Nethermind.Facade.Test
         {
             var transactions = Enumerable.Range(0, 10).Select(i => Build.A.Transaction.WithNonce((UInt256) i).TestObject).ToArray();
             _txPool.GetPendingTransactions().Returns(transactions);
-            _blockchainBridge.GetPendingTransactions().Should().BeEquivalentTo(transactions);
+            _txPoolBridge.GetPendingTransactions().Should().BeEquivalentTo(transactions);
         }
         
         [Test]

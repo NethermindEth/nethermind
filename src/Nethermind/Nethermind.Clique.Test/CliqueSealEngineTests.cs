@@ -82,7 +82,7 @@ namespace Nethermind.Clique.Test
             MineBlock(_blockTree, block3);
             MineBlock(_blockTree, block4);           
             MineBlock(_blockTree, block5);
-            IEthereumEcdsa ecdsa = new EthereumEcdsa(RinkebySpecProvider.Instance, LimboLogs.Instance);
+            IEthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Rinkeby, LimboLogs.Instance);
             // Init snapshot db
             IDb db = new MemDb();
             CliqueConfig config = new CliqueConfig();
