@@ -66,6 +66,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
         public void ProcessPingMessage(PingMessage discoveryMessage)
         {
+            Console.WriteLine($"Processing ping message from {discoveryMessage.SourceAddress}");
             _receivedPing = true;
             SendPong(discoveryMessage);
 
@@ -177,14 +178,23 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
         public void SendPong(PingMessage discoveryMessage)
         {
-            PongMessage msg = _discoveryMessageFactory.CreateOutgoingMessage<PongMessage>(ManagedNode);
-            msg.PingMdc = discoveryMessage.Mdc;
-            _discoveryManager.SendMessage(msg);
-            NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPongOut);
-            _sentPong = true;
-            if (IsBonded)
+            try
             {
-                UpdateState(NodeLifecycleState.Active);
+                PongMessage msg = _discoveryMessageFactory.CreateOutgoingMessage<PongMessage>(ManagedNode);
+                msg.PingMdc = discoveryMessage.Mdc;
+
+                Console.WriteLine($"Created pong message for {discoveryMessage.SourceAddress}");
+                _discoveryManager.SendMessage(msg);
+                NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPongOut);
+                _sentPong = true;
+                if (IsBonded)
+                {
+                    UpdateState(NodeLifecycleState.Active);
+                }
+            }
+            catch(Exception ex)
+            {
+                Console.WriteLine("Exception occured while sending pong", ex);
             }
         }
 
