@@ -36,6 +36,7 @@ namespace Nethermind.JsonRpc.Test.Modules
     {
         public IEthModule EthModule { get; private set; }
         public IBlockchainBridge Bridge { get; private set; }
+        public ITxPoolBridge TxPoolBridge { get; private set; }
 
         protected TestRpcBlockchain(SealEngineType sealEngineType)
             : base(sealEngineType)
@@ -62,6 +63,12 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
             
+            public Builder WithTxPoolBridge(ITxPoolBridge txPoolBridge)
+            {
+                _blockchain.TxPoolBridge = txPoolBridge;
+                return this;
+            }
+            
             public async Task<TestRpcBlockchain> Build()
             {
                 return (TestRpcBlockchain)(await _blockchain.Build());
@@ -74,7 +81,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
             Bridge ??= new BlockchainBridge(StateReader, State, Storage, BlockTree, TxPool, ReceiptStorage, filterStore, filterManager, NullWallet.Instance, TxProcessor, EthereumEcdsa, NullBloomStorage.Instance, LimboLogs.Instance, false);
-            EthModule = new EthModule(new JsonRpcConfig(), Bridge, LimboLogs.Instance);
+            TxPoolBridge ??= new TxPoolBridge(TxPool, NullWallet.Instance);
+            
+            EthModule = new EthModule(new JsonRpcConfig(), Bridge, TxPoolBridge, LimboLogs.Instance);
             return this;
         }
 

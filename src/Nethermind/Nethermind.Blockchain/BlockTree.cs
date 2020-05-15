@@ -932,6 +932,7 @@ namespace Nethermind.Blockchain
                 _txPool.RemoveTransaction(block.Transactions[i].Hash, block.Number);
             }
 
+            bool isEip155Enabled = _specProvider.GetSpec(block.Number).IsEip155Enabled;
             // the hash will only be the same during perf test runs / modified DB states
             if (hashOfThePreviousMainBlock != null && hashOfThePreviousMainBlock != block.Hash)
             {
@@ -939,7 +940,7 @@ namespace Nethermind.Blockchain
                 for (int i = 0; i < previous?.Transactions.Length; i++)
                 {
                     Transaction tx = previous.Transactions[i];
-                    _txPool.AddTransaction(tx, previous.Number, TxHandlingOptions.None);
+                    _txPool.AddTransaction(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
                 }
             }
 

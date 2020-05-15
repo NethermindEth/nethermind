@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Security;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -25,6 +24,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
@@ -48,6 +48,7 @@ namespace Nethermind.Facade
         private readonly IFilterStore _filterStore;
         private readonly IStateReader _stateReader;
         private readonly IEthereumEcdsa _ecdsa;
+        private readonly ISpecProvider _specProvider;
         private readonly IFilterManager _filterManager;
         private readonly IStateProvider _stateProvider;
         private readonly IReceiptFinder _receiptFinder;
@@ -69,6 +70,7 @@ namespace Nethermind.Facade
             ITransactionProcessor transactionProcessor,
             IEthereumEcdsa ecdsa,
             IBloomStorage bloomStorage,
+            ISpecProvider specProvider,
             ILogManager logManager,
             bool isMining,
             int findLogBlockDepthLimit = 1000)
@@ -84,6 +86,7 @@ namespace Nethermind.Facade
             _wallet = wallet ?? throw new ArgumentException(nameof(wallet));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentException(nameof(transactionProcessor));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             IsMining = isMining;
 
             _logFinder = new LogFinder(_blockTree, _receiptFinder, bloomStorage, logManager, new ReceiptsRecovery(), findLogBlockDepthLimit);
@@ -109,7 +112,7 @@ namespace Nethermind.Facade
             get
             {
                 bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
-                
+
                 /*
                  * when we are in the process of synchronising state
                  * head remains Genesis block
@@ -122,6 +125,7 @@ namespace Nethermind.Facade
         public long BestKnown => _blockTree.BestKnownNumber;
 
         public bool IsSyncing => _blockTree.BestSuggestedHeader.Hash != _blockTree.Head.Hash;
+        
         public bool IsMining { get; }
 
         public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak txHash)
@@ -140,47 +144,6 @@ namespace Nethermind.Facade
             }
 
             return (null, null);
-        }
-
-        public Transaction[] GetPendingTransactions() => _txPool.GetPendingTransactions();
-
-        public Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
-        {
-            _stateProvider.StateRoot = _blockTree.Head.StateRoot;
-            try
-            {
-                if (tx.Signature == null)
-                {
-                    if (_wallet.IsUnlocked(tx.SenderAddress))
-                    {
-                        Sign(tx);
-                    }
-                    else
-                    {
-                        throw new SecurityException("Your account is locked. Unlock the account via CLI, personal_unlockAccount or use Trusted Signer.");
-                    }
-                }
-
-                tx.Hash = tx.CalculateHash();
-                tx.Timestamp = _timestamper.EpochSeconds;
-
-                AddTxResult result = _txPool.AddTransaction(tx, _blockTree.Head.Number, txHandlingOptions);
-
-                if (result == AddTxResult.OwnNonceAlreadyUsed && (txHandlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce)
-                {
-                    // below the temporary NDM support - needs some review
-                    tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
-                    Sign(tx);
-                    tx.Hash = tx.CalculateHash();
-                    _txPool.AddTransaction(tx, _blockTree.Head.Number, txHandlingOptions);
-                }
-
-                return tx.Hash;
-            }
-            finally
-            {
-                _stateProvider.Reset();
-            }
         }
 
         public TxReceipt GetReceipt(Keccak txHash)
@@ -350,7 +313,8 @@ namespace Nethermind.Facade
 
         public void RecoverTxSender(Transaction tx, long? blockNumber)
         {
-            tx.SenderAddress = _ecdsa.RecoverAddress(tx, blockNumber ?? _blockTree.BestKnownNumber);
+            bool isEip155Enabled = _specProvider.GetSpec(blockNumber ?? _blockTree.BestKnownNumber).IsEip155Enabled;
+            tx.SenderAddress = _ecdsa.RecoverAddress(tx, isEip155Enabled);
         }
 
         public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot)

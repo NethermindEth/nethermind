@@ -128,8 +128,8 @@ namespace Nethermind.Core.Test.Builders
             {
                 Transaction[] transactions = new[]
                 {
-                    Build.A.Transaction.WithValue(1).WithData(Rlp.Encode(blockIndex).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, blockIndex + 1).TestObject,
-                    Build.A.Transaction.WithValue(2).WithData(Rlp.Encode(blockIndex + 1).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, blockIndex + 1).TestObject
+                    Build.A.Transaction.WithValue(1).WithData(Rlp.Encode(blockIndex).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, _specProvider.GetSpec(blockIndex + 1).IsEip155Enabled).TestObject,
+                    Build.A.Transaction.WithValue(2).WithData(Rlp.Encode(blockIndex + 1).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, _specProvider.GetSpec(blockIndex + 1).IsEip155Enabled).TestObject
                 };
 
                 currentBlock = Build.A.Block
@@ -219,7 +219,7 @@ namespace Nethermind.Core.Test.Builders
         public BlockTreeBuilder WithTransactions(IReceiptStorage receiptStorage, ISpecProvider specProvider, Func<Block, Transaction, IEnumerable<LogEntry>> logsForBlockBuilder = null)
         {
             _specProvider = specProvider;
-            _ecdsa = new EthereumEcdsa(specProvider, LimboLogs.Instance);
+            _ecdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
             _receiptStorage = receiptStorage;
             _logCreationFunction = logsForBlockBuilder;
             return this;

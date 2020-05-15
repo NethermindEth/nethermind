@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -27,6 +26,12 @@ using Block = Nethermind.Core.Block;
 
 namespace Nethermind.Facade
 {
+    public interface ITxPoolBridge
+    {
+        Transaction[] GetPendingTransactions();
+        Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions);
+    }
+    
     public interface IBlockchainBridge : IBlockFinder
     {
         IReadOnlyCollection<Address> GetWalletAccounts();
@@ -38,10 +43,8 @@ namespace Nethermind.Facade
         bool IsMining { get; }
         void RecoverTxSenders(Block block);
         void RecoverTxSender(Transaction tx, long? blockNumber);
-        (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak txHash);
-        Transaction[] GetPendingTransactions();
-        Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions);
         TxReceipt GetReceipt(Keccak txHash);
+        (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak txHash);
         BlockchainBridge.CallOutput Call(BlockHeader blockHeader, Transaction transaction);
         BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx);
         long GetChainId();

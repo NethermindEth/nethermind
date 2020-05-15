@@ -82,7 +82,7 @@ namespace Nethermind.Core.Test.Blockchain
             Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc));
             JsonSerializer = new EthereumJsonSerializer();
             SpecProvider = specProvider ?? MainnetSpecProvider.Instance;
-            EthereumEcdsa = new EthereumEcdsa(SpecProvider, LimboLogs.Instance);
+            EthereumEcdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
             ITxStorage txStorage = new InMemoryTxStorage();
             DbProvider = new MemDbProvider();
             State = new StateProvider(StateDb, CodeDb, LimboLogs.Instance);
@@ -113,7 +113,7 @@ namespace Nethermind.Core.Test.Blockchain
             TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LimboLogs.Instance);
             BlockProcessor = CreateBlockProcessor();
 
-            BlockchainProcessor chainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor, new TxSignaturesRecoveryStep(EthereumEcdsa, TxPool, LimboLogs.Instance), LimboLogs.Instance, true);
+            BlockchainProcessor chainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor, new TxSignaturesRecoveryStep(SpecProvider, EthereumEcdsa, TxPool, LimboLogs.Instance), LimboLogs.Instance, true);
             chainProcessor.Start();
 
             StateReader = new StateReader(StateDb, CodeDb, LimboLogs.Instance);
@@ -163,7 +163,7 @@ namespace Nethermind.Core.Test.Blockchain
         {
             foreach (Transaction transaction in transactions)
             {
-                TxPool.AddTransaction(transaction, BlockTree.Head.Number + 1, TxHandlingOptions.None);    
+                TxPool.AddTransaction(transaction, TxHandlingOptions.None);    
             }
             
             Timestamper.Add(TimeSpan.FromSeconds(1));
@@ -173,7 +173,7 @@ namespace Nethermind.Core.Test.Blockchain
         
         public void AddTransaction(Transaction testObject)
         {
-            TxPool.AddTransaction(testObject, BlockTree.Head.Number + 1, TxHandlingOptions.None);
+            TxPool.AddTransaction(testObject, TxHandlingOptions.None);
         }
 
         public void Dispose()

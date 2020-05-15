@@ -195,8 +195,9 @@ namespace Nethermind.TxPool
             if (_logger.IsTrace) _logger.Trace($"Removed a peer from TX pool: {nodeId}");
         }
 
-        public AddTxResult AddTransaction(Transaction tx, long blockNumber, TxHandlingOptions handlingOptions)
+        public AddTxResult AddTransaction(Transaction tx, TxHandlingOptions handlingOptions)
         {
+            bool isEip155Enabled = (handlingOptions & TxHandlingOptions.PreEip155Signing) == TxHandlingOptions.None;
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             bool isPersistentBroadcast = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == TxHandlingOptions.PersistentBroadcast;
 
@@ -243,7 +244,7 @@ namespace Nethermind.TxPool
              */
             if (tx.SenderAddress == null)
             {
-                tx.SenderAddress = _ecdsa.RecoverAddress(tx, blockNumber);
+                tx.SenderAddress = _ecdsa.RecoverAddress(tx, isEip155Enabled);
                 if (tx.SenderAddress == null)
                 {
                     return AddTxResult.PotentiallyUseless;
@@ -276,7 +277,7 @@ namespace Nethermind.TxPool
             HandleOwnTransaction(tx, isPersistentBroadcast);
 
             NotifySelectedPeers(tx);
-            FilterAndStoreTx(tx, blockNumber);
+            FilterAndStoreTx(tx);
             NewPending?.Invoke(this, new TxEventArgs(tx));
             return AddTxResult.Added;
         }
@@ -468,7 +469,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        private void FilterAndStoreTx(Transaction tx, long blockNumber)
+        private void FilterAndStoreTx(Transaction tx)
         {
             var filters = _filters.Values;
             if (filters.Any(filter => !filter.IsValid(tx)))
@@ -476,7 +477,7 @@ namespace Nethermind.TxPool
                 return;
             }
 
-            _txStorage.Add(tx, blockNumber);
+            _txStorage.Add(tx);
             if (_logger.IsTrace) _logger.Trace($"Added a transaction: {tx.Hash}");
         }
 

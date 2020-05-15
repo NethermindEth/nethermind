@@ -47,7 +47,7 @@ namespace Nethermind.Evm
             _virtualMachine = virtualMachine ?? throw new ArgumentNullException(nameof(virtualMachine));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
-            _ecdsa = new EthereumEcdsa(specProvider, logManager);
+            _ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
         }
 
         public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer)
@@ -126,7 +126,8 @@ namespace Nethermind.Evm
                 // hacky fix for the potential recovery issue
                 if (transaction.Signature != null)
                 {
-                    transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, block.Number);
+                    bool eip155Enabled = _specProvider.GetSpec(block.Number).IsEip155Enabled;
+                    transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, eip155Enabled);
                 }
 
                 if (sender != transaction.SenderAddress)

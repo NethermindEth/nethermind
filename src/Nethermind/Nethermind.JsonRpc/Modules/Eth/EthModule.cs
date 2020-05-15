@@ -44,6 +44,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private readonly IJsonRpcConfig _rpcConfig;
         private readonly IBlockchainBridge _blockchainBridge;
+        private readonly ITxPoolBridge _txPoolBridge;
 
         private readonly ILogger _logger;
 
@@ -54,11 +55,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return rootCheckVisitor.HasRoot;
         }
         
-        public EthModule(IJsonRpcConfig rpcConfig, IBlockchainBridge blockchainBridge, ILogManager logManager)
+        public EthModule(IJsonRpcConfig rpcConfig, IBlockchainBridge blockchainBridge, ITxPoolBridge txPoolBridge, ILogManager logManager)
         {
             _logger = logManager.GetClassLogger();
             _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
             _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
+            _txPoolBridge = txPoolBridge ?? throw new ArgumentNullException(nameof(txPoolBridge));
         }
 
         public ResultWrapper<string> eth_protocolVersion()
@@ -303,7 +305,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             try
             {
-                Keccak txHash = _blockchainBridge.SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+                Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
                 return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
             }
             catch (SecurityException e)
@@ -414,7 +416,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()
         {
-            var transactions = _blockchainBridge.GetPendingTransactions();
+            var transactions = _txPoolBridge.GetPendingTransactions();
             var transactionsModels = new TransactionForRpc[transactions.Length];
             for (int i = 0; i < transactions.Length; i++)
             {
