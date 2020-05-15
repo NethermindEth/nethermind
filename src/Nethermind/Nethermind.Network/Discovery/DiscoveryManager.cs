@@ -72,13 +72,14 @@ namespace Nethermind.Network.Discovery
             try
             {
                 if (_logger.IsTrace) _logger.Trace($"Received msg: {message}");
-                Console.WriteLine($"Recieved {message.MessageType}");
+                Console.WriteLine($"Recieved {message.MessageType}  -> DiscoveryManager.OnIncomingMessage()");
                 MessageType msgType = message.MessageType;
 
                 Node node = new Node(message.FarPublicKey, message.FarAddress);
                 INodeLifecycleManager nodeManager = GetNodeLifecycleManager(node);
                 if (nodeManager == null)
                 {
+                    Console.WriteLine("nodeManager is null");
                     return;
                 }
 
@@ -95,6 +96,10 @@ namespace Nethermind.Network.Discovery
                         if (ValidatePingAddress(ping))
                         {
                             nodeManager.ProcessPingMessage(ping);
+                        }
+                        else
+                        {
+                            Console.WriteLine($"Validation of {ping} went wrong");
                         }
                         break;
                     case MessageType.FindNode:

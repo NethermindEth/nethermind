@@ -66,7 +66,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
         public void ProcessPingMessage(PingMessage discoveryMessage)
         {
-            Console.WriteLine($"Processing ping message from {discoveryMessage.SourceAddress}");
+            Console.WriteLine($"Processing ping message from {discoveryMessage.SourceAddress} -> NodeLifecycleManager.ProcessPingMessage()");
             _receivedPing = true;
             SendPong(discoveryMessage);
 
