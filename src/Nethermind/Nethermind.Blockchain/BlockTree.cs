@@ -931,12 +931,12 @@ namespace Nethermind.Blockchain
             {
                 _txPool.RemoveTransaction(block.Transactions[i].Hash, block.Number);
             }
-
-            bool isEip155Enabled = _specProvider.GetSpec(block.Number).IsEip155Enabled;
+            
             // the hash will only be the same during perf test runs / modified DB states
             if (hashOfThePreviousMainBlock != null && hashOfThePreviousMainBlock != block.Hash)
             {
                 Block previous = FindBlock(hashOfThePreviousMainBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                bool isEip155Enabled = _specProvider.GetSpec(previous.Number).IsEip155Enabled;
                 for (int i = 0; i < previous?.Transactions.Length; i++)
                 {
                     Transaction tx = previous.Transactions[i];

@@ -26,6 +26,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Db.Blooms;
+using Nethermind.Specs;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
@@ -77,7 +78,8 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         protected override async Task<TestBlockchain> Build(ISpecProvider specProvider = null)
         {
-            await base.Build();
+            specProvider ??= MainnetSpecProvider.Instance;
+            await base.Build(specProvider);
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
             Bridge ??= new BlockchainBridge(StateReader, State, Storage, BlockTree, TxPool, ReceiptStorage, filterStore, filterManager, NullWallet.Instance, TxProcessor, EthereumEcdsa, NullBloomStorage.Instance, specProvider, LimboLogs.Instance, false);
