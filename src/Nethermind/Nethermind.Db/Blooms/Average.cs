@@ -13,27 +13,38 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
 using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Consensus.Transactions;
-using Nethermind.Core;
 
-namespace Nethermind.Consensus.AuRa.Transactions
+namespace Nethermind.Db.Blooms
 {
-    public class TxFilterTxSource : ITxSource
+    public class Average
     {
-        private readonly ITxSource _innerSource;
-        private readonly ITxPermissionFilter _txPermissionFilter;
-
-        public TxFilterTxSource(ITxSource innerSource, ITxPermissionFilter txPermissionFilter)
+        public decimal Value
         {
-            _innerSource = innerSource;
-            _txPermissionFilter = txPermissionFilter;
+            get
+            {
+                decimal sum = 0;
+                uint count = 0;
+                
+                foreach (var bucket in Buckets)
+                {
+                    sum += bucket.Key * bucket.Value;
+                    count += bucket.Value;
+                }
+
+                return count == 0 ? 0 : sum / count;
+            }
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) => 
-            _innerSource.GetTransactions(parent, gasLimit).Where(tx => _txPermissionFilter.IsAllowed(tx, parent));
+        public readonly IDictionary<uint, uint> Buckets = new Dictionary<uint, uint>();
+        
+        public int Count { get; private set; }
+
+        public void Increment(uint value)
+        {
+            Buckets[value] = Buckets.TryGetValue(value, out var count) ? count + 1 : 1;
+            Count++;
+        }
     }
 }

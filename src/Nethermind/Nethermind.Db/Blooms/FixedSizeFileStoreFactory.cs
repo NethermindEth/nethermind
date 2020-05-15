@@ -13,27 +13,26 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
-using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Consensus.Transactions;
-using Nethermind.Core;
+using System.IO;
+using Nethermind.Logging;
 
-namespace Nethermind.Consensus.AuRa.Transactions
+namespace Nethermind.Db.Blooms
 {
-    public class TxFilterTxSource : ITxSource
+    public class FixedSizeFileStoreFactory : IFileStoreFactory
     {
-        private readonly ITxSource _innerSource;
-        private readonly ITxPermissionFilter _txPermissionFilter;
+        private readonly string _basePath;
+        private readonly string _extension;
+        private readonly int _elementSize;
 
-        public TxFilterTxSource(ITxSource innerSource, ITxPermissionFilter txPermissionFilter)
+        public FixedSizeFileStoreFactory(string basePath, string extension, int elementSize)
         {
-            _innerSource = innerSource;
-            _txPermissionFilter = txPermissionFilter;
+            _basePath = string.Empty.GetApplicationResourcePath(basePath);
+            _extension = extension;
+            _elementSize = elementSize;
+            Directory.CreateDirectory(_basePath);
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) => 
-            _innerSource.GetTransactions(parent, gasLimit).Where(tx => _txPermissionFilter.IsAllowed(tx, parent));
+        public IFileStore Create(string name) => new FixedSizeFileStore(Path.Combine(_basePath, name + "." + _extension), _elementSize);
     }
 }

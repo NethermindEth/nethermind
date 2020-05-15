@@ -13,27 +13,13 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
 using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Consensus.Transactions;
-using Nethermind.Core;
 
-namespace Nethermind.Consensus.AuRa.Transactions
+namespace Nethermind.Db.Blooms
 {
-    public class TxFilterTxSource : ITxSource
+    public interface IBloomEnumeration : IEnumerable<Core.Bloom>
     {
-        private readonly ITxSource _innerSource;
-        private readonly ITxPermissionFilter _txPermissionFilter;
-
-        public TxFilterTxSource(ITxSource innerSource, ITxPermissionFilter txPermissionFilter)
-        {
-            _innerSource = innerSource;
-            _txPermissionFilter = txPermissionFilter;
-        }
-
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) => 
-            _innerSource.GetTransactions(parent, gasLimit).Where(tx => _txPermissionFilter.IsAllowed(tx, parent));
+        bool TryGetBlockNumber(out long blockNumber);
     }
 }
