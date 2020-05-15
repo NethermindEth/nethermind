@@ -99,7 +99,7 @@ namespace Nethermind.Network.Discovery
                         }
                         else
                         {
-                            Console.WriteLine($"Validation of {ping} went wrong");
+                            Console.WriteLine($"Validation of ping message went wrong");
                         }
                         break;
                     case MessageType.FindNode:
