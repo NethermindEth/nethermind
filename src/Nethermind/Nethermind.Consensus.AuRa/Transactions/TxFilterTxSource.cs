@@ -17,6 +17,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.AuRa.Transactions

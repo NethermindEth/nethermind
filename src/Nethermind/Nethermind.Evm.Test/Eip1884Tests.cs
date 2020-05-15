@@ -22,7 +22,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.State;
-using Nethermind.Store;
+using Nethermind.Db.Blooms;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test

@@ -31,7 +31,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.State.Repositories;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Timer = System.Timers.Timer;

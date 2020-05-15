@@ -15,10 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Jint.Native;
-using Jint.Runtime;
-using Nethermind.Core.Extensions;
-using Nethermind.Evm.Tracing;
-using Nethermind.JsonRpc.Modules.DebugModule;
 
 namespace Nethermind.Cli.Modules
 {

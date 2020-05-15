@@ -43,7 +43,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Store;
+using Nethermind.Db.Blooms;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;

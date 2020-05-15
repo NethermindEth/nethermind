@@ -37,7 +37,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using NUnit.Framework;

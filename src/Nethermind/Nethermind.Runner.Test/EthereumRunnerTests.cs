@@ -40,7 +40,7 @@ using Nethermind.PubSub.Kafka;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Serialization.Json;
 using Nethermind.Stats;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using Nethermind.WebSockets;
 using NSubstitute;

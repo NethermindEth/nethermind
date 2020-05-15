@@ -39,7 +39,7 @@ using Nethermind.Specs;
 using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using Nethermind.Stats.Model;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;

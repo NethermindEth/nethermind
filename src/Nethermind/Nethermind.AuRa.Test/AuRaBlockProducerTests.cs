@@ -24,6 +24,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -31,12 +32,9 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Store;
 using NSubstitute;
 using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
-using NUnit.Framework.Interfaces;
-using NUnit.Framework.Internal;
 
 namespace Nethermind.AuRa.Test
 {

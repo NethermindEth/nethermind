@@ -35,7 +35,7 @@ using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.Synchronization.BeamSync;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;

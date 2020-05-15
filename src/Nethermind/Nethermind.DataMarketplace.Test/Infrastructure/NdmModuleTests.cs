@@ -39,7 +39,7 @@ using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Serialization.Json;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;

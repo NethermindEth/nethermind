@@ -22,7 +22,7 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.TxPool
 {
-    public interface ITxPool : ITxSource
+    public interface ITxPool
     {
         Transaction[] GetPendingTransactions();
         Transaction[] GetOwnPendingTransactions();
@@ -35,6 +35,5 @@ namespace Nethermind.TxPool
         UInt256 ReserveOwnTransactionNonce(Address address);
         event EventHandler<TxEventArgs> NewPending;
         event EventHandler<TxEventArgs> RemovedPending;
-        IEnumerable<Transaction> ITxSource.GetTransactions(BlockHeader parent, long gasLimit) => GetPendingTransactions();
     }
 }

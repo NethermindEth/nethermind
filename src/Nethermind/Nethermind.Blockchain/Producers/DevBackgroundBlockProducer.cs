@@ -18,6 +18,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;

@@ -25,7 +25,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;

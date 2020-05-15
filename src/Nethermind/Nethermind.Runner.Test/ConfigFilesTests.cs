@@ -29,7 +29,7 @@ using Nethermind.JsonRpc;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.PubSub.Kafka;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using NUnit.Framework;
 

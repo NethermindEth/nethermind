@@ -31,7 +31,7 @@ using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store;
+using Nethermind.Db.Blooms;
 using Nethermind.Trie;
 using Nethermind.Wallet;
 using NUnit.Framework;
