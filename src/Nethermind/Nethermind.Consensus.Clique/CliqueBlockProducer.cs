@@ -34,7 +34,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Proofs;
-using Nethermind.Store;
+using Nethermind.Db.Blooms;
 
 namespace Nethermind.Consensus.Clique
 {

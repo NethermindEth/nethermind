@@ -32,7 +32,7 @@ using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.State;
-using Nethermind.Store;
+using Nethermind.Db.Blooms;
 using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Ethereum.Steps

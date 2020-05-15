@@ -28,7 +28,6 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Store;
 using NSubstitute;
 using NUnit.Framework;
 

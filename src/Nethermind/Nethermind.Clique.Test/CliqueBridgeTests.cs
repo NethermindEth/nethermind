@@ -26,7 +26,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Store;
+using Nethermind.Db.Blooms;
 using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;

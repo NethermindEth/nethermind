@@ -18,7 +18,7 @@ using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Store;
+using Nethermind.Db.Blooms;
 using Nethermind.Trie;
 
 namespace Nethermind.Benchmarks.Store

@@ -36,7 +36,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
-using Nethermind.Store;
 using Newtonsoft.Json;
 using NSubstitute;
 using NUnit.Framework;

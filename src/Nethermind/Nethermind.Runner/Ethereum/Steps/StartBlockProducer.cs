@@ -34,7 +34,7 @@ using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Subsystems;
 using Nethermind.State;
-using Nethermind.Store;
+using Nethermind.Db.Blooms;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {

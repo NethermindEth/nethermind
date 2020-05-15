@@ -38,7 +38,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Proofs;
-using Nethermind.Store;
+using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using NUnit.Framework;
 

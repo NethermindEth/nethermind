@@ -23,7 +23,7 @@ using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
-using Nethermind.Store;
+using Nethermind.Db.Blooms;
 
 namespace Nethermind.Consensus.AuRa
 {
