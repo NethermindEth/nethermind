@@ -58,14 +58,7 @@ namespace Nethermind.Core2.Crypto
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static byte[] ComputeBytes(ReadOnlySpan<byte> input)
         {
-            // NOTE: API only supports bytes, so need allocation to copy to an array;
-            // the result is then a second array allocation.
-            // More efficient would be something like core TryComputeHash(ReadOnlySpan<byte> source, Span<byte> destination),
-            // which would allow zero allocation (if source and destination already allocated).
-            
-            // NOTE: Even for writeable Span<>, you still need to allocate an array: see https://docs.microsoft.com/en-us/dotnet/api/system.span-1.toarray
-            
-            return ComputeBytes(input.ToArray());
+            return Hash.ComputeBytes(input).GetBytes();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

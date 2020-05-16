@@ -50,7 +50,7 @@ namespace Nethermind.HashLib.Crypto
             ulong bits = m_processed_bytes * 8;
             int padindex = (m_buffer.Pos < 56) ? (56 - m_buffer.Pos) : (120 - m_buffer.Pos);
 
-            byte[] pad = new byte[padindex + 8];
+            Span<byte> pad = stackalloc byte[padindex + 8];
             pad[0] = 0x80;
 
             Converters.ConvertULongToBytesSwapOrder(bits, pad, padindex);
@@ -61,7 +61,7 @@ namespace Nethermind.HashLib.Crypto
 
         protected override void TransformBlock(ReadOnlySpan<byte> a_data, int a_index)
         {
-            uint[] data = new uint[64];
+            Span<uint> data = stackalloc uint[64];
             Converters.ConvertBytesToUIntsSwapOrder(a_data, a_index, BlockSize, data, 0);
 
             uint A = m_state[0];
@@ -109,7 +109,7 @@ namespace Nethermind.HashLib.Crypto
         
         protected override void TransformBlock(byte[] a_data, int a_index)
         {
-            uint[] data = new uint[64];
+            Span<uint> data = stackalloc uint[64];
             Converters.ConvertBytesToUIntsSwapOrder(a_data, a_index, BlockSize, data, 0);
 
             uint A = m_state[0];

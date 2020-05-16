@@ -131,8 +131,8 @@ namespace Nethermind.HashLib.Extensions
                     a_in[a_index++];
             }
         }
-        
-        public static void ConvertBytesToUIntsSwapOrder(ReadOnlySpan<byte> a_in, int a_index, int a_length, uint[] a_result, int a_index_out)
+
+        public static void ConvertBytesToUIntsSwapOrder(ReadOnlySpan<byte> a_in, int a_index, int a_length, Span<uint> a_result, int a_index_out)
         {
             Check(a_in, 1, a_result, 4, a_index, a_length, a_index_out);
 
@@ -316,6 +316,20 @@ namespace Nethermind.HashLib.Extensions
         }
 
         public static void ConvertULongToBytesSwapOrder(ulong a_in, byte[] a_out, int a_index)
+        {
+            Debug.Assert(a_index + 8 <= a_out.Length);
+
+            a_out[a_index++] = (byte)(a_in >> 56);
+            a_out[a_index++] = (byte)(a_in >> 48);
+            a_out[a_index++] = (byte)(a_in >> 40);
+            a_out[a_index++] = (byte)(a_in >> 32);
+            a_out[a_index++] = (byte)(a_in >> 24);
+            a_out[a_index++] = (byte)(a_in >> 16);
+            a_out[a_index++] = (byte)(a_in >> 8);
+            a_out[a_index++] = (byte)a_in;
+        }
+        
+        public static void ConvertULongToBytesSwapOrder(ulong a_in, Span<byte> a_out, int a_index)
         {
             Debug.Assert(a_index + 8 <= a_out.Length);
 
@@ -518,7 +532,7 @@ namespace Nethermind.HashLib.Extensions
             Debug.Assert(a_index_out + a_result.Length >= (a_length / a_out_size));
         }
         
-        private static void Check<I, O>(ReadOnlySpan<I> a_in, int a_in_size, O[] a_result, int a_out_size, int a_index_in, int a_length, 
+        private static void Check<I, O>(ReadOnlySpan<I> a_in, int a_in_size, Span<O> a_result, int a_out_size, int a_index_in, int a_length, 
             int a_index_out)
         {
             Debug.Assert((a_length * a_in_size % a_out_size) == 0);
