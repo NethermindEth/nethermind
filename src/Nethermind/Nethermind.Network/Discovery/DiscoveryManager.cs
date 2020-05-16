@@ -219,13 +219,15 @@ namespace Nethermind.Network.Discovery
                 Console.WriteLine($"Received a ping message with empty address, message: {message}");
                 return false;
             }
+            
+            bool pingDestinationIsMasterNode = Bytes.AreEqual(_nodeTable.MasterNode.Address.Address.MapToIPv6().GetAddressBytes(), message.DestinationAddress?.Address.MapToIPv6().GetAddressBytes()); 
 
-            // if (!Bytes.AreEqual(_nodeTable.MasterNode.Address.Address.MapToIPv6().GetAddressBytes(), message.DestinationAddress?.Address.MapToIPv6().GetAddressBytes()))
-            // {
-            //     if (_logger.IsDebug) _logger.Debug($"Received a message with incorrect destination address, message: {message}");
-            //     Console.WriteLine($"Received a message with incorrect destination address, message: {message.DestinationAddress?.Address.MapToIPv6()}, master node adress is {_nodeTable.MasterNode.Address.Address.MapToIPv6()}");
-            //     return false;
-            // }
+            if (!pingDestinationIsMasterNode)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Received a message with incorrect destination address, message: {message}");
+                Console.WriteLine($"Received a message with incorrect destination address, message: {message.DestinationAddress?.Address.MapToIPv6()}, master node adress is {_nodeTable.MasterNode.Address.Address.MapToIPv6()}");
+                return false;
+            }
             
             #region 
             // port will be different as we dynamically open ports for each socket connection

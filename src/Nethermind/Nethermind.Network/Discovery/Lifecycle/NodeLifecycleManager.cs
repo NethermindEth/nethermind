@@ -183,7 +183,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
                 PongMessage msg = _discoveryMessageFactory.CreateOutgoingMessage<PongMessage>(ManagedNode);
                 msg.PingMdc = discoveryMessage.Mdc;
 
-                Console.WriteLine($"Created pong message for {discoveryMessage.SourceAddress}");
+                Console.WriteLine($"Created pong message from {discoveryMessage.SourceAddress} to {discoveryMessage.DestinationAddress}");
                 _discoveryManager.SendMessage(msg);
                 NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPongOut);
                 _sentPong = true;
