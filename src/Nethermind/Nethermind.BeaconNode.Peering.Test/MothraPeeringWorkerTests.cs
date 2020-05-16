@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Text;
@@ -39,6 +40,7 @@ namespace Nethermind.BeaconNode.Peering.Test
     [TestFixture]
     public class MothraPeeringWorkerTests
     {
+        [NotNull]
         private IOptionsMonitor<ConsoleLoggerOptions> _mockLoggerOptionsMonitor;
         private LoggerFactory _loggerFactory;
         private MockMothra _mockMothra;

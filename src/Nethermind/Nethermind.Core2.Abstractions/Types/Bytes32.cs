@@ -31,6 +31,17 @@ namespace Nethermind.Core2.Types
             _bytes = new byte[Length];
         }
 
+        public Bytes32(byte[] bytes)
+        {
+            if (bytes.Length != Length)
+            {
+                throw new ArgumentOutOfRangeException(nameof(bytes), bytes.Length,
+                    $"{nameof(Bytes32)} must have exactly {Length} bytes");
+            }
+
+            _bytes = bytes;
+        }
+        
         public Bytes32(ReadOnlySpan<byte> span)
         {
             if (span.Length != Length)

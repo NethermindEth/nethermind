@@ -26,6 +26,7 @@ namespace Nethermind.Core2.Crypto
     [DebuggerStepThrough]
     public static class Sha256
     {
+        // TODO: verify if this is thread safe
         private static readonly IHash Hash = HashFactory.Crypto.CreateSHA256();
 
         /// <returns>
@@ -92,7 +93,7 @@ namespace Nethermind.Core2.Crypto
                 return Bytes32OfAnEmptyString;
             }
 
-            return InternalCompute(input.ToArray());
+            return InternalCompute(input);
         }
         
         // public static void ComputeInPlace(Span<byte> input)
@@ -107,6 +108,11 @@ namespace Nethermind.Core2.Crypto
         // }
 
         private static Bytes32 InternalCompute(byte[] input)
+        {
+            return new Bytes32(Hash.ComputeBytes(input).GetBytes());
+        }
+        
+        private static Bytes32 InternalCompute(ReadOnlySpan<byte> input)
         {
             return new Bytes32(Hash.ComputeBytes(input).GetBytes());
         }
