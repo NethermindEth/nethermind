@@ -76,7 +76,7 @@ namespace Nethermind.Network.Discovery
             try
             {
                 if(_logger.IsTrace) _logger.Trace($"Sending message: {discoveryMessage}");
-                Console.WriteLine($"Sending discovery message");
+                Console.WriteLine($"Sending discovery message to {discoveryMessage.FarAddress}");
                 message = Serialize(discoveryMessage);
             }
             catch (Exception e)
