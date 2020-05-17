@@ -25,6 +25,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode.OApiClient.Configuration;
@@ -439,7 +440,7 @@ namespace Nethermind.BeaconNode.OApiClient
             // TODO: Return appropriate ApiResponse
             httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
             // if (httpResponse.Content.Headers.ContentType.MediaType != MediaTypeNames.Application.Json)
-            Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
+            await using Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
             string content = await JsonSerializer.DeserializeAsync<string>(contentStream, _jsonSerializerOptions, cancellationToken);
             return new ApiResponse<string>(StatusCode.Success, content);
         }
@@ -450,7 +451,7 @@ namespace Nethermind.BeaconNode.OApiClient
             
             using HttpResponseMessage httpResponse = await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
-            Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
+            await using Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
             ulong content = await JsonSerializer.DeserializeAsync<ulong>(contentStream, _jsonSerializerOptions, cancellationToken);
             return new ApiResponse<ulong>(StatusCode.Success, content);
         }
@@ -461,7 +462,7 @@ namespace Nethermind.BeaconNode.OApiClient
             
             using HttpResponseMessage httpResponse = await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
-            Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
+            await using Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
             Syncing content = await JsonSerializer.DeserializeAsync<Syncing>(contentStream, _jsonSerializerOptions, cancellationToken);
             return new ApiResponse<Syncing>(StatusCode.Success, content);
         }
@@ -472,19 +473,66 @@ namespace Nethermind.BeaconNode.OApiClient
             
             using HttpResponseMessage httpResponse = await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
-            Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
+            await using Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
             ForkInformation content = await JsonSerializer.DeserializeAsync<ForkInformation>(contentStream, _jsonSerializerOptions, cancellationToken);
             return new ApiResponse<Fork>(StatusCode.Success, content.Fork);
         }
 
-        public Task<ApiResponse<IList<Core2.Api.ValidatorDuty>>> ValidatorDutiesAsync(IList<BlsPublicKey> validatorPublicKeys, Epoch? epoch, CancellationToken cancellationToken)
+        public async Task<ApiResponse<IList<ValidatorDuty>>> ValidatorDutiesAsync(IList<BlsPublicKey> validatorPublicKeys, Epoch? epoch, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            string baseUri = "validator/duties";
+
+            string uri = baseUri;
+            foreach (var validatorPublicKey in validatorPublicKeys)
+            {
+                uri = QueryHelpers.AddQueryString(uri, "validator_pubkeys", validatorPublicKey.ToString());
+            }
+            if (epoch.HasValue)
+            {
+                uri = QueryHelpers.AddQueryString(uri, "epoch", epoch.Value.ToString());
+            }
+            
+            using HttpResponseMessage httpResponse = await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+            int statusCode = (int) httpResponse.StatusCode;
+            if (statusCode == (int)StatusCode.InvalidRequest
+                || statusCode == (int)StatusCode.DutiesNotAvailableForRequestedEpoch
+                || statusCode == (int)StatusCode.CurrentlySyncing)
+            {
+                return ApiResponse.Create<IList<ValidatorDuty>>((StatusCode)(int)httpResponse.StatusCode);
+            }
+            
+            httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
+            await using Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
+            IList<ValidatorDuty> content = await JsonSerializer.DeserializeAsync<IList<ValidatorDuty>>(contentStream, _jsonSerializerOptions, cancellationToken);
+            return ApiResponse.Create(StatusCode.Success, content);
         }
 
-        public Task<ApiResponse<Core2.Containers.BeaconBlock>> NewBlockAsync(Slot slot, BlsSignature randaoReveal, CancellationToken cancellationToken)
+        public async Task<ApiResponse<BeaconBlock>> NewBlockAsync(Slot slot, BlsSignature randaoReveal, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            string baseUri = "validator/block";
+
+            Dictionary<string, string> queryParameters = new Dictionary<string, string>
+            {
+                ["slot"] = slot.ToString(),
+                ["randao_reveal"]= randaoReveal.ToString()
+            };
+            
+            string uri = QueryHelpers.AddQueryString(baseUri, queryParameters);
+            
+            using HttpResponseMessage httpResponse = await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+            int statusCode = (int) httpResponse.StatusCode;
+            if (statusCode == (int)StatusCode.InvalidRequest
+                || statusCode == (int)StatusCode.CurrentlySyncing)
+            {
+                return ApiResponse.Create<BeaconBlock>((StatusCode)(int)httpResponse.StatusCode);
+            }
+            
+            httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
+            await using Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
+            BeaconBlock content = await JsonSerializer.DeserializeAsync<BeaconBlock>(contentStream, _jsonSerializerOptions, cancellationToken);
+            return ApiResponse.Create(StatusCode.Success, content);
         }
 
         public Task<ApiResponse> PublishBlockAsync(SignedBeaconBlock signedBlock, CancellationToken cancellationToken)
