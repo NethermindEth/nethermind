@@ -14,161 +14,138 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Net.Mime;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using Nethermind.BeaconNode.OApiClient.Configuration;
 using Nethermind.Core2;
 using Nethermind.Core2.Api;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Json;
 using Nethermind.Core2.Types;
-using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode.OApiClient
 {
     public class BeaconNodeProxy : IBeaconNodeApi
     {
-        private const string JsonContentType = "application/json";
-        private HttpClient _httpClient;
-        private readonly ILogger _logger;
+        private readonly HttpClient _httpClient;
         private readonly JsonSerializerOptions _jsonSerializerOptions;
+        private readonly ILogger _logger;
+        private const string JsonContentType = "application/json";
 
         public BeaconNodeProxy(ILogger<BeaconNodeProxy> logger,
             HttpClient httpClient)
         {
             _logger = logger;
-            
+
             // Configure (and test) via IHttpClientFactory / AddHttpClient: https://docs.microsoft.com/en-us/dotnet/architecture/microservices/implement-resilient-applications/use-httpclientfactory-to-implement-resilient-http-requests
-            
+
             _httpClient = httpClient;
             _jsonSerializerOptions = new JsonSerializerOptions();
             _jsonSerializerOptions.ConfigureNethermindCore2();
         }
 
-        public async Task<ApiResponse<string>> GetNodeVersionAsync(CancellationToken cancellationToken)
-        {
-            string uri = "node/version";
-            
-            using HttpResponseMessage httpResponse = await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            // TODO: Return appropriate ApiResponse
-            httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
-            // if (httpResponse.Content.Headers.ContentType.MediaType != MediaTypeNames.Application.Json)
-            await using Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
-            string content = await JsonSerializer.DeserializeAsync<string>(contentStream, _jsonSerializerOptions, cancellationToken);
-            return ApiResponse.Create((StatusCode) (int) httpResponse.StatusCode, content);
-        }
-
         public async Task<ApiResponse<ulong>> GetGenesisTimeAsync(CancellationToken cancellationToken)
         {
             string uri = "node/genesis_time";
-            
-            using HttpResponseMessage httpResponse = await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
-            await using Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
-            ulong content = await JsonSerializer.DeserializeAsync<ulong>(contentStream, _jsonSerializerOptions, cancellationToken);
-            return ApiResponse.Create((StatusCode) (int) httpResponse.StatusCode, content);
-        }
 
-        public async Task<ApiResponse<Syncing>> GetSyncingAsync(CancellationToken cancellationToken)
-        {
-            string uri = "node/syncing";
-            
-            using HttpResponseMessage httpResponse = await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            using HttpResponseMessage httpResponse =
+                await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
             await using Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
-            Syncing content = await JsonSerializer.DeserializeAsync<Syncing>(contentStream, _jsonSerializerOptions, cancellationToken);
+            ulong content =
+                await JsonSerializer.DeserializeAsync<ulong>(contentStream, _jsonSerializerOptions, cancellationToken);
             return ApiResponse.Create((StatusCode) (int) httpResponse.StatusCode, content);
         }
 
         public async Task<ApiResponse<Fork>> GetNodeForkAsync(CancellationToken cancellationToken)
         {
             string uri = "node/fork";
-            
-            using HttpResponseMessage httpResponse = await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+            using HttpResponseMessage httpResponse =
+                await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
             await using Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
-            ForkInformation content = await JsonSerializer.DeserializeAsync<ForkInformation>(contentStream, _jsonSerializerOptions, cancellationToken);
+            ForkInformation content =
+                await JsonSerializer.DeserializeAsync<ForkInformation>(contentStream, _jsonSerializerOptions,
+                    cancellationToken);
             return ApiResponse.Create((StatusCode) (int) httpResponse.StatusCode, content.Fork);
         }
 
-        public async Task<ApiResponse<IList<ValidatorDuty>>> ValidatorDutiesAsync(IList<BlsPublicKey> validatorPublicKeys, Epoch? epoch, CancellationToken cancellationToken)
+        public async Task<ApiResponse<string>> GetNodeVersionAsync(CancellationToken cancellationToken)
         {
-            string baseUri = "validator/duties";
+            string uri = "node/version";
 
-            string uri = baseUri;
-            foreach (var validatorPublicKey in validatorPublicKeys)
-            {
-                uri = QueryHelpers.AddQueryString(uri, "validator_pubkeys", validatorPublicKey.ToString());
-            }
-            if (epoch.HasValue)
-            {
-                uri = QueryHelpers.AddQueryString(uri, "epoch", epoch.Value.ToString());
-            }
-            
-            using HttpResponseMessage httpResponse = await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-
-            int statusCode = (int) httpResponse.StatusCode;
-            if (statusCode == (int)StatusCode.InvalidRequest
-                || statusCode == (int)StatusCode.DutiesNotAvailableForRequestedEpoch
-                || statusCode == (int)StatusCode.CurrentlySyncing)
-            {
-                return ApiResponse.Create<IList<ValidatorDuty>>((StatusCode)(int)httpResponse.StatusCode);
-            }
-            
+            using HttpResponseMessage httpResponse =
+                await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            // TODO: Return appropriate ApiResponse
             httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
+            // if (httpResponse.Content.Headers.ContentType.MediaType != MediaTypeNames.Application.Json)
             await using Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
-            IList<ValidatorDuty> content = await JsonSerializer.DeserializeAsync<IList<ValidatorDuty>>(contentStream, _jsonSerializerOptions, cancellationToken);
+            string content =
+                await JsonSerializer.DeserializeAsync<string>(contentStream, _jsonSerializerOptions, cancellationToken);
             return ApiResponse.Create((StatusCode) (int) httpResponse.StatusCode, content);
         }
 
-        public async Task<ApiResponse<BeaconBlock>> NewBlockAsync(Slot slot, BlsSignature randaoReveal, CancellationToken cancellationToken)
+        public async Task<ApiResponse<Syncing>> GetSyncingAsync(CancellationToken cancellationToken)
+        {
+            string uri = "node/syncing";
+
+            using HttpResponseMessage httpResponse =
+                await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
+            await using Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
+            Syncing content =
+                await JsonSerializer.DeserializeAsync<Syncing>(contentStream, _jsonSerializerOptions,
+                    cancellationToken);
+            return ApiResponse.Create((StatusCode) (int) httpResponse.StatusCode, content);
+        }
+
+        public async Task<ApiResponse<BeaconBlock>> NewBlockAsync(Slot slot, BlsSignature randaoReveal,
+            CancellationToken cancellationToken)
         {
             string baseUri = "validator/block";
 
             Dictionary<string, string> queryParameters = new Dictionary<string, string>
             {
                 ["slot"] = slot.ToString(),
-                ["randao_reveal"]= randaoReveal.ToString()
+                ["randao_reveal"] = randaoReveal.ToString()
             };
-            
+
             string uri = QueryHelpers.AddQueryString(baseUri, queryParameters);
-            
-            using HttpResponseMessage httpResponse = await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+            using HttpResponseMessage httpResponse =
+                await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
             int statusCode = (int) httpResponse.StatusCode;
-            if (statusCode == (int)StatusCode.InvalidRequest
-                || statusCode == (int)StatusCode.CurrentlySyncing)
+            if (statusCode == (int) StatusCode.InvalidRequest
+                || statusCode == (int) StatusCode.CurrentlySyncing)
             {
-                return ApiResponse.Create<BeaconBlock>((StatusCode)statusCode);
+                return ApiResponse.Create<BeaconBlock>((StatusCode) statusCode);
             }
-            
+
             httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
             await using Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
-            BeaconBlock content = await JsonSerializer.DeserializeAsync<BeaconBlock>(contentStream, _jsonSerializerOptions, cancellationToken);
-            return ApiResponse.Create((StatusCode)statusCode, content);
+            BeaconBlock content =
+                await JsonSerializer.DeserializeAsync<BeaconBlock>(contentStream, _jsonSerializerOptions,
+                    cancellationToken);
+            return ApiResponse.Create((StatusCode) statusCode, content);
         }
 
-        public async Task<ApiResponse> PublishBlockAsync(SignedBeaconBlock signedBlock, CancellationToken cancellationToken)
+        public async Task<ApiResponse> PublishBlockAsync(SignedBeaconBlock signedBlock,
+            CancellationToken cancellationToken)
         {
             string uri = "validator/block";
 
             // TODO: .NET 5 will have JsonContent support, i.e. direct to stream
             //using HttpResponseMessage httpResponse = await _httpClient.PostAsJsonAsync(uri, signedBlock, cancellationToken);
-            
+
             await using var memoryStream = new MemoryStream();
             await JsonSerializer.SerializeAsync(memoryStream, signedBlock, _jsonSerializerOptions, cancellationToken);
             memoryStream.Position = 0;
@@ -177,15 +154,50 @@ namespace Nethermind.BeaconNode.OApiClient
             using HttpResponseMessage httpResponse = await _httpClient.PostAsync(uri, content, cancellationToken);
 
             int statusCode = (int) httpResponse.StatusCode;
-            if (statusCode == (int)StatusCode.InvalidRequest
-                || statusCode == (int)StatusCode.CurrentlySyncing)
+            if (statusCode == (int) StatusCode.InvalidRequest
+                || statusCode == (int) StatusCode.CurrentlySyncing)
             {
-                return new ApiResponse((StatusCode)statusCode);
+                return new ApiResponse((StatusCode) statusCode);
             }
-            
+
             httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
-            
-            return new ApiResponse((StatusCode)statusCode);
+
+            return new ApiResponse((StatusCode) statusCode);
+        }
+
+        public async Task<ApiResponse<IList<ValidatorDuty>>> ValidatorDutiesAsync(
+            IList<BlsPublicKey> validatorPublicKeys, Epoch? epoch, CancellationToken cancellationToken)
+        {
+            string baseUri = "validator/duties";
+
+            string uri = baseUri;
+            foreach (var validatorPublicKey in validatorPublicKeys)
+            {
+                uri = QueryHelpers.AddQueryString(uri, "validator_pubkeys", validatorPublicKey.ToString());
+            }
+
+            if (epoch.HasValue)
+            {
+                uri = QueryHelpers.AddQueryString(uri, "epoch", epoch.Value.ToString());
+            }
+
+            using HttpResponseMessage httpResponse =
+                await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+            int statusCode = (int) httpResponse.StatusCode;
+            if (statusCode == (int) StatusCode.InvalidRequest
+                || statusCode == (int) StatusCode.DutiesNotAvailableForRequestedEpoch
+                || statusCode == (int) StatusCode.CurrentlySyncing)
+            {
+                return ApiResponse.Create<IList<ValidatorDuty>>((StatusCode) (int) httpResponse.StatusCode);
+            }
+
+            httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
+            await using Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
+            IList<ValidatorDuty> content =
+                await JsonSerializer.DeserializeAsync<IList<ValidatorDuty>>(contentStream, _jsonSerializerOptions,
+                    cancellationToken);
+            return ApiResponse.Create((StatusCode) (int) httpResponse.StatusCode, content);
         }
     }
 }

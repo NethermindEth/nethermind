@@ -53,12 +53,12 @@ namespace Nethermind.BeaconNode.OApi.Controllers
             if (_logger.IsInfo())
                 Log.BlockPublished(_logger, signedBeaconBlock.Message?.Slot,
                     signedBeaconBlock.Message?.Body?.RandaoReveal,
-                    signedBeaconBlock.Message?.ParentRoot, 
+                    signedBeaconBlock.Message?.ParentRoot,
                     signedBeaconBlock.Message?.StateRoot,
                     signedBeaconBlock.Message?.Body?.Graffiti,
-                    signedBeaconBlock.Signature, 
+                    signedBeaconBlock.Signature,
                     null);
-              
+
             ApiResponse apiResponse =
                 await _beaconNode.PublishBlockAsync(signedBeaconBlock, cancellationToken).ConfigureAwait(false);
 

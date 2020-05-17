@@ -48,7 +48,7 @@ namespace Nethermind.BeaconNode.OApi.Controllers
         public async Task<IActionResult> GetAsync(CancellationToken cancellationToken)
         {
             if (_logger.IsDebug()) LogDebug.NodeGenesisTimeRequested(_logger, null);
-            
+
             ApiResponse<ulong> apiResponse =
                 await _beaconNode.GetGenesisTimeAsync(cancellationToken).ConfigureAwait(false);
             if (apiResponse.StatusCode == Core2.Api.StatusCode.Success)

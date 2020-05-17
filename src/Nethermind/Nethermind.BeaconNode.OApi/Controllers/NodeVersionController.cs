@@ -48,7 +48,7 @@ namespace Nethermind.BeaconNode.OApi.Controllers
         public async Task<IActionResult> GetAsync(CancellationToken cancellationToken)
         {
             if (_logger.IsInfo()) Log.NodeVersionRequested(_logger, HttpContext.Connection.RemoteIpAddress, null);
-            
+
             ApiResponse<string> apiResponse =
                 await _beaconNode.GetNodeVersionAsync(cancellationToken).ConfigureAwait(false);
             if (apiResponse.StatusCode == Core2.Api.StatusCode.Success)
