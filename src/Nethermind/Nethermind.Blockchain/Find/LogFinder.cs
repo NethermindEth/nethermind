@@ -23,7 +23,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 
 namespace Nethermind.Blockchain.Find
 {

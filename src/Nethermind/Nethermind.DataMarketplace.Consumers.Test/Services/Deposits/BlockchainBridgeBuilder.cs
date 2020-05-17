@@ -22,15 +22,16 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.Db;
+using Nethermind.Db.Blooms;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
-using Nethermind.Store.Bloom;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using Nethermind.Wallet;
+using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
 {
@@ -42,7 +43,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             StateReader stateReader = new StateReader(memDbProvider.StateDb, memDbProvider.CodeDb, LimboLogs.Instance);
             StateProvider stateProvider = new StateProvider(memDbProvider.StateDb, memDbProvider.CodeDb, LimboLogs.Instance);
             StorageProvider storageProvider = new StorageProvider(memDbProvider.StateDb, stateProvider, LimboLogs.Instance);
-            IEthereumEcdsa ecdsa = new EthereumEcdsa(MainnetSpecProvider.Instance, LimboLogs.Instance);
+            IEthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
             ITxPool txPool = new TxPool.TxPool(new InMemoryTxStorage(), Timestamper.Default, ecdsa, MainnetSpecProvider.Instance, new TxPoolConfig(), stateProvider, LimboLogs.Instance);
             // BlockTree blockTree = new BlockTree(memDbProvider.BlocksDb, memDbProvider.HeadersDb, memDbProvider.BlockInfosDb, new ChainLevelInfoRepository(memDbProvider.BlockInfosDb), MainnetSpecProvider.Instance, txPool, NullBloomStorage.Instance, new SyncConfig(), LimboLogs.Instance);
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(1).TestObject;
@@ -50,8 +51,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, new BlockhashProvider(blockTree, LimboLogs.Instance), MainnetSpecProvider.Instance, LimboLogs.Instance);
             TransactionProcessor processor = new TransactionProcessor(MainnetSpecProvider.Instance, stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
 
-            BlockchainBridge blockchainBridge = new BlockchainBridge(stateReader, stateProvider, storageProvider, blockTree, txPool, new InMemoryReceiptStorage(), NullFilterStore.Instance, NullFilterManager.Instance, wallet, processor, ecdsa, NullBloomStorage.Instance, LimboLogs.Instance, false);
-            return new NdmBlockchainBridge(blockchainBridge, txPool);
+            BlockchainBridge blockchainBridge = new BlockchainBridge(stateReader, stateProvider, storageProvider, blockTree, txPool, new InMemoryReceiptStorage(), NullFilterStore.Instance, NullFilterManager.Instance, wallet, processor, ecdsa, NullBloomStorage.Instance, MainnetSpecProvider.Instance, LimboLogs.Instance, false);
+            TxPoolBridge txPoolBridge = new TxPoolBridge(txPool, wallet, ChainId.Mainnet);
+            return new NdmBlockchainBridge(txPoolBridge, blockchainBridge, txPool);
         }
     }
 }

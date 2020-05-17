@@ -17,6 +17,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Handlers.Logging;
@@ -83,7 +84,6 @@ namespace Nethermind.Network.Test.Discovery
         }
 
         [Test]
-        [Ignore("Failing on Mac GitHUb actions - needs review")]
         [Retry(5)]
         public void PingSentReceivedTest()
         {
@@ -92,7 +92,7 @@ namespace Nethermind.Network.Test.Discovery
                 FarAddress = _address2,
                 SourceAddress = _address,
                 DestinationAddress = _address2,
-                ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
+                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
                 FarPublicKey = _privateKey2.PublicKey
             };
             _discoveryHandlers[0].SendMessage(msg);
@@ -104,7 +104,7 @@ namespace Nethermind.Network.Test.Discovery
                 FarAddress = _address,
                 SourceAddress = _address2,
                 DestinationAddress = _address,
-                ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
+                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
                 FarPublicKey = _privateKey.PublicKey
             };
             _discoveryHandlers[1].SendMessage(msg2);
@@ -113,7 +113,6 @@ namespace Nethermind.Network.Test.Discovery
         }
 
         [Test]
-        [Ignore("Failing on Mac GitHUb actions - needs review")]
         [Retry(5)]
         public void PongSentReceivedTest()
         {
@@ -121,7 +120,7 @@ namespace Nethermind.Network.Test.Discovery
             {
                 FarAddress = _address2,
                 PingMdc = new byte[] {1,2,3},
-                ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
+                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
                 FarPublicKey = _privateKey2.PublicKey
             };
             _discoveryHandlers[0].SendMessage(msg);
@@ -132,7 +131,7 @@ namespace Nethermind.Network.Test.Discovery
             {
                 FarAddress = _address,
                 PingMdc = new byte[] { 1, 2, 3 },
-                ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
+                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
                 FarPublicKey = _privateKey.PublicKey
             };
             _discoveryHandlers[1].SendMessage(msg2);
@@ -146,7 +145,6 @@ namespace Nethermind.Network.Test.Discovery
         }
 
         [Test]
-        [Ignore("Failing on Mac GitHUb actions - needs review")]
         [Retry(5)]
         public void FindNodeSentReceivedTest()
         {
@@ -154,7 +152,7 @@ namespace Nethermind.Network.Test.Discovery
             {
                 FarAddress = _address2,
                 SearchedNodeId = new byte[] { 1, 2, 3 },
-                ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
+                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
                 FarPublicKey = _privateKey2.PublicKey
             };
             _discoveryHandlers[0].SendMessage(msg);
@@ -165,7 +163,7 @@ namespace Nethermind.Network.Test.Discovery
             {
                 FarAddress = _address,
                 SearchedNodeId = new byte[] { 1, 2, 3 },
-                ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
+                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
                 FarPublicKey = _privateKey.PublicKey
             };
             _discoveryHandlers[1].SendMessage(msg2);
@@ -174,7 +172,6 @@ namespace Nethermind.Network.Test.Discovery
         }
 
         [Test]
-        [Ignore("Failing on Mac GitHUb actions - needs review")]
         [Retry(5)]
         public void NeighborsSentReceivedTest()
         {
@@ -182,7 +179,7 @@ namespace Nethermind.Network.Test.Discovery
             {
                 FarAddress = _address2,
                 Nodes = new List<Node>().ToArray(),
-                ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
+                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
                 FarPublicKey = _privateKey2.PublicKey
             };
             _discoveryHandlers[0].SendMessage(msg);
@@ -193,7 +190,7 @@ namespace Nethermind.Network.Test.Discovery
             {
                 FarAddress = _address,
                 Nodes = new List<Node>().ToArray(),
-                ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
+                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
                 FarPublicKey = _privateKey.PublicKey
             };
             _discoveryHandlers[1].SendMessage(msg2);
@@ -208,7 +205,7 @@ namespace Nethermind.Network.Test.Discovery
             var bootstrap = new Bootstrap();
             bootstrap
                 .Group(group)
-                .Channel<SocketDatagramChannel>()
+                .ChannelFactory(() => new SocketDatagramChannel(AddressFamily.InterNetwork))
                 .Handler(new ActionChannelInitializer<IDatagramChannel>(x => InitializeChannel(x, discoveryManager, service)));
 
             _channels.Add(await bootstrap.BindAsync(IPAddress.Parse(address), port));

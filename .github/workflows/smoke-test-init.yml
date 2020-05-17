@@ -13,3 +13,4 @@ jobs:
     - name: Trigger Smoke Test on build server
       run: |
         curl ${{ secrets.BUILD_SERVER }}/smoke
+        curl ${{ secrets.BUILD_SERVER }}/smoke-spaceneth

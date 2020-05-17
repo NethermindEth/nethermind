@@ -27,7 +27,7 @@ namespace Nethermind.TxPool.Storages
 
         public Transaction[] GetAll() => new Transaction[0];
 
-        public void Add(Transaction transaction, long blockNumber)
+        public void Add(Transaction transaction)
         {
         }
 

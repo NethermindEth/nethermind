@@ -38,7 +38,6 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public DebugBridge(IConfigProvider configProvider, IReadOnlyDbProvider dbProvider, IGethStyleTracer tracer, IBlockProcessingQueue receiptsBlockQueue, IBlockTree blockTree)
         {
-            receiptsBlockQueue.ProcessingQueueEmpty += (sender, args) => _receiptProcessedEvent.Set();
             _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -133,7 +132,5 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         {
             return _configProvider.GetRawValue(category, name);
         }
-
-        private AutoResetEvent _receiptProcessedEvent = new AutoResetEvent(false);
     }
 }

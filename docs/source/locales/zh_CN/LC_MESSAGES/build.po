@@ -1,0 +1,128 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) 2018, Demerzel Solutions Limited
+# This file is distributed under the same license as the nethermind package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2020.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: nethermind \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2020-05-14 17:16+0100\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.8.0\n"
+
+#: ../../source/build.rst:2
+msgid "Build"
+msgstr ""
+
+#: ../../source/build.rst:5
+msgid "IDE (optional)"
+msgstr ""
+
+#: ../../source/build.rst:7
+msgid "JetBrains Rider https://www.jetbrains.com/rider/"
+msgstr ""
+
+#: ../../source/build.rst:8
+msgid "VS Code https://code.visualstudio.com/docs/other/dotnet"
+msgstr ""
+
+#: ../../source/build.rst:11
+msgid "SDKs"
+msgstr ""
+
+#: ../../source/build.rst:16
+msgid "You will need .NET SDK 3.0 <"
+msgstr ""
+
+#: ../../source/build.rst:14
+msgid "Windows https://www.microsoft.com/net/download?initial-os=windows"
+msgstr ""
+
+#: ../../source/build.rst:15
+msgid ""
+"Linux https://www.microsoft.com/net/download?initial-os=linux (make sure "
+"to select the right distribution)"
+msgstr ""
+
+#: ../../source/build.rst:16
+msgid "Mac https://www.microsoft.com/net/download?initial-os=macos"
+msgstr ""
+
+#: ../../source/build.rst:19
+msgid "Linux (Ubuntu 16.04)"
+msgstr ""
+
+#: ../../source/build.rst:30
+msgid "Linux (Ubuntu 18.04+/Debian 10)"
+msgstr ""
+
+#: ../../source/build.rst:37
+msgid "Linux (CentOS 8)"
+msgstr ""
+
+#: ../../source/build.rst:48
+msgid "Linux (Fedora 31)"
+msgstr ""
+
+#: ../../source/build.rst:59
+msgid "MacOS"
+msgstr ""
+
+#: ../../source/build.rst:66
+msgid "Windows"
+msgstr ""
+
+#: ../../source/build.rst:68
+msgid ""
+"you may need to install https://support.microsoft.com/en-us/help/2977003"
+"/the-latest-supported-visual-c-downloads"
+msgstr ""
+
+#: ../../source/build.rst:71
+msgid "All Platforms"
+msgstr ""
+
+#: ../../source/build.rst:73
+msgid ""
+"If dotnet command is not found then probably you forgot to install SDK "
+"(see instructions above)."
+msgstr ""
+
+#: ../../source/build.rst:75
+msgid ""
+"On Linux distributions we suggest that at this stage you start `screen` "
+"so you can go back to session with `screen -rd` command later on."
+msgstr ""
+
+#: ../../source/build.rst:83
+msgid "launch goerli testnet for quick sync and testing"
+msgstr ""
+
+#: ../../source/build.rst:90
+msgid ""
+"You can confirm the latest block of the Goerli tetsnet here: "
+"https://blockscout.com/eth/goerli/"
+msgstr ""
+
+#: ../../source/build.rst:93
+msgid "or (mainnet)"
+msgstr ""
+
+#: ../../source/build.rst:101
+msgid "Potential Issues"
+msgstr ""
+
+#: ../../source/build.rst:103
+msgid ""
+"If you have some previous pre-release versions of .NET Core installed "
+"they may cause conflicts. Your case might be quite unique so best to "
+"search for help online."
+msgstr ""
+

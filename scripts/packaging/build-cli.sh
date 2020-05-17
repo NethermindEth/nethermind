@@ -3,7 +3,7 @@ CLI_PATH=nethermind/src/Nethermind/Nethermind.Cli
 LINUX=linux-x64
 OSX=osx-x64
 WIN10=win10-x64
-PUBLISH_PATH=bin/release/netcoreapp3.0
+PUBLISH_PATH=bin/release/netcoreapp3.1
 EXEC=Nethermind.Cli
 ZIP=$EXEC.zip
 OUT=out
@@ -18,15 +18,9 @@ echo Publishing Nethermind Cli for different platforms...
 echo =======================================================
 echo Nethermind Cli path: $CLI_PATH
 
-dotnet tool restore
-assemblyversion=$(dotnet gitversion -output json -showvariable AssemblySemVer)
-fileversion=$(dotnet gitversion -output json -showvariable AssemblySemFileVer)
-semver=$(dotnet gitversion -output json -showvariable SemVer)
-shortsha=$(dotnet gitversion -output json -showvariable ShortSha)
-
-dotnet publish -c release -r $LINUX -p:AssemblyVersion=$assemblyversion -p:FileVersion=$fileversion -p:Version=${semver}+${shortsha}
-dotnet publish -c release -r $OSX -p:AssemblyVersion=$assemblyversion -p:FileVersion=$fileversion -p:Version=${semver}+${shortsha}
-dotnet publish -c release -r $WIN10 -p:AssemblyVersion=$assemblyversion -p:FileVersion=$fileversion -p:Version=${semver}+${shortsha}
+dotnet publish -c release -r $LINUX
+dotnet publish -c release -r $OSX
+dotnet publish -c release -r $WIN10
 
 rm -rf $OUT && mkdir $OUT $OUT/$LINUX $OUT/$OSX $OUT/$WIN10
 

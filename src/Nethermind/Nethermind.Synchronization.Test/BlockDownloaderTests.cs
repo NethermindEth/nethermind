@@ -39,7 +39,7 @@ using Nethermind.Specs;
 using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using Nethermind.Stats.Model;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -47,6 +47,7 @@ using Nethermind.Synchronization.Reporting;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -373,7 +374,7 @@ namespace Nethermind.Synchronization.Test
             SyncConfig syncConfig = new SyncConfig();
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_blockTree, NullReceiptStorage.Instance, new MemDb(), new MemDb(), syncConfig, LimboLogs.Instance);
             _syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, _peerPool, syncConfig, LimboLogs.Instance);
-            _feed = new FullSyncFeed(_syncModeSelector);
+            _feed = new FullSyncFeed(_syncModeSelector, LimboLogs.Instance);
 
             _responseBuilder = new ResponseBuilder(_blockTree, _testHeaderMapping);
         }
@@ -907,7 +908,7 @@ namespace Nethermind.Synchronization.Test
             syncPeer.HeadNumber.Returns(2);
 
             Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(), CancellationToken.None);
-            action.Should().Throw<EthSyncException>().WithInnerException<AggregateException>().WithInnerException<TimeoutException>();
+            action.Should().Throw<AggregateException>().WithInnerException<TimeoutException>();
         }
 
         [TestCase(DownloaderOptions.WithReceipts, true)]
@@ -943,7 +944,7 @@ namespace Nethermind.Synchronization.Test
             Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
             if (shouldThrow)
             {
-                action.Should().Throw<EthSyncException>().WithInnerException<AggregateException>().WithInnerException<TimeoutException>();
+                action.Should().Throw<AggregateException>().WithInnerException<TimeoutException>();
             }
             else
             {

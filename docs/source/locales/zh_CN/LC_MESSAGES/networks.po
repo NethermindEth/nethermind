@@ -1,0 +1,125 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) 2018, Demerzel Solutions Limited
+# This file is distributed under the same license as the nethermind package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2020.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: nethermind \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2020-05-14 17:16+0100\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.8.0\n"
+
+#: ../../source/networks.rst:2
+msgid "Networks"
+msgstr ""
+
+#: ../../source/networks.rst:4
+msgid ""
+"By default Nethermind launches with mainnet network configuration but you"
+" can sync any of the below networks by adding a command line switch::"
+msgstr ""
+
+#: ../../source/networks.rst:8
+msgid "Network name can be any of the following"
+msgstr ""
+
+#: ../../source/networks.rst:11
+msgid "mainnet"
+msgstr ""
+
+#: ../../source/networks.rst:12
+msgid "goerli"
+msgstr ""
+
+#: ../../source/networks.rst:13
+msgid "rinkeby"
+msgstr ""
+
+#: ../../source/networks.rst:14
+msgid "ropsten"
+msgstr ""
+
+#: ../../source/networks.rst:15
+msgid "xdai"
+msgstr ""
+
+#: ../../source/networks.rst:16
+msgid "poacore"
+msgstr ""
+
+#: ../../source/networks.rst:17
+msgid "sokol"
+msgstr ""
+
+#: ../../source/networks.rst:18
+msgid "volta"
+msgstr ""
+
+#: ../../source/networks.rst:21
+msgid "Mainnet"
+msgstr ""
+
+#: ../../source/networks.rst:23
+msgid ""
+"This is the main public Ethereum network secured by the ethash PoW "
+"algorithm."
+msgstr ""
+
+#: ../../source/networks.rst:29
+msgid "`MainNet Stats <https://ethstats.net/>`_"
+msgstr ""
+
+#: ../../source/networks.rst:32
+msgid "Görli (goerli)"
+msgstr ""
+
+#: ../../source/networks.rst:34
+msgid ""
+"This is a Clique-PoA based testnet supported by all major clients. It has"
+" a 15 seconds delay between blocks that are sealed by Goerli validators."
+msgstr ""
+
+#: ../../source/networks.rst:40
+msgid "`Görli Stats <https://stats.goerli.net/>`_"
+msgstr ""
+
+#: ../../source/networks.rst:41
+msgid "`Görli BlockScout <https://blockscout.com/eth/goerli//>`_"
+msgstr ""
+
+#: ../../source/networks.rst:42
+msgid "`Görli Gitter <https://gitter.im/goerli/testnet>`_"
+msgstr ""
+
+#: ../../source/networks.rst:45
+msgid "Ropsten"
+msgstr ""
+
+#: ../../source/networks.rst:47
+msgid ""
+"This is a test network secured by ethash PoW algorithm which resembles "
+"mainnet most closely but is prone to hashrate-based attacks."
+msgstr ""
+
+#: ../../source/networks.rst:54
+msgid "Rinkeby"
+msgstr ""
+
+#: ../../source/networks.rst:56
+msgid ""
+"This is a Clique-PoA based testnet supported by Geth and Nethermind. It "
+"has a 15 seconds delay between blocks."
+msgstr ""
+
+#: ../../source/networks.rst:62
+msgid "`Rinkeby Page <https://www.rinkeby.io/#stats>`_"
+msgstr ""
+

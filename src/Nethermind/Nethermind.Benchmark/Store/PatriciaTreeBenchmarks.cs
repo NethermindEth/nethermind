@@ -21,7 +21,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.State;
-using Nethermind.Store;
+using Nethermind.Db.Blooms;
 
 namespace Nethermind.Benchmarks.Store
 {

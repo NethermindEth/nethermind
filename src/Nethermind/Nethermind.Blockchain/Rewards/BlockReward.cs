@@ -16,12 +16,13 @@
 
 using System.Numerics;
 using Nethermind.Core;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Rewards
 {
     public class BlockReward
     {
-        public BlockReward(Address address, BigInteger value, BlockRewardType rewardType = BlockRewardType.Block)
+        public BlockReward(Address address, UInt256 value, BlockRewardType rewardType = BlockRewardType.Block)
         {
             Address = address;
             Value = value;
@@ -29,7 +30,7 @@ namespace Nethermind.Blockchain.Rewards
         }
         
         public Address Address { get; }
-        public BigInteger Value { get; }
+        public UInt256 Value { get; }
         public BlockRewardType RewardType { get; }
     }
 }

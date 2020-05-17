@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -28,7 +29,7 @@ namespace Nethermind.TxPool
         void AddFilter<T>(T filter) where T : ITxFilter;
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
-        AddTxResult AddTransaction(Transaction tx, long blockNumber, TxHandlingOptions handlingOptions);
+        AddTxResult AddTransaction(Transaction tx, TxHandlingOptions handlingOptions);
         void RemoveTransaction(Keccak hash, long blockNumber);
         bool TryGetPendingTransaction(Keccak hash, out Transaction transaction);
         UInt256 ReserveOwnTransactionNonce(Address address);

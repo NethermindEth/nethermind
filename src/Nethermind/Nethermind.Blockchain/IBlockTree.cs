@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -37,7 +38,7 @@ namespace Nethermind.Blockchain
         BlockHeader Genesis { get; }
         
         /// <summary>
-        /// Best header that has been suggested
+        /// Best header that has been suggested for processing
         /// </summary>
         BlockHeader BestSuggestedHeader { get; }
 
@@ -57,7 +58,7 @@ namespace Nethermind.Blockchain
         Block LowestInsertedBody { get; }
         
         /// <summary>
-        /// Best downloaded block number
+        /// Best downloaded block number (highest number of chain level on the chain)
         /// </summary>
         long BestKnownNumber { get; }
 
@@ -69,7 +70,7 @@ namespace Nethermind.Blockchain
         AddBlockResult Insert(BlockHeader header);
         
         /// <summary>
-        /// Inserts a disconnected block body
+        /// Inserts a disconnected block body (not for processing).
         /// </summary>
         /// <param name="block">Block to add</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
@@ -116,11 +117,9 @@ namespace Nethermind.Blockchain
         void UpdateMainChain(Block[] processedBlocks, bool wereProcessed);
 
         bool CanAcceptNewBlocks { get; }
-        
-        Task LoadBlocksFromDb(CancellationToken cancellationToken, long? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue);
 
-        Task FixFastSyncGaps(CancellationToken cancellationToken);
-        
+        Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken);
+
         ChainLevelInfo FindLevel(long number);
 
         Keccak FindHash(long blockNumber);

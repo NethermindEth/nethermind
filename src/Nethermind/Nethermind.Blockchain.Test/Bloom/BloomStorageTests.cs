@@ -21,7 +21,7 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using NSubstitute;
 using NUnit.Framework;
 

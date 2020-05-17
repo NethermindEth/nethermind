@@ -27,11 +27,11 @@ using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Store;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using NUnit.Framework;
+using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -46,7 +46,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             var logger = LimboLogs.Instance;
             var specProvider = MainnetSpecProvider.Instance;
-            var ethereumEcdsa = new EthereumEcdsa(specProvider, logger);
+            var ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, logger);
             var txStorage = new InMemoryTxStorage();
             var txPool = new TxPool.TxPool(txStorage, Timestamper.Default, ethereumEcdsa, specProvider, new TxPoolConfig(),
                 new StateProvider(new StateDb(), new MemDb(), LimboLogs.Instance),  LimboLogs.Instance);
@@ -57,19 +57,19 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockTree blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, txPool, NullBloomStorage.Instance, LimboLogs.Instance);
             
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
-            _parityModule = new ParityModule(new EthereumEcdsa(specProvider,logger), txPool, blockTree, receiptStorage, logger);
+            _parityModule = new ParityModule(ethereumEcdsa, txPool, blockTree, receiptStorage, logger);
             var blockNumber = 2;
-            var pendingTransaction = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, blockNumber)
+            var pendingTransaction = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, false)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber)).TestObject;
             pendingTransaction.Signature.V = 37;
-            txPool.AddTransaction(pendingTransaction, blockNumber, TxHandlingOptions.None);
+            txPool.AddTransaction(pendingTransaction, TxHandlingOptions.None);
             
             blockNumber = 1;
-            var transaction = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, blockNumber)
+            var transaction = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, false)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber))
                 .WithNonce(100).TestObject;
             transaction.Signature.V = 37;
-            txPool.AddTransaction(transaction, blockNumber, TxHandlingOptions.None);
+            txPool.AddTransaction(transaction, TxHandlingOptions.None);
 
             
             Block genesis = Build.A.Block.Genesis

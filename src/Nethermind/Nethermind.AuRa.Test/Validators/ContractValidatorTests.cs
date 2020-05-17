@@ -36,10 +36,10 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
-using Nethermind.Store;
 using Newtonsoft.Json;
 using NSubstitute;
 using NUnit.Framework;
+using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.AuRa.Test.Validators
 {
@@ -50,10 +50,11 @@ namespace Nethermind.AuRa.Test.Validators
         private ILogManager _logManager;
         private AuRaParameters.Validator _validator;
         private Block _block;
+        private BlockHeader _parentHeader;
         private ITransactionProcessor _transactionProcessor;
         private IBlockFinalizationManager _blockFinalizationManager;
         private static Address _contractAddress = Address.FromNumber(1000);
-        private (Address Sender, byte[] TransactionData) _getValidatorsData = (_contractAddress, new byte[] {0, 1, 2});
+        private (Address Sender, byte[] TransactionData) _getValidatorsData = (Address.Zero, new byte[] {0, 1, 2});
         private (Address Sender, byte[] TransactionData) _finalizeChangeData = (Address.SystemUser, new byte[] {3, 4, 5});
         private Address[] _initialValidators;
         private IBlockTree _blockTree;
@@ -61,8 +62,7 @@ namespace Nethermind.AuRa.Test.Validators
         private IValidatorStore _validatorStore;
         private IValidSealerStrategy _validSealerStrategy;
         private IReadOnlyTransactionProcessorSource _readOnlyTransactionProcessorSource;
-
-
+        
         [SetUp]
         public void SetUp()
         {
@@ -81,7 +81,7 @@ namespace Nethermind.AuRa.Test.Validators
             };
             
             _block = new Block( Build.A.BlockHeader.WithNumber(1).WithAura(1, Bytes.Empty).TestObject, new BlockBody());
-            
+
             _transactionProcessor = Substitute.For<IReadOnlyTransactionProcessor>();
             _readOnlyTransactionProcessorSource = Substitute.For<IReadOnlyTransactionProcessorSource>();
             _readOnlyTransactionProcessorSource.Get(Arg.Any<Keccak>()).Returns(_transactionProcessor);
@@ -210,9 +210,9 @@ namespace Nethermind.AuRa.Test.Validators
 
             // getValidators should have been called
             _transactionProcessor.Received(1)
-                .Execute(
+                .CallAndRestore(
                     Arg.Is<Transaction>(t => CheckTransaction(t, _getValidatorsData)),
-                    _block.Header,
+                    _parentHeader,
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer));
 
             // finalizeChange should be called
@@ -577,7 +577,7 @@ namespace Nethermind.AuRa.Test.Validators
                         {
                             Build.A.LogEntry.WithAddress(_contractAddress)
                                 .WithData(new[] {(byte) (block.Number * 10 + i++)})
-                                .WithTopics(ValidatorContract.Definition.Events[ValidatorContract.InitiateChangeEvent].GetHash(), block.ParentHash)
+                                .WithTopics(ValidatorContract.Definition.Events[ValidatorContract.InitiateChange].GetHash(), block.ParentHash)
                                 .TestObject
                         };
                     })
@@ -632,9 +632,13 @@ namespace Nethermind.AuRa.Test.Validators
         private void SetupInitialValidators(BlockHeader header, params Address[] initialValidators)
         {
             _initialValidators = initialValidators;
-            _transactionProcessor.When(x => x.Execute(
+            
+            _parentHeader = Build.A.BlockHeader.WithNumber(header.Number - 1).TestObject;
+            _blockTree.FindHeader(header.ParentHash, BlockTreeLookupOptions.None).Returns(_parentHeader);
+
+            _transactionProcessor.When(x => x.CallAndRestore(
                     Arg.Is<Transaction>(t => CheckTransaction(t, _getValidatorsData)),
-                    header,
+                    Arg.Is<BlockHeader>(h => h == header || h == _parentHeader),
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer)))
                 .Do(args =>
                     args.Arg<ITxTracer>().MarkAsSuccess(
@@ -702,7 +706,7 @@ namespace Nethermind.AuRa.Test.Validators
                     {
                         new LogEntry(contractAddress,
                             dataFunc(validators),
-                            new[] {ValidatorContract.Definition.Events[ValidatorContract.InitiateChangeEvent].GetHash(), block.ParentHash})
+                            new[] {ValidatorContract.Definition.Events[ValidatorContract.InitiateChange].GetHash(), block.ParentHash})
                     };
                     
                     return new TxReceipt[]

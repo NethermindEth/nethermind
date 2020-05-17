@@ -38,6 +38,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ChainSpecLoader(IJsonSerializer serializer)
         {
             _serializer = serializer;
+            _serializer.RegisterConverter(new StepDurationJsonConverter());
         }
 
         public ChainSpec Load(byte[] data) => Load(System.Text.Encoding.UTF8.GetString(data));
@@ -104,6 +105,8 @@ namespace Nethermind.Specs.ChainSpecStyle
                 Eip1884Transition = chainSpecJson.Params.Eip1884Transition,
                 Eip2028Transition = chainSpecJson.Params.Eip2028Transition,
                 Eip2200Transition = chainSpecJson.Params.Eip2200Transition,
+                TransactionPermissionContract = chainSpecJson.Params.TransactionPermissionContract,
+                TransactionPermissionContractTransition = chainSpecJson.Params.TransactionPermissionContractTransition
             };
         }
 
@@ -177,9 +180,13 @@ namespace Nethermind.Specs.ChainSpecStyle
                     BlockReward = chainSpecJson.Engine.AuthorityRound.BlockReward,
                     BlockRewardContractAddress = chainSpecJson.Engine.AuthorityRound.BlockRewardContractAddress,
                     BlockRewardContractTransition = chainSpecJson.Engine.AuthorityRound.BlockRewardContractTransition,
+                    BlockRewardContractTransitions = chainSpecJson.Engine.AuthorityRound.BlockRewardContractTransitions,
                     ValidateScoreTransition = chainSpecJson.Engine.AuthorityRound.ValidateScoreTransition,
                     ValidateStepTransition = chainSpecJson.Engine.AuthorityRound.ValidateStepTransition,
-                    Validators = LoadValidator(chainSpecJson.Engine.AuthorityRound.Validator)
+                    Validators = LoadValidator(chainSpecJson.Engine.AuthorityRound.Validator),
+                    RandomnessContractAddress = chainSpecJson.Engine.AuthorityRound.RandomnessContractAddress,
+                    BlockGasLimitContractTransitions = chainSpecJson.Engine.AuthorityRound.BlockGasLimitContractTransitions,
+                    TwoThirdsMajorityTransition = chainSpecJson.Engine.AuthorityRound.TwoThirdsMajorityTransition ?? long.MaxValue,
                 };
             }
             else if (chainSpecJson.Engine?.Clique != null)

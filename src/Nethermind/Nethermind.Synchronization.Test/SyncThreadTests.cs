@@ -40,17 +40,18 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Stats;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.Synchronization.BeamSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using NUnit.Framework;
+using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Synchronization.Test
 {
-    [Parallelizable(ParallelScope.Self)]
+    [Parallelizable(ParallelScope.None)]
     [TestFixture(SynchronizerType.Fast)]
     [TestFixture(SynchronizerType.Full)]
     public class SyncThreadsTests
@@ -166,8 +167,8 @@ namespace Nethermind.Synchronization.Test
                 transaction.GasLimit = 21000;
                 transaction.GasPrice = 20.GWei();
                 transaction.Hash = transaction.CalculateHash();
-                _originPeer.Ecdsa.Sign(TestItem.PrivateKeyA, transaction, i);
-                _originPeer.TxPool.AddTransaction(transaction, i, TxHandlingOptions.None);
+                _originPeer.Ecdsa.Sign(TestItem.PrivateKeyA, transaction);
+                _originPeer.TxPool.AddTransaction(transaction, TxHandlingOptions.None);
                 if (!resetEvent.WaitOne(1000))
                 {
                     throw new Exception($"Failed to produce block {i + 1}");
@@ -262,8 +263,8 @@ namespace Nethermind.Synchronization.Test
             var storageProvider = new StorageProvider(stateDb, stateProvider, logManager);
             var receiptStorage = new InMemoryReceiptStorage();
 
-            var ecdsa = new EthereumEcdsa(specProvider, logManager);
-            var txPool = new TxPool.TxPool(new InMemoryTxStorage(), new Timestamper(), ecdsa, specProvider, new TxPoolConfig(), stateProvider, logManager);
+            var ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
+            var txPool = new TxPool.TxPool(new InMemoryTxStorage(), Timestamper.Default, ecdsa, specProvider, new TxPoolConfig(), stateProvider, logManager);
             var tree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, txPool, NullBloomStorage.Instance, logManager);
             var blockhashProvider = new BlockhashProvider(tree, LimboLogs.Instance);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, logManager);
@@ -280,7 +281,7 @@ namespace Nethermind.Synchronization.Test
             var txProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, txProcessor, stateDb, codeDb, stateProvider, storageProvider, txPool, receiptStorage, logManager);
 
-            var step = new TxSignaturesRecoveryStep(ecdsa, txPool, logManager);
+            var step = new TxSignaturesRecoveryStep(specProvider, ecdsa, txPool, logManager);
             var processor = new BlockchainProcessor(tree, blockProcessor, step, logManager, true);
 
             var nodeStatsManager = new NodeStatsManager(new StatsConfig(), logManager);
@@ -292,8 +293,8 @@ namespace Nethermind.Synchronization.Test
             var devTxProcessor = new TransactionProcessor(specProvider, devState, devStorage, devEvm, logManager);
             var devBlockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, devTxProcessor, stateDb, codeDb, devState, devStorage, txPool, receiptStorage, logManager);
             var devChainProcessor = new BlockchainProcessor(tree, devBlockProcessor, step, logManager, false);
-            var transactionSelector = new PendingTxSelector(txPool, stateReader, logManager);
-            var producer = new DevBlockProducer(transactionSelector, devChainProcessor, stateProvider, tree, processor, txPool, new Timestamper(), logManager);
+            var transactionSelector = new TxPoolTxSource(txPool, stateReader, logManager);
+            var producer = new DevBlockProducer(transactionSelector, devChainProcessor, stateProvider, tree, processor, txPool, Timestamper.Default, logManager);
             
             SyncProgressResolver resolver = new SyncProgressResolver(tree, receiptStorage, stateDb, new MemDb(), syncConfig, logManager);
             MultiSyncModeSelector selector = new MultiSyncModeSelector(resolver, syncPeerPool, syncConfig, logManager);

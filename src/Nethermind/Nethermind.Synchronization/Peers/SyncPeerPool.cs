@@ -45,7 +45,7 @@ namespace Nethermind.Synchronization.Peers
     /// </summary>
     public class SyncPeerPool : ISyncPeerPool
     {
-        private const int InitTimeout = 10000; // the Eth.Timeout hits us at 5000
+        private const int InitTimeout = 3000; // the Eth.Timeout hits us at 5000
 
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
@@ -472,16 +472,19 @@ namespace Nethermind.Synchronization.Peers
 
             if (PeerCount == PeerMaxCount)
             {
-                long worstSpeed = long.MaxValue;
+                long lowestBlockNumber = long.MaxValue;
                 PeerInfo worstPeer = null;
                 foreach (PeerInfo peerInfo in AllPeers)
                 {
-                    long transferSpeed = _stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed() ?? 0;
-                    if (transferSpeed < worstSpeed) worstPeer = peerInfo;
+                    if (peerInfo.HeadNumber < lowestBlockNumber)
+                    {
+                        lowestBlockNumber = peerInfo.HeadNumber;
+                        worstPeer = peerInfo;
+                    }
                 }
 
                 peersDropped++;
-                worstPeer?.SyncPeer.Disconnect(DisconnectReason.TooManyPeers, "PEER REVIEW / LATENCY");
+                worstPeer?.SyncPeer.Disconnect(DisconnectReason.TooManyPeers, "PEER REVIEW / LOWEST NUMBER");
             }
 
             if (_logger.IsDebug) _logger.Debug($"Dropped {peersDropped} useless peers");
@@ -510,7 +513,13 @@ namespace Nethermind.Synchronization.Peers
                 {
                     try
                     {
-                        if (firstToComplete.IsFaulted || firstToComplete == delayTask)
+                        if (firstToComplete == delayTask)
+                        {
+                            if (_logger.IsDebug) _logger.Debug($"InitPeerInfo timed out for node: {syncPeer.Node:c}");
+                            _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
+                            syncPeer.Disconnect(DisconnectReason.DisconnectRequested, "refresh peer info fault - timeout");
+                        }
+                        else if (firstToComplete.IsFaulted)
                         {
                             if (_logger.IsDebug) _logger.Debug($"InitPeerInfo failed for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
                             _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
@@ -529,7 +538,6 @@ namespace Nethermind.Synchronization.Peers
                             if (header == null)
                             {
                                 if (_logger.IsDebug) _logger.Debug($"InitPeerInfo failed for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
-
                                 _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
                                 syncPeer.Disconnect(DisconnectReason.DisconnectRequested, "refresh peer info fault - null response");
                                 return;

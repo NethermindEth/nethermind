@@ -20,11 +20,15 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -70,43 +74,14 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_context.DbProvider == null) throw new StepDependencyException(nameof(_context.DbProvider));
             if (_context.TransactionProcessor == null) throw new StepDependencyException(nameof(_context.TransactionProcessor));
 
-            Block genesis = _context.ChainSpec.Genesis;
-            foreach ((Address address, ChainSpecAllocation allocation) in _context.ChainSpec.Allocations)
-            {
-                _context.StateProvider.CreateAccount(address, allocation.Balance);
-                if (allocation.Code != null)
-                {
-                    Keccak codeHash = _context.StateProvider.UpdateCode(allocation.Code);
-                    _context.StateProvider.UpdateCodeHash(address, codeHash, _context.SpecProvider.GenesisSpec);
-                }
-
-                if (allocation.Constructor != null)
-                {
-                    Transaction constructorTransaction = new Transaction(true)
-                    {
-                        SenderAddress = address,
-                        Init = allocation.Constructor,
-                        GasLimit = genesis.GasLimit
-                    };
-                    
-                    _context.TransactionProcessor.Execute(constructorTransaction, genesis.Header, NullTxTracer.Instance);
-                }
-            }
-
-            // we no longer need the allocations - 0.5MB RAM, 9000 objects for mainnet
-            _context.ChainSpec.Allocations = null;
-
-            _context.StorageProvider.Commit();
-            _context.StateProvider.Commit(_context.SpecProvider.GenesisSpec);
-
-            _context.StorageProvider.CommitTrees();
-            _context.StateProvider.CommitTree();
-
-            _context.DbProvider.StateDb.Commit();
-            _context.DbProvider.CodeDb.Commit();
-
-            genesis.Header.StateRoot = _context.StateProvider.StateRoot;
-            genesis.Header.Hash = genesis.Header.CalculateHash();
+            var genesis = new GenesisLoader(
+                _context.ChainSpec,
+                _context.SpecProvider,
+                _context.StateProvider,
+                _context.StorageProvider,
+                _context.DbProvider,
+                _context.TransactionProcessor)
+                .Load();
 
             ManualResetEventSlim genesisProcessedEvent = new ManualResetEventSlim(false);
 

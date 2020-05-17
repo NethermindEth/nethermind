@@ -56,6 +56,7 @@ namespace Nethermind.Blockchain
             {
                 if (number == header.Number)
                 {
+                    if(_logger.IsTrace) _logger.Trace($"BLOCKHASH opcode returning {header.Number},{header.Hash} for {currentBlock.Number} -> {number}");
                     return header.Hash;
                 }
 
@@ -76,6 +77,14 @@ namespace Nethermind.Blockchain
                             isFastSyncSearch = true;
                             header = currentHeader;
                         }
+                        else
+                        {
+                            if (!_blockTree.IsMainChain(header))
+                            {
+                                header = currentHeader;
+                                throw new InvalidOperationException("Invoke fast blocks chain search");
+                            }
+                        }
                     }
                     catch (InvalidOperationException) // fast sync during the first 256 blocks after the transition
                     {
@@ -84,6 +93,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
+            if(_logger.IsTrace) _logger.Trace($"BLOCKHASH opcode returning null for {currentBlock.Number} -> {number}");
             return null;
         }
     }

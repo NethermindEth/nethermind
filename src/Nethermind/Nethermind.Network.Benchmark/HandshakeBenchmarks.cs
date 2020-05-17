@@ -14,13 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Specs;
 using Nethermind.Logging;
-using Nethermind.Network.Crypto;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.Test;
@@ -77,13 +78,23 @@ namespace Nethermind.Network.Benchmarks
                 return (byte[])responses[_i].Clone();
             }
 
+            public void GenerateRandomBytes(Span<byte> bytes)
+            {
+                GenerateRandomBytes(bytes.Length).CopyTo(bytes);
+            }
+
             public int NextInt(int max)
             {
                 return max / 2;
             }
+
+            public void Dispose()
+            {
+                
+            }
         }
         
-        private readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(RopstenSpecProvider.Instance, LimboLogs.Instance); // TODO: separate general crypto signer from Ethereum transaction signing
+        private readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(ChainId.Ropsten, LimboLogs.Instance); // TODO: separate general crypto signer from Ethereum transaction signing
 
         private IMessageSerializationService _messageSerializationService;
 

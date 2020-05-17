@@ -48,31 +48,76 @@ namespace Nethermind.Synchronization.BeamSync
 
         private readonly ISyncModeSelector _syncModeSelector;
 
-        private readonly Func<bool> _writeThrough;
-
         private ILogger _logger;
 
+        private IDb _targetDbForSaves;
+
         public BeamSyncDb(IDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, ILogManager logManager)
+            : base(logManager)
         {
             _logger = logManager.GetClassLogger<BeamSyncDb>();
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _tempDb = tempDb ?? throw new ArgumentNullException(nameof(tempDb));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
+            _syncModeSelector.Preparing += SyncModeSelectorOnPreparing;
+            _syncModeSelector.Changing += SyncModeSelectorOnChanging;
+            _syncModeSelector.Changed += SyncModeSelectorOnChanged;
 
-            _writeThrough = () => (_syncModeSelector.Current & SyncMode.Full) == SyncMode.Full;
+            _targetDbForSaves = _tempDb; // before transition to full we are saving to beam DB
         }
 
-        private bool _isDisposed = false;
+        private object _finishLock = new object();
+
+        private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
+        {
+            if ((e.Current & SyncMode.Full) == SyncMode.Full)
+            {
+                // the beam processor either already switched or is about ti switch to the full sync mode
+                // we should be already switched to the new database
+                lock (_finishLock)
+                {
+                    if (CurrentState != SyncFeedState.Finished)
+                    {
+                        // we do not want to finish this feed - instead we will keep using it in Beam Synced RPC requests
+                        // Finish();
+                        UnregisterHandlers();
+                    }
+                }
+            }
+        }
+
+        private void SyncModeSelectorOnPreparing(object sender, SyncModeChangedEventArgs e)
+        {
+            // do nothing, the beam processor is cancelling beam executors now and they may be still writing
+        }
+
+        private void SyncModeSelectorOnChanging(object sender, SyncModeChangedEventArgs e)
+        {
+            // at this stage beam executors are already cancelled and they no longer save to beam DB
+            // standard processor is for sure not started yet - it is waiting for us to replace the target
+            if ((e.Current & SyncMode.Full) == SyncMode.Full)
+            {
+                Interlocked.Exchange(ref _targetDbForSaves, _stateDb);
+            }
+        }
+
+        private bool _isDisposed;
 
         public void Dispose()
         {
             _isDisposed = true;
+            UnregisterHandlers();
             _tempDb.Dispose();
         }
 
-        public string Name => _tempDb.Name;
+        private void UnregisterHandlers()
+        {
+            _syncModeSelector.Preparing -= SyncModeSelectorOnPreparing;
+            _syncModeSelector.Changing -= SyncModeSelectorOnChanging;
+            _syncModeSelector.Changed -= SyncModeSelectorOnChanged;
+        }
 
-        private int _resolvedKeysCount;
+        public string Name => _tempDb.Name;
 
         private object _diffLock = new object();
 
@@ -101,14 +146,8 @@ namespace Nethermind.Synchronization.BeamSync
                 // if we keep timing out then we would finally reject the block (but only shelve it instead of marking invalid)
 
                 bool wasInDb = true;
-                var fromMem = _stateDb[key];
                 while (true)
                 {
-                    if (BeamSyncContext.Cancelled.Value.IsCancellationRequested)
-                    {
-                        throw new TaskCanceledException("Found a better block.");
-                    }
-
                     if (_isDisposed)
                     {
                         throw new ObjectDisposedException("Beam Sync DB disposed");
@@ -124,9 +163,16 @@ namespace Nethermind.Synchronization.BeamSync
                         }
                     }
 
-                    fromMem ??= _tempDb[key] ?? _stateDb[key];
+                    var fromMem = _tempDb[key] ?? _stateDb[key];
                     if (fromMem == null)
                     {
+                        if (_logger.IsTrace) _logger.Trace($"Beam sync miss - {key.ToHexString()} - retrieving");
+                        
+                        if (BeamSyncContext.Cancelled.Value.IsCancellationRequested)
+                        {
+                            throw new BeamCanceledException("Beam cancellation requested");
+                        }
+
                         if (Bytes.AreEqual(key, Keccak.Zero.Bytes))
                         {
                             // we store sync progress data at Keccak.Zero;
@@ -141,7 +187,7 @@ namespace Nethermind.Synchronization.BeamSync
 
                         if (DateTime.UtcNow - (BeamSyncContext.LastFetchUtc.Value ?? DateTime.UtcNow) > expiry)
                         {
-                            string message = $"Beam sync request {BeamSyncContext.Description.Value} with last update on {BeamSyncContext.LastFetchUtc.Value:hh:mm:ss.fff} has expired";
+                            string message = $"Beam sync request {BeamSyncContext.Description.Value} for key {key.ToHexString()} with last update on {BeamSyncContext.LastFetchUtc.Value:hh:mm:ss.fff} has expired";
                             if (_logger.IsDebug) _logger.Debug(message);
                             throw new BeamSyncException(message);
                         }
@@ -149,11 +195,9 @@ namespace Nethermind.Synchronization.BeamSync
                         wasInDb = false;
                         // _logger.Info($"BEAM SYNC Asking for {key.ToHexString()} - resolved keys so far {_resolvedKeysCount}");
 
-                        int count;
                         lock (_requestedNodes)
                         {
                             _requestedNodes.Add(new Keccak(key));
-                            count = _requestedNodes.Count;
                         }
 
                         // _logger.Error($"Requested {key.ToHexString()}");
@@ -166,11 +210,16 @@ namespace Nethermind.Synchronization.BeamSync
                         if (!wasInDb)
                         {
                             BeamSyncContext.ResolvedInContext.Value++;
-                            Interlocked.Increment(ref _resolvedKeysCount);
-                            // if (_logger.IsInfo) _logger.Info($"{_description} Resolved key {key.ToHexString()} of context {BeamSyncContext.Description.Value} - resolved ctx {BeamSyncContext.ResolvedInContext.Value} | total {_resolvedKeysCount}");
+                            Interlocked.Increment(ref Metrics.BeamedTrieNodes);
+                            if (_logger.IsTrace) _logger.Trace($"Resolved key {key.ToHexString()} of context {BeamSyncContext.Description.Value} - resolved ctx {BeamSyncContext.ResolvedInContext.Value} | total {Metrics.BeamedTrieNodes}");
                         }
 
                         BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
+                        
+                        // if (!Bytes.AreEqual(Keccak.Compute(fromMem).Bytes, key))
+                        // {
+                        //     throw new Exception("DB had an entry with a hash mismatch {key}");
+                        // }
 
                         return fromMem;
                     }
@@ -179,14 +228,8 @@ namespace Nethermind.Synchronization.BeamSync
 
             set
             {
-                if (_writeThrough())
-                {
-                    _stateDb[key] = value;
-                }
-                else
-                {
-                    _tempDb[key] = value;    
-                }
+                if (_logger.IsTrace) _logger.Trace($"Saving to temp - {key.ToHexString()}");
+                _targetDbForSaves[key] = value;
             }
         }
 
@@ -212,7 +255,7 @@ namespace Nethermind.Synchronization.BeamSync
 
         public void Remove(byte[] key)
         {
-            _tempDb.Remove(key);
+            _targetDbForSaves.Remove(key);
         }
 
         public bool KeyExists(byte[] key)
@@ -224,12 +267,13 @@ namespace Nethermind.Synchronization.BeamSync
 
         public void Flush()
         {
-            _tempDb.Flush();
+            // this should never get flushed except for some dispose scenarios?
         }
 
         public void Clear()
         {
             _tempDb.Clear();
+            _stateDb.Clear();
         }
 
         public override Task<StateSyncBatch> PrepareRequest()
@@ -271,6 +315,7 @@ namespace Nethermind.Synchronization.BeamSync
                 }
             }
 
+            Interlocked.Increment(ref Metrics.BeamedRequests);
             return Task.FromResult(request);
         }
 
@@ -278,6 +323,7 @@ namespace Nethermind.Synchronization.BeamSync
         {
             if (stateSyncBatch.ConsumerId != FeedId)
             {
+                if(_logger.IsWarn) _logger.Warn($"Beam sync response sent by feed {stateSyncBatch.ConsumerId} came back to feed {FeedId}");
                 return SyncResponseHandlingResult.InternalError;
             }
 
@@ -287,10 +333,10 @@ namespace Nethermind.Synchronization.BeamSync
             byte[][] data = stateSyncBatch.Responses;
             if (data != null)
             {
-                for (int i = 0; i < data.Length; i++)
+                for (int i = 0; i < Math.Min(data.Length, stateSyncBatch.RequestedNodes.Length); i++)
                 {
                     Keccak key = stateSyncBatch.RequestedNodes[i].Hash;
-                    if (data.Length > i && data[i] != null)
+                    if (data[i] != null)
                     {
                         if (Keccak.Compute(data[i]) == key)
                         {
@@ -322,10 +368,13 @@ namespace Nethermind.Synchronization.BeamSync
             {
                 return SyncResponseHandlingResult.LesserQuality;
             }
-            
+
             return consumed == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
         }
 
+        /// <summary>
+        /// not sure if this synchronization is still needed nowadays?
+        /// </summary>
         private AutoResetEvent _autoReset = new AutoResetEvent(true);
 
         public override bool IsMultiFeed => false;

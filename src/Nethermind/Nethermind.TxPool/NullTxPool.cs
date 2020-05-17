@@ -51,7 +51,7 @@ namespace Nethermind.TxPool
         {
         }
 
-        public AddTxResult AddTransaction(Transaction tx, long blockNumber, TxHandlingOptions txHandlingOptions) => AddTxResult.Added;
+        public AddTxResult AddTransaction(Transaction tx, TxHandlingOptions txHandlingOptions) => AddTxResult.Added;
 
         public void RemoveTransaction(Keccak hash, long blockNumber)
         {
@@ -62,12 +62,7 @@ namespace Nethermind.TxPool
             transaction = null;
             return false;
         }
-
-        public bool HasBeenKnown(Keccak hash)
-        {
-            return false;
-        }
-
+        
         public UInt256 ReserveOwnTransactionNonce(Address address) => UInt256.Zero;
 
         public event EventHandler<TxEventArgs> NewPending

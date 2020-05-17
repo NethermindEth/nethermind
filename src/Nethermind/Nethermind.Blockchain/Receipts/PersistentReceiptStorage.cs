@@ -78,7 +78,7 @@ namespace Nethermind.Blockchain.Receipts
 
         private static TxReceipt DeserializeReceiptObsolete(Keccak hash, Span<byte> receiptData)
         {
-            if (receiptData != null)
+            if (!receiptData.IsNullOrEmpty())
             {
                 var context = new Rlp.ValueDecoderContext(receiptData);
                 try
@@ -109,7 +109,7 @@ namespace Nethermind.Blockchain.Receipts
             var receiptsData = _blocksDb.GetSpan(block.Hash);
             try
             {
-                if (receiptsData != null)
+                if (!receiptsData.IsNullOrEmpty())
                 {
                     return DecodeArray(receiptsData);
                 }
@@ -153,7 +153,7 @@ namespace Nethermind.Blockchain.Receipts
             var receiptsData = _blocksDb.GetSpan(blockHash);
             try
             {
-                return receiptsData != null ? DecodeArray(receiptsData) : Array.Empty<TxReceipt>();
+                return receiptsData.IsNullOrEmpty() ? Array.Empty<TxReceipt>() : DecodeArray(receiptsData);
             }
             finally
             {
@@ -166,7 +166,13 @@ namespace Nethermind.Blockchain.Receipts
         public bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator)
         {
             var result = CanGetReceiptsByHash(blockNumber);
-            iterator = result ? new ReceiptsIterator(_blocksDb.GetSpan(blockHash), _blocksDb) : new ReceiptsIterator();
+            var receiptsData = _blocksDb.GetSpan(blockHash);
+            if (receiptsData == null)
+            {
+                receiptsData = Span<byte>.Empty;
+            }
+            
+            iterator = result ? new ReceiptsIterator(receiptsData, _blocksDb) : new ReceiptsIterator();
             return result;
         }
 

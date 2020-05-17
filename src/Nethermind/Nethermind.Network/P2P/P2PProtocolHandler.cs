@@ -17,9 +17,11 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Common.Concurrency;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -33,7 +35,6 @@ namespace Nethermind.Network.P2P
     {
         private TaskCompletionSource<Packet> _pongCompletionSource;
         private readonly INodeStatsManager _nodeStatsManager;
-        private bool _isInitialized;
         private bool _sentHello;
 
         public P2PProtocolHandler(
@@ -182,8 +183,6 @@ namespace Nethermind.Network.P2P
                 }
             }
 
-            _isInitialized = true;
-            
             if (!capabilities.Any(c => SupportedCapabilities.Contains(c)))
             {
                 InitiateDisconnect(DisconnectReason.UselessPeer, $"capabilities: {string.Join(", ", capabilities.Select(c => string.Concat(c.ProtocolCode, c.Version)))}");
@@ -202,20 +201,18 @@ namespace Nethermind.Network.P2P
             ProtocolInitialized?.Invoke(this, eventArgs);
         }
 
+        [SuppressMessage("ReSharper", "HeuristicUnreachableCode")]
         public async Task<bool> SendPing()
         {
-            if (!_isInitialized)
-            {
-                return true;
-            }
-
-            if (_pongCompletionSource != null)
+            // ReSharper disable once AssignNullToNotNullAttribute
+            TaskCompletionSource<Packet> previousSource = Interlocked.CompareExchange(ref _pongCompletionSource, new TaskCompletionSource<Packet>(), null);
+            // ReSharper disable once ConditionIsAlwaysTrueOrFalse
+            if (previousSource != null)
             {
                 if (Logger.IsWarn) Logger.Warn($"Another ping request in process: {Session.Node:c}");
                 return true;
             }
-
-            _pongCompletionSource = new TaskCompletionSource<Packet>();
+            
             Task<Packet> pongTask = _pongCompletionSource.Task;
 
             if (Logger.IsTrace) Logger.Trace($"{Session} P2P sending ping on {Session.RemotePort} ({RemoteClientId})");
@@ -224,21 +221,24 @@ namespace Nethermind.Network.P2P
             Stopwatch stopwatch = Stopwatch.StartNew();
 
             CancellationTokenSource delayCancellation = new CancellationTokenSource();
-            Task firstTask = await Task.WhenAny(pongTask, Task.Delay(Timeouts.P2PPing, delayCancellation.Token));
-            _pongCompletionSource = null;
-            if (firstTask != pongTask)
+            try
             {
-                _nodeStatsManager.ReportTransferSpeedEvent(Session.Node, 0);
-                return false;
-            }
+                Task firstTask = await Task.WhenAny(pongTask, Task.Delay(Timeouts.P2PPing, delayCancellation.Token));
+                if (firstTask != pongTask)
+                {
+                    _nodeStatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Latency, (long) Timeouts.P2PPing.TotalMilliseconds);
+                    return false;
+                }
 
-            delayCancellation.Cancel();
-            long latency = stopwatch.ElapsedMilliseconds;
-            
-            // TODO: this used to be latency - now, not so cool
-            // maybe should request some standard headers to compare speed?
-            _nodeStatsManager.ReportTransferSpeedEvent(Session.Node, 100000 / (latency == 0 ? 1 : latency));
-            return true;
+                long latency = stopwatch.ElapsedMilliseconds;
+                _nodeStatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Latency, latency);
+                return true;
+            }
+            finally
+            {
+                delayCancellation?.Cancel();
+                _pongCompletionSource = null;
+            }
         }
 
         public override void InitiateDisconnect(DisconnectReason disconnectReason, string details)

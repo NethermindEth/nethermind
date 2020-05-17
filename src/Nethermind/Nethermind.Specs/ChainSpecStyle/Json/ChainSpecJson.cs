@@ -82,7 +82,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         
         internal class AuraEngineParamsJson
         {
-            public int StepDuration { get; set; }
+            public StepDurationJson StepDuration { get; set; }
 
             public UInt256 BlockReward { get; set; }
 
@@ -94,11 +94,22 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             
             public long? BlockRewardContractTransition { get; set; }
             
+            public IDictionary<long, Address> BlockRewardContractTransitions { get; set; } = new Dictionary<long, Address>();
+            
             public long ValidateScoreTransition { get; set; }
         
             public long ValidateStepTransition { get; set; }
 		
             public AuRaValidatorJson Validators { get; set; }
+
+            public IDictionary<long, Address> RandomnessContractAddress { get; set; } = new Dictionary<long, Address>();
+			
+            public IDictionary<long, Address> BlockGasLimitContractTransitions { get; set; } = new Dictionary<long, Address>();
+            public long? TwoThirdsMajorityTransition { get; set; }
+
+            public class StepDurationJson : SortedDictionary<long, long>
+            {
+            }
         }
 
         internal class AuRaValidatorJson
@@ -135,7 +146,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
 
         internal class AuraEngineJson
         {
-            public int StepDuration  => Params.StepDuration;
+            public IDictionary<long, long> StepDuration => Params.StepDuration;
 
             public UInt256 BlockReward  => Params.BlockReward;
 
@@ -146,12 +157,20 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public Address BlockRewardContractAddress => Params.BlockRewardContractAddress;
             
             public long? BlockRewardContractTransition => Params.BlockRewardContractTransition;
+            
+            public IDictionary<long, Address> BlockRewardContractTransitions => Params.BlockRewardContractTransitions;
 
             public long ValidateScoreTransition => Params.ValidateScoreTransition;
 
             public long ValidateStepTransition => Params.ValidateStepTransition;
 
+            public long? TwoThirdsMajorityTransition => Params.TwoThirdsMajorityTransition;
+
             public AuRaValidatorJson Validator => Params.Validators;
+            
+            public IDictionary<long, Address> RandomnessContractAddress => Params.RandomnessContractAddress;
+
+            public IDictionary<long, Address> BlockGasLimitContractTransitions => Params.BlockGasLimitContractTransitions;
             
             public AuraEngineParamsJson Params { get; set; }
         }

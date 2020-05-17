@@ -70,8 +70,8 @@ namespace Nethermind.AuRa.Test
                 LimboLogs.Instance);
         }
 
-        [TestCase(9, true, ExpectedResult = false, TestName = "Step too low.")]
-        [TestCase(10, true, ExpectedResult = false, TestName = "Step too low.")]
+        [TestCase(9, true, ExpectedResult = false, TestName = "Step too low-1.")]
+        [TestCase(10, true, ExpectedResult = false, TestName = "Step too low-2.")]
         [TestCase(11, false, ExpectedResult = false, TestName = "Invalid sealer.")]
         [TestCase(11, true, ExpectedResult = true, TestName = "Can seal.")]
         public bool can_seal(long auRaStep, bool validSealer)
@@ -90,7 +90,7 @@ namespace Nethermind.AuRa.Test
             
             block = await _auRaSealer.SealBlock(block, CancellationToken.None);
             
-            var ecdsa = new EthereumEcdsa(new MordenSpecProvider(), LimboLogs.Instance);
+            var ecdsa = new EthereumEcdsa(ChainId.Morden, LimboLogs.Instance);
             var signature = new Signature(block.Header.AuRaSignature);
             signature.V += Signature.VOffset;
             var recoveredAddress = ecdsa.RecoverAddress(signature, block.Header.CalculateHash(RlpBehaviors.ForSealing));

@@ -23,8 +23,8 @@ namespace Nethermind.Core.Crypto
 {
     public class PublicKey : IEquatable<PublicKey>
     {
-        private const int PublicKeyWithPrefixLengthInBytes = 65;
-        private const int PublicKeyLengthInBytes = 64;
+        public const int PrefixedLengthInBytes = 65;
+        public const int LengthInBytes = 64;
         private Address _address;
 
         private byte[] _prefixedBytes;
@@ -41,16 +41,16 @@ namespace Nethermind.Core.Crypto
                 throw new ArgumentNullException(nameof(bytes));
             }
 
-            if (bytes.Length != PublicKeyLengthInBytes && bytes.Length != PublicKeyWithPrefixLengthInBytes)
+            if (bytes.Length != LengthInBytes && bytes.Length != PrefixedLengthInBytes)
             {
-                throw new ArgumentException($"{nameof(PublicKey)} should be {PublicKeyLengthInBytes} bytes long",
+                throw new ArgumentException($"{nameof(PublicKey)} should be {LengthInBytes} bytes long",
                     nameof(bytes));
             }
 
-            if (bytes.Length == PublicKeyWithPrefixLengthInBytes && bytes[0] != 0x04)
+            if (bytes.Length == PrefixedLengthInBytes && bytes[0] != 0x04)
             {
                 throw new ArgumentException(
-                    $"Expected prefix of 0x04 for {PublicKeyWithPrefixLengthInBytes} bytes long {nameof(PublicKey)}");
+                    $"Expected prefix of 0x04 for {PrefixedLengthInBytes} bytes long {nameof(PublicKey)}");
             }
 
             Bytes = bytes.Length == 64 ? bytes : bytes.Slice(bytes.Length - 64, 64);

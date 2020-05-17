@@ -17,6 +17,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using MathNet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
 
@@ -83,7 +84,6 @@ namespace Nethermind.Synchronization.ParallelSync
                 if (currentStateLocal == SyncFeedState.Dormant)
                 {
                     if(Logger.IsDebug) Logger.Debug($"{GetType().Name} is going to sleep.");
-                    await Task.Delay(50);
                     await dormantTaskLocal.Task;
                     if(Logger.IsDebug) Logger.Debug($"{GetType().Name} got activated.");
                 }
@@ -97,7 +97,7 @@ namespace Nethermind.Synchronization.ParallelSync
                             if(Logger.IsTrace) Logger.Trace($"{Feed.GetType().Name} enqueued a null request.");
                         }
 
-                        await Task.Delay(50);
+                        await Task.Delay(10);
                         continue;
                     }
 
@@ -129,6 +129,10 @@ namespace Nethermind.Synchronization.ParallelSync
                                 Free(allocation);
                                 SyncResponseHandlingResult result = Feed.HandleResponse(request);
                                 ReactToHandlingResult(request, result, allocatedPeer);
+                            }
+                            catch (ObjectDisposedException)
+                            {
+                                if (Logger.IsInfo) Logger.Info("Ignoring sync response as the DB has already closed.");
                             }
                             catch (Exception e)
                             {
@@ -188,6 +192,9 @@ namespace Nethermind.Synchronization.ParallelSync
                     break;
                 case SyncResponseHandlingResult.NotAssigned:
                     break;
+                case SyncResponseHandlingResult.InternalError:
+                    Logger.Error($"Feed {Feed} has reported an internal error when handling {request}");
+                    break;
                 case SyncResponseHandlingResult.OK:
                     break;
                 default:
@@ -207,11 +214,8 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 if (_currentFeedState != state)
                 {
-                    if (!Feed.IsMultiFeed)
-                    {
-                        if(Logger.IsDebug) Logger.Debug($"{Feed.GetType().Name} state changed to {state}");
-                    }
-                    
+                    if(Logger.IsDebug) Logger.Debug($"{Feed.GetType().Name} state changed to {state}");
+
                     _currentFeedState = state;
                     TaskCompletionSource<object> newDormantStateTask = null;
                     if (state == SyncFeedState.Dormant)

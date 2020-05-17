@@ -26,19 +26,9 @@ namespace Nethermind.Core
         {
             _constantDate = constantDate;
         }
-        
-        public ulong EpochSeconds => (ulong) EpochSecondsLong;
-        
-        public ulong EpochMilliseconds => (ulong) EpochMillisecondsLong;
-        
-        public long EpochSecondsLong => Offset.ToUnixTimeSeconds();
-        
-        public long EpochMillisecondsLong => Offset.ToUnixTimeMilliseconds();
 
         public DateTime UtcNow => _constantDate ?? DateTime.UtcNow;
-        
-        private DateTimeOffset Offset =>  new DateTimeOffset(UtcNow);
-        
-        public static Timestamper Default = new Timestamper();
+
+        public static readonly ITimestamper Default = new Timestamper();
     }
 }

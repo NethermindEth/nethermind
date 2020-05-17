@@ -18,7 +18,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Processing;
@@ -34,26 +33,20 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Db.Blooms;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Facade;
-using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Store;
-using Nethermind.Store.Bloom;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using Nethermind.Wallet;
-using Newtonsoft.Json;
-using NSubstitute;
 using NUnit.Framework;
+using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -70,7 +63,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         private void Initialize(bool auRa = false)
         {
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
-            IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider, LimboLogs.Instance);
+            IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
             ITxStorage txStorage = new InMemoryTxStorage();
             _stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
@@ -105,9 +98,9 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, blockProcessor, txPool, LimboLogs.Instance);
-            _blockchainBridge = new BlockchainBridge(stateReader, _stateProvider, storageProvider, blockTree, txPool, receiptStorage, filterStore, filterManager, NullWallet.Instance, txProcessor, ethereumEcdsa, NullBloomStorage.Instance, LimboLogs.Instance, false);
+            _blockchainBridge = new BlockchainBridge(stateReader, _stateProvider, storageProvider, blockTree, txPool, receiptStorage, filterStore, filterManager, NullWallet.Instance, txProcessor, ethereumEcdsa, NullBloomStorage.Instance, specProvider, LimboLogs.Instance, false);
 
-            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(ethereumEcdsa, txPool, LimboLogs.Instance), LimboLogs.Instance, true);
+            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(specProvider, ethereumEcdsa, txPool, LimboLogs.Instance), LimboLogs.Instance, true);
             blockchainProcessor.Start();
 
             ManualResetEventSlim resetEvent = new ManualResetEventSlim(false);

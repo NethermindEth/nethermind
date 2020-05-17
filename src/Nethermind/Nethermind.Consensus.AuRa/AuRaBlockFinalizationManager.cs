@@ -38,11 +38,19 @@ namespace Nethermind.Consensus.AuRa
         private readonly IBlockProcessor _blockProcessor;
         private readonly IValidatorStore _validatorStore;
         private readonly IValidSealerStrategy _validSealerStrategy;
+        private readonly long _twoThirdsMajorityTransition;
         private long _lastFinalizedBlockLevel;
         private Keccak _lastProcessedBlockHash = Keccak.EmptyTreeHash;
         private readonly ValidationStampCollection _consecutiveValidatorsForNotYetFinalizedBlocks = new ValidationStampCollection();
 
-        public AuRaBlockFinalizationManager(IBlockTree blockTree, IChainLevelInfoRepository chainLevelInfoRepository, IBlockProcessor blockProcessor, IValidatorStore validatorStore, IValidSealerStrategy validSealerStrategy, ILogManager logManager)
+        public AuRaBlockFinalizationManager(
+            IBlockTree blockTree, 
+            IChainLevelInfoRepository chainLevelInfoRepository, 
+            IBlockProcessor blockProcessor, 
+            IValidatorStore validatorStore, 
+            IValidSealerStrategy validSealerStrategy,
+            ILogManager logManager, 
+            long twoThirdsMajorityTransition = long.MaxValue)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
@@ -50,6 +58,7 @@ namespace Nethermind.Consensus.AuRa
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
             _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
+            _twoThirdsMajorityTransition = twoThirdsMajorityTransition;
             _blockProcessor.BlockProcessed += OnBlockProcessed;
             Initialize();
         }
@@ -103,8 +112,13 @@ namespace Nethermind.Consensus.AuRa
                 var blockInfo = chainLevelInfo.BlockInfos.First(i => i.BlockHash == blockHeader.Hash);
                 return (chainLevelInfo, blockInfo);
             }
-            
-            var minSealersForFinalization = block.IsGenesis ? 1 : Validators.MinSealersForFinalization();
+
+            if (block.Number == _twoThirdsMajorityTransition)
+            {
+                if (_logger.IsInfo) _logger.Info($"Block {_twoThirdsMajorityTransition}: Transitioning to 2/3 quorum.");
+            }
+
+            var minSealersForFinalization = GetMinSealersForFinalization(block.Number);
             var originalBlock = block;
             
             bool IsConsecutiveBlock() => originalBlock.ParentHash == _lastProcessedBlockHash;
@@ -240,7 +254,7 @@ namespace Nethermind.Consensus.AuRa
         {
             var block = _blockTree.FindHeader(headHash, BlockTreeLookupOptions.None);
             var validators = new HashSet<Address>();
-            var minSealersForFinalization = Validators.MinSealersForFinalization();
+            var minSealersForFinalization = GetMinSealersForFinalization(block.Number);
             while (block.Number > 0)
             {
                 validators.Add(block.Beneficiary);
@@ -264,7 +278,7 @@ namespace Nethermind.Consensus.AuRa
             }
 
             var validators = new HashSet<Address>();
-            var minSealersForFinalization = Validators.MinSealersForFinalization();
+            var minSealersForFinalization = GetMinSealersForFinalization(blockLevel);
             var blockInfo = GetBlockInfo(blockLevel);
             while (blockInfo != null)
             {
@@ -284,6 +298,11 @@ namespace Nethermind.Consensus.AuRa
 
             return null;
         }
+
+        private int GetMinSealersForFinalization(long blockNumber) =>
+            blockNumber == 0
+                ? 1
+                : Validators.MinSealersForFinalization(blockNumber >= _twoThirdsMajorityTransition);
 
         public long LastFinalizedBlockLevel
         {

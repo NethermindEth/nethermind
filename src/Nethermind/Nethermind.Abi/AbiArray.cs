@@ -22,17 +22,17 @@ namespace Nethermind.Abi
 {
     public class AbiArray : AbiType
     {
-        private readonly AbiType _elementType;
+        public AbiType ElementType { get; }
 
         public AbiArray(AbiType elementType)
         {
-            _elementType = elementType;
-            CSharpType = _elementType.CSharpType.MakeArrayType();
+            ElementType = elementType;
+            CSharpType = ElementType.CSharpType.MakeArrayType();
         }
 
         public override bool IsDynamic => true;
 
-        public override string Name => $"{_elementType}[]";
+        public override string Name => $"{ElementType}[]";
 
         public override Type CSharpType { get; }
 
@@ -41,11 +41,11 @@ namespace Nethermind.Abi
             BigInteger length;
             (length, position) = UInt256.DecodeUInt(data, position, packed);
 
-            Array result = Array.CreateInstance(_elementType.CSharpType, (int)length);
+            Array result = Array.CreateInstance(ElementType.CSharpType, (int)length);
             for (int i = 0; i < length; i++)
             {
                 object element;
-                (element, position) = _elementType.Decode(data, position, packed);
+                (element, position) = ElementType.Decode(data, position, packed);
 
                 result.SetValue(element, i);
             }
@@ -62,7 +62,7 @@ namespace Nethermind.Abi
                 encodedItems[i++] = UInt256.Encode((BigInteger)input.Length, packed);
                 foreach (object? o in input)
                 {
-                    encodedItems[i++] = _elementType.Encode(o, packed);
+                    encodedItems[i++] = ElementType.Encode(o, packed);
                 }
 
                 return Bytes.Concat(encodedItems);

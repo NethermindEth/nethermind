@@ -73,7 +73,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             // tree = new PatriciaTree();
             // tree.Set(branch.Keccak.Bytes, branch.Value);
 
-            stateSyncFeed.SetNewStateRoot(0, branch.Keccak);
+            stateSyncFeed.ResetStateRoot(0, branch.Keccak);
             
             var request = await stateSyncFeed.PrepareRequest();
             BuildRequestAndHandleResponse(branch, request, stateSyncFeed);

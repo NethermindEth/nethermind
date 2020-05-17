@@ -4,13 +4,10 @@ on:
   push:
     branches:
       - master
-  pull_request:
-    branches:
-      - master
 
 jobs:
-  neth-tests:
-    name: Nethermind Tests
+  neth-tests-cc:
+    name: Nethermind Tests CC
     env:
       EXCLUDE_TEST_PROJECTS: '/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*%2c[Nethermind.DataMarketplace.Test]*%2c[Ethereum.Test.Base]*"'
     runs-on: ${{ matrix.os }}
@@ -136,8 +133,8 @@ jobs:
       with:
         token: ${{secrets.CODECOV_TOKEN}}
         name: codecov-nethermind 
-  eth-tests:
-    name: Ethereum Tests
+  eth-tests-cc:
+    name: Ethereum Tests CC
     env:
       EXCLUDE_TEST_PROJECTS: '/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*%2c[Nethermind.DataMarketplace.Test]*%2c[Ethereum.Test.Base]*"'
     runs-on: ${{ matrix.os }}

@@ -53,7 +53,7 @@ namespace Ethereum.Basic.Test
         [TestCaseSource(nameof(LoadTests))]
         public void Test(TransactionTest test)
         {
-            EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(OlympicSpecProvider.Instance, LimboLogs.Instance);
+            EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(ChainId.Olympic, LimboLogs.Instance);
             Transaction decodedUnsigned = Rlp.Decode<Transaction>(test.Unsigned);
             Assert.AreEqual(test.Value, decodedUnsigned.Value, "value");
             Assert.AreEqual(test.GasPrice, decodedUnsigned.GasPrice, "gasPrice");
@@ -63,7 +63,7 @@ namespace Ethereum.Basic.Test
             Assert.AreEqual(test.Nonce, decodedUnsigned.Nonce, "nonce");
 
             Transaction decodedSigned = Rlp.Decode<Transaction>(test.Signed);
-            ethereumEcdsa.Sign(test.PrivateKey, decodedUnsigned, 0);
+            ethereumEcdsa.Sign(test.PrivateKey, decodedUnsigned, false);
             Assert.AreEqual(decodedSigned.Signature.R, decodedUnsigned.Signature.R, "R");
             BigInteger expectedS = decodedSigned.Signature.S.ToUnsignedBigInteger();
             BigInteger actualS = decodedUnsigned.Signature.S.ToUnsignedBigInteger();

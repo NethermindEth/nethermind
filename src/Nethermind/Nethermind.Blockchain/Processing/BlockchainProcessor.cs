@@ -299,7 +299,7 @@ namespace Nethermind.Blockchain.Processing
                 }
             }
 
-            if ((options & ProcessingOptions.ReadOnlyChain) == 0)
+            if ((options & (ProcessingOptions.ReadOnlyChain | ProcessingOptions.DoNotUpdateHead)) == 0)
             {
                 _blockTree.UpdateMainChain(processingBranch.Blocks.ToArray(), true);
             }
@@ -314,6 +314,11 @@ namespace Nethermind.Blockchain.Processing
             else
             {
                 if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, last processed is null: {lastProcessed == null}, processedBlocks.Length: {processedBlocks?.Length}");
+            }
+
+            if ((options & ProcessingOptions.ReadOnlyChain) == ProcessingOptions.None)
+            {
+                _stats.UpdateStats(lastProcessed, _recoveryQueue.Count, _blockQueue.Count);
             }
 
             return lastProcessed;
@@ -381,7 +386,9 @@ namespace Nethermind.Blockchain.Processing
                     break;
                 }
 
-                bool isFastSyncTransition = _blockTree.Head?.Header == _blockTree.Genesis && toBeProcessed.Number > 1;
+                bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
+                bool toBeProcessedIsNotBlockOne = toBeProcessed.Number > 1;
+                bool isFastSyncTransition = headIsGenesis && toBeProcessedIsNotBlockOne;
                 if (!isFastSyncTransition)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)}");
@@ -390,7 +397,7 @@ namespace Nethermind.Blockchain.Processing
 
                     if (toBeProcessed == null)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Treating this as fast sync transition for {suggestedBlock.ToString(Block.Format.Short)}");
+                        if (_logger.IsDebug) _logger.Debug($"Treating this as fast sync transition for {suggestedBlock.ToString(Block.Format.Short)}");
                         break;
                     }
                 }
@@ -431,10 +438,10 @@ namespace Nethermind.Blockchain.Processing
                 throw new InvalidOperationException("Block without total difficulty calculated was suggested for processing");
             }
 
-            if ((options & ProcessingOptions.ReadOnlyChain) == 0 && suggestedBlock.Hash == null)
+            if ((options & ProcessingOptions.NoValidation) == 0 && suggestedBlock.Hash == null)
             {
                 if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} without calculated hash");
-                throw new InvalidOperationException("Block hash should be known at this stage if the block is not read only");
+                throw new InvalidOperationException("Block hash should be known at this stage if running in a validating mode");
             }
 
             for (int i = 0;

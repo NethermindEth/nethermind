@@ -30,6 +30,7 @@ namespace Nethermind.Monitoring.Metrics
         private Timer _timer;
         private Dictionary<string, Gauge> _gauges = new Dictionary<string, Gauge>();
         private Dictionary<Type, PropertyInfo[]> _propertiesCache = new Dictionary<Type, PropertyInfo[]>();
+        private Dictionary<Type, FieldInfo[]> _fieldsCache = new Dictionary<Type, FieldInfo[]>();
         private HashSet<Type> _metricTypes = new HashSet<Type>();
 
         public void RegisterMetrics(Type type)
@@ -38,6 +39,11 @@ namespace Nethermind.Monitoring.Metrics
             foreach (PropertyInfo propertyInfo in _propertiesCache[type])
             {
                 _gauges[string.Concat(type.Name, ".", propertyInfo.Name)] = CreateGauge(BuildGaugeName(propertyInfo.Name));
+            }
+            
+            foreach (FieldInfo fieldInfo in _fieldsCache[type])
+            {
+                _gauges[string.Concat(type.Name, ".", fieldInfo.Name)] = CreateGauge(BuildGaugeName(fieldInfo.Name));
             }
 
             _metricTypes.Add(type);
@@ -48,6 +54,11 @@ namespace Nethermind.Monitoring.Metrics
             if (!_propertiesCache.ContainsKey(type))
             {
                 _propertiesCache[type] = type.GetProperties();
+            }
+            
+            if (!_fieldsCache.ContainsKey(type))
+            {
+                _fieldsCache[type] = type.GetFields();
             }
         }
 
@@ -85,9 +96,15 @@ namespace Nethermind.Monitoring.Metrics
         private void UpdateMetrics(Type type)
         {
             EnsurePropertiesCached(type);
+            
             foreach (PropertyInfo propertyInfo in _propertiesCache[type])
             {
                 _gauges[string.Concat(type.Name, ".", propertyInfo.Name)].Set(Convert.ToDouble(propertyInfo.GetValue(null)));
+            }
+            
+            foreach (FieldInfo fieldInfo in _fieldsCache[type])
+            {
+                _gauges[string.Concat(type.Name, ".", fieldInfo.Name)].Set(Convert.ToDouble(fieldInfo.GetValue(null)));
             }
         }
     }

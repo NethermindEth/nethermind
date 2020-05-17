@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Crypto;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Lifecycle
@@ -22,7 +21,6 @@ namespace Nethermind.Network.Discovery.Lifecycle
     public interface INodeLifecycleManagerFactory
     {
         INodeLifecycleManager CreateNodeLifecycleManager(Node node);
-        INodeLifecycleManager CreateNodeLifecycleManager(PublicKey id, string host, int port);
         IDiscoveryManager DiscoveryManager { set; }
     }
 }

@@ -69,7 +69,13 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || _receiptStorage.LowestInsertedReceiptBlock == 1;
 
+        /// <summary>
+        /// Not it is meant to be counting blocks and not receipts
+        /// </summary>
+        private long ReceiptsInQueue => _dependencies.Sum(d => d.Value.Count);
+
         public FastReceiptsSyncFeed(ISpecProvider specProvider, IBlockTree blockTree, IReceiptStorage receiptStorage, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
+            : base(logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
@@ -95,26 +101,27 @@ namespace Nethermind.Synchronization.FastBlocks
             long lowestInserted = _receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue;
             if (lowestInserted < _pivotNumber)
             {
-                _startHash = _blockTree.FindHash(lowestInserted) ?? _pivotHash;    
+                _startHash = _blockTree.FindHash(lowestInserted) ?? _pivotHash;
             }
-            
+
             _startHash ??= _pivotHash;
             _lowestRequestedHash = _startHash;
-            
+
             Activate();
         }
 
         public override bool IsMultiFeed => true;
-        
+
         public override AllocationContexts Contexts => AllocationContexts.Receipts;
 
-        private bool AnyBatchesLeftToPrepare()
+        private bool ShouldBuildANewBatch()
         {
             bool shouldDownloadReceipts = _syncConfig.DownloadReceiptsInFastSync;
             bool allReceiptsDownloaded = _receiptStorage.LowestInsertedReceiptBlock == 1;
 
             bool noBatchesLeft = !shouldDownloadReceipts
-                                 || allReceiptsDownloaded;
+                                 || allReceiptsDownloaded
+                                 || ReceiptsInQueue >= FastBlocksQueueLimits.ForReceipts;
 
             if (noBatchesLeft)
             {
@@ -224,7 +231,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 // in parallel sync the body may not yet be there
                 return null;
             }
-            
+
             if (collectedRequests < requestSize)
             {
                 batch.Resize(collectedRequests);
@@ -242,7 +249,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 batch.MarkRetry();
             }
-            else if (AnyBatchesLeftToPrepare())
+            else if (ShouldBuildANewBatch())
             {
                 bool moreBodiesWaiting = (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue)
                                          < (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue);
@@ -274,8 +281,8 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 throw new InvalidOperationException("Batch needs to have the min number set to determine priority");
             }
-            
-            if (_receiptStorage.LowestInsertedReceiptBlock - batch.MinNumber < 2 * 1024)
+
+            if (_receiptStorage.LowestInsertedReceiptBlock - batch.MinNumber < FastBlocksPriorities.ForReceipts)
             {
                 batch.Prioritized = true;
             }
@@ -309,7 +316,8 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 catch (Exception ex)
                 {
-                    if(_logger.IsDebug) _logger.Error("Error when adding receipts", ex);
+                    if (_logger.IsWarn) _logger.Warn($"Failed to handle {batch}. This is non-critical error and the node issued the request again. You may want to report {ex}.");
+
                     _pending.Enqueue(batch);
                     return SyncResponseHandlingResult.InternalError;
                 }
@@ -337,9 +345,9 @@ namespace Nethermind.Synchronization.FastBlocks
             long? lastPredecessor = null;
 
             List<(Block, TxReceipt[])> validReceipts = new List<(Block, TxReceipt[])>();
-            if (receiptSyncBatch.Response.Any() && receiptSyncBatch.Response[0] != null)
+            if (receiptSyncBatch.Response.Length != 0 && receiptSyncBatch.Response[0] != null)
             {
-                lastPredecessor = receiptSyncBatch.Predecessors[0];
+                lastPredecessor = receiptSyncBatch.Predecessors.Length == 0 ? null : receiptSyncBatch.Predecessors[0];
             }
 
             for (int blockIndex = 0;
@@ -426,8 +434,8 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_receiptStorage.LowestInsertedReceiptBlock} | HANDLED {receiptSyncBatch}");
 
-                _syncReport.ReceiptsInQueue.Update(_dependencies.Sum(d => d.Value.Count));
-                
+                _syncReport.ReceiptsInQueue.Update(ReceiptsInQueue);
+
                 return added;
             }
         }
@@ -485,7 +493,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 return receiptsSyncBatch;
             }
-            
+
             int requestSize = receiptsSyncBatch.Blocks.Length;
             ReceiptsSyncBatch filler = new ReceiptsSyncBatch();
             filler.MinNumber = receiptsSyncBatch.MinNumber;

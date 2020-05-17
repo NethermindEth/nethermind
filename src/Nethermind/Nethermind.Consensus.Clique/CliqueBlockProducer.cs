@@ -25,6 +25,7 @@ using System.Timers;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -33,7 +34,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Proofs;
-using Nethermind.Store;
+using Nethermind.Db.Blooms;
 
 namespace Nethermind.Consensus.Clique
 {
@@ -46,7 +47,7 @@ namespace Nethermind.Consensus.Clique
         private readonly ICryptoRandom _cryptoRandom;
         private readonly WiggleRandomizer _wiggle;
 
-        private readonly IPendingTxSelector _pendingTxSelector;
+        private readonly ITxSource _txSource;
         private readonly IBlockchainProcessor _processor;
         private readonly ISealer _sealer;
         private readonly ISnapshotManager _snapshotManager;
@@ -57,7 +58,8 @@ namespace Nethermind.Consensus.Clique
         private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
         private readonly System.Timers.Timer _timer = new System.Timers.Timer();
 
-        public CliqueBlockProducer(IPendingTxSelector pendingTxSelector,
+        public CliqueBlockProducer(
+            ITxSource txSource,
             IBlockchainProcessor blockchainProcessor,
             IStateProvider stateProvider,
             IBlockTree blockTree,
@@ -70,7 +72,7 @@ namespace Nethermind.Consensus.Clique
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _pendingTxSelector = pendingTxSelector ?? throw new ArgumentNullException(nameof(pendingTxSelector));
+            _txSource = txSource ?? throw new ArgumentNullException(nameof(txSource));
             _processor = blockchainProcessor ?? throw new ArgumentNullException(nameof(blockchainProcessor));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
@@ -232,7 +234,7 @@ namespace Nethermind.Consensus.Clique
                     }
 
                     if (_logger.IsInfo) _logger.Info($"Processing prepared block {block.Number}");
-                    Block processedBlock = _processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance);
+                    Block processedBlock = _processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
                     if (processedBlock == null)
                     {
                         if (_logger.IsInfo) _logger.Info($"Prepared block has lost the race");
@@ -378,7 +380,7 @@ namespace Nethermind.Consensus.Clique
 
             _stateProvider.StateRoot = parentHeader.StateRoot;
 
-            var selectedTxs = _pendingTxSelector.SelectTransactions(parentBlock.StateRoot, header.GasLimit);
+            var selectedTxs = _txSource.GetTransactions(parentBlock.Header, header.GasLimit);
             Block block = new Block(header, selectedTxs, new BlockHeader[0]);
             header.TxRoot = new TxTrie(block.Transactions).RootHash;
             block.Header.Author = _address;

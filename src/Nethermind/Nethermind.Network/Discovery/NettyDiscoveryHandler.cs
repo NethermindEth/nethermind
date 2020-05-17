@@ -75,7 +75,7 @@ namespace Nethermind.Network.Discovery
 
             try
             {
-                if(_logger.IsTrace) _logger.Trace($"Sending message: {discoveryMessage}");
+                if (_logger.IsTrace) _logger.Trace($"Sending message: {discoveryMessage}");
                 message = Serialize(discoveryMessage);
             }
             catch (Exception e)
@@ -83,20 +83,18 @@ namespace Nethermind.Network.Discovery
                 _logger.Error($"Error during serialization of the message: {discoveryMessage}", e);
                 return;
             }
-            
+
             IAddressedEnvelope<IByteBuffer> packet = new DatagramPacket(Unpooled.CopiedBuffer(message), discoveryMessage.FarAddress);
-            // _logger.Debug($"The message {discoveryMessage} will be sent to {_channel.RemoteAddress}");
+            // _logger.Info($"The message {discoveryMessage} will be sent to {_channel.RemoteAddress}");
             await _channel.WriteAndFlushAsync(packet).ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {
-                    if(_logger.IsTrace) _logger.Trace($"Error when sending a discovery message Msg: {discoveryMessage.ToString()} ,Exp: {t.Exception}");
+                    if (_logger.IsTrace) _logger.Trace($"Error when sending a discovery message Msg: {discoveryMessage.ToString()} ,Exp: {t.Exception}");
                 }
             });
         }
 
-        private static Random rand = new Random(42);
-        
         protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
         {
             IByteBuffer content = packet.Content;
@@ -107,104 +105,111 @@ namespace Nethermind.Network.Discovery
 
             if (msg.Length < 98)
             {
-                if(_logger.IsDebug) _logger.Debug($"Incorrect discovery message, length: {msg.Length}, sender: {address}");
+                if (_logger.IsDebug) _logger.Debug($"Incorrect discovery message, length: {msg.Length}, sender: {address}");
                 return;
             }
-            
+
             byte typeRaw = msg[97];
-            if (!Enum.IsDefined(typeof(MessageType), (int)typeRaw))
+            if (!Enum.IsDefined(typeof(MessageType), (int) typeRaw))
             {
-                if(_logger.IsDebug) _logger.Debug($"Unsupported message type: {typeRaw}, sender: {address}, message {msg.ToHexString()}");
+                if (_logger.IsDebug) _logger.Debug($"Unsupported message type: {typeRaw}, sender: {address}, message {msg.ToHexString()}");
                 return;
             }
-            
-            MessageType type = (MessageType)typeRaw;
-            if(_logger.IsTrace) _logger.Trace($"Received message: {type}");
+
+            MessageType type = (MessageType) typeRaw;
+            if (_logger.IsTrace) _logger.Trace($"Received message: {type}");
 
             DiscoveryMessage message;
 
             try
             {
                 message = Deserialize(type, msg);
-                message.FarAddress = (IPEndPoint)address;
+                message.FarAddress = (IPEndPoint) address;
             }
             catch (Exception e)
             {
-                if(_logger.IsDebug) _logger.Debug($"Error during deserialization of the message, type: {type}, sender: {address}, msg: {msg.ToHexString()}, {e.Message}");
+                if (_logger.IsDebug) _logger.Debug($"Error during deserialization of the message, type: {type}, sender: {address}, msg: {msg.ToHexString()}, {e.Message}");
                 return;
             }
 
             try
             {
-                if ((ulong)message.ExpirationTime < _timestamper.EpochSeconds)
-                {
-                    if(_logger.IsDebug) _logger.Debug($"Received a discovery message that has expired, type: {type}, sender: {address}, message: {message}");
-                    return;
-                }
+                ReportMessageByType(message);
 
-                if (!message.FarAddress.Equals((IPEndPoint)packet.Sender))
-                {
-                    if(_logger.IsDebug) _logger.Debug($"Discovery fake IP detected - pretended {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
+                if (!ValidateMessage(message, type, address, ctx, packet))
                     return;
-                }
-                
-                if (message.FarPublicKey == null)
-                {
-                    if(_logger.IsDebug) _logger.Debug($"Discovery message without a valid signature {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
-                    return;
-                }
 
-                if (message is PingMessage pingMessage)
-                {
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMessage.FarAddress.Address.ToString(), "HANDLER disc v4", $"PING {pingMessage.SourceAddress.Address} -> {pingMessage.DestinationAddress.Address}");    
-                }
-                else
-                {
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress.Address.ToString(), "HANDLER disc v4", message.MessageType.ToString());    
-                }
-                
                 _discoveryManager.OnIncomingMessage(message);
             }
             catch (Exception e)
             {
-                if(_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error while processing message, type: {type}, sender: {address}, message: {message}", e);
+                if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error while processing message, type: {type}, sender: {address}, message: {message}", e);
             }
         }
 
         private DiscoveryMessage Deserialize(MessageType type, byte[] msg)
         {
-            switch (type)
+            return type switch
             {
-                case MessageType.Ping:
-                    return _messageSerializationService.Deserialize<PingMessage>(msg);
-                case MessageType.Pong:
-                    return _messageSerializationService.Deserialize<PongMessage>(msg);
-                case MessageType.FindNode:
-                    return _messageSerializationService.Deserialize<FindNodeMessage>(msg);
-                case MessageType.Neighbors:
-                    return _messageSerializationService.Deserialize<NeighborsMessage>(msg);
-                default:
-                    throw new Exception($"Unsupported messageType: {type}");
-            }
+                MessageType.Ping => _messageSerializationService.Deserialize<PingMessage>(msg),
+                MessageType.Pong => _messageSerializationService.Deserialize<PongMessage>(msg),
+                MessageType.FindNode => _messageSerializationService.Deserialize<FindNodeMessage>(msg),
+                MessageType.Neighbors => _messageSerializationService.Deserialize<NeighborsMessage>(msg),
+                _ => throw new Exception($"Unsupported messageType: {type}")
+            };
         }
 
         private byte[] Serialize(DiscoveryMessage message)
         {
-            switch (message.MessageType)
+            return message.MessageType switch
             {
-                case MessageType.Ping:
-                    return _messageSerializationService.Serialize((PingMessage)message);
-                case MessageType.Pong:
-                    return _messageSerializationService.Serialize((PongMessage)message);
-                case MessageType.FindNode:
-                    return _messageSerializationService.Serialize((FindNodeMessage)message);
-                case MessageType.Neighbors:
-                    return _messageSerializationService.Serialize((NeighborsMessage)message);
-                default:
-                    throw new Exception($"Unsupported messageType: {message.MessageType}");
+                MessageType.Ping => _messageSerializationService.Serialize((PingMessage) message),
+                MessageType.Pong => _messageSerializationService.Serialize((PongMessage) message),
+                MessageType.FindNode => _messageSerializationService.Serialize((FindNodeMessage) message),
+                MessageType.Neighbors => _messageSerializationService.Serialize((NeighborsMessage) message),
+                _ => throw new Exception($"Unsupported messageType: {message.MessageType}")
+            };
+        }
+
+        private bool ValidateMessage(DiscoveryMessage message, MessageType type, EndPoint address, IChannelHandlerContext ctx, DatagramPacket packet)
+        {
+            var timeToExpire = message.ExpirationTime - (long) _timestamper.EpochSeconds;
+            if (timeToExpire < 0)
+            {
+                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress.Address.MapToIPv4().ToString(), "HANDLER disc v4", $"{message.MessageType.ToString()} expired");
+                if (_logger.IsDebug) _logger.Debug($"Received a discovery message that has expired {-timeToExpire} seconds ago, type: {type}, sender: {address}, message: {message}");
+                return false;
+            }
+
+            if (!message.FarAddress.Equals((IPEndPoint) packet.Sender))
+            {
+                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress.Address.MapToIPv4().ToString(), "HANDLER disc v4", $"{message.MessageType.ToString()} has incorrect far address");
+                if (_logger.IsDebug) _logger.Debug($"Discovery fake IP detected - pretended {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
+                return false;
+            }
+
+            if (message.FarPublicKey == null)
+            {
+                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress.Address.ToString(), "HANDLER disc v4", $"{message.MessageType.ToString()} has null far public key");
+                if (_logger.IsDebug) _logger.Debug($"Discovery message without a valid signature {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
+                return false;
+            }
+
+            return true;
+        }
+
+        private static void ReportMessageByType(DiscoveryMessage message)
+        {
+            if (message is PingMessage pingMessage)
+            {
+                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMessage.FarAddress.Address.ToString(), "HANDLER disc v4", $"Ping {pingMessage.SourceAddress.Address} -> {pingMessage.DestinationAddress.Address}");
+            }
+            else
+            {
+                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress.Address.ToString(), "HANDLER disc v4", message.MessageType.ToString());
             }
         }
-        
+
         public event EventHandler OnChannelActivated;
     }
 }

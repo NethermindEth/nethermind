@@ -32,7 +32,6 @@ using Nethermind.Facade.Proxy;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
-using Nethermind.Network.Crypto;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
@@ -44,7 +43,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Store;
+using Nethermind.Db.Blooms;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
@@ -124,7 +123,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _ctx.SyncModeSelector,
                 _syncConfig,
                 _ctx.LogManager);
-                
             _ctx.DisposeStack.Push(_ctx.Synchronizer);
 
             _ctx.SyncServer = new SyncServer(
@@ -138,6 +136,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _ctx.SyncModeSelector,
                 _ctx.Config<ISyncConfig>(),
                 _ctx.LogManager);
+            _ctx.DisposeStack.Push(_ctx.SyncServer);
 
             InitDiscovery();
             await InitPeer().ContinueWith(initPeerTask =>
@@ -185,7 +184,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (!_ctx.Config<IInitConfig>().DiscoveryEnabled)
             {
-                if (_logger.IsWarn) _logger.Warn($"Skipping discovery init due to ({nameof(IInitConfig.DiscoveryEnabled)} set to false)");
+                if (_logger.IsWarn) _logger.Warn($"Skipping discovery init due to {nameof(IInitConfig.DiscoveryEnabled)} set to false");
                 return Task.CompletedTask;
             }
 
@@ -202,7 +201,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (!_ctx.Config<IInitConfig>().PeerManagerEnabled)
             {
-                if (_logger.IsWarn) _logger.Warn($"Skipping peer manager init due to {nameof(IInitConfig.PeerManagerEnabled)} set to false)");
+                if (_logger.IsWarn) _logger.Warn($"Skipping peer manager init due to {nameof(IInitConfig.PeerManagerEnabled)} set to false");
             }
 
             if (_logger.IsDebug) _logger.Debug("Initializing peer manager");
@@ -293,7 +292,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (!_ctx.Config<ISyncConfig>().SynchronizationEnabled)
             {
-                if (_logger.IsWarn) _logger.Warn($"Skipping blockchain synchronization init due to ({nameof(ISyncConfig.SynchronizationEnabled)} set to false)");
+                if (_logger.IsWarn) _logger.Warn($"Skipping blockchain synchronization init due to {nameof(ISyncConfig.SynchronizationEnabled)} set to false");
                 return Task.CompletedTask;
             }
 

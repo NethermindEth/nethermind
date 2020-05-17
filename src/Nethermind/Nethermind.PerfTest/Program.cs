@@ -26,6 +26,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Blockchain.Visitors;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
@@ -41,12 +42,10 @@ using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
 using Nethermind.Serialization.Json;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Store;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using Metrics = Nethermind.Trie.Metrics;
@@ -92,14 +91,9 @@ namespace Nethermind.PerfTest
             public Block Head => _blockTree.Head;
             public bool CanAcceptNewBlocks { get; } = true;
 
-            public async Task LoadBlocksFromDb(CancellationToken cancellationToken, long? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue)
+            public async Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken)
             {
-                await _blockTree.LoadBlocksFromDb(cancellationToken, startBlockNumber, batchSize, maxBlocksToLoad);
-            }
-
-            public async Task FixFastSyncGaps(CancellationToken cancellationToken)
-            {
-                await _blockTree.FixFastSyncGaps(cancellationToken);
+                await _blockTree.Accept(blockTreeVisitor, cancellationToken);
             }
 
             public ChainLevelInfo FindLevel(long number) => _blockTree.FindLevel(number);
@@ -268,7 +262,7 @@ namespace Nethermind.PerfTest
             var stateProvider = new StateProvider(stateDb, codeDb, _logManager);
             var storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
 
-            var ethereumSigner = new EthereumEcdsa(specProvider, _logManager);
+            var ethereumSigner = new EthereumEcdsa(specProvider.ChainId, _logManager);
 
             var transactionPool = new TxPool.TxPool(
                 NullTxStorage.Instance,
@@ -283,7 +277,7 @@ namespace Nethermind.PerfTest
             var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, headersDb, blockInfosDb, blockInfoRepository, specProvider, transactionPool, new BloomStorage(new BloomConfig(), dbProvider.HeadersDb, new InMemoryDictionaryFileStoreFactory()), _logManager));
             var receiptStorage = new InMemoryReceiptStorage();
 
-            IBlockDataRecoveryStep recoveryStep = new TxSignaturesRecoveryStep(ethereumSigner, transactionPool, _logManager);
+            IBlockDataRecoveryStep recoveryStep = new TxSignaturesRecoveryStep(specProvider, ethereumSigner, transactionPool, _logManager);
 
             /* blockchain processing */
             var blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
@@ -329,7 +323,7 @@ namespace Nethermind.PerfTest
 
                 if (allocation.Constructor != null)
                 {
-                    Transaction constructorTransaction = new Transaction(true)
+                    Transaction constructorTransaction = new SystemTransaction()
                     {
                         SenderAddress = address,
                         Init = allocation.Constructor,
@@ -434,7 +428,8 @@ namespace Nethermind.PerfTest
                 }
             };
 
-            await Task.WhenAny(completionSource.Task, blockTree.LoadBlocksFromDb(CancellationToken.None, 0, 10000, BlocksToLoad));
+            DbBlocksLoader dbBlocksLoader = new DbBlocksLoader(blockTree, _logger, 0, 10000, BlocksToLoad);
+            await Task.WhenAny(completionSource.Task, blockTree.Accept(dbBlocksLoader, CancellationToken.None));
 
             await blockchainProcessor.StopAsync(true).ContinueWith(
                 t =>

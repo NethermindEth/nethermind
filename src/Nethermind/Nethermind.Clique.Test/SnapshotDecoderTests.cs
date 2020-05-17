@@ -24,7 +24,7 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store;
+using Nethermind.Db.Blooms;
 using NUnit.Framework;
 
 namespace Nethermind.Clique.Test

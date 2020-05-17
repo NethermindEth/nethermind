@@ -18,12 +18,15 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
+using Nethermind.Specs;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
@@ -34,6 +37,7 @@ namespace Nethermind.JsonRpc.Test.Modules
     {
         public IEthModule EthModule { get; private set; }
         public IBlockchainBridge Bridge { get; private set; }
+        public ITxPoolBridge TxPoolBridge { get; private set; }
 
         protected TestRpcBlockchain(SealEngineType sealEngineType)
             : base(sealEngineType)
@@ -60,19 +64,28 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
             
+            public Builder WithTxPoolBridge(ITxPoolBridge txPoolBridge)
+            {
+                _blockchain.TxPoolBridge = txPoolBridge;
+                return this;
+            }
+            
             public async Task<TestRpcBlockchain> Build()
             {
                 return (TestRpcBlockchain)(await _blockchain.Build());
             }
         }
 
-        protected override async Task<TestBlockchain> Build()
+        protected override async Task<TestBlockchain> Build(ISpecProvider specProvider = null)
         {
-            await base.Build();
+            specProvider ??= MainnetSpecProvider.Instance;
+            await base.Build(specProvider);
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
-            Bridge ??= new BlockchainBridge(StateReader, State, Storage, BlockTree, TxPool, ReceiptStorage, filterStore, filterManager, NullWallet.Instance, TxProcessor, EthereumEcdsa, NullBloomStorage.Instance, LimboLogs.Instance, false);
-            EthModule = new EthModule(new JsonRpcConfig(), Bridge, LimboLogs.Instance);
+            Bridge ??= new BlockchainBridge(StateReader, State, Storage, BlockTree, TxPool, ReceiptStorage, filterStore, filterManager, NullWallet.Instance, TxProcessor, EthereumEcdsa, NullBloomStorage.Instance, specProvider, LimboLogs.Instance, false);
+            TxPoolBridge ??= new TxPoolBridge(TxPool, NullWallet.Instance, specProvider?.ChainId ?? 0);
+            
+            EthModule = new EthModule(new JsonRpcConfig(), Bridge, TxPoolBridge, LimboLogs.Instance);
             return this;
         }
 

@@ -23,10 +23,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Db.Blooms;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State.Repositories;
-using Nethermind.Store.Bloom;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -34,6 +34,7 @@ using Nethermind.Synchronization.Reporting;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Synchronization.Test.FastBlocks
 {

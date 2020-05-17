@@ -55,16 +55,5 @@ namespace Nethermind.Network.Discovery.Lifecycle
             
             return new NodeLifecycleManager(node, DiscoveryManager, _nodeTable, _discoveryMessageFactory, _evictionManager, _nodeStatsManager.GetOrAdd(node), _discoveryConfig, _logger);
         }
-
-        public INodeLifecycleManager CreateNodeLifecycleManager(PublicKey id, string host, int port)
-        {
-            if (DiscoveryManager == null)
-            {
-                throw new Exception($"{nameof(DiscoveryManager)} has to be set");
-            }
-            
-            Node node = new Node(id, host, port);
-            return new NodeLifecycleManager(node, DiscoveryManager, _nodeTable, _discoveryMessageFactory, _evictionManager, _nodeStatsManager.GetOrAdd(node), _discoveryConfig, _logger);
-        }
     }
 }

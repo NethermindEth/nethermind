@@ -29,6 +29,7 @@ using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
 using Nethermind.Db;
+using Nethermind.Db.Blooms;
 using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
@@ -37,7 +38,6 @@ using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Serialization.Json;
-using Nethermind.Store.Bloom;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 

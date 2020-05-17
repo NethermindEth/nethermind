@@ -291,7 +291,7 @@ namespace Nethermind.Blockchain.Processing
                 if (tracer.IsTracingRewards)
                 {
                     tracer.EndTxTrace();
-                    tracer.ReportReward(reward.Address, reward.RewardType.ToLowerString(), (UInt256) reward.Value);
+                    tracer.ReportReward(reward.Address, reward.RewardType.ToLowerString(), reward.Value);
                     if (txTracer?.IsTracingState ?? false)
                     {
                         _stateProvider.Commit(_specProvider.GetSpec(block.Number), txTracer);
@@ -306,11 +306,11 @@ namespace Nethermind.Blockchain.Processing
 
             if (!_stateProvider.AccountExists(reward.Address))
             {
-                _stateProvider.CreateAccount(reward.Address, (UInt256) reward.Value);
+                _stateProvider.CreateAccount(reward.Address, reward.Value);
             }
             else
             {
-                _stateProvider.AddToBalance(reward.Address, (UInt256) reward.Value, _specProvider.GetSpec(block.Number));
+                _stateProvider.AddToBalance(reward.Address, reward.Value, _specProvider.GetSpec(block.Number));
             }
         }
 

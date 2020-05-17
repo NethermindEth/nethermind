@@ -19,7 +19,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Network.Crypto;
 using Nethermind.Secp256k1;
 using Org.BouncyCastle.Crypto.Digests;
 
@@ -52,7 +51,6 @@ namespace Nethermind.Network.Rlpx.Handshake
             _messageSerializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
             _eciesCipher = eciesCipher ?? throw new ArgumentNullException(nameof(eciesCipher));
             _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));
-            ;
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _ephemeralGenerator = new PrivateKeyGenerator(_cryptoRandom);

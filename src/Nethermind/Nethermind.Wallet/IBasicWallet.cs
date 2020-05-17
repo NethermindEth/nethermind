@@ -16,11 +16,24 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Wallet
 {
     public interface IBasicWallet
     {
         Signature Sign(Keccak message, Address address);
+        
+        void Sign(Transaction tx, int chainId)
+        {
+            Sign(this, tx, chainId);
+        }
+        
+        protected static void Sign(IBasicWallet @this, Transaction tx, int chainId)
+        {
+            Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, chainId).Bytes);
+            tx.Signature = @this.Sign(hash, tx.SenderAddress);
+            tx.Signature.V = tx.Signature.V + 8 + 2 * chainId;
+        }
     }
 }

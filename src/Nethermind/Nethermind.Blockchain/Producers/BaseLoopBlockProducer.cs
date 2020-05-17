@@ -19,6 +19,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -35,7 +36,7 @@ namespace Nethermind.Blockchain.Producers
         protected bool CanProduce { get; set; }
 
         protected BaseLoopBlockProducer(
-            IPendingTxSelector pendingTxSelector,
+            ITxSource txSource,
             IBlockchainProcessor processor,
             ISealer sealer,
             IBlockTree blockTree,
@@ -44,7 +45,7 @@ namespace Nethermind.Blockchain.Producers
             ITimestamper timestamper,
             ILogManager logManager,
             string name) 
-            : base(pendingTxSelector, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager)
+            : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager)
         {
             _name = name;
         }
@@ -86,7 +87,16 @@ namespace Nethermind.Blockchain.Producers
             {
                 if (CanProduce && BlockProcessingQueue.IsEmpty)
                 {
-                    await ProducerLoopStep(LoopCancellationTokenSource.Token);
+                    try
+                    {
+                        await ProducerLoopStep(LoopCancellationTokenSource.Token);
+                    }
+                    catch (Exception e) when(!(e is TaskCanceledException))
+                    {
+                        if (Logger.IsError) { Logger.Error("Failed to produce block.", e); }
+
+                        throw;
+                    }
                 }
                 else
                 {

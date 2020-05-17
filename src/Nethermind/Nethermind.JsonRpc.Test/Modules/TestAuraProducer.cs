@@ -21,6 +21,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -30,7 +31,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 {
     public class TestAuraProducer : AuRaBlockProducer
     {
-        public TestAuraProducer(IPendingTxSelector pendingTxSelector, IBlockchainProcessor processor, IStateProvider stateProvider, ISealer sealer, IBlockTree blockTree, IBlockProcessingQueue blockProcessingQueue, ITimestamper timestamper, ILogManager logManager, IAuRaStepCalculator auRaStepCalculator, IAuraConfig config, Address nodeAddress) : base(pendingTxSelector, processor, stateProvider, sealer, blockTree, blockProcessingQueue, timestamper, logManager, auRaStepCalculator, config, nodeAddress)
+        public TestAuraProducer(ITxSource transactionSource, IBlockchainProcessor processor, IStateProvider stateProvider, ISealer sealer, IBlockTree blockTree, IBlockProcessingQueue blockProcessingQueue, ITimestamper timestamper, ILogManager logManager, IAuRaStepCalculator auRaStepCalculator, IAuraConfig config, Address nodeAddress) : base(transactionSource, processor, stateProvider, sealer, blockTree, blockProcessingQueue, timestamper, logManager, auRaStepCalculator, config, nodeAddress)
         {
         }
 

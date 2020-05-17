@@ -3,9 +3,7 @@ RUNNER_PATH=nethermind/src/Nethermind/Nethermind.Runner
 LINUX=linux-x64
 OSX=osx-x64
 WIN10=win10-x64
-PUBLISH_PATH=bin/release/netcoreapp3.0
-EXEC=Nethermind.Runner
-ZIP=$EXEC.zip
+PUBLISH_PATH=bin/release/netcoreapp3.1
 OUT=out
 LIN_RELEASE=nethermind-lin-x64
 OSX_RELEASE=nethermind-osx-x64
@@ -18,33 +16,43 @@ echo Publishing Nethermind Runner for different platforms...
 echo =======================================================
 echo Nethermind Runner path: $RUNNER_PATH
 
-dotnet tool restore
-assemblyversion=$(dotnet gitversion -output json -showvariable AssemblySemVer)
-fileversion=$(dotnet gitversion -output json -showvariable AssemblySemFileVer)
-semver=$(dotnet gitversion -output json -showvariable SemVer)
-shortsha=$(dotnet gitversion -output json -showvariable ShortSha)
+rm -rf $OUT
 
-dotnet publish -c release -r $LINUX -p:AssemblyVersion=$assemblyversion -p:FileVersion=$fileversion -p:Version=${semver}+${shortsha}
-dotnet publish -c release -r $OSX -p:AssemblyVersion=$assemblyversion -p:FileVersion=$fileversion -p:Version=${semver}+${shortsha}
-dotnet publish -c release -r $WIN10 -p:AssemblyVersion=$assemblyversion -p:FileVersion=$fileversion -p:Version=${semver}+${shortsha}
+dotnet publish -c release -r $LINUX /p:PublishSingleFile=true -o $OUT/$LIN_RELEASE
+dotnet publish -c release -r $OSX /p:PublishSingleFile=true -o $OUT/$OSX_RELEASE
+dotnet publish -c release -r $WIN10 /p:PublishSingleFile=true -o $OUT/$WIN_RELEASE
 
-rm -rf $OUT && mkdir $OUT $OUT/$LINUX $OUT/$OSX $OUT/$WIN10
+rm -rf $OUT/$LIN_RELEASE/Data
+rm -rf $OUT/$LIN_RELEASE/Hive
+rm $OUT/$LIN_RELEASE/Nethermind.Runner.pdb
+rm $OUT/$LIN_RELEASE/web.config
+cp -r configs $OUT/$LIN_RELEASE
+cp -r ../Chains $OUT/$LIN_RELEASE/chainspec
+mkdir $OUT/$LIN_RELEASE/Data
+cp Data/static-nodes.json $OUT/$LIN_RELEASE/Data
 
-echo =======================================================
-echo Packing Nethermind Runner for different platforms...
-echo =======================================================
+rm -rf $OUT/$OSX_RELEASE/Data
+rm -rf $OUT/$OSX_RELEASE/Hive
+rm $OUT/$OSX_RELEASE/Nethermind.Runner.pdb
+rm $OUT/$OSX_RELEASE/web.config
+cp -r configs $OUT/$OSX_RELEASE
+cp -r ../Chains $OUT/$OSX_RELEASE/chainspec
+mkdir $OUT/$OSX_RELEASE/Data
+cp Data/static-nodes.json $OUT/$OSX_RELEASE/Data
 
-/usr/local/bin/warp-packer --arch linux-x64 --input_dir $PUBLISH_PATH/$LINUX/publish --exec $EXEC --output $OUT/$LINUX/$EXEC
-/usr/local/bin/warp-packer --arch macos-x64 --input_dir $PUBLISH_PATH/$OSX/publish --exec $EXEC --output $OUT/$OSX/$EXEC
-/usr/local/bin/warp-packer --arch windows-x64 --input_dir $PUBLISH_PATH/$WIN10/publish --exec $EXEC.exe --output $OUT/$WIN10/$EXEC.exe
+rm -rf $OUT/$WIN_RELEASE/Data
+rm -rf $OUT/$WIN_RELEASE/Hive
+rm $OUT/$WIN_RELEASE/Nethermind.Runner.pdb
+rm $OUT/$WIN_RELEASE/web.config
+cp -r configs $OUT/$WIN_RELEASE
+cp -r ../Chains $OUT/$WIN_RELEASE/chainspec
+mkdir $OUT/$WIN_RELEASE/Data
+cp Data/static-nodes.json $OUT/$WIN_RELEASE/Data
 
-mv $OUT/$LINUX/$EXEC $RELEASE_DIRECTORY/$LIN_RELEASE
-mv $OUT/$OSX/$EXEC $RELEASE_DIRECTORY/$OSX_RELEASE
-mv $OUT/$WIN10/$EXEC.exe $RELEASE_DIRECTORY/$WIN_RELEASE
+mv $OUT/$LIN_RELEASE $RELEASE_DIRECTORY
+mv $OUT/$OSX_RELEASE $RELEASE_DIRECTORY
+mv $OUT/$WIN_RELEASE $RELEASE_DIRECTORY
 
-cp -r configs $RELEASE_DIRECTORY/$LIN_RELEASE
-cp -r configs $RELEASE_DIRECTORY/$OSX_RELEASE
-cp -r configs $RELEASE_DIRECTORY/$WIN_RELEASE 
 
 rm -rf $OUT
 

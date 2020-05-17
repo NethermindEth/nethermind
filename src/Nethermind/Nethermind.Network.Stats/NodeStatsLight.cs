@@ -27,8 +27,17 @@ namespace Nethermind.Stats
     {
         private readonly IStatsConfig _statsConfig;
 
-        private long _transferSpeedEventCount;
-        private decimal? _averageTransferSpeed;
+        private long _headersTransferSpeedEventCount;
+        private long _bodiesTransferSpeedEventCount;
+        private long _receiptsTransferSpeedEventCount;
+        private long _nodesTransferSpeedEventCount;
+        private long _latencyEventCount;
+        
+        private decimal? _averageNodesTransferSpeed;
+        private decimal? _averageHeadersTransferSpeed;
+        private decimal? _averageBodiesTransferSpeed;
+        private decimal? _averageReceiptsTransferSpeed;
+        private decimal? _averageLatency;
 
         private int[] _statCountersArray;
         private object _speedLock = new object();
@@ -54,8 +63,6 @@ namespace Nethermind.Stats
         public long CurrentPersistedNodeReputation { get; set; }
 
         public long NewPersistedNodeReputation => IsReputationPenalized() ? -100 : (CurrentPersistedNodeReputation + CalculateSessionReputation()) / 2;
-
-        public bool IsTrustedPeer { get; set; }
 
         public P2PNodeDetails P2PNodeDetails { get; private set; }
 
@@ -135,17 +142,44 @@ namespace Nethermind.Stats
             }
         }
 
-        public void AddTransferSpeedCaptureEvent(long bytesPerMillisecond)
+        public void AddTransferSpeedCaptureEvent(TransferSpeedType transferSpeedType, long bytesPerMillisecond)
         {
             lock (_speedLock)
             {
-                _averageTransferSpeed = ((_transferSpeedEventCount * (_averageTransferSpeed ?? 0)) + bytesPerMillisecond) / (++_transferSpeedEventCount);
+                switch (transferSpeedType)
+                {
+                    case TransferSpeedType.Latency:
+                        _averageLatency = ((_latencyEventCount * (_averageLatency ?? 0)) + bytesPerMillisecond) / (++_latencyEventCount);
+                        break;
+                    case TransferSpeedType.NodeData:
+                        _averageNodesTransferSpeed = ((_nodesTransferSpeedEventCount * (_averageNodesTransferSpeed ?? 0)) + bytesPerMillisecond) / (++_nodesTransferSpeedEventCount);
+                        break;
+                    case TransferSpeedType.Headers:
+                        _averageHeadersTransferSpeed = ((_headersTransferSpeedEventCount * (_averageHeadersTransferSpeed ?? 0)) + bytesPerMillisecond) / (++_headersTransferSpeedEventCount);
+                        break;
+                    case TransferSpeedType.Bodies:
+                        _averageBodiesTransferSpeed = ((_bodiesTransferSpeedEventCount * (_averageBodiesTransferSpeed ?? 0)) + bytesPerMillisecond) / (++_bodiesTransferSpeedEventCount);
+                        break;
+                    case TransferSpeedType.Receipts:
+                        _averageReceiptsTransferSpeed = ((_receiptsTransferSpeedEventCount * (_averageReceiptsTransferSpeed ?? 0)) + bytesPerMillisecond) / (++_receiptsTransferSpeedEventCount);
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(transferSpeedType), transferSpeedType, null);
+                }
             }
         }
 
-        public long? GetAverageTransferSpeed()
+        public long? GetAverageTransferSpeed(TransferSpeedType transferSpeedType)
         {
-            return (long?)_averageTransferSpeed;
+            return (long?)(transferSpeedType switch
+            {
+                TransferSpeedType.Latency => _averageLatency,
+                TransferSpeedType.NodeData => _averageNodesTransferSpeed,
+                TransferSpeedType.Headers => _averageHeadersTransferSpeed,
+                TransferSpeedType.Bodies => _averageBodiesTransferSpeed,
+                TransferSpeedType.Receipts => _averageReceiptsTransferSpeed,
+                _ => throw new ArgumentOutOfRangeException()
+            });
         }
 
         public (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed()

@@ -46,7 +46,7 @@ namespace Nethermind.Specs.ChainSpecStyle
     /// </summary>
     public class AuRaParameters
     {
-        public int StepDuration { get; set; }
+        public IDictionary<long, long> StepDuration { get; set; }
 
         public UInt256 BlockReward { get; set; }
 
@@ -65,7 +65,13 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long ValidateStepTransition { get; set; }
 		
         public Validator Validators { get; set; }
+
+        public long TwoThirdsMajorityTransition { get; set; }
         
+        public IDictionary<long, Address> RandomnessContractAddress { get; set; }
+        
+        public IDictionary<long, Address> BlockGasLimitContractTransitions { get; set; }
+
         public enum ValidatorType
         {
             List,

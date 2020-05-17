@@ -31,10 +31,11 @@ using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store;
+using Nethermind.Db.Blooms;
 using Nethermind.Trie;
 using Nethermind.Wallet;
 using NUnit.Framework;
+using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Clique.Test
 {
@@ -81,7 +82,7 @@ namespace Nethermind.Clique.Test
             MineBlock(_blockTree, block3);
             MineBlock(_blockTree, block4);           
             MineBlock(_blockTree, block5);
-            IEthereumEcdsa ecdsa = new EthereumEcdsa(RinkebySpecProvider.Instance, LimboLogs.Instance);
+            IEthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Rinkeby, LimboLogs.Instance);
             // Init snapshot db
             IDb db = new MemDb();
             CliqueConfig config = new CliqueConfig();

@@ -14,7 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Net;
+using DotNetty.Common.Utilities;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Serialization.Rlp;
@@ -42,6 +44,8 @@ namespace Nethermind.Network.Discovery.Serializers
             ).Bytes;
 
             byte[] serializedMsg = Serialize(typeByte, data);
+            message.Mdc = serializedMsg.Slice(0, 32);
+            
             return serializedMsg;
         }
 
@@ -54,11 +58,16 @@ namespace Nethermind.Network.Discovery.Serializers
             int version = rlp.DecodeInt();
 
             rlp.ReadSequenceLength();
-            byte[] sourceAddress = rlp.DecodeByteArray();
-            IPEndPoint source = GetAddress(sourceAddress, rlp.DecodeInt());
+            ReadOnlySpan<byte> sourceAddress = rlp.DecodeByteArraySpan();
+            
+            // TODO: please note that we decode only one field for port and if the UDP is different from TCP then
+            // our discovery messages will not be routed correctly (the fix will not be part of this commit)
             rlp.DecodeInt(); // UDP port
+            int tcpPort = rlp.DecodeInt(); // we assume here that UDP and TCP port are same 
+
+            IPEndPoint source = GetAddress(sourceAddress, tcpPort);
             rlp.ReadSequenceLength();
-            byte[] destinationAddress = rlp.DecodeByteArray();
+            ReadOnlySpan<byte> destinationAddress = rlp.DecodeByteArraySpan();
             IPEndPoint destination = GetAddress(destinationAddress, rlp.DecodeInt());
             rlp.DecodeInt(); // UDP port
 

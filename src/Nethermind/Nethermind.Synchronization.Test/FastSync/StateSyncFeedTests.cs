@@ -39,6 +39,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.StateSync;
 using Nethermind.Trie;
 using NUnit.Framework;
+using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Synchronization.Test.FastSync
 {
@@ -309,7 +310,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             dbContext.CompareTrees("BEFORE FIRST SYNC", true);
 
             PrepareDownloader(mock);
-            _feed.SetNewStateRoot(1024, dbContext.RemoteStateTree.RootHash);
+            _feed.ResetStateRoot(1024, dbContext.RemoteStateTree.RootHash);
             await Task.WhenAny(_stateSyncDispatcher.Start(CancellationToken.None), Task.Delay(TimeoutLength));
             dbContext.LocalStateDb.Commit();
 
@@ -328,7 +329,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             dbContext.RemoteStateDb.Commit();
 
             _pool.WakeUpAll();
-            _feed.SetNewStateRoot(1024, dbContext.RemoteStateTree.RootHash);
+            _feed.ResetStateRoot(1024, dbContext.RemoteStateTree.RootHash);
             await Task.WhenAny(_stateSyncDispatcher.Start(CancellationToken.None), Task.Delay(TimeoutLength));
             dbContext.LocalStateDb.Commit();
 
@@ -348,7 +349,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             _pool.WakeUpAll();
             mock.SetFilter(null);
-            _feed.SetNewStateRoot(1024, dbContext.RemoteStateTree.RootHash);
+            _feed.ResetStateRoot(1024, dbContext.RemoteStateTree.RootHash);
             await Task.WhenAny(_stateSyncDispatcher.Start(CancellationToken.None), Task.Delay(TimeoutLength));
             dbContext.LocalStateDb.Commit();
 
@@ -371,7 +372,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
             PrepareDownloader(mock);
-            _feed.SetNewStateRoot(1024, dbContext.RemoteStateTree.RootHash);
+            _feed.ResetStateRoot(1024, dbContext.RemoteStateTree.RootHash);
             Task syncNode = _stateSyncDispatcher.Start(CancellationToken.None);
 
             Task first = await Task.WhenAny(syncNode, Task.Delay(TimeoutLength));
@@ -389,7 +390,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             DbContext dbContext = new DbContext(_logger);
             SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
             PrepareDownloader(mock);
-            _feed.SetNewStateRoot(1000, dbContext.RemoteStateTree.RootHash);
+            _feed.ResetStateRoot(1000, dbContext.RemoteStateTree.RootHash);
             await Task.WhenAny(_stateSyncDispatcher.Start(CancellationToken.None), Task.Delay(TimeoutLength));
 
             dbContext.CompareTrees("END");
@@ -409,14 +410,14 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             PrepareDownloader(mock);
 
-            _feed.SetNewStateRoot(1024, dbContext.RemoteStateTree.RootHash);
+            _feed.ResetStateRoot(1024, dbContext.RemoteStateTree.RootHash);
             await Task.WhenAny(_stateSyncDispatcher.Start(CancellationToken.None), Task.Delay(TimeoutLength));
             dbContext.LocalStateDb.Commit();
 
             _pool.WakeUpAll();
 
             mock.SetFilter(null);
-            _feed.SetNewStateRoot(1024, dbContext.RemoteStateTree.RootHash);
+            _feed.ResetStateRoot(1024, dbContext.RemoteStateTree.RootHash);
             await Task.WhenAny(_stateSyncDispatcher.Start(CancellationToken.None), Task.Delay(TimeoutLength));
             dbContext.LocalStateDb.Commit();
 
@@ -438,7 +439,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             mock.MaxResponseLength = 1;
 
             PrepareDownloader(mock);
-            _feed.SetNewStateRoot(1024, dbContext.RemoteStateTree.RootHash);
+            _feed.ResetStateRoot(1024, dbContext.RemoteStateTree.RootHash);
             await Task.WhenAny(_stateSyncDispatcher.Start(CancellationToken.None), Task.Delay(TimeoutLength));
             dbContext.LocalStateDb.Commit();
 
@@ -460,7 +461,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             dbContext.CompareTrees("BEFORE FIRST SYNC");
 
             PrepareDownloader(mock);
-            _feed.SetNewStateRoot(1024, dbContext.RemoteStateTree.RootHash);
+            _feed.ResetStateRoot(1024, dbContext.RemoteStateTree.RootHash);
             await Task.WhenAny(_stateSyncDispatcher.Start(CancellationToken.None), Task.Delay(TimeoutLength));
             dbContext.LocalStateDb.Commit();
 
@@ -483,7 +484,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             _pool.WakeUpAll();
 
             mock.SetFilter(null);
-            _feed.SetNewStateRoot(1024, dbContext.RemoteStateTree.RootHash);
+            _feed.ResetStateRoot(1024, dbContext.RemoteStateTree.RootHash);
             await Task.WhenAny(_stateSyncDispatcher.Start(CancellationToken.None), Task.Delay(TimeoutLength));
             dbContext.LocalStateDb.Commit();
 
@@ -518,7 +519,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
             PrepareDownloader(mock);
-            _feed.SetNewStateRoot(1024, dbContext.RemoteStateTree.RootHash);
+            _feed.ResetStateRoot(1024, dbContext.RemoteStateTree.RootHash);
             Task syncNode = _stateSyncDispatcher.Start(CancellationToken.None);
 
             Task first = await Task.WhenAny(syncNode, Task.Delay(TimeoutLength));
@@ -550,7 +551,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
             PrepareDownloader(mock);
-            _feed.SetNewStateRoot(1024, dbContext.RemoteStateTree.RootHash);
+            _feed.ResetStateRoot(1024, dbContext.RemoteStateTree.RootHash);
             Task syncNode = _stateSyncDispatcher.Start(CancellationToken.None);
 
             Task first = await Task.WhenAny(syncNode, Task.Delay(TimeoutLength));
@@ -586,7 +587,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
             PrepareDownloader(mock);
-            _feed.SetNewStateRoot(1024, dbContext.RemoteStateTree.RootHash);
+            _feed.ResetStateRoot(1024, dbContext.RemoteStateTree.RootHash);
             Task syncNode = _stateSyncDispatcher.Start(CancellationToken.None);
 
             Task first = await Task.WhenAny(syncNode, Task.Delay(TimeoutLength));
@@ -620,7 +621,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
             PrepareDownloader(mock);
-            _feed.SetNewStateRoot(1024, dbContext.RemoteStateTree.RootHash);
+            _feed.ResetStateRoot(1024, dbContext.RemoteStateTree.RootHash);
             Task syncNode = _stateSyncDispatcher.Start(CancellationToken.None);
 
             Task first = await Task.WhenAny(syncNode, Task.Delay(TimeoutLength));

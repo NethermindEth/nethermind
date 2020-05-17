@@ -101,10 +101,7 @@ namespace Nethermind.Synchronization
                 bool headIsGenesis = _blockTree.Head.Hash == _blockTree.Genesis.Hash;
                 if (headIsGenesis)
                 {
-                    if (_pivotHeader == null)
-                    {
-                        _pivotHeader = _blockTree.FindHeader(_pivotHash, BlockTreeLookupOptions.None);
-                    }
+                    _pivotHeader ??= _blockTree.FindHeader(_pivotHash, BlockTreeLookupOptions.None);
                 }
 
                 return headIsGenesis ? _pivotHeader ?? _blockTree.Genesis : _blockTree.Head?.Header;
@@ -158,7 +155,8 @@ namespace Nethermind.Synchronization
             }
 
             ValidateSeal(block, nodeWhoSentTheBlock);
-            if ((_syncModeSelector.Current & (SyncMode.Beam | SyncMode.Full)) != SyncMode.None)
+            if ((_syncModeSelector.Current & (SyncMode.FastSync | SyncMode.StateNodes)) == SyncMode.None 
+                || (_syncModeSelector.Current & (SyncMode.Full | SyncMode.Beam)) != SyncMode.None)
             {
                 LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
                 SyncBlock(block, nodeWhoSentTheBlock);
@@ -201,7 +199,6 @@ namespace Nethermind.Synchronization
             // Parity sends invalid data here and it is equally expensive to validate and to set from null
             block.Header.TotalDifficulty = null;
 
-            AddBlockResult result = AddBlockResult.UnknownParent;
             bool isKnownParent = _blockTree.IsKnownBlock(block.Number - 1, block.ParentHash);
             if (isKnownParent)
             {
@@ -217,7 +214,7 @@ namespace Nethermind.Synchronization
                     throw new EthSyncException(message);
                 }
 
-                result = _blockTree.SuggestBlock(block, true);
+                AddBlockResult result = _blockTree.SuggestBlock(block, true);
                 if (_logger.IsTrace) _logger.Trace($"{block.Hash} ({block.Number}) adding result is {result}");
             }
 
@@ -347,6 +344,11 @@ namespace Nethermind.Synchronization
             {
                 if (_logger.IsDebug) _logger.Debug($"Broadcasting block {block.ToString(Block.Format.Short)} to {counter} peers.");
             }
+        }
+
+        public void Dispose()
+        {
+            _blockTree.NewHeadBlock -= OnNewHeadBlock;
         }
     }
 }

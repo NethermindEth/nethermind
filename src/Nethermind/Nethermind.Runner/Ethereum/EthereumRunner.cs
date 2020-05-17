@@ -109,8 +109,7 @@ namespace Nethermind.Runner.Ethereum
             Task peerManagerTask = _context.PeerManager?.StopAsync() ?? Task.CompletedTask;
 
             if (_logger.IsInfo) _logger.Info("Stopping synchronizer...");
-            Task synchronizerTask = (_context.Synchronizer?.StopAsync() ?? Task.CompletedTask)
-                .ContinueWith(t => _context.Synchronizer?.Dispose());
+            Task synchronizerTask = _context.Synchronizer?.StopAsync() ?? Task.CompletedTask;
 
             if (_logger.IsInfo) _logger.Info("Stopping blockchain processor...");
             Task blockchainProcessorTask = (_context.BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
@@ -123,7 +122,7 @@ namespace Nethermind.Runner.Ethereum
             while (_context.DisposeStack.Count != 0)
             {
                 IAsyncDisposable disposable = _context.DisposeStack.Pop();
-                if (_logger.IsDebug) _logger.Debug($"Disposing {disposable.GetType().Name}");
+                if (_logger.IsDebug) _logger.Debug($"Disposing {disposable}");
                 await disposable.DisposeAsync();
             }
             

@@ -24,7 +24,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -38,13 +37,12 @@ using Nethermind.Specs.Forks;
 using Nethermind.State.Repositories;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using NUnit.Framework;
-using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Synchronization.Test
 {

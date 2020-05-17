@@ -16,6 +16,7 @@
 
 using System.IO;
 using System.Threading.Tasks;
+using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
@@ -34,9 +35,8 @@ using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.Synchronization.BeamSync;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 
@@ -72,12 +72,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
                 syncConfig.DownloadBodiesInFastSync = true;
             }
-
-            if (syncConfig.BeamSync)
-            {
-                logger.Warn("Welcome to the alpha version of the Nethermind Goerli Beam Sync. I will start by downloading the pivot block header and then will continue to download all the headers from the pivot upwards. After that I will be beam synchronizing the new blocks. Many things can fail - appreciated if you report issues via GitHub or Gitter.");
-            }
-
+            
             Account.AccountStartNonce = _context.ChainSpec.Parameters.AccountStartNonce;
 
             _context.StateProvider = new StateProvider(
@@ -85,9 +80,9 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.DbProvider.CodeDb,
                 _context.LogManager);
 
-            _context.EthereumEcdsa = new EthereumEcdsa(_context.SpecProvider, _context.LogManager);
+            _context.EthereumEcdsa = new EthereumEcdsa(_context.SpecProvider.ChainId, _context.LogManager);
             _context.TxPool = new TxPool.TxPool(
-                new PersistentTxStorage(_context.DbProvider.PendingTxsDb, _context.SpecProvider),
+                new PersistentTxStorage(_context.DbProvider.PendingTxsDb),
                 Timestamper.Default,
                 _context.EthereumEcdsa,
                 _context.SpecProvider,
@@ -129,7 +124,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.ReceiptStorage = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_context.DbProvider.ReceiptsDb, _context.SpecProvider, new ReceiptsRecovery()) : NullReceiptStorage.Instance;
             _context.ReceiptFinder = new FullInfoReceiptFinder(_context.ReceiptStorage, new ReceiptsRecovery(), _context.BlockTree);
 
-            _context.RecoveryStep = new TxSignaturesRecoveryStep(_context.EthereumEcdsa, _context.TxPool, _context.LogManager);
+            _context.RecoveryStep = new TxSignaturesRecoveryStep(_context.SpecProvider, _context.EthereumEcdsa, _context.TxPool, _context.LogManager);
 
             _context.StorageProvider = new StorageProvider(
                 _context.DbProvider.StateDb,
@@ -158,11 +153,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_context.SealValidator == null) throw new StepDependencyException(nameof(_context.SealValidator));
 
             /* validation */
-            _context.HeaderValidator = new HeaderValidator(
-                _context.BlockTree,
-                _context.SealValidator,
-                _context.SpecProvider,
-                _context.LogManager);
+            _context.HeaderValidator = CreateHeaderValidator();
 
             OmmersValidator ommersValidator = new OmmersValidator(
                 _context.BlockTree,
@@ -197,7 +188,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (syncConfig.BeamSync)
             {
-                _ = new BeamBlockchainProcessor(
+                BeamBlockchainProcessor beamBlockchainProcessor = new BeamBlockchainProcessor(
                     new ReadOnlyDbProvider(_context.DbProvider, false),
                     _context.BlockTree,
                     _context.SpecProvider,
@@ -206,13 +197,23 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.RecoveryStep,
                     _context.RewardCalculatorSource,
                     _context.BlockProcessingQueue,
+                    _context.BlockchainProcessor,
                     _context.SyncModeSelector);
+                
+                _context.DisposeStack.Push(beamBlockchainProcessor);
             }
 
             ThisNodeInfo.AddInfo("Mem est trie :", $"{LruCache<Keccak, byte[]>.CalculateMemorySize(52 + 320, Trie.MemoryAllowance.TrieNodeCacheSize) / 1024 / 1024}MB".PadLeft(8));
 
             return Task.CompletedTask;
         }
+
+        protected virtual  HeaderValidator CreateHeaderValidator() =>
+            new HeaderValidator(
+                _context.BlockTree,
+                _context.SealValidator,
+                _context.SpecProvider,
+                _context.LogManager);
 
         protected virtual BlockProcessor CreateBlockProcessor()
         {
