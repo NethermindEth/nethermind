@@ -66,6 +66,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BeaconNode.Test"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BeaconNode.Peering.Test", "Nethermind.BeaconNode.Peering.Test\Nethermind.BeaconNode.Peering.Test.csproj", "{71E07A03-DC28-4FBB-AFAF-5830AE94A335}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.HashLib", "Nethermind.HashLib\Nethermind.HashLib.csproj", "{A5C93A20-90AE-4CC2-8975-24F718386536}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Monitoring", "Nethermind.Monitoring\Nethermind.Monitoring.csproj", "{38D48822-B735-438D-AAEB-C9918A2C8C2E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -188,6 +192,14 @@ Global
 		{71E07A03-DC28-4FBB-AFAF-5830AE94A335}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{71E07A03-DC28-4FBB-AFAF-5830AE94A335}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{71E07A03-DC28-4FBB-AFAF-5830AE94A335}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A5C93A20-90AE-4CC2-8975-24F718386536}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A5C93A20-90AE-4CC2-8975-24F718386536}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A5C93A20-90AE-4CC2-8975-24F718386536}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A5C93A20-90AE-4CC2-8975-24F718386536}.Release|Any CPU.Build.0 = Release|Any CPU
+		{38D48822-B735-438D-AAEB-C9918A2C8C2E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{38D48822-B735-438D-AAEB-C9918A2C8C2E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{38D48822-B735-438D-AAEB-C9918A2C8C2E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{38D48822-B735-438D-AAEB-C9918A2C8C2E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{4FFCC84D-DC26-4429-84D4-8809DD52B851} = {0F737A2F-A2C5-4A7E-A225-27F093A4C105}
