@@ -37,14 +37,14 @@ namespace Nethermind.Core2.Json
         public override T Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             EnsureNames(options);
-            object?[] parameters = new object?[_parameterNames.Length];
+            object?[] parameters = new object?[_parameterNames!.Length];
             while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
             {
                 if (reader.TokenType == JsonTokenType.PropertyName)
                 {
                     for (int index = 0; index < _parameterNames.Length; index++)
                     {
-                        KeyValuePair<JsonEncodedText, Type> kvp = _parameterNames![index];
+                        KeyValuePair<JsonEncodedText, Type> kvp = _parameterNames[index];
                         if (reader.ValueTextEquals(kvp.Key.EncodedUtf8Bytes))
                         {
                             reader.Read();
@@ -64,7 +64,7 @@ namespace Nethermind.Core2.Json
         {
             EnsureNames(options);
             writer.WriteStartObject();
-            foreach (KeyValuePair<JsonEncodedText, MethodInfo> kvp in _propertyGetAccessors)
+            foreach (KeyValuePair<JsonEncodedText, MethodInfo> kvp in _propertyGetAccessors!)
             {
                 writer.WritePropertyName(kvp.Key);
                 object propertyValue = kvp.Value.Invoke(value, null);
