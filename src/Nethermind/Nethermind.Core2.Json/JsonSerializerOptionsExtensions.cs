@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Text.Json;
+using Nethermind.Core2.Api;
 
 namespace Nethermind.Core2.Json
 {
@@ -38,8 +39,8 @@ namespace Nethermind.Core2.Json
             options.Converters.Add(new JsonConverterShard());
             options.Converters.Add(new JsonConverterSlot());
             options.Converters.Add(new JsonConverterValidatorIndex());
-            options.Converters.Add(new JsonConverterSyncingStatus());
-            options.Converters.Add(new JsonConverterSyncing());
+            options.Converters.Add(new LastConstructorJsonConverter<SyncingStatus>());
+            options.Converters.Add(new LastConstructorJsonConverter<Syncing>());
         }
     }
 }
