@@ -51,6 +51,8 @@ namespace Nethermind.Core2.Json
             options.Converters.Add(new LastConstructorJsonConverter<BeaconBlock>());
             options.Converters.Add(new LastConstructorJsonConverter<BeaconBlockBody>());
             options.Converters.Add(new LastConstructorJsonConverter<Eth1Data>());
+            options.Converters.Add(new LastConstructorJsonConverter<Deposit>());
+            options.Converters.Add(new LastConstructorJsonConverter<DepositData>());
             options.Converters.Add(new LastConstructorJsonConverter<SignedBeaconBlock>());
         }
     }
