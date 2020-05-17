@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.HashLib.Extensions;
 
 namespace Nethermind.HashLib.Crypto
@@ -49,7 +50,7 @@ namespace Nethermind.HashLib.Crypto
             ulong bits = m_processed_bytes * 8;
             int padindex = (m_buffer.Pos < 56) ? (56 - m_buffer.Pos) : (120 - m_buffer.Pos);
 
-            byte[] pad = new byte[padindex + 8];
+            Span<byte> pad = stackalloc byte[padindex + 8];
             pad[0] = 0x80;
 
             Converters.ConvertULongToBytesSwapOrder(bits, pad, padindex);
@@ -58,9 +59,57 @@ namespace Nethermind.HashLib.Crypto
             TransformBytes(pad, 0, padindex);
         }
 
+        protected override void TransformBlock(ReadOnlySpan<byte> a_data, int a_index)
+        {
+            Span<uint> data = stackalloc uint[64];
+            Converters.ConvertBytesToUIntsSwapOrder(a_data, a_index, BlockSize, data, 0);
+
+            uint A = m_state[0];
+            uint B = m_state[1];
+            uint C = m_state[2];
+            uint D = m_state[3];
+            uint E = m_state[4];
+            uint F = m_state[5];
+            uint G = m_state[6];
+            uint H = m_state[7];
+
+            for (int r = 16; r < 64; r++)
+            {
+                uint T = data[r - 2];
+                uint T2 = data[r - 15];
+                data[r] = (((T >> 17) | (T << 15)) ^ ((T >> 19) | (T << 13)) ^ (T >> 10)) + data[r - 7] +
+                          (((T2 >> 7) | (T2 << 25)) ^ ((T2 >> 18) | (T2 << 14)) ^ (T2 >> 3)) + data[r - 16];
+            }
+
+            for (int r = 0; r < 64; r++)
+            {
+                uint T = s_K[r] + data[r] + H + (((E >> 6) | (E << 26)) ^ ((E >> 11) | (E << 21)) ^ ((E >> 25) |
+                                                                                                     (E << 7))) + ((E & F) ^ (~E & G));
+                uint T2 = (((A >> 2) | (A << 30)) ^ ((A >> 13) | (A << 19)) ^
+                           ((A >> 22) | (A << 10))) + ((A & B) ^ (A & C) ^ (B & C));
+                H = G;
+                G = F;
+                F = E;
+                E = D + T;
+                D = C;
+                C = B;
+                B = A;
+                A = T + T2;
+            }
+
+            m_state[0] += A;
+            m_state[1] += B;
+            m_state[2] += C;
+            m_state[3] += D;
+            m_state[4] += E;
+            m_state[5] += F;
+            m_state[6] += G;
+            m_state[7] += H;
+        }
+        
         protected override void TransformBlock(byte[] a_data, int a_index)
         {
-            uint[] data = new uint[64];
+            Span<uint> data = stackalloc uint[64];
             Converters.ConvertBytesToUIntsSwapOrder(a_data, a_index, BlockSize, data, 0);
 
             uint A = m_state[0];

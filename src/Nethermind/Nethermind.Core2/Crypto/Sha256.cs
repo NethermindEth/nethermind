@@ -26,6 +26,7 @@ namespace Nethermind.Core2.Crypto
     [DebuggerStepThrough]
     public static class Sha256
     {
+        // TODO: verify if this is thread safe
         private static readonly IHash Hash = HashFactory.Crypto.CreateSHA256();
 
         /// <returns>
@@ -57,14 +58,7 @@ namespace Nethermind.Core2.Crypto
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static byte[] ComputeBytes(ReadOnlySpan<byte> input)
         {
-            // NOTE: API only supports bytes, so need allocation to copy to an array;
-            // the result is then a second array allocation.
-            // More efficient would be something like core TryComputeHash(ReadOnlySpan<byte> source, Span<byte> destination),
-            // which would allow zero allocation (if source and destination already allocated).
-            
-            // NOTE: Even for writeable Span<>, you still need to allocate an array: see https://docs.microsoft.com/en-us/dotnet/api/system.span-1.toarray
-            
-            return ComputeBytes(input.ToArray());
+            return Hash.ComputeBytes(input).GetBytes();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -92,7 +86,7 @@ namespace Nethermind.Core2.Crypto
                 return Bytes32OfAnEmptyString;
             }
 
-            return InternalCompute(input.ToArray());
+            return InternalCompute(input);
         }
         
         // public static void ComputeInPlace(Span<byte> input)
@@ -107,6 +101,11 @@ namespace Nethermind.Core2.Crypto
         // }
 
         private static Bytes32 InternalCompute(byte[] input)
+        {
+            return new Bytes32(Hash.ComputeBytes(input).GetBytes());
+        }
+        
+        private static Bytes32 InternalCompute(ReadOnlySpan<byte> input)
         {
             return new Bytes32(Hash.ComputeBytes(input).GetBytes());
         }

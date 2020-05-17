@@ -81,7 +81,7 @@ namespace Nethermind.HashLib
             return IsFull;
         }
 
-        public bool Feed(Span<byte> a_data, ref int a_start_index, ref int a_length, ref ulong a_processed_bytes)
+        public bool Feed(ReadOnlySpan<byte> a_data, ref int a_start_index, ref int a_length, ref ulong a_processed_bytes)
         {
             Debug.Assert(a_start_index >= 0);
             Debug.Assert(a_length >= 0);

@@ -35,7 +35,7 @@ namespace Nethermind.HashLib
             m_processed_bytes = 0;
         }
 
-        public override void TransformBytes(Span<byte> a_data, int a_index, int a_length)
+        public override void TransformBytes(ReadOnlySpan<byte> a_data, int a_index, int a_length)
         {
             Debug.Assert(a_index >= 0);
             Debug.Assert(a_length >= 0);
@@ -127,7 +127,7 @@ namespace Nethermind.HashLib
         protected abstract void Finish();
         protected abstract void TransformBlock(byte[] a_data, int a_index);
         //protected abstract void TransformBlock(Span<byte> a_data, int a_index);
-        protected virtual void TransformBlock(Span<byte> a_data, int a_index)
+        protected virtual void TransformBlock(ReadOnlySpan<byte> a_data, int a_index)
         {
             throw new NotImplementedException();
         }
