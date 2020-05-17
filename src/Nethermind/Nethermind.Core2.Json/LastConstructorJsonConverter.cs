@@ -30,6 +30,7 @@ namespace Nethermind.Core2.Json
         private static KeyValuePair<JsonEncodedText, Type>[]? _parameterNames;
         private static KeyValuePair<JsonEncodedText, MethodInfo>[]? _propertyGetAccessors;
 
+        // NOTE: This will be built in to .NET 5.0
         // https://github.com/dotnet/runtime/blob/master/src/libraries/System.Text.Json/src/System/Text/Json/Serialization/Converters/Object/ObjectWithParameterizedConstructorConverter.cs
         // https://github.com/manne/obviously/tree/master/src/system.text.json
         
