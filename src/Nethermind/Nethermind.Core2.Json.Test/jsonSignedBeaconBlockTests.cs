@@ -42,15 +42,6 @@ namespace Nethermind.Core2.Json.Test
                 new Root(Enumerable.Repeat((byte)0x12, 32).ToArray()), 
                 64,
                 new Bytes32(Enumerable.Repeat((byte)0x34, 32).ToArray()));
-            
-            // Deposit deposit = new Deposit(
-            //     Enumerable.Repeat(new Bytes32(Enumerable.Repeat((byte)0x11, 32).ToArray()), Ssz.DepositContractTreeDepth + 1), 
-            //     new DepositData(
-            //         new BlsPublicKey(Enumerable.Repeat((byte)0x22, 48).ToArray()), 
-            //         new Bytes32( Enumerable.Repeat((byte)0x33, 32).ToArray()),
-            //         new Gwei(32_000_000), 
-            //         new BlsSignature(Enumerable.Repeat((byte)0x44, 96).ToArray())
-            //         ));
 
             BlsSignature randaoReveal = new BlsSignature(Enumerable.Repeat((byte) 0xfe, 96).ToArray());
 
