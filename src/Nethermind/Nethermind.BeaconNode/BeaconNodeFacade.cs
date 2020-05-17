@@ -180,7 +180,7 @@ namespace Nethermind.BeaconNode
                 }
                 else
                 {
-                    return new ApiResponse(StatusCode.Success);
+                    return new ApiResponse(StatusCode.BroadcastButFailedValidation);
                 }
             }
             catch (Exception ex)

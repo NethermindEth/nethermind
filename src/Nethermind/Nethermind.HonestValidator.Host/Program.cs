@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Diagnostics;
 using System.IO;
 using Essential.LoggerProvider;
 using Microsoft.Extensions.Configuration;
@@ -88,6 +89,7 @@ namespace Nethermind.HonestValidator.Host
 
         public static void Main(string[] args)
         {
+            Activity.DefaultIdFormat = ActivityIdFormat.W3C;
             CreateHostBuilder(args).Build().Run();
         }
     }

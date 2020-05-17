@@ -19,7 +19,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
-using Nethermind.BeaconNode.OApi.Models;
 using Nethermind.Core2;
 using Nethermind.Core2.Api;
 using Nethermind.Core2.Containers;

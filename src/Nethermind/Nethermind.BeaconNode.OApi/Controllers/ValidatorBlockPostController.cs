@@ -15,18 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.ComponentModel;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
-using ValidatorBlockPostRequest = Nethermind.BeaconNode.OApi.Models.ValidatorBlockPostRequest;
 using Nethermind.Core2;
 using Nethermind.Core2.Api;
-using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Types;
 using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode.OApi.Controllers
@@ -52,49 +47,17 @@ namespace Nethermind.BeaconNode.OApi.Controllers
         /// </remarks>
         /// <param name="requestBody">The `BeaconBlock` object, as sent from the beacon node originally, but now with the signature field completed. Must be sent in JSON format in the body of the request.</param>
         [HttpPost]
-        public async Task<IActionResult> GetAsync([FromBody] ValidatorBlockPostRequest requestBody,
+        public async Task<IActionResult> GetAsync([FromBody] SignedBeaconBlock signedBeaconBlock,
             CancellationToken cancellationToken)
         {
             if (_logger.IsInfo())
-                Log.BlockPublished(_logger, requestBody.Message?.Slot ?? 0,
-                    Bytes.ToHexString(requestBody.Message?.Body?.RandaoReveal ?? new byte[0]),
-                    Bytes.ToHexString(requestBody.Message?.ParentRoot ?? new byte[0]), 
-                    Bytes.ToHexString(requestBody.Message?.StateRoot ?? new byte[0]),
-                    Bytes.ToHexString(requestBody.Message?.Body?.Graffiti ?? new byte[0]),
-                    Bytes.ToHexString(requestBody.Signature ?? new byte[0]), 
+                Log.BlockPublished(_logger, signedBeaconBlock.Message?.Slot,
+                    signedBeaconBlock.Message?.Body?.RandaoReveal,
+                    signedBeaconBlock.Message?.ParentRoot, 
+                    signedBeaconBlock.Message?.StateRoot,
+                    signedBeaconBlock.Message?.Body?.Graffiti,
+                    signedBeaconBlock.Signature, 
                     null);
-              
-            // TODO: Move to MapXxxx methods
-            SignedBeaconBlock signedBeaconBlock = new SignedBeaconBlock(
-                new BeaconBlock(
-                        new Slot(requestBody.Message!.Slot!.Value),
-                        new Root(requestBody.Message.ParentRoot),
-                        new Root(requestBody.Message.StateRoot),
-                        new BeaconBlockBody(
-                            new BlsSignature(requestBody.Message.Body!.RandaoReveal), 
-                            new Eth1Data(
-                                new Root(requestBody.Message.Body.Eth1Data!.DepositRoot),
-                                requestBody.Message.Body.Eth1Data.DepositCount!.Value,
-                                new Bytes32(requestBody.Message.Body.Eth1Data.BlockHash)
-                                ), 
-                            new Bytes32(requestBody.Message.Body.Graffiti), 
-                            new ProposerSlashing[0],
-                            new AttesterSlashing[0],
-                            new Attestation[0],
-                            requestBody.Message.Body.Deposits.Select(x => new Deposit(
-                                    x.Proof.Select(y => new Bytes32(y)),
-                                    new DepositData(
-                                        new BlsPublicKey(x.Data!.PublicKey), 
-                                        new Bytes32(x.Data.WithdrawalCredentials), 
-                                        new Gwei(x.Data.Amount!.Value), 
-                                        new BlsSignature(x.Data.Signature)
-                                        )
-                                )).ToList(),
-                            new SignedVoluntaryExit[0]
-                            )
-                    ), 
-                new BlsSignature(requestBody.Signature)
-                );              
               
             ApiResponse apiResponse =
                 await _beaconNode.PublishBlockAsync(signedBeaconBlock, cancellationToken).ConfigureAwait(false);
