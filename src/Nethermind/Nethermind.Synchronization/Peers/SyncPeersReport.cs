@@ -103,19 +103,22 @@ namespace Nethermind.Synchronization.Peers
 
         private void AddPeerInfo(PeerInfo peerInfo)
         {
-            INodeStats nodeStats = _stats.GetOrAdd(peerInfo.SyncPeer.Node);
-            
-            long AverageSpeedOf(TransferSpeedType transferSpeedType) => nodeStats.GetAverageTransferSpeed(transferSpeedType) ?? 0;
+            string AverageSpeedOf(TransferSpeedType transferSpeedType) => _stats
+                .GetOrAdd(peerInfo.SyncPeer.Node)
+                .GetAverageTransferSpeed(transferSpeedType)
+                .GetValueOrDefault(0L)
+                .ToString()
+                .PadLeft(3, ' ');
 
             _stringBuilder
                 .Append("  ")
                 .Append(peerInfo)
                 .Append("[")
-                .Append($"{AverageSpeedOf(TransferSpeedType.Latency)}|".PadLeft(4, ' '))
-                .Append($"{AverageSpeedOf(TransferSpeedType.Headers)}|".PadLeft(4, ' '))
-                .Append($"{AverageSpeedOf(TransferSpeedType.Bodies)}|".PadLeft(4, ' '))
-                .Append($"{AverageSpeedOf(TransferSpeedType.Receipts)}|".PadLeft(4, ' '))
-                .Append($"{AverageSpeedOf(TransferSpeedType.NodeData)}".PadLeft(3, ' '))
+                .Append($"{AverageSpeedOf(TransferSpeedType.Latency)}|")
+                .Append($"{AverageSpeedOf(TransferSpeedType.Headers)}|")
+                .Append($"{AverageSpeedOf(TransferSpeedType.Bodies)}|")
+                .Append($"{AverageSpeedOf(TransferSpeedType.Receipts)}|")
+                .Append($"{AverageSpeedOf(TransferSpeedType.NodeData)}")
                 .Append("]");
         }
 
