@@ -31,6 +31,7 @@ using Nethermind.JsonRpc.Modules.Personal;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.TxPool;
+using Nethermind.JsonRpc.Modules.Baseline;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Context;
@@ -102,8 +103,9 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (baselineConfig.Enabled)
             {
-                _context.RpcModuleProvider.Register(new SingletonModulePool<IBaselineModule>(new BaselineModule(_context.BlockchainBridge, _context.LogManager), true));
-                if (logger?.IsInfo ?? false) _logger!.Info($"Baseline RPC Module has been enabled");
+                BaselineModuleFactory baselineModuleFactory = new BaselineModuleFactory(_context.TxPool, _context.Wallet, _context.SpecProvider, _context.LogManager);
+                _context.RpcModuleProvider.Register(new SingletonModulePool<IBaselineModule>(baselineModuleFactory, true));
+                if (logger?.IsInfo ?? false) logger!.Info($"Baseline RPC Module has been enabled");
             }
 
             TxPoolModule txPoolModule = new TxPoolModule(_context.BlockTree, _context.TxPoolInfoProvider, _context.LogManager);
