@@ -75,7 +75,7 @@ namespace Nethermind.Network.Discovery
             try
             {
                 if (_logger.IsTrace) _logger.Trace($"Received msg: {message}");
-                Console.WriteLine($"Recieved {message.MessageType}  -> DiscoveryManager.OnIncomingMessage()");
+                Console.WriteLine($"Recieved discovery message:  {message}");
                 MessageType msgType = message.MessageType;
 
                 Node node = new Node(message.FarPublicKey, message.FarAddress);
@@ -99,10 +99,6 @@ namespace Nethermind.Network.Discovery
                         if (ValidatePingAddress(ping))
                         {
                             nodeManager.ProcessPingMessage(ping);
-                        }
-                        else
-                        {
-                            Console.WriteLine($"Validation of ping message went wrong");
                         }
                         break;
                     case MessageType.FindNode:
@@ -217,6 +213,8 @@ namespace Nethermind.Network.Discovery
 
         private bool ValidatePingAddress(PingMessage message)
         {
+            Console.WriteLine($"Started validation of ping message: {message}");
+
             if (message.DestinationAddress == null || message.FarAddress == null)
             {
                 if (_logger.IsDebug) _logger.Debug($"Received a ping message with empty address, message: {message}");

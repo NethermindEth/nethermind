@@ -76,6 +76,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
         public void ProcessPongMessage(PongMessage discoveryMessage)
         {
+            Console.WriteLine($"Recieved pong message: {discoveryMessage}");
             PingMessage sentPingMessage = Interlocked.Exchange(ref _lastSentPing, null);
             if (sentPingMessage == null)
             {
@@ -96,6 +97,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
             else
             {
                 // ignore spoofed message
+                return;
             }
         }
 
