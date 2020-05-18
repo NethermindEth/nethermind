@@ -111,11 +111,11 @@ namespace Nethermind.Synchronization.Peers
                 .Append("  ")
                 .Append(peerInfo)
                 .Append("[")
-                .Append($"{AverageSpeedOf(TransferSpeedType.Latency)}|")
-                .Append($"{AverageSpeedOf(TransferSpeedType.Headers)}|")
-                .Append($"{AverageSpeedOf(TransferSpeedType.Bodies)}|")
-                .Append($"{AverageSpeedOf(TransferSpeedType.Receipts)}|")
-                .Append($"{AverageSpeedOf(TransferSpeedType.NodeData)}")
+                .Append($"{AverageSpeedOf(TransferSpeedType.Latency)}|".PadLeft(4, ' '))
+                .Append($"{AverageSpeedOf(TransferSpeedType.Headers)}|".PadLeft(4, ' '))
+                .Append($"{AverageSpeedOf(TransferSpeedType.Bodies)}|".PadLeft(4, ' '))
+                .Append($"{AverageSpeedOf(TransferSpeedType.Receipts)}|".PadLeft(4, ' '))
+                .Append($"{AverageSpeedOf(TransferSpeedType.NodeData)}".PadLeft(3, ' '))
                 .Append("]");
         }
 
