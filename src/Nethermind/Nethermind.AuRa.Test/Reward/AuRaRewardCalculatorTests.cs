@@ -120,7 +120,7 @@ namespace Nethermind.AuRa.Test.Reward
         public void calculates_rewards_correctly_after_contract_transition(long blockNumber, ulong expectedReward)
         {
             _block.Header.Number = blockNumber;
-            var expected = new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.Block);
+            var expected = new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.External);
             SetupBlockRewards(new Dictionary<Address, BlockReward[]>() {{_address10, new[] {expected}}});
             var calculator = new AuRaRewardCalculator(_auraParameters, _abiEncoder, _transactionProcessor);
             var result =  calculator.CalculateRewards(_block);            
@@ -146,7 +146,7 @@ namespace Nethermind.AuRa.Test.Reward
                 {150, _address150}
             };
             _block.Header.Number = blockNumber;
-            var expected = new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.Block);
+            var expected = new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.External);
             SetupBlockRewards(new Dictionary<Address, BlockReward[]>() {{address, new[] {expected}}});
             var calculator = new AuRaRewardCalculator(_auraParameters, _abiEncoder, _transactionProcessor);
             var result =  calculator.CalculateRewards(_block);            
@@ -166,9 +166,9 @@ namespace Nethermind.AuRa.Test.Reward
             
             var expected = new BlockReward[]
             {
-                new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.Block),
-                new BlockReward(_block.Body.Ommers[0].Beneficiary, expectedReward, BlockRewardType.Uncle),
-                new BlockReward(_block.Body.Ommers[1].Beneficiary, expectedReward, BlockRewardType.Uncle),
+                new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.External),
+                new BlockReward(_block.Body.Ommers[0].Beneficiary, expectedReward, BlockRewardType.External),
+                new BlockReward(_block.Body.Ommers[1].Beneficiary, expectedReward, BlockRewardType.External),
             };
             
             SetupBlockRewards(new Dictionary<Address, BlockReward[]>() {{_address10, expected}});

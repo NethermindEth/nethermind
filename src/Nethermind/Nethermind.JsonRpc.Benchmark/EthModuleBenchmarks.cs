@@ -37,7 +37,6 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
-using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using BlockTree = Nethermind.Blockchain.BlockTree;
