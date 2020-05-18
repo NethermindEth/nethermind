@@ -159,12 +159,20 @@ namespace Nethermind.Stats.Model
         public string ToString(string format, IFormatProvider formatProvider)
         {
             string formattedHost = Host?.Replace("::ffff:", string.Empty);
+
+            if (formattedHost != null && formattedHost.Contains('.'))
+            {
+                formattedHost = formattedHost.PadLeft(4 * 3 + 3 * 1);
+            }
+            
+            string paddedPort = Port.ToString().PadRight(5, ' ');
+            
             return format switch
             {
-                "s" => $"{formattedHost}:{Port}",
-                "c" => $"[Node|{formattedHost}:{Port}|{ClientId}|{EthDetails}]",
-                "f" => $"enode://{Id.ToString(false)}@{formattedHost}:{Port}|{ClientId}",
-                _ => $"enode://{Id.ToString(false)}@{formattedHost}:{Port}"
+                "s" => $"{formattedHost}:{paddedPort}",
+                "c" => $"[Node|{formattedHost}:{paddedPort}|{ClientId}|{EthDetails}]",
+                "f" => $"enode://{Id.ToString(false)}@{formattedHost}:{paddedPort}|{ClientId}",
+                _ => $"enode://{Id.ToString(false)}@{formattedHost}:{paddedPort}"
             };
         }
         
