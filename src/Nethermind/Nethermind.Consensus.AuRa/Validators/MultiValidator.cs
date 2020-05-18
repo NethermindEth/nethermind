@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Logging;
@@ -29,21 +30,22 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly IAuRaValidatorProcessorFactory _validatorFactory;
         private readonly IBlockTree _blockTree;
         private readonly IValidatorStore _validatorStore;
+        private readonly bool _forSealing;
         private IBlockFinalizationManager _blockFinalizationManager;
         private readonly IDictionary<long, AuRaParameters.Validator> _validators;
         private readonly ILogger _logger;
         private IAuRaValidatorProcessorExtension _currentValidator;
         private AuRaParameters.Validator _currentValidatorPrototype;
-        private bool _validatorUsedForSealing;
         private long _lastProcessedBlock = 0;
         
-        public MultiValidator(AuRaParameters.Validator validator, IAuRaValidatorProcessorFactory validatorFactory, IBlockTree blockTree, IValidatorStore validatorStore, ILogManager logManager)
+        public MultiValidator(AuRaParameters.Validator validator, IAuRaValidatorProcessorFactory validatorFactory, IBlockTree blockTree, IValidatorStore validatorStore, ILogManager logManager, bool forSealing = false)
         {
             if (validator == null) throw new ArgumentNullException(nameof(validator));
             if (validator.ValidatorType != AuRaParameters.ValidatorType.Multi) throw new ArgumentException("Wrong validator type.", nameof(validator));
             _validatorFactory = validatorFactory ?? throw new ArgumentNullException(nameof(validatorFactory));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
+            _forSealing = forSealing;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             
             _validators = validator.Validators?.Count > 0
@@ -53,11 +55,11 @@ namespace Nethermind.Consensus.AuRa.Validators
         
         public Address[] Validators => _currentValidator?.Validators;
 
-        private void InitCurrentValidator(long blockNumber)
+        private void InitCurrentValidator(long blockNumber, BlockHeader parentHeader)
         {
             if (TryGetLastValidator(blockNumber, out var validatorInfo))
             {
-                SetCurrentValidator(validatorInfo);
+                SetCurrentValidator(validatorInfo, parentHeader);
             }
             
             _lastProcessedBlock = blockNumber;
@@ -89,8 +91,8 @@ namespace Nethermind.Consensus.AuRa.Validators
                 var finalizedBlockHeader = e.FinalizedBlocks[i];
                 if (TryGetValidator(finalizedBlockHeader.Number, out var validator) && !validator.ValidatorType.CanChangeImmediately())
                 {
-                    SetCurrentValidator(e.FinalizingBlock.Number, validator);
-                    if (!_validatorUsedForSealing)
+                    SetCurrentValidator(e.FinalizingBlock.Number, validator, e.FinalizingBlock);
+                    if (!_forSealing)
                     {
                         if (_logger.IsInfo) _logger.Info($"Applying chainspec validator change signalled at block {finalizedBlockHeader.ToString(BlockHeader.Format.Short)} at block {e.FinalizingBlock.ToString(BlockHeader.Format.Short)}.");
                     }
@@ -112,9 +114,10 @@ namespace Nethermind.Consensus.AuRa.Validators
                 {
                     if (TryGetLastValidator(previousBlockNumber, out var validatorInfo))
                     {
+                        var parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.RequireCanonical);
                         if (validatorInfo.Value.ValidatorType.CanChangeImmediately() || ValidatorWasAlreadyFinalized(validatorInfo))
                         {
-                            SetCurrentValidator(validatorInfo);
+                            SetCurrentValidator(validatorInfo, parentHeader);
                         }
                         else if (!isProducingBlock)
                         {
@@ -122,14 +125,14 @@ namespace Nethermind.Consensus.AuRa.Validators
                             long? finalizedAtBlockNumber = null;
                             if (!canSetValidatorAsCurrent)
                             {
-                                SetCurrentValidator(previousValidatorInfo);
+                                SetCurrentValidator(previousValidatorInfo, parentHeader);
                                 finalizedAtBlockNumber = _blockFinalizationManager.GetFinalizedLevel(validatorInfo.Key);
                                 canSetValidatorAsCurrent = finalizedAtBlockNumber != null;
                             }
 
                             if (canSetValidatorAsCurrent)
                             {
-                                SetCurrentValidator(finalizedAtBlockNumber ?? validatorInfo.Key, validatorInfo.Value);
+                                SetCurrentValidator(finalizedAtBlockNumber ?? validatorInfo.Key, validatorInfo.Value, parentHeader);
                             }
                         }
                     }
@@ -153,7 +156,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 {
                     if (validator.ValidatorType.CanChangeImmediately())
                     {
-                        SetCurrentValidator(block.Number, validator);
+                        SetCurrentValidator(block.Number, validator, _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.RequireCanonical));
                         if (_logger.IsInfo && notProducing) _logger.Info($"Immediately applying chainspec validator change signalled at block {block.ToString(Block.Format.Short)} to {validator.ValidatorType}.");
                     }
                     else if (_logger.IsInfo && notProducing) _logger.Info($"Signal for switch to chainspec {validator.ValidatorType} based validator set at block {block.ToString(Block.Format.Short)}.");
@@ -163,7 +166,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        public void SetFinalizationManager(IBlockFinalizationManager finalizationManager, in bool forSealing = false)
+        public void SetFinalizationManager(IBlockFinalizationManager finalizationManager, BlockHeader parentHeader)
         {
             if (_blockFinalizationManager != null)
             {
@@ -171,32 +174,31 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
 
             _blockFinalizationManager = finalizationManager;
-            _validatorUsedForSealing = forSealing;
-            
+
             if (_blockFinalizationManager != null)
             {
                 _blockFinalizationManager.BlocksFinalized += OnBlocksFinalized;
-                InitCurrentValidator(_blockFinalizationManager.LastFinalizedBlockLevel);
+                InitCurrentValidator(_blockFinalizationManager.LastFinalizedBlockLevel, parentHeader);
             }
 
-            _currentValidator?.SetFinalizationManager(finalizationManager, forSealing);
+            _currentValidator?.SetFinalizationManager(finalizationManager, parentHeader);
         }
 
-        private void SetCurrentValidator(KeyValuePair<long, AuRaParameters.Validator> validatorInfo)
+        private void SetCurrentValidator(KeyValuePair<long, AuRaParameters.Validator> validatorInfo, BlockHeader parentHeader)
         {
-            SetCurrentValidator(validatorInfo.Key, validatorInfo.Value);
+            SetCurrentValidator(validatorInfo.Key, validatorInfo.Value, parentHeader);
         }
         
-        private void SetCurrentValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype)
+        private void SetCurrentValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype, BlockHeader parentHeader)
         {
             if (validatorPrototype != _currentValidatorPrototype)
             {
-                _currentValidator?.SetFinalizationManager(null);
+                _currentValidator?.SetFinalizationManager(null, null);
                 _currentValidator = CreateValidator(finalizedAtBlockNumber, validatorPrototype);
-                _currentValidator.SetFinalizationManager(_blockFinalizationManager, _validatorUsedForSealing);
+                _currentValidator.SetFinalizationManager(_blockFinalizationManager, parentHeader);
                 _currentValidatorPrototype = validatorPrototype;
                 
-                if (!_validatorUsedForSealing)
+                if (!_forSealing)
                 {
                     if (_currentValidator.Validators != null)
                     {
