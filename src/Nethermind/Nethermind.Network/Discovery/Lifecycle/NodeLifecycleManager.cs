@@ -194,7 +194,8 @@ namespace Nethermind.Network.Discovery.Lifecycle
         {
             if (!IsBonded)
             {
-                if (_logger.IsWarn) _logger.Warn("Sending NEIGHBOURS before bonding");
+                if (_logger.IsWarn) _logger.Warn("Attempt to send NEIGHBOURS before bonding");
+                return;
             }
 
             NeighborsMessage msg = _discoveryMessageFactory.CreateOutgoingMessage<NeighborsMessage>(ManagedNode);
