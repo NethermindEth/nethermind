@@ -43,6 +43,7 @@ namespace Nethermind.Network.Discovery
         private readonly ConcurrentDictionary<Keccak, INodeLifecycleManager> _nodeLifecycleManagers = new ConcurrentDictionary<Keccak, INodeLifecycleManager>();
         private readonly INodeTable _nodeTable;
         private readonly INetworkStorage _discoveryStorage;
+        private readonly IIPResolver _ipResolver;
 
         private readonly ConcurrentDictionary<MessageTypeKey, TaskCompletionSource<DiscoveryMessage>> _waitingEvents = new ConcurrentDictionary<MessageTypeKey, TaskCompletionSource<DiscoveryMessage>>();
         private IMessageSender _messageSender;
@@ -52,7 +53,8 @@ namespace Nethermind.Network.Discovery
             INodeTable nodeTable,
             INetworkStorage discoveryStorage,
             IDiscoveryConfig discoveryConfig,
-            ILogManager logManager)
+            ILogManager logManager,
+            IIPResolver ipResolver)
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
@@ -60,6 +62,7 @@ namespace Nethermind.Network.Discovery
             _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
             _discoveryStorage = discoveryStorage ?? throw new ArgumentNullException(nameof(discoveryStorage));
             _nodeLifecycleManagerFactory.DiscoveryManager = this;
+            _ipResolver = ipResolver;
         }
 
         public IMessageSender MessageSender
@@ -220,11 +223,17 @@ namespace Nethermind.Network.Discovery
                 Console.WriteLine($"Received a ping message with empty address, message: {message}");
                 return false;
             }
-            
+            Console.WriteLine("ADRESSES ->");
+            Console.WriteLine($"Master node IP: {_nodeTable.MasterNode.Address.Address}");
+            Console.WriteLine($"External IP : {_ipResolver.ExternalIp}");
+            Console.WriteLine($"Local IP : {_ipResolver.LocalIp}");
+            Console.WriteLine($"Ping destination is {message.DestinationAddress.Address}");
+
             bool pingDestinationIsMasterNode = Bytes.AreEqual(_nodeTable.MasterNode.Address.Address.MapToIPv6().GetAddressBytes(), message.DestinationAddress?.Address.MapToIPv6().GetAddressBytes()); 
+            bool pingDestinationIsLocalIp = Bytes.AreEqual(_ipResolver.LocalIp.GetAddressBytes(), message.DestinationAddress?.Address.GetAddressBytes());
             
 
-            if (!pingDestinationIsMasterNode)
+            if (!pingDestinationIsMasterNode && !pingDestinationIsLocalIp)
             {
                 if (_logger.IsDebug) _logger.Debug($"Received a message with incorrect destination address, message: {message}");
                 Console.WriteLine($"Received a message with incorrect destination address, message: {message.DestinationAddress?.Address.MapToIPv6()}, master node adress is {_nodeTable.MasterNode.Address.Address.MapToIPv6()}");
