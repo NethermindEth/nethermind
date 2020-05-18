@@ -60,7 +60,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
         public Node ManagedNode { get; }
         public NodeLifecycleState State { get; private set; }
         public INodeStats NodeStats { get; }
-        public bool IsBonded => (_sentPing && _receivedPong) || (_receivedPing && _sentPong);
+        public bool IsBonded => (_sentPing && _receivedPong) && (_receivedPing && _sentPong);
 
         public event EventHandler<NodeLifecycleState> OnStateChanged;
 
