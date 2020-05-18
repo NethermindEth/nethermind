@@ -109,7 +109,7 @@ namespace Nethermind.Synchronization.Peers
 
             _stringBuilder
                 .Append("  ")
-                .Append(peerInfo.ToString().Replace("Peer|", ""))
+                .Append(peerInfo)
                 .Append("[")
                 .Append($"{AverageSpeedOf(TransferSpeedType.Latency)}|")
                 .Append($"{AverageSpeedOf(TransferSpeedType.Headers)}|")
