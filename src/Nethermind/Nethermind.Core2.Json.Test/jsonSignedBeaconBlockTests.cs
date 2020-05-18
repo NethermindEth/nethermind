@@ -15,30 +15,34 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.Json;
+using System.Threading.Tasks;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 using Shouldly;
 
-namespace Nethermind.Ssz.Test
+namespace Nethermind.Core2.Json.Test
 {
     [TestFixture]
-    public class SszSignedBeaconBlockTests
+    public class JsonSignedBeaconBlockTests
     {
         [Test]
-        public void CheckEmptyBlockRootAfterDeserializing()
+        public async Task SignedBeaconBlock_RoundTripEmpty()
         {
             // Arrange
+            JsonSerializerOptions options = new JsonSerializerOptions();
+            options.ConfigureNethermindCore2();
             
             Eth1Data eth1Data = new Eth1Data(
                 new Root(Enumerable.Repeat((byte)0x12, 32).ToArray()), 
                 64,
                 new Bytes32(Enumerable.Repeat((byte)0x34, 32).ToArray()));
-            
+
             BlsSignature randaoReveal = new BlsSignature(Enumerable.Repeat((byte) 0xfe, 96).ToArray());
 
             BeaconBlockBody beaconBlockBody = new BeaconBlockBody(
@@ -58,43 +62,41 @@ namespace Nethermind.Ssz.Test
                 new Root(Enumerable.Repeat((byte)0x9a, 32).ToArray()),
                 beaconBlockBody);
             
-            Merkle.Ize(out UInt256 blockRoot256, beaconBlock);
-            Span<byte> blockRootSpan = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref blockRoot256, 1));
-            Root blockRoot = new Root(blockRootSpan);
-            
             SignedBeaconBlock signedBeaconBlock = new SignedBeaconBlock(
                 beaconBlock,
                 new BlsSignature(Enumerable.Repeat((byte)0x0e, 96).ToArray())
             );            
             
-            // Act
-            
-            Span<byte> encoded = new byte[Ssz.SignedBeaconBlockLength(signedBeaconBlock)];
-            Ssz.Encode(encoded, signedBeaconBlock);
-            
-            SignedBeaconBlock decoded = Ssz.DecodeSignedBeaconBlock(encoded);
+            // Act - round trip to string
+            await using MemoryStream outputMemoryStream = new MemoryStream();
+            await JsonSerializer.SerializeAsync(outputMemoryStream, signedBeaconBlock, options);
+            string jsonString = Encoding.UTF8.GetString(outputMemoryStream.ToArray());
 
-            // Assert
+            Console.WriteLine(jsonString);
             
-            Merkle.Ize(out UInt256 decodedBlockRoot256, decoded.Message);
-            Span<byte> decodedBlockRootSpan = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref decodedBlockRoot256, 1));
-            Root decodedBlockRoot = new Root(decodedBlockRootSpan);
-
-            decodedBlockRoot.ShouldBe(blockRoot);
+            // Assert - Round trip
+            
+            await using MemoryStream inputMemoryStream = new MemoryStream(Encoding.UTF8.GetBytes(jsonString));
+            SignedBeaconBlock roundTripSignedBeaconBlock = await JsonSerializer.DeserializeAsync<SignedBeaconBlock>(inputMemoryStream, options);
+            
+            roundTripSignedBeaconBlock.Message.Body.Eth1Data.BlockHash.AsSpan()[1].ShouldBe((byte)0x34); 
         }
         
-        [Test]
-        public void CheckBlockWithDepositAfterDeserializing()
+                [Test]
+        public async Task SignedBeaconBlock_RoundTripWithDeposit()
         {
             // Arrange
+            JsonSerializerOptions options = new JsonSerializerOptions();
+            options.ConfigureNethermindCore2();
             
             Eth1Data eth1Data = new Eth1Data(
                 new Root(Enumerable.Repeat((byte)0x12, 32).ToArray()), 
                 64,
                 new Bytes32(Enumerable.Repeat((byte)0x34, 32).ToArray()));
-            
+
+            int depositContractTreeDepth = 32;
             Deposit deposit = new Deposit(
-                Enumerable.Repeat(new Bytes32(Enumerable.Repeat((byte)0x11, 32).ToArray()), Ssz.DepositContractTreeDepth + 1), 
+                Enumerable.Repeat(new Bytes32(Enumerable.Repeat((byte)0x11, 32).ToArray()), depositContractTreeDepth + 1), 
                 new DepositData(
                     new BlsPublicKey(Enumerable.Repeat((byte)0x22, 48).ToArray()), 
                     new Bytes32( Enumerable.Repeat((byte)0x33, 32).ToArray()),
@@ -121,30 +123,26 @@ namespace Nethermind.Ssz.Test
                 new Root(Enumerable.Repeat((byte)0x9a, 32).ToArray()),
                 beaconBlockBody);
             
-            Merkle.Ize(out UInt256 blockRoot256, beaconBlock);
-            Span<byte> blockRootSpan = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref blockRoot256, 1));
-            Root blockRoot = new Root(blockRootSpan);
-            
             SignedBeaconBlock signedBeaconBlock = new SignedBeaconBlock(
                 beaconBlock,
                 new BlsSignature(Enumerable.Repeat((byte)0x0e, 96).ToArray())
             );            
             
-            // Act
-            
-            Span<byte> encoded = new byte[Ssz.SignedBeaconBlockLength(signedBeaconBlock)];
-            Ssz.Encode(encoded, signedBeaconBlock);
-            
-            SignedBeaconBlock decoded = Ssz.DecodeSignedBeaconBlock(encoded);
+            // Act - round trip to string
+            await using MemoryStream outputMemoryStream = new MemoryStream();
+            await JsonSerializer.SerializeAsync(outputMemoryStream, signedBeaconBlock, options);
+            string jsonString = Encoding.UTF8.GetString(outputMemoryStream.ToArray());
 
-            // Assert
+            Console.WriteLine(jsonString);
             
-            Merkle.Ize(out UInt256 decodedBlockRoot256, decoded.Message);
-            Span<byte> decodedBlockRootSpan = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref decodedBlockRoot256, 1));
-            Root decodedBlockRoot = new Root(decodedBlockRootSpan);
-
-            decodedBlockRoot.ShouldBe(blockRoot);
+            // Assert - Round trip
+            
+            await using MemoryStream inputMemoryStream = new MemoryStream(Encoding.UTF8.GetBytes(jsonString));
+            SignedBeaconBlock roundTripSignedBeaconBlock = await JsonSerializer.DeserializeAsync<SignedBeaconBlock>(inputMemoryStream, options);
+            
+            roundTripSignedBeaconBlock.Message.Body.Eth1Data.BlockHash.AsSpan()[31].ShouldBe((byte)0x34);
+            roundTripSignedBeaconBlock.Message.Body.Deposits[0].Data.Signature.AsSpan()[95].ShouldBe((byte)0x44);
+            roundTripSignedBeaconBlock.Message.Body.Deposits[0].Proof[32].AsSpan()[31].ShouldBe((byte)0x11);
         }
-
     }
 }

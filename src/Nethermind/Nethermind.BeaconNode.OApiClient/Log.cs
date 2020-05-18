@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Net;
 using Microsoft.Extensions.Logging;
 
 namespace Nethermind.BeaconNode.OApiClient
@@ -63,5 +64,9 @@ namespace Nethermind.BeaconNode.OApiClient
                 new EventId(4491, nameof(AllNodeConnectionsFailing)),
                 "All node connections failing (configured with {NodeUrlCount} URLs). Waiting {MillisecondsDelay} milliseconds before attempting reconnection.");
 
+        public static readonly Action<ILogger, Uri?, HttpStatusCode?, string?, TimeSpan, int, Exception?> NodeConnectionRetry =
+            LoggerMessage.Define<Uri?, HttpStatusCode?, string?, TimeSpan, int>(LogLevel.Warning,
+                new EventId(4492, nameof(NodeConnectionRetry)),
+                "Connection to {RequestUri} failed with status {StatusCode} {ReasonPhrase}, delaying for {DelayTime}, then attempting reconnection {RetryCount}.");
     }
 }

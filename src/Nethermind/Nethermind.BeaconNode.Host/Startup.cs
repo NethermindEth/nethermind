@@ -26,12 +26,14 @@ namespace Nethermind.BeaconNode.Host
 {
     public class Startup
     {
-        public Startup(IConfiguration configuration)
+        public Startup(IConfiguration configuration, IWebHostEnvironment environment)
         {
             Configuration = configuration;
+            Environment = environment;
         }
 
         public IConfiguration Configuration { get; }
+        public IWebHostEnvironment Environment { get; }
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
@@ -55,7 +57,7 @@ namespace Nethermind.BeaconNode.Host
             services.Configure<KestrelServerOptions>(
                 Configuration.GetSection("Kestrel"));
             
-            services.AddBeaconNodeOApi();
+            services.AddBeaconNodeOApi(Environment);
         }
     }
 }

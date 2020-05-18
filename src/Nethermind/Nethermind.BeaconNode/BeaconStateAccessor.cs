@@ -193,12 +193,9 @@ namespace Nethermind.BeaconNode
         /// <summary>
         /// Return the signature domain (fork version concatenated with domain type) of a message.
         /// </summary>
-        public Domain GetDomain(BeaconState state, DomainType domainType, Epoch epoch)
+        public Domain GetDomain(BeaconState state, DomainType domainType, Epoch? optionalEpoch)
         {
-            if (epoch == Epoch.None)
-            {
-                epoch = GetCurrentEpoch(state);
-            }
+            Epoch epoch = optionalEpoch ?? GetCurrentEpoch(state);
 
             ForkVersion forkVersion;
             if (epoch < state.Fork.Epoch)

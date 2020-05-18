@@ -40,21 +40,20 @@ namespace Nethermind.BeaconNode.Peering.Test
     [TestFixture]
     public class MothraPeeringWorkerTests
     {
-        [NotNull]
-        private IOptionsMonitor<ConsoleLoggerOptions> _mockLoggerOptionsMonitor;
-        private LoggerFactory _loggerFactory;
-        private MockMothra _mockMothra;
-        private IForkChoice _mockForkChoice;
-        private ISynchronizationManager _mockSynchronizationManager;
-        private IStore _mockStore;
-        private IOptionsMonitor<MothraConfiguration> _mockMothraConfigurationMonitor;
-        private INetworkPeering _mockNetworkPeering;
-        private PeerManager _peerManager;
-        private PeerDiscoveredProcessor _peerDiscoveredProcessor;
-        private RpcPeeringStatusProcessor _rpcPeeringStatusProcessor;
-        private RpcBeaconBlocksByRangeProcessor _rpcBeaconBlocksByRangeProcessor;
-        private SignedBeaconBlockProcessor _signedBeaconBlockProcessor;
-        private DataDirectory _dataDirectory;
+        private IOptionsMonitor<ConsoleLoggerOptions>? _mockLoggerOptionsMonitor;
+        private LoggerFactory? _loggerFactory;
+        private MockMothra? _mockMothra;
+        private IForkChoice? _mockForkChoice;
+        private ISynchronizationManager? _mockSynchronizationManager;
+        private IStore? _mockStore;
+        private IOptionsMonitor<MothraConfiguration>? _mockMothraConfigurationMonitor;
+        private INetworkPeering? _mockNetworkPeering;
+        private PeerManager? _peerManager;
+        private PeerDiscoveredProcessor? _peerDiscoveredProcessor;
+        private RpcPeeringStatusProcessor? _rpcPeeringStatusProcessor;
+        private RpcBeaconBlocksByRangeProcessor? _rpcBeaconBlocksByRangeProcessor;
+        private SignedBeaconBlockProcessor? _signedBeaconBlockProcessor;
+        private DataDirectory? _dataDirectory;
 
         [SetUp]
         public void SetUp()
@@ -110,17 +109,17 @@ namespace Nethermind.BeaconNode.Peering.Test
             // arrange
             MothraPeeringWorker peeringWorker = new MothraPeeringWorker(
                 _loggerFactory.CreateLogger<MothraPeeringWorker>(),
-                _mockMothraConfigurationMonitor,
+                _mockMothraConfigurationMonitor!,
                 Substitute.For<IHostEnvironment>(),
                 Substitute.For<IClientVersion>(),
-                _mockStore,
-                _mockMothra,
-                _dataDirectory,
-                _peerManager,
-                _peerDiscoveredProcessor,
-                _rpcPeeringStatusProcessor,
-                _rpcBeaconBlocksByRangeProcessor,
-                _signedBeaconBlockProcessor
+                _mockStore!,
+                _mockMothra!,
+                _dataDirectory!,
+                _peerManager!,
+                _peerDiscoveredProcessor!,
+                _rpcPeeringStatusProcessor!,
+                _rpcBeaconBlocksByRangeProcessor!,
+                _signedBeaconBlockProcessor!
             );
         
             // act
@@ -129,7 +128,7 @@ namespace Nethermind.BeaconNode.Peering.Test
             await peeringWorker.StopAsync(CancellationToken.None);
             
             // assert
-            _mockMothra.StartCalls.Count.ShouldBe(1);
+            _mockMothra!.StartCalls.Count.ShouldBe(1);
             // mockMothra.SendRpcResponseCalls.Count.ShouldBe(1);
             // Encoding.UTF8.GetString(mockMothra.SendRpcResponseCalls[0].peerUtf8).ShouldBe("peer1");
             // Encoding.UTF8.GetString(mockMothra.SendRpcResponseCalls[0].methodUtf8).ShouldBe("/eth2/beacon_chain/req/status/1/");
@@ -141,17 +140,17 @@ namespace Nethermind.BeaconNode.Peering.Test
             // arrange
             MothraPeeringWorker peeringWorker = new MothraPeeringWorker(
                 _loggerFactory.CreateLogger<MothraPeeringWorker>(),
-                _mockMothraConfigurationMonitor,
+                _mockMothraConfigurationMonitor!,
                 Substitute.For<IHostEnvironment>(),
                 Substitute.For<IClientVersion>(),
-                _mockStore,
-                _mockMothra,
-                _dataDirectory,
-                _peerManager,
-                _peerDiscoveredProcessor,
-                _rpcPeeringStatusProcessor,
-                _rpcBeaconBlocksByRangeProcessor,
-                _signedBeaconBlockProcessor
+                _mockStore!,
+                _mockMothra!,
+                _dataDirectory!,
+                _peerManager!,
+                _peerDiscoveredProcessor!,
+                _rpcPeeringStatusProcessor!,
+                _rpcBeaconBlocksByRangeProcessor!,
+                _signedBeaconBlockProcessor!
             );
         
             // act - start worker
@@ -159,14 +158,14 @@ namespace Nethermind.BeaconNode.Peering.Test
             // - wait for startup
             await Task.Delay(TimeSpan.FromMilliseconds(100));
             // - raise event
-            _mockMothra.RaisePeerDiscovered(Encoding.UTF8.GetBytes("peer1"));
+            _mockMothra!.RaisePeerDiscovered(Encoding.UTF8.GetBytes("peer1"));
             // - wait for event to be handled
             await Task.Delay(TimeSpan.FromMilliseconds(100));
             // - finish
             await peeringWorker.StopAsync(CancellationToken.None);
 
             // assert
-            _peerManager.Peers.Count.ShouldBe(1);
+            _peerManager!.Peers.Count.ShouldBe(1);
             
             Session session = _peerManager.Sessions["peer1"].First();
             session.Direction.ShouldBe(ConnectionDirection.In);
@@ -179,21 +178,21 @@ namespace Nethermind.BeaconNode.Peering.Test
         public async Task PeerDiscoveredWhenExpectedShouldCreatePeerAndOutSession()
         {
             // arrange
-            _peerManager.AddExpectedPeer("enr:123");
+            _peerManager!.AddExpectedPeer("enr:123");
             
             MothraPeeringWorker peeringWorker = new MothraPeeringWorker(
                 _loggerFactory.CreateLogger<MothraPeeringWorker>(),
-                _mockMothraConfigurationMonitor,
+                _mockMothraConfigurationMonitor!,
                 Substitute.For<IHostEnvironment>(),
                 Substitute.For<IClientVersion>(),
-                _mockStore,
-                _mockMothra,
-                _dataDirectory,
+                _mockStore!,
+                _mockMothra!,
+                _dataDirectory!,
                 _peerManager,
-                _peerDiscoveredProcessor,
-                _rpcPeeringStatusProcessor,
-                _rpcBeaconBlocksByRangeProcessor,
-                _signedBeaconBlockProcessor
+                _peerDiscoveredProcessor!,
+                _rpcPeeringStatusProcessor!,
+                _rpcBeaconBlocksByRangeProcessor!,
+                _signedBeaconBlockProcessor!
             );
             
             // act - start worker
@@ -201,7 +200,7 @@ namespace Nethermind.BeaconNode.Peering.Test
             // - wait for startup
             await Task.Delay(TimeSpan.FromMilliseconds(100));
             // - raise event
-            _mockMothra.RaisePeerDiscovered(Encoding.UTF8.GetBytes("peer1"));
+            _mockMothra!.RaisePeerDiscovered(Encoding.UTF8.GetBytes("peer1"));
             // - wait for event to be handled
             await Task.Delay(TimeSpan.FromMilliseconds(100));
             // - finish
@@ -233,29 +232,29 @@ namespace Nethermind.BeaconNode.Peering.Test
             SignedBeaconBlock block2 = new SignedBeaconBlock(new BeaconBlock(new Slot(2), Root.Zero, Root.Zero, BeaconBlockBody.Zero),
                 BlsSignature.Zero);
 
-            _mockForkChoice.GetAncestorAsync(Arg.Any<IStore>(), Arg.Any<Root>(), Arg.Any<Slot>()).Returns(Root.Zero);
+            _mockForkChoice!.GetAncestorAsync(Arg.Any<IStore>(), Arg.Any<Root>(), Arg.Any<Slot>()).Returns(Root.Zero);
             _mockForkChoice.GetAncestorAsync(Arg.Any<IStore>(), Arg.Any<Root>(), new Slot(6)).Returns(root6);
             _mockForkChoice.GetAncestorAsync(Arg.Any<IStore>(), Arg.Any<Root>(), new Slot(5)).Returns(root4);
             _mockForkChoice.GetAncestorAsync(Arg.Any<IStore>(), Arg.Any<Root>(), new Slot(4)).Returns(root4);
             _mockForkChoice.GetAncestorAsync(Arg.Any<IStore>(), Arg.Any<Root>(), new Slot(3)).Returns(root2);
 
-            _mockStore.GetSignedBlockAsync(root6).Returns(block6);
+            _mockStore!.GetSignedBlockAsync(root6).Returns(block6);
             _mockStore.GetSignedBlockAsync(root4).Returns(block4);
             _mockStore.GetSignedBlockAsync(root2).Returns(block2);
                 
             MothraPeeringWorker peeringWorker = new MothraPeeringWorker(
                 _loggerFactory.CreateLogger<MothraPeeringWorker>(),
-                _mockMothraConfigurationMonitor,
+                _mockMothraConfigurationMonitor!,
                 Substitute.For<IHostEnvironment>(),
                 Substitute.For<IClientVersion>(),
                 _mockStore,
-                _mockMothra,
-                _dataDirectory,
-                _peerManager,
-                _peerDiscoveredProcessor,
-                _rpcPeeringStatusProcessor,
-                _rpcBeaconBlocksByRangeProcessor,
-                _signedBeaconBlockProcessor
+                _mockMothra!,
+                _dataDirectory!,
+                _peerManager!,
+                _peerDiscoveredProcessor!,
+                _rpcPeeringStatusProcessor!,
+                _rpcBeaconBlocksByRangeProcessor!,
+                _signedBeaconBlockProcessor!
             );
         
             // act - start worker
@@ -269,7 +268,7 @@ namespace Nethermind.BeaconNode.Peering.Test
                 1);
             byte[] data = new Byte[Ssz.Ssz.BeaconBlocksByRangeLength];
             Ssz.Ssz.Encode(data, request);
-            _mockMothra.RaiseRpcReceived(
+            _mockMothra!.RaiseRpcReceived(
                 Encoding.UTF8.GetBytes("/eth2/beacon_chain/req/beacon_blocks_by_range/1/"),
                 0,
                 Encoding.UTF8.GetBytes("peer1"),

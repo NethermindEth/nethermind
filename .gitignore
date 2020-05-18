@@ -368,3 +368,6 @@ src/Nethermind/Nethermind.BeaconNode.Host/release
 # Memory dumps
 mono_crash.mem.*.blob
 src/.DS_Store
+
+# Include development self-signed certificate 
+!src/Nethermind/Nethermind.BeaconNode.Host/Certificates/nethermind_dotnet_dev_cert.pfx
