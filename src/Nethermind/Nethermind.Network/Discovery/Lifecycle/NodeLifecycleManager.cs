@@ -80,7 +80,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
             {
                 return;
             }
-            Console.WriteLine($"Sent ping mdc == pong mdc : " + Bytes.AreEqual(sentPingMessage.Mdc, discoveryMessage.PingMdc));
+
             if (Bytes.AreEqual(sentPingMessage.Mdc, discoveryMessage.PingMdc))
             {
                 _receivedPong = true;
@@ -95,6 +95,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
             else
             {
                 // ignore spoofed message
+                _receivedPong = false;
                 return;
             }
         }
