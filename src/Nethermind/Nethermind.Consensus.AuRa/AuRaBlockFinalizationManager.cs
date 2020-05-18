@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
@@ -250,9 +251,9 @@ namespace Nethermind.Consensus.AuRa
 
         public event EventHandler<FinalizeEventArgs> BlocksFinalized;
         
-        public long GetLastLevelFinalizedBy(Keccak headHash)
+        public long GetLastLevelFinalizedBy(Keccak blockHash)
         {
-            var block = _blockTree.FindHeader(headHash, BlockTreeLookupOptions.None);
+            var block = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
             var validators = new HashSet<Address>();
             var minSealersForFinalization = GetMinSealersForFinalization(block.Number);
             while (block.Number > 0)
@@ -263,7 +264,7 @@ namespace Nethermind.Consensus.AuRa
                     return block.Number;
                 }
 
-                block = _blockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.None);
+                block = _blockTree.FindParentHeader(block, BlockTreeLookupOptions.None);
             }
             
             return 0;
