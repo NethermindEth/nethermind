@@ -76,12 +76,10 @@ namespace Nethermind.Network.Discovery
             try
             {
                 if(_logger.IsTrace) _logger.Trace($"Sending message: {discoveryMessage}");
-                Console.WriteLine($"Sending discovery message to {discoveryMessage.FarAddress}");
                 message = Serialize(discoveryMessage);
             }
             catch (Exception e)
             {
-                Console.WriteLine($"Error during serialization of the message: {discoveryMessage}", e);
                 _logger.Error($"Error during serialization of the message: {discoveryMessage}", e);
                 return;
             }
@@ -92,7 +90,6 @@ namespace Nethermind.Network.Discovery
             {
                 if (t.IsFaulted)
                 {
-                    Console.WriteLine($"Error when sending a discovery message Msg: {discoveryMessage.ToString()} ,Exp: {t.Exception}");
                     if(_logger.IsTrace) _logger.Trace($"Error when sending a discovery message Msg: {discoveryMessage.ToString()} ,Exp: {t.Exception}");
                 }
             });

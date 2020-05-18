@@ -66,7 +66,6 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
         public void ProcessPingMessage(PingMessage discoveryMessage)
         {
-            Console.WriteLine($"Processing ping message from {discoveryMessage.SourceAddress} -> NodeLifecycleManager.ProcessPingMessage()");
             _receivedPing = true;
             SendPong(discoveryMessage);
 
@@ -76,13 +75,12 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
         public void ProcessPongMessage(PongMessage discoveryMessage)
         {
-            Console.WriteLine($"Recieved pong message: {discoveryMessage}");
             PingMessage sentPingMessage = Interlocked.Exchange(ref _lastSentPing, null);
             if (sentPingMessage == null)
             {
                 return;
             }
-
+            Console.WriteLine($"Sent ping mdc == pong mdc : " + Bytes.AreEqual(sentPingMessage.Mdc, discoveryMessage.PingMdc));
             if (Bytes.AreEqual(sentPingMessage.Mdc, discoveryMessage.PingMdc))
             {
                 _receivedPong = true;
@@ -184,8 +182,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
             {
                 PongMessage msg = _discoveryMessageFactory.CreateOutgoingMessage<PongMessage>(ManagedNode);
                 msg.PingMdc = discoveryMessage.Mdc;
-
-                Console.WriteLine($"Created pong message from {discoveryMessage.SourceAddress} to {discoveryMessage.DestinationAddress}");
+                
                 _discoveryManager.SendMessage(msg);
                 NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPongOut);
                 _sentPong = true;

@@ -82,7 +82,6 @@ namespace Nethermind.Network.Discovery
                 INodeLifecycleManager nodeManager = GetNodeLifecycleManager(node);
                 if (nodeManager == null)
                 {
-                    Console.WriteLine("nodeManager is null");
                     return;
                 }
 
@@ -159,13 +158,12 @@ namespace Nethermind.Network.Discovery
         public void SendMessage(DiscoveryMessage discoveryMessage)
         {
             if (_logger.IsTrace) _logger.Trace($"Sending msg: {discoveryMessage}");
-            Console.WriteLine($"Sending {discoveryMessage.MessageType} in DiscoveryManager.SendMessage() to {discoveryMessage.FarAddress}");
+            Console.WriteLine($"Sending msg: {discoveryMessage}");
             try
             {
                 if (discoveryMessage is PingMessage pingMessage)
                 {
                     if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(pingMessage.FarAddress.Address.ToString(), "HANDLER disc v4", $"PING {pingMessage.SourceAddress.Address} -> {pingMessage.DestinationAddress.Address}");
-                    Console.WriteLine($"Preparing ping message from {pingMessage.SourceAddress.Address} to {pingMessage.DestinationAddress.Address}");
                 }
                 else
                 {
@@ -213,8 +211,6 @@ namespace Nethermind.Network.Discovery
 
         private bool ValidatePingAddress(PingMessage message)
         {
-            Console.WriteLine($"Started validation of ping message: {message}");
-
             if (message.DestinationAddress == null || message.FarAddress == null)
             {
                 if (_logger.IsDebug) _logger.Debug($"Received a ping message with empty address, message: {message}");
